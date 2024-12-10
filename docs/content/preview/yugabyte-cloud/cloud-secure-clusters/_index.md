@@ -3,7 +3,6 @@ title: Secure clusters
 headerTitle: Secure clusters in YugabyteDB Aeon
 linkTitle: Secure clusters
 description: Secure clusters in YugabyteDB Aeon.
-image: /images/section_icons/index/secure.png
 headcontent: Configure the security features of your YugabyteDB Aeon clusters
 menu:
   preview_yugabyte-cloud:

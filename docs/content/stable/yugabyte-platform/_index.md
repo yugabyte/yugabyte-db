@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB Anywhere
 headerTitle: YugabyteDB Anywhere
-linkTitle: YugabyteDB Anywhere
+linkTitle: Overview
 headcontent: Self-managed Database-as-a-Service
 description: YugabyteDB delivered as a private database-as-a-service for enterprises.
 menu:
@@ -9,18 +9,8 @@ menu:
     parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10
-    params:
-      classes: separator
 type: indexpage
 breadcrumbDisable: true
-resourcesIntro: Quick Links
-resources:
-  - title: What's new
-    url: /preview/releases/yba-releases/
-  - title: FAQ
-    url: /preview/faq/yugabyte-platform/
-  - title: University
-    url: https://university.yugabyte.com/collections/administrators/
 ---
 
 YugabyteDB Anywhere is a self-managed database-as-a-service offering from YugabyteDB that allows you to deploy and operate YugabyteDB universes at scale.
