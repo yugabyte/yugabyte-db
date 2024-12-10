@@ -1660,8 +1660,10 @@ SELECT document FROM bson_aggregation_distinct('db', '{ "distinct": "near_sphere
 -- With sort on findAndModify with near, sort takes precedence
 SELECT helio_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [0, 0], "$maxDistance": 1} }, "sort": {"_id": -1}, "update": {"a": 10}, "fields": {"_id": 1}}');
 ERROR:  $geoNear, $near, and $nearSphere are not allowed in this context
-CONTEXT:  SQL statement "SELECT ctid, object_id, document FROM helio_data.documents_5231 WHERE shard_key_value = $1 AND document OPERATOR(helio_api_catalog.@@) $2::helio_core.bson ORDER BY helio_api_catalog.bson_orderby(document, $3::helio_core.bson) DESC LIMIT 1 FOR UPDATE"
+CONTEXT:  SQL statement "SELECT ctid, object_id, document FROM helio_data.documents_5231_523025 WHERE shard_key_value = $1 AND document OPERATOR(helio_api_catalog.@@) $2::helio_core.bson ORDER BY helio_api_catalog.bson_orderby(document, $3::helio_core.bson) DESC LIMIT 1 FOR UPDATE"
+SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_5231 WHERE shard_key_value = 5231"
 -- If no sort clause then near decides the ordering
 SELECT helio_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [30, 30]} }, "update": {"a": 10}, "fields": {"_id": 1}}');
 ERROR:  $geoNear, $near, and $nearSphere are not allowed in this context
-CONTEXT:  SQL statement "SELECT ctid, object_id, document FROM helio_data.documents_5231 WHERE shard_key_value = $1 AND document OPERATOR(helio_api_catalog.@@) $2::helio_core.bson LIMIT 1 FOR UPDATE"
+CONTEXT:  SQL statement "SELECT ctid, object_id, document FROM helio_data.documents_5231_523025 WHERE shard_key_value = $1 AND document OPERATOR(helio_api_catalog.@@) $2::helio_core.bson LIMIT 1 FOR UPDATE"
+SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_5231 WHERE shard_key_value = 5231"

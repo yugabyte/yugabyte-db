@@ -488,9 +488,25 @@ MergeWorkerResults(CollStatsResult *result, MongoCollection *collection,
 	}
 
 	/* Gather relevant data */
-	int32 avgObjSize = totalDocCount == 0 ? 0 :
-					   isSmallCollection ? GetAverageColumnWidthRuntime(collection) :
-					   (int32) (totalDocColumnSize / totalDocCount);
+	int32 avgObjSize = 0;
+	if (totalDocCount == 0)
+	{
+		avgObjSize = 0;
+	}
+	else if (isSmallCollection)
+	{
+		avgObjSize = GetAverageColumnWidthRuntime(collection);
+	}
+	else
+	{
+		/* Avg size cannot be smaller than the storage size - cap it at this value */
+		avgObjSize = (int32) (totalDocColumnSize / totalDocCount);
+		int32 avgSizeFromStorage = (int32_t) (result->storageSize * 1.0 / totalDocCount);
+		if (avgSizeFromStorage > avgObjSize)
+		{
+			avgObjSize = avgSizeFromStorage;
+		}
+	}
 
 	/* Build Result Data */
 	result->count = totalDocCount;

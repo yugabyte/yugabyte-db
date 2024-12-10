@@ -28,6 +28,7 @@
 #include "utils/version_utils.h"
 #include "planner/helio_planner.h"
 #include "commands/diagnostic_commands_common.h"
+#include "api_hooks_def.h"
 
 
 PG_FUNCTION_INFO_V1(command_db_stats);
@@ -206,18 +207,28 @@ BuildResultData(Datum databaseName, DbStatsResult *result, int32 scale)
 												   sizeof(uint64), true,
 												   TYPALIGN_INT);
 
-	StringInfo cmdStr = makeStringInfo();
-	appendStringInfo(cmdStr,
-					 "SELECT success, result FROM run_command_on_all_nodes("
-					 "FORMAT($$ SELECT %s.db_stats_worker(%%L) $$, $1))",
-					 ApiInternalSchemaName);
+	List *workerBsons;
+	if (DefaultInlineWriteOperations)
+	{
+		workerBsons = list_make1(DatumGetPgBson(DirectFunctionCall1(
+													command_db_stats_worker,
+													PointerGetDatum(collectionIdArray))));
+	}
+	else
+	{
+		StringInfo cmdStr = makeStringInfo();
+		appendStringInfo(cmdStr,
+						 "SELECT success, result FROM run_command_on_all_nodes("
+						 "FORMAT($$ SELECT %s.db_stats_worker(%%L) $$, $1))",
+						 ApiInternalSchemaName);
 
-	int numValues = 1;
-	Datum values[1] = { PointerGetDatum(collectionIdArray) };
-	Oid types[1] = { INT8ARRAYOID };
+		int numValues = 1;
+		Datum values[1] = { PointerGetDatum(collectionIdArray) };
+		Oid types[1] = { INT8ARRAYOID };
 
-	List *workerBsons = GetWorkerBsonsFromAllWorkers(cmdStr->data, values, types,
-													 numValues, "DbStats");
+		workerBsons = GetWorkerBsonsFromAllWorkers(cmdStr->data, values, types,
+												   numValues, "DbStats");
+	}
 
 	/* Now that we have the worker BSON results, merge them to the final one */
 	MergeWorkerResults(result, workerBsons, scale);

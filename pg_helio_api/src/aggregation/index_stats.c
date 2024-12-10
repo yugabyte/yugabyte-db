@@ -24,6 +24,7 @@
 #include "commands/diagnostic_commands_common.h"
 #include "api_hooks.h"
 #include "metadata/metadata_cache.h"
+#include "api_hooks_def.h"
 
 
 static const char *IndexUsageKey = "index_usage";
@@ -103,18 +104,29 @@ IndexStatsCoordinator(Datum databaseName, Datum collectionName,
 					  MongoCollection *collection, Tuplestorestate *tupleStore,
 					  TupleDesc tupleDescriptor)
 {
-	StringInfo cmdStr = makeStringInfo();
-	appendStringInfo(cmdStr,
-					 "SELECT success, result FROM run_command_on_all_nodes("
-					 "FORMAT($$ SELECT %s.index_stats_worker(%%L, %%L) $$, $1, $2))",
-					 ApiInternalSchemaName);
+	List *workerBsons = NIL;
+	if (DefaultInlineWriteOperations)
+	{
+		workerBsons = list_make1(DatumGetPgBson(DirectFunctionCall2(
+													command_index_stats_worker,
+													databaseName,
+													collectionName)));
+	}
+	else
+	{
+		StringInfo cmdStr = makeStringInfo();
+		appendStringInfo(cmdStr,
+						 "SELECT success, result FROM run_command_on_all_nodes("
+						 "FORMAT($$ SELECT %s.index_stats_worker(%%L, %%L) $$, $1, $2))",
+						 ApiInternalSchemaName);
 
-	int numValues = 2;
-	Datum values[2] = { databaseName, collectionName };
-	Oid types[2] = { TEXTOID, TEXTOID };
+		int numValues = 2;
+		Datum values[2] = { databaseName, collectionName };
+		Oid types[2] = { TEXTOID, TEXTOID };
 
-	List *workerBsons = GetWorkerBsonsFromAllWorkers(cmdStr->data, values, types,
-													 numValues, "IndexStats");
+		workerBsons = GetWorkerBsonsFromAllWorkers(cmdStr->data, values, types,
+												   numValues, "IndexStats");
+	}
 
 	/* Now that we have the worker BSON results, merge them to the final one */
 	MergeWorkerResults(collection, workerBsons, tupleStore, tupleDescriptor);

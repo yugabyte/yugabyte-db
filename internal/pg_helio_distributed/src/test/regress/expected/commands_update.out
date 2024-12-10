@@ -80,20 +80,28 @@ select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$s
 ERROR:  BSON field 'update.extra' is an unknown field
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{}}]}');
 ERROR:  BSON field 'update.updates.u' is missing but a required field
+CONTEXT:  SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_6490 WHERE shard_key_value = 6490"
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"multi":true}]}');
 ERROR:  BSON field 'update.updates.u' is missing but a required field
+CONTEXT:  SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_6490 WHERE shard_key_value = 6490"
 select helio_api.update('db', '{"update":"updateme", "updates":[{"multi":true}]}');
 ERROR:  BSON field 'update.updates.q' is missing but a required field
+CONTEXT:  SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_6490 WHERE shard_key_value = 6490"
 select helio_api.update('db', '{"update":"updateme", "updates":[{"u":{"$set":{"b":0}}}]}');
 ERROR:  BSON field 'update.updates.q' is missing but a required field
+CONTEXT:  SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_6490 WHERE shard_key_value = 6490"
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":"text"}]}');
 ERROR:  BSON field 'update.updates.u' is the wrong type 'string', expected type 'object' or 'array'
+CONTEXT:  SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_6490 WHERE shard_key_value = 6490"
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":[],"u":{"$set":{"b":0}},"multi":true}]}');
 ERROR:  BSON field 'update.updates.q' is the wrong type 'array', expected type 'object'
+CONTEXT:  SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_6490 WHERE shard_key_value = 6490"
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":1}]}');
 ERROR:  BSON field 'update.updates.multi' is the wrong type 'int', expected type 'bool'
+CONTEXT:  SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_6490 WHERE shard_key_value = 6490"
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true,"extra":1}]}');
 ERROR:  BSON field 'update.updates.extra' is an unknown field
+CONTEXT:  SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_6490 WHERE shard_key_value = 6490"
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}],"ordered":1}');
 ERROR:  BSON field 'update.ordered' is the wrong type 'int', expected type 'bool'
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$bork":{"b":0}},"multi":true}]}');
@@ -104,6 +112,7 @@ select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$b
 
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"upsert":[]}]}');
 ERROR:  BSON field 'update.updates.upsert' is the wrong type 'array', expected type 'bool'
+CONTEXT:  SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_6490 WHERE shard_key_value = 6490"
 -- Disallow writes to system.views
 select helio_api.update('db', '{"update":"system.views", "updates":[{"q":{},"u":{"$set":{"b":0}}}]}');
 ERROR:  cannot write to db.system.views
@@ -469,8 +478,7 @@ select count(*) from helio_api.collection('db', 'updateme') where document @@ '{
 
 set local citus.log_remote_commands to on;
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":4}},"multi":false,"upsert":true}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6490_649000 documents_6490 WHERE ((shard_key_value OPERATOR(pg_catalog.=) '6490'::bigint) AND (object_id OPERATOR(helio_core.=) ('\x0b00000010002100000000'::bytea)::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6490
-NOTICE:  executing the command locally: UPDATE helio_data.documents_6490_649000 documents_6490 SET document = '{ "_id" : { "$numberInt" : "33" }, "b" : { "$numberInt" : "4" } }'::helio_core.bson WHERE ((ctid OPERATOR(pg_catalog.=) '(0,47)'::tid) AND (shard_key_value OPERATOR(pg_catalog.=) '6490'::bigint))
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6490_649000 documents_6490 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6490)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
@@ -499,7 +507,7 @@ select count(*) from helio_api.collection('db', 'updateme') where document @@ '{
 
 set local citus.log_remote_commands to on;
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":1}},"multi":true,"upsert":true}]}');
-NOTICE:  executing the command locally: WITH u AS (UPDATE helio_data.documents_6490_649000 documents_6490 SET document = (SELECT COALESCE(bson_update_document.newdocument, documents_6490.document) AS "coalesce" FROM helio_api_internal.bson_update_document(documents_6490.document, ($2)::helio_core.bson, ($1)::helio_core.bson, ($3)::helio_core.bson, false) bson_update_document(newdocument, updatedesc) WHERE true) WHERE ((documents_6490.document OPERATOR(helio_api_catalog.#=) '{ "_id" : { "$numberInt" : "33" } }'::helio_core.bsonquery) AND (documents_6490.shard_key_value OPERATOR(pg_catalog.=) $4) AND (documents_6490.object_id OPERATOR(helio_core.=) ($5)::helio_core.bson)) RETURNING helio_api_internal.bson_update_returned_value(documents_6490.shard_key_value) AS updated) SELECT count(*) AS count, sum(updated) AS sum FROM u WHERE true
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6490_649000 documents_6490 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6490)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
@@ -605,8 +613,7 @@ select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$s
 begin;
 set local citus.log_remote_commands to on;
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":5}},"u":{"$set":{"b":0}},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6490_649022 documents_6490 WHERE ((shard_key_value OPERATOR(pg_catalog.=) '1786987034919379147'::bigint) AND (document OPERATOR(helio_api_catalog.#=) '{ "a" : { "$numberInt" : "5" } }'::helio_core.bsonquery)) LIMIT 1 FOR UPDATE OF documents_6490
-NOTICE:  executing the command locally: UPDATE helio_data.documents_6490_649022 documents_6490 SET document = '{ "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "0" } }'::helio_core.bson WHERE ((ctid OPERATOR(pg_catalog.=) '(0,1)'::tid) AND (shard_key_value OPERATOR(pg_catalog.=) '1786987034919379147'::bigint))
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6490_649022 documents_6490 WHERE (shard_key_value OPERATOR(pg_catalog.=) '1786987034919379147'::bigint)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
@@ -928,8 +935,7 @@ select count(*) from helio_api.collection('db', 'updateme') where document @@ '{
 
 set local citus.log_remote_commands to on;
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":4}},"multi":false,"upsert":true}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6490_649023 documents_6490 WHERE ((shard_key_value OPERATOR(pg_catalog.=) '5243071450131145979'::bigint) AND ((document OPERATOR(helio_api_catalog.#=) '{ "_id" : { "$numberInt" : "33" } }'::helio_core.bsonquery) AND (document OPERATOR(helio_api_catalog.#=) '{ "a" : { "$numberInt" : "10" } }'::helio_core.bsonquery)) AND (object_id OPERATOR(helio_core.=) ('\x0b00000010002100000000'::bytea)::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6490
-NOTICE:  executing the command locally: UPDATE helio_data.documents_6490_649023 documents_6490 SET document = '{ "_id" : { "$numberInt" : "33" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "4" } }'::helio_core.bson WHERE ((ctid OPERATOR(pg_catalog.=) '(0,7)'::tid) AND (shard_key_value OPERATOR(pg_catalog.=) '5243071450131145979'::bigint))
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6490_649023 documents_6490 WHERE (shard_key_value OPERATOR(pg_catalog.=) '5243071450131145979'::bigint)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
@@ -1577,91 +1583,91 @@ NOTICE:  creating collection
 
 set local citus.log_remote_commands to on;
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"a":{"$eq":1}},"u":{"$set":{"b":0 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND (document OPERATOR(helio_api_catalog.#=) '{ "a" : { "$numberInt" : "1" } }'::helio_core.bsonquery)) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"a":{"$eq":1}, "_id" : 1},"u":{"$set":{"b":0 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND ((document OPERATOR(helio_api_catalog.#=) '{ "a" : { "$numberInt" : "1" } }'::helio_core.bsonquery) AND (document OPERATOR(helio_api_catalog.#=) '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bsonquery)) AND (object_id OPERATOR(helio_core.=) ($3)::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$eq":1}, "a" : 1},"u":{"$set":{"b":0 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND ((document OPERATOR(helio_api_catalog.#=) '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bsonquery) AND (document OPERATOR(helio_api_catalog.#=) '{ "a" : { "$numberInt" : "1" } }'::helio_core.bsonquery)) AND (object_id OPERATOR(helio_core.=) ($3)::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$gt":1}},"u":{"$set":{"b":0 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND (document OPERATOR(helio_api_catalog.#>) '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bsonquery)) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$lt":1}},"u":{"$set":{"b":0 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND (document OPERATOR(helio_api_catalog.#<) '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bsonquery)) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$in": []}},"u":{"$set":{"b":0 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND helio_api_catalog.bson_dollar_in(document, '{ "_id" : [  ] }'::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$in": [2]}},"u":{"$set":{"b":0 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND (document OPERATOR(helio_api_catalog.#=) '{ "_id" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND (object_id OPERATOR(helio_core.=) ($3)::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$in": [2,3,4]}},"u":{"$set":{"b":0 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND helio_api_catalog.bson_dollar_in(document, '{ "_id" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }'::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$all": [1,2]}},"u":{"$set":{"b":0 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND helio_api_catalog.bson_dollar_all(document, '{ "_id" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$expr":{"$gt": ["$_id",1]}},"u":{"$set":{"b":0 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND helio_api_catalog.bson_dollar_expr(document, '{ "" : { "$gt" : [ "$_id", { "$numberInt" : "1" } ] } }'::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$and":[{"_id":1},{"_id":2}]},"u":{"$set":{"b":0}},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND ((document OPERATOR(helio_api_catalog.#=) '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bsonquery) AND (document OPERATOR(helio_api_catalog.#=) '{ "_id" : { "$numberInt" : "2" } }'::helio_core.bsonquery))) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$or":[{"_id":2}, {"a" : 1}]},"u":{"$set":{"b":0}},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND ((document OPERATOR(helio_api_catalog.#=) '{ "_id" : { "$numberInt" : "2" } }'::helio_core.bsonquery) OR (document OPERATOR(helio_api_catalog.#=) '{ "a" : { "$numberInt" : "1" } }'::helio_core.bsonquery))) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$or":[{"b":2}]},"u":{"$set":{"b":0}},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND helio_api_catalog.bson_dollar_in(document, '{ "b" : [ { "$numberInt" : "2" } ] }'::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
@@ -1676,48 +1682,42 @@ NOTICE:  executing the command locally: SELECT document FROM helio_data.document
 
 -- below query will be updating document although we don't have @@ in query match but for below query only object id filter is sufficient.
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$eq":1}},"u":{"$inc":{"b": 1 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND (object_id OPERATOR(helio_core.=) ($3)::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
-NOTICE:  executing the command locally: UPDATE helio_data.documents_6498_649038 documents_6498 SET document = ($3)::helio_core.bson WHERE ((ctid OPERATOR(pg_catalog.=) $2) AND (shard_key_value OPERATOR(pg_catalog.=) $1))
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$and":[{"_id":1}]},"u":{"$inc":{"b":1}},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND (object_id OPERATOR(helio_core.=) ($3)::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
-NOTICE:  executing the command locally: UPDATE helio_data.documents_6498_649038 documents_6498 SET document = ($3)::helio_core.bson WHERE ((ctid OPERATOR(pg_catalog.=) $2) AND (shard_key_value OPERATOR(pg_catalog.=) $1))
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$or":[{"_id":1}, {"b" : 1}]},"u":{"$inc":{"b":1}},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND ((document OPERATOR(helio_api_catalog.#=) '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bsonquery) OR (document OPERATOR(helio_api_catalog.#=) '{ "b" : { "$numberInt" : "1" } }'::helio_core.bsonquery))) LIMIT 1 FOR UPDATE OF documents_6498
-NOTICE:  executing the command locally: UPDATE helio_data.documents_6498_649038 documents_6498 SET document = ($3)::helio_core.bson WHERE ((ctid OPERATOR(pg_catalog.=) $2) AND (shard_key_value OPERATOR(pg_catalog.=) $1))
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$or":[{"_id":1}]},"u":{"$inc":{"b":1}},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND helio_api_catalog.bson_dollar_in(document, '{ "_id" : [ { "$numberInt" : "1" } ] }'::helio_core.bson) AND (object_id OPERATOR(helio_core.=) ($3)::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
-NOTICE:  executing the command locally: UPDATE helio_data.documents_6498_649038 documents_6498 SET document = ($3)::helio_core.bson WHERE ((ctid OPERATOR(pg_catalog.=) $2) AND (shard_key_value OPERATOR(pg_catalog.=) $1))
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$all": [1]}},"u":{"$inc":{"b":1 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND (object_id OPERATOR(helio_core.=) ($3)::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
-NOTICE:  executing the command locally: UPDATE helio_data.documents_6498_649038 documents_6498 SET document = ($3)::helio_core.bson WHERE ((ctid OPERATOR(pg_catalog.=) $2) AND (shard_key_value OPERATOR(pg_catalog.=) $1))
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
 (1 row)
 
 SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$all": [1,1]}},"u":{"$inc":{"b":1 }},"multi":false}]}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_6498_649038 documents_6498 WHERE ((shard_key_value OPERATOR(pg_catalog.=) $1) AND (object_id OPERATOR(helio_core.=) ($3)::helio_core.bson)) LIMIT 1 FOR UPDATE OF documents_6498
-NOTICE:  executing the command locally: UPDATE helio_data.documents_6498_649038 documents_6498 SET document = ($3)::helio_core.bson WHERE ((ctid OPERATOR(pg_catalog.=) $2) AND (shard_key_value OPERATOR(pg_catalog.=) $1))
+NOTICE:  executing the command locally: SELECT helio_api_internal.update_worker($1, $2, $3, ($4)::helio_core.bson, ($5)::helio_core.bsonsequence, $6) AS update_worker FROM helio_data.documents_6498_649038 documents_6498 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6498)
                                                                 update                                                                
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)

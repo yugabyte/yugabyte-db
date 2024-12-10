@@ -30,6 +30,7 @@
 #include "metadata/collection.h"
 #include "metadata/index.h"
 #include "utils/guc_utils.h"
+#include "api_hooks_def.h"
 
 
 /*
@@ -194,7 +195,7 @@ CurrentOpAggregateCore(PG_FUNCTION_ARGS, TupleDesc descriptor,
 	PopulateCurrentOpOptions(spec, &options);
 
 	List *workerBsons = NIL;
-	if (options.localOps)
+	if (options.localOps || DefaultInlineWriteOperations)
 	{
 		workerBsons = list_make1(CurrentOpWorkerCore(spec));
 	}

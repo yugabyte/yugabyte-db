@@ -459,6 +459,7 @@ InitializeHelioDistributedHooks(void)
 		TryGetShardNameForUnshardedCollectionCore;
 	get_distributed_application_name_hook = GetDistributedApplicationNameCore;
 	ensure_metadata_table_replicated_hook = EnsureMetadataTableReplicatedCore;
+	DefaultInlineWriteOperations = false;
 	UpdateColocationHooks();
 
 	/* Update the version check query to consider distributed versions */

@@ -241,14 +241,16 @@ BEGIN;
 -- do a large number (fail)
 SELECT bulk_write.do_bulk_update(25001, false);
 ERROR:  Write batch sizes must be between 1 and 25000. Got 25001 operations.
-CONTEXT:  SQL statement "SELECT p_result                   FROM helio_api.update('db', v_updateSpec)"
+CONTEXT:  SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_6620 WHERE shard_key_value = 6620"
+SQL statement "SELECT p_result                   FROM helio_api.update('db', v_updateSpec)"
 PL/pgSQL function bulk_write.do_bulk_update(integer,boolean) line 11 at SQL statement
 ROLLBACK;
 BEGIN;
 -- do a large number (fail)
 SELECT bulk_write.do_bulk_update(25001, true);
 ERROR:  Write batch sizes must be between 1 and 25000. Got 25001 operations.
-CONTEXT:  SQL statement "SELECT p_result                   FROM helio_api.update('db', v_updateSpec)"
+CONTEXT:  SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_6620 WHERE shard_key_value = 6620"
+SQL statement "SELECT p_result                   FROM helio_api.update('db', v_updateSpec)"
 PL/pgSQL function bulk_write.do_bulk_update(integer,boolean) line 11 at SQL statement
 ROLLBACK;
 BEGIN;
