@@ -17,6 +17,9 @@ typedef struct {
 	int idle_timestamp;
 
 	od_list_t link;
+
+	/* suppress compiler warnings */
+	bool yb_sticky_connection;
 } od_ldap_server_t;
 
 extern od_retcode_t od_auth_ldap(od_client_t *cl, kiwi_password_t *tok);

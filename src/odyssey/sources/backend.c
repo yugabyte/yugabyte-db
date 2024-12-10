@@ -135,9 +135,16 @@ int od_backend_ready(od_server_t *server, char *data, uint32_t size)
 	// transaction block.
 	if (status == 'I' || status == 'i') {
 		if (status == 'i') {
+			/* increment only if becoming sticky for the first time */
+			if (!server->yb_sticky_connection)
+				((od_route_t *)(server->route))->server_pool.yb_count_sticky++;
+
 			server->yb_sticky_connection = true;
 			*kiwi_header_data((kiwi_header_t *)data) = 'I';
 		} else {
+			/* decrement only if transitioning from sticky to unsticky */
+			if (server->yb_sticky_connection)
+				((od_route_t *)(server->route))->server_pool.yb_count_sticky--;
 			server->yb_sticky_connection = false;
 		}
 		/* no active transaction */
