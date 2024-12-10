@@ -4,16 +4,6 @@ description: YugabyteDB documentation is the best source to learn the most in-de
 headcontent: Open source cloud-native distributed SQL database
 weight: 1
 type: indexpage
-resourcesIntro: Quick Links
-resources:
-  - title: Download
-    url: https://download.yugabyte.com/#/
-  - title: Deploy
-    url: /preview/deploy/
-  - title: Migrate to YugabyteDB
-    url: /preview/yugabyte-voyager/
-  - title: Troubleshoot
-    url: /preview/troubleshoot/
 ---
 
 {{< sections/2-boxes >}}

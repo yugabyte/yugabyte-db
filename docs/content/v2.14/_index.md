@@ -4,7 +4,6 @@ description: YugabyteDB documentation is the best source to learn the most in-de
 headcontent: Open source cloud-native distributed SQL database
 weight: 1
 type: indexpage
-resourcesIntro: Quick Links
 ---
 
 {{< sections/2-boxes >}}

@@ -13,14 +13,6 @@ menu:
       classes: separator
 type: indexpage
 breadcrumbDisable: true
-resourcesIntro: Quick Links
-resources:
-  - title: What's new
-    url: /preview/releases/yba-releases/
-  - title: FAQ
-    url: /preview/faq/yugabyte-platform/
-  - title: University
-    url: https://university.yugabyte.com/collections/administrators/
 ---
 
 YugabyteDB Anywhere (YBA) is a self-managed database-as-a-service offering from YugabyteDB that allows you to deploy and operate YugabyteDB universes at scale.

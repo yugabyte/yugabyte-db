@@ -12,7 +12,6 @@ menu:
     weight: 1
 type: indexpage
 breadcrumbDisable: true
-resourcesIntro: Quick Links
 cascade:
   unversioned: true
 ---

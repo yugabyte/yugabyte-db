@@ -16,14 +16,6 @@ menu:
     parent: yugabytedb-voyager
     weight: 99
 breadcrumbDisable: true
-resourcesIntro: Quick Links
-resources:
-  - title: What's new
-    url: /preview/yugabyte-voyager/release-notes/
-  - title: Download
-    url: https://download.yugabyte.com/migrate
-  - title: yugabyte.com
-    url: https://www.yugabyte.com/voyager/
 ---
 
 Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle databases to YugabyteDB Aeon, YugabyteDB Anywhere, and the core open source database, YugabyteDB.

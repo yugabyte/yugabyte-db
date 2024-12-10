@@ -13,7 +13,6 @@ menu:
       classes: separator
 type: indexpage
 breadcrumbDisable: true
-resourcesIntro: Quick Links
 ---
 
 YugabyteDB Anywhere is a self-managed database-as-a-service offering from YugabyteDB that allows you to deploy and operate YugabyteDB universes at scale.
