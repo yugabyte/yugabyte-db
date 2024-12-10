@@ -202,6 +202,9 @@ DEFINE_RUNTIME_AUTO_bool(
     "update these entries in cdc_state table and also move the corresponding table's entry to "
     "unqualified tables list in stream metadata.");
 
+DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
+    "When enabled, users will be able to create a CDC stream having IMPLICIT checkpointing.");
+
 DECLARE_int32(log_min_seconds_to_retain);
 
 static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
@@ -1104,6 +1107,13 @@ void CDCServiceImpl::CreateCDCStream(
       req->has_checkpoint_type(),
       STATUS(InvalidArgument, "Checkpoint type is required to create a CDCSDK stream"),
       resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  if (!FLAGS_cdc_enable_implicit_checkpointing) {
+    RPC_CHECK_AND_RETURN_ERROR(
+        req->source_type() == CDCSDK && req->checkpoint_type() != IMPLICIT,
+        STATUS(InvalidArgument, "Stream creation with IMPLICIT checkpointing is disabled."),
+        resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+  }
 
   auto deadline = GetDeadline(context, client());
   Status status = CreateCDCStreamForNamespace(req, resp, deadline);

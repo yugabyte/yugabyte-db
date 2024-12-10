@@ -13,6 +13,8 @@
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/master/sys_catalog_initialization.h"
 
+DECLARE_bool(cdc_enable_implicit_checkpointing;)
+
 namespace yb {
 namespace cdc {
 
@@ -35,6 +37,7 @@ class CDCSDKReplicaIdentityTest : public CDCSDKYsqlTest {
     // and don't have to do cleanups after every test case.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_implicit_checkpointing) = true;
 
     // TODO(#23000) Rationalize the tests to run with consistent / non-consistent snapshot streams.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = false;
