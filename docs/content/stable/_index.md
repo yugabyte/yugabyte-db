@@ -22,7 +22,7 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Explore distributed SQL"
     description="Explore the features of distributed SQL, with examples."
     buttonText="Explore"
-    buttonUrl="/preview/explore/"
+    buttonUrl="/stable/explore/"
     imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 {{< /sections/2-boxes >}}
@@ -41,14 +41,14 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Connect using drivers and ORMs"
     description="Connect applications to your database using familiar third-party divers and ORMs and YugabyteDB Smart Drivers."
     buttonText="Connect"
-    buttonUrl="/preview/drivers-orms/"
+    buttonUrl="/stable/drivers-orms/"
   >}}
 
   {{< sections/3-box-card
     title="Use familiar APIs"
     description="Get up to speed quickly using YugabyteDB's PostgreSQL-compatible YSQL and Cassandra-based YCQL APIs."
     buttonText="Develop"
-    buttonUrl="/preview/api/"
+    buttonUrl="/stable/api/"
   >}}
 
 {{< /sections/3-boxes >}}
@@ -60,21 +60,21 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Architecture"
     description="Learn how YugabyteDB achieves consistency and high availability."
     buttonText="Learn More"
-    buttonUrl="/preview/architecture/"
+    buttonUrl="/stable/architecture/"
   >}}
 
   {{< sections/3-box-card
     title="Secure"
     description="Secure YugabyteDB with authentication, authorization, and encryption."
     buttonText="Secure"
-    buttonUrl="/preview/secure/"
+    buttonUrl="/stable/secure/"
   >}}
 
   {{< sections/3-box-card
     title="Configure"
     description="Configure core database services."
     buttonText="Configure"
-    buttonUrl="/preview/reference/configuration/"
+    buttonUrl="/stable/reference/configuration/"
   >}}
 
 {{< /sections/3-boxes >}}
