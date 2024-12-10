@@ -1222,7 +1222,6 @@
   identifier = "yugabytedb"
   url = "/v2024.1/"
   ["v2024.1".params]
-    classes = "separator"
     showSection = true
 
 [["v2024.1"]]
