@@ -4,7 +4,10 @@ description: YugabyteDB documentation is the best source to learn the most in-de
 headcontent: Open source cloud-native distributed SQL database
 weight: 1
 type: indexpage
+breadcrumbDisable: true
 ---
+
+The PostgreSQL-compatible distributed database for your cloud native apps. Resilient, scalable, and flexible. As a cloud-native database, it can be deployed across public and private clouds as well as in Kubernetes environments.
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
