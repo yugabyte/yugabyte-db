@@ -446,7 +446,7 @@ ColumnFamilyData::~ColumnFamilyData() {
   DCHECK(!pending_flush_);
   for (size_t idx = 0; idx < num_pending_compactions_.size(); ++idx) {
     LOG_IF(DFATAL, num_pending_compactions_[idx] != 0)
-        << "Expected no " << yb::AsString(CompactionSizeKind(idx))
+        << ioptions_.info_log->Prefix() <<  "Expected no " << yb::AsString(CompactionSizeKind(idx))
         << " pending compactions, but got: " << num_pending_compactions_[idx];
   }
 

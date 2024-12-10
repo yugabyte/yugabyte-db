@@ -342,6 +342,7 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
     // Remove ": " to patch suffix.
     log_prefix.erase(log_prefix.size() - 2);
     tablet().InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+    rocksdb_options.compaction_style = rocksdb::kCompactionStyleNone;
     auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
     auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
