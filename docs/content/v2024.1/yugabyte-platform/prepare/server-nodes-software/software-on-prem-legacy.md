@@ -41,7 +41,7 @@ type: docs
   </li>
 </ul>
 
-For legacy provisioning, how you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere to provision nodes.
+How you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere to provision nodes.
 
 | SSH mode | Description | Notes | For more details |
 | :--- | :--- | :--- | :--- |
