@@ -1273,7 +1273,7 @@ yb_is_main_table(IndexOptInfo *indexinfo)
 
 	indrel = RelationIdGetRelation(indexinfo->indexoid);
 	if (indrel != NULL && indrel->rd_index != NULL)
-		is_main_table = YBIsCoveredByMainTable(indrel);
+		is_main_table = indrel->rd_index->indisprimary;
 	if (indrel != NULL)
 		RelationClose(indrel);
 	return is_main_table;

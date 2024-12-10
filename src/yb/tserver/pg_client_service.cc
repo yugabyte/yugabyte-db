@@ -200,14 +200,8 @@ class LockablePgClientSession : public PgClientSession {
     auto exchange = VERIFY_RESULT(SharedExchange::Make(instance_id, id(), Create::kTrue));
     exchange_.emplace(std::move(exchange), [this](size_t size) {
       Touch();
-      std::shared_ptr<CountDownLatch> latch;
-      {
-        std::unique_lock lock(mutex_);
-        latch = ProcessSharedRequest(size, &exchange_->exchange());
-      }
-      if (latch) {
-        latch->Wait();
-      }
+      std::unique_lock lock(mutex_);
+      ProcessSharedRequest(size, &exchange_->exchange());
     });
     return Status::OK();
   }
@@ -217,6 +211,10 @@ class LockablePgClientSession : public PgClientSession {
       exchange_->StartShutdown();
     }
     PgClientSession::StartShutdown();
+  }
+
+  bool ReadyToShutdown() const {
+    return !exchange_ || exchange_->ReadyToShutdown();
   }
 
   void CompleteShutdown() override {
@@ -1647,7 +1645,7 @@ class PgClientServiceImpl::Impl {
 
     return MakeFuture<Result<RemoteTabletServerPtr>>([&](auto callback) {
       client().LookupTabletById(
-          status_tablet_id, /* table =*/ nullptr, master::IncludeInactive::kFalse,
+          status_tablet_id, /* table =*/ nullptr, master::IncludeHidden::kFalse,
           master::IncludeDeleted::kFalse, deadline,
           [&, status_tablet_id, callback] (const auto& lookup_result) {
             if (!lookup_result.ok()) {
@@ -1951,6 +1949,9 @@ class PgClientServiceImpl::Impl {
     auto time = session_expiration_queue_.empty()
         ? CoarseTimePoint(now + FLAGS_pg_client_session_expiration_ms * 1ms)
         : session_expiration_queue_.top().first + 100ms;
+    if (!stopping_sessions_.empty()) {
+      time = std::min(time, now + 1s);
+    }
     if (check_expired_sessions_time_ != CoarseTimePoint() && check_expired_sessions_time_ < time) {
       return;
     }
@@ -1966,6 +1967,7 @@ class PgClientServiceImpl::Impl {
   void CheckExpiredSessions() {
     auto now = CoarseMonoClock::now();
     std::vector<SessionInfoPtr> expired_sessions;
+    std::vector<SessionInfoPtr> ready_sessions;
     {
       std::lock_guard lock(mutex_);
       check_expired_sessions_time_ = CoarseTimePoint();
@@ -1987,16 +1989,40 @@ class PgClientServiceImpl::Impl {
           }
         }
       }
-      ScheduleCheckExpiredSessions(now);
-    }
-    if (expired_sessions.empty()) {
-      return;
+      auto filter = [&ready_sessions](const auto& session) {
+        if (session->session().ReadyToShutdown()) {
+          ready_sessions.push_back(session);
+          return true;
+        }
+        return false;
+      };
+      stopping_sessions_.erase(
+          std::remove_if(stopping_sessions_.begin(), stopping_sessions_.end(), filter),
+          stopping_sessions_.end());
+      if (expired_sessions.empty() && ready_sessions.empty()) {
+        ScheduleCheckExpiredSessions(now);
+        return;
+      }
     }
     for (const auto& session : expired_sessions) {
       session->session().StartShutdown();
     }
-    for (const auto& session : expired_sessions) {
+    std::vector<SessionInfoPtr> not_ready_sessions;
+    for (const auto& session : ready_sessions) {
       session->session().CompleteShutdown();
+    }
+    for (const auto& session : expired_sessions) {
+      if (session->session().ReadyToShutdown()) {
+        session->session().CompleteShutdown();
+      } else {
+        not_ready_sessions.push_back(session);
+      }
+    }
+    {
+      std::lock_guard lock(mutex_);
+      stopping_sessions_.insert(
+          stopping_sessions_.end(), not_ready_sessions.begin(), not_ready_sessions.end());
+      ScheduleCheckExpiredSessions(now);
     }
     auto cdc_service = tablet_server_.GetCDCService();
     // We only want to call this on tablet servers. On master, cdc_service will be null.
@@ -2131,6 +2157,8 @@ class PgClientServiceImpl::Impl {
           >
       >
   > sessions_ GUARDED_BY(mutex_);
+
+  std::vector<SessionInfoPtr> stopping_sessions_ GUARDED_BY(mutex_);
 };
 
 PgClientServiceImpl::PgClientServiceImpl(

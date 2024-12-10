@@ -37,4 +37,6 @@ yba user [flags]
 * [yba user delete](yba_user_delete.md)	 - Delete a YugabyteDB Anywhere user
 * [yba user describe](yba_user_describe.md)	 - Describe a YugabyteDB Anywhere user
 * [yba user list](yba_user_list.md)	 - List YugabyteDB Anywhere users
+* [yba user reset-password](yba_user_reset-password.md)	 - Reset password of currently logged in YugabyteDB Anywhere user
+* [yba user update](yba_user_update.md)	 - Update a YugabyteDB Anywhere user
 

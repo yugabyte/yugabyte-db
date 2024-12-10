@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/viper"
@@ -66,10 +67,15 @@ func generalStatus(stateStatus string) {
 	if hostnames == nil || len(hostnames) == 0 {
 		log.Fatal("Could not read host in yba-ctl.yml")
 	}
-	ybaUrl := "https://" + hostnames[0]
-	if viper.GetInt("platform.port") != 443 {
-		ybaUrl += fmt.Sprintf(":%d", viper.GetInt("platform.port"))
+	ybaUrls := []string{}
+	for _, host := range hostnames {
+		url := "https://" + host
+		if viper.GetInt("platform.port") != 443 {
+			url += fmt.Sprintf(":%d", viper.GetInt("platform.port"))
+		}
+		ybaUrls = append(ybaUrls, url)
 	}
+	ybaUrl := strings.Join(ybaUrls, ", ")
 	statusString := ybaUrl + " \t" + GetBaseInstall() + " \t" + InputFile() + " \t" +
 		YbactlLogFile() + " \t" + stateStatus + " \t"
 

@@ -377,7 +377,11 @@ public class XClusterConfigController extends AuthenticatedController {
 
     if (syncWithDB) {
       XClusterConfigTaskBase.updateReplicationDetailsFromDB(
-          this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
+          xClusterUniverseService,
+          ybService,
+          tableHandler,
+          xClusterConfig,
+          confGetter.getGlobalConf(GlobalConfKeys.xclusterGetApiTimeoutMs));
     }
 
     // Wrap XClusterConfig with lag metric data.

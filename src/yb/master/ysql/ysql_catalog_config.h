@@ -37,6 +37,8 @@ class YsqlCatalogConfig {
   void SetConfig(scoped_refptr<SysConfigInfo> config) EXCLUDES(mutex_);
   void Reset() EXCLUDES(mutex_);
 
+  void SysCatalogLoaded(const LeaderEpoch& epoch);
+
   uint64 GetVersion() const EXCLUDES(mutex_);
 
   // Increments and return the new version.
@@ -52,6 +54,8 @@ class YsqlCatalogConfig {
   IsOperationDoneResult IsYsqlMajorCatalogUpgradeDone() const EXCLUDES(mutex_);
 
   YsqlMajorCatalogUpgradeInfoPB::State GetMajorCatalogUpgradeState() const EXCLUDES(mutex_);
+
+  bool IsCurrentVersionCatalogEstablished() const EXCLUDES(mutex_);
 
   // Transition the ysql major catalog upgrade to a new state if allowed.
   // failed_status must be set to a NonOk status if and only if transitioning to FAILED state.
@@ -70,6 +74,8 @@ class YsqlCatalogConfig {
   SysCatalogTable& sys_catalog_;
   mutable std::shared_mutex mutex_;
   scoped_refptr<SysConfigInfo> config_ GUARDED_BY(mutex_);
+
+  std::atomic<bool> restarted_during_major_upgrade_ = false;
 };
 
 }  // namespace master

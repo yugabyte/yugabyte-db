@@ -28,6 +28,7 @@ execution_start_time = {{ start_time }}
 yb_home_dir = {{ ynp_config['ynp'].yb_home_dir }}
 yb_user = yugabyte
 is_install_node_agent = {{ ynp_config['ynp'].is_install_node_agent }}
+tmp_directory = {{ ynp_config['ynp'].tmp_directory }}
 
 [Preprovision]
 
@@ -76,9 +77,7 @@ ports = 7000 7100 9000 9100 18018 22 5433 9042 9070 9300 12000 13000
 
 [InstallNodeAgent]
 {{ render_section(ynp_config['yba']) -}}
-tmp_directory = {{ ynp_config['ynp'].tmp_directory }}
 node_ip = {{ ynp_config['yba'].node_external_fqdn }}
 bind_ip = {{ ynp_config['ynp'].node_ip }}
 
 [RebootNode]
-tmp_directory = {{ ynp_config['ynp'].tmp_directory }}

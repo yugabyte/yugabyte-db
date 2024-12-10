@@ -633,6 +633,12 @@ _PG_init(void)
 	 * to get normalized query text.
 	 */
 	yb_get_normalized_query = &YbGetPgssNormalizedQueryText;
+
+	/*
+	 * Initialize the function pointer required by yb_query_diagnostics.c
+	 * to get constant lengths in the query text.
+	 */
+	yb_qd_fill_in_constant_lengths = &fill_in_constant_lengths;
 }
 
 /*
@@ -2774,7 +2780,7 @@ qtext_load_file(Size *buffer_size)
 
 	/* Allocate buffer; beware that off_t might be wider than size_t */
 	if ((yb_qtext_size_limit >= 0 && stat.st_size > yb_qtext_size_limit * 1024) ||
-	     !AllocHugeSizeIsValid(stat.st_size))
+		 !AllocHugeSizeIsValid(stat.st_size))
 		buf = NULL;
 	else
 		buf = (char *) malloc(stat.st_size);
@@ -3112,7 +3118,7 @@ yb_lwlock_crash_after_acquire_pg_stat_statements_reset()
 	if (cached_value == -1)
 	{
 		cached_value = YBCIsEnvVarTrue(
-		    "FLAGS_TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset");
+			"FLAGS_TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset");
 	}
 	return cached_value;
 

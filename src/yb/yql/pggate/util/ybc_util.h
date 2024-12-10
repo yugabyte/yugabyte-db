@@ -350,7 +350,7 @@ const char* YBCGetWaitEventName(uint32_t wait_event_info);
 const char* YBCGetWaitEventClass(uint32_t wait_event_info);
 const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
 const char* YBCGetWaitEventType(uint32_t wait_event_info);
-uint8_t YBCGetQueryIdForCatalogRequests();
+uint8_t YBCGetConstQueryId(YBCAshConstQueryIdType type);
 uint32_t YBCWaitEventForWaitingOnTServer();
 int YBCGetRandomUniformInt(int a, int b);
 YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index);

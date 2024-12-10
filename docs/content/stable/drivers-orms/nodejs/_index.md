@@ -35,7 +35,8 @@ To develop Node.js applications for YugabyteDB, you need the following:
 
 - **Node.js**
 
-  To download and install Node.js, refer to the [Node.js](https://nodejs.org/en/download/) documentation.\
+  To download and install Node.js, refer to the [Node.js](https://nodejs.org/en/download/) documentation.
+
   To check the version of node, use the following command:
 
   ```sh
@@ -52,8 +53,8 @@ To develop Node.js applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
 
-  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/).
+  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
 ## Next step
 

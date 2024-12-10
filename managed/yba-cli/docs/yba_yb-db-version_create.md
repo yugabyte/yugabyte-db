@@ -21,8 +21,8 @@ yba yb-db-version create --version <version> --type PREVIEW --platform LINUX
 
 ```
   -v, --version string    [Required] YugabyteDB version to be created
-      --type string       [Required] Release type. Allowed values: LTS, STS, PREVIEW
-      --platform string   [Optional] Platform supported by this version. Allowed values: LINUX, KUBERNETES (default "LINUX")
+      --type string       [Required] Release type. Allowed values: lts, sts, preview
+      --platform string   [Optional] Platform supported by this version. Allowed values: linux, kubernetes (default "LINUX")
       --arch string       [Optional] Architecture supported by this version. Required if platform is LINUX. Allowed values: x86_64, aarch64
       --yb-type string    [Optional] Type of the release. Allowed values: YBDB (default "YBDB")
       --file-id string    [Optional] File ID of the release tgz file to be used. This is the metadata UUID from the "yba yb-db-version artifact-create upload" command. Provide either file-id or url.

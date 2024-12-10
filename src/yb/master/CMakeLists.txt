@@ -242,6 +242,7 @@ set(MASTER_TEST_COMMON_SRCS
   master-test-util.cc
   master-test_base.cc
   master_cluster_client.cc
+  master_ddl_client.cc
   ts_descriptor_test_util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common

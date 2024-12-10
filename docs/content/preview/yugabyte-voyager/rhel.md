@@ -64,13 +64,11 @@ Perform the following steps to install yb-voyager using yum for RHEL 8 and CentO
     sudo yum install yb-voyager
     ```
 
-    {{< note >}}
+   To install a specific version of `yb-voyager` on your machine, use the following command:
 
-Install a specific version of `yb-voyager` on your machine using the following command:
-
+    ```sh
     sudo yum install yb-voyager-<VERSION>
-
-    {{< /note >}}
+    ```
 
 1. Check that yb-voyager is installed using the following command:
 

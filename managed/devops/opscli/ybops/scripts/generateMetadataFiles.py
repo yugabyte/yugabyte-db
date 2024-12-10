@@ -13,9 +13,9 @@ YB_LISCENCE = '''
 
 '''
 
-AWS_OS_VERSION = "8.9"
-GCP_OS_VERSION = "8"
-AZU_OS_VERSION = "8-gen2"
+AWS_OS_VERSION = "9.5"
+GCP_OS_VERSION = "9"
+AZU_OS_VERSION = "9-gen2"
 
 AWS_METADATA_FILENAME = "aws-metadata.yml"
 GCP_METADATA_FILENAME = "gcp-metadata.yml"

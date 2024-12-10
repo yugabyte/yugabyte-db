@@ -89,6 +89,8 @@ extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
 
 extern void YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version);
 
+extern void SendLogicalClientCacheVersionToFrontend();
+
 extern void YbResetCatalogCacheVersion();
 
 extern uint64_t YbGetLastKnownCatalogCacheVersion();
@@ -218,14 +220,6 @@ extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
  * whether database with oid dbid is a legacy colocated database.
  */
 extern bool YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database);
-
-/*
- * These functions return whether an index relation is "covered" by the main
- * table. A YB index is said to be covered if it shares the same YB storage
- * as the main table. Primary indexes are by default covered.
- */
-bool YBIsOidCoveredByMainTable(Oid index_oid);
-bool YBIsCoveredByMainTable(Relation rel);
 
 /*
  * Check if a relation has row triggers that may reference the old row.

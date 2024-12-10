@@ -50,7 +50,7 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/pgsql_operation.h"
+#include "yb/docdb/key_bounds.h"
 
 #include "yb/dockv/reader_projection.h"
 
@@ -254,7 +254,6 @@ TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
   if (index_info && index_info->is_vector_idx()) {
-    CHECK_EQ(index_info->vector_idx_options().idx_type(), PgVectorIndexType::HNSW);
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
   }
 
@@ -1864,7 +1863,7 @@ void RaftGroupMetadata::EnableSchemaGC() {
 }
 
 Status RaftGroupMetadata::OldSchemaGC(
-    const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions) {
+    const std::unordered_map<Uuid, SchemaVersion>& versions) {
   bool need_flush = false;
   {
     std::lock_guard lock(data_mutex_);
@@ -2373,6 +2372,10 @@ bool RaftGroupMetadata::OnPostSplitCompactionDone() {
   }
 
   return updated;
+}
+
+docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {
+  return docdb::KeyBounds(kv_store_.lower_bound_key, kv_store_.upper_bound_key);
 }
 
 } // namespace yb::tablet

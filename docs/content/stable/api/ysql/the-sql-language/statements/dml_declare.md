@@ -60,7 +60,7 @@ This indicates that data retrieved from the _cursor_ should be unaffected by upd
 
 `NO SCROLL` specifies that the _cursor_ cannot be used to retrieve the current row or rows that lie before it.
 
-When you specify neither `SCROLL` nor `NO SCROLL`, then allow scrolling is allowed in only _some_ cases—and this is therefore different from specifying `SCROLL` explicitly. 
+When you specify neither `SCROLL` nor `NO SCROLL`, then allow scrolling is allowed in only _some_ cases—and this is therefore different from specifying `SCROLL` explicitly.
 
 {{< tip title="Always specify either SCROLL or NO SCROLL explicitly" >}}
 See the [tip](../../../cursors/#specify-no-scroll-or-scroll-explicitly) in the subsection [Scrollable cursors](../../../cursors/#scrollable-cursors) on the dedicated [Cursors](../../../cursors/) page.
@@ -90,7 +90,7 @@ start transaction;
   from t
   where (k <> all (array[1, 3, 5, 7, 11, 13, 17, 19]))
   order by k;
-  
+
   select
     statement,
     is_holdable::text,
@@ -100,7 +100,7 @@ start transaction;
   and creation_time < (transaction_timestamp() + make_interval(secs=>0.05));
 
   fetch all from cur;
-  
+
   close cur;
 rollback;
 ```
@@ -108,19 +108,19 @@ rollback;
 This is the result from _"select... from pg_cursors..."_:
 
 ```output
-                       statement                        | is_holdable | is_scrollable 
+                       statement                        | is_holdable | is_scrollable
 --------------------------------------------------------+-------------+---------------
  declare cur scroll cursor without hold for            +| false       | true
-   select k, v                                         +|             | 
-   from t                                              +|             | 
-   where (k <> all (array[1, 3, 5, 7, 11, 13, 17, 19]))+|             | 
+   select k, v                                         +|             |
+   from t                                              +|             |
+   where (k <> all (array[1, 3, 5, 7, 11, 13, 17, 19]))+|             |
    order by k;                                          |             |
 ```
 
 And this is the result from `FETCH ALL`:
 
 ```output
- k  |  v   
+ k  |  v
 ----+------
   2 |  200
   4 |  400

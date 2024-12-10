@@ -342,7 +342,7 @@ typedef struct IndexAmRoutine
 	/* YB properties */
 	/* Whether this AM is for YB relations. */
 	bool		yb_amisforybrelation;
-	bool 		yb_amiscoveredbymaintable;
+	bool		yb_amiscopartitioned;
 
 	/* YB functions */
 	yb_aminsert_function yb_aminsert;

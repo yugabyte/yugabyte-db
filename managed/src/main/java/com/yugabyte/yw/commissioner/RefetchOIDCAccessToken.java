@@ -51,7 +51,7 @@ public class RefetchOIDCAccessToken {
     this.wsClientRefresher = wsClientRefresher;
   }
 
-  public void start(ProfileManager<CommonProfile> profileManager, Users user) {
+  public void start(ProfileManager profileManager, Users user) {
     this.apiHelper = retApiHelper();
     Duration refreshAccessTokenInterval = this.refreshTokenInterval();
     if (scheduledTasks.get(user.getUuid()) == null) {
@@ -80,8 +80,8 @@ public class RefetchOIDCAccessToken {
     return confGetter.getGlobalConf(GlobalConfKeys.oidcRefreshTokenInterval);
   }
 
-  private void scheduleRunner(ProfileManager<CommonProfile> profileManager, Users user) {
-    CommonProfile profile = profileManager.get(true).get();
+  private void scheduleRunner(ProfileManager profileManager, Users user) {
+    CommonProfile profile = profileManager.getProfile(CommonProfile.class).get();
     try {
       if (profile.getAttribute("expiration") != null) {
         JsonNode data = refetchAccessToken(profile);

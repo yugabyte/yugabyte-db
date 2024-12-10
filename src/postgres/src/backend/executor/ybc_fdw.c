@@ -488,19 +488,19 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 *
 	 * - YbSeqNext
 	 *   - YbInstantiatePushdownParams
-	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
+	 *     - YbApplyPrimaryPushdown/YbApplySecondaryIndexPushdown
 	 * - IndexScan/IndexNextWithReorder/ExecReScanIndexScan
 	 *   - YbInstantiatePushdownParams
 	 *   - index_rescan
-	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
+	 *     - YbApplyPrimaryPushdown/YbApplySecondaryIndexPushdown
 	 * - IndexOnlyScan/ExecReScanIndexOnlyScan
 	 *   - YbInstantiatePushdownParams
 	 *   - index_rescan
-	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
+	 *     - YbApplyPrimaryPushdown/YbApplySecondaryIndexPushdown
 	 * - ForeignNext
 	 *   - ybcIterateForeignScan (impl of IterateForeignScan)
 	 *     - YbInstantiatePushdownParams
-	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
+	 *     - YbApplyPrimaryPushdown/YbApplySecondaryIndexPushdown
 	 *
 	 * Reasoning:
 	 *
@@ -555,13 +555,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 */
 	if (!ybc_state->is_exec_done) {
 		ybcSetupScanTargets(node);
-		if (pushdown != NULL)
-		{
-			YbDmlAppendQuals(pushdown->quals, true /* is_primary */,
-							 ybc_state->handle);
-			YbDmlAppendColumnRefs(pushdown->colrefs, true /* is_primary */,
-								  ybc_state->handle);
-		}
+		YbApplyPrimaryPushdown(ybc_state->handle, pushdown);
 		HandleYBStatus(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params));
 		ybc_state->is_exec_done = true;
 	}

@@ -126,8 +126,7 @@ public class WaitForServer extends ServerSubTaskBase {
             runQueryFormData,
             node,
             userIntent.isYSQLAuthEnabled(),
-            userIntent.enableConnectionPooling,
-            universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
+            userIntent.enableConnectionPooling);
     return !ysqlResponse.has("error");
   }
 }

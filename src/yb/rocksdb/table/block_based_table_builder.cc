@@ -66,6 +66,9 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/status_log.h"
 
+DEFINE_test_flag(bool, allow_table_option_compressed_block_cache, false, "If true, the table option"
+                 "compressed_block_cache can be enabled. Can only be enabled in unit test for now");
+
 namespace rocksdb {
 
 extern const char kHashIndexPrefixesBlock[];
@@ -433,12 +436,25 @@ BlockBasedTableBuilder::BlockBasedTableBuilder(
     rep_->filter_block_builder->StartBlock(0);
   }
   if (table_options.block_cache_compressed.get() != nullptr) {
+    // The mtime/checksum is used as a key for the block cache. However, during file creation,
+    // the mtime/checksum is not finalized, which prevents us from constructing the block cache key.
+    // Currently, we are not using block_cache_compressed, so this assert is in place
+    // to prevent misconfiguration.
+    // To enable the compressed block cache, you must change its key prefix to avoid using
+    // mtime/checksum. Otherwise, the block populated during the file build process will
+    // never be accessed, even though the correctness will not be affected.
+    if (!FLAGS_TEST_allow_table_option_compressed_block_cache) {
+      LOG(FATAL) << "compressed block cache should not be enabled";
+    }
+
     GenerateCachePrefix(
         table_options.block_cache_compressed.get(), metadata_file->writable_file(),
+        /* meta_block_checksum = */ 0,
         &rep_->metadata_writer->compressed_cache_key_prefix);
     if (rep_->is_split_sst()) {
       GenerateCachePrefix(
           table_options.block_cache_compressed.get(), data_file->writable_file(),
+          /* meta_block_checksum = */ 0,
           &rep_->metadata_writer->compressed_cache_key_prefix);
     }
   }

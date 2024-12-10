@@ -31,13 +31,13 @@ Currently, you can export data to the following tools.
 
 | Integration | Log export | Metric export |
 | :---------- | :--------- | :------------ |
-| [Datadog](https://docs.datadoghq.com/) | Database query logs<br>Database audit logs | [Yes](https://docs.datadoghq.com/integrations/yugabytedb_managed/#data-collected) |
-| [Grafana Cloud](https://grafana.com/docs/grafana-cloud/) | | [Yes](https://grafana.com/grafana/dashboards/12620-yugabytedb/) |
-| [Sumo Logic](https://www.sumologic.com) | | Yes |
-| [Prometheus](https://prometheus.io/docs/introduction/overview/) | | Yes |
-| [VictoriaMetrics](https://docs.victoriametrics.com/) {{<tags/feature/tp>}} | | Yes |
-| [Google Cloud Storage](https://cloud.google.com/storage) (GCS) | Database audit logs | |
-<!--| [Dynatrace](https://www.dynatrace.com) | | Yes |-->
+| [Datadog](#datadog) | Database query logs<br>Database audit logs | [Yes](https://docs.datadoghq.com/integrations/yugabytedb_managed/#data-collected) |
+| [Grafana Cloud](#grafana-cloud) | | [Yes](https://grafana.com/grafana/dashboards/12620-yugabytedb/) |
+| [Sumo Logic](#sumo-logic) | | Yes |
+| [Prometheus](#prometheus) | | Yes |
+| [VictoriaMetrics](#victoriametrics) | | Yes |
+| [Google Cloud Storage](#google-cloud-storage) (GCS) | Database audit logs | |
+<!--| [Dynatrace](#dynatrace) | | Yes |-->
 
 ## Manage integrations
 
@@ -66,7 +66,7 @@ You can add and delete export configurations for the following tools. You can't 
 
 ### Datadog
 
-The Datadog integration requires the following:
+The [Datadog](https://docs.datadoghq.com/) integration requires the following:
 
 - Datadog account
 - Datadog [API key](https://docs.datadoghq.com/account_management/api-app-keys/)
@@ -83,7 +83,7 @@ To create an export configuration, do the following:
 
 ### Grafana Cloud
 
-The Grafana Cloud integration requires the following:
+The [Grafana Cloud](https://grafana.com/docs/grafana-cloud/) integration requires the following:
 
 - Grafana Cloud account and stack. For best performance and lower data transfer costs, deploy your stack in the region closest to your cluster. For a list of supported regions, see the [Grafana Cloud documentation](https://grafana.com/docs/grafana-cloud/account-management/regional-availability/).
 - Access policy token. You need to create an Access policy with metrics:write scope, and then add a token. For more information, see [Grafana Cloud Access Policies](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/authorize-services/) in the Grafana documentation.
@@ -101,7 +101,7 @@ To create an export configuration, do the following:
 
 ### Sumo Logic
 
-The Sumo Logic integration requires the following:
+The [Sumo Logic](https://www.sumologic.com) integration requires the following:
 
 - Create an [access ID and access key](https://help.sumologic.com/docs/manage/security/access-keys/) on the **Preferences** page under your profile name.
 - [Installation token](https://help.sumologic.com/docs/manage/security/installation-tokens/). These are available under **Administration > Security > Installation Tokens**.
@@ -120,7 +120,7 @@ To create an export configuration, do the following:
 
 Prometheus integration is only available for clusters deployed on AWS or GCP.
 
-The Prometheus integration requires the following:
+The [Prometheus](https://prometheus.io/docs/introduction/overview/) integration requires the following:
 
 - Prometheus instance
   - Deployed in a VPC on AWS or GCP.
@@ -159,24 +159,31 @@ To create an export configuration, do the following:
 
 ### VictoriaMetrics
 
-VictoriaMetrics integration is {{<tags/feature/tp>}} and only available for clusters deployed on AWS.
+VictoriaMetrics integration is only available for clusters deployed on AWS or GCP.
 
-The VictoriaMetrics integration requires the following:
+The [VictoriaMetrics](https://docs.victoriametrics.com/) integration requires the following:
 
-- VictoriaMetrics instance
-  - deployed in a VPC on AWS
-  - publically-accessible endpoint URL that resolves to the private IP of the VictoriaMetrics instance; the DNS for the endpoint must be in a public hosted zone in AWS. The URL must be in the form as described in [How to use OpenTelemetry metrics with VictoriaMetrics](https://docs.victoriametrics.com/guides/getting-started-with-opentelemetry/).
+- VictoriaMetrics self-hosted instance (Enterprise and Cloud are not currently supported)
+  - Deployed in a VPC on AWS or GCP.
+  - Publically-accessible endpoint URL that resolves to the private IP of the VictoriaMetrics instance.
+
+    The DNS for the endpoint must be in a publicly accessible DNS record, allowing it to resolve globally. This typically involves adding the URL to a public DNS zone. To confirm that the address is publicly resolvable, you can use a tool like nslookup.
+
+    The URL must be in the form as described in [How to use OpenTelemetry metrics with VictoriaMetrics](https://docs.victoriametrics.com/guides/getting-started-with-opentelemetry/).
+
   - VPC hosting the VictoriaMetrics instance has the following Inbound Security Group rules:
     - Allow HTTP inbound traffic on port 80 for VictoriaMetrics endpoint URL (HTTP)
     - Allow HTTPS inbound traffic on port 443 for VictoriaMetrics endpoint URL (HTTPS)
 
-    See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
+    See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation, or [VPC firewall rules](https://cloud.google.com/firewall/docs/firewalls) in the Google Cloud documentation.
 
 - YugabyteDB Aeon cluster from which you want to export metrics
-  - the cluster is [deployed in VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/) on AWS
-  - each region VPC is peered with the VPC hosting VictoriaMetrics. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
+  - Cluster deployed in VPCs on AWS, or a VPC in GCP. See [VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/).
+  - VPCs are peered with the VPC hosting VictoriaMetrics. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
 
-  As each region of a cluster deployed in AWS has its own VPC, make sure that all the VPCs are peered and allow inbound access from VictoriaMetrics; this also applies to regions you add or change after deployment, and to read replicas. For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+  As each region of a cluster deployed in AWS has its own VPC, make sure that _all_ the VPCs are peered and allow inbound access from VictoriaMetrics; this also applies to regions you add or change after deployment, and to read replicas. In GCP, clusters are deployed in a single VPC.
+
+  For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
 
 To create an export configuration, do the following:
 
@@ -194,7 +201,7 @@ To create an export configuration, do the following:
 
 ### Google Cloud Storage
 
-The Google Cloud Storage (GCS) integration requires the following:
+The [Google Cloud Storage](https://cloud.google.com/storage) (GCS) integration requires the following:
 
 - A service account that has been granted the `logging.logWriter` permission.
 - Service account credentials. These credentials are used to authorize your use of the storage. This is the key file (JSON) that you downloaded when creating credentials for the service account. For more information, refer to [Create credentials for a service account](https://developers.google.com/workspace/guides/create-credentials#create_credentials_for_a_service_account) in the Google documentation.
@@ -209,7 +216,7 @@ To create an export configuration, do the following:
 
 <!--### Dynatrace
 
-The Dynatrace integration requires the following:
+The [Dynatrace](https://www.dynatrace.com) integration requires the following:
 
 - Publically-accessible endpoint URL of your Dynatrace instance. The endpoint URL is the URL of your Dynatrace instance.
 - [Dynatrace Access Token](https://docs.dynatrace.com/docs/manage/identity-access-management/access-tokens-and-oauth-clients/access-tokens#create-api-token). The access token needs to have ingest metrics, ingest logs, ingest OpenTelemetry traces, and read API tokens [scope](https://docs.dynatrace.com/docs/manage/identity-access-management/access-tokens-and-oauth-clients/access-tokens#scopes).

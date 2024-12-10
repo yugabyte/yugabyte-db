@@ -116,7 +116,7 @@ func NewRestoreContext() *Context {
 		"SourceUniverse": sourceUniverseHeader,
 		"BackupType":     backup.BackupTypeHeader,
 		"State":          backup.StateHeader,
-		"CreateTime":     backup.CreateTimeHeader,
+		"CreateTime":     formatter.CreateTimeHeader,
 		"CompletionTime": backup.CompletionTimeHeader,
 	}
 	return &restoreCtx

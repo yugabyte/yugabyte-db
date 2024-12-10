@@ -252,7 +252,7 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo, TupleTableSlot *slo
 	bool using_index = false;
 	Relation idx_rel = RelationIdGetRelation(riinfo->conindid);
 	Relation source_rel = idx_rel;
-	if (idx_rel->rd_index != NULL && !YBIsCoveredByMainTable(idx_rel))
+	if (idx_rel->rd_index != NULL && !idx_rel->rd_index->indisprimary)
 	{
 		Assert(IndexRelationGetNumberOfKeyAttributes(idx_rel) == riinfo->nkeys);
 		using_index = true;

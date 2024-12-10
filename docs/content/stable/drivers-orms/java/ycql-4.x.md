@@ -3,6 +3,8 @@ title: Java Driver 4.15 for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YCQL 4.15 driver
+tags:
+  other: ycql
 menu:
   stable:
     identifier: ycql-java-driver-4.x
@@ -28,13 +30,19 @@ type: docs
   <li >
     <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Java Driver for YCQL (3.10)
+      YCQL (3.10)
     </a>
   </li>
   <li >
     <a href="../ycql-4.x/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Java Driver for YCQL (4.15)
+      YCQL (4.15)
+    </a>
+  </li>
+  <li >
+    <a href="../ycql-ssl/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL (4.15) with SSL
     </a>
   </li>
 </ul>
@@ -65,7 +73,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](/preview/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](../../../quick-start/).
 - installed JDK version 1.8 or later.
 - installed Maven 3.3 or later.
 

@@ -51,4 +51,10 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
     href="point-in-time-recovery/"
     icon="fa-light fa-timeline-arrow">}}
 
+  {{<index/item
+    title="Instant database cloning"
+    body="Clone a database for data recovery, development, and testing."
+    href="instant-db-cloning/"
+    icon="fa-solid fa-clone">}}
+
 {{</index/block>}}

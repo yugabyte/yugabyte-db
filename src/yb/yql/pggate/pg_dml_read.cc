@@ -202,16 +202,21 @@ LWPgsqlExpressionPB* PgDmlRead::AllocTargetPB() {
   return read_req_->add_targets();
 }
 
-LWPgsqlExpressionPB* PgDmlRead::AllocQualPB() {
-  return read_req_->add_where_clauses();
+ArenaList<LWPgsqlColRefPB>& PgDmlRead::ColRefPBs() {
+  return *read_req_->mutable_col_refs();
 }
 
-LWPgsqlColRefPB* PgDmlRead::AllocColRefPB() {
-  return read_req_->add_col_refs();
-}
+Status PgDmlRead::AppendQual(PgExpr* qual, bool is_primary) {
+  if (!is_primary) {
+    return DCHECK_NOTNULL(secondary_index_query_)->AppendQual(qual, true);
+  }
 
-void PgDmlRead::ClearColRefPBs() {
-  read_req_->mutable_col_refs()->clear();
+  // Populate the expr_pb with data from the qual expression.
+  // Side effect of PrepareForRead is to call PrepareColumnForRead on "this" being passed in
+  // for any column reference found in the expression. However, the serialized Postgres expressions,
+  // the only kind of Postgres expressions supported as quals, can not be searched.
+  // Their column references should be explicitly appended with AppendColumnRef()
+  return qual->PrepareForRead(this, read_req_->add_where_clauses());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -389,9 +394,8 @@ Status PgDmlRead::SetRequestedYbctids(const std::vector<Slice>* ybctids) {
   return Status::OK();
 }
 
-Status PgDmlRead::ANNBindVector(int vec_att_no, PgExpr* vector) {
+Status PgDmlRead::ANNBindVector(PgExpr* vector) {
   auto vec_options = read_req_->mutable_vector_idx_options();
-  vec_options->set_vector_column_id(VERIFY_RESULT_REF(bind_.ColumnForAttr(vec_att_no)).id());
   return vector->EvalTo(vec_options->mutable_vector());
 }
 

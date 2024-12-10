@@ -79,7 +79,8 @@ using std::string;
 
 using namespace std::literals;
 
-DEFINE_NON_RUNTIME_int32(num_iter, 10000, "Number of iterations to run StaleMasterReads test");
+DEFINE_NON_RUNTIME_int32(num_iter, yb::RegularBuildVsSanitizers(10000, 1000),
+                         "Number of iterations to run StaleMasterReads test");
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);
 
@@ -88,6 +89,7 @@ METRIC_DECLARE_counter(transaction_not_found);
 
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_counter(rpc_inbound_calls_created);
+METRIC_DECLARE_counter(rpc_inbound_calls_failed);
 
 namespace yb {
 namespace pgwrapper {
@@ -1365,7 +1367,7 @@ void PgLibPqTest::TestTableColocation(GetParentTableTabletLocation getParentTabl
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
-              master::IncludeInactive::kFalse,
+              master::IncludeHidden::kFalse,
               master::IncludeDeleted::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -1403,7 +1405,7 @@ void PgLibPqTest::TestTableColocation(GetParentTableTabletLocation getParentTabl
         client->LookupTabletById(
             colocated_tablet_id,
             colocated_table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2045,7 +2047,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
-              master::IncludeInactive::kFalse,
+              master::IncludeHidden::kFalse,
               master::IncludeDeleted::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2079,7 +2081,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2125,7 +2127,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
         client->LookupTabletById(
             tablegroup.tablet_id,
             tablegroup.table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2146,7 +2148,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2428,6 +2430,11 @@ class PgLibPqTestRF1: public PgLibPqTest {
   }
 };
 
+Result<int64> GetMasterMetric(const ExternalMaster& master, const MetricPrototype& metric_proto) {
+  return VERIFY_RESULT(master.GetMetric<int64>(
+      &METRIC_ENTITY_server, "yb.master", &metric_proto, "value"));
+}
+
 } // namespace
 
 // Test that the number of RPCs sent to master upon first connection is not too high.
@@ -2435,18 +2442,18 @@ class PgLibPqTestRF1: public PgLibPqTest {
 // Test uses RF1 cluster to avoid possible relelections which affects the number of RPCs received
 // by a master.
 TEST_F_EX(PgLibPqTest, NumberOfInitialRpcs, PgLibPqTestRF1) {
-  auto get_master_inbound_rpcs_created = [this]() -> Result<int64_t> {
-    int64_t m_in_created = 0;
-    for (const auto* master : this->cluster_->master_daemons()) {
-      m_in_created += VERIFY_RESULT(master->GetMetric<int64>(
-          &METRIC_ENTITY_server, "yb.master", &METRIC_rpc_inbound_calls_created, "value"));
+  auto get_master_inbound_rpcs_succeed = [cluster = cluster_.get()]() -> Result<int64_t> {
+    int64_t result = 0;
+    for (const auto* master : cluster->master_daemons()) {
+      result += VERIFY_RESULT(GetMasterMetric(*master, METRIC_rpc_inbound_calls_created)) -
+                VERIFY_RESULT(GetMasterMetric(*master, METRIC_rpc_inbound_calls_failed));
     }
-    return m_in_created;
+    return result;
   };
 
-  auto rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_created());
+  const auto rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_succeed());
   ASSERT_RESULT(Connect());
-  auto rpcs_during = ASSERT_RESULT(get_master_inbound_rpcs_created()) - rpcs_before;
+  const auto rpcs_during = ASSERT_RESULT(get_master_inbound_rpcs_succeed()) - rpcs_before;
 
   // Real-world numbers (debug build, local PC): 58 RPCs
   LOG(INFO) << "Master inbound RPC during connection: " << rpcs_during;
@@ -3190,10 +3197,7 @@ TEST_F(PgLibPqTest, CollationRangePresplit) {
 }
 
 Result<string> PgLibPqTest::GetPostmasterPidViaShell(pid_t backend_pid) {
-  string postmaster_pid;
-  if (!RunShellProcess(Format("ps -o ppid= $0", backend_pid), &postmaster_pid)) {
-    return STATUS_FORMAT(RuntimeError, "Failed to get postmaster pid via shell");
-  }
+  auto postmaster_pid = VERIFY_RESULT(RunShellProcess(Format("ps -o ppid= $0", backend_pid)));
 
   postmaster_pid.erase(
       std::remove(postmaster_pid.begin(), postmaster_pid.end(), '\n'), postmaster_pid.end());
@@ -3259,17 +3263,15 @@ TEST_F_EX(PgLibPqTest,
           PgLibPqYSQLBackendCrash) {
   string postmaster_pid = ASSERT_RESULT(GetPostmasterPid());
 
-  string message;
   for (int i = 0; i < 50; i++) {
     ASSERT_OK(WaitFor([postmaster_pid]() -> Result<bool> {
-      string count;
       // The Mac implementation of pgrep has a bug and requires -P before -f.
       // Otherwise, the -f argument is ignored.
-      RunShellProcess(Format("pgrep -P $0 -f 'YSQL webserver' | wc -l", postmaster_pid), &count);
+      auto count = VERIFY_RESULT(RunShellProcess(
+          Format("pgrep -P $0 -f 'YSQL webserver' | wc -l", postmaster_pid)));
       return count.find("1") != string::npos;
     }, 2500ms, "Webserver restarting..."));
-    ASSERT_TRUE(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid),
-                                &message));
+    ASSERT_OK(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid)));
   }
 }
 
@@ -3287,8 +3289,8 @@ TEST_F_EX(PgLibPqTest, YB_LINUX_ONLY_TEST(TestOomScoreAdjPGWebserver), PgLibPqYS
   string postmaster_pid = ASSERT_RESULT(GetPostmasterPid());
 
   // Get the webserver pid using postmaster pid
-  string webserver_pid;
-  RunShellProcess(Format("pgrep -f 'YSQL webserver' -P $0", postmaster_pid), &webserver_pid);
+  auto webserver_pid = ASSERT_RESULT(RunShellProcess(
+      Format("pgrep -f 'YSQL webserver' -P $0", postmaster_pid)));
   webserver_pid.erase(std::remove(webserver_pid.begin(), webserver_pid.end(), '\n'),
                       webserver_pid.end());
 
@@ -4357,9 +4359,8 @@ class PgPostmasterExitTest : public PgLibPqTest {
     // SIGKILL to a signal that can be caught and handled.
     RETURN_NOT_OK(WaitFor(
         [&backend_pid]() -> Result<bool> {
-          string output;
           // Ensure that the backend is no longer running.
-          return !RunShellProcess(Format("ps -p $0", backend_pid), &output);
+          return !RunShellProcess(Format("ps -p $0", backend_pid)).ok();
         },
         500ms, "Backend still running, should have exited"));
 

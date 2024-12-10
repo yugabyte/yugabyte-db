@@ -14,6 +14,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/rbac"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/runtimeconfiguration"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration"
@@ -105,6 +106,7 @@ func init() {
 	rootCmd.AddCommand(eit.EITCmd)
 	rootCmd.AddCommand(ear.EARCmd)
 	rootCmd.AddCommand(runtimeconfiguration.RuntimeConfigurationCmd)
+	rootCmd.AddCommand(rbac.RBACCmd)
 	rootCmd.AddCommand(user.UserCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 

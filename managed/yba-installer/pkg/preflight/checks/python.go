@@ -17,10 +17,9 @@ import (
 // Python checks to ensure the correct version of python exists
 var Python = &pythonCheck{"python", false}
 
-var pythonBinaryNames = []string{"python3.8", "python3.11", "python3.10", "python3.9", "python3"}
+var pythonBinaryNames = []string{"python3.11", "python3.10", "python3"}
 
 var pythonVersionRegex = regexp.MustCompile(`Python (\d+)\.(\d+)`)
-var openSSLRegex = regexp.MustCompile(`OpenSSL (\d+)\.(\d+)\.(\d+)`)
 
 type pythonCheck struct {
 	name        string
@@ -58,38 +57,15 @@ func (p pythonCheck) Execute() Result {
 		}
 		majorVersion, _ := strconv.Atoi(match[1])
 		minorVersion, _ := strconv.Atoi(match[2])
-		if majorVersion == 3 && minorVersion >= 8 && minorVersion <= 11 {
+		// Allowing python 3.10 or 3.11, as defined by LINUX_PLATFORMS in common.sh
+		if majorVersion == 3 && minorVersion >= 10 && minorVersion <= 11 {
 			log.Info("System meets Python installation requirements with version " + outputTrimmed)
-			if minorVersion >= 10 {
-				// Need to check openssl version 1.1.1+ on Python 3.10+ because of https://docs.python.org/3/library/ssl.html#module-ssl
-				op := shell.Run("openssl", "version")
-				if !out.Succeeded() {
-					log.Debug("need openssl installed on system")
-					res.Error = fmt.Errorf("System does not have OpenSSL installed. Please install OpenSSL 1.1.1+.")
-					res.Status = StatusCritical
-					return res
-				}
-				opTrim := strings.TrimSpace(op.StdoutString())
-				sslMatch := openSSLRegex.FindStringSubmatch(opTrim)
-				if len(sslMatch) < 4 {
-					log.Warn("could not validate openssl version, skipping check")
-				}
-				major, _ := strconv.Atoi(sslMatch[1])
-				minor, _ := strconv.Atoi(sslMatch[2])
-				patch, _ := strconv.Atoi(sslMatch[3])
-				if (major < 1) || (major == 1 && minor < 1) || (major == 1 && minor == 1 && patch < 1) {
-					log.Debug("system does not meet openssl requirements: " + sslMatch[0])
-					res.Error = fmt.Errorf("System has OpenSSL version %s, needs at least 1.1.1", sslMatch[0])
-					res.Status = StatusCritical
-					return res
-				}
-			}
+			return res
 		}
-		return res
+		log.Warn("Found " + outputTrimmed + " on system but is not allowed Python version.")
 	}
 
-	res.Error = fmt.Errorf("System does not meet Python requirements. Please install any " +
-		"version of Python between 3.8 and 3.11.")
+	res.Error = fmt.Errorf("System does not meet Python requirements. Please install Python 3.10 or 3.11.")
 	res.Status = StatusCritical
 	return res
 }

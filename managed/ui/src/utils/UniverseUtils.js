@@ -338,7 +338,8 @@ export const getProxyNodeAddress = (universeUUID, nodeIp, nodePort) => {
  *
  * @param GFlagInput The entire Gflag configuration enetered that needs to be unformatted
  */
-export const unformatConf = (GFlagInput) => {
+export const unformatConf = (formValues, GFlagInput) => {
+  const flagName = formValues?.flagname;
   // Regex expression to extract non-quoted comma
   const filteredGFlagInput = GFlagInput.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
   const unformattedConf = filteredGFlagInput?.map((GFlagRowConf, index) => {
@@ -375,17 +376,30 @@ export const unformatConf = (GFlagInput) => {
       JWKSToken = JWKSKey.substring(JWKSKey.indexOf(CONST_VALUES.EQUALS) + 1);
     }
 
+    const content = isNonEmptyString(GFlagRowConfSubset) ? GFlagRowConfSubset : GFlagRowConf;
+    const isDisabled = isRowDisabled(formValues, flagName, GFlagRowConfSubset);
+
     return {
       id: `item-${index}`,
       index: index,
-      content: isNonEmptyString(GFlagRowConfSubset) ? GFlagRowConfSubset : GFlagRowConf,
+      content: content,
       error: false,
       showJWKSButton: isNonEmptyString(JWKSToken),
-      JWKSToken: JWKSToken
+      JWKSToken: JWKSToken,
+      disabled: isDisabled
     };
   });
 
   return unformattedConf;
+};
+
+export const isRowDisabled = (formValues, flagName, rowContent) => {
+  let isDisabled = false;
+  // When PG Parity is enabled, ensure the default values returned for pg_conf_csv by the API is disabled
+  const pgConfCsvPrefilledValue =
+    flagName === MultilineGFlags.YSQL_PG_CONF_CSV ? formValues?.pgGroupFlags?.ysql_pg_conf_csv : '';
+  isDisabled = !!pgConfCsvPrefilledValue?.includes(rowContent);
+  return isDisabled;
 };
 
 /**

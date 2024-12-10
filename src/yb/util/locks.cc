@@ -47,7 +47,7 @@ size_t PerCpuRwMutex::memory_footprint_excluding_this() const {
   //
   // See https://code.google.com/p/address-sanitizer/issues/detail?id=395 for
   // more details.
-  return n_cpus_ * sizeof(padded_lock);
+  return n_cpus_ * sizeof(PaddedLock);
 }
 
 size_t PerCpuRwMutex::memory_footprint_including_this() const {

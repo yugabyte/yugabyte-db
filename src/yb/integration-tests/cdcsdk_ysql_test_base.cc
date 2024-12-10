@@ -2026,7 +2026,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           commit_records = count[7];
           dml_records =
               count[1] + count[2] + count[3] + count[5];  // INSERT + UPDATE + DELETE + TRUNCATE
-          LOG(INFO) << "Total Received records for stream " << resp.records.size();
+          LOG(INFO) << "Total received records for stream " << resp.records.size()
+                    << " out of which DML records are: " << dml_records;
           uint64_t restart_lsn = 0;
           uint64_t confirmed_flush_lsn = 0;
           bool send_feedback = false;
@@ -2802,7 +2803,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
               continue;
             }
 
-            if (row.checkpoint == OpId::Max()) {
+            if (*row.checkpoint == OpId::Max()) {
               continue;
             }
 

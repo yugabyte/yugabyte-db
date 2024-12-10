@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `integration` resource to create integration configurations for third-party tools. Integrations can then be assigned to clusters to export metrics and logs to third-party tools.
+Use the `integration` resource to create [export configurations](../../../../cloud-monitor/managed-integrations/) for third-party tools. Export configurations can then be assigned to clusters to export metrics and logs to third-party tools.
 
 ## Syntax
 

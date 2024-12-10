@@ -59,6 +59,8 @@ DEFINE_test_flag(bool, wait_for_ysql_backends_catalog_version_take_leader_lock, 
     "Take leader lock in WaitForYsqlBackendsCatalogVersion.");
 DEFINE_test_flag(bool, ysql_backends_catalog_version_disable_abort_all_jobs, false,
     "Make YsqlBackendsManager::AbortAllJobs a no-op.");
+DEFINE_test_flag(bool, skip_wait_for_ysql_backends_catalog_version, false,
+    "Set WaitForYsqlBackendsCatalogVersion to immediately return success.");
 
 namespace yb {
 namespace master {
@@ -129,6 +131,10 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
     WaitForYsqlBackendsCatalogVersionResponsePB* resp,
     rpc::RpcContext* rpc) {
   LOG_WITH_FUNC(INFO) << req->ShortDebugString();
+  if (FLAGS_TEST_skip_wait_for_ysql_backends_catalog_version) {
+    resp->set_num_lagging_backends(0);
+    return Status::OK();
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_block_wait_for_ysql_backends_catalog_version)) {
     TestDoBlock(1 /* id */, __func__, __LINE__);
@@ -474,7 +480,8 @@ std::string BackendsCatalogVersionJob::description() const {
                                                                      num_lagging_backends));
 }
 
-MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(const Status& status) {
+MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(
+    const Status& status, bool call_task_finisher) {
   // At the time of writing D19621, there is no code path that reaches here.  This function is
   // implemented because it is needed for the superclass.
   LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "should not reach here";

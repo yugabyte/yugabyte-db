@@ -143,7 +143,7 @@ IsPrimaryIndex(Relation rel)
 {
 	return (rel->rd_rel->relkind == RELKIND_INDEX ||
 			rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
-		   YBIsCoveredByMainTable(rel);
+		   rel->rd_index && rel->rd_index->indisprimary;
 }
 
 bool

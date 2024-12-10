@@ -272,6 +272,15 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
         partial_range_key_intents_));
   }
 
+  // Apply advisory locks.
+  for (auto& lock_pair : put_batch_.lock_pairs()) {
+    RSTATUS_DCHECK(lock_pair.is_lock(), InvalidArgument, "Unexpected unlock operation");
+    KeyBytes key(lock_pair.lock().key());
+    RETURN_NOT_OK((*this)(dockv::GetIntentTypesForLock(lock_pair.mode()),
+        dockv::AncestorDocKey::kFalse, dockv::FullDocKey::kFalse,
+        lock_pair.lock().value(), &key, dockv::LastKey::kTrue));
+  }
+
   if (!put_batch_.read_pairs().empty()) {
     RETURN_NOT_OK(EnumerateIntents(
         put_batch_.read_pairs(),

@@ -24,6 +24,12 @@ Perform the following steps to install `yb_voyager` using an installer script:
     ./install-yb-voyager
     ```
 
+    To install a specific version of `yb-voyager` on your machine, use the following command:
+
+    ```sh
+    ./install-yb-voyager –version <VERSION>
+    ```
+
     It is safe to execute the script multiple times. If the script fails, check the `/tmp/install-yb-voyager.log` file.
 
 1. The script generates a `.yb-voyager.rc` file in the home directory. Source the file to ensure that the environment variables are set using the following command:

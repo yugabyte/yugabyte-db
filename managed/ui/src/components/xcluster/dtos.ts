@@ -12,7 +12,7 @@ export interface XClusterTableDetails {
   status: XClusterTableStatus;
   streamId: string;
   tableId: string;
-  replicationStatusErrors: string[];
+  replicationStatusErrors: XClusterReplicationStatusError[];
 
   sourceTableInfo?: YBTable;
   targetTableInfo?: YBTable;
@@ -51,6 +51,16 @@ export interface XClusterConfig {
   // `imported` is dropped from the model defined in XClusterConfig.java.
   // This is intended for backend usage and API users shouldn't need to use this field.
 }
+
+/**
+ * Source: src/main/java/com/yugabyte/yw/models/XClusterTableConfig.java
+ */
+export const XClusterReplicationStatusError = {
+  MISSING_OP: 'Missing op ID',
+  SCHEMA_MISMATCH: 'Schema mismatch',
+  MISSING_TABLE: 'Missing table'
+} as const;
+export type XClusterReplicationStatusError = typeof XClusterReplicationStatusError[keyof typeof XClusterReplicationStatusError];
 
 /**
  * Source: managed/src/main/java/com/yugabyte/yw/forms/XClusterConfigNeedBootstrapPerTableResponse.java

@@ -96,7 +96,7 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
  private:
   friend class LocalOutboundCall;
 
-  Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) override;
+  Status ParseRequest(Slice param, const RefCntBuffer& buffer) override;
   AnyMessageConstPtr SerializableResponse() override;
 
   // Weak pointer back to the outbound call owning this inbound call to avoid circular reference.

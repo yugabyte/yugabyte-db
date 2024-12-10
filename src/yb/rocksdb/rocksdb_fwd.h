@@ -21,6 +21,7 @@ namespace rocksdb {
 
 class CompactionContext;
 class CompactionFeed;
+class DataBlockAwareIndexInternalIterator;
 class DB;
 class Env;
 class MemTable;
@@ -43,10 +44,12 @@ struct ReadOptions;
 struct TableBuilderOptions;
 struct TableProperties;
 
-template<bool kSkipLastEntry>
+template <typename IteratorType, bool kSkipLastEntry>
 class IteratorWrapperBase;
-using IteratorWrapper = IteratorWrapperBase</* kSkipLastEntry = */ false>;
-using IteratorWithoutLastEntryWrapper = IteratorWrapperBase</* kSkipLastEntry = */ true>;
+using IteratorWrapper = IteratorWrapperBase<InternalIterator, /* kSkipLastEntry = */ false>;
+
+template <typename IteratorType>
+class MergingIterator;
 
 template <typename IteratorWrapperType>
 class MergingIteratorBase;

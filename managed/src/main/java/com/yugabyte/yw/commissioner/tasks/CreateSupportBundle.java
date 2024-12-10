@@ -36,6 +36,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
@@ -45,6 +46,7 @@ import java.util.zip.GZIPOutputStream;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -115,9 +117,17 @@ public class CreateSupportBundle extends AbstractTaskBase {
     if (!startDateIsValid && !endDateIsValid) {
       int default_date_range = config.getInt("yb.support_bundle.default_date_range");
       endDate = supportBundleUtil.getTodaysDate();
-      startDate = supportBundleUtil.getDateNDaysAgo(endDate, default_date_range);
+      startDate =
+          DateUtils.truncate(
+              supportBundleUtil.getDateNDaysAgo(endDate, default_date_range),
+              Calendar.DAY_OF_MONTH);
     } else {
-      startDate = startDateIsValid ? supportBundle.getStartDate() : new Date(Long.MIN_VALUE);
+      // Strip the date object of the time and set only the date.
+      // This will ensure that we collect files inclusive of the start date.
+      startDate =
+          startDateIsValid
+              ? DateUtils.truncate(supportBundle.getStartDate(), Calendar.DAY_OF_MONTH)
+              : new Date(Long.MIN_VALUE);
       endDate = endDateIsValid ? supportBundle.getEndDate() : new Date(Long.MAX_VALUE);
     }
 

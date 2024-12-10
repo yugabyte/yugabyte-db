@@ -47,7 +47,7 @@ Upgrades are performed via a rolling update, where one node in the universe is t
 
 If your universe uses a Linux version managed by YugabyteDB Anywhere, updated images are automatically added to the provider.
 
-If your universe uses a custom Linux version and you want to upgrade to a new custom version, you must first add the updated custom Linux version to the universe provider configuration. Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
+If your universe uses a custom Linux version and you want to upgrade to a new custom version, you must first add the updated custom Linux version to the universe provider configuration. Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/aws/).
 
 Before patching or upgrading the operating system, verify that the Linux version image that you intend to use can successfully run on a standalone virtual machine (VM) with the same instance type as the nodes you are patching. You can do this by creating a new VM with the same instance type as your universe and using the selected Linux version for the boot disk and verifying that the VM boots successfully.
 

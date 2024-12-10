@@ -37,6 +37,7 @@
 #include "access/heaptoast.h"
 #include "c.h"
 #include "postgres.h"
+#include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "access/htup.h"
 #include "access/htup_details.h"
@@ -178,6 +179,27 @@ YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
 		ereport(LOG,
 				(errmsg("set local catalog version: %" PRIu64,
 						yb_catalog_cache_version)));
+}
+
+void
+SendLogicalClientCacheVersionToFrontend()
+{
+	StringInfoData buf;
+
+	// Initialize buffer to store the outgoing message
+	initStringInfo(&buf);
+
+	// Use 'S' for a PARAMETER_STATUS message
+	pq_beginmessage(&buf, 'S');
+	pq_sendstring(&buf, "yb_logical_client_version"); // Key
+	char yb_logical_client_cache_version_str[16];
+	snprintf(yb_logical_client_cache_version_str, 16, "%" PRIu64,
+			 yb_logical_client_cache_version);
+	pq_sendstring(&buf, yb_logical_client_cache_version_str); // Value
+	pq_endmessage(&buf);
+
+	// Ensure the message is sent to the frontend
+	pq_flush();
 }
 
 void
@@ -403,33 +425,6 @@ Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel)
 			true /* includeYBSystemColumns */);
 	}
 	return rel->full_primary_key_bms;
-}
-
-bool
-YBIsOidCoveredByMainTable(Oid index_oid)
-{
-	Relation index = RelationIdGetRelation(index_oid);
-	bool     result = YBIsCoveredByMainTable(index);
-	RelationClose(index);
-	return result;
-}
-
-bool
-YBIsCoveredByMainTable(Relation index)
-{
-	if (!IsYBRelation(index))
-		return false;
-
-	if (index->rd_index == NULL)
-		return true;
-
-	if (index->rd_index->indisprimary)
-		return true;
-
-	if (index->rd_indam->yb_amiscoveredbymaintable)
-		return true;
-
-	return false;
 }
 
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
@@ -984,7 +979,7 @@ YBInitPostgresBackend(
 		 */
 		if (!YbIsAuthBackend())
 		{
-			if (yb_ash_enable_infra)
+			if (yb_enable_ash)
 				YbAshInit();
 
 			if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
@@ -1644,7 +1639,7 @@ bool yb_enable_inplace_index_update = true;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,
-	.is_enabled = true,
+	.is_enabled = false,
 	.num_cols_to_compare = 50,
 	.max_cols_size_to_compare = 10 * 1024
 };
@@ -4517,6 +4512,7 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 	int sys_only_filter_attr = InvalidAttrNumber;
 	int db_id = MyDatabaseId;
 	int sys_table_index_id = InvalidOid;
+	bool fetch_ybctid = true;
 
 	switch(sys_table_id)
 	{
@@ -4537,11 +4533,14 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 
-		case DbRoleSettingRelationId:    switch_fallthrough(); // pg_db_role_setting
-		case TableSpaceRelationId:       switch_fallthrough(); // pg_tablespace
-		case YBCatalogVersionRelationId: switch_fallthrough(); // pg_yb_catalog_version
-		case YbProfileRelationId:        switch_fallthrough(); // pg_yb_profile
-		case YbRoleProfileRelationId:                          // pg_yb_role_profile
+		case YBCatalogVersionRelationId:                  // pg_yb_catalog_version
+			fetch_ybctid = false;
+			switch_fallthrough();
+
+		case DbRoleSettingRelationId: switch_fallthrough(); // pg_db_role_setting
+		case TableSpaceRelationId:    switch_fallthrough(); // pg_tablespace
+		case YbProfileRelationId:     switch_fallthrough(); // pg_yb_profile
+		case YbRoleProfileRelationId:                       // pg_yb_role_profile
 			db_id = Template1DbOid;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
@@ -4645,7 +4644,8 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		sys_only_filter_attr = InvalidAttrNumber;
 
 	YBCRegisterSysTableForPrefetching(
-		db_id, sys_table_id, sys_table_index_id, sys_only_filter_attr);
+		db_id, sys_table_id, sys_table_index_id, sys_only_filter_attr,
+		fetch_ybctid);
 }
 
 void YbTryRegisterCatalogVersionTableForPrefetching()

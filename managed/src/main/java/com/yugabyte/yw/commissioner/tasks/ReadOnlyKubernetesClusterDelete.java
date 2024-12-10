@@ -201,6 +201,9 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
+      // Update PDB policy for the universe.
+      createPodDisruptionBudgetPolicyTask(false /* deletePDB */, true /* reCreatePDB */);
+
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
 

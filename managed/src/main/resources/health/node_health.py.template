@@ -63,6 +63,7 @@ OTEL_COLLECTOR = "otelcol-contrib"
 YB_CONTROLLER = "yb-controller-server"
 NODE_EXPORTER = "node_exporter"
 CONNECTION_POOLING_MANAGER = "odyssey"
+TOTAL = "total"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
 RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
@@ -1870,10 +1871,16 @@ class NodeChecker():
         e = self._new_metric_entry("Per-process check", process_name)
         process = Label("process", process_name)
         try:
-            res = self._load_per_process_metrics(process_name)
-            stat = res['total_stat']
-            self.current_process_results[process_name] = res
-            self._dump_per_process_results()
+            if process_name == TOTAL:
+                stat = self._get_empty_proc_results()
+                for proc in self.current_process_results.keys():
+                    stat = self._merge_proc_results(
+                        stat, self.current_process_results[proc]['total_stat'])
+                self._dump_per_process_results()
+            else:
+                res = self._load_per_process_metrics(process_name)
+                stat = res['total_stat']
+                self.current_process_results[process_name] = res
             ticks = int(os.sysconf("SC_CLK_TCK"))
             metrics[0].add_value(stat['user_cpu_seconds'] // ticks, labels=[process,
                                                                             Label('type', 'user')])
@@ -2496,6 +2503,8 @@ def main():
 
     if args.ddl_atomicity_check:
         coordinator.add_check(checker, "check_ddl_atomicity")
+
+    coordinator.add_check(checker, "check_process_stats", TOTAL)
 
     entries = coordinator.run()
     for e in entries:

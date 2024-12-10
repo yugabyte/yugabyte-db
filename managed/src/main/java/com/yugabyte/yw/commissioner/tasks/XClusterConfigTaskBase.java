@@ -4,16 +4,16 @@ package com.yugabyte.yw.commissioner.tasks;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.google.api.client.util.Throwables;
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddExistingPitrToXClusterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication;
@@ -83,7 +83,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -2175,12 +2177,13 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       XClusterUniverseService xClusterUniverseService,
       YBClientService ybClientService,
       UniverseTableHandler tableHandler,
-      XClusterConfig xClusterConfig) {
+      XClusterConfig xClusterConfig,
+      long timeoutMs) {
     Optional<Universe> targetUniverseOptional =
         Objects.isNull(xClusterConfig.getTargetUniverseUUID())
             ? Optional.empty()
             : Universe.maybeGet(xClusterConfig.getTargetUniverseUUID());
-    if (!targetUniverseOptional.isPresent()) {
+    if (targetUniverseOptional.isEmpty()) {
       log.warn(
           "The target universe for the xCluster config {} is not found; ignoring gathering"
               + " replication stream statuses",
@@ -2188,9 +2191,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       return;
     }
 
-    ReplicationClusterData replicationClusterData = null;
+    ReplicationClusterData replicationClusterData;
     try {
-      replicationClusterData = collectReplicationClusterData(ybClientService, xClusterConfig);
+      replicationClusterData =
+          collectReplicationClusterData(ybClientService, xClusterConfig, timeoutMs);
       XClusterConfig.TableType tableType = xClusterConfig.getTableType();
       replicationClusterData.sourceTableInfoList =
           tableType.equals(XClusterConfig.TableType.YSQL)
@@ -2228,10 +2232,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             tableConfig.setReplicationSetupDone(true);
             tableConfig.setIndexTable(sourceIndexTables.contains(tableId));
 
-            if (namespaceConfigOptional.isPresent()) {
-              tableConfig.setStatus(
-                  XClusterUtil.dbStatusToTableStatus(namespaceConfigOptional.get().getStatus()));
-            }
+            namespaceConfigOptional.ifPresent(
+                xClusterNamespaceConfig ->
+                    tableConfig.setStatus(
+                        XClusterUtil.dbStatusToTableStatus(xClusterNamespaceConfig.getStatus())));
             tableConfigs.add(tableConfig);
           }
         }
@@ -2449,124 +2453,97 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @return The ReplicationClusterData containing the collected data.
    */
   private static ReplicationClusterData collectReplicationClusterData(
-      YBClientService ybClientService, XClusterConfig xClusterConfig) {
+      YBClientService ybClientService, XClusterConfig xClusterConfig, long timeoutMs) {
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
 
     ReplicationClusterData data = new ReplicationClusterData();
-    CompletableFuture<Void> sourceUniverseTableInfoFuture =
-        CompletableFuture.runAsync(
-            () -> {
-              try {
-                data.setSourceTableInfoList(getTableInfoList(ybClientService, sourceUniverse));
-              } catch (Exception e) {
-                log.error(
-                    "Error getting table info list for source universe {}", sourceUniverse, e);
-              }
-            });
+    ExecutorService executorService = Executors.newFixedThreadPool(8);
 
-    CompletableFuture<Void> targetUniverseTableInfoFuture =
-        CompletableFuture.runAsync(
-            () -> {
-              try {
-                data.setTargetTableInfoList(getTableInfoList(ybClientService, targetUniverse));
-              } catch (Exception e) {
-                log.error(
-                    "Error getting table info list for target universe {}", targetUniverse, e);
-              }
-            });
+    executorService.submit(
+        () -> {
+          try {
+            data.setSourceTableInfoList(getTableInfoList(ybClientService, sourceUniverse));
+          } catch (Exception e) {
+            log.error("Error getting table info list for source universe {}", sourceUniverse, e);
+          }
+        });
 
-    CompletableFuture<Void> targetUniverseClusterConfigFuture =
-        CompletableFuture.runAsync(
-            () -> {
-              try (YBClient client =
-                  ybClientService.getClient(
-                      targetUniverse.getMasterAddresses(),
-                      targetUniverse.getCertificateNodetoNode())) {
-                CatalogEntityInfo.SysClusterConfigEntryPB config =
-                    getClusterConfig(client, targetUniverse.getUniverseUUID());
-                data.setClusterConfig(config);
-              } catch (Exception e) {
-                log.error(
-                    "Error getting table ids to skip bidirectional replication for xCluster config"
-                        + " {}",
-                    xClusterConfig.getUuid(),
-                    e);
-              }
-            });
+    executorService.submit(
+        () -> {
+          try {
+            data.setTargetTableInfoList(getTableInfoList(ybClientService, targetUniverse));
+          } catch (Exception e) {
+            log.error("Error getting table info list for target universe {}", targetUniverse, e);
+          }
+        });
 
-    CompletableFuture<Void> sourceUniverseNamespaceInfoFuture =
-        CompletableFuture.runAsync(
-            () -> {
-              if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
-                try {
-                  data.setSourceNamespaceInfoList(
-                      getNamespaces(ybClientService, sourceUniverse, null));
-                } catch (Exception e) {
-                  log.error("Error getting db info list for source universe {}", sourceUniverse, e);
-                }
-              }
-            });
-    CompletableFuture<Void> targetUniverseNamespaceInfoFuture =
-        CompletableFuture.runAsync(
-            () -> {
-              if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
-                try {
-                  data.setTargetNamespaceInfoList(
-                      getNamespaces(ybClientService, targetUniverse, null));
-                } catch (Exception e) {
-                  log.error("Error getting db info list for target universe {}", targetUniverse, e);
-                }
-              }
-            });
+    executorService.submit(
+        () -> {
+          try (YBClient client =
+              ybClientService.getClient(
+                  targetUniverse.getMasterAddresses(), targetUniverse.getCertificateNodetoNode())) {
+            CatalogEntityInfo.SysClusterConfigEntryPB config =
+                getClusterConfig(client, targetUniverse.getUniverseUUID());
+            data.setClusterConfig(config);
+          } catch (Exception e) {
+            log.error(
+                "Error getting table ids to skip bidirectional replication for xCluster config"
+                    + " {}",
+                xClusterConfig.getUuid(),
+                e);
+          }
+        });
 
-    CompletableFuture<Void> targetUniverseReplicationInfoFuture =
-        CompletableFuture.runAsync(
-            () -> {
-              if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
-                try {
-                  data.setTargetUniverseReplicationInfo(
-                      getUniverseReplicationInfo(
-                          ybClientService,
-                          targetUniverse,
-                          xClusterConfig.getReplicationGroupName()));
-                } catch (Exception e) {
-                  log.error(
-                      "Error getting universe replication info for target universe {}",
-                      targetUniverse,
-                      e);
-                }
-              }
-            });
+    if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
+      executorService.submit(
+          () -> {
+            try {
+              data.setSourceNamespaceInfoList(getNamespaces(ybClientService, sourceUniverse, null));
+            } catch (Exception e) {
+              log.error("Error getting db info list for source universe {}", sourceUniverse, e);
+            }
+          });
 
-    CompletableFuture<Void> sourceUniverseReplicationInfoFuture =
-        CompletableFuture.runAsync(
-            () -> {
-              if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
-                try {
-                  data.setSourceUniverseReplicationInfo(
-                      getXClusterOutboundReplicationGroupInfo(
-                          ybClientService,
-                          sourceUniverse,
-                          xClusterConfig.getReplicationGroupName()));
-                } catch (Exception e) {
-                  log.error(
-                      "Error getting universe replication info for source universe {}",
-                      sourceUniverse,
-                      e);
-                }
-              }
-            });
+      executorService.submit(
+          () -> {
+            try {
+              data.setTargetNamespaceInfoList(getNamespaces(ybClientService, targetUniverse, null));
+            } catch (Exception e) {
+              log.error("Error getting db info list for target universe {}", targetUniverse, e);
+            }
+          });
 
-    CompletableFuture.allOf(
-            sourceUniverseTableInfoFuture,
-            targetUniverseTableInfoFuture,
-            targetUniverseClusterConfigFuture,
-            sourceUniverseNamespaceInfoFuture,
-            targetUniverseNamespaceInfoFuture,
-            sourceUniverseReplicationInfoFuture,
-            targetUniverseReplicationInfoFuture)
-        .join();
+      executorService.submit(
+          () -> {
+            try {
+              data.setTargetUniverseReplicationInfo(
+                  getUniverseReplicationInfo(
+                      ybClientService, targetUniverse, xClusterConfig.getReplicationGroupName()));
+            } catch (Exception e) {
+              log.error(
+                  "Error getting universe replication info for target universe {}",
+                  targetUniverse,
+                  e);
+            }
+          });
+
+      executorService.submit(
+          () -> {
+            try {
+              data.setSourceUniverseReplicationInfo(
+                  getXClusterOutboundReplicationGroupInfo(
+                      ybClientService, sourceUniverse, xClusterConfig.getReplicationGroupName()));
+            } catch (Exception e) {
+              log.error(
+                  "Error getting universe replication info for source universe {}",
+                  sourceUniverse,
+                  e);
+            }
+          });
+    }
+
+    MoreExecutors.shutdownAndAwaitTermination(executorService, timeoutMs, TimeUnit.MILLISECONDS);
     return data;
   }
 

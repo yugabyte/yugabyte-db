@@ -166,12 +166,17 @@ Status InitHashPartitionKey(
   // In order to represent a single ybctid or a batch of ybctids, we leverage the lower bound and
   // upper bounds to set hash codes and max hash codes.
 
-  bool has_paging_state =
-      request->has_paging_state() && request->paging_state().has_next_partition_key();
+  bool has_paging_state = request->paging_state().has_next_partition_key() ||
+      request->index_request().paging_state().has_next_partition_key();
   if (has_paging_state) {
     // If this is a subsequent query, use the partition key from the paging state. This is only
     // supported for forward scan.
-    SetPartitionKey(request->paging_state().next_partition_key(), request);
+    auto *paging_state = &request->paging_state();
+    if (request->has_index_request()) {
+      paging_state = &request->index_request().paging_state();
+    }
+
+    SetPartitionKey(paging_state->next_partition_key(), request);
 
     // Check that the paging state hash_code is within [ hash_code, max_hash_code ] bounds.
     if (schema.num_hash_key_columns() > 0 && !request->partition_key().empty()) {
@@ -1028,6 +1033,54 @@ Status YBPgsqlReadOp::GetPartitionKey(std::string* partition_key) const {
       table_->InternalSchema(), table_->partition_schema(), *(table_->GetPartitionsShared()),
       request_));
   *partition_key = std::move(*request_->mutable_partition_key());
+  return Status::OK();
+}
+
+////////////////////////////////////////////////////////////
+// YBPgsqlLockOp
+////////////////////////////////////////////////////////////
+
+YBPgsqlLockOp::YBPgsqlLockOp(const std::shared_ptr<YBTable>& table, rpc::Sidecars* sidecars) :
+    YBPgsqlOp(table, sidecars) {
+  request_holder_ = std::make_unique<PgsqlLockRequestPB>();
+  request_ = request_holder_.get();
+}
+
+YBPgsqlLockOpPtr YBPgsqlLockOp::NewLock(
+    const std::shared_ptr<YBTable>& table, rpc::Sidecars* sidecars) {
+  auto op = std::make_shared<YBPgsqlLockOp>(table, sidecars);
+  auto* req = op->mutable_request();
+  req->set_is_lock(true);
+  req->set_client(YQL_CLIENT_PGSQL);
+  return op;
+}
+
+bool YBPgsqlLockOp::succeeded() const {
+  return response().status() == PgsqlResponsePB::PGSQL_STATUS_OK;
+}
+
+bool YBPgsqlLockOp::applied() {
+  return succeeded() && !response_->skipped();
+}
+
+OpGroup YBPgsqlLockOp::group() {
+  // TODO(advisory-lock #25195): We should use a different group for locks and unlocks.
+  return OpGroup::kLock;
+}
+
+std::string YBPgsqlLockOp::ToString() const {
+  return Format("ADVISORY LOCK $0", request_->ShortDebugString());
+}
+
+void YBPgsqlLockOp::SetHashCode(uint16_t hash_code) {
+  request_->set_hash_code(hash_code);
+}
+
+Status YBPgsqlLockOp::GetPartitionKey(std::string* partition_key) const {
+  std::string key;
+  RETURN_NOT_OK(table_->partition_schema().EncodeKey(
+      request_->lock_id().lock_partition_column_values(), &key));
+  *partition_key = std::move(key);
   return Status::OK();
 }
 

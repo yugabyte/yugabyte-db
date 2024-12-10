@@ -240,6 +240,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         createMasterLeaderStepdownTask();
       }
 
+      // Update PDB policy for the universe.
+      createPodDisruptionBudgetPolicyTask(false /* deletePDB */, true /* updatePDB */);
+
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
 

@@ -952,8 +952,7 @@ TEST_F(TestEnv, TestGetFreeSpace) {
   for (int i = 0; i < kCountRequired * 10; i++) {
     const int64_t free_space = static_cast<int64_t>(ASSERT_RESULT(env_->GetFreeSpaceBytes(cwd)));
 
-    string df_free_space_str;
-    ASSERT_TRUE(RunShellProcess(cmd, &df_free_space_str));
+    auto df_free_space_str = ASSERT_RESULT(RunShellProcess(cmd));
     const int64_t df_free_space = block_size * ASSERT_RESULT(CheckedStoll(df_free_space_str));
 
      // We might not get the exact same answer because disk space is being consumed and freed.

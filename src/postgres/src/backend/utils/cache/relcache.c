@@ -115,6 +115,7 @@
 #include "utils/partcache.h"
 #include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
+#include "utils/yb_tuplecache.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
@@ -1346,73 +1347,6 @@ YbIsNonAlterableRelation(Relation rel)
 	return IsSystemRelation(rel) && rel->rd_rel->relkind != RELKIND_VIEW;
 }
 
-/*
- * Group all tuples under the same relation into a list for partial key
- * searches.
- */
-typedef struct YbTupleCacheEntry
-{
-	/* Key must be the first */
-	Oid	key;
-	List *tuples;
-} YbTupleCacheEntry;
-
-typedef struct YbTupleCache
-{
-	Relation rel;
-	HTAB *data;
-} YbTupleCache;
-
-typedef Oid (*YbTupleCacheKeyExtractor)(HeapTuple);
-
-static void
-YbLoadTupleCache(YbTupleCache *cache, Oid relid,
-				 YbTupleCacheKeyExtractor key_extractor, const char *cache_name)
-{
-	Assert(!(cache->rel || cache->data));
-	cache->rel = table_open(relid, AccessShareLock);
-	HASHCTL ctl = {0};
-	ctl.keysize = sizeof(Oid);
-	ctl.entrysize = sizeof(YbTupleCacheEntry);
-	cache->data = hash_create(cache_name, 32, &ctl, HASH_ELEM | HASH_BLOBS);
-
-	SysScanDesc scandesc = systable_beginscan(
-		cache->rel, InvalidOid, false /* indexOk */, NULL, 0, NULL);
-
-	YbTupleCacheEntry *entry = NULL;
-	HeapTuple htup;
-	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
-	{
-		Oid key = key_extractor(htup);
-		if (!entry || entry->key != key)
-		{
-			bool found = false;
-			entry = hash_search(cache->data, &key, HASH_ENTER, &found);
-
-			if (!found)
-				entry->tuples = NULL;
-		}
-		entry->tuples = lappend(entry->tuples, htup);
-	}
-	systable_endscan(scandesc);
-}
-
-static void
-YbCleanupTupleCache(YbTupleCache *cache)
-{
-	if (!cache->rel)
-		return;
-
-	if (cache->data)
-	{
-		hash_destroy(cache->data);
-		cache->data = NULL;
-	}
-
-	table_close(cache->rel, AccessShareLock);
-	cache->rel = NULL;
-}
-
 typedef struct YbUpdateRelationCacheState {
 	bool sys_relations_update_required;
 	bool has_partitioned_tables;
@@ -1420,6 +1354,8 @@ typedef struct YbUpdateRelationCacheState {
 	bool has_relations_with_row_security;
 	YbTupleCache pg_attrdef_cache;
 	YbTupleCache pg_constraint_cache;
+	YbTupleCache pg_trigger_cache;
+	YbTupleCache pg_policy_cache;
 } YbUpdateRelationCacheState;
 
 static void
@@ -1427,6 +1363,8 @@ YbCleanupUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 {
 	YbCleanupTupleCache(&state->pg_attrdef_cache);
 	YbCleanupTupleCache(&state->pg_constraint_cache);
+	YbCleanupTupleCache(&state->pg_trigger_cache);
+	YbCleanupTupleCache(&state->pg_policy_cache);
 }
 
 /*
@@ -1738,6 +1676,8 @@ typedef struct YbAttrProcessorState
 	YbRelationAttrsProcessingState processing;
 	const YbTupleCache* pg_attrdef_cache;
 	const YbTupleCache* pg_constraint_cache;
+	const YbTupleCache* pg_trigger_cache;
+	const YbTupleCache* pg_policy_cache;
 } YbAttrProcessorState;
 
 static inline bool
@@ -1933,12 +1873,12 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	}
 
 	if (relation->rd_rel->relhastriggers)
-		RelationBuildTriggers(relation);
+		RelationBuildTriggers(relation, state->pg_trigger_cache);
 	else
 		relation->trigdesc = NULL;
 
 	if (relation->rd_rel->relrowsecurity)
-		RelationBuildRowSecurity(relation);
+		RelationBuildRowSecurity(relation, state->pg_policy_cache);
 	else
 		relation->rd_rsdesc = NULL;
 }
@@ -1975,6 +1915,7 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 	YbAttrProcessorState state = {0};
 	state.pg_attrdef_cache = &cache_update_state->pg_attrdef_cache;
 	state.pg_constraint_cache = &cache_update_state->pg_constraint_cache;
+	state.pg_trigger_cache = &cache_update_state->pg_trigger_cache;
 
 	const bool sys_rel_update_required =
 		cache_update_state->sys_relations_update_required;
@@ -2646,6 +2587,18 @@ YbExtractConstraintTupleCacheKey(HeapTuple htup)
 	return ((Form_pg_constraint) GETSTRUCT(htup))->conrelid;
 }
 
+static Oid
+YbExtractTriggerTupleCacheKey(HeapTuple htup)
+{
+	return ((Form_pg_trigger) GETSTRUCT(htup))->tgrelid;
+}
+
+static Oid
+YbExtractPolicyTupleCacheKey(HeapTuple htup)
+{
+	return ((Form_pg_policy) GETSTRUCT(htup))->polrelid;
+}
+
 static void
 YbInitUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 {
@@ -2654,6 +2607,10 @@ YbInitUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 	YbLoadTupleCache(&state->pg_constraint_cache, ConstraintRelationId,
 					 &YbExtractConstraintTupleCacheKey,
 					 "pg_constraint local cache");
+	YbLoadTupleCache(&state->pg_trigger_cache, TriggerRelationId,
+					 &YbExtractTriggerTupleCacheKey, "pg_trigger local cache");
+	YbLoadTupleCache(&state->pg_policy_cache, PolicyRelationId,
+					 &YbExtractPolicyTupleCacheKey, "pg_policy local cache");
 }
 
 static YBCStatus
@@ -2862,7 +2819,9 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 		YB_PFETCH_TABLE_PG_NAMESPACE,
 		YB_PFETCH_TABLE_PG_OPCLASS,
 		YB_PFETCH_TABLE_PG_PARTITIONED_TABLE,
+		YB_PFETCH_TABLE_PG_POLICY,
 		YB_PFETCH_TABLE_PG_REWRITE,
+		YB_PFETCH_TABLE_PG_TRIGGER,
 		YB_PFETCH_TABLE_PG_TYPE
 	};
 	YbTablePrefetcherState *prefetcher = &ctx->prefetcher;
@@ -3211,12 +3170,12 @@ retry:
 	}
 
 	if (relation->rd_rel->relhastriggers)
-		RelationBuildTriggers(relation);
+		RelationBuildTriggers(relation, NULL);
 	else
 		relation->trigdesc = NULL;
 
 	if (relation->rd_rel->relrowsecurity)
-		RelationBuildRowSecurity(relation);
+		RelationBuildRowSecurity(relation, NULL);
 	else
 		relation->rd_rsdesc = NULL;
 
@@ -5863,7 +5822,7 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 			   relation->rd_rel->relkind == RELKIND_RELATION);
 
 		if (relation->rd_rel->relkind == RELKIND_INDEX &&
-			!YBIsCoveredByMainTable(relation))
+			!relation->rd_index->indisprimary)
 			/*
 			 * Note: caller is responsible for dropping the old DocDB table
 			 * associated with the index, if required.
@@ -6441,7 +6400,7 @@ RelationCacheInitializePhase3(void)
 		}
 		if (relation->rd_rel->relhastriggers && relation->trigdesc == NULL)
 		{
-			RelationBuildTriggers(relation);
+			RelationBuildTriggers(relation, NULL);
 			if (relation->trigdesc == NULL)
 				relation->rd_rel->relhastriggers = false;
 			restart = true;
@@ -6456,7 +6415,7 @@ RelationCacheInitializePhase3(void)
 		 */
 		if (relation->rd_rel->relrowsecurity && relation->rd_rsdesc == NULL)
 		{
-			RelationBuildRowSecurity(relation);
+			RelationBuildRowSecurity(relation, NULL);
 
 			Assert(relation->rd_rsdesc != NULL);
 			restart = true;

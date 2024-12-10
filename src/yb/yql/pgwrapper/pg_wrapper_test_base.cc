@@ -95,11 +95,7 @@ Result<string> PgWrapperTestBase::RunYbAdminCommand(const string& cmd) {
     " --master_addresses " + cluster_->GetMasterAddresses() +
     " " + cmd;
   LOG(INFO) << "Running " << command;
-  string output;
-  if (RunShellProcess(command, &output)) {
-    return output;
-  }
-  return STATUS_FORMAT(RuntimeError, "Failed to execute $0 command", yb_admin);
+  return RunShellProcess(command);
 }
 
 namespace {

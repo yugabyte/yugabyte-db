@@ -957,6 +957,66 @@ TEST_F(Pg15UpgradeTest, PartitionedTables) {
   }
 }
 
+TEST_F(Pg15UpgradeTest, ColocatedTables) {
+  ASSERT_OK(ExecuteStatement("CREATE DATABASE colo WITH COLOCATION = true"));
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t1 (k int PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
+  }
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo", kMixedModeTserverPg15));
+    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (2)"));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t1"));
+    ASSERT_VECTORS_EQ(result, (decltype(result){1, 2}));
+  }
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo", kMixedModeTserverPg11));
+    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3)"));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t1"));
+    ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 3}));
+  }
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo"));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t1"));
+    ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 3}));
+
+    ASSERT_OK(conn.Execute("CREATE TABLE t2 (k int PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t2 VALUES (1), (2), (4)"));
+    result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t2"));
+    ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 4}));
+  }
+}
+
+TEST_F(Pg15UpgradeTest, Tablegroup) {
+  ASSERT_OK(ExecuteStatements({
+    "CREATE USER user_1",
+    "GRANT CREATE ON SCHEMA public TO user_1",
+    "CREATE TABLEGROUP test_grant",
+    "GRANT ALL ON TABLEGROUP test_grant TO user_1",
+    "SET ROLE user_1",
+    "CREATE TABLE e(i text) TABLEGROUP test_grant",
+    "CREATE INDEX ON e(i)"
+  }));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  // After the upgrade, the tablegroup ACL must allow user_1 to create a table in the tablegroup,
+  // but not user_2.
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.Execute("CREATE USER user_2"));  // While user is yugabyte
+    ASSERT_OK(conn.Execute("SET ROLE user_1"));
+    ASSERT_OK(conn.Execute("CREATE TABLE e2(i text) TABLEGROUP test_grant"));
+    ASSERT_OK(conn.Execute("SET ROLE user_2"));
+    ASSERT_NOK_STR_CONTAINS(
+        conn.Execute("CREATE TABLE e3(i text) TABLEGROUP test_grant"),
+        "permission denied for tablegroup test_grant");
+  }
+}
+
 class Pg15UpgradeTestWithAuth : public Pg15UpgradeTest {
  public:
   Pg15UpgradeTestWithAuth() = default;
@@ -1203,27 +1263,44 @@ class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
 
 TEST_F(Pg15UpgradeTest, YbGinIndex) {
   const auto kGinTableName = "expression";
-  const std::vector<std::string> kGinIndexes = {"gin_idx_1", "gin_idx_2", "gin_idx_3"};
-  ASSERT_OK(ExecuteStatements({
-    "SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
-    "UPDATE pg_yb_catalog_version SET current_version = 10000, last_breaking_version = 10000",
-    "RESET yb_non_ddl_txn_for_sys_tables_allowed",
+  const auto kGinIndex1 = "gin_idx_1";
+  const auto kGinIndex2 = "gin_idx_2";
+  const auto kGinIndex3 = "gin_idx_3";
 
-    Format("CREATE TABLE $0 (v tsvector, a text[], j jsonb)", kGinTableName),
-  }));
+  const std::map<std::string, std::string> kGinIndexes = {
+    {kGinIndex1,
+     Format("CREATE INDEX $0 ON $1 USING ybgin (tsvector_to_array(v))", kGinIndex1, kGinTableName)},
+    {kGinIndex2,
+     Format("CREATE INDEX $0 ON $1 USING ybgin (array_to_tsvector(a))", kGinIndex2, kGinTableName)},
+    {kGinIndex3,
+     Format("CREATE INDEX $0 ON $1 USING ybgin (jsonb_to_tsvector('simple', j, '[\"string\"]'))",
+            kGinIndex3, kGinTableName)}};
 
-  const auto create_indexes = [this, kGinIndexes, kGinTableName]() {
-    ASSERT_OK(ExecuteStatements({
-      Format("CREATE INDEX $0 ON $1 USING ybgin (tsvector_to_array(v))",
-             kGinIndexes[0], kGinTableName),
-      Format("CREATE INDEX $0 ON $1 USING ybgin (array_to_tsvector(a))",
-             kGinIndexes[1], kGinTableName),
-      Format("CREATE INDEX $0 ON $1 USING ybgin (jsonb_to_tsvector('simple', j, '[\"string\"]'))",
-             kGinIndexes[2], kGinTableName),
-    }));
+  ASSERT_OK(ExecuteStatement(
+      Format("CREATE TABLE $0 (v tsvector, a text[], j jsonb)", kGinTableName)));
+
+  // We can expect that sometimes index creation will fail to due the explanation in #20959.
+  const auto create_index_with_retry = [this](const std::string &idx_name,
+                                              const std::string &create_stmt) {
+    const auto kNRetries = 10;
+    for (int retry = 0; retry < kNRetries; retry++) {
+      if (ExecuteStatement(create_stmt).ok())
+        return;
+
+      // The index may have been partially created, so drop it.
+      ASSERT_OK(ExecuteStatement(Format("DROP INDEX IF EXISTS $0", idx_name)));
+    }
+
+    FAIL() << "Failed to create index " << idx_name << " after " << kNRetries << " retries";
   };
 
-  ASSERT_NO_FATALS(create_indexes());
+  const auto create_indexes_with_retry = [create_index_with_retry, kGinIndexes]() {
+    for (auto &[idx_name, create_stmt] : kGinIndexes) {
+      create_index_with_retry(idx_name, create_stmt);
+    }
+  };
+
+  ASSERT_NO_FATALS(create_indexes_with_retry());
 
   const auto check_and_insert_rows = [kGinTableName](pgwrapper::PGConn& conn, int &expected) {
     const auto kQueries = {
@@ -1283,9 +1360,9 @@ TEST_F(Pg15UpgradeTest, YbGinIndex) {
     // test dropping and recreating the indexes, to validate that these DDLs
     // still work as expected in pg15
     for (const auto &index : kGinIndexes) {
-      ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", index));
+      ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", index.first));
     }
-    ASSERT_NO_FATALS(create_indexes());
+    ASSERT_NO_FATALS(create_indexes_with_retry());
 
     ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
   }

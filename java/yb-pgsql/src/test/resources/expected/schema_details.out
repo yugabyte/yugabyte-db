@@ -31,11 +31,6 @@ Table name: test_table
 +------------+-----------+-----------------+-------------------+----------------------+-------------------+
 |test_policy |Permissive |ALL ROLES        |(is_active = true) |                      |SELECT             |
 
-- Statistics:
-|OID   |TABLE      |Namespace |Statistics Name |Columns     |N-Dinstinct Enabled |Functional Dependencies Enabled |
-+------+-----------+----------+----------------+------------+--------------------+--------------------------------+
-|16396 |test_table |public    |test_statistics |name, price |No                  |Yes                             |
-
 - Rules:
 |Name      |Rule Definition                                                                                                                         |
 +----------+----------------------------------------------------------------------------------------------------------------------------------------+
@@ -210,3 +205,4 @@ Table name: table_referenced_by_view
 
 
 ============================================================
+

@@ -39,6 +39,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/result.h"
@@ -66,7 +67,7 @@ YB_STRONGLY_TYPED_BOOL(HideOnly);
 YB_STRONGLY_TYPED_BOOL(KeepData);
 YB_STRONGLY_TYPED_BOOL(PrimaryTablesOnly);
 
-class CatalogManagerIf {
+class CatalogManagerIf : public tserver::TabletPeerLookupIf {
  public:
   virtual void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) = 0;
 
@@ -120,8 +121,6 @@ class CatalogManagerIf {
     // TODO ENG-282 We currently don't support per-namespace replication factor.
     return GetReplicationFactor();
   }
-
-  virtual const NodeInstancePB& NodeInstance() const = 0;
 
   virtual Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
@@ -192,12 +191,12 @@ class CatalogManagerIf {
   virtual Status GetTabletLocations(
       const TabletId& tablet_id,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
+      IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
   virtual Status GetTabletLocations(
       const TabletInfoPtr& tablet_info,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
+      IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
   virtual TSDescriptorVector GetAllLiveNotBlacklistedTServers() const = 0;
 
@@ -344,6 +343,8 @@ class CatalogManagerIf {
       const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const = 0;
 
   virtual Result<TSDescriptorPtr> GetClosestLiveTserver(bool* local_ts = nullptr) const = 0;
+
+  virtual Result<TableId> GetVersionSpecificCatalogTableId(const TableId& table_id) const = 0;
 
   virtual bool SkipCatalogVersionChecks() = 0;
 

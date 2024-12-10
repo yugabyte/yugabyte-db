@@ -537,7 +537,7 @@ YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
                                int attr_num,
                                YBCPgExpr attr_value);
 
-YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, int vec_att_no, YBCPgExpr vector);
+YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, YBCPgExpr vector);
 
 YBCStatus YBCPgDmlANNSetPrefetchSize(YBCPgStatement handle, int prefetch_size);
 
@@ -848,10 +848,9 @@ void YBCStopSysTablePrefetching();
 
 bool YBCIsSysTablePrefetchingStarted();
 
-void YBCRegisterSysTableForPrefetching(YBCPgOid database_oid,
-                                       YBCPgOid table_oid,
-                                       YBCPgOid index_oid,
-                                       int row_oid_filtering_attr);
+void YBCRegisterSysTableForPrefetching(
+    YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid, int row_oid_filtering_attr,
+    bool fetch_ybctid);
 
 YBCStatus YBCPrefetchRegisteredSysTables();
 

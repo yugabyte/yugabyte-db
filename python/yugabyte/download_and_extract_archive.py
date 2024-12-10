@@ -20,25 +20,28 @@ Downloads and extracts an archive with pre-built third-party dependencies.
 # It could be run before the main Python interpreter we'll be using for most of our scripts is
 # even installed.
 
-import os
-import sys
-import re
-import logging
-import socket
-import atexit
-import subprocess
 import argparse
+import atexit
+import errno
+import getpass
+import glob
+import logging
+import os
+import re
+import socket
+import subprocess
+import sys
 import tempfile
 import time
-import getpass
-import errno
+import zipfile
 
-from typing import List
+from typing import List, Optional
 
 
 g_verbose = False
 EXPECTED_ARCHIVE_EXTENSION = '.tar.gz'
 CHECKSUM_EXTENSION = '.sha256'
+ARTIFACT_URL_SUFFIX = '/zip'
 
 
 def remove_ignore_errors(file_path: str) -> None:
@@ -113,17 +116,31 @@ def verify_sha256sum(checksum_file_path: str, data_file_path: str) -> bool:
     return False
 
 
-def download_url(url: str, dest_path: str) -> None:
+def download_url(url: str, dest_path: str, other_curl_flags: List[str] = []) -> None:
     start_time_sec = time.time()
     logging.info("Downloading %s to %s", url, dest_path)
     dest_dir = os.path.dirname(dest_path)
     if not os.path.isdir(dest_dir):
         raise IOError("Destination directory %s does not exist" % dest_dir)
-    run_cmd(['curl', '-LsS', url, '-o', dest_path])
+    run_cmd(['curl', '-LsS', url, '-o', dest_path] + other_curl_flags)
     if not os.path.exists(dest_path):
         raise IOError("Failed to download %s: file %s does not exist" % (url, dest_path))
     elapsed_sec = time.time() - start_time_sec
     logging.info("Downloaded %s to %s in %.1fs" % (url, dest_path, elapsed_sec))
+
+
+def download_artifact(url: str, zip_path: str, dest_member: str, dest_path: str,
+                      github_token: str) -> None:
+    download_url(url, zip_path, ['-H', f'Authorization: Bearer {github_token}'])
+
+    start_time_sec = time.time()
+    logging.info("Extracting %s from %s to %s", dest_member, zip_path, dest_path)
+    with zipfile.ZipFile(zip_path, 'r') as file:
+        file.getinfo(dest_member).filename = os.path.basename(dest_path)
+        file.extract(dest_member, path=os.path.dirname(dest_path))
+    elapsed_sec = time.time() - start_time_sec
+    logging.info("Extracted %s from %s to %s in %.1fs", dest_member, zip_path, dest_path,
+                 elapsed_sec)
 
 
 def move_file(src_path: str, dest_path: str) -> None:
@@ -173,11 +190,29 @@ def exists_or_is_link(dest: str) -> bool:
 
 
 def download_and_extract(
-        url: str, dest_dir_parent: str, local_cache_dir: str, nfs_cache_dir: str) -> None:
-    tar_gz_name = os.path.basename(url)
-    checksum_file_name = tar_gz_name + CHECKSUM_EXTENSION
-    install_dir_name = tar_gz_name[:-len(EXPECTED_ARCHIVE_EXTENSION)]
-    dest_dir = os.path.join(dest_dir_parent, install_dir_name)
+        url: str, checksum_url: str, dest_dir_parent: str, local_cache_dir: str,
+        nfs_cache_dir: str, github_token: Optional[str]) -> None:
+
+    is_pr_artifact = url.endswith(ARTIFACT_URL_SUFFIX)
+    if is_pr_artifact:
+        artifact_id = url.split('/')[-2]
+        checksum_artifact_id = checksum_url.split('/')[-2]
+        zip_name = f'github-artifact-{artifact_id}.zip'
+        checksum_zip_name = f'github-artifact-{checksum_artifact_id}.zip'
+        tar_gz_name = f'github-artifact-{artifact_id}.tar.gz'
+        checksum_file_name = f'github-artifact-{artifact_id}.tar.gz.sha256'
+
+        install_dir_name = artifact_id
+        dest_dir = os.path.join(dest_dir_parent, install_dir_name)
+    else:
+        tar_gz_name = os.path.basename(url)
+        checksum_file_name = os.path.basename(checksum_url)
+        install_dir_name = tar_gz_name[:-len(EXPECTED_ARCHIVE_EXTENSION)]
+        dest_dir = os.path.join(dest_dir_parent, install_dir_name)
+
+        if not url.endswith(EXPECTED_ARCHIVE_EXTENSION):
+            raise ValueError("Archive download URL is expected to end with %s, got: %s" % (
+                url, EXPECTED_ARCHIVE_EXTENSION))
 
     if os.path.isdir(dest_dir):
         logging.info("Directory %s already exists, no need to install." % dest_dir)
@@ -191,10 +226,6 @@ def download_and_extract(
             logging.info("Failed creating directory '%s': %s", local_cache_dir, ex)
 
     check_dir_exists_and_is_writable(local_cache_dir, "Local cache")
-
-    if not url.endswith(EXPECTED_ARCHIVE_EXTENSION):
-        raise ValueError("Archive download URL is expected to end with %s, got: %s" % (
-            url, EXPECTED_ARCHIVE_EXTENSION))
 
     if os.path.isdir(dest_dir):
         logging.info("Directory %s already exists, someone must have created it concurrently.",
@@ -212,6 +243,7 @@ def download_and_extract(
             run_cmd(['rm', '-rf', tmp_dir])
 
     atexit.register(cleanup)
+
     for cache_dir in [local_cache_dir, nfs_cache_dir]:
         cached_tar_gz_path = os.path.join(cache_dir, tar_gz_name)
         cached_checksum_path = cached_tar_gz_path + CHECKSUM_EXTENSION
@@ -228,8 +260,21 @@ def download_and_extract(
     if tar_gz_path is None:
         tmp_tar_gz_path = os.path.join(tmp_dir, tar_gz_name)
         tmp_checksum_path = os.path.join(tmp_dir, checksum_file_name)
-        download_url(url + CHECKSUM_EXTENSION, tmp_checksum_path)
-        download_url(url, tmp_tar_gz_path)
+        if is_pr_artifact:
+            if not github_token:
+                raise ValueError("GitHub token is required to download PR artifacts")
+
+            tmp_tar_gz_zip_path = os.path.join(tmp_dir, zip_name)
+            tmp_checksum_zip_path = os.path.join(tmp_dir, checksum_zip_name)
+
+            download_artifact(checksum_url, tmp_checksum_zip_path, 'archive.tar.gz.sha256',
+                              tmp_checksum_path, github_token)
+            download_artifact(url, tmp_tar_gz_zip_path, 'archive.tar.gz', tmp_tar_gz_path,
+                              github_token)
+        else:
+            download_url(checksum_url, tmp_checksum_path)
+            download_url(url, tmp_tar_gz_path)
+
         if not verify_sha256sum(tmp_checksum_path, tmp_tar_gz_path):
             raise ValueError("Checksum verification failed for the download of %s" % url)
         file_names = [tar_gz_name, checksum_file_name]
@@ -252,92 +297,34 @@ def download_and_extract(
 
     logging.info("Extracting %s in %s", tar_gz_path, tmp_dir)
     run_cmd(['tar', 'xf', tar_gz_path, '-C', tmp_dir])
-    tmp_extracted_dir = os.path.join(tmp_dir, install_dir_name)
-    if not os.path.exists(tmp_extracted_dir):
-        raise IOError(
-            "Extracted '%s' in '%s' but a directory named '%s' did not appear" % (
-                tar_gz_path, os.getcwd(), tmp_extracted_dir))
+
+    if is_pr_artifact:
+        tmp_extracted_dir_candidates = glob.glob(f'{tmp_dir}/yugabyte-*')
+        if len(tmp_extracted_dir_candidates) != 1:
+            raise IOError(
+                "Extracted '%s' in '%s' but cannot identify extracted directory, candidates: %s" % (
+                    tar_gz_path, tmp_dir, str(tmp_extracted_dir_candidates)))
+        tmp_extracted_dir = tmp_extracted_dir_candidates[0]
+    else:
+        tmp_extracted_dir = os.path.join(tmp_dir, install_dir_name)
+        if not os.path.exists(tmp_extracted_dir):
+            raise IOError(
+                "Extracted '%s' in '%s' but a directory named '%s' did not appear" % (
+                    tar_gz_path, os.getcwd(), tmp_extracted_dir))
+
     if exists_or_is_link(dest_dir):
         logging.info("Looks like %s was created concurrently", dest_dir)
         return
-    if install_dir_name.startswith('linuxbrew'):
-        orig_brew_home_file = os.path.join(tmp_extracted_dir, 'ORIG_BREW_HOME')
-        if not os.path.exists(orig_brew_home_file):
-            raise IOError("File '%s' not found after extracting '%s'" % (
-                orig_brew_home_file, tar_gz_name))
-        orig_brew_home = read_file_and_strip(orig_brew_home_file)
-        if not orig_brew_home.startswith(dest_dir):
-            raise ValueError(
-                "Original Homebrew/Linuxbrew install home directory is '%s'"
-                " but we are trying to install it in '%s', and that is not a prefix of"
-                " the former." % (orig_brew_home, dest_dir))
 
-        already_installed_msg = (
-            "'%s' already exists, cannot move '%s' to it. Someone else must have "
-            "installed it concurrently. This is OK." % (
-                orig_brew_home, dest_dir))
+    if g_verbose:
+        logging.info("Moving %s to %s", tmp_extracted_dir, dest_dir)
+    os.rename(tmp_extracted_dir, dest_dir)
 
-        def create_brew_symlink_if_needed() -> None:
-            brew_link_src = os.path.basename(orig_brew_home)
-            # dest_dir will now be a symlink pointing to brew_link_src. We are NOT creating a
-            # symlink inside dest_dir.
-            if not exists_or_is_link(dest_dir):
-                logging.info("Creating a symlink '%s' -> '%s'", dest_dir, brew_link_src)
-                try:
-                    os.symlink(brew_link_src, dest_dir)
-                except OSError as os_error:
-                    if os_error.errno == errno.EEXIST:
-                        if exists_or_is_link(dest_dir):
-                            logging.info(
-                                "Symlink '%s' was created concurrently. This is probably OK.",
-                                dest_dir)
-                        else:
-                            err_msg = (
-                                "Failed creating symlink '%s' -> '%s' with error: %s, but the "
-                                "symlink does not actually exist!" % (
-                                    dest_dir, brew_link_src, os_error))
-                            logging.error(err_msg)
-                            raise IOError(err_msg)
-                    else:
-                        logging.error("Unexpected error when creating symlink '%s' -> '%s': %s",
-                                      dest_dir, brew_link_src, os_error)
-                        raise os_error
-
-            assert exists_or_is_link(dest_dir)
-            if not os.path.islink(dest_dir):
-                # A defensive sanity check.
-                err_msg = "%s exists but is not a symbolic link" % dest_dir
-                logging.error(err_msg)
-                raise IOError(err_msg)
-            else:
-                actual_link_src = os.readlink(dest_dir)
-                if actual_link_src != brew_link_src:
-                    err_msg = "Symlink %s is not pointing to %s but instead points to %s" % (
-                        dest_dir, brew_link_src, actual_link_src)
-                    logging.error(err_msg)
-                    raise IOError(err_msg)
-
-        if os.path.exists(orig_brew_home):
-            logging.info(already_installed_msg)
-            create_brew_symlink_if_needed()
-            return
-        logging.info("Moving '%s' to '%s'" % (tmp_extracted_dir, orig_brew_home))
-        try:
-            os.rename(tmp_extracted_dir, orig_brew_home)
-        except IOError as io_error:
-            # A defensive sanity check in case locking is not working properly.
-            if io_error == errno.ENOTEMPTY:
-                # For whatever reason, this is what we get when the destination directory
-                # already exists.
-                logging.info(already_installed_msg)
-                create_brew_symlink_if_needed()
-                return
-
-        create_brew_symlink_if_needed()
-    else:
-        if g_verbose:
-            logging.info("Moving %s to %s", tmp_extracted_dir, dest_dir)
-        os.rename(tmp_extracted_dir, dest_dir)
+    if is_pr_artifact:
+        tmp_extracted_dir_name = os.path.basename(tmp_extracted_dir)
+        link_dir_name = os.path.join(dest_dir_parent, tmp_extracted_dir_name)
+        os.symlink(dest_dir, link_dir_name)
+        logging.info("Added symlink from %s to %s", dest_dir, link_dir_name)
 
     logging.info("Installation of %s took %.1f sec", dest_dir, time.time() - start_time_sec)
 
@@ -353,7 +340,16 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        '--url', help='URL to download. Must end with .tar.gz.', required=True)
+        '--github-token-file',
+        help='Read GitHub token from this file. This is needed if downloading PR artifacts. '
+             'If this is not specified, we will still use the GITHUB_TOKEN environment '
+             'variable. The YB_GITHUB_TOKEN_FILE_PATH environment variable, if set, will be used '
+             'as the default value of this argument.',
+        default=os.getenv('YB_GITHUB_TOKEN_FILE_PATH'))
+    parser.add_argument(
+        '--url', help='URL to download', required=True)
+    parser.add_argument(
+        '--checksum-url', help='URL of checksum')
     parser.add_argument(
         '--dest-dir-parent', help='Parent directory in which to extract the archive',
         required=True)
@@ -373,11 +369,20 @@ def main() -> None:
         global g_verbose
         g_verbose = True
 
+    github_token: Optional[str]
+    if args.github_token_file:
+        logging.info("Reading GitHub token from %s", args.github_token_file)
+        github_token = read_file_and_strip(args.github_token_file)
+    else:
+        github_token = os.getenv('GITHUB_TOKEN')
+
     download_and_extract(
         url=args.url,
+        checksum_url=args.checksum_url or args.url + CHECKSUM_EXTENSION,
         dest_dir_parent=args.dest_dir_parent,
         local_cache_dir=args.local_cache_dir,
-        nfs_cache_dir=args.nfs_cache_dir)
+        nfs_cache_dir=args.nfs_cache_dir,
+        github_token=github_token)
 
 
 if __name__ == '__main__':

@@ -462,7 +462,7 @@ func init() {
 	createBackupScheduleCmd.Flags().String("category", "",
 		"[Optional] Category of the backup. "+
 			"If a universe has YBC enabled, then default value of category is YB_CONTROLLER. "+
-			"Allowed values: YB_BACKUP_SCRIPT, YB_CONTROLLER")
+			"Allowed values: yb_backup_script, yb_controller")
 	createBackupScheduleCmd.Flags().Bool("sse", true,
 		"[Optional] Enable sse while persisting the data in AWS S3.")
 	createBackupScheduleCmd.Flags().Bool("enable-verbose-logs", false,

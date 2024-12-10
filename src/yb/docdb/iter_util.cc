@@ -27,9 +27,9 @@
 DEFINE_RUNTIME_int32(max_nexts_to_avoid_seek, 2,
     "The number of next calls to try before doing resorting to do a rocksdb seek.");
 
-// TODO(#22373): the value is taken from FLAGS_max_nexts_to_avoid_seek default, but it could be
-// not the optimal value for prev seeks and it is recommended to make some research and to confirm
-// the selected value or select a different value.
+// TODO(fast-backward-scan) the value is taken from FLAGS_max_nexts_to_avoid_seek default, but it
+// could be not the optimal value for prev seeks and it is recommended to make some research and
+// to confirm the selected value or select a different value.
 DEFINE_RUNTIME_int32(max_prevs_to_avoid_seek, 2,
     "The number of prev calls to try before doing a rocksdb seek. "
     "Used by fast backward scan only.");

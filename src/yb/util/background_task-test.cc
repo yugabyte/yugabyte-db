@@ -73,7 +73,8 @@ TEST_F(BackgroundTaskTest, RunsTaskOnWake) {
     }, 1s * kTimeMultiplier, Format("Wait for i-th ($0) task run.", i)));
   }
 
-  bg_task->Shutdown();
+  bg_task->StartShutdown();
+  bg_task->CompleteShutdown();
 }
 
 TEST_F(BackgroundTaskTest, YB_DISABLE_TEST_ON_MACOS(RunsTaskOnInterval)) {
@@ -89,7 +90,8 @@ TEST_F(BackgroundTaskTest, YB_DISABLE_TEST_ON_MACOS(RunsTaskOnInterval)) {
     }, interval / 10, Format("Wait for i-th ($0) task run.", i)));
   }
 
-  bg_task->Shutdown();
+  bg_task->StartShutdown();
+  bg_task->CompleteShutdown();
 }
 
 class BackgroundTaskShutdownTest :
@@ -99,7 +101,8 @@ TEST_P(BackgroundTaskShutdownTest, InitAndShutdown) {
   auto interval = GetParam() * kTimeMultiplier;
   auto bg_task = GetTask(interval);
   std::this_thread::sleep_for(1s * kTimeMultiplier);
-  bg_task->Shutdown();
+  bg_task->StartShutdown();
+  bg_task->CompleteShutdown();
 }
 
 INSTANTIATE_TEST_CASE_P(

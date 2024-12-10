@@ -1077,7 +1077,7 @@ PostmasterMain(int argc, char *argv[])
 		YbQueryDiagnosticsBgWorkerRegister();
 
 	/* Register ASH collector */
-	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
 		YbAshRegister();
 
 	/*
@@ -2388,25 +2388,6 @@ retry1:
 							 errmsg("yb_authonly can only be set "
 							   "if the connection is made over unix domain "
 							   "socket")));
-
-			}
-			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_auth_remote_host") == 0)
-				yb_auth_backend_remote_host = pstrdup(valptr);
-			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_logical_conn_type") == 0)
-			{
-				if (strlen(valptr) != 1 ||
-					(valptr[0] != 'U' && valptr[0] != 'E'))
-					ereport(FATAL,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_logical_conn_type",
-									valptr),
-							 errhint("Valid values are: \"U\" or \"E\".")));
-
-				yb_logical_conn_type = *pstrdup(valptr);
-				yb_logical_conn_type_provided = true;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_is_client_ysqlconnmgr") == 0)
@@ -2425,6 +2406,24 @@ retry1:
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
 							 errmsg("ysql connection manager makes all connections "
 							   "over unix domain socket to postgres")));
+			}
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_auth_remote_host") == 0)
+				yb_auth_backend_remote_host = pstrdup(valptr);
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_logical_conn_type") == 0)
+			{
+				if (strlen(valptr) != 1 ||
+					(valptr[0] != 'U' && valptr[0] != 'E'))
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for parameter \"%s\": \"%s\"",
+									"yb_logical_conn_type",
+									valptr),
+							 errhint("Valid values are: \"U\" or \"E\".")));
+
+				yb_logical_conn_type = *pstrdup(valptr);
+				yb_logical_conn_type_provided = true;
 			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{
@@ -6167,6 +6166,9 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				 NULL,			/* no out_dbname */
 				 NULL);			/* session id */
 
+	if (yb_enable_ash)
+		YbAshSetMetadataForBgworkers();
+
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
 		ereport(ERROR,
@@ -6195,6 +6197,9 @@ YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
 				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
 				 NULL,			/* no out_dbname */
 				 session_id);	/* session id */
+
+	if (yb_enable_ash)
+		YbAshSetMetadataForBgworkers();
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())

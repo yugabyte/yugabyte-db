@@ -13,6 +13,7 @@ cascade:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2024.2](v2024.2/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2024.2" release >}} | {{< yb-eol-dates "v2024.2" EOM >}} | {{< yb-eol-dates "v2024.2" EOL >}} |
 | [v2.23](v2.23/) {{<tags/release/preview>}} | {{< yb-eol-dates "v2.23" release >}} | n/a | n/a |
 | [v2024.1](v2024.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |
 | [v2.20](v2.20/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
@@ -37,14 +38,13 @@ Qualification tests for each new version of YugabyteDB Anywhere are run on the l
 
 ### Supported versions
 
-Every version of YugabyteDB Anywhere supports the same version and prior releases of YugabyteDB, down to and including the two preceding LTS release series and any intervening STS releases. This provides a span of support of approximately 2 years.
+Every version of YugabyteDB Anywhere supports the same version and all earlier releases of YugabyteDB.
 
-For example, YugabyteDB Anywhere v2.20.x supports the following YugabyteDB release series:
+For example, as of November 2024, YugabyteDB Anywhere v2024.2.x supports the following YugabyteDB release series:
 
+- [v2024.1.x](../ybdb-releases/v2024.1/) (STS)
 - [v2.20.x](../ybdb-releases/v2.20/) (LTS)
 - [v2.18.x](../ybdb-releases/v2.18/) (STS)
-- [v2.16.x](../ybdb-releases/end-of-life/v2.16/) (STS)
-- [v2.14.x](../ybdb-releases/v2.14/) (LTS)
 
 For information on YugabyteDB release support timelines, refer to [YugabyteDB releases](../ybdb-releases).
 

@@ -118,7 +118,7 @@ namespace {
 static const char* kShutdownMessage = "Shutdown connection";
 
 const Status& AbortedError() {
-  static Status result = STATUS(Aborted, kShutdownMessage, "" /* msg2 */, Errno(ESHUTDOWN));
+  static const Status result = STATUS(Aborted, kShutdownMessage, "" /* msg2 */, Errno(ESHUTDOWN));
   return result;
 }
 
@@ -276,7 +276,7 @@ Reactor::Reactor(Messenger* messenger,
 
 Reactor::~Reactor() {
   LOG_IF_WITH_PREFIX(DFATAL, !pending_tasks_.empty())
-      << "Not empty pending tasks when destroyed reactor: " << yb::ToString(pending_tasks_);
+      << "Not empty pending tasks when destroyed reactor: " << AsString(pending_tasks_);
 }
 
 Status Reactor::Init() {
@@ -307,7 +307,7 @@ Status Reactor::Init() {
 
   // Create Reactor thread.
   const std::string group_name = messenger_.name() + "_reactor";
-  return yb::Thread::Create(group_name, group_name, &Reactor::RunThread, this, &thread_);
+  return Thread::Create(group_name, group_name, &Reactor::RunThread, this, &thread_);
 }
 
 void Reactor::StartShutdown() {
@@ -498,18 +498,18 @@ void Reactor::CheckReadyToStop() {
   if (all_connections_idle) {
     VLOG_WITH_PREFIX(4) << "Reactor ready to stop, breaking loop: " << this;
 
-    VLOG_WITH_PREFIX(2) << "Marking reactor as closed: " << thread_.get()->ToString();
+    VLOG_WITH_PREFIX(2) << "Marking reactor as closed: " << thread_->ToString();
     ReactorTasks final_tasks;
     {
       std::lock_guard pending_tasks_lock(pending_tasks_mtx_);
       state_.store(ReactorState::kClosed, std::memory_order_release);
       final_tasks.swap(pending_tasks_);
     }
-    VLOG_WITH_PREFIX(2) << "Running final pending task aborts: " << thread_.get()->ToString();;
+    VLOG_WITH_PREFIX(2) << "Running final pending task aborts: " << thread_->ToString();;
     for (auto task : final_tasks) {
       task->Abort(ServiceUnavailableError());
     }
-    VLOG_WITH_PREFIX(2) << "Breaking reactor loop: " << thread_.get()->ToString();;
+    VLOG_WITH_PREFIX(2) << "Breaking reactor loop: " << thread_->ToString();;
     loop_.break_loop(); // break the epoll loop and terminate the thread
   }
 }
@@ -542,7 +542,9 @@ void Reactor::AsyncHandler(ev::async &watcher, int revents) {
   }
 
   for (const auto &task : pending_tasks_being_processed_) {
+    tick_.fetch_add(1);
     task->Run(this);
+    tick_.fetch_add(1);
   }
 }
 
@@ -1034,6 +1036,10 @@ void Reactor::ReleaseLoop(struct ev_loop* loop) noexcept {
 void Reactor::AcquireLoop(struct ev_loop* loop) noexcept {
   auto reactor = static_cast<Reactor*>(ev_userdata(loop));
   IncrementGauge(reactor->messenger_.rpc_metrics()->busy_reactors);
+}
+
+ThreadIdForStack Reactor::tid_for_stack() const {
+  return thread_->tid_for_stack();
 }
 
 }  // namespace rpc

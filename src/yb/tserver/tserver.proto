@@ -72,6 +72,9 @@ message WriteRequestPB {
   // A batch of Pgsql operations.
   repeated PgsqlWriteRequestPB pgsql_write_batch = 13;
 
+   // A batch of Pgsql locks.
+  repeated PgsqlLockRequestPB pgsql_lock_batch = 25;
+
   // A hybrid_time obtained by the client from a previous request.
   // TODO crypto sign this and propagate the signature along with
   // the hybrid_time.

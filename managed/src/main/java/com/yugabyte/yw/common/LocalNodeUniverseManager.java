@@ -50,7 +50,15 @@ public class LocalNodeUniverseManager {
       String ysqlCommand,
       long timeoutSec,
       boolean authEnabled) {
-    return runYsqlCommand(node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, false);
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        timeoutSec,
+        authEnabled,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
+        false);
   }
 
   public ShellResponse runYsqlCommand(
@@ -60,6 +68,19 @@ public class LocalNodeUniverseManager {
       String ysqlCommand,
       long timeoutSec,
       boolean authEnabled,
+      boolean cpEnabled) {
+    return runYsqlCommand(
+        node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled, false);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled,
       boolean escaped) {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     LocalCloudInfo cloudInfo = LocalNodeManager.getCloudInfo(node, universe);
@@ -72,12 +93,18 @@ public class LocalNodeUniverseManager {
       bashCommand.add(
           String.format(
               "%s/.yb.%s:%s",
-              customTmpDirectory, node.cloudInfo.private_ip, node.ysqlServerRpcPort));
+              customTmpDirectory,
+              node.cloudInfo.private_ip,
+              cpEnabled ? node.internalYsqlServerRpcPort : node.ysqlServerRpcPort));
     } else {
       bashCommand.add(node.cloudInfo.private_ip);
     }
     bashCommand.add("-p");
-    bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
+    if (cpEnabled) {
+      bashCommand.add(String.valueOf(node.internalYsqlServerRpcPort));
+    } else {
+      bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
+    }
     bashCommand.add("-U");
     bashCommand.add("yugabyte");
     bashCommand.add("-d");

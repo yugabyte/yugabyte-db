@@ -15,6 +15,7 @@ package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertThrows;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
@@ -43,8 +44,6 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
   public void testLogicalClientVersionBump() throws Exception {
     try (Connection connection = getConnectionBuilder()
             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .withDatabase("yugabyte")
-            .withUser("yugabyte")
             .connect();
         Statement statement = connection.createStatement()) {
 
@@ -75,8 +74,6 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
   public void testCreateDropDatabase() throws Exception {
     try (Connection connection = getConnectionBuilder()
             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .withDatabase("yugabyte")
-            .withUser("yugabyte")
             .connect();
         Statement statement = connection.createStatement()) {
 
@@ -89,4 +86,133 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
         assertEquals(rows.size(), 0);
       }
    }
+
+  // Two logical connections are created named c1 and c2 that will execute txns
+  // on same backend B1. Even if c2 has executed "ALTER ROLE SET" command to bump
+  // the logical cient version in pg_yb_logical_client_version table, the backend B1
+  // was spwaned before hence having old version number.
+  @Test
+  public void testOnePhysicalConnectionWithTwoLogicalConnections() throws Exception {
+    enableVersionMatchingAndRestartCluster();
+    try (Connection c1 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Connection c2 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Statement s1 = c1.createStatement();
+        Statement s2 = c2.createStatement()) {
+
+      String query = createLogicalClientSelectQuery("yugabyte");
+      List<Row> rows = getRowList(s1, query);
+
+      assertEquals(rows.size(), 1);
+      Row ver = rows.get(0);
+      Long old_version = rows.get(0).getLong(0);
+
+      // Executed on backend B1.
+      s1.execute("SELECT 1");
+      // Executed on backend B1, increase logical_client_version from 1 to 2
+      // in pg_yb_logical_client_version catalog table.
+      s2.execute("ALTER ROLE yugabyte SET timezone = 'GMT'");
+
+      rows = getRowList(s2, query);
+      assertEquals(rows.size(), 1);
+      Long new_version = rows.get(0).getLong(0);
+      assertEquals((long)new_version, (long)old_version+1);
+
+      // Also executed on backend B1.
+      s1.execute("SELECT 1");
+    }
+  }
+
+  // This test is same as testOnePhysicalConnectionWithTwoLogicalConnections with the
+  // difference that now Backend B1 is made sticky to logical connection c2. Due to this
+  // new backend will be spwaned for c1 to execute next statement. But since there is bump
+  // of version caused by "ALTER ROLE SET" executed by c2, c1 will not get any matching
+  // backend hence connecting to backend of higher version.
+  @Test
+  public void testOnePhysicalConnectionWithTwoLogicalConnectionsSticky() throws Exception {
+    enableVersionMatchingAndRestartCluster();
+    try (Connection c1 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Connection c2 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Statement s1 = c1.createStatement();
+        Statement s2 = c2.createStatement()) {
+
+      String query = createLogicalClientSelectQuery("yugabyte");
+      List<Row> rows = getRowList(s1, query);
+
+      assertEquals(rows.size(), 1);
+      Row ver = rows.get(0);
+      Long old_version = rows.get(0).getLong(0);
+
+      // Executed on backend B1.
+      s1.execute("SELECT 1");
+      // Executed on backend B1, increase logical_client_version from 1 to 2.
+      s2.execute("ALTER ROLE yugabyte SET timezone = 'GMT'");
+      // Now B1 is sticky with c2.
+      s2.execute("BEGIN");
+
+      rows = getRowList(s2, query);
+      assertEquals(rows.size(), 1);
+      Long new_version = rows.get(0).getLong(0);
+      assertEquals((long)new_version, (long)old_version+1);
+
+      // connect to backend of higher version.
+      s1.execute("SELECT 1");
+    }
+  }
+
+  // - Consider two logical connections c1 and c2 are made
+  // - c2 bump the logical client version by "ALTER ROLE SET" command
+  // - New connection c3 is made with bumped up version number = 2
+  // - This would invalidate older logical client connection c1 and c2
+  // - Next query that c1 or c2 will try to execute will cause connection close
+  @Test
+  public void testNewLogicalConnectionWithBumpedUpVersion() throws Exception {
+    enableVersionMatchingAndRestartCluster(false);
+    try (Connection c1 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Connection c2 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Statement s1 = c1.createStatement();
+        Statement s2 = c2.createStatement()) {
+
+      String query = createLogicalClientSelectQuery("yugabyte");
+      List<Row> rows = getRowList(s1, query);
+
+      assertEquals(rows.size(), 1);
+      Row ver = rows.get(0);
+      Long old_version = rows.get(0).getLong(0);
+
+      s1.execute("SELECT 1");
+      s2.execute("ALTER ROLE yugabyte SET timezone = 'GMT'");
+
+      rows = getRowList(s2, query);
+      assertEquals(rows.size(), 1);
+      Long new_version = rows.get(0).getLong(0);
+      assertEquals((long)new_version, (long)old_version+1);
+
+      try (
+        Connection c3 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Statement s3 = c3.createStatement()
+      ) {
+        s3.execute("SELECT 1");
+      }
+      assertThrows(
+          "Old Logical connection",
+           SQLException.class, () -> s1.execute("SELECT 1"));
+      assertThrows(
+          "Old Logical connection",
+           SQLException.class, () -> s2.execute("SELECT 1"));
+    }
+  }
 }

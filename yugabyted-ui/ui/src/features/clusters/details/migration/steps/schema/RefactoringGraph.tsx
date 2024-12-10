@@ -210,8 +210,11 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
     });
 
     return sqlObjects
-      .filter(({ automatic, manual }) => (automatic ?? 0) + (manual ?? 0) > 0)
-      .map(({ sql_object_type, automatic, manual }, index) => {
+      .filter(({ automatic, manual, invalid }) => {
+        const total: number = (automatic ?? 0) + (manual ?? 0) + (invalid ?? 0);
+        return total > 0;
+      })
+      .map(({ sql_object_type, automatic, manual, invalid }, index) => {
         const mapReturnedArray = objectTypeNameMap.get(sql_object_type!.trim().toLowerCase()) || [];
         const doesMapReturnArray: boolean = Array.isArray(mapReturnedArray);
         return {
@@ -222,6 +225,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
           objectType: sql_object_type?.trim().toLowerCase(),
           automaticDDLImport: automatic ?? 0,
           manualRefactoring: manual ?? 0,
+          invalidObjCount: invalid ?? 0,
           rightArrowSidePanel: {
             mapReturnedArrayLength: doesMapReturnArray ? mapReturnedArray?.length : 0,
             sqlObjectType: sql_object_type?.trim().toLowerCase(),
@@ -307,6 +311,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
   const showRightArrowSidePanel = graphData.some(
     (item) => item.rightArrowSidePanel.mapReturnedArrayLength > 0
   );
+
   const columns = [
     {
       name: "plusMinusExpansion",
@@ -330,7 +335,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
             >
               {expandedSuggestions[plusMinusExpansion.index] ? <MinusIcon /> : <PlusIcon />}
             </Box>
-          ),
+          )
       },
     },
     {
@@ -339,7 +344,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
       options: {
         sort: false,
         setCellHeaderProps: () => ({ style: { padding: "8px 30px" } }),
-        setCellProps: () => ({ style: { padding: "8px 30px", textTransform: "capitalize" } }),
+        setCellProps: () => ({ style: { padding: "8px 30px", textTransform: "capitalize" } })
       },
     },
     {
@@ -352,7 +357,20 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
         setCellProps: () => ({ style: { padding: "8px 30px" } }),
         customBodyRender: (count: number) => (
           <YBBadge text={count} variant={BadgeVariant.Success} />
-        ),
+        )
+      },
+    },
+    {
+      name: "invalidObjCount",
+      label: t(
+        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCount"
+      ),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 25px" } }),
+        setCellProps: () => ({ style: { padding: "8px 30px" } }),
+        customBodyRender: (count: number) => (
+          <YBBadge text={count} variant={BadgeVariant.Warning} />
+        )
       },
     },
     {
@@ -365,7 +383,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
         setCellProps: () => ({ style: { padding: "8px 30px" } }),
         customBodyRender: (count: number) => (
           <YBBadge text={count} variant={BadgeVariant.Warning} />
-        ),
+        )
       },
     },
     {
@@ -416,7 +434,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
             >
               <ArrowRightIcon />
             </Box>
-          ),
+          )
       },
     },
   ];

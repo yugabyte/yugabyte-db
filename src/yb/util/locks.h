@@ -178,7 +178,7 @@ class CAPABILITY("mutex") PerCpuRwMutex {
     n_cpus_ = base::MaxCPUIndex() + 1;
     CHECK_EQ(errno, 0) << ErrnoToString(errno);
     CHECK_GT(n_cpus_, 0);
-    locks_ = new padded_lock[n_cpus_];
+    locks_ = new PaddedLock[n_cpus_];
   }
 
   ~PerCpuRwMutex() {
@@ -186,7 +186,7 @@ class CAPABILITY("mutex") PerCpuRwMutex {
   }
 
   bool try_lock() TRY_ACQUIRE(true) {
-    for (int i = 0; i < n_cpus_; i++) {
+    for (size_t i = 0; i < n_cpus_; i++) {
       if (!locks_[i].lock.try_lock()) {
         while (i--) {
           locks_[i].lock.unlock();
@@ -200,20 +200,20 @@ class CAPABILITY("mutex") PerCpuRwMutex {
   // Return true if this lock is held on any CPU.
   // See simple_spinlock::is_locked() for details about where this is useful.
   bool is_locked() const {
-    for (int i = 0; i < n_cpus_; i++) {
+    for (size_t i = 0; i < n_cpus_; i++) {
       if (locks_[i].lock.is_locked()) return true;
     }
     return false;
   }
 
   void lock() ACQUIRE() {
-    for (int i = 0; i < n_cpus_; i++) {
+    for (size_t i = 0; i < n_cpus_; i++) {
       locks_[i].lock.lock();
     }
   }
 
   void unlock() RELEASE() {
-    for (int i = 0; i < n_cpus_; i++) {
+    for (size_t i = 0; i < n_cpus_; i++) {
       locks_[i].lock.unlock();
     }
   }
@@ -229,28 +229,24 @@ class CAPABILITY("mutex") PerCpuRwMutex {
  private:
   friend class PerCpuRwSharedLock;
 
-  rw_spinlock &get_lock() {
-#if defined(__APPLE__)
-    // OSX doesn't have a way to get the CPU, so we'll pick a random one.
-    int cpu = reinterpret_cast<uintptr_t>(this) % n_cpus_;
-#else
-    int cpu = sched_getcpu();
-    if (cpu < 0) {
-      LOG(FATAL) << ErrnoToString(errno);
-    }
-    CHECK_LT(cpu, n_cpus_);
-#endif  // defined(__APPLE__)
-    return locks_[cpu].lock;
-  }
-
-  struct padded_lock {
+  struct alignas(CACHELINE_SIZE) PaddedLock {
     rw_spinlock lock;
-    static constexpr size_t kPaddingSize = CACHELINE_SIZE - (sizeof(rw_spinlock) % CACHELINE_SIZE);
-    char padding[kPaddingSize];
   };
 
-  int n_cpus_;
-  padded_lock *locks_;
+  PaddedLock& get_lock() {
+#if defined(__APPLE__)
+    // OSX doesn't have a way to get the CPU, so we'll pick a random one.
+    auto cpu = reinterpret_cast<uintptr_t>(this) % n_cpus_;
+#else
+    auto cpu = sched_getcpu();
+    LOG_IF(FATAL, cpu < 0) << ErrnoToString(errno);
+    CHECK_LT(cpu, n_cpus_);
+#endif  // defined(__APPLE__)
+    return locks_[cpu];
+  }
+
+  size_t n_cpus_;
+  PaddedLock* locks_;
 };
 
 // A scoped lock for PerCpuRwMutex. Works by choosing the current CPU and locking the lock for that
@@ -258,16 +254,17 @@ class CAPABILITY("mutex") PerCpuRwMutex {
 class SCOPED_CAPABILITY PerCpuRwSharedLock {
  public:
   explicit PerCpuRwSharedLock(PerCpuRwMutex& per_cpu_rwlock)  // NOLINT
-      ACQUIRE_SHARED(per_cpu_rwlock) {
-    current_cpu_lock_ = &per_cpu_rwlock.get_lock();
-    current_cpu_lock_->lock();
+      ACQUIRE_SHARED(per_cpu_rwlock)
+      : current_cpu_lock_(&per_cpu_rwlock.get_lock()) {
+    current_cpu_lock_->lock.lock_shared();
   }
 
   ~PerCpuRwSharedLock() RELEASE() {
-    current_cpu_lock_->unlock();
+    current_cpu_lock_->lock.unlock_shared();
   }
+
  private:
-  rw_spinlock* current_cpu_lock_;
+  PerCpuRwMutex::PaddedLock* current_cpu_lock_;
 };
 
 template <class Container>

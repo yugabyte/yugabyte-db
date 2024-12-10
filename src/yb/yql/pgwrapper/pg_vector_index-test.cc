@@ -55,7 +55,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
       // TODO(vector_index) Remove it when multi-tablet vector indexes will be supported
       create_suffix = " SPLIT INTO 1 TABLETS";
     }
-    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector VERSION '0.4.4-yb-1.2'"));
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
     RETURN_NOT_OK(conn.Execute(
         "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))" + create_suffix));
 
