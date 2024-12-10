@@ -527,7 +527,6 @@ You can use only one of the following arguments to connect to your Oracle instan
         -v is_live_migration=1 \
         -v is_live_migration_fall_back=1 \
         -v replication_group='<replication_group>' \
-        -v original_owner_of_tables='<original_owner_of_tables>'
         -f <path_to_the_script>
    ```
 
@@ -564,7 +563,6 @@ You can use only one of the following arguments to connect to your Oracle instan
         -v is_live_migration=1 \
         -v is_live_migration_fall_back=1 \
         -v replication_group='<replication_group>' \
-        -v original_owner_of_tables='<original_owner_of_tables>' \
         -f <path_to_the_script>
    ```
 
