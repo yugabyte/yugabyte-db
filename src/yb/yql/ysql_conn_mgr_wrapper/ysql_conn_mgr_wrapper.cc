@@ -95,6 +95,12 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, true,
     "When false, the older auth-passthrough implementation is used."
     );
 
+DEFINE_NON_RUNTIME_uint64(ysql_conn_mgr_log_max_size, 0,
+    "Max ysql connection manager log size(in bytes) after which the log file gets rolled over");
+
+DEFINE_NON_RUNTIME_uint64(ysql_conn_mgr_log_rotate_interval, 0,
+    "Duration(in secs) after which ysql connection manager log will get rolled over");
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {

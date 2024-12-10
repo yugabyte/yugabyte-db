@@ -30,6 +30,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+DECLARE_bool(cdc_enable_implicit_checkpointing);
+
 using std::vector;
 using std::string;
 
@@ -516,6 +518,20 @@ TEST_F(CDCSDKStreamTest, TestStreamRetentionWithTableDeletion) {
         return (resp->table_info_size() == 0);
       },
       MonoDelta::FromSeconds(60), "Waiting for stream metadata update with no table info."));
+}
+
+TEST_F(CDCSDKStreamTest, TestDisallowImplicitStreamCreationWhenFlagDisabled) {
+  constexpr int num_tservers = 1;
+  ASSERT_OK(SetUpWithParams(num_tservers, /* num_masters */ 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_implicit_checkpointing) = false;
+
+  constexpr auto num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+
+  ASSERT_NOK_STR_CONTAINS(
+      CreateConsistentSnapshotStream(
+          CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::IMPLICIT),
+      "Stream creation with IMPLICIT checkpointing is disabled");
 }
 
 }  // namespace cdc

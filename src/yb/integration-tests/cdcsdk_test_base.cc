@@ -56,6 +56,7 @@ using std::string;
 
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_string(pgsql_proxy_bind_address);
+DECLARE_bool(cdc_enable_implicit_checkpointing);
 
 namespace yb {
 using client::YBClient;
@@ -162,6 +163,7 @@ Status CDCSDKTestBase::SetUpWithParams(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = cdc_populate_safepoint_record;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_implicit_checkpointing) = true;
   // Set max_replication_slots to a large value so that we don't run out of them during tests and
   // don't have to do cleanups after every test case.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;

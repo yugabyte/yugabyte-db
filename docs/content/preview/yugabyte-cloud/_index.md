@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB Aeon
 headerTitle: YugabyteDB Aeon
-linkTitle: YugabyteDB Aeon
+linkTitle: Overview
 headcontent: Fully managed YugabyteDB-as-a-Service
 aliases:
   - /preview/deploy/yugabyte-cloud/
@@ -10,11 +10,8 @@ menu:
     identifier: yugabyte-cloud
     parent: yugabytedb-managed
     weight: 1
-    params:
-      classes: separator
 type: indexpage
 breadcrumbDisable: true
-resourcesIntro: Quick Links
 cascade:
   unversioned: true
 ---
