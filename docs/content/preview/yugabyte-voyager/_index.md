@@ -34,8 +34,8 @@ Use YugabyteDB Voyager to manage end-to-end database migration, including cluste
   {{< sections/3-box-card
     title="Learn how it works"
     description="Learn about features, source and target databases, and the migration workflow."
-    buttonText="Overview"
-    buttonUrl="overview/"
+    buttonText="Introduction"
+    buttonUrl="introduction/"
   >}}
 
   {{< sections/3-box-card
