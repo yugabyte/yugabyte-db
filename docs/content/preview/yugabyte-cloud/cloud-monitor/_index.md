@@ -3,7 +3,6 @@ title: Alerts and monitoring in YugabyteDB Aeon
 headerTitle: Alerts and monitoring
 linkTitle: Alerts and monitoring
 description: Set alerts and monitor your YugabyteDB Aeon clusters.
-image: /images/section_icons/explore/monitoring.png
 headcontent: Set alerts and monitor cluster performance and activity
 aliases:
   - /preview/yugabyte-cloud/cloud-monitor/logging-export/

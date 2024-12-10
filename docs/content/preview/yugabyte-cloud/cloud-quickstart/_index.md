@@ -4,7 +4,6 @@ headerTitle: Quick start
 linkTitle: Quick start
 headcontent: Sign up for YugabyteDB Aeon and create a free Sandbox cluster
 description: Get started using YugabyteDB Aeon in less than five minutes.
-image: /images/section_icons/index/quick_start.png
 layout: single
 type: docs
 menu:

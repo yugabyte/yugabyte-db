@@ -49,6 +49,6 @@ Use YugabyteDB Voyager to manage end-to-end database migration, including cluste
     title="Tune performance"
     description="Tune parameters to make migration jobs run faster."
     buttonText="performance"
-    buttonUrl="performance/"
+    buttonUrl="reference/performance/"
   >}}
 {{< /sections/3-boxes >}}
