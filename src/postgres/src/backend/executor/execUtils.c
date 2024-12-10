@@ -254,6 +254,14 @@ FreeExecutorState(EState *estate)
 		estate->es_partition_directory = NULL;
 	}
 
+	ListCell *lc;
+	foreach (lc, estate->yb_es_pk_proutes)
+	{
+		PartitionTupleRouting *proute = lfirst(lc);
+		ExecCleanupTupleRouting(NULL /* mtstate */, proute);
+	}
+	list_free(estate->yb_es_pk_proutes);
+
 	/*
 	 * Free the per-query memory context, thereby releasing all working
 	 * memory, including the EState node itself.

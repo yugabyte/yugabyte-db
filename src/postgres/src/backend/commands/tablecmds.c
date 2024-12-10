@@ -9774,16 +9774,6 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * Validity checks (permission checks wait till we have the column
 	 * numbers)
 	 */
-	/*
-	 * YB_TODO(feat): begin: Remove after adding support for foreign keys that reference
-	 * partitioned tables
-	 */
-	if (pkrel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-		ereport(ERROR, (errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						errmsg("cannot reference partitioned table \"%s\"",
-							   RelationGetRelationName(pkrel))));
-	/* YB_TODO(feat): end */
-
 	if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 	{
 		if (!recurse)
@@ -12289,6 +12279,7 @@ typedef struct YbFKTriggerScanDescData
 	int buffered_tuples_size;
 	int current_tuple_idx;
 	bool all_tuples_processed;
+	EState *estate;
 	TupleTableSlot* buffered_tuples[];
 } YbFKTriggerScanDescData;
 
@@ -12335,7 +12326,7 @@ YbGetNext(YbFKTriggerScanDesc desc, TupleTableSlot *slot)
 				ExecDropSingleTupleTableSlot(new_slot);
 				break;
 			}
-			YbAddTriggerFKReferenceIntent(desc->trigger, desc->fk_rel, new_slot);
+			YbAddTriggerFKReferenceIntent(desc->trigger, desc->fk_rel, new_slot, desc->estate);
 			desc->buffered_tuples[desc->buffered_tuples_size++] = new_slot;
 		}
 	}
@@ -12374,7 +12365,19 @@ YbFKTriggerScanBegin(TableScanDesc scan,
 					  &YbFKTriggerScanVTableIsYugaByteEnabled :
 					  &YbFKTriggerScanVTableNotYugaByteEnabled;
 	descr->per_batch_cxt = per_batch_cxt;
+
+	/* TODO(GH#25126): Postpone creating executor state until required. */
+	descr->estate = CreateExecutorState();
 	return descr;
+}
+
+static void
+YbFKTriggerScanEnd(YbFKTriggerScanDesc descr)
+{
+	Assert(descr);
+	if (descr->estate)
+		FreeExecutorState(descr->estate);
+	pfree(descr);
 }
 
 static TupleTableSlot *
@@ -12483,6 +12486,7 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_trigtuple = ExecFetchSlotHeapTuple(ybSlot, false, NULL);
 		trigdata.tg_trigslot = ybSlot;
 		trigdata.tg_trigger = &trig;
+		trigdata.estate = fk_scan->estate;
 
 		fcinfo->context = (Node *) &trigdata;
 
@@ -12497,7 +12501,7 @@ validateForeignKeyConstraint(char *conname,
 	MemoryContextSwitchTo(oldcxt);
 	MemoryContextDelete(perTupCxt);
 	table_endscan(scan);
-	pfree(fk_scan);
+	YbFKTriggerScanEnd(fk_scan);
 	UnregisterSnapshot(snapshot);
 	if (!IsYBRelation(rel))
 		ExecDropSingleTupleTableSlot(slot);

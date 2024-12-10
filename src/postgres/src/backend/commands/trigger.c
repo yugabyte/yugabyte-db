@@ -4565,6 +4565,8 @@ AfterTriggerExecute(EState *estate,
 	LocTriggerData.tg_event =
 		evtshared->ats_event & (TRIGGER_EVENT_OPMASK | TRIGGER_EVENT_ROW);
 	LocTriggerData.tg_relation = rel;
+	LocTriggerData.estate = estate;
+
 	if (TRIGGER_FOR_UPDATE(LocTriggerData.tg_trigger->tgtype))
 		LocTriggerData.tg_updatedcols = evtshared->ats_modifiedcols;
 
@@ -6602,7 +6604,7 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 		}
 
 		if (IsYBBackedRelation(rel) && RI_FKey_trigger_type(trigger->tgfoid) == RI_TRIGGER_FK)
-			YbAddTriggerFKReferenceIntent(trigger, rel, newslot);
+			YbAddTriggerFKReferenceIntent(trigger, rel, newslot, estate);
 
 		afterTriggerAddEvent(&afterTriggers.query_stack[afterTriggers.query_depth].events,
 							 &new_event, &new_shared);

@@ -272,4 +272,24 @@ CREATE TABLE ref_b (
     b INT PRIMARY KEY,
     a INT REFERENCES trunc_a(a) ON DELETE CASCADE
 );
-DROP TABLE trunc_a; -- YB_TODO: port remaining tests after fixing "YB_TODO(feat): begin: Remove after adding support for foreign keys that reference partitioned tables"
+INSERT INTO ref_b VALUES (10, 0), (50, 5), (100, 10), (150, 15);
+
+TRUNCATE TABLE trunc_a1 CASCADE;
+SELECT a FROM ref_b;
+
+DROP TABLE ref_b;
+
+-- truncate a partition cascading to a partitioned table
+CREATE TABLE ref_c (
+    c INT PRIMARY KEY,
+    a INT REFERENCES trunc_a(a) ON DELETE CASCADE
+) PARTITION BY RANGE (c);
+CREATE TABLE ref_c1 PARTITION OF ref_c FOR VALUES FROM (100) TO (200);
+CREATE TABLE ref_c2 PARTITION OF ref_c FOR VALUES FROM (200) TO (300);
+INSERT INTO ref_c VALUES (100, 10), (150, 15), (200, 20), (250, 25);
+
+TRUNCATE TABLE trunc_a21 CASCADE;
+SELECT a as "from table ref_c" FROM ref_c;
+SELECT a as "from table trunc_a" FROM trunc_a ORDER BY a;
+
+DROP TABLE trunc_a, ref_c;
