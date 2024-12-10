@@ -1,9 +1,9 @@
 ---
 title: YugabyteDB Anywhere on-premises node provisioning
-headerTitle: Provisioning on-premises nodes
+headerTitle: Provision on-premises nodes
 linkTitle: Provision nodes
 description: Software requirements for on-premises provider nodes.
-headContent: How to meet the software prerequisites with automatic provisioning
+headContent: How to meet the software prerequisites for database nodes
 menu:
   v2024.1_yugabyte-platform:
     identifier: software-on-prem-1-auto
@@ -13,6 +13,12 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../software-on-prem-legacy/" class="nav-link">
+      How to Choose
+    </a>
+  </li>
+
   <li>
     <a href="../software-on-prem-auto/" class="nav-link active">
       <i class="fa-regular fa-wand-magic-sparkles"></i>
