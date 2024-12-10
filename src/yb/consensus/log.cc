@@ -268,6 +268,10 @@ DEFINE_RUNTIME_AUTO_bool(store_min_start_ht_running_txns, kLocalPersisted, false
                          "If enabled, minimum start hybrid time among running txns will be "
                          "persisted in the segment footer during closing of the segment.");
 
+DEFINE_RUNTIME_AUTO_bool(store_last_wal_op_log_ht, kLocalPersisted, false, true,
+                         "If enabled, minimum between the last appended WAL OP's ht and callback "
+                         "value will be persisted in the footer field min_start_ht_running_txns");
+
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
 
@@ -2003,6 +2007,10 @@ Status Log::SwitchToAllocatedSegment() {
     footer_builder_.set_min_start_time_running_txns(HybridTime::kInvalid.ToUint64());
   }
 
+  if (GetAtomicFlag(&FLAGS_store_last_wal_op_log_ht)) {
+    footer_builder_.set_last_wal_op_log_ht(HybridTime::kInvalid.ToUint64());
+  }
+
   // Set the new segment's schema.
   {
     SharedLock<decltype(schema_lock_)> l(schema_lock_);
@@ -2260,10 +2268,15 @@ void Log::WriteLatestMinStartTimeRunningTxnsInFooterBuilder() {
     return;
   }
   HybridTime min_start_ht_running_txns = HybridTime::kInitial;
-  if (min_start_ht_running_txns_callback_) {
+  if (min_start_ht_running_txns_callback_ && GetAtomicFlag(&FLAGS_store_last_wal_op_log_ht)) {
     min_start_ht_running_txns = min_start_ht_running_txns_callback_();
     VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from callback: " << min_start_ht_running_txns;
     DCHECK_NE(min_start_ht_running_txns, HybridTime::kInvalid);
+    if (footer_builder_.has_last_wal_op_log_ht()) {
+      auto last_wal_op_ht = HybridTime(footer_builder_.last_wal_op_log_ht());
+      VLOG_WITH_PREFIX(2) << "last WAL OP's log HT: " << last_wal_op_ht;
+      min_start_ht_running_txns = std::min(min_start_ht_running_txns, last_wal_op_ht);
+    }
   }
 
   // If callback is not specified, we want to set min_start_time_running_txns to a valid value
