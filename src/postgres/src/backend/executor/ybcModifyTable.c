@@ -586,8 +586,6 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 	Oid relfileNodeId;
 	YBCPgTableDesc ybc_table_desc = NULL;
 	TupleDesc tupdesc;
-	Bitmapset *pkey;
-	AttrNumber minattr = YBSystemFirstLowInvalidAttributeNumber + 1;
 
 	if (is_pkey)
 	{
@@ -595,7 +593,6 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 		relfileNodeId = YbGetRelfileNodeId(main_table);
 		tupdesc = RelationGetDescr(main_table);
 		RelationClose(main_table);
-		pkey = YBGetTableFullPrimaryKeyBms(main_table);
 	}
 	else
 	{
@@ -608,15 +605,30 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 	YBCPgYBTupleIdDescriptor* result = YBCCreateYBTupleIdDescriptor(dboid,
 		relfileNodeId, nattrs + (is_pkey ? 0 : 1));
 	YBCPgAttrValueDescriptor *next_attr = result->attrs;
-	for (int i = 0, col = -1; i < nattrs; ++i)
+	for (int i = 0; i < nattrs; ++i)
 	{
 		AttrNumber attnum;
 		if (is_pkey)
 		{
-			/* Primary keys can have out of order attribute numbers */
-			col = bms_next_member(pkey, col);
-			Assert(col >= 0);
-			attnum = col + minattr;
+			/*
+			 * Since Yugabyte tables are clustered on the primary key, the
+			 * primary key reuses the attribute numbers of the table. This leads
+			 * to cases where the primary key attribute numbers are neither
+			 * contiguous nor in the same order as that of the main table.
+			 * For example:
+			 *  CREATE TABLE foo (a int, b int, c int, PRIMARY KEY (c, a));
+			 * The table 'foo' would have the attribute numbers:
+			 * a: 1, b: 2, c: 3
+			 * while its primary key would have the attribute numbers:
+			 * a: 1, c: 3
+			 * The array of index col values supplied to this function is in the
+			 * order defined by the index (primary key). For the above example,
+			 * this would be [c, a]. Therefore, the column values have to be
+			 * explicitly mapped to the attribute numbers of the main table.
+			 * That is, the attribute numbers would have to be [3, 1] rather
+			 * than [1, 2] as in the case of secondary indexes.
+			 */
+			attnum = unique_index->rd_index->indkey.values[i];
 		}
 		else
 			attnum = i + 1;
