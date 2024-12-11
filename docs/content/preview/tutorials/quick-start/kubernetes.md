@@ -1,13 +1,12 @@
 ---
-title: YugabyteDB Quick start for Docker
+title: YugabyteDB Quick start for Kubernetes
 headerTitle: Quick start
-linkTitle: Docker
+linkTitle: Kubernetes
 headcontent: Create a local cluster on a single host
-description: Get started using YugabyteDB in less than five minutes on Docker.
+description: Get started using YugabyteDB in less than five minutes on Kubernetes (Minikube).
 aliases:
-  - /preview/quick-start/docker/
-  - /preview/deploy/docker/docker-compose
-
+  - /quick-start-kubernetes/
+  - /preview/quick-start/kubernetes/
 type: docs
 unversioned: true
 ---
@@ -27,7 +26,7 @@ unversioned: true
   </li>
 </ul>
 
-The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../../deploy/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -42,13 +41,13 @@ The local cluster setup on a single host is intended for development and learnin
       Linux
     </a>
   </li>
-  <li class="active">
+  <li>
     <a href="../docker/" class="nav-link">
       <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
-  <li>
+  <li class="active">
     <a href="../kubernetes/" class="nav-link">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
@@ -56,133 +55,203 @@ The local cluster setup on a single host is intended for development and learnin
   </li>
 </ul>
 
-Note that the Docker option to run local clusters is recommended only for advanced Docker users. This is due to the fact that running stateful applications such as YugabyteDB in Docker is more complex and error-prone than running stateless applications.
-
 ## Install YugabyteDB
+
+Installing YugabyteDB involves completing [prerequisites](#prerequisites), [starting Kubernetes](#start-kubernetes), and [downloading Helm chart](#download-yugabytedb-helm-chart).
 
 ### Prerequisites
 
-Before installing YugabyteDB, ensure that you have the Docker runtime installed on your localhost. To download and install Docker, select one of the following environments:
+Before installing YugabyteDB, ensure that you have the following installed:
 
-<i class="fa-brands fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
+- [Minikube](https://github.com/kubernetes/minikube) on your localhost machine.
 
-<i class="fa-brands fa-centos"></i> [Docker for CentOS](https://store.docker.com/editions/community/docker-ce-server-centos)
+    The Kubernetes version used by Minikube should be 1.18.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
 
-<i class="fa-brands fa-ubuntu"></i> [Docker for Ubuntu](https://store.docker.com/editions/community/docker-ce-server-ubuntu)
+- [kubectl](https://kubernetes.io/docs/reference/kubectl/overview/).
 
-<i class="icon-debian"></i> [Docker for Debian](https://store.docker.com/editions/community/docker-ce-server-debian)
+    To install `kubectl`, see [Install kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) in the Kubernetes documentation.
 
-<i class="fa-brands fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
+- [Helm 3.4 or later](https://helm.sh/).
 
-### Install
+    To install `helm`, see [Install helm](https://helm.sh/docs/intro/install/) in the Helm documentation.
 
-Pull the YugabyteDB container by executing the following command:
+### Start Kubernetes
 
-```sh
-docker pull yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}}
-```
+To start Kubernetes, perform the following:
+
+- Start Kubernetes using Minikube by running the following command. Note that minikube by default brings up a single-node Kubernetes environment with 2GB RAM, 2 CPUS, and a disk of 20GB. You should start minkube with at least 8GB RAM, 4 CPUs and 40GB disk, as follows:
+
+    ```sh
+    minikube start --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
+    ```
+
+    ```output
+    ...
+    Configuring environment for Kubernetes v1.14.2 on Docker 18.09.6
+    ...
+    ```
+
+- Review Kubernetes dashboard by running the following command:
+
+    ```sh
+    minikube dashboard
+    ```
+
+- Confirm that your kubectl is configured correctly by running the following command:
+
+    ```sh
+    kubectl version
+    ```
+
+    ```output
+    Client Version: version.Info{Major:"1", Minor:"14+", GitVersion:"v1.14.10-dispatcher", ...}
+    Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
+    ```
+
+- Confirm that your Helm is configured correctly by running the following command:
+
+    ```sh
+    helm version
+    ```
+
+    ```output
+    version.BuildInfo{Version:"v3.0.3", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.13.6"}
+    ```
+
+### Download YugabyteDB Helm chart
+
+To start YugabyteDB Helm chart, perform the following:
+
+- Add the charts repository using the following command:
+
+    ```sh
+    helm repo add yugabytedb https://charts.yugabyte.com
+    ```
+
+- Fetch updates from the repository by running the following command:
+
+    ```sh
+    helm repo update
+    ```
+
+- Validate the chart version, as follows:
+
+    ```sh
+    helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
+    ```
+
+    ```output
+    NAME                 CHART VERSION  APP VERSION    DESCRIPTION
+  yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}         {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
+  ```
+
+Now you are ready to create a local YugabyteDB cluster.
 
 ## Create a local cluster
 
-Use the [yugabyted](../../reference/configuration/yugabyted/) utility to create and manage universes.
-
-To create a 1-node cluster with a replication factor (RF) of 1, run the following command:
+Create a YugabyteDB cluster in Minikube using the following commands. Note that for Helm, you have to first create a namespace:
 
 ```sh
-docker run -d --name yugabyte -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042 \
- yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \
- --background=false
+kubectl create namespace yb-demo
+helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="preview" format="short">}} \
+--set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
+replicas.master=1,replicas.tserver=1 --namespace yb-demo
 ```
 
-If you are running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`. This is necessary because Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail unless you forward the port as shown. Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
-
-Run the following command to check the container status:
+Because load balancers are not available in a Minikube environment, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` remain in pending state. To disable these services, you can pass the `enableLoadBalancer=False` flag, as follows:
 
 ```sh
-docker ps
+helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="preview" format="short">}} \
+--set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
+replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo
+```
+
+### Check cluster status with kubectl
+
+Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (`yb-master-0`) and one YB-Tserver pod (`yb-tserver-0`). For details on the roles of these pods in a YugabyteDB cluster (also known as universe), see [Architecture](../../../architecture/).
+
+```sh
+kubectl --namespace yb-demo get pods
 ```
 
 ```output
-CONTAINER ID   IMAGE                               COMMAND                  CREATED         STATUS         PORTS                                                                                                                                                                                               NAMES
-c1c98c29149b   yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}}   "/sbin/tini -- bin/y…"   7 seconds ago   Up 5 seconds   0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 0.0.0.0:15433->15433/tcp, 12000/tcp   yugabyte
+NAME           READY     STATUS              RESTARTS   AGE
+yb-master-0    0/2       ContainerCreating   0          5s
+yb-tserver-0   0/2       ContainerCreating   0          4s
 ```
 
-Run the following command to check the cluster status:
+Eventually, all the pods will have the Running state, as per the following output:
+
+```output
+NAME           READY     STATUS    RESTARTS   AGE
+yb-master-0    2/2       Running   0          13s
+yb-tserver-0   2/2       Running   0          12s
+```
+
+To check the status of the three services, run the following command:
 
 ```sh
-docker exec -it yugabyte yugabyted status
+kubectl --namespace yb-demo get services
 ```
 
 ```output
-+----------------------------------------------------------------------------------------------------------+
-|                                                yugabyted                                                 |
-+----------------------------------------------------------------------------------------------------------+
-| Status              : Running.                                                                           |
-| Replication Factor  : 1                                                                                  |
-| YugabyteDB UI       : http://172.17.0.2:15433                                                            |
-| JDBC                : jdbc:postgresql://172.17.0.2:5433/yugabyte?user=yugabyte&password=yugabyte                  |
-| YSQL                : bin/ysqlsh -h 172.17.0.2  -U yugabyte -d yugabyte                                  |
-| YCQL                : bin/ycqlsh 172.17.0.2 9042 -u cassandra                                            |
-| Data Dir            : /root/var/data                                                                     |
-| Log Dir             : /root/var/logs                                                                     |
-| Universe UUID       : f4bae205-4b4f-4dcc-9656-a04354cb9301                                               |
-+----------------------------------------------------------------------------------------------------------+
+NAME                 TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)                                        AGE
+yb-master-ui         LoadBalancer   10.98.66.255   <pending>     7000:31825/TCP                                 119s
+yb-masters           ClusterIP      None           <none>        7100/TCP,7000/TCP                              119s
+yb-tserver-service   LoadBalancer   10.106.5.69    <pending>     6379:31320/TCP,9042:30391/TCP,5433:30537/TCP   119s
+yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   119s
 ```
 
-### Run Docker in a persistent volume
+### Check cluster status with Admin UI
 
-In the preceding `docker run` command, the data stored in YugabyteDB does not persist across container restarts. To make YugabyteDB persist data across restarts, you can add a volume mount option to the docker run command, as follows:
+The cluster you have created consists of two processes: [YB-Master](../../../architecture/yb-master/) that keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../../architecture/yb-tserver/) that is responsible for the actual end-user requests for data updates and queries.
 
-- Create a `~/yb_data` directory by executing the following command:
+Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process and perform certain administrative operations.
 
-  ```sh
-  mkdir ~/yb_data
-  ```
+To access the Admin UI, you first need to set up port forwarding for port 7000, as follows:
 
-- Run Docker with the volume mount option by executing the following command:
+```sh
+kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
+```
 
-  ```sh
-  docker run -d --name yugabyte \
-           -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042 \
-           -v ~/yb_data:/home/yugabyte/yb_data \
-           yugabytedb/yugabyte:latest bin/yugabyted start \
-           --base_dir=/home/yugabyte/yb_data \
-           --background=false
-  ```
+Now you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
 
-  If running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`.
+#### Overview and YB-Master status
+
+The following illustration shows the YB-Master home page with a cluster with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
+
+![master-home](/images/admin/master-home-kubernetes-rf1.png)
+
+The **Masters** section shows the 1 YB-Master along with its corresponding cloud, region, and zone placement.
+
+#### YB-TServer status
+
+Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats, as per the following illustration:
+
+![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)
 
 ## Connect to the database
 
-The cluster you have created consists of two processes:
+Using the YugabyteDB SQL shell, [ysqlsh](../../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
-- [YB-Master](../../architecture/yb-master/) keeps track of various metadata (list of tables, users, roles, permissions, and so on).
-- [YB-TServer](../../architecture/yb-tserver/) is responsible for the actual end user requests for data updates and queries.
-
-Using the YugabyteDB SQL shell, [ysqlsh](../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
-
-To open the YSQL shell, run `ysqlsh`.
+To open the YSQL shell (`ysqlsh`), run the following.
 
 ```sh
-docker exec -it yugabyte bash -c '/home/yugabyte/bin/ysqlsh --echo-queries --host $(hostname)'
+$ kubectl --namespace yb-demo exec -it yb-tserver-0 -- sh -c "cd /home/yugabyte && ysqlsh -h yb-tserver-0 --echo-queries"
 ```
 
 ```output
-ysqlsh (11.2-YB-{{< yb-version version="preview" >}}-b545)
+ysqlsh (11.2-YB-{{< yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
 ```
 
-To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../../sample-data/retail-analytics/).
-
-## Monitor your cluster
-
-When you start a cluster using yugabyted, you can monitor the cluster using the YugabyteDB UI, available at [localhost:15433](http://localhost:15433).
-
-![YugabyteDB UI Cluster Overview](/images/quick_start/quick-start-ui-overview.png)
-
-The YugabyteDB UI provides cluster status, node information, performance metrics, and more.
+To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../../../sample-data/retail-analytics/).
 
 <!--## Build a Java application
 
@@ -190,7 +259,7 @@ The YugabyteDB UI provides cluster status, node information, performance metrics
 
 Before building a Java application, perform the following:
 
-- While YugabyteDB is running, use the [yb-ctl](../../admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
+- While YugabyteDB is running, use the [yb-ctl](../../../admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
 
   ```sh
   cd <path-to-yugabytedb-installation>
@@ -217,7 +286,7 @@ Perform the following to create a sample Java project:
     cd DriverDemo
     ```
 
-1. Open the `pom.xml` file in a text editor and add the following below the `<url>` element:
+1. Open the `pom.xml` file in a text editor and add the following block below the `<url>` element:
 
     ```xml
     <properties>
@@ -464,3 +533,9 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
     ```sh
      mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.TopologyAwareLoadBalanceApp
     ```-->
+
+## YugabyteDB Kubernetes Operator
+
+A preliminary version of the YugabyteDB Kubernetes Operator is available in [Tech Preview](/preview/releases/versioning/#tech-preview-tp) (not recommended for production use) in v2024.1 and in [Early Access](/preview/releases/versioning/#early-access-ea) in v2024.2. The operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
+
+For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.

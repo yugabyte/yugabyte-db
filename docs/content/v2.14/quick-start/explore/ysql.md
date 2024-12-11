@@ -30,7 +30,7 @@ type: docs
 
 </ul>
 
-After [creating a local cluster](../../../../preview/quick-start/#create-a-local-cluster), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../api/ysql/).
+After [creating a local cluster](/preview/tutorials/quick-start/#create-a-local-cluster), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../api/ysql/).
 
 ## Set up the sample database
 

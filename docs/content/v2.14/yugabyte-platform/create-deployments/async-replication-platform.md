@@ -36,9 +36,7 @@ You can set up xCluster replication as follows:
 
 2. Select the universe you want to replicate and navigate to **Replication**.
 
-3. Click **Configure Replication** to open the dialog shown in the following illustration:<br><br>
-
-   ![Configure Replication](/images/yp/asynch-replication-2.png)<br><br>
+3. Click **Configure Replication**.
 
 4. Provide the name for your replication.
 
@@ -46,7 +44,7 @@ You can set up xCluster replication as follows:
 
 6. Click **Next: Select Tables**.
 
-7. From a list of common tables between source and target universes, select the tables you want to include in the replication and then click **Create Replication**, as per the following illustration:<br><br>
+7. From a list of common tables between source and target universes, select the tables you want to include in the replication and then click **Create Replication**, as per the following illustration:
 
    ![Create Replication](/images/yp/asynch-replication-3.png)
 
@@ -56,9 +54,9 @@ You can configure an existing replication as follows:
 
 1. Open the YugabyteDB Anywhere UI and navigate to **Universes**.
 
-2. Select the universe whose existing replication you want to modify and then navigate to **Replication**, as per the following illustration:<br><br>
+2. Select the universe whose existing replication you want to modify and then navigate to **Replication**, as per the following illustration:
 
-   ![Replication](/images/yp/asynch-replication-1.png)<br><br>
+   ![Replication](/images/yp/asynch-replication-1.png)
 
 3. Click **Configure Replication** and perform steps 4 through 7 from [How to set up replication](#set-up-replication).
 
@@ -76,35 +74,35 @@ This page allows you to do the following:
 
 - View and modify the list of tables included in the replication, as follows:
 
-  - Select **Tables**, as per the following illustration:<br><br>
+  - Select **Tables**, as per the following illustration:
 
-    ![Tables](/images/yp/asynch-replication-7.png)<br><br>
+    ![Tables](/images/yp/asynch-replication-7.png)
 
   - Click **Modify Tables**.
 
-  - Use the **Add tables to the replication** dialog to change the table selection, as per the following illustration:<br><br>
+  - Use the **Add tables to the replication** dialog to change the table selection, as per the following illustration:
 
-    ![Change Tables](/images/yp/asynch-replication-8.png)<br><br>
+    ![Change Tables](/images/yp/asynch-replication-8.png)
 
-    The following illustration shows the **Add tables to the replication** dialog after modifications:<br><br>
+    The following illustration shows the **Add tables to the replication** dialog after modifications:
 
-    ![Change Tables](/images/yp/asynch-replication-9.png)<br><br>
+    ![Change Tables](/images/yp/asynch-replication-9.png)
 
 - Configure the replication, as follows:
 
   - Click **Actions > Edit replication configuration**.
 
-  - Make changes using the **Edit cluster replication** dialog shown in the following illustration:<br><br>
+  - Make changes using the **Edit cluster replication** dialog shown in the following illustration:
 
-    ![Edit Replication](/images/yp/asynch-replication-5.png)<br><br>
+    ![Edit Replication](/images/yp/asynch-replication-5.png)
 
 - Set up monitoring by configuring alerts, as follows:
 
   - Click **Configure Alert**.
 
-  - Use the **Configure Replication Alert** dialog to enable or disable alert issued when the replication lag exceeds the specified threshold, as per the following illustration:<br><br>
+  - Use the **Configure Replication Alert** dialog to enable or disable alert issued when the replication lag exceeds the specified threshold, as per the following illustration:
 
-    ![Alert](/images/yp/asynch-replication-6.png)<br><br>
+    ![Alert](/images/yp/asynch-replication-6.png)
 
 - Pause the replication process (stop the traffic) by clicking **Pause Replication**. This is useful when performing maintenance. Paused replications can be resumed from the last checkpoint.
 

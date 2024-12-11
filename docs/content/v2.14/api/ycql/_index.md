@@ -24,10 +24,6 @@ This page covers the following YCQL features.
 - Builtin functions and Expression operators.
 - Primitive user-defined data types.
 
-## Quick Start
-
-You can explore the basics of the YCQL API using the [Quick start](quick-start/) steps.
-
 ## DDL statements
 
 Data definition language (DDL) statements are instructions for the following database operations.

@@ -80,7 +80,7 @@ A YugabyteDB Aeon account is limited to a single Sandbox cluster; you can add as
 If you want to continue testing YugabyteDB with more resource-intensive scenarios, you can:
 
 - [Request a free trial](../../yugabyte-cloud/managed-freetrial/) to try out bigger clusters with more resources.
-- Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start/).
+- Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](/preview/tutorials/quick-start/).
 - [Add a payment method](../../yugabyte-cloud/cloud-admin/cloud-billing-profile/) to upgrade to a fault-tolerant [single- or multi-region cluster](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
 
 ### Can I migrate my Sandbox to a Dedicated cluster?
@@ -133,7 +133,7 @@ Default YugabyteDB users and roles in YugabyteDB Aeon clusters
 
 ### Can I test YugabyteDB locally?
 
-To test locally, download and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start/). For accurate comparison with cloud, be sure to download the version that is running on YugabyteDB Aeon.
+To test locally, download and install YugabyteDB on a local machine. Refer to [Quick Start](/preview/tutorials/quick-start/). For accurate comparison with cloud, be sure to download the version that is running on YugabyteDB Aeon.
 
 ## Support
 
@@ -233,7 +233,7 @@ For detailed steps for configuring other popular third party tools, see [GUI cli
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver and configure it with the required connection parameters. You can also connect to YugabyteDB Aeon clusters using smart drivers.
 
-For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](../../tutorials/build-apps/).
+For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](/preview/tutorials/build-apps/).
 
 For information on obtaining the connection parameters for your cluster, refer to [Connect applications](../../yugabyte-cloud/cloud-connect/connect-applications/).
 

@@ -6,6 +6,7 @@ description: Test YugabyteDB's APIs and core features by creating a local cluste
 headcontent: Create a local cluster on a single host
 aliases:
   - /quick-start/linux/
+  - /preview/quick-start/linux/
 type: docs
 rightNav:
   hideH4: true
@@ -27,7 +28,7 @@ unversioned: true
   </li>
 </ul>
 
-The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../../deploy/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -66,7 +67,7 @@ Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [d
 
 #### ulimits
 
-Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](../../deploy/manual-deployment/system-config/#set-ulimits).
+Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](../../../deploy/manual-deployment/system-config/#set-ulimits).
 
 ### Download
 
@@ -110,7 +111,7 @@ To configure YugabyteDB, run the following shell script:
 
 ## Create a local cluster
 
-Use the [yugabyted](../../reference/configuration/yugabyted/) utility to create and manage universes.
+Use the [yugabyted](../../../reference/configuration/yugabyted/) utility to create and manage universes.
 
 To create a single-node local cluster with a replication factor (RF) of 1, run the following command:
 
@@ -126,7 +127,7 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 ### Choose your language
 
-{{< readfile "/preview/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+{{< readfile "/preview/tutorials/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
 
 ## Migrate from PostgreSQL
 
@@ -134,14 +135,14 @@ For PostgreSQL users seeking to transition to a modern, horizontally scalable da
 
 YugabyteDB enables midsize applications running on single-node instances to effortlessly migrate to a fully distributed database environment. As applications grow, YugabyteDB seamlessly transitions to distributed mode, allowing for massive scaling capabilities.
 
-[YugabyteDB Voyager](../../yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
+[YugabyteDB Voyager](../../../yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
 
-You can [install](../../yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
+You can [install](../../../yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
 
-In addition to [offline migration](../../yugabyte-voyager/migrate/migrate-steps/), the latest release of YugabyteDB Voyager introduces [live, non-disruptive migration](../../yugabyte-voyager/migrate/live-migrate/) from PostgreSQL, along with new live migration workflows featuring [fall-forward](../../yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](../../yugabyte-voyager/migrate/live-fall-back/) capabilities.
+In addition to [offline migration](../../../yugabyte-voyager/migrate/migrate-steps/), the latest release of YugabyteDB Voyager introduces [live, non-disruptive migration](../../../yugabyte-voyager/migrate/live-migrate/) from PostgreSQL, along with new live migration workflows featuring [fall-forward](../../../yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](../../../yugabyte-voyager/migrate/live-fall-back/) capabilities.
 
 Furthermore, Voyager previews a powerful migration assessment that scans existing applications and databases. This detailed assessment provides organizations with valuable insights into the readiness of their applications, data, and schema for migration, thereby accelerating modernization efforts.
 
 ## Next step
 
-[Explore YugabyteDB](../../explore/)
+[Explore YugabyteDB](../../../explore/)

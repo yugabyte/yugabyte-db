@@ -63,4 +63,4 @@ Below is a table that summarizes the features and when to use local or remote st
   </tr>
 </table>
 
-Thus, it is generally preferable to use local storage where possible for higher performance and lower costs. The [GKE section](../gke/statefulset-yaml/) shows how to deploy YugabyteDB on Kubernetes using local SSDs.
+Thus, it is generally preferable to use local storage where possible for higher performance and lower costs. The [GKE section](../single-zone/gke/statefulset-yaml/) shows how to deploy YugabyteDB on Kubernetes using local SSDs.
