@@ -6,7 +6,7 @@ description: Connect a C++ application using libpqxx
 aliases:
   - /develop/client-drivers/cpp/
   - /preview/develop/client-drivers/cpp/
-  - /preview/quick-start/build-apps/cpp/
+  - /preview/tutorials/quick-start/build-apps/cpp/
 menu:
   preview:
     identifier: cpp-ysql-driver
@@ -41,7 +41,7 @@ type: docs
 
 The tutorial assumes that you have:
 
-- installed YugabyteDB, and created a universe with YSQL enabled. If not, please follow the steps in [Quick start](../../../quick-start/).
+- installed YugabyteDB, and created a universe with YSQL enabled. If not, please follow the steps in [Quick start](/preview/tutorials/quick-start/).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have `gcc` 4.1.2 or later, clang 3.4 or later installed.
 

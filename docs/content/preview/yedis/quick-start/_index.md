@@ -5,8 +5,8 @@ linkTitle: Quick start
 description: Follow the steps to quickly get started using YEDIS (Redis-compatible) in YugabyteDB.
 image: /images/section_icons/quick_start/explore_yedis.png
 aliases:
-  - /preview/quick-start/test-redis/
-  - /preview/quick-start/test-yedis/
+  - /preview/tutorials/quick-start/test-redis/
+  - /preview/tutorials/quick-start/test-yedis/
   - /preview/yedis/quick-start/test-redis/
   - /preview/api/yedis/quick-start/
 menu:
@@ -16,7 +16,7 @@ menu:
 type: indexpage
 ---
 
-After [creating a local cluster](../../quick-start/), follow the instructions below to test YugabyteDB's Redis-compatible [YEDIS](../api/) API.
+After [creating a local cluster](/preview/tutorials/quick-start/), follow the instructions below to test YugabyteDB's Redis-compatible [YEDIS](../api/) API.
 
 [**redis-cli**](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. For ease of use, YugabyteDB ships with the 4.0.1 version of redis-cli in its `bin` directory.
 

@@ -368,7 +368,7 @@
   weight = 4
   identifier = "quick-start"
   pre = "<i class='icon-quick-start'></i>"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start-yugabytedb-managed/"
   [home.params]
     classes = "separator spacing no-transform"
     showSection = true
@@ -497,7 +497,7 @@
   name = "Quick Start"
   weight = 5
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start/"
   [preview.params]
     classes = "separator"
     showSection = true
@@ -691,7 +691,7 @@
   name = "Quick Start"
   weight = 4
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start-yugabytedb-managed/"
   [preview_tutorials.params]
     classes = "separator"
     showSection = true
@@ -1026,7 +1026,7 @@
   name = "Quick Start"
   weight = 4
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start/"
   [stable.params]
     classes = "separator"
     showSection = true
@@ -1228,7 +1228,7 @@
   name = "Quick Start"
   weight = 4
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start/"
   ["v2024.1".params]
     classes = "separator"
     showSection = true
@@ -1383,7 +1383,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start/"
   ["v2.20".params]
     classes = "separator"
     showSection = true
@@ -1529,7 +1529,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start/"
   ["v2.18".params]
     classes = "separator"
     showSection = true
@@ -1666,7 +1666,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/preview/tutorials/quick-start/"
   ["v2.14".params]
     classes = "separator"
     showSection = true

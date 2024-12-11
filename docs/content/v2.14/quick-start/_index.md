@@ -9,12 +9,12 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
+    <a href="/preview/tutorials/quick-start-yugabytedb-managed/" class="nav-link">
       Use a cloud cluster
     </a>
   </li>
   <li class="active">
-    <a href="../quick-start/" class="nav-link">
+    <a href="/preview/tutorials/quick-start/" class="nav-link">
       Use a local cluster
     </a>
   </li>
@@ -26,25 +26,25 @@ The local cluster setup on a single host is intended for development and learnin
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
-    <a href="../quick-start/" class="nav-link">
+    <a href="/preview/tutorials/quick-start/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a href="../quick-start/linux/" class="nav-link">
+    <a href="/preview/tutorials/quick-start/linux/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
   <li>
-    <a href="../quick-start/docker/" class="nav-link">
+    <a href="/preview/tutorials/quick-start/docker/" class="nav-link">
       <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li>
-    <a href="../quick-start/kubernetes/" class="nav-link">
+    <a href="/preview/tutorials/quick-start/kubernetes/" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

@@ -28,7 +28,7 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
     title="Get Started locally on your Laptop"
     description="Download and install YugabyteDB on your laptop to create clusters, test features, and explore distributed SQL."
     buttonText="Get started"
-    buttonUrl="/preview/quick-start/"
+    buttonUrl="/preview/tutorials/quick-start/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 {{< /sections/2-boxes >}}

@@ -17,12 +17,12 @@ The following projects can be used to implement Python applications using the Yu
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
 | Yugabyte Psycopg2 Driver (Recommended) | [Documentation](yugabyte-psycopg2/) <br /> [Reference page](../../reference/drivers/python/yugabyte-psycopg2-reference/)| 2.9.3 | 2.8 and above |
-| PostgreSQL Psycopg2 | [Documentation](postgres-psycopg2/) <br /> [Hello World](../../quick-start/build-apps/python/ysql-psycopg2/) <br /> [Reference page](../../reference/drivers/python/postgres-psycopg2-reference/) | 2.9.3 | 2.8 and above |
+| PostgreSQL Psycopg2 | [Documentation](postgres-psycopg2/) <br /> [Hello World](/preview/tutorials/quick-start/build-apps/python/ysql-psycopg2/) <br /> [Reference page](../../reference/drivers/python/postgres-psycopg2-reference/) | 2.9.3 | 2.8 and above |
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
-| SQLAlchemy | [Documentation](sqlalchemy/) | [Hello World](../../quick-start/build-apps/python/ysql-sqlalchemy/) |
-| Django | [Documentation](django/) | [Hello World](../../quick-start/build-apps/python/ysql-django/) |
+| SQLAlchemy | [Documentation](sqlalchemy/) | [Hello World](/preview/tutorials/quick-start/build-apps/python/ysql-sqlalchemy/) |
+| Django | [Documentation](django/) | [Hello World](/preview/tutorials/quick-start/build-apps/python/ysql-django/) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
@@ -47,8 +47,8 @@ To develop Python applications for YugabyteDB, you need the following:
   Create a python file by adding the `.py` extension to the filename. A virtual environment is also recommended to keep dependencies required by different projects separate. Make sure `pip` is also installed in the environment.
 
 - **YugabyteDB cluster**
-  - Create a free cluster on YugabyteDB Managed. Refer to [Use a cloud cluster](/preview/quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
+  - Create a free cluster on YugabyteDB Managed. Refer to [Use a cloud cluster](/preview/tutorials/quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/).
 
 ## Next steps
 

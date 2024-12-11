@@ -39,7 +39,7 @@ The [YugabyteDB PGX driver](https://pkg.go.dev/github.com/yugabyte/pgx) is a Go 
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-yb-pgx/) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/tutorials/quick-start/build-apps/go/ysql-yb-pgx/) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the YugabyteDB PGX driver.
 
@@ -107,7 +107,7 @@ conn, err := pgx.Connect(context.Background(), url)
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../quick-start/build-apps/go/ysql-pgx/#ssl-tls-configuration) for the default and supported modes.
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](/preview/tutorials/quick-start/build-apps/go/ysql-pgx/#ssl-tls-configuration) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca

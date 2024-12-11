@@ -7,7 +7,7 @@ aliases:
   - /develop/client-drivers/ruby/
   - /preview/develop/client-drivers/ruby/
   - /preview/develop/build-apps/ruby/
-  - /preview/quick-start/build-apps/ruby/
+  - /preview/tutorials/quick-start/build-apps/ruby/
 menu:
   preview:
     identifier: ysql-pg-driver

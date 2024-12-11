@@ -130,7 +130,7 @@ YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com
   title="Build Applications"
   description="Start coding in your favorite programming language using these examples."
   buttonText="Get Started"
-  buttonUrl="../tutorials/build-apps/"
+  buttonUrl="/preview/tutorials/build-apps/"
   >}}
 
   {{< sections/3-box-card

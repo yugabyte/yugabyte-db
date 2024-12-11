@@ -54,7 +54,7 @@ The YugabyteDB Psycopg2 driver can be configured with pooling as well.
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](/preview/tutorials/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
 
 ## Download the driver dependency
 

@@ -28,7 +28,7 @@ This page covers the following YCQL features.
 
 ## Quick Start
 
-You can explore the basics of the YCQL API using the [Quick start](/preview/quick-start/) steps.
+You can explore the basics of the YCQL API using the [Quick start](/preview/tutorials/quick-start/) steps.
 
 ## DDL statements
 
