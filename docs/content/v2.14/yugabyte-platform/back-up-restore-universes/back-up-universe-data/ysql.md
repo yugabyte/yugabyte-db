@@ -33,7 +33,7 @@ You can use YugabyteDB Anywhere to back up your YugabyteDB universe YSQL data.
 
 To view, [restore](../../restore-universe-data/ysql/), or delete existing backups for your universe, navigate to that universe and select **Backups**, as per the following illustration:
 
-![Create Backup](/images/yp/create-backup-new-1.png)
+![Create Backup](/images/yp/create-backup-new-ysql.png)
 
 By default, the list displays all the backups generated for the universe regardless of the time period. You can configure the list to only display the backups created during a specific time period, such as last year,  last month, and so on. In addition, you can specify a custom time period.
 
