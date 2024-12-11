@@ -2599,6 +2599,7 @@ Result<std::vector<YBTableName>> YBClient::ListTables(
 
   for (int i = 0; i < resp.tables_size(); i++) {
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
+    VLOG_WITH_FUNC(4) << "Table: " << AsString(table_info);
     DCHECK(table_info.has_namespace_());
     DCHECK(table_info.namespace_().has_name());
     DCHECK(table_info.namespace_().has_id());

@@ -262,7 +262,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
     const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;
 
   virtual Result<scoped_refptr<TableInfo>> FindTable(
-      const TableIdentifierPB& table_identifier) const = 0;
+      const TableIdentifierPB& table_identifier, bool include_deleted = true) const = 0;
 
   virtual Status IsInitDbDone(
       const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp) = 0;

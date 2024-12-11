@@ -5561,15 +5561,15 @@ Status CatalogManager::RemoveTableIdsFromTabletInfo(
 }
 
 Result<scoped_refptr<TableInfo>> CatalogManager::FindTable(
-    const TableIdentifierPB& table_identifier) const {
+    const TableIdentifierPB& table_identifier, bool include_deleted) const {
   SharedLock lock(mutex_);
-  return FindTableUnlocked(table_identifier);
+  return FindTableUnlocked(table_identifier, include_deleted);
 }
 
 Result<scoped_refptr<TableInfo>> CatalogManager::FindTableUnlocked(
-    const TableIdentifierPB& table_identifier) const {
+    const TableIdentifierPB& table_identifier, bool include_deleted) const {
   if (table_identifier.has_table_id()) {
-    return FindTableByIdUnlocked(table_identifier.table_id());
+    return FindTableByIdUnlocked(table_identifier.table_id(), include_deleted);
   }
 
   if (table_identifier.has_table_name()) {
@@ -5583,7 +5583,7 @@ Result<scoped_refptr<TableInfo>> CatalogManager::FindTableUnlocked(
     }
 
     auto it = table_names_map_.find({namespace_info->id(), table_identifier.table_name()});
-    if (it == table_names_map_.end()) {
+    if (it == table_names_map_.end() || (!include_deleted && it->second->is_deleted())) {
       return STATUS_EC_FORMAT(
           NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
           "Table $0.$1 not found", namespace_info->name(), table_identifier.table_name());
@@ -5602,9 +5602,9 @@ Result<scoped_refptr<TableInfo>> CatalogManager::FindTableById(
 }
 
 Result<scoped_refptr<TableInfo>> CatalogManager::FindTableByIdUnlocked(
-    const TableId& table_id) const {
+    const TableId& table_id, bool include_deleted) const {
   auto table = tables_->FindTableOrNull(table_id);
-  if (table == nullptr) {
+  if (table == nullptr || (!include_deleted && table->is_deleted())) {
     return STATUS_EC_FORMAT(
         NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
         "Table with identifier $0 not found", table_id);
@@ -7658,7 +7658,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
-  auto table = VERIFY_RESULT(FindTable(req->table()));
+  auto table = VERIFY_RESULT(FindTable(req->table(), !req->check_exists_only()));
   if (req->check_exists_only()) {
     return Status::OK();
   }

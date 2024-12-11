@@ -1049,16 +1049,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const NamespaceId& id) const REQUIRES_SHARED(mutex_);
 
   Result<scoped_refptr<TableInfo>> FindTableUnlocked(
-      const TableIdentifierPB& table_identifier) const REQUIRES_SHARED(mutex_);
+      const TableIdentifierPB& table_identifier, bool include_deleted = true) const
+      REQUIRES_SHARED(mutex_);
 
   Result<scoped_refptr<TableInfo>> FindTable(
-      const TableIdentifierPB& table_identifier) const override EXCLUDES(mutex_);
+      const TableIdentifierPB& table_identifier, bool include_deleted = true) const override
+      EXCLUDES(mutex_);
 
   Result<scoped_refptr<TableInfo>> FindTableById(
       const TableId& table_id) const override EXCLUDES(mutex_);
 
   Result<scoped_refptr<TableInfo>> FindTableByIdUnlocked(
-      const TableId& table_id) const REQUIRES_SHARED(mutex_);
+      const TableId& table_id, bool include_deleted = true) const REQUIRES_SHARED(mutex_);
 
   Result<TableId> GetColocatedTableId(
       const TablegroupId& tablegroup_id, ColocationId colocation_id) const EXCLUDES(mutex_);
