@@ -49,7 +49,6 @@ DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(ysql_use_packed_row_v2);
-DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint64(rocksdb_universal_compaction_always_include_size_threshold);
@@ -74,6 +73,7 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
   void TestColocated(size_t num_keys, int num_expected_records);
   void TestSstDump(bool specify_metadata, std::string* output);
   void TestAppliedSchemaVersion(bool colocated);
+  void TestDropColocatedTable(bool use_transaction);
 
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
@@ -1079,8 +1079,39 @@ TEST_P(PgPackedRowTest, DisableRepackWithNewSchema) {
   ASSERT_OK(cluster_->CompactTablets());
 }
 
+void PgPackedRowTest::TestDropColocatedTable(bool use_transaction) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
+  conn = ASSERT_RESULT(ConnectToDB("test"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test(key INT PRIMARY KEY)"));
+  if (use_transaction) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  }
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2)"));
+  if (use_transaction) {
+    ASSERT_OK(conn.CommitTransaction());
+  }
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(cluster_->RestartSync());
+
+  conn = ASSERT_RESULT(ConnectToDB("test"));
+  ASSERT_NOK(conn.Execute("SELECT * FROM test"));
+}
+
+TEST_P(PgPackedRowTest, DropColocatedTable) {
+  TestDropColocatedTable(false);
+}
+
+TEST_P(PgPackedRowTest, DropColocatedTableWithTxn) {
+  TestDropColocatedTable(true);
+}
+
 INSTANTIATE_TEST_SUITE_P(
-    PackingVersion, PgPackedRowTest, ::testing::ValuesIn(dockv::kPackedRowVersionArray),
+    , PgPackedRowTest, ::testing::ValuesIn(dockv::kPackedRowVersionArray),
     PackedRowVersionToString);
 
 } // namespace pgwrapper
