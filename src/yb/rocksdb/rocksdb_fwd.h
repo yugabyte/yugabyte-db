@@ -60,4 +60,6 @@ using MergeIteratorBuilder = MergeIteratorBuilderBase<IteratorWrapper>;
 
 using CompactionContextPtr = std::unique_ptr<CompactionContext>;
 
+class DirectWriteHandler;
+
 } // namespace rocksdb

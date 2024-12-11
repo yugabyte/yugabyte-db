@@ -139,6 +139,8 @@ class WriteQuery {
   Result<bool> PrepareExecute();
   Status DoExecute();
 
+  Status ExecuteUnlock();
+
   void NonTransactionalConflictsResolved(HybridTime now, HybridTime result);
 
   void TransactionalConflictsResolved();

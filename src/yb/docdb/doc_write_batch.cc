@@ -871,13 +871,7 @@ void DocWriteBatch::Clear() {
   cache_.Clear();
 }
 
-// TODO(lw_uc) allocate entries on the same arena, then just reference them.
-void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
-  for (auto& entry : put_batch_) {
-    auto* kv_pair = kv_pb->add_write_pairs();
-    kv_pair->dup_key(entry.key);
-    kv_pair->dup_value(entry.value);
-  }
+void DocWriteBatch::MoveLocksToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb, bool is_lock) const {
   for (const auto& entry : lock_batch_) {
     auto* lock_pair = kv_pb->add_lock_pairs();
     lock_pair->mutable_lock()->dup_key(entry.lock.key);
@@ -886,8 +880,18 @@ void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
         entry.mode == PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE
             ? dockv::DocdbLockMode::DOCDB_LOCK_EXCLUSIVE
             : dockv::DocdbLockMode::DOCDB_LOCK_SHARE);
-    lock_pair->set_is_lock(true);
+    lock_pair->set_is_lock(is_lock);
   }
+}
+
+// TODO(lw_uc) allocate entries on the same arena, then just reference them.
+void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
+  for (auto& entry : put_batch_) {
+    auto* kv_pair = kv_pb->add_write_pairs();
+    kv_pair->dup_key(entry.key);
+    kv_pair->dup_value(entry.value);
+  }
+  MoveLocksToWriteBatchPB(kv_pb, /* is_lock= */ true);
   if (has_ttl()) {
     kv_pb->set_ttl(ttl_ns());
   }

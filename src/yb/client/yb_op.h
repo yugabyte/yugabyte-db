@@ -64,7 +64,7 @@ class YBSession;
 class YBStatusCallback;
 class YBTable;
 
-YB_DEFINE_ENUM(OpGroup, (kWrite)(kLock)(kLeaderRead)(kConsistentPrefixRead));
+YB_DEFINE_ENUM(OpGroup, (kWrite)(kLock)(kUnlock)(kLeaderRead)(kConsistentPrefixRead));
 
 // A write or read operation operates on a single table and partial row.
 // The YBOperation class itself allows the batcher to get to the
@@ -593,6 +593,8 @@ class YBPgsqlLockOp : public YBPgsqlOp {
   PgsqlLockRequestPB* mutable_request() { return request_; }
 
   static YBPgsqlLockOpPtr NewLock(const std::shared_ptr<YBTable>& table, rpc::Sidecars* sidecars);
+  static YBPgsqlLockOpPtr NewUnlock(
+       const std::shared_ptr<YBTable>& table, rpc::Sidecars* sidecars);
 
  private:
   virtual Type type() const override { return PGSQL_LOCK; }

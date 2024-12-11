@@ -35,6 +35,8 @@
 
 #include "yb/rocksdb/options.h"
 
+#include "yb/tablet/transaction_intent_applier.h"
+
 #include "yb/util/bitmap.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/fast_varint.h"
@@ -209,14 +211,16 @@ TransactionalWriter::TransactionalWriter(
     IsolationLevel isolation_level,
     dockv::PartialRangeKeyIntents partial_range_key_intents,
     const Slice& replicated_batches_state,
-    IntraTxnWriteId intra_txn_write_id)
+    IntraTxnWriteId intra_txn_write_id,
+    tablet::TransactionIntentApplier* applier)
     : put_batch_(put_batch),
       hybrid_time_(hybrid_time),
       transaction_id_(transaction_id),
       isolation_level_(isolation_level),
       partial_range_key_intents_(partial_range_key_intents),
       replicated_batches_state_(replicated_batches_state),
-      intra_txn_write_id_(intra_txn_write_id) {
+      intra_txn_write_id_(intra_txn_write_id),
+      applier_(applier) {
 }
 
 // We have the following distinct types of data in this "intent store":
@@ -274,11 +278,23 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 
   // Apply advisory locks.
   for (auto& lock_pair : put_batch_.lock_pairs()) {
-    RSTATUS_DCHECK(lock_pair.is_lock(), InvalidArgument, "Unexpected unlock operation");
-    KeyBytes key(lock_pair.lock().key());
-    RETURN_NOT_OK((*this)(dockv::GetIntentTypesForLock(lock_pair.mode()),
-        dockv::AncestorDocKey::kFalse, dockv::FullDocKey::kFalse,
-        lock_pair.lock().value(), &key, dockv::LastKey::kTrue));
+    if (lock_pair.is_lock()) {
+      KeyBytes key(lock_pair.lock().key());
+      RETURN_NOT_OK((*this)(dockv::GetIntentTypesForLock(lock_pair.mode()),
+          dockv::AncestorDocKey::kFalse, dockv::FullDocKey::kFalse,
+          lock_pair.lock().value(), &key, dockv::LastKey::kTrue));
+    } else {
+      RSTATUS_DCHECK(applier_, IllegalState, "Can't apply unlock operation without applier");
+      // Unlock operation.
+      if (lock_pair.lock().key().empty()) {
+        // Unlock All.
+        RETURN_NOT_OK(applier_->RemoveAdvisoryLocks(transaction_id_, handler_));
+      } else {
+        // Unlock a specific key.
+        RETURN_NOT_OK(applier_->RemoveAdvisoryLock(transaction_id_, lock_pair.lock().key(),
+            dockv::GetIntentTypesForLock(lock_pair.mode()), handler_));
+      }
+    }
   }
 
   if (!put_batch_.read_pairs().empty()) {
@@ -453,8 +469,11 @@ IntentsWriterContext::IntentsWriterContext(const TransactionId& transaction_id)
 IntentsWriter::IntentsWriter(const Slice& start_key,
                              HybridTime file_filter_ht,
                              rocksdb::DB* intents_db,
-                             IntentsWriterContext* context)
-    : start_key_(start_key), intents_db_(intents_db), context_(*context) {
+                             IntentsWriterContext* context,
+                             bool ignore_metadata,
+                             const Slice& key_to_apply)
+    : start_key_(start_key), intents_db_(intents_db), context_(*context),
+      ignore_metadata_(ignore_metadata), key_to_apply_(key_to_apply) {
   AppendTransactionKeyPrefix(context_.transaction_id(), &txn_reverse_index_prefix_);
   txn_reverse_index_prefix_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
   reverse_index_upperbound_ = txn_reverse_index_prefix_.AsSlice();
@@ -476,7 +495,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   context_.Start(
       reverse_index_iter_.Valid() ? boost::make_optional(reverse_index_iter_.key()) : boost::none);
 
-  while (reverse_index_iter_.Valid()) {
+  for (; reverse_index_iter_.Valid(); reverse_index_iter_.Next()) {
     const Slice key_slice(reverse_index_iter_.key());
 
     if (!key_slice.starts_with(key_prefix)) {
@@ -484,11 +503,19 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
     }
 
     auto reverse_index_value = reverse_index_iter_.value();
+    // Ignore keys other than key_to_apply_ if it's specified.
+    if (!key_to_apply_.empty() && !reverse_index_value.starts_with(key_to_apply_)) {
+      continue;
+    }
 
     // Check if they key is transaction metadata (1 byte prefix + transaction id) or
     // post-apply transaction metadata (1 byte prefix + transaction id + 1 byte suffix).
     bool metadata = key_slice.size() == 1 + TransactionId::StaticSize() ||
                     key_slice.size() == 2 + TransactionId::StaticSize();
+    if (ignore_metadata_ && metadata) {
+      // For advisory lock Unlock all operation, we don't want to remove txn metadata entry.
+      continue;
+    }
     // At this point, txn_reverse_index_prefix is a prefix of key_slice. If key_slice is equal to
     // txn_reverse_index_prefix in size, then they are identical, and we are seeked to transaction
     // metadata. Otherwise, we're seeked to an intent entry in the index which we may process.
@@ -504,7 +531,11 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       return Status::OK();
     }
 
-    reverse_index_iter_.Next();
+    // The first lock specified by key_to_apply_ was found and processed.
+    if (!key_to_apply_.empty()) {
+      key_applied_ = true;
+      break;
+    }
   }
   RETURN_NOT_OK(reverse_index_iter_.status());
 

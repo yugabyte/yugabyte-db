@@ -268,6 +268,8 @@ class PgsqlLockOperation :
  private:
   void ClearResponse() override;
 
+  Result<bool> LockExists(const DocOperationApplyData& data);
+
   const TransactionOperationContext txn_op_context_;
 
   // Input arguments.

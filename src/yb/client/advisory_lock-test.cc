@@ -320,6 +320,104 @@ TEST_F(AdvisoryLockTest, LeaderChange) {
   CheckNumIntents(cluster_.get(), 3, table_->id());
 }
 
+TEST_F(AdvisoryLockTest, UnlockAllAdvisoryLocks) {
+  auto session = NewSession();
+
+  // TODO(advisory-lock #24079): This transaction should be a virtual transaction.
+  auto txn = ASSERT_RESULT(StartTransaction());
+  session->SetTransaction(txn);
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
+      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
+      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
+      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
+      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
+      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
+      /* wait= */ true, sidecars_.get()))));
+  // There would be 1 for txn metadata entry.
+  // Each lock will have 1 txn reverse index + 1 primary intent.
+  CheckNumIntents(cluster_.get(), 7, table_->id());
+
+  // Rlease all locks.
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockAllOp(
+      kDBOid, sidecars_.get()))));
+  // Should be just txn metadata left unremoved.
+  CheckNumIntents(cluster_.get(), 1, table_->id());
+
+  // Ensure all locks are actually released so that concurrent lock request won't be blocked.
+  auto session2 = NewSession();
+  auto txn2 = ASSERT_RESULT(StartTransaction());
+  session2->SetTransaction(txn2);
+  ASSERT_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
+      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
+      /* wait= */ true, sidecars_.get()))));
+  CheckNumIntents(cluster_.get(), 4, table_->id());
+
+  ASSERT_OK(Commit(txn));
+  ASSERT_OK(Commit(txn2));
+}
+
+TEST_F(AdvisoryLockTest, Unlock) {
+  auto session = NewSession();
+
+  // TODO(advisory-lock #24079): This transaction should be a virtual transaction.
+  auto txn = ASSERT_RESULT(StartTransaction());
+  session->SetTransaction(txn);
+
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
+      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
+      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
+      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
+      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
+      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
+      /* wait= */ true, sidecars_.get()))));
+  // There would be 1 for txn metadata entry.
+  // Each lock will have 1 txn reverse index + 1 primary intent.
+  CheckNumIntents(cluster_.get(), 7, table_->id());
+
+  // Releasing a non-existing share lock should fail.
+  ASSERT_TRUE(IsStatusSkipLocking(
+      session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockOp(
+        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_SHARE, sidecars_.get())))));
+
+  std::atomic_bool session2_locked{false};
+  auto session2 = NewSession();
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([session2, this, &session2_locked] {
+    auto txn2 = ASSERT_RESULT(StartTransaction());
+    session2->SetTransaction(txn2);
+    CHECK_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
+        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
+        /* wait= */ true, sidecars_.get()))));
+    session2_locked.store(true);
+  });
+
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockOp(
+      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE, sidecars_.get()))));
+  CheckNumIntents(cluster_.get(), 5, table_->id());
+  SleepFor(1s);
+  ASSERT_FALSE(session2_locked.load());
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockOp(
+      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE, sidecars_.get()))));
+  CheckNumIntents(cluster_.get(), 3, table_->id());
+  SleepFor(1s);
+  ASSERT_FALSE(session2_locked.load());
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockOp(
+      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE, sidecars_.get()))));
+  CheckNumIntents(cluster_.get(), 1, table_->id());
+  thread_holder.JoinAll();
+  ASSERT_TRUE(session2_locked.load());
+
+  // All locks have been released. Any unlock requests should fail.
+  ASSERT_TRUE(IsStatusSkipLocking(
+    session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockOp(
+        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE, sidecars_.get())))));
+  ASSERT_OK(Commit(txn));
+}
+
 class AdvisoryLocksDisabledTest : public AdvisoryLockTest {
  protected:
   void SetFlags() override {

@@ -1624,7 +1624,7 @@ Status Tablet::WriteTransactionalBatch(
       put_batch, hybrid_time, transaction_id, isolation_level,
       dockv::PartialRangeKeyIntents(metadata_->UsePartialRangeKeyIntents()),
       Slice(encoded_replicated_batch_idx_set.data(), encoded_replicated_batch_idx_set.size()),
-      last_batch_data.next_write_id);
+      last_batch_data.next_write_id, this);
   if (store_metadata) {
     writer.SetMetadataToStore(&put_batch.transaction());
   }
@@ -2273,6 +2273,54 @@ Status Tablet::RemoveIntentsImpl(
   return Status::OK();
 }
 
+Status Tablet::RemoveAdvisoryLock(
+      const TransactionId& transaction_id, const Slice& key,
+      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler* handler) {
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Transaction " << transaction_id
+      << " is going to release lock "<< key.ToDebugString()
+      << " with type " << yb::ToString(intent_types);
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  RSTATUS_DCHECK(transaction_participant_, IllegalState,
+                 "Transaction participant is not initialized");
+  HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
+  boost::optional<docdb::ApplyTransactionState> apply_state;
+  dockv::KeyBytes advisory_lock_key(key);
+  advisory_lock_key.AppendKeyEntryType(dockv::KeyEntryType::kIntentTypeSet);
+  advisory_lock_key.AppendIntentTypeSet(intent_types);
+  docdb::RemoveIntentsContext context(
+      transaction_id, static_cast<uint8_t>(RemoveReason::kUnlock));
+  docdb::IntentsWriter writer(
+      Slice(), min_running_ht,
+      intents_db_.get(), &context, /* ignore_metadata= */ true, advisory_lock_key);
+  RETURN_NOT_OK(writer.Apply(handler));
+  LOG_IF(DFATAL, !writer.key_applied()) << "Lock not found for " << key.ToDebugString();
+  return Status::OK();
+}
+
+Status Tablet::RemoveAdvisoryLocks(const TransactionId& id, rocksdb::DirectWriteHandler* handler) {
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  RSTATUS_DCHECK(transaction_participant_, IllegalState,
+                 "Transaction participant is not initialized");
+  HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
+  boost::optional<docdb::ApplyTransactionState> apply_state;
+  for (;;) {
+    docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(RemoveReason::kUnlock));
+    docdb::IntentsWriter writer(
+        apply_state ? apply_state->key : Slice(), min_running_ht,
+        intents_db_.get(), &context, /* ignore_metadata */ true);
+    RETURN_NOT_OK(writer.Apply(handler));
+
+    if (!context.apply_state().active()) {
+      break;
+    }
+    apply_state = std::move(context.apply_state());
+  }
+  return Status::OK();
+}
 
 Status Tablet::RemoveIntents(
     const RemoveIntentsData& data, RemoveReason reason, const TransactionId& id) {

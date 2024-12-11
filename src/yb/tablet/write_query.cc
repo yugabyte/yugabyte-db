@@ -579,8 +579,6 @@ Result<bool> WriteQuery::PgsqlPrepareLock() {
   VLOG_WITH_FUNC(2) << "transaction=" << write_batch.transaction().DebugString();
   for (const auto& req : pgsql_lock_batch) {
     VLOG_WITH_FUNC(4) << req.DebugString();
-    // TODO(advisory-lock #25195): Remove this check when supporting release lock.
-    SCHECK(req.is_lock(), InvalidArgument, "Unexpected unlock operation");
     if (doc_ops_.empty()) {
       txn_op_ctx = VERIFY_RESULT(tablet->CreateTransactionOperationContext(
           write_batch.transaction(),
@@ -594,7 +592,7 @@ Result<bool> WriteQuery::PgsqlPrepareLock() {
     RETURN_NOT_OK(lock_op->Init(resp, table_info->doc_read_context));
     doc_ops_.emplace_back(std::move(lock_op));
   }
-  return true;
+  return client_request_->pgsql_lock_batch().begin()->is_lock();
 }
 
 void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
@@ -609,6 +607,10 @@ void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
   }
 
   if (!prepare_result.get()) {
+    if (query_ptr->execute_mode_ == ExecuteMode::kPgsqlLock) {
+      query_ptr->ExecuteDone(query_ptr->ExecuteUnlock());
+      return;
+    }
     StartSynchronization(std::move(query_ptr->self_), Status::OK());
     return;
   }
@@ -665,6 +667,29 @@ docdb::ConflictManagementPolicy GetConflictManagementPolicy(
           << ": effective conflict_management_policy=" << conflict_management_policy;
 
   return conflict_management_policy;
+}
+
+Status WriteQuery::ExecuteUnlock() {
+  bool unlock_all =
+      client_request_->pgsql_lock_batch().begin()->lock_id().lock_range_column_values_size() == 0;
+  if (unlock_all) {
+    request().mutable_write_batch()->add_lock_pairs()->set_is_lock(false);
+    return Status::OK();
+  }
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  docdb::DocWriteBatch doc_write_batch(
+      tablet->doc_db(),
+      docdb::InitMarkerBehavior::kOptional,
+      scoped_read_operation_,
+      tablet->monotonic_counter());
+  docdb::DocOperationApplyData data;
+  data.doc_write_batch = &doc_write_batch;
+  for (const auto& doc_op : doc_ops_) {
+    RETURN_NOT_OK(doc_op->Apply(data));
+  }
+  data.doc_write_batch->MoveLocksToWriteBatchPB(
+      request().mutable_write_batch(), /* is_lock= */ false);
+  return Status::OK();
 }
 
 Status WriteQuery::DoExecute() {

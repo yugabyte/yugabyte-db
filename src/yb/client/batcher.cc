@@ -657,7 +657,8 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
 
   switch (op_group) {
     case OpGroup::kWrite: FALLTHROUGH_INTENDED;
-    case OpGroup::kLock:
+    case OpGroup::kLock: FALLTHROUGH_INTENDED;
+    case OpGroup::kUnlock:
       return std::make_shared<WriteRpc>(data);
     case OpGroup::kLeaderRead:
       return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG);

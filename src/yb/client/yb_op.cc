@@ -1055,6 +1055,15 @@ YBPgsqlLockOpPtr YBPgsqlLockOp::NewLock(
   return op;
 }
 
+YBPgsqlLockOpPtr YBPgsqlLockOp::NewUnlock(
+    const std::shared_ptr<YBTable>& table, rpc::Sidecars* sidecars) {
+  auto op = std::make_shared<YBPgsqlLockOp>(table, sidecars);
+  auto* req = op->mutable_request();
+  req->set_is_lock(false);
+  req->set_client(YQL_CLIENT_PGSQL);
+  return op;
+}
+
 bool YBPgsqlLockOp::succeeded() const {
   return response().status() == PgsqlResponsePB::PGSQL_STATUS_OK;
 }
@@ -1064,8 +1073,7 @@ bool YBPgsqlLockOp::applied() {
 }
 
 OpGroup YBPgsqlLockOp::group() {
-  // TODO(advisory-lock #25195): We should use a different group for locks and unlocks.
-  return OpGroup::kLock;
+  return request_->is_lock() ? OpGroup::kLock : OpGroup::kUnlock;
 }
 
 std::string YBPgsqlLockOp::ToString() const {

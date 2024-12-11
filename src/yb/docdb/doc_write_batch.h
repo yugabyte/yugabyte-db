@@ -262,6 +262,7 @@ class DocWriteBatch {
     return put_batch_;
   }
 
+  void MoveLocksToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb, bool is_lock) const;
   void MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const;
 
   // This is used in tests when measuring the number of seeks that a given update to this batch

@@ -1207,6 +1207,15 @@ class Tablet : public AbstractTablet,
   template <class Ids>
   Status RemoveIntentsImpl(const RemoveIntentsData& data, RemoveReason reason, const Ids& ids);
 
+  // Remove advisory lock intents for the given transaction id.
+  Status RemoveAdvisoryLocks(const TransactionId& id,
+                             rocksdb::DirectWriteHandler* handler) override;
+
+  // Remove the advisory lock intent with speficied key and intent_types for the given txn id.
+  Status RemoveAdvisoryLock(
+      const TransactionId& transaction_id, const Slice& key,
+      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler* handler) override;
+
   // Tries to find intent .SST files that could be deleted and remove them.
   void DoCleanupIntentFiles();
 

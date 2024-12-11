@@ -30,11 +30,13 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
 
+#include "yb/common/transaction_error.h"
 #include "yb/docdb/doc_pg_expr.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_pgapi.h"
@@ -2596,7 +2598,42 @@ void PgsqlLockOperation::ClearResponse() {
   }
 }
 
+Result<bool> PgsqlLockOperation::LockExists(const DocOperationApplyData& data) {
+  dockv::KeyBytes advisory_lock_key(encoded_doc_key_.as_slice());
+  advisory_lock_key.AppendKeyEntryType(dockv::KeyEntryType::kIntentTypeSet);
+  advisory_lock_key.AppendIntentTypeSet(GetIntentTypes(IsolationLevel::NON_TRANSACTIONAL));
+  dockv::KeyBytes txn_reverse_index_prefix;
+  AppendTransactionKeyPrefix(txn_op_context_.transaction_id, &txn_reverse_index_prefix);
+  txn_reverse_index_prefix.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
+  auto reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
+  auto iter = CreateRocksDBIterator(
+      data.doc_write_batch->doc_db().intents, &KeyBounds::kNoBounds,
+      BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
+      rocksdb::kDefaultQueryId, nullptr, &reverse_index_upperbound,
+      rocksdb::CacheRestartBlockKeys::kFalse);
+  Slice key_prefix = txn_reverse_index_prefix.AsSlice();
+  key_prefix.remove_suffix(1);
+  iter.Seek(key_prefix);
+  bool found = false;
+  while (iter.Valid()) {
+    if (!iter.key().starts_with(key_prefix)) {
+      break;
+    }
+    if (iter.value().starts_with(advisory_lock_key.AsSlice())) {
+      found = true;
+      break;
+    }
+    iter.Next();
+  }
+  RETURN_NOT_OK(iter.status());
+  return found;
+}
+
 Status PgsqlLockOperation::Apply(const DocOperationApplyData& data) {
+  if (!request_.is_lock() && !VERIFY_RESULT(LockExists(data))) {
+    return STATUS_EC_FORMAT(InternalError, TransactionError(TransactionErrorCode::kSkipLocking),
+                            "Try to release non-existing lock $0", doc_key_.ToString());
+  }
   Slice value(&(dockv::ValueEntryTypeAsChar::kRowLock), 1);
   auto& entry = data.doc_write_batch->AddLock();
   entry.lock.key = encoded_doc_key_.as_slice();

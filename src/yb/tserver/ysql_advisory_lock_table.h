@@ -34,6 +34,13 @@ class YsqlAdvisoryLocksTable {
       PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, bool wait,
       rpc::Sidecars* sidecars) EXCLUDES(mutex_);
 
+  Result<client::YBPgsqlLockOpPtr> CreateUnlockOp(
+      uint32_t db_oid, uint32_t class_oid, uint32_t objid, uint32_t objsubid,
+      PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, rpc::Sidecars* sidecars) EXCLUDES(mutex_);
+
+  Result<client::YBPgsqlLockOpPtr> CreateUnlockAllOp(
+      uint32_t db_oid, rpc::Sidecars* sidecars) EXCLUDES(mutex_);
+
  private:
   friend class AdvisoryLockTest;
 

@@ -174,7 +174,8 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     dwb.MoveToWriteBatchPB(&kv_write_batch);
     TransactionalWriter writer(
         kv_write_batch, hybrid_time, *current_txn_id_, txn_isolation_level_,
-        partial_range_key_intents, /* replicated_batches_state= */ Slice(), intra_txn_write_id_);
+        partial_range_key_intents, /* replicated_batches_state= */ Slice(), intra_txn_write_id_,
+        /* applier= */ nullptr);
     DirectWriteToWriteBatchHandler handler(rocksdb_write_batch);
     RETURN_NOT_OK(writer.Apply(&handler));
     intra_txn_write_id_ = writer.intra_txn_write_id();

@@ -62,4 +62,21 @@ Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::CreateLockOp(
   return lock;
 }
 
+Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::CreateUnlockOp(
+    uint32_t db_oid, uint32_t class_oid, uint32_t objid, uint32_t objsubid,
+    PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, rpc::Sidecars* sidecars) {
+  auto unlock = client::YBPgsqlLockOp::NewUnlock(VERIFY_RESULT(GetTable()), sidecars);
+  SetLockId(*unlock->mutable_request()->mutable_lock_id(), db_oid, class_oid, objid, objsubid);
+  unlock->mutable_request()->set_lock_mode(mode);
+  return unlock;
+}
+
+Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::CreateUnlockAllOp(
+    uint32_t db_oid, rpc::Sidecars* sidecars) {
+  auto unlock = client::YBPgsqlLockOp::NewUnlock(VERIFY_RESULT(GetTable()), sidecars);
+  unlock->mutable_request()->mutable_lock_id()->add_lock_partition_column_values()->mutable_value()
+      ->set_uint32_value(db_oid);
+  return unlock;
+}
+
 } // namespace yb

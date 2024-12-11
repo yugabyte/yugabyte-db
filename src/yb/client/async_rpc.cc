@@ -585,12 +585,14 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
     : AsyncRpcBase(data, YBConsistencyLevel::STRONG) {
   TRACE_TO(trace_, "WriteRpc initiated");
   VTRACE_TO(1, trace_, "Tablet $0 table $1", data.tablet->tablet_id(), table()->name().ToString());
+  const auto op_group = data.ops.front().yb_op->group();
 
-  if (data.ops.front().yb_op->group() == OpGroup::kLock) {
+  if (op_group == OpGroup::kLock || op_group == OpGroup::kUnlock) {
     FillOps<YBPgsqlLockOp>(
         ops_, YBOperation::Type::PGSQL_LOCK, &req_, req_.mutable_pgsql_lock_batch());
     // Set wait policy for non-blocking lock requests.
-    if (!down_cast<YBPgsqlLockOp*>(data.ops.front().yb_op.get())->mutable_request()->wait()) {
+    if (op_group == OpGroup::kLock &&
+        !down_cast<YBPgsqlLockOp*>(data.ops.front().yb_op.get())->mutable_request()->wait()) {
       req_.mutable_write_batch()->set_wait_policy(WAIT_SKIP);
     }
   } else {
