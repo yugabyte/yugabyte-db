@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.local;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -178,6 +179,130 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
     for (NodeDetails details : universe.getUniverseDetails().nodeDetailsSet) {
       assertEquals(NodeDetails.NodeState.Live, details.state);
     }
+    verifyUniverseState(universe);
+  }
+
+  @Test
+  public void testDecommissionNode() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = getGFlags();
+    userIntent.replicationFactor = 1;
+    userIntent.numNodes = 3;
+    Universe universe = createUniverse(userIntent);
+    NodeDetails nodeDetails =
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> !n.isMaster && n.isTserver)
+            .findFirst()
+            .get();
+    initYSQL(universe);
+    verifyYSQL(universe);
+    verifyUniverseState(universe);
+
+    String nodeName = nodeDetails.nodeName;
+    NodeActionFormData formData = new NodeActionFormData();
+    formData.nodeAction = NodeActionType.DECOMMISSION;
+    Result result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeName, formData);
+    checkAndWaitForTask(result);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+
+    for (NodeDetails details : universe.getUniverseDetails().nodeDetailsSet) {
+      assertEquals(NodeDetails.NodeState.Live, details.state);
+    }
+    verifyUniverseState(universe);
+  }
+
+  @Test
+  public void testDecommissionNodeMasterReplace() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = getGFlags();
+    userIntent.replicationFactor = 3;
+    userIntent.numNodes = 4;
+    Universe universe = createUniverse(userIntent);
+
+    Map<UUID, List<NodeDetails>> nodesGroupedByAzUuid =
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .collect(Collectors.groupingBy(node -> node.azUuid));
+    String nodeToRemove = null;
+    for (Map.Entry<UUID, List<NodeDetails>> entry : nodesGroupedByAzUuid.entrySet()) {
+      List<NodeDetails> nodesInAz = entry.getValue();
+      if (nodesInAz.size() > 1) {
+        nodeToRemove =
+            nodesInAz.stream().filter(n -> n.isMaster && n.isTserver).findFirst().get().nodeName;
+        break;
+      }
+    }
+    initYSQL(universe);
+    verifyYSQL(universe);
+    verifyUniverseState(universe);
+
+    NodeActionFormData formData = new NodeActionFormData();
+    formData.nodeAction = NodeActionType.DECOMMISSION;
+    Result result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeToRemove, formData);
+    checkAndWaitForTask(result);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+
+    // Verify that we spwan up a new master.
+    assertEquals(
+        3,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.isMaster && n.state.equals(NodeDetails.NodeState.Live))
+            .count());
+    for (NodeDetails details : universe.getUniverseDetails().nodeDetailsSet) {
+      assertEquals(NodeDetails.NodeState.Live, details.state);
+    }
+    verifyUniverseState(universe);
+  }
+
+  @Test
+  public void testDecommissionNodeReadReplica() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = getGFlags();
+    userIntent.replicationFactor = 1;
+    userIntent.numNodes = 2;
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+
+    UniverseDefinitionTaskParams.UserIntent rrIntent = getDefaultUserIntent();
+    rrIntent.replicationFactor = 1;
+    rrIntent.numNodes = 2;
+    doAddReadReplica(universe, rrIntent);
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    verifyYSQL(universe);
+    verifyUniverseState(universe);
+    Pair<Long, Long> primaryCounts =
+        verifyNodeDetails(universe, universe.getUniverseDetails().getPrimaryCluster());
+    Pair<Long, Long> asyncCounts =
+        verifyNodeDetails(universe, universe.getUniverseDetails().getReadOnlyClusters().get(0));
+
+    UniverseDefinitionTaskParams.Cluster asyncCluster =
+        universe.getUniverseDetails().getReadOnlyClusters().get(0);
+    String nodeToRemove =
+        universe.getNodes().stream()
+            .filter(n -> n.placementUuid.equals(asyncCluster.uuid))
+            .findFirst()
+            .orElseThrow()
+            .getNodeName();
+
+    NodeActionFormData formData = new NodeActionFormData();
+    formData.nodeAction = NodeActionType.DECOMMISSION;
+    Result result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeToRemove, formData);
+    checkAndWaitForTask(result);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    log.info("universe definition json {}", universe.getUniverseDetailsJson());
+
+    verifyUniverseState(universe);
+
+    Pair<Long, Long> primaryCountsFinal =
+        verifyNodeDetails(universe, universe.getUniverseDetails().getPrimaryCluster());
+    Pair<Long, Long> asyncCountsFinal =
+        verifyNodeDetails(universe, universe.getUniverseDetails().getReadOnlyClusters().get(0));
+    assertTrue(
+        "Primary cluster unchanged by this decommission", primaryCountsFinal.equals(primaryCounts));
+    assertTrue(
+        "Async cluster decreased by this decommission",
+        asyncCountsFinal.getSecond() == asyncCounts.getSecond() - 1);
+
     verifyUniverseState(universe);
   }
 

@@ -34,7 +34,8 @@ public enum NodeActionType {
   // Re-provision node with already stopped processes.
   REPROVISION,
   // REplace an node.
-  REPLACE;
+  REPLACE,
+  DECOMMISSION;
 
   NodeActionType() {
     this(false);
@@ -78,6 +79,8 @@ public enum NodeActionType {
         return completed ? "Re-provisioned" : "Re-provisioning";
       case REPLACE:
         return completed ? "Replaced" : "Replacing";
+      case DECOMMISSION:
+        return completed ? "Decommissioned" : "Decommissioning";
       default:
         return null;
     }
@@ -85,6 +88,8 @@ public enum NodeActionType {
 
   public TaskType getCommissionerTask() {
     switch (this) {
+      case DECOMMISSION:
+        return TaskType.DecommissionNode;
       case ADD:
         return TaskType.AddNodeToUniverse;
       case REMOVE:
@@ -139,6 +144,8 @@ public enum NodeActionType {
         return CustomerTask.TaskType.ReprovisionNode;
       case REPLACE:
         return CustomerTask.TaskType.Replace;
+      case DECOMMISSION:
+        return CustomerTask.TaskType.Decommission;
       default:
         return null;
     }
