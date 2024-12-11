@@ -1288,13 +1288,14 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary) {
-  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_primary));
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_for_secondary_index) {
+  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_for_secondary_index));
 }
 
-YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref, bool is_primary) {
+YBCStatus YbPgDmlAppendColumnRef(
+    YBCPgStatement handle, YBCPgExpr colref, bool is_for_secondary_index) {
   return ToYBCStatus(pgapi->DmlAppendColumnRef(
-      handle, down_cast<PgColumnRef*>(colref), is_primary));
+      handle, down_cast<PgColumnRef*>(colref), is_for_secondary_index));
 }
 
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
@@ -1571,8 +1572,9 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec
 YBCStatus YBCPgRetrieveYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,
                                    int natts, SliceVector *ybctids, size_t *count,
                                    bool *exceeded_work_mem) {
-  return ToYBCStatus(pgapi->RetrieveYbctids(handle, exec_params, natts, ybctids, count,
-                                            exceeded_work_mem));
+  return ExtractValueFromResult(
+      pgapi->RetrieveYbctids(handle, exec_params, natts, ybctids, count),
+      [exceeded_work_mem](bool retrieved) { *exceeded_work_mem = !retrieved; });
 }
 
 YBCStatus YBCPgFetchRequestedYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,

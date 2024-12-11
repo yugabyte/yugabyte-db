@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "yb/util/result.h"
@@ -22,14 +23,16 @@
 #include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_select.h"
+#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_tools.h"
 
 namespace yb::pggate {
 
 class PgSelectIndex : public PgSelect {
  public:
-  virtual Result<const std::vector<Slice>*> FetchYbctidBatch();
+  Result<std::optional<YbctidBatch>> FetchYbctidBatch();
 
-  [[nodiscard]] bool KeepOrder() const;
+  [[nodiscard]] bool IsPgSelectIndex() const override { return true; }
 
   static Result<std::unique_ptr<PgSelectIndex>> Make(
       const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id,
@@ -46,6 +49,8 @@ class PgSelectIndex : public PgSelect {
   // accessing the IndexTable via an outer select (Sequential or primary scans)
   Status PrepareSubquery(
         const PgObjectId& index_id, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req);
+
+  virtual Result<const std::vector<Slice>*> DoFetchYbctidBatch();
 };
 
 }  // namespace yb::pggate

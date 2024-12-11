@@ -20,27 +20,58 @@
 #include "yb/common/pg_system_attr.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 
+#include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb::pggate {
+namespace {
+
+class IndexYbctidProvider : public YbctidProvider {
+ public:
+  explicit IndexYbctidProvider(PgSelectIndex& index)
+      : index_(index) {}
+
+ private:
+  Result<std::optional<YbctidBatch>> Fetch() override {
+    return index_.FetchYbctidBatch();
+  }
+
+  PgSelectIndex& index_;
+};
+
+} // namespace
+
+PgDml::SecondaryIndexQueryWrapper::SecondaryIndexQueryWrapper(
+    std::unique_ptr<PgDmlRead>&& query, std::reference_wrapper<const PgExecParameters*> params)
+    : query_(std::move(query)), params_(params), is_executed_(false) {
+  DCHECK(query_);
+}
+
+Status PgDml::SecondaryIndexQueryWrapper::Execute() {
+  if (is_executed_) {
+    return Status::OK();
+  }
+  is_executed_ = true;
+  return query_->Exec(params_);
+}
 
 PgDml::PgDml(const PgSession::ScopedRefPtr& pg_session)
     : PgStatement(pg_session) {}
 
 PgDml::~PgDml() = default;
 
-//--------------------------------------------------------------------------------------------------
-
 Status PgDml::AppendTarget(PgExpr* target) {
   // Except for base_ctid, all targets should be appended to this DML.
   // base_ctid goes to the index_query.
-  return target_ && (!secondary_index_query_ || !target->is_ybbasetid())
-      ? AppendTargetPB(target) : secondary_index_query_->AppendTargetPB(target);
+  auto* secondary_index_query = SecondaryIndexQuery();
+  return target_ && (!secondary_index_query || !target->is_ybbasetid())
+      ? AppendTargetPB(target) : secondary_index_query->AppendTargetPB(target);
 }
 
 Status PgDml::AppendTargetPB(PgExpr* target) {
@@ -66,10 +97,10 @@ Status PgDml::AppendTargetPB(PgExpr* target) {
   return target->PrepareForRead(this, AllocTargetPB());
 }
 
-Status PgDml::AppendColumnRef(PgColumnRef* colref, bool is_primary) {
-  if (!is_primary) {
-    DCHECK(secondary_index_query_) << "The secondary index query is expected";
-    return secondary_index_query_->AppendColumnRef(colref, true);
+Status PgDml::AppendColumnRef(PgColumnRef* colref, bool is_for_secondary_index) {
+  if (is_for_secondary_index) {
+    return DCHECK_NOTNULL(SecondaryIndexQuery())->AppendColumnRef(
+        colref, /* is_for_secondary_index= */ false);
   }
 
   // Postgres attribute number, this is column id to refer the column from Postgres code
@@ -174,17 +205,14 @@ void PgDml::ColRefsToPB() {
   }
 }
 
-//--------------------------------------------------------------------------------------------------
-
 Status PgDml::BindColumn(int attr_num, PgExpr* attr_value) {
   // Convert to wire protocol. See explanation in pg_system_attr.h.
   if (attr_num == static_cast<int>(PgSystemAttrNum::kPGInternalYBTupleId)) {
     attr_num = static_cast<int>(PgSystemAttrNum::kYBTupleId);
   }
 
-  if (secondary_index_query_) {
-    // Bind by secondary key.
-    return secondary_index_query_->BindColumn(attr_num, attr_value);
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    return secondary_index->BindColumn(attr_num, attr_value);
   }
 
   // Find column to bind.
@@ -207,29 +235,25 @@ Status PgDml::BindColumn(int attr_num, PgExpr* attr_value) {
 }
 
 Status PgDml::ANNBindVector(PgExpr *query_vec) {
-  if (secondary_index_query_) {
-    return secondary_index_query_->ANNBindVector(query_vec);
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    return secondary_index->ANNBindVector(query_vec);
   }
 
   return down_cast<PgDmlRead*>(this)->ANNBindVector(query_vec);
 }
 
 Status PgDml::ANNSetPrefetchSize(int32_t prefetch_size) {
-  if (secondary_index_query_) {
-    return secondary_index_query_->ANNSetPrefetchSize(prefetch_size);
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    return secondary_index->ANNSetPrefetchSize(prefetch_size);
   }
 
   return down_cast<PgDmlRead*>(this)->ANNSetPrefetchSize(prefetch_size);
 }
 
-//--------------------------------------------------------------------------------------------------
-
 Status PgDml::BindTable() {
   bind_table_ = true;
   return Status::OK();
 }
-
-//--------------------------------------------------------------------------------------------------
 
 Status PgDml::AssignColumn(int attr_num, PgExpr* attr_value) {
   // Find column from targeted table.
@@ -278,36 +302,19 @@ Status PgDml::UpdateAssignPBs() {
   return Status::OK();
 }
 
-//--------------------------------------------------------------------------------------------------
-
-Result<const std::vector<Slice>*> PgDml::FetchYbctidsFromSecondaryIndex() {
-  if (!secondary_index_query_) {
-    return nullptr;
+Result<bool> PgDml::ProcessProvidedYbctids() {
+  if (secondary_index_) {
+    RETURN_NOT_OK(secondary_index_->Execute());
   }
 
-  RETURN_NOT_OK(ExecSecondaryIndexOnce());
-
-  // Not processing index request if it does not require its own doc operator.
-  //
-  // When INDEX is used for system catalog (colocated table), the index subquery does not have its
-  // own operator. The request is combined with 'this' outer SELECT using 'index_request' attribute.
-  //   (PgDocOp)doc_op_->(YBPgsqlReadOp)read_op_->(PgsqlReadRequestPB)read_request_::index_request
-  if (!secondary_index_query_->has_doc_op()) {
-    return nullptr;
-  }
-
-  // When INDEX has its own doc_op, execute it to fetch next batch of ybctids which is then used
-  // to read data from the main table.
-  return secondary_index_query_->FetchYbctidBatch();
-}
-
-Result<bool> PgDml::ProcessSecondaryIndexRequest() {
-  auto* ybctids = VERIFY_RESULT(FetchYbctidsFromSecondaryIndex());
-  if (!ybctids) {
+  auto* provider = ybctid_provider();
+  const auto data =  provider ? VERIFY_RESULT(provider->Fetch()) : std::nullopt;
+  if (!data) {
     return false;
   }
+
   // Update request with the new batch of ybctids to fetch the next batch of rows.
-  RETURN_NOT_OK(UpdateRequestWithYbctids(*ybctids, KeepOrder(secondary_index_query_->KeepOrder())));
+  RETURN_NOT_OK(UpdateRequestWithYbctids(data->ybctids, KeepOrder(data->keep_order)));
 
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
@@ -354,7 +361,7 @@ Result<bool> PgDml::FetchDataFromServer() {
     // Process the secondary index to find the next WHERE condition.
     //   DML(Table) WHERE ybctid IN (SELECT base_ybctid FROM IndexTable),
     //   The nested query would return many rows each of which yields different result-set.
-    if (!VERIFY_RESULT(ProcessSecondaryIndexRequest())) {
+    if (!VERIFY_RESULT(ProcessProvidedYbctids())) {
       // Return EOF as the nested subquery does not have any more data.
       return false;
     }
@@ -422,22 +429,23 @@ Result<bool> PgDml::GetNextRow(PgTuple* pg_tuple) {
   return false;
 }
 
-bool PgDml::has_secondary_index_with_doc_op() const {
-  return secondary_index_query_ && secondary_index_query_->has_doc_op();
-}
-
 Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
-  return secondary_index_query_ ?
-      secondary_index_query_->GetColumnInfo(attr_num) : bind_->GetColumnInfo(attr_num);
+  auto* secondary_index = SecondaryIndexQuery();
+  return secondary_index
+      ? secondary_index->GetColumnInfo(attr_num) : bind_->GetColumnInfo(attr_num);
 }
 
-Status PgDml::ExecSecondaryIndexOnce() {
-  DCHECK(secondary_index_query_);
-  if (is_secondary_index_executed_) {
-    return Status::OK();
+void PgDml::SetYbctidProvider(std::unique_ptr<YbctidProvider>&& provider) {
+  DCHECK(!secondary_index_);
+  ybctid_provider_ = std::move(provider);
+}
+
+void PgDml::SetSecondaryIndex(std::unique_ptr<PgSelectIndex>&& index_query) {
+  DCHECK(!secondary_index_ && !ybctid_provider_);
+  if (index_query->doc_op_) {
+    ybctid_provider_ = std::make_unique<IndexYbctidProvider>(*index_query);
   }
-  is_secondary_index_executed_ = true;
-  return secondary_index_query_->Exec(pg_exec_params_);
+  secondary_index_.emplace(std::move(index_query), pg_exec_params_);
 }
 
 }  // namespace yb::pggate

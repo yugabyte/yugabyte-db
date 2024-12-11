@@ -757,6 +757,19 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 	return tuple;
 }
 
+static Oid
+ybcCalculateIndexRelfileNodeId(
+	Relation rel, Relation index, const YBCPgPrepareParameters *params)
+{
+	Assert(index);
+	if (!index->rd_index->indisprimary)
+		return YbGetRelfileNodeId(index);
+	else if (params->index_only_scan ||
+			 YBCIsNonColocatedYbctidsOnlyFetch(params))
+		return YbGetRelfileNodeId(rel);
+	return InvalidOid;
+}
+
 /*
  * Set up scan plan.
  * This function sets up target and bind columns for each type of scans.
@@ -813,7 +826,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 
 	/*
 	 * We always query a colocated table if we are scanning a copartitioned
-	 * index or a system table. 
+	 * index or a system table.
 	 */
 	ybScan->prepare_params.querying_colocated_table =
 		IsSystemRelation(relation) ||
@@ -843,14 +856,9 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	if (index)
 	{
 		YBCPgPrepareParameters *params = &ybScan->prepare_params;
-		params->index_relfilenode_oid = InvalidOid;
 		params->index_only_scan = xs_want_itup;
-		if (!index->rd_index->indisprimary)
-			params->index_relfilenode_oid = YbGetRelfileNodeId(index);
-		else if (params->index_only_scan ||
-				(params->fetch_ybctids_only &&
-				 !params->querying_colocated_table))
-			params->index_relfilenode_oid = YbGetRelfileNodeId(relation);
+		params->index_relfilenode_oid =
+			ybcCalculateIndexRelfileNodeId(relation, index, params);
 	}
 
 	/* Setup descriptors for target and bind. */
@@ -2572,6 +2580,12 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 
 	YbAttnumBmsState result = ybcAttnumBmsConstruct();
 
+	if (YBCIsNonColocatedYbctidsOnlyFetch(params))
+	{
+		ybcAttnumBmsAdd(&result, YBIdxBaseTupleIdAttributeNumber);
+		return result;
+	}
+
 	/* Catalog requests do not have a pg_scan_plan and require ybctid */
 	if (!pg_scan_plan || params->fetch_ybctids_only)
 		ybcAttnumBmsAdd(&result, YBTupleIdAttributeNumber);
@@ -2655,13 +2669,9 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 				ybcAddNonDroppedAttr(target_desc, attnum, &result);
 	}
 
-	if (index && (index->rd_index->indisprimary ?
-				  (params->fetch_ybctids_only &&
-				   !params->querying_colocated_table) :
-				  !is_index_only_scan))
+	if (index && !index->rd_index->indisprimary && !is_index_only_scan)
 		ybcAttnumBmsAdd(&result, YBIdxBaseTupleIdAttributeNumber);
 
-	Assert(!ybcAttnumBmsIsEmpty(&result));
 	return result;
 }
 
@@ -2672,6 +2682,7 @@ ybcSetupTargets(YbScanDesc yb_scan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 															scan_plan,
 															pg_scan_plan);
 
+	Assert(!ybcAttnumBmsIsEmpty(&required_attrs));
 	int idx = -1;
 	while ((idx = bms_next_member(required_attrs.bms, idx)) >= 0)
 	{
@@ -2828,7 +2839,8 @@ YbDmlAppendTargets(List *colrefs, YBCPgStatement handle)
 void
 YbAppendPrimaryColumnRef(YBCPgStatement dml, YBCPgExpr colref)
 {
-	HandleYBStatus(YbPgDmlAppendColumnRef(dml, colref, true /* is_primary */));
+	HandleYBStatus(YbPgDmlAppendColumnRef(
+		dml, colref, false /* is_for_secondary_index */));
 }
 
 /*
@@ -2839,7 +2851,8 @@ YbAppendPrimaryColumnRef(YBCPgStatement dml, YBCPgExpr colref)
  * The colref list is expected to be the list of YbExprColrefDesc nodes.
  */
 static void
-YbAppendColumnRefsImpl(YBCPgStatement dml, List *colrefs, bool is_primary)
+YbAppendColumnRefsImpl(
+	YBCPgStatement dml, List *colrefs, bool is_for_secondary_index)
 {
 	ListCell   *lc;
 
@@ -2847,49 +2860,49 @@ YbAppendColumnRefsImpl(YBCPgStatement dml, List *colrefs, bool is_primary)
 	{
 		YbExprColrefDesc *param = lfirst_node(YbExprColrefDesc, lc);
 		YBCPgTypeAttrs type_attrs = { param->typmod };
-		HandleYBStatus(YbPgDmlAppendColumnRef(dml,
-											  YBCNewColumnRef(dml, param->attno,
-															  param->typid,
-															  param->collid,
-															  &type_attrs),
-											  is_primary));
+		HandleYBStatus(YbPgDmlAppendColumnRef(
+			dml,
+			YBCNewColumnRef(
+				dml, param->attno, param->typid, param->collid, &type_attrs),
+			is_for_secondary_index));
 	}
 }
 
 void
 YbAppendPrimaryColumnRefs(YBCPgStatement dml, List *colrefs)
 {
-	YbAppendColumnRefsImpl(dml, colrefs, true /* is_primary */);
+	YbAppendColumnRefsImpl(dml, colrefs, false /* is_for_secondary_index */);
 }
 
 static void
-YbApplyPushdownImpl(YBCPgStatement dml, const PushdownExprs *pushdown,
-					bool is_primary)
+YbApplyPushdownImpl(
+	YBCPgStatement dml, const PushdownExprs *pushdown,
+	bool is_for_secondary_index)
 {
 	if (!pushdown)
 		return;
 
-	YbAppendColumnRefsImpl(dml, pushdown->colrefs, is_primary);
+	YbAppendColumnRefsImpl(dml, pushdown->colrefs, is_for_secondary_index);
 
 	ListCell *lc;
 	foreach(lc, pushdown->quals)
 	{
 		Expr *expr = lfirst(lc);
-		HandleYBStatus(YbPgDmlAppendQual(dml, YBCNewEvalExprCall(dml, expr),
-										 is_primary));
+		HandleYBStatus(YbPgDmlAppendQual(
+			dml, YBCNewEvalExprCall(dml, expr), is_for_secondary_index));
 	}
 }
 
 void
 YbApplyPrimaryPushdown(YBCPgStatement dml, const PushdownExprs *pushdown)
 {
-	YbApplyPushdownImpl(dml, pushdown, true /* is_primary */);
+	YbApplyPushdownImpl(dml, pushdown, false /* is_for_secondary_index */);
 }
 
 void
 YbApplySecondaryIndexPushdown(YBCPgStatement dml, const PushdownExprs *pushdown)
 {
-	YbApplyPushdownImpl(dml, pushdown, false /* is_primary */);
+	YbApplyPushdownImpl(dml, pushdown, true /* is_for_secondary_index */);
 }
 
 /*
