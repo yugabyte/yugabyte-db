@@ -30,13 +30,15 @@ After you have created the VMs with the operating system and additional software
 
 These steps prepare the node for use by YugabyteDB Anywhere. If YugabyteDB Anywhere is already installed and running, the last step additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
 
+Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with YugabyteDB Anywhere node agent installed), sudo is no longer required.
+
 ### Download the package
 
-To begin, download the YugabyteDB Anywhere node agent package to the node you want to provision.
+To begin, download the YugabyteDB Anywhere node agent package to the node you are provisioning.
 
 #### Use the API
 
-If YugabyteDB Anywhere has been installed and is running, you can download the node agent package from YugabyteDB Anywhere using the [Download node agent API](https://api-docs.yugabyte.com/docs/yugabyte-platform/22174ba86f880-download-node-agent-installer-or-package).
+If you have already installed YugabyteDB Anywhere and it is running, you can download the node agent package from YugabyteDB Anywhere using the [Download node agent API](https://api-docs.yugabyte.com/docs/yugabyte-platform/22174ba86f880-download-node-agent-installer-or-package).
 
 ```sh
 curl -k https://<yba_address>/api/v1/node_agents/download\?downloadType\=package\&os\=LINUX\&arch\=AMD64 --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>'  > node-agent.tar.gz
@@ -111,7 +113,7 @@ Optionally, if YugabyteDB Anywhere is already installed and running, you can set
 | `customer_uuid` | Your customer ID. To view your customer ID, in YugabyteDB Anywhere, click the **Profile** icon in the top right corner of the window, and choose **User Profile**. |
 | `api_key` | Your API token. To obtain this, in YugabyteDB Anywhere, click the Profile icon in the top right corner of the window, and choose **User Profile**. Then click **Generate Key**. |
 | `node_name` | A name for the node. |
-| `node_external_fqdn` | The external FQDN or IP address of the node. Must be accessible from YugabyteDB Anywhere. |
+| `node_external_fqdn` | The fully qualified domain name or IP address of the node, must be accessible from the YugabyteDB Anywhere server. |
 
 Enter the following provider details. If the provider does not exist, node agent creates it; otherwise, it adds the node instance to the existing provider.
 
