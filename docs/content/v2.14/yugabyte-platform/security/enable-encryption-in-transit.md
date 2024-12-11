@@ -406,7 +406,7 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 
 To use TLS from a different client, consult the client-specific documentation. For example, if you are using a PostgreSQL JDBC driver to connect to YugabyteDB, see [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
 
-If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. See [Configure SSL/TLS](../../../reference/drivers/java/postgres-jdbc-reference/#configure-ssltls)
+If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. See [Configure SSL/TLS](../../../reference/drivers/java/postgres-jdbc-reference/#configure-ssltls).
 
 ### Connect to a YCQL endpoint with TLS
 
