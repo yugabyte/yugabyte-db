@@ -27,7 +27,7 @@ namespace yb::docdb {
 static const char* kTabletUUID = "4c3e1d91-5ea7-4449-8bb3-8b0a3f9ae903";
 static const char* kTxnId = "0000000000000001";
 
-class ExternalIntentsBatchWriterTest : public DocDBTestBase {
+class NonTransactionalBatchWriterTest : public DocDBTestBase {
  public:
   void SetUp() override {
     DocDBTestBase::SetUp();
@@ -41,7 +41,7 @@ class ExternalIntentsBatchWriterTest : public DocDBTestBase {
   Status SendWriteBatch(
       const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime write_ht, HybridTime batch_ht) {
     rocksdb::WriteBatch intents_write_batch;
-    ExternalIntentsBatchWriter batcher(
+    NonTransactionalBatchWriter batcher(
         put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, nullptr);
 
     rocksdb::WriteBatch regular_write_batch;
@@ -79,7 +79,7 @@ class ExternalIntentsBatchWriterTest : public DocDBTestBase {
   ThreadSafeArena arena_;
 };
 
-TEST_F(ExternalIntentsBatchWriterTest, SimpleTransaction) {
+TEST_F(NonTransactionalBatchWriterTest, SimpleTransaction) {
   // Simple test where we write two batches of external intents, then apply them.
   // Ensure that we external intents are cleaned up after applying and that regulardb entries have
   // the proper write_ids.
@@ -135,7 +135,7 @@ SubDocKey(DocKey(0x0001, ["h2"], []), [HT{ physical: 6000 w: 1 }]) -> "value2"
     )#");
 }
 
-TEST_F(ExternalIntentsBatchWriterTest, ApplyFilterOnHashExternalIntents) {
+TEST_F(NonTransactionalBatchWriterTest, ApplyFilterOnHashExternalIntents) {
   // Test using the filter_start_key and filter_end_key of ApplyExternalTransactionPB on hashed
   // keys. Ensure that only the correct intents are applied.
   docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
@@ -307,7 +307,7 @@ SubDocKey(DocKey(0x0384, ["h9"], []), [HT{ physical: 6000 w: 4 }]) -> "value18"
     )#");
 }
 
-TEST_F(ExternalIntentsBatchWriterTest, ApplyFilterOnRangedExternalIntents) {
+TEST_F(NonTransactionalBatchWriterTest, ApplyFilterOnRangedExternalIntents) {
   // Test using the filter_start_key and filter_end_key of ApplyExternalTransactionPB on ranged
   // keys. Ensure that only the correct intents are applied.
   docdb::LWKeyValueWriteBatchPB put_batch(&arena_);

@@ -1671,7 +1671,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     DCHECK(!already_applied_to_regular_db);
 
     rocksdb::WriteBatch intents_write_batch;
-    docdb::ExternalIntentsBatchWriter batcher(
+    docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
         &GetSchemaPackingProvider());
     batcher.SetFrontiers(frontiers);
