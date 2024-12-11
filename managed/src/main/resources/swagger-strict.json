@@ -12635,7 +12635,7 @@
         },
         "errorCode" : {
           "description" : "WARNING: This is a preview API that could change. Subtask error code",
-          "enum" : [ "UNKNOWN_ERROR", "INTERNAL_ERROR", "PLATFORM_SHUTDOWN", "PLATFORM_RESTARTED", "INSTALLATION_ERROR", "SERVICE_START_ERROR", "CONNECTION_ERROR" ],
+          "enum" : [ "UNKNOWN_ERROR", "INTERNAL_ERROR", "PLATFORM_SHUTDOWN", "PLATFORM_RESTARTED", "INSTALLATION_ERROR", "SERVICE_START_ERROR", "CONNECTION_ERROR", "TIMED_OUT" ],
           "type" : "string"
         },
         "errorString" : {
@@ -16544,7 +16544,7 @@
       "properties" : {
         "code" : {
           "description" : "Error code",
-          "enum" : [ "UNKNOWN_ERROR", "INTERNAL_ERROR", "PLATFORM_SHUTDOWN", "PLATFORM_RESTARTED", "INSTALLATION_ERROR", "SERVICE_START_ERROR", "CONNECTION_ERROR" ],
+          "enum" : [ "UNKNOWN_ERROR", "INTERNAL_ERROR", "PLATFORM_SHUTDOWN", "PLATFORM_RESTARTED", "INSTALLATION_ERROR", "SERVICE_START_ERROR", "CONNECTION_ERROR", "TIMED_OUT" ],
           "readOnly" : true,
           "type" : "string"
         },

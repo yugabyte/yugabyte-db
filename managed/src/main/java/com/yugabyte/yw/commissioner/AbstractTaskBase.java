@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -195,6 +196,11 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public void validateParams(boolean isFirstTry) {}
+
+  @Override
+  public Duration getQueueWaitTime(TaskType taskType, ITaskParams taskParams) {
+    return null;
+  }
 
   /**
    * We would try to parse the shell response message as JSON and return JsonNode

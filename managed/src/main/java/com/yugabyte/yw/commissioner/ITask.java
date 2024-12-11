@@ -5,10 +5,12 @@ package com.yugabyte.yw.commissioner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.time.Duration;
 import java.util.UUID;
 
 public interface ITask extends Runnable {
@@ -81,4 +83,10 @@ public interface ITask extends Runnable {
 
   /** Returns true if this task has been tried before, else false. */
   boolean isFirstTry();
+
+  /**
+   * Returns the queuing wait time for the given task type and params. Return value of null or zero
+   * means queuing is not enabled on this task.
+   */
+  Duration getQueueWaitTime(TaskType taskType, ITaskParams taskParams);
 }

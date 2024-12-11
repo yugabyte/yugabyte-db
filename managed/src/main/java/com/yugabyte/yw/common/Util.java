@@ -83,6 +83,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
+import javax.annotation.Nullable;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Value;
@@ -1402,17 +1403,21 @@ public class Util {
     return t.negate();
   }
 
-  public static <T> T doWithCorrelationId(Function<String, T> function) {
+  public static <T> T doWithCorrelationId(
+      @Nullable String correlationId, Function<String, T> function) {
     Map<String, String> originalContext = MDC.getCopyOfContextMap();
     try {
-      String correlationId = UUID.randomUUID().toString();
+      String corrId = correlationId;
+      if (StringUtils.isEmpty(corrId)) {
+        corrId = UUID.randomUUID().toString();
+      }
       Map<String, String> context = MDC.getCopyOfContextMap();
       if (context == null) {
         context = new HashMap<>();
       }
-      context.put(LogUtil.CORRELATION_ID, correlationId);
+      context.put(LogUtil.CORRELATION_ID, corrId);
       MDC.setContextMap(context);
-      return function.apply(correlationId);
+      return function.apply(corrId);
     } finally {
       if (MapUtils.isEmpty(originalContext)) {
         MDC.clear();
@@ -1420,5 +1425,9 @@ public class Util {
         MDC.setContextMap(originalContext);
       }
     }
+  }
+
+  public static <T> T doWithCorrelationId(Function<String, T> function) {
+    return doWithCorrelationId(null, function);
   }
 }
