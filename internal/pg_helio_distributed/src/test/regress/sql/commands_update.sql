@@ -682,3 +682,14 @@ SELECT helio_api.update('update', '{ "update": "single", "updates": [ { "q": { "
 -- this will collide and produce a unique conflict.
 SELECT helio_api.update('update', '{ "update": "single", "updates": [ { "q": { "value": "21020" }, "u": { "$set": { "_id": 8010 } }, "upsert": true, "multi": true }] }');
 ROLLBACK;
+
+
+-- test update for upsert error cases
+BEGIN;
+
+-- this inserts the document
+SELECT helio_api.update('update', '{ "update": "single", "updates": [ { "q": { "_id":8010 }, "u": { "value": "1" }, "upsert": true }] }');
+
+-- this will collide and produce a unique conflict.
+SELECT helio_api.update('update', '{ "update": "single", "updates": [ { "q": { "_id": 8010, "a": 5 }, "u": { "$set": { "c": 8010 } }, "upsert": true, "multi": true }] }');
+ROLLBACK;

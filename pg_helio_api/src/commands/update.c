@@ -294,7 +294,7 @@ static UpdateAllMatchingDocsResult UpdateAllMatchingDocuments(MongoCollection *c
 															  int64 shardKeyHash,
 															  ExprEvalState *
 															  stateForSchemaValidation,
-															  bool *hasObjectIdFilter);
+															  bool *hasOnlyObjectIdFilter);
 static void CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 						  int64 shardKeyHash, text *transactionId,
 						  UpdateOneResult *result, bool forceInlineWrites,
@@ -313,7 +313,7 @@ static bool SelectUpdateCandidate(uint64 collectionId, const char *shardTableNam
 								  shardKeyHash, pgbson *query,
 								  pgbson *update, pgbson *arrayFilters, pgbson *sort,
 								  UpdateCandidate *updateCandidate,
-								  bool getOriginalDocument, bool *hasObjectIdFilter);
+								  bool getOriginalDocument, bool *hasOnlyObjectIdFilter);
 static bool UpdateDocumentByTID(uint64 collectionId, const char *shardTableName, int64
 								shardKeyHash,
 								ItemPointer tid, pgbson *updatedDocument);
@@ -327,7 +327,7 @@ static void UpdateOneObjectId(MongoCollection *collection,
 static pgbson * UpsertDocument(MongoCollection *collection, pgbson *update,
 							   pgbson *query, pgbson *arrayFilters,
 							   ExprEvalState *stateForSchemaValidation,
-							   bool hasObjectIdFilter);
+							   bool hasOnlyObjectIdFilter);
 static List * ValidateQueryAndUpdateDocuments(BatchUpdateSpec *batchSpec);
 static pgbson * BuildResponseMessage(BatchUpdateResult *batchResult);
 static void BuildUpdates(BatchUpdateSpec *spec);
@@ -512,9 +512,9 @@ command_update(PG_FUNCTION_ARGS)
  */
 static inline void
 DoInsertForUpdate(MongoCollection *collection, uint64_t shardKeyHash, pgbson *objectId,
-				  pgbson *newDocument, bool hasObjectIdFilter)
+				  pgbson *newDocument, bool hasOnlyObjectIdFilter)
 {
-	if (hasObjectIdFilter)
+	if (hasOnlyObjectIdFilter)
 	{
 		InsertOrReplaceDocument(collection->collectionId, collection->shardTableName,
 								shardKeyHash, objectId, newDocument);
@@ -1201,12 +1201,12 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 		 * Update as many document as match the query. This is not a retryable
 		 * operation, so we ignore transactionId.
 		 */
-		bool hasObjectIdFilter = false;
+		bool hasOnlyObjectIdFilter = false;
 		UpdateAllMatchingDocsResult updateAllResult = UpdateAllMatchingDocuments(
 			collection, query, update, arrayFilters,
 			hasShardKeyValueFilter,
 			shardKeyHash, stateForSchemaValidation,
-			&hasObjectIdFilter);
+			&hasOnlyObjectIdFilter);
 
 		result->rowsMatched = updateAllResult.matchedDocs;
 		result->rowsModified = updateAllResult.rowsUpdated;
@@ -1224,7 +1224,7 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 			result->upsertedObjectId = UpsertDocument(collection, update, query,
 													  arrayFilters,
 													  stateForSchemaValidation,
-													  hasObjectIdFilter);
+													  hasOnlyObjectIdFilter);
 		}
 	}
 	else
@@ -1309,13 +1309,13 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 						   pgbson *updateDoc, pgbson *arrayFilters,
 						   bool hasShardKeyValueFilter, int64 shardKeyHash,
 						   ExprEvalState *schemaValidationExprEvalState,
-						   bool *hasObjectIdFilter)
+						   bool *hasOnlyObjectIdFilter)
 {
 	bool queryHasNonIdFilters = false;
 	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(queryDoc,
 																&queryHasNonIdFilters);
 
-	*hasObjectIdFilter = objectIdFilter != NULL;
+	*hasOnlyObjectIdFilter = objectIdFilter != NULL && !queryHasNonIdFilters;
 
 	const char *tableName = collection->tableName;
 	bool isLocalShardQuery = false;
@@ -1622,10 +1622,10 @@ UpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 		bool queryHasNonIdFilters = false;
 		pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(
 			updateOneParams->query, &queryHasNonIdFilters);
-		bool hasObjectIdFilter = objectIdFilter != NULL;
+		bool hasOnlyObjectIdFilter = objectIdFilter != NULL && !queryHasNonIdFilters;
 
 		DoInsertForUpdate(collection, newShardKeyHash, objectId, result->reinsertDocument,
-						  hasObjectIdFilter);
+						  hasOnlyObjectIdFilter);
 	}
 }
 
@@ -2303,7 +2303,7 @@ UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
 						  updateOneParams->returnFields != NULL ||
 						  NeedExistingDocForValidation(stateForSchemaValidation,
 													   collection);
-	bool hasObjectIdFilter = false;
+	bool hasOnlyObjectIdFilter = false;
 	bool foundDocument = SelectUpdateCandidate(collection->collectionId,
 											   collection->shardTableName,
 											   shardKeyHash,
@@ -2313,7 +2313,7 @@ UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
 											   updateOneParams->sort,
 											   &updateCandidate,
 											   getExistingDoc,
-											   &hasObjectIdFilter);
+											   &hasOnlyObjectIdFilter);
 
 	if (!foundDocument)
 	{
@@ -2342,7 +2342,7 @@ UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
 			{
 				/* shard key unchanged, upsert now */
 				DoInsertForUpdate(collection, newShardKeyHash, objectId, newDoc,
-								  hasObjectIdFilter);
+								  hasOnlyObjectIdFilter);
 				result->reinsertDocument = NULL;
 			}
 			else
@@ -2469,7 +2469,7 @@ SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64 sha
 					  pgbson *query,
 					  pgbson *update, pgbson *arrayFilters, pgbson *sort,
 					  UpdateCandidate *updateCandidate, bool getOriginalDocument,
-					  bool *hasObjectIdFilter)
+					  bool *hasOnlyObjectIdFilter)
 {
 	uint64 planId = QUERY_UPDATE_SELECT_UPDATE_CANDIDATE;
 	StringInfoData updateQuery;
@@ -2478,7 +2478,7 @@ SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64 sha
 	bool queryHasNonIdFilters = false;
 	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(query,
 																&queryHasNonIdFilters);
-	*hasObjectIdFilter = objectIdFilter != NULL;
+	*hasOnlyObjectIdFilter = objectIdFilter != NULL && !queryHasNonIdFilters;
 
 	int argCount = 2 + list_length(sortFieldDocuments);
 	argCount += objectIdFilter != NULL ? 1 : 0;
@@ -2861,7 +2861,7 @@ static pgbson *
 UpsertDocument(MongoCollection *collection, pgbson *update,
 			   pgbson *query, pgbson *arrayFilters,
 			   ExprEvalState *stateForSchemaValidation,
-			   bool hasObjectIdFilter)
+			   bool hasOnlyObjectIdFilter)
 {
 	pgbson *emptyDocument = PgbsonInitEmpty();
 	pgbson *newDoc = BsonUpdateDocument(emptyDocument, update, query, arrayFilters);
@@ -2878,7 +2878,8 @@ UpsertDocument(MongoCollection *collection, pgbson *update,
 		ValidateSchemaOnDocumentInsert(stateForSchemaValidation, &newDocValue);
 	}
 
-	DoInsertForUpdate(collection, newShardKeyHash, objectId, newDoc, hasObjectIdFilter);
+	DoInsertForUpdate(collection, newShardKeyHash, objectId, newDoc,
+					  hasOnlyObjectIdFilter);
 	return objectId;
 }
 
