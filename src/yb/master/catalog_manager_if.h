@@ -140,11 +140,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual void AssertLeaderLockAcquiredForReading() const = 0;
 
-  virtual bool IsUserTable(const TableInfo& table) const = 0;
-
   virtual NamespaceName GetNamespaceName(const NamespaceId& id) const = 0;
-
-  virtual bool IsUserIndex(const TableInfo& table) const = 0;
 
   virtual TableInfoPtr GetTableInfo(const TableId& table_id) const = 0;
 
@@ -157,8 +153,6 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   virtual Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const = 0;
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentJobs() = 0;
-
-  virtual bool IsSystemTable(const TableInfo& table) const = 0;
 
   virtual Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(const NamespaceId& id) const = 0;
 
@@ -179,8 +173,6 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   // API to check if all the live tservers have similar tablet workload.
   virtual Status IsLoadBalanced(
       const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp) = 0;
-
-  virtual bool IsUserCreatedTable(const TableInfo& table) const = 0;
 
   virtual Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) = 0;
 

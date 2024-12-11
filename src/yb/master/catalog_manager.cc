@@ -1522,7 +1522,7 @@ Status CatalogManager::CheckResource(
       }
     } else {
       if (ns.ok()) {
-        CatalogManager::SharedLock l(mutex_);
+        SharedLock l(mutex_);
         table = FindPtrOrNull(table_names_map_, {(**ns).id(), req->resource_name()});
       }
       if (table == nullptr) {
@@ -1832,8 +1832,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     // Mark the table as a system table.
     table->set_is_system();
 
-    Schema persisted_schema;
-    RETURN_NOT_OK(table->GetSchema(&persisted_schema));
+    auto persisted_schema = VERIFY_RESULT(table->GetSchema());
     if (!persisted_schema.Equals(schema)) {
       LOG_WITH_PREFIX(INFO)
           << "Updating schema of " << namespace_name << "." << table_name << " ...";
@@ -2959,7 +2958,7 @@ Status CatalogManager::DoSplitTablet(
     }
 
     // Release the catalog manager mutex before doing disk IO to register new child tablets.
-    lock.Release();
+    lock.unlock();
     if (FLAGS_TEST_delay_split_registration_secs > 0) {
       SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_split_registration_secs));
     }
@@ -3691,8 +3690,7 @@ Status PrintTableInfoForYsqlMajorVersionUpgrade(const scoped_refptr<TableInfo>& 
   }
   Schema request_schema;
   RETURN_NOT_OK(SchemaFromPB(request_schema_pb, &request_schema));
-  Schema existing_schema;
-  RETURN_NOT_OK(table->GetSchema(&existing_schema));
+  auto existing_schema = VERIFY_RESULT(table->GetSchema());
   if (!request_schema.Equals(existing_schema)) {
     // During a ysql major catalog upgrade, with columns that have been dropped, the master's Schema
     // object doesn't keep a record. However, PostgreSQL does. To restore ordering properly,
@@ -4016,8 +4014,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     index_info_builder.ApplyProperties(req.indexed_table_id(),
         req.is_local_index(), req.is_unique_index());
     if (orig_req->table_type() != PGSQL_TABLE_TYPE) {
-      Schema indexed_schema;
-      RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
+      auto indexed_schema = VERIFY_RESULT(indexed_table->GetSchema());
       RETURN_NOT_OK(index_info_builder.ApplyColumnMapping(indexed_schema, schema));
     }
   }
@@ -4772,8 +4769,7 @@ Status CatalogManager::AddTransactionStatusTablet(
     table = VERIFY_RESULT(FindTableByIdUnlocked(req->table_id()));
     write_lock = table->LockForWrite();
 
-    Schema schema;
-    RETURN_NOT_OK(table->GetSchema(&schema));
+    auto schema = VERIFY_RESULT(table->GetSchema());
 
     auto split = VERIFY_RESULT(table->FindSplittableHashPartitionForStatusTable());
     old_tablet = std::move(split.tablet);
@@ -5228,7 +5224,7 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
     // Therefore, the only thing needed here is to check whether the index info is in the indexed
     // table's schema for user indexes.
     if (pb.table_type() == YQL_TABLE_TYPE ||
-        (pb.table_type() == PGSQL_TABLE_TYPE && IsUserCreatedTable(*table))) {
+        (pb.table_type() == PGSQL_TABLE_TYPE && table->IsUserCreated(l))) {
       GetTableSchemaRequestPB get_schema_req;
       GetTableSchemaResponsePB get_schema_resp;
       get_schema_req.mutable_table()->set_table_id(indexed_table_id);
@@ -5256,8 +5252,7 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
   if (DCHECK_IS_ON() && IsYcqlTable(*table) &&
       YQLPartitionsVTable::ShouldGeneratePartitionsVTableOnChanges() &&
       FLAGS_TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done) {
-    Schema schema;
-    RETURN_NOT_OK(table->GetSchema(&schema));
+    auto schema = VERIFY_RESULT(table->GetSchema());
     // Ignore master only tests as they cannot fully create tablets.
     if (!FLAGS_TEST_create_table_in_running_state) {
       DCHECK(GetYqlPartitionsVtable().CheckTableIsPresent(table->id(), table->NumPartitions()));
@@ -5715,13 +5710,14 @@ Result<TableDescription> CatalogManager::DescribeTable(
   return result;
 }
 
-Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
-  RSTATUS_DCHECK_EQ(table_info->GetTableType(), PGSQL_TABLE_TYPE, InternalError,
-      Format("Expected YSQL table, got: $0", table_info->GetTableType()));
+Result<string> CatalogManager::GetPgSchemaName(
+    const TableId& table_id, const PersistentTableInfo& table_info) {
+  RSTATUS_DCHECK_EQ(table_info.GetTableType(), PGSQL_TABLE_TYPE, InternalError,
+                    Format("Expected YSQL table, got: $0", table_info.GetTableType()));
 
-  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info->namespace_id()));
-  uint32_t relfilenode_oid = VERIFY_RESULT(table_info->GetPgRelfilenodeOid());
-  uint32_t pg_table_oid = VERIFY_RESULT(table_info->GetPgTableOid());
+  uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
+  uint32_t relfilenode_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+  uint32_t pg_table_oid = VERIFY_RESULT(table_info.GetPgTableOid(table_id));
 
   // If this is a rewritten table, confirm that the relfilenode oid of pg_class entry with
   // OID pg_table_oid is table_oid.
@@ -5750,13 +5746,12 @@ Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
 }
 
 Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMap(
-    const TableInfoPtr& table_info) {
-  table_info->LockForRead();
+    const TableId& table_id, const PersistentTableInfo& table_info) {
   RSTATUS_DCHECK_EQ(
-      table_info->GetTableType(), PGSQL_TABLE_TYPE, InternalError,
-      Format("Expected YSQL table, got: $0", table_info->GetTableType()));
-  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info->namespace_id()));
-  uint32_t pg_table_oid = VERIFY_RESULT(table_info->GetPgTableOid());
+      table_info.pb.table_type(), PGSQL_TABLE_TYPE, InternalError,
+      Format("Expected YSQL table, got: $0", table_info.pb.table_type()));
+  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
+  uint32_t pg_table_oid = VERIFY_RESULT(table_info.GetPgTableOid(table_id));
   return sys_catalog_->ReadPgAttNameTypidMap(database_oid, pg_table_oid);
 }
 
@@ -6513,7 +6508,7 @@ Status CatalogManager::DeleteTableInternal(
   std::unordered_set<TableId> deleted_table_ids;
   for (auto& table : tables) {
     deleted_table_ids.insert(table.table_info->id());
-    if (IsSystemTable(*table.table_info)) {
+    if (table.table_info->is_system()) {
       sys_table_ids.insert(table.table_info->id());
     }
     table.write_lock.Commit();
@@ -6873,7 +6868,7 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << table->ToString() << " hide only: " << hide_only << ", all tablets done: "
       << all_tablets_done;
-  return all_tablets_done || IsSystemTable(*table) || table->IsColocatedUserTable();
+  return all_tablets_done || table->is_system() || table->IsColocatedUserTable();
 }
 
 TableInfo::WriteLock CatalogManager::PrepareTableDeletion(const TableInfoPtr& table) {
@@ -7699,7 +7694,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock for schema name lookup");
 
-    auto pgschema_name = GetPgSchemaName(table);
+    auto pgschema_name = GetPgSchemaName(table->id(), l.data());
     if (!pgschema_name.ok() || pgschema_name->empty()) {
       LOG(WARNING) << Format(
           "Unable to find schema name for YSQL table $0.$1 due to error: $2",
@@ -7893,7 +7888,8 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
 
 Status CatalogManager::ListTables(const ListTablesRequestPB* req,
                                   ListTablesResponsePB* resp) {
-  NamespaceId namespace_id;
+  NamespaceIdentifierPB req_namespace;
+  NamespaceIdentifierPB* namespace_info = nullptr;
 
   // Validate namespace.
   if (req->has_namespace_()) {
@@ -7901,7 +7897,6 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     auto ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
 
     auto ns_lock = ns->LockForRead();
-    namespace_id = ns->id();
 
     // Don't list tables with a namespace that isn't running.
     if (ns->state() != SysNamespaceEntryPB::RUNNING) {
@@ -7909,33 +7904,24 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
                 << SysNamespaceEntryPB::State_Name(ns->state()) << ")";
       return Status::OK();
     }
+
+    req_namespace.set_id(ns->id());
+    req_namespace.set_name(ns_lock->name());
+    req_namespace.set_database_type(ns_lock->pb.database_type());
+    namespace_info = &req_namespace;
   }
 
   bool has_rel_filter = req->relation_type_filter_size() > 0;
-  bool include_user_table = has_rel_filter ? false : true;
-  bool include_user_index = has_rel_filter ? false : true;
-  bool include_user_matview = has_rel_filter ? false : true;
-  bool include_colocated_parent_table = has_rel_filter ? false : true;
-  bool include_system_table = req->exclude_system_tables() ? false
-      : (has_rel_filter ? false : true);
+  std::array<bool, RelationType_ARRAYSIZE> include_type;
+  include_type.fill(!has_rel_filter);
+  include_type[SYSTEM_TABLE_RELATION] =
+      include_type[SYSTEM_TABLE_RELATION] && !req->exclude_system_tables();
 
-  for (const auto &relation : req->relation_type_filter()) {
-    if (relation == SYSTEM_TABLE_RELATION) {
-      include_system_table = true;
-    } else if (relation == USER_TABLE_RELATION) {
-      include_user_table = true;
-    } else if (relation == INDEX_TABLE_RELATION) {
-      include_user_index = true;
-    } else if (relation == MATVIEW_TABLE_RELATION) {
-      include_user_matview = true;
-    } else if (relation == COLOCATED_PARENT_TABLE_RELATION) {
-      include_colocated_parent_table = true;
-    }
+  for (auto relation : req->relation_type_filter()) {
+    include_type[relation] = true;
   }
 
   SharedLock lock(mutex_);
-  RelationType relation_type;
-
   for (const auto& table_info : tables_->GetAllTables()) {
     auto ltm = table_info->LockForRead();
 
@@ -7943,7 +7929,9 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       continue;
     }
 
-    if (!namespace_id.empty() && namespace_id != table_info->namespace_id()) {
+    const auto& table_namespace_id = ltm->namespace_id();
+    if (table_namespace_id.empty() ||
+        (!req_namespace.id().empty() && req_namespace.id() != table_namespace_id)) {
       continue; // Skip tables from other namespaces.
     }
 
@@ -7954,52 +7942,54 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       }
     }
 
-    if (IsUserIndexUnlocked(*table_info)) {
-      if (!include_user_index) {
-        continue;
-      }
+    RelationType relation_type;
+    if (table_info->IsUserIndex(ltm)) {
       relation_type = INDEX_TABLE_RELATION;
-    } else if (IsMatviewTable(*table_info)) {
-      if (!include_user_matview) {
-        continue;
-      }
+    } else if (ltm->pb.is_matview()) {
       relation_type = MATVIEW_TABLE_RELATION;
-    } else if (IsUserTableUnlocked(*table_info)) {
-      if (!include_user_table) {
-        continue;
-      }
+    } else if (table_info->IsUserTable(ltm)) {
       relation_type = USER_TABLE_RELATION;
     } else if (table_info->IsColocationParentTable()) {
-      if (!include_colocated_parent_table || !include_system_table) {
+      if (!include_type[SYSTEM_TABLE_RELATION]) {
         continue;
       }
       relation_type = COLOCATED_PARENT_TABLE_RELATION;
     } else {
-      if (!include_system_table) {
-        continue;
-      }
       relation_type = SYSTEM_TABLE_RELATION;
     }
-
-    NamespaceIdentifierPB ns_identifier;
-    ns_identifier.set_id(ltm->namespace_id());
-    auto ns = FindNamespaceUnlocked(ns_identifier);
-    if (!ns.ok() || (**ns).state() != SysNamespaceEntryPB::RUNNING) {
-      if (PREDICT_FALSE(FLAGS_TEST_return_error_if_namespace_not_found)) {
-        VERIFY_NAMESPACE_FOUND(std::move(ns), resp);
-      }
-      LOG(ERROR) << "Unable to find namespace with id " << ltm->namespace_id()
-                 << " for table " << ltm->name();
+    if (!include_type[relation_type]) {
       continue;
     }
 
-    ListTablesResponsePB::TableInfo *table = resp->add_tables();
-    {
+    ListTablesResponsePB::TableInfo* table;
+
+    if (!namespace_info || namespace_info->id() != table_namespace_id) {
+      auto ns = FindNamespaceByIdUnlocked(table_namespace_id);
+      if (!ns.ok()) {
+        if (PREDICT_FALSE(FLAGS_TEST_return_error_if_namespace_not_found)) {
+          VERIFY_NAMESPACE_FOUND(std::move(ns), resp);
+        }
+        LOG(WARNING) << "Unable to find namespace with id " << table_namespace_id
+                     << " for table " << table_info->ToStringWithState();
+        continue;
+      }
       auto namespace_lock = (**ns).LockForRead();
-      table->mutable_namespace_()->set_id((**ns).id());
-      table->mutable_namespace_()->set_name(namespace_lock->name());
-      table->mutable_namespace_()->set_database_type(namespace_lock->pb.database_type());
+      if (namespace_lock->pb.state() != SysNamespaceEntryPB::RUNNING) {
+        LOG(WARNING) << "Namespace with id " << table_namespace_id << " for table "
+                     << table_info->ToStringWithState() << " is in wrong state: "
+                     << SysNamespaceEntryPB::State_Name(namespace_lock->pb.state());
+        continue;
+      }
+      table = resp->add_tables();
+      namespace_info = table->mutable_namespace_();
+      namespace_info->set_id((**ns).id());
+      namespace_info->set_name(namespace_lock->name());
+      namespace_info->set_database_type(namespace_lock->pb.database_type());
+    } else {
+      table = resp->add_tables();
+      *table->mutable_namespace_() = *namespace_info;
     }
+
     table->set_id(table_info->id());
     table->set_name(ltm->name());
     table->set_table_type(ltm->table_type());
@@ -8169,51 +8159,6 @@ NamespaceName CatalogManager::GetNamespaceNameUnlocked(
 
 NamespaceName CatalogManager::GetNamespaceName(const scoped_refptr<TableInfo>& table) const {
   return GetNamespaceName(table->namespace_id());
-}
-
-bool CatalogManager::IsSystemTable(const TableInfo& table) const {
-  return table.is_system();
-}
-
-// True if table is created by user.
-// Table can be regular table or index in this case.
-bool CatalogManager::IsUserCreatedTable(const TableInfo& table) const {
-  SharedLock lock(mutex_);
-  return IsUserCreatedTableUnlocked(table);
-}
-
-bool CatalogManager::IsUserCreatedTableUnlocked(const TableInfo& table) const {
-  if (table.GetTableType() == PGSQL_TABLE_TYPE || table.GetTableType() == YQL_TABLE_TYPE) {
-    if (!IsSystemTable(table) && !table.IsSequencesSystemTable() &&
-        !table.IsXClusterDDLReplicationTable() &&
-        GetNamespaceNameUnlocked(table.namespace_id()) != kSystemNamespaceName &&
-        !table.IsColocationParentTable()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool CatalogManager::IsUserTable(const TableInfo& table) const {
-  SharedLock lock(mutex_);
-  return IsUserTableUnlocked(table);
-}
-
-bool CatalogManager::IsUserTableUnlocked(const TableInfo& table) const {
-  return IsUserCreatedTableUnlocked(table) && table.indexed_table_id().empty();
-}
-
-bool CatalogManager::IsUserIndex(const TableInfo& table) const {
-  SharedLock lock(mutex_);
-  return IsUserIndexUnlocked(table);
-}
-
-bool CatalogManager::IsUserIndexUnlocked(const TableInfo& table) const {
-  return IsUserCreatedTableUnlocked(table) && !table.indexed_table_id().empty();
-}
-
-bool CatalogManager::IsMatviewTable(const TableInfo& table) const {
-  return table.GetTableType() == PGSQL_TABLE_TYPE && table.is_matview();
 }
 
 void CatalogManager::NotifyPrepareDeleteTransactionTabletFinished(
@@ -9356,7 +9301,7 @@ Status CatalogManager::DeleteYsqlDBTables(
             !l->pb.is_pg_shared_table(), Corruption, "Shared table found in database");
       }
 
-      if (IsSystemTable(*table)) {
+      if (table->is_system()) {
         sys_table_ids.insert(table->id());
       }
 
@@ -10497,7 +10442,7 @@ void CatalogManager::DeleteTabletReplicas(
 
 Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<TableInfo>& table) {
   // Do not delete the system catalog tablet.
-  if (IsSystemTable(*table)) {
+  if (table->is_system()) {
     return STATUS(InvalidArgument, "It is not allowed to delete the system table tablet");
   }
   // Do not delete the tablet of a colocated table.
@@ -12662,7 +12607,7 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
     // Ignore system, colocated and deleting/deleted tables.
     {
       auto l = info->LockForRead();
-      if (IsSystemTable(*info) ||
+      if (info->is_system() ||
           info->IsColocatedUserTable() ||
           l->started_deleting()) {
         continue;

@@ -67,8 +67,7 @@ Result<VTableDataPtr> YQLTablesVTable::RetrieveData(const QLReadRequestPB& reque
     RETURN_NOT_OK(SetColumnValue(kId, uuid, &row));
 
     // Set the values for the table properties.
-    Schema schema;
-    RETURN_NOT_OK(table->GetSchema(&schema));
+    auto schema = VERIFY_RESULT(table->GetSchema());
 
     // Adjusting precision, we use milliseconds internally, CQL uses seconds.
     // Sanity check, larger TTL values should be caught during analysis.

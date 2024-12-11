@@ -663,24 +663,25 @@ Status CatalogManager::BackfillMetadataForXRepl(
   AlterTableRequestPB alter_table_req_pg_type;
   bool backfill_required = false;
   {
-    SharedLock lock(mutex_);
-    auto l = table->LockForRead();
-    if (table->IsSequencesSystemTable()) {
+    SharedLock catalog_manager_lock(mutex_);
+    auto table_lock = table->LockForRead();
+    if (table->IsSequencesSystemTable(table_lock)) {
       // Postgres doesn't know about the sequences_data table so it has neither an OID or PG schema
       return Status::OK();
     }
-    if (table->GetTableType() == PGSQL_TABLE_TYPE) {
-      if (!table->has_pg_type_oid()) {
+    if (table_lock->GetTableType() == PGSQL_TABLE_TYPE) {
+      if (!table_lock->has_pg_type_oid()) {
         LOG_WITH_FUNC(INFO) << "backfilling pg_type_oid for table " << table_id;
-        auto const att_name_typid_map = VERIFY_RESULT(GetPgAttNameTypidMap(table));
+        auto const att_name_typid_map = VERIFY_RESULT(
+            GetPgAttNameTypidMap(table_id, table_lock.data()));
         vector<uint32_t> type_oids;
         for (const auto& entry : att_name_typid_map) {
           type_oids.push_back(entry.second);
         }
-        auto ns = VERIFY_RESULT(FindNamespaceByIdUnlocked(table->namespace_id()));
+        auto ns = VERIFY_RESULT(FindNamespaceByIdUnlocked(table_lock->namespace_id()));
         auto const type_oid_info_map = VERIFY_RESULT(GetPgTypeInfo(ns, &type_oids));
         for (const auto& entry : att_name_typid_map) {
-          VLOG(1) << "For table:" << table->name() << " column:" << entry.first
+          VLOG(1) << "For table:" << table_lock->name() << " column:" << entry.first
                   << ", pg_type_oid: " << entry.second;
           auto* step = alter_table_req_pg_type.add_alter_schema_steps();
           step->set_type(::yb::master::AlterTableRequestPB_StepType::
@@ -710,10 +711,10 @@ Status CatalogManager::BackfillMetadataForXRepl(
       // is not present without backfilling it to master's disk or tservers.
       // Skip this check for colocated parent tables as they do not have pgschema names.
       if (!IsColocationParentTableId(table_id) &&
-          (backfill_required || table->pgschema_name().empty())) {
+          (backfill_required || table_lock->schema().pgschema_name().empty())) {
         LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
-        string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table));
-        VLOG(1) << "For table: " << table->name() << " found pgschema_name: " << pgschema_name;
+        string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table_id, table_lock.data()));
+        VLOG(1) << "For table: " << table_lock->name() << " found pgschema_name: " << pgschema_name;
         alter_table_req_pg_type.set_pgschema_name(pgschema_name);
         backfill_required = true;
       }
@@ -815,7 +816,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     namespace_id = req.table_id();
   }
 
-  auto ns = VERIFY_RESULT(FindNamespaceById(namespace_id));
+  NamespaceInfoPtr ns;
 
   // TODO(#19211): Validate that if the ns type is PGSQL, it must have the replication slot name in
   // the request. This can only be done after we have ensured that YSQL is the only client
@@ -823,7 +824,8 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
 
   std::vector<TableInfoPtr> tables;
   {
-    LockGuard lock(mutex_);
+    SharedLock lock(mutex_);
+    ns = VERIFY_RESULT(FindNamespaceByIdUnlocked(namespace_id));
     tables = FindAllTablesForCDCSDK(ns->id());
   }
 
@@ -858,9 +860,6 @@ Status CatalogManager::CreateNewCdcsdkStream(
     const CreateCDCStreamRequestPB& req, const std::vector<TableId>& table_ids,
     const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
     const LeaderEpoch& epoch, rpc::RpcContext* rpc) {
-  VLOG_WITH_FUNC(1) << "table_ids: " << yb::ToString(table_ids)
-                    << ", namespace_id: " << yb::ToString(namespace_id);
-
   auto start_time = MonoTime::Now();
 
   bool has_consistent_snapshot_option = false;
@@ -887,8 +886,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
   ReplicationSlotName slot_name;
   auto has_replication_slot_name = req.has_cdcsdk_ysql_replication_slot_name();
   {
-    TRACE("Acquired catalog manager lock");
     LockGuard lock(mutex_);
+    TRACE("Acquired catalog manager lock");
 
     if (has_replication_slot_name) {
       slot_name = ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name());
@@ -971,8 +970,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
     metadata->add_table_id(table_id);
     if (FLAGS_ysql_yb_enable_replica_identity && has_replication_slot_name) {
       auto table = VERIFY_RESULT(FindTableById(table_id));
-      Schema schema;
-      RETURN_NOT_OK(table->GetSchema(&schema));
+      auto schema = VERIFY_RESULT(table->GetSchema());
       PgReplicaIdentity replica_identity = schema.table_properties().replica_identity();
 
       // If atleast one of the tables in the stream has replica identity full, we will set the
@@ -1685,14 +1683,8 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
                                  << " deleted before it could be processed";
           continue;
         }
-        Schema schema;
-        auto status = table->GetSchema(&schema);
-        if (!status.ok()) {
-          LOG_WITH_FUNC(WARNING) << "Error while getting schema for table: " << table->name();
-          continue;
-        }
 
-        if (!IsTableEligibleForCDCSDKStream(table, schema)) {
+        if (!IsTableEligibleForCDCSDKStream(table, table->LockForRead(), true)) {
           RemoveTableFromCDCSDKUnprocessedMap(unprocessed_table_id, stream_info->namespace_id());
           continue;
         }
@@ -1857,17 +1849,8 @@ void CatalogManager::FindAllNonEligibleTablesInCDCSDKStream(
     if (!user_table_ids.contains(table_id)) {
       auto table_info = GetTableInfoUnlocked(table_id);
       if (table_info) {
-        Schema schema;
-        Status status = table_info->GetSchema(&schema);
-        if (!status.ok()) {
-          LOG_WITH_FUNC(WARNING) << "Error while getting schema for table: " << table_info->name();
-          // Skip this table for now, it will be revisited for removal on master restart/master
-          // leader change.
-          continue;
-        }
-
         // Re-confirm this table is not meant to be part of a CDC stream.
-        if (!IsTableEligibleForCDCSDKStream(table_info, schema)) {
+        if (!IsTableEligibleForCDCSDKStream(table_info, table_info->LockForRead(), true)) {
           LOG(INFO) << "Found a non-eligible table: " << table_info->id()
                     << ", for stream: " << stream_id;
           LockGuard lock(cdcsdk_non_eligible_table_mutex_);
@@ -2037,24 +2020,12 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
   std::vector<TableInfoPtr> tables;
 
   for (const auto& table_info : tables_->GetAllTables()) {
-    Schema schema;
-    {
-      auto ltm = table_info->LockForRead();
-      if (!ltm->visible_to_client()) {
-        continue;
-      }
-      if (ltm->namespace_id() != ns_id) {
-        continue;
-      }
-
-      auto status = SchemaFromPB(ltm->schema(), &schema);
-      if (!status.ok()) {
-        LOG_WITH_FUNC(WARNING) << "Error while getting schema for table: " << table_info->name();
-        continue;
-      }
+    auto ltm = table_info->LockForRead();
+    if (!ltm->visible_to_client() || ltm->namespace_id() != ns_id) {
+      continue;
     }
 
-    if (!IsTableEligibleForCDCSDKStream(table_info.get(), schema)) {
+    if (!IsTableEligibleForCDCSDKStream(table_info.get(), ltm, true)) {
       continue;
     }
 
@@ -2065,10 +2036,20 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
 }
 
 bool CatalogManager::IsTableEligibleForCDCSDKStream(
-    const TableInfoPtr& table_info, const std::optional<Schema>& schema) const {
-  if (schema.has_value()) {
+    const TableInfoPtr& table_info, const TableInfo::ReadLock& lock,
+    bool check_schema) const {
+  if (check_schema) {
+    auto schema_result = lock->GetSchema();
+    if (!schema_result.ok()) {
+      LOG_WITH_FUNC(DFATAL)
+          << "Error while getting schema for table " << lock->name() << ": "
+          << schema_result.status();
+      return false;
+    }
+
+    const auto& schema = *schema_result;
     bool has_pk = true;
-    for (const auto& col : schema->columns()) {
+    for (const auto& col : schema.columns()) {
       if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
         // ybrowid column is added for tables that don't have user-specified primary key.
         VLOG(1) << "Table: " << table_info->id()
@@ -2083,17 +2064,17 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
     }
 
     // Allow adding user created indexes to CDC stream.
-    if (FLAGS_TEST_cdcsdk_add_indexes_to_stream && IsUserIndexUnlocked(*table_info)) {
+    if (FLAGS_TEST_cdcsdk_add_indexes_to_stream && table_info->IsUserIndex(lock)) {
       return true;
     }
   }
 
-  if (IsMatviewTable(*table_info)) {
+  if (lock->pb.is_matview()) {
     // Materialized view should not be added as they are not supported for streaming.
     return false;
   }
 
-  if (!IsUserTableUnlocked(*table_info)) {
+  if (!table_info->IsUserTable(lock)) {
     // Non-user tables like indexes, system tables etc should not be added as they are not
     // supported for streaming.
     return false;
@@ -2238,8 +2219,7 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       // slot consumption.
       if (FLAGS_ysql_yb_enable_replica_identity && has_replication_slot_consumption) {
         auto table = VERIFY_RESULT(FindTableById(table_id));
-        Schema schema;
-        RETURN_NOT_OK(table->GetSchema(&schema));
+        auto schema = VERIFY_RESULT(table->GetSchema());
         PgReplicaIdentity replica_identity = schema.table_properties().replica_identity();
 
         stream_lock.mutable_data()->pb.mutable_replica_identity_map()->insert(
@@ -2303,23 +2283,14 @@ Status CatalogManager::ValidateStreamForTableRemoval(const CDCStreamInfoPtr& str
 
 Status CatalogManager::ValidateTableForRemovalFromCDCSDKStream(
     const scoped_refptr<TableInfo>& table, bool check_for_ineligibility) {
-  if (table == nullptr || table->LockForRead()->is_deleting()) {
+  auto lock = table != nullptr ? table->LockForRead() : TableInfo::ReadLock();
+  if (table == nullptr || lock->is_deleting()) {
     return STATUS(NotFound, "Could not find table", MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
   if (check_for_ineligibility) {
-    Schema schema;
-    Status status = table->GetSchema(&schema);
-    if (!status.ok()) {
-      return STATUS(
-          InternalError, Format("Error while getting schema for table: $0", table->name()));
-    }
-
-    {
-      SharedLock lock(mutex_);
-      if (!IsTableEligibleForCDCSDKStream(table, schema)) {
-        return STATUS(InvalidArgument, "Only allowed to remove user tables from CDC streams");
-      }
+    if (!IsTableEligibleForCDCSDKStream(table, lock, true)) {
+      return STATUS(InvalidArgument, "Only allowed to remove user tables from CDC streams");
     }
   }
 
@@ -3366,8 +3337,7 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         // table splits and concurrently we are removing such tables from stream, the child tables
         // do not get added.
         {
-          SharedLock lock(mutex_);
-          if (!IsTableEligibleForCDCSDKStream(table_info, std::nullopt)) {
+          if (!IsTableEligibleForCDCSDKStream(table_info, table_info->LockForRead(), false)) {
             LOG(INFO) << "Skipping adding children tablets to cdc state for table "
                       << producer_table_id << " as it is not meant to part of a CDC stream";
             continue;

@@ -1054,7 +1054,7 @@ void MasterPathHandlers::HandleHealthCheck(
       // 1. Redis system table.
       // 2. Transaction status table.
       // 3. Metrics table.
-      if (!master_->catalog_manager()->IsUserTable(*table) &&
+      if (!table->IsUserTable() &&
           table->GetTableType() != REDIS_TABLE_TYPE &&
           table->GetTableType() != TRANSACTION_STATUS_TABLE_TYPE &&
           !(table->namespace_id() == kSystemNamespaceId &&
@@ -2205,7 +2205,7 @@ Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetNonSystemTablets() {
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
 
   for (const auto& table : tables) {
-    if (master_->catalog_manager()->IsSystemTable(*table.get())) {
+    if (table->is_system()) {
       continue;
     }
     TabletInfos ts = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
@@ -2332,7 +2332,7 @@ Result<vector<pair<TabletInfoPtr, vector<string>>>>
 
   vector<pair<TabletInfoPtr, vector<string>>> underreplicated_tablets;
   for (const auto& table : tables) {
-    if (catalog_mgr->IsSystemTable(*table.get())) {
+    if (table->is_system()) {
       continue;
     }
     auto replication_info = VERIFY_RESULT(catalog_mgr->GetTableReplicationInfo(table));
@@ -2503,9 +2503,9 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
 
   // Get the list of user tables.
-  vector<scoped_refptr<TableInfo> > user_tables;
-  for (scoped_refptr<TableInfo> table : tables) {
-    if (master_->catalog_manager()->IsUserTable(*table)) {
+  std::vector<TableInfoPtr> user_tables;
+  for (auto& table : tables) {
+    if (table->IsUserTable()) {
       user_tables.push_back(table);
     }
   }
@@ -3404,7 +3404,7 @@ Status MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
     }
 
     TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
-    bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
+    bool is_user_table = table->IsUserCreated();
     for (const auto& tablet : tablets) {
       if (tablet->LockForRead()->is_deleted()) {
         continue;
@@ -3442,8 +3442,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
   if (max_table_count != -1) {
     int count = 0;
     for (const auto& table : tables) {
-      if (!master_->catalog_manager()->IsUserCreatedTable(*table) ||
-          table->IsColocatedUserTable()) {
+      if (!table->IsUserCreated() || table->IsColocatedUserTable()) {
         continue;
       }
 
@@ -3456,8 +3455,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
   }
 
   for (const auto& table : tables) {
-    if (!master_->catalog_manager()->IsUserCreatedTable(*table) ||
-        table->IsColocatedUserTable()) {
+    if (!table->IsUserCreated() || table->IsColocatedUserTable()) {
       // only display user created tables that are not colocated.
       continue;
     }
@@ -3574,9 +3572,9 @@ MasterPathHandlers::TableType MasterPathHandlers::GetTableType(const TableInfo& 
   // Determine the table category. Platform tables should be displayed as system tables.
   if (is_platform) {
     table_cat = kSystemTable;
-  } else if (master_->catalog_manager()->IsUserIndex(table)) {
+  } else if (table.IsUserIndex()) {
     table_cat = kUserIndex;
-  } else if (master_->catalog_manager()->IsUserTable(table)) {
+  } else if (table.IsUserTable()) {
     table_cat = kUserTable;
   } else if (table.IsColocationParentTable()) {
     table_cat = kParentTable;

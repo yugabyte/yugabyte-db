@@ -37,6 +37,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/symbolize.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 #if YB_GOOGLE_TCMALLOC
 #include <tcmalloc/malloc_extension.h>
@@ -169,7 +170,7 @@ struct ThreadStackHelper {
     // signal.
     if (left_to_collect.load(std::memory_order_acquire) > 0 &&
         !FLAGS_TEST_disable_thread_stack_collection_wait) {
-      completion_flag.TimedWait(1s);
+      completion_flag.TimedWait(1s * kTimeMultiplier);
     }
 
     while (auto entry = collected.Pop()) {

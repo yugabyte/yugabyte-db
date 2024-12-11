@@ -279,9 +279,8 @@ Status CatalogManager::AddUDTypeEntriesToPB(
     const unordered_set<NamespaceId>& namespaces) {
   // Collect all UDType entries.
   unordered_set<UDTypeId> type_ids;
-  Schema schema;
   for (const TableDescription& table : tables) {
-    RETURN_NOT_OK(table.table_info->GetSchema(&schema));
+    auto schema = VERIFY_RESULT(table.table_info->GetSchema());
     for (size_t i = 0; i < schema.num_columns(); ++i) {
       for (const auto &udt_id : schema.column(i).type()->GetUserDefinedTypeIds()) {
         type_ids.insert(udt_id);
@@ -484,7 +483,7 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
         }
         // PG schema name is available for YSQL table only, except for colocation parent tables.
         if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
-          const auto res = GetPgSchemaName(table_info);
+          const auto res = GetPgSchemaName(table_info->id(), l.data());
           if (!res.ok()) {
             // Check for the scenario where the table is dropped by YSQL but not docdb - this can
             // happen due to a bug with the async nature of drops in PG with docdb.
@@ -1655,8 +1654,8 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 
     // Ensure the main table schema (including column ids) was not changed.
     if (!using_existing_table) {
-      Schema new_indexed_schema, src_indexed_schema;
-      RETURN_NOT_OK(indexed_table->GetSchema(&new_indexed_schema));
+      auto new_indexed_schema = VERIFY_RESULT(indexed_table->GetSchema());
+      Schema src_indexed_schema;
       RETURN_NOT_OK(SchemaFromPB(it->second.table_entry_pb.schema(), &src_indexed_schema));
 
       if (!new_indexed_schema.Equals(src_indexed_schema)) {
@@ -1905,7 +1904,8 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
           << ", table type: " << TableType_Name(table->GetTableType());
       // If not a debug build, ignore pg_schema_name.
     } else {
-      const string internal_schema_name = VERIFY_RESULT(GetPgSchemaName(table));
+      const string internal_schema_name = VERIFY_RESULT(GetPgSchemaName(
+          table->id(), table_lock.data()));
       const string& external_schema_name = snapshot_data->pg_schema_name;
       if (internal_schema_name != external_schema_name) {
         LOG_WITH_FUNC(INFO) << "Schema names do not match: "
@@ -2054,7 +2054,6 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
           SharedLock lock(mutex_);
 
           for (const auto& table : tables_->GetAllTables()) {
-
             if (new_namespace_id != table->namespace_id()) {
               VLOG_WITH_FUNC(3) << "Namespace ids do not match: "
                                 << table->namespace_id() << " vs " << new_namespace_id
@@ -2066,7 +2065,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
               continue;
             }
             // Also check if table is user-created.
-            if (!IsUserCreatedTableUnlocked(*table)) {
+            if (!table->IsUserCreated()) {
               VLOG_WITH_FUNC(2) << "Table not user created: " << table->ToString();
               continue;
             }
@@ -2132,7 +2131,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     {
       TRACE("Locking table");
       auto table_lock = table->LockForRead();
-      RETURN_NOT_OK(table->GetSchema(&persisted_schema));
+      persisted_schema = VERIFY_RESULT(table_lock->GetSchema());
       new_num_tablets = table->NumPartitions();
     }
 

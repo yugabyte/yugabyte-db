@@ -146,9 +146,6 @@ class CDCSDKTestBase : public YBTest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_replication_slot_streamed_tables) =
         true;
-
-    google::SetVLOGLevel("cdc*", 4);
-    google::SetVLOGLevel("tablet*", 1);
   }
 
   void TearDown() override;

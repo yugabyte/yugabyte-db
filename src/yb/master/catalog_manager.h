@@ -856,25 +856,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       REQUIRES_SHARED(mutex_);
   NamespaceName GetNamespaceName(const scoped_refptr<TableInfo>& table) const;
 
-  // Is the table a system table?
-  bool IsSystemTable(const TableInfo& table) const override;
-
-  // Is the table a user created table?
-  bool IsUserTable(const TableInfo& table) const override EXCLUDES(mutex_);
-  bool IsUserTableUnlocked(const TableInfo& table) const REQUIRES_SHARED(mutex_);
-
-  // Is the table a user created index?
-  bool IsUserIndex(const TableInfo& table) const override EXCLUDES(mutex_);
-  bool IsUserIndexUnlocked(const TableInfo& table) const REQUIRES_SHARED(mutex_);
-
-  // Is the table a materialized view?
-  bool IsMatviewTable(const TableInfo& table) const;
-
-  // Is the table created by user?
-  // Note that table can be regular table or index in this case.
-  bool IsUserCreatedTable(const TableInfo& table) const override EXCLUDES(mutex_);
-  bool IsUserCreatedTableUnlocked(const TableInfo& table) const REQUIRES_SHARED(mutex_);
-
   // Let the catalog manager know that we have received a response for a prepare delete
   // transaction tablet request. This will trigger delete tablet requests on all replicas.
   void NotifyPrepareDeleteTransactionTabletFinished(
@@ -1074,10 +1055,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<TableDescription> DescribeTable(
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
-  Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
+  Result<std::string> GetPgSchemaName(
+      const TableId& table_id, const PersistentTableInfo& table_info) REQUIRES_SHARED(mutex_);
 
   Result<std::unordered_map<std::string, uint32_t>> GetPgAttNameTypidMap(
-      const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
+      const TableId& table_id, const PersistentTableInfo& table_info);
 
   Result<std::unordered_map<uint32_t, PgTypeInfo>> GetPgTypeInfo(
       const scoped_refptr<NamespaceInfo>& namespace_info, std::vector<uint32_t>* type_oids)
@@ -1472,8 +1454,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status FindCDCSDKStreamsForNonEligibleTables(TableStreamIdsMap* non_user_tables_to_streams_map);
 
   bool IsTableEligibleForCDCSDKStream(
-      const TableInfoPtr& table_info, const std::optional<Schema>& schema) const
-      REQUIRES_SHARED(mutex_);
+      const TableInfoPtr& table_info, const TableInfo::ReadLock& lock, bool check_schema) const;
 
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
@@ -2215,6 +2196,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Lock protecting the various in memory storage structures.
   using MutexType = rw_spinlock;
   using SharedLock = NonRecursiveSharedLock<MutexType>;
+  using UniqueLock = yb::UniqueLock<MutexType>;
   using LockGuard = std::lock_guard<MutexType>;
   mutable MutexType mutex_;
 
@@ -2773,7 +2755,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void GetAllCDCStreams(std::vector<CDCStreamInfoPtr>* streams);
 
   // This method returns all tables in the namespace suitable for CDCSDK.
-  std::vector<TableInfoPtr> FindAllTablesForCDCSDK(const NamespaceId& ns_id) REQUIRES(mutex_);
+  std::vector<TableInfoPtr> FindAllTablesForCDCSDK(const NamespaceId& ns_id)
+      REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table.
   std::vector<CDCStreamInfoPtr> GetXReplStreamsForTable(
