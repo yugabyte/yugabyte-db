@@ -42,7 +42,7 @@ Prisma has a main file called `schema.prisma` in which the configurations and da
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](/preview/tutorials/quick-start/build-apps/nodejs/ysql-prisma/) page in the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/nodejs/ysql-prisma/) page in the Quick start section.
 
 The following steps break down the quick start example to demonstrate how to perform common tasks required for Node.js application development using Prisma.
 

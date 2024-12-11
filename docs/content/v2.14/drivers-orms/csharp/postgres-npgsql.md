@@ -25,7 +25,7 @@ type: docs
 
 ## CRUD operations with PostgreSQL Npgsql driver
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](/preview/tutorials/quick-start/build-apps/csharp/ysql) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/csharp/ysql) page under the Quick start section.
 
 The following section breaks down the quick start example to demonstrate how to perform common tasks required for C# application development using the Npgsql driver.
 
