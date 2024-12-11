@@ -196,7 +196,7 @@
   include_role:
     name: setup-cgroup
   when: not systemd_option or (ansible_os_family == 'RedHat' and
-        ansible_distribution_major_version < "9")
+        (ansible_distribution_major_version < "9" and not ansible_distribution == 'Amazon'))
 
 - name: Grant traverse permission on yb_home directory
   file:
