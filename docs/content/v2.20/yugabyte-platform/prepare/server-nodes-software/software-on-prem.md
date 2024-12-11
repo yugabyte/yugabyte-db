@@ -28,7 +28,7 @@ After you have created the VMs with the operating system and additional software
 1. Modify the configuration file.
 1. Run the provisioning script (as root or via sudo).
 
-These steps prepare the node for use by YugabyteDB Anywhere. If YugabyteDB Anywhere is already installed and running, the last step additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
+These steps prepare the node for use by YugabyteDB Anywhere. If you have already installed YugabyteDB Anywhere and it is running, the last step additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
 
 Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with YugabyteDB Anywhere node agent installed), sudo is no longer required.
 
