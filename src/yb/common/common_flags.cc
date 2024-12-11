@@ -241,6 +241,11 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_skip_redundant_update_ops, true,
                        "updates and redundant constraint checks.");
 TAG_FLAG(ysql_yb_skip_redundant_update_ops, advanced);
 
+DEFINE_RUNTIME_bool(cdc_disable_sending_composite_values,
+                    true,
+                    "When this flag is set to true, cdc service will send null values for columns "
+                    "of composite types");
+
 namespace yb {
 
 void InitCommonFlags() {
