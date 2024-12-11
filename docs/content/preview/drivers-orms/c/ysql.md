@@ -6,7 +6,7 @@ description: Connect a C application using libpq driver
 aliases:
   - /develop/client-drivers/c/
   - /preview/develop/client-drivers/c/
-  - /preview/tutorials/quick-start/build-apps/c/
+  - /preview/quick-start/build-apps/c/
 menu:
   preview:
     identifier: libpq-c-driver

@@ -6,7 +6,7 @@ description: Connect a PHP application using php-pgsql driver for YSQL
 aliases:
   - /develop/client-drivers/php/
   - /preview/develop/client-drivers/php/
-  - /preview/tutorials/quick-start/build-apps/php/
+  - /preview/quick-start/build-apps/php/
 menu:
   preview:
     identifier: php-ysql-driver

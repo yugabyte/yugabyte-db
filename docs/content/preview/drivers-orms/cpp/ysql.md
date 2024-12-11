@@ -6,7 +6,7 @@ description: Connect a C++ application using libpqxx
 aliases:
   - /develop/client-drivers/cpp/
   - /preview/develop/client-drivers/cpp/
-  - /preview/tutorials/quick-start/build-apps/cpp/
+  - /preview/quick-start/build-apps/cpp/
 menu:
   preview:
     identifier: cpp-ysql-driver
