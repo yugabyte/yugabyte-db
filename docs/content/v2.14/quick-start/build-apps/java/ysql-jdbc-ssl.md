@@ -81,7 +81,7 @@ This tutorial assumes that:
 
 ## SSL certificates for a cluster in Kubernetes (Optional)
 
-1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](/preview/tutorials/quick-start/create-local-cluster/kubernetes/).
+1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](/preview/tutorials/quick-start/kubernetes/#create-a-local-cluster).
 
    ```sh
    $ kubectl create namespace yb-demo
