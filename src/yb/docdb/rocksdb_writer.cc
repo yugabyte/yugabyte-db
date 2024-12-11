@@ -682,10 +682,19 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
     if (VERIFY_RESULT(decoder.DecodeColocationId(&colocation_id))) {
       if (colocation_id != schema_version_colocation_id_) {
         FlushSchemaVersion();
-        cotable_id = VERIFY_RESULT(schema_packing_provider_->ColocationPacking(
-            colocation_id, kLatestSchemaVersion, HybridTime::kMax)).cotable_id;
-        DCHECK(!cotable_id.IsNil()) << cotable_id.ToString();
-        schema_version_table_ = cotable_id;
+        auto packing = schema_packing_provider_->ColocationPacking(
+            colocation_id, kLatestSchemaVersion, HybridTime::kMax);
+        if (packing.ok()) {
+          cotable_id = packing->cotable_id;
+          DCHECK(!cotable_id.IsNil()) << cotable_id.ToString();
+          schema_version_table_ = cotable_id;
+        } else if (packing.status().IsNotFound()) { // Table was deleted.
+          schema_version_table_ = Uuid::Nil();
+          schema_version_colocation_id_ = 0;
+          return Status::OK();
+        } else {
+          return packing.status();
+        }
         schema_version_colocation_id_ = colocation_id;
       }
     }
@@ -734,7 +743,7 @@ Result<bool> RemoveIntentsContext::Entry(
 void RemoveIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
 }
 
-ExternalIntentsBatchWriter::ExternalIntentsBatchWriter(
+NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
     SchemaPackingProvider* schema_packing_provider)
@@ -752,7 +761,7 @@ ExternalIntentsBatchWriter::ExternalIntentsBatchWriter(
   }
 }
 
-bool ExternalIntentsBatchWriter::Empty() const {
+bool NonTransactionalBatchWriter::Empty() const {
   return !put_batch_.write_pairs_size() && !put_batch_.apply_external_transactions_size();
 }
 
@@ -786,7 +795,7 @@ Result<ExternalTxnApplyState> ProcessApplyExternalTransactions(
 
 }  // namespace
 
-Result<bool> ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
+Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     const Slice& original_input_value, ExternalTxnApplyStateData* apply_data,
     rocksdb::DirectWriteHandler* regular_write_handler) {
   bool can_delete_entire_batch = true;
@@ -862,7 +871,7 @@ Result<bool> ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
 
 // Reads all stored external intents for provided transactions and prepares batches that will apply
 // them into regular db and remove from intents db.
-Status ExternalIntentsBatchWriter::PrepareApplyExternalIntents(
+Status NonTransactionalBatchWriter::PrepareApplyExternalIntents(
     ExternalTxnApplyState* apply_external_transactions, rocksdb::DirectWriteHandler* handler) {
   KeyBytes key_prefix;
   KeyBytes key_upperbound;
@@ -901,7 +910,7 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntents(
   return Status::OK();
 }
 
-Result<bool> ExternalIntentsBatchWriter::AddExternalPairToWriteBatch(
+Result<bool> NonTransactionalBatchWriter::AddEntryToWriteBatch(
     const yb::docdb::LWKeyValuePairPB& kv_pair, ExternalTxnApplyState* apply_external_transactions,
     rocksdb::DirectWriteHandler* regular_write_handler, IntraTxnWriteId* write_id) {
   SCHECK(!kv_pair.key().empty(), InvalidArgument, "Write pair key cannot be empty.");
@@ -955,7 +964,7 @@ Result<bool> ExternalIntentsBatchWriter::AddExternalPairToWriteBatch(
   return false;
 }
 
-Status ExternalIntentsBatchWriter::Apply(rocksdb::DirectWriteHandler* handler) {
+Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   auto apply_external_transactions = VERIFY_RESULT(ProcessApplyExternalTransactions(put_batch_));
   if (!apply_external_transactions.empty()) {
     DCHECK(intents_db_iter_.Initialized());
@@ -965,7 +974,7 @@ Status ExternalIntentsBatchWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   DocHybridTimeBuffer doc_ht_buffer;
   IntraTxnWriteId write_id = 0;
   for (const auto& write_pair : put_batch_.write_pairs()) {
-    if (VERIFY_RESULT(AddExternalPairToWriteBatch(
+    if (VERIFY_RESULT(AddEntryToWriteBatch(
             write_pair, &apply_external_transactions, handler, &write_id))) {
       HandleExternalRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
 

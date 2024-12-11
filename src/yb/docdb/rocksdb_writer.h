@@ -275,10 +275,10 @@ class RemoveIntentsContext : public IntentsWriterContext {
 //   But if apply_external_transactions contains transaction for those external intents, then
 //   those intents will be applied directly to regular DB, avoiding unnecessary write to intents DB.
 //   This case is very common for short running transactions.
-class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
-                                   public FrontierSchemaVersionUpdater {
+class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
+                                    public FrontierSchemaVersionUpdater {
  public:
-  ExternalIntentsBatchWriter(
+  NonTransactionalBatchWriter(
       std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
       HybridTime batch_hybrid_time, rocksdb::DB* intents_db,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider* schema_packing_provider);
@@ -294,7 +294,7 @@ class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
 
   // Adds external pair to write batch.
   // Returns true if add was skipped because pair is a regular (non external) record.
-  Result<bool> AddExternalPairToWriteBatch(
+  Result<bool> AddEntryToWriteBatch(
       const yb::docdb::LWKeyValuePairPB& kv_pair,
       ExternalTxnApplyState* apply_external_transactions,
       rocksdb::DirectWriteHandler* regular_write_handler, IntraTxnWriteId* write_id);
