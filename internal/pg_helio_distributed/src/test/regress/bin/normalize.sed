@@ -12,6 +12,7 @@ s/^-[+-]{2,}$/------------------------------------------------------------------
 s/^\s+/ /g
 s/\s+$//g
 s/Memory Usage: [0-9]+kB/Memory Usage: XXXkB/g
+s/Memory: [0-9]+kB/Memory: XXXkB/g
 s/process [0-9]+ still waiting for ShareLock on transaction [0-9]+ after [0-9\.]+ ms/process XYZ still waiting on ShareLock on transaction T1 after D1 ms/g
 s/process [0-9]+ acquired ShareLock on transaction [0-9]+ after [0-9\.]+ ms/process XYZ acquired ShareLock on transaction T1 after D1 ms/g
 s/Distributed Subplan \d+/Distributed Subplan DDD/g

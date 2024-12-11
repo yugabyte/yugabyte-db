@@ -173,22 +173,22 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter
 (5 rows)
 
 EXPLAIN(VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
-                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                    
+                                                                                                                                                 QUERY PLAN                                                                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM helio_data.documents_7990_7990004 collection WHERE ((document OPERATOR(helio_api_catalog.#=) '{ "a" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '7990'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Query: SELECT document FROM helio_data.documents_7990_7990004 collection WHERE ((document OPERATOR(helio_api_catalog.#=) '{ "a" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '7990'::bigint)) ORDER BY object_id LIMIT '5'::bigint
          Node: host=localhost port=58070 dbname=regression
          ->  Limit
-               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               Output: document, object_id
                ->  Sort
-                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
-                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     Output: document, object_id
+                     Sort Key: collection.object_id
                      ->  Bitmap Heap Scan on helio_data.documents_7990_7990004 collection
-                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Output: document, object_id
                            Recheck Cond: (collection.shard_key_value = '7990'::bigint)
                            Filter: (collection.document OPERATOR(helio_api_catalog.@=) '{ "a" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bson)
                            ->  Bitmap Index Scan on _id_
@@ -204,22 +204,22 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter
 (3 rows)
 
 EXPLAIN(VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "b": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
-                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                    
+                                                                                                                                                 QUERY PLAN                                                                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM helio_data.documents_7990_7990004 collection WHERE ((document OPERATOR(helio_api_catalog.#=) '{ "b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '7990'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Query: SELECT document FROM helio_data.documents_7990_7990004 collection WHERE ((document OPERATOR(helio_api_catalog.#=) '{ "b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '7990'::bigint)) ORDER BY object_id LIMIT '5'::bigint
          Node: host=localhost port=58070 dbname=regression
          ->  Limit
-               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               Output: document, object_id
                ->  Sort
-                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
-                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     Output: document, object_id
+                     Sort Key: collection.object_id
                      ->  Bitmap Heap Scan on helio_data.documents_7990_7990004 collection
-                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Output: document, object_id
                            Recheck Cond: (collection.shard_key_value = '7990'::bigint)
                            Filter: (collection.document OPERATOR(helio_api_catalog.@=) '{ "b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bson)
                            ->  Bitmap Index Scan on _id_
@@ -850,22 +850,22 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filte
 (2 rows)
 
 EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id.a": { "$eq": "cat" } }, { "_id.a": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
-                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                          
+                                                                                                                                                       QUERY PLAN                                                                                                                                                        
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM helio_data.documents_7992_7990047 collection WHERE (helio_api_catalog.bson_dollar_in(document, '{ "_id.a" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7992'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Query: SELECT document FROM helio_data.documents_7992_7990047 collection WHERE (helio_api_catalog.bson_dollar_in(document, '{ "_id.a" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7992'::bigint)) ORDER BY object_id LIMIT '5'::bigint
          Node: host=localhost port=58070 dbname=regression
          ->  Limit
-               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               Output: document, object_id
                ->  Sort
-                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
-                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     Output: document, object_id
+                     Sort Key: collection.object_id
                      ->  Bitmap Heap Scan on helio_data.documents_7992_7990047 collection
-                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Output: document, object_id
                            Recheck Cond: (collection.shard_key_value = '7992'::bigint)
                            Filter: (collection.document OPERATOR(helio_api_catalog.@*=) '{ "_id.a" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson)
                            ->  Bitmap Index Scan on _id_
@@ -892,22 +892,22 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filte
 (5 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id": { "$eq": "cat" } }, { "_id": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
-                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                         
+                                                                                                                                                      QUERY PLAN                                                                                                                                                       
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM helio_data.documents_7992_7990047 collection WHERE (helio_api_catalog.bson_dollar_in(document, '{ "_id" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7992'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Query: SELECT document FROM helio_data.documents_7992_7990047 collection WHERE (helio_api_catalog.bson_dollar_in(document, '{ "_id" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7992'::bigint)) ORDER BY object_id LIMIT '5'::bigint
          Node: host=localhost port=58070 dbname=regression
          ->  Limit
-               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               Output: document, object_id
                ->  Sort
-                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
-                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     Output: document, object_id
+                     Sort Key: collection.object_id
                      ->  Bitmap Heap Scan on helio_data.documents_7992_7990047 collection
-                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Output: document, object_id
                            Recheck Cond: (collection.shard_key_value = '7992'::bigint)
                            Filter: (collection.document OPERATOR(helio_api_catalog.@*=) '{ "_id" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson)
                            ->  Bitmap Index Scan on _id_
@@ -926,22 +926,22 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filte
 
 END;
 EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id.a": { "$eq": "cat" } }, { "_id.a": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
-                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                          
+                                                                                                                                                       QUERY PLAN                                                                                                                                                        
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM helio_data.documents_7992_7990047 collection WHERE (helio_api_catalog.bson_dollar_in(document, '{ "_id.a" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7992'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Query: SELECT document FROM helio_data.documents_7992_7990047 collection WHERE (helio_api_catalog.bson_dollar_in(document, '{ "_id.a" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7992'::bigint)) ORDER BY object_id LIMIT '5'::bigint
          Node: host=localhost port=58070 dbname=regression
          ->  Limit
-               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               Output: document, object_id
                ->  Sort
-                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
-                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     Output: document, object_id
+                     Sort Key: collection.object_id
                      ->  Bitmap Heap Scan on helio_data.documents_7992_7990047 collection
-                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Output: document, object_id
                            Recheck Cond: (collection.shard_key_value = '7992'::bigint)
                            Filter: (collection.document OPERATOR(helio_api_catalog.@*=) '{ "_id.a" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson)
                            ->  Bitmap Index Scan on _id_
@@ -1222,22 +1222,22 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filte
 (2 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5 }');
-                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                         
+                                                                                                                                      QUERY PLAN                                                                                                                                       
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM helio_data.documents_7994_7990080 collection WHERE (helio_api_catalog.bson_dollar_in(document, '{ "a.b" : [ "cat", "DOG" ] }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7994'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Query: SELECT document FROM helio_data.documents_7994_7990080 collection WHERE (helio_api_catalog.bson_dollar_in(document, '{ "a.b" : [ "cat", "DOG" ] }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7994'::bigint)) ORDER BY object_id LIMIT '5'::bigint
          Node: host=localhost port=58070 dbname=regression
          ->  Limit
-               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               Output: document, object_id
                ->  Sort
-                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
-                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     Output: document, object_id
+                     Sort Key: collection.object_id
                      ->  Bitmap Heap Scan on helio_data.documents_7994_7990080 collection
-                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Output: document, object_id
                            Recheck Cond: (collection.document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ "cat", "DOG" ] }'::helio_core.bson)
                            ->  Bitmap Index Scan on my_idx_1
                                  Index Cond: (collection.document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ "cat", "DOG" ] }'::helio_core.bson)
@@ -1260,25 +1260,22 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filte
 (5 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
-                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                         
+                                                                                                                                                      QUERY PLAN                                                                                                                                                       
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM helio_data.documents_7994_7990080 collection WHERE (helio_api_catalog.bson_dollar_in(document, '{ "a.b" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7994'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Query: SELECT document FROM helio_data.documents_7994_7990080 collection WHERE (helio_api_catalog.bson_dollar_in(document, '{ "a.b" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7994'::bigint)) ORDER BY object_id LIMIT '5'::bigint
          Node: host=localhost port=58070 dbname=regression
          ->  Limit
-               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
-               ->  Sort
-                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
-                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
-                     ->  Index Scan using _id_ on helio_data.documents_7994_7990080 collection
-                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
-                           Index Cond: (collection.shard_key_value = '7994'::bigint)
-                           Filter: (collection.document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson)
-(16 rows)
+               Output: document, object_id
+               ->  Index Scan using _id_ on helio_data.documents_7994_7990080 collection
+                     Output: document, object_id
+                     Index Cond: (collection.shard_key_value = '7994'::bigint)
+                     Filter: (collection.document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ "cat", "DOG" ], "collation" : "en-u-ks-level1" }'::helio_core.bson)
+(13 rows)
 
 END;
 -- range query with index on path "a.b"

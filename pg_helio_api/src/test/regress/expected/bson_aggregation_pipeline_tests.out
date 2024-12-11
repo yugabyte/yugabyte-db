@@ -577,18 +577,15 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipelin
 (1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "filter": { "_id": { "$gt": "1" } }, "projection": { "a.b": 1 }, "sort": { "_id": 1 }, "skip": 1, "limit": 2 }');
-                                                                                                  QUERY PLAN                                                                                                   
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                   QUERY PLAN                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------
  Limit
-   Output: (bson_dollar_project_find(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : { "$gt" : "1" } }'::bson)), (bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::bson))
-   ->  Sort
-         Output: (bson_dollar_project_find(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : { "$gt" : "1" } }'::bson)), (bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::bson))
-         Sort Key: (bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
-         ->  Index Scan using _id_ on helio_data.documents_3500 collection
-               Output: bson_dollar_project_find(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : { "$gt" : "1" } }'::bson), bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::bson)
-               Index Cond: ((collection.shard_key_value = '3500'::bigint) AND (collection.object_id > '{ "" : "1" }'::bson))
-               Filter: (collection.document @> '{ "_id" : "1" }'::bson)
-(9 rows)
+   Output: (bson_dollar_project_find(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : { "$gt" : "1" } }'::bson)), object_id
+   ->  Index Scan using _id_ on helio_data.documents_3500 collection
+         Output: bson_dollar_project_find(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : { "$gt" : "1" } }'::bson), object_id
+         Index Cond: ((collection.shard_key_value = '3500'::bigint) AND (collection.object_id > '{ "" : "1" }'::bson))
+         Filter: (collection.document @> '{ "_id" : "1" }'::bson)
+(6 rows)
 
 SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "filter": { "_id": { "$gt": "1" } }, "projection": { "a.b": 1 }, "sort": { "_id": 1 }, "skip": 1, "limit": -2 }');
     document     
@@ -1325,7 +1322,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
  Subquery Scan on agg_stage_3
    ->  Limit
          ->  Sort
-               Sort Key: (bson_orderby(collection.document, '{ "_id" : { "$numberDouble" : "-1.0" } }'::bson)) DESC NULLS LAST
+               Sort Key: collection.object_id DESC
                ->  Seq Scan on documents_3500 collection
                      Filter: (((document @< '{ "_id" : { "$numberDouble" : "9999.0" } }'::bson) AND (document @!= '{ "some_other_field" : { "$numberDouble" : "3.0" } }'::bson)) OR (document @= '{ "this_predicate_matches_nothing" : true }'::bson))
 (6 rows)

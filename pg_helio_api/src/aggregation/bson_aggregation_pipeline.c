@@ -199,6 +199,8 @@ static bool RequiresPersistentCursorTrue(const bson_value_t *pipelineValue);
 static bool RequiresPersistentCursorLimit(const bson_value_t *pipelineValue);
 static bool RequiresPersistentCursorSkip(const bson_value_t *pipelineValue);
 
+static bool HasShardKeyFilterWalker(Node *node, void *state);
+static bool CanSortByObjectId(Query *query, AggregationPipelineBuildContext *context);
 static bool CanInlineLookupStageProjection(const bson_value_t *stageValue, const
 										   StringView *lookupPath, bool hasLet);
 static bool CanInlineLookupStageUnset(const bson_value_t *stageValue, const
@@ -4133,18 +4135,34 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 			}
 		}
 
+		Expr *expr = NULL;
 		pgbson *sortDoc = PgbsonElementToPgbson(&element);
 		Const *sortBson = MakeBsonConst(sortDoc);
 		bool isAscending = ValidateOrderbyExpressionAndGetIsAscending(sortDoc);
-		Expr *expr = (Expr *) makeFuncExpr(BsonOrderByFunctionOid(),
-										   BsonTypeId(),
-										   list_make2(sortInput, sortBson),
-										   InvalidOid, InvalidOid,
-										   COERCE_EXPLICIT_CALL);
+		SortByNulls sortByNulls = SORTBY_NULLS_DEFAULT;
+
+		/* If the sort is on _id and we can push it down to the primary key index, use ORDER BY object_id instead. */
+		if (strcmp(element.path, "_id") == 0 &&
+			CanSortByObjectId(query, context))
+		{
+			expr = (Expr *) makeVar(1, MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
+									BsonTypeId(), -1, InvalidOid, 0);
+		}
+		else
+		{
+			/* match mongo behavior. */
+			sortByNulls = isAscending ? SORTBY_NULLS_FIRST : SORTBY_NULLS_LAST;
+			expr = (Expr *) makeFuncExpr(BsonOrderByFunctionOid(),
+										 BsonTypeId(),
+										 list_make2(sortInput, sortBson),
+										 InvalidOid, InvalidOid,
+										 COERCE_EXPLICIT_CALL);
+		}
+
 		SortBy *sortBy = makeNode(SortBy);
 		sortBy->location = -1;
 		sortBy->sortby_dir = isAscending ? SORTBY_ASC : SORTBY_DESC;
-		sortBy->sortby_nulls = isAscending ? SORTBY_NULLS_FIRST : SORTBY_NULLS_LAST;
+		sortBy->sortby_nulls = sortByNulls;
 		sortBy->node = (Node *) expr;
 
 		bool resjunk = true;
@@ -4246,6 +4264,58 @@ HandleSortByCount(const bson_value_t *existingValue, Query *query,
 
 	query = HandleSort(&sortValue, query, context);
 	return query;
+}
+
+
+inline static bool
+CanSortByObjectId(Query *query, AggregationPipelineBuildContext *context)
+{
+	RangeTblEntry *rte = linitial(query->rtable);
+	if (context->mongoCollection == NULL ||
+		rte->rtekind != RTE_RELATION ||
+		rte->relid != context->mongoCollection->relationId)
+	{
+		/* We're not querying the base table. */
+		return false;
+	}
+
+	void *walkerState = NULL;
+	return context->mongoCollection->shardKey == NULL ||
+		   expression_tree_walker(query->jointree->quals, HasShardKeyFilterWalker,
+								  walkerState);
+}
+
+
+static bool
+HasShardKeyFilterWalker(Node *node, void *state)
+{
+	CHECK_FOR_INTERRUPTS();
+
+	if (node == NULL)
+	{
+		return false;
+	}
+
+	if (IsA(node, OpExpr))
+	{
+		OpExpr *opExpr = (OpExpr *) node;
+		if (opExpr->opno != BigintEqualOperatorId())
+		{
+			return false;
+		}
+
+		/* We always construct filter as shard_key_value = <const> */
+		Expr *leftOperator = linitial(opExpr->args);
+		if (!IsA(leftOperator, Var))
+		{
+			return false;
+		}
+
+		return ((Var *) leftOperator)->varattno ==
+			   MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER;
+	}
+
+	return expression_tree_walker(node, HasShardKeyFilterWalker, state);
 }
 
 
