@@ -460,7 +460,7 @@ static int query_buffer_helper(FILE *file, FILE *qfile, int qlen,
 	pgssReaderContext *context);
 static void enforce_bucket_factor(int * value);
 static bool yb_track_nested_queries(void);
-static void YbGetPgssNormalizedQueryText(Size query_offset, int query_len, char *normalized_query);
+static int YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *normalized_query);
 
 /*
  * Module load callback
@@ -3636,19 +3636,50 @@ yb_track_nested_queries(void)
 /*
  * Get the normalized query text from the pgss_query_texts.stat file
  * and copy it to the normalized_query buffer.
- * Note that normalized_query is expected to be a buffer of at least
- * query_len + 1 bytes.
+ * Note that normalized_query is expected to be a buffer of size at max
+ * 1024 bytes.
+ *
+ * Returns:
+ *  YB_DIAGNOSTICS_SUCCESS if normalized query fetched successfully,
+ *	YB_DIAGNOSTICS_ERROR otherwise.
  */
-static void
-YbGetPgssNormalizedQueryText(Size query_offset, int query_len, char *normalized_query)
+static int
+YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *normalized_query)
 {
 	char	   *qbuffer = NULL;
 	Size		qbuffer_size = 0;
+	int			query_len = Min(actual_query_len, YB_QD_MAX_PGSS_QUERY_LEN);
 
 	qbuffer = qtext_load_file(&qbuffer_size);
-	memcpy(normalized_query, qtext_fetch(query_offset, query_len,
-										 qbuffer, qbuffer_size), query_len);
+
+	if (qbuffer == NULL)
+	{
+		ereport(LOG,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("could not load pgss query text file")));
+		return YB_DIAGNOSTICS_ERROR;
+	}
+
+	/*
+	* Its important to fetch the query and then memcpy to normalized_query,
+	* as qtext_fetch requires query length to be exact length of the query,
+	* whereas query_len can be 1024 bytes in case pgss_query_len >= 1024.
+	*/
+	char	   *fetched_query = qtext_fetch(query_offset, actual_query_len,
+											qbuffer, qbuffer_size);
+
+	if (fetched_query == NULL)
+	{
+		ereport(LOG,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("could not load pgss query text file")));
+		free(qbuffer);
+		return YB_DIAGNOSTICS_ERROR;
+	}
+
+	memcpy(normalized_query, fetched_query, query_len);
 	normalized_query[query_len] = '\0'; /* Ensure null-termination */
 
 	free(qbuffer);
+	return YB_DIAGNOSTICS_SUCCESS;
 }

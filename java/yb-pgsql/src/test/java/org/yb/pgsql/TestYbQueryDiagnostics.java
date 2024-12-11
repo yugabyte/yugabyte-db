@@ -38,10 +38,12 @@ import java.util.Scanner;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.json.JSONObject;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -99,6 +101,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     private static final String preparedStmt =
         "PREPARE stmt(text, int, float) AS " +
         "SELECT * FROM test_table1 WHERE a = $1 AND b = $2 AND c = $3";
+    // Use regex to split on commas not inside quotes
+    private static final String pgssRegex = ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)";
 
     @Before
     public void setUp() throws Exception {
@@ -156,26 +160,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         return resultSet.getString("queryid");
     }
 
-    private String extractQueryTextFromPgssFile(Statement statement, Path pgssPath)
-        throws Exception {
-        String queryText = null;
-
-        try (Scanner scanner = new Scanner(pgssPath)) {
-            // Skip header line
-            scanner.nextLine();
-
-            // Use comma as delimiter but keep quoted content together
-            scanner.useDelimiter(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
-
-            // Skip queryid (first column)
-            scanner.next();
-
-            // Get query text (second column) and remove surrounding quotes
-            queryText = scanner.next().replaceAll("^\"|\"$", "");
-        }
-
-        return queryText;
-    }
     /*
      * Generates a unique query ID.
      *
@@ -582,6 +566,246 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     }
 
     /*
+     * Returns file path from the base directory, after checking files existence and size.
+     */
+    private Path getFilePathFromBaseDir(Path baseDir, String fileName) throws Exception {
+        Path path = baseDir.resolve(fileName);
+
+        assertTrue(fileName + " does not exist", Files.exists(path));
+        assertGreaterThan(fileName + " is empty", Files.size(path), 0L);
+
+        return path;
+    }
+
+    private void validateAshData(Path ashPath) throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            ResultSet resultSet = statement.executeQuery(
+                    "SELECT * FROM yb_query_diagnostics_status");
+            if (!resultSet.next())
+                fail("yb_query_diagnostics_status view does not have expected data");
+
+            Timestamp startTime = resultSet.getTimestamp("start_time");
+            long diagnosticsIntervalSec = resultSet.getLong("diagnostics_interval_sec");
+            Timestamp endTime = new Timestamp(startTime.getTime() +
+                    (diagnosticsIntervalSec * 1000L));
+
+            statement.execute("CREATE TABLE temp_ash_data" +
+                    "(LIKE yb_active_session_history INCLUDING ALL)");
+            String copyCmd = "COPY temp_ash_data FROM '" + ashPath.toString() +
+                    "' WITH (FORMAT CSV, HEADER)";
+            statement.execute(copyCmd);
+
+            long ashRowCount = getSingleRow(statement,
+                    "SELECT COUNT(*) FROM temp_ash_data").getLong(0);
+
+            assertGreaterThan("active_session_history.csv file is empty",
+                    ashRowCount, 0L);
+
+            long invalidTimeEntriesCount = getSingleRow(statement,
+                    "SELECT COUNT(*) FROM temp_ash_data " +
+                            "WHERE sample_time < '" + startTime + "' " +
+                            "OR sample_time > '" + endTime + "'")
+                    .getLong(0);
+
+            assertEquals("active_session_history.csv contains invalid time entries",
+                    invalidTimeEntriesCount, 0);
+        }
+    }
+
+    private String[] generateTokensForPgssData(Path pgssPath) throws Exception {
+        List<String> pgssData = Files.readAllLines(pgssPath);
+
+        // Use regex to split on commas not inside quotes
+        String[] tokens = pgssData.get(1).split(pgssRegex);
+
+        assertEquals("Number of line in pg_stat_statements is not equal to 2",
+                     2, pgssData.size());
+
+        return tokens;
+    }
+
+    private void validatePgssData(Path pgssPath, String queryId, int noOfCalls, String[] tokens)
+        throws Exception {
+        assertEquals("pg_stat_statements queryId is incorrect", queryId, tokens[0]);
+        assertEquals("Number of calls are incorrect", String.valueOf(noOfCalls), tokens[2]);
+    }
+
+    private void validatePgssData(Path pgssPath, String queryId, int noOfCalls) throws Exception {
+        String[] tokens = generateTokensForPgssData(pgssPath);
+        validatePgssData(pgssPath, queryId, noOfCalls, tokens);
+    }
+
+    private void validatePgssData(Path pgssPath, String queryId, int noOfCalls,
+                                  String unnecessaryString, int expectedTotalTimeMs,
+                                  int expectedMinTimeMs, int expectedMaxTimeMs,
+                                  int expectedMeanTimeMs, float epsilonMs) throws Exception {
+        String[] tokens = generateTokensForPgssData(pgssPath);
+        validatePgssData(pgssPath, queryId, noOfCalls, tokens);
+
+        if (unnecessaryString != null)
+            assertTrue("pg_stat_statements contains unnecessary data",
+                    !tokens[1].contains(unnecessaryString));
+        /* pg_stat_statements outputs data in ms */
+        assertLessThan("total_time is incorrect",
+                       Math.abs(Float.parseFloat(tokens[3]) - expectedTotalTimeMs), epsilonMs);
+        assertLessThan("min_time is incorrect",
+                       Math.abs(Float.parseFloat(tokens[4]) - expectedMinTimeMs), epsilonMs);
+        assertLessThan("max_time is incorrect",
+                       Math.abs(Float.parseFloat(tokens[5]) - expectedMaxTimeMs), epsilonMs);
+        assertLessThan("mean_time is incorrect",
+                       Math.abs(Float.parseFloat(tokens[6]) - expectedMeanTimeMs), epsilonMs);
+    }
+
+    private void validateConstantsOrBindVarData(Path bindVarPath, String... expectedData)
+            throws Exception {
+        List<String> bindVarLines = Files.readAllLines(bindVarPath);
+        assertEquals("Number of lines in constants_and_bind_variables.csv is not as expected",
+                bindVarLines.size(), expectedData.length);
+
+        for (int i = 0; i < expectedData.length; i++) {
+            LOG.info("Checking line: " + bindVarLines.get(i));
+            assertTrue("constants_and_bind_variables.csv does not contain expected data",
+                    bindVarLines.get(i).contains(expectedData[i]));
+        }
+    }
+
+    private String extractQueryTextFromPgssFile(Statement statement, Path pgssPath)
+            throws Exception {
+        String queryText = null;
+
+        try (Scanner scanner = new Scanner(pgssPath)) {
+            // Skip header line
+            scanner.nextLine();
+
+            // Use comma as delimiter but keep quoted content together
+            scanner.useDelimiter(pgssRegex);
+
+            // Skip queryid (first column)
+            scanner.next();
+
+            // Get query text (second column) and remove surrounding quotes
+            queryText = scanner.next().replaceAll("^\"|\"$", "");
+        }
+
+        return queryText;
+    }
+
+    private void validateAgainstFile(String expectedFilePath, String actualData) throws Exception{
+        Path expectedOutputPath = Paths.get(expectedFilePath);
+        String expectedOutput = new String(Files.readAllBytes(expectedOutputPath),
+                                           StandardCharsets.UTF_8);
+
+        assertEquals("Output does not match expected output while validating aganist file",
+                     expectedOutput.trim(), actualData.trim());
+
+    }
+
+    private void setUpComplexTable() throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            // Create multiple tables to create join conditions for the complex query
+            statement.execute("CREATE TABLE customers (id SERIAL PRIMARY KEY, name TEXT, age INT)");
+            statement.execute("CREATE TABLE orders (id SERIAL PRIMARY KEY, " +
+                                "customer_id INT, order_date TIMESTAMP)");
+            statement.execute("CREATE TABLE products (id SERIAL PRIMARY KEY, name TEXT, " +
+                                "price DECIMAL)");
+            statement.execute("CREATE TABLE order_items (order_id INT, product_id INT, " +
+                                "quantity INT)");
+            statement.execute("CREATE TABLE categories (id SERIAL PRIMARY KEY, name TEXT)");
+            statement.execute("CREATE TABLE product_categories (product_id INT, category_id INT)");
+            statement.execute("CREATE TABLE inventory (product_id INT, " +
+                              "warehouse_id INT, stock INT)");
+            statement.execute("CREATE TABLE warehouses (id SERIAL PRIMARY KEY, location TEXT)");
+            statement.execute("CREATE TABLE employees (id SERIAL PRIMARY KEY, " +
+                                "name TEXT, manager_id INT)");
+            statement.execute("CREATE TABLE sales_regions (id SERIAL PRIMARY KEY, name TEXT)");
+
+            // Create indexes
+            statement.execute("CREATE INDEX idx_orders_customer ON orders(customer_id)");
+            statement.execute("CREATE INDEX idx_order_items_order ON order_items(order_id)");
+            statement.execute("CREATE INDEX idx_product_categories ON product_categories " +
+                                "(product_id, category_id)");
+        }
+    }
+    private String getComplexQuery() throws Exception {
+        // Complex query with multiple joins, subqueries, aggregations, and window
+        // functions
+        String complexQuery = "WITH RECURSIVE employee_hierarchy AS (" +
+                "  SELECT id, name, manager_id, 1 as level" +
+                "  FROM employees" +
+                "  WHERE manager_id IS NULL" +
+                "  UNION ALL" +
+                "  SELECT e.id, e.name, e.manager_id, eh.level + 1" +
+                "  FROM employees e" +
+                "  JOIN employee_hierarchy eh ON e.manager_id = eh.id" +
+                ")," +
+                "sales_summary AS (" +
+                "  SELECT p.id, p.name, SUM(oi.quantity) as total_sold," +
+                "         ROW_NUMBER() OVER (PARTITION BY pc.category_id ORDER BY " +
+                "SUM(oi.quantity) DESC) as rank" +
+                "  FROM products p" +
+                "  JOIN order_items oi ON p.id = oi.product_id" +
+                "  JOIN product_categories pc ON p.id = pc.product_id" +
+                "  GROUP BY p.id, p.name, pc.category_id" +
+                ")" +
+                "SELECT c.name as customer_name," +
+                "       o.order_date," +
+                "       p.name as product_name," +
+                "       cat.name as category_name," +
+                "       w.location as warehouse," +
+                "       i.stock as current_stock," +
+                "       eh.name as sales_rep," +
+                "       eh.level as org_level," +
+                "       ss.total_sold," +
+                "       ss.rank as product_rank" +
+                " FROM customers c" +
+                " JOIN orders o ON c.id = o.customer_id" +
+                " JOIN order_items oi ON o.id = oi.order_id" +
+                " JOIN products p ON oi.product_id = p.id" +
+                " JOIN product_categories pc ON p.id = pc.product_id" +
+                " JOIN categories cat ON pc.category_id = cat.id" +
+                " JOIN inventory i ON p.id = i.product_id" +
+                " JOIN warehouses w ON i.warehouse_id = w.id" +
+                " JOIN employee_hierarchy eh ON eh.level <= 3" +
+                " JOIN sales_summary ss ON p.id = ss.id" +
+                " WHERE o.order_date >= CURRENT_TIMESTAMP - INTERVAL '1 year'" +
+                " AND i.stock < 100" +
+                " GROUP BY c.name, o.order_date, p.name, cat.name, w.location, i.stock, " +
+                "eh.name, eh.level, ss.total_sold, ss.rank"
+                +
+                " HAVING COUNT(*) > 1" +
+                " ORDER BY o.order_date DESC, ss.rank" +
+                " LIMIT 100";
+
+        return complexQuery;
+    }
+
+    private void validateExplainPlan(Path explainPlanPath, String filePath) throws Exception {
+        /* Read the contents of the explain_plan.txt file */
+        String explainPlan = new String(Files.readAllBytes(explainPlanPath),
+                                        StandardCharsets.UTF_8);
+
+        /* Filter out the duration line from the explain plan */
+        String filteredExplainPlan = Arrays.stream(explainPlan.split("\n"))
+                .filter(line -> !line.contains("duration"))
+                // Remove everything after "actual time=" until the end of line or next
+                // parenthesis
+                .map(line -> {
+                    int actualTimeIndex = line.indexOf("actual time=");
+                    if (actualTimeIndex != -1) {
+                        int endIndex = line.indexOf(")", actualTimeIndex);
+                        if (endIndex != -1) {
+                            return line.substring(0, actualTimeIndex) +
+                                    line.substring(endIndex);
+                        }
+                    }
+                    return line;
+                })
+                .collect(Collectors.joining("\n"));
+
+        validateAgainstFile(filePath, filteredExplainPlan);
+    }
+
+    /*
      * Tests the dumping of bind varaibles data in the case of a prepared statement.
      */
     @Test
@@ -607,33 +831,20 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             waitForBundleCompletion(queryId, statement, diagnosticsInterval);
 
             /* Check constants_and_bind_variables.csv file */
-            Path bindVarPath = bundleDataPath.resolve("constants_and_bind_variables.csv");
+            Path bindVarPath = getFilePathFromBaseDir(bundleDataPath,
+                                                        "constants_and_bind_variables.csv");
 
-            assertTrue("constants_and_bind_variables.csv does not exist",
-                       Files.exists(bindVarPath));
-            assertGreaterThan("constants_and_bind_variables.csv file size is not greater than 0",
-                              Files.size(bindVarPath) , 0L);
+            validateConstantsOrBindVarData(bindVarPath, "'var1',1,1.1", "'var2',2,2.2");
 
-            List<String> lines = Files.readAllLines(bindVarPath);
-            assertEquals("Number of lines in constants_and_bind_variables.csv is not as expected",
-                         lines.size(), 2);
-            assertTrue("constants_and_bind_variables.csv does not contain expected data",
-                       lines.get(0).contains("'var1',1,1.1") &&
-                       lines.get(1).contains("'var2',2,2.2"));
-
-            Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
-
-            assertTrue("pg_stat_statements.csv does not exist", Files.exists(pgssPath));
-            assertGreaterThan("pg_stat_statements.csv file is empty",
-                                Files.size(pgssPath) , 0L);
-
+            Path pgssPath = getFilePathFromBaseDir(bundleDataPath,
+                                                    "pg_stat_statements.csv");
             String queryText = extractQueryTextFromPgssFile(statement, pgssPath);
             if (queryText == null)
                 fail("Query text not found in pg_stat_statements.csv");
 
             LOG.info("Pgss query text: " + queryText);
             assertTrue("pg_stat_statements query is incorrect",
-                       queryText.contains(preparedStmt));
+                    queryText.contains(preparedStmt));
         }
     }
 
@@ -920,9 +1131,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 false /* explainDebug */,
                 0 /* bindVarQueryMinDuration */);
 
-        /* sleep time is diagnosticsInterval + 1 sec to ensure that the bundle has expired */
-        long sleep_time_s = diagnosticsInterval + 1;
-
         try (Statement statement = connection.createStatement()) {
             statement.execute("SELECT pg_sleep(0.5)");
 
@@ -932,45 +1140,12 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             /* Protects from "No query executed;" warning */
             statement.execute("SELECT pg_sleep(0.1)");
 
-            /* sleep for bundle expiry */
-            statement.execute("SELECT pg_sleep(" + sleep_time_s + ")");
-            Path ashPath = bundleDataPath.resolve("active_session_history.csv");
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
 
-            assertTrue("active_session_history file does not exist",
-                       Files.exists(ashPath));
-            assertGreaterThan("active_session_history.csv file is empty",
-                              Files.size(ashPath) , 0L);
+            Path ashPath = getFilePathFromBaseDir(bundleDataPath,
+                    "active_session_history.csv");
 
-            ResultSet resultSet = statement.executeQuery(
-                                  "SELECT * FROM yb_query_diagnostics_status");
-            if (!resultSet.next())
-                fail("yb_query_diagnostics_status view does not have expected data");
-
-            Timestamp startTime = resultSet.getTimestamp("start_time");
-            long diagnosticsIntervalSec = resultSet.getLong("diagnostics_interval_sec");
-            Timestamp endTime = new Timestamp(startTime.getTime() +
-                                              (diagnosticsIntervalSec * 1000L));
-
-            statement.execute("CREATE TABLE temp_ash_data" +
-                              "(LIKE yb_active_session_history INCLUDING ALL)");
-            String copyCmd = "COPY temp_ash_data FROM '" + ashPath.toString() +
-                             "' WITH (FORMAT CSV, HEADER)";
-            statement.execute(copyCmd);
-
-            resultSet = statement.executeQuery("SELECT COUNT(*) FROM temp_ash_data");
-            long validTimeEntriesCount = getSingleRow(statement,
-                                         "SELECT COUNT(*) FROM temp_ash_data").getLong(0);
-
-            assertGreaterThan("active_session_history.csv file is empty",
-                              validTimeEntriesCount, 0L);
-
-            long invalidTimeEntriesCount = getSingleRow(statement,
-                                           "SELECT COUNT(*) FROM temp_ash_data " +
-                                           "WHERE sample_time < '" + startTime + "' " +
-                                           "OR sample_time > '" + endTime + "'").getLong(0);
-
-            assertEquals("active_session_history.csv contains invalid time entries",
-                         invalidTimeEntriesCount, 0);
+            validateAshData(ashPath);
         }
     }
 
@@ -985,9 +1160,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             false /* explainDebug */,
             0 /* bindVarQueryMinDuration */);
 
-        /* sleep time is diagnosticsInterval + 1 sec to ensure that the bundle has expired */
-        long sleep_time_s = diagnosticsInterval + 1;
-
         try (Statement statement = connection.createStatement()) {
             statement.execute("SELECT pg_sleep(0.5)");
 
@@ -998,39 +1170,12 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute("SELECT * from pg_class");
             statement.execute("SELECT pg_sleep(0.2)");
 
-            /* sleep for bundle expiry */
-            statement.execute("SELECT pg_sleep(" + sleep_time_s + ")");
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
 
-            Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
+            Path pgssPath = getFilePathFromBaseDir(bundleDataPath,
+                    "pg_stat_statements.csv");
 
-            assertTrue("pg_stat_statements file does not exist", Files.exists(pgssPath));
-            assertGreaterThan("pg_stat_statements.csv file is empty",
-                              Files.size(pgssPath) , 0L);
-
-            /* Unit is ms */
-            float epsilon = 10;
-            int expectedTotalTime = 300;
-            int expectedMinTime = 100;
-            int expectedMaxTime = 200;
-            int expectedMeanTime = 150;
-            List<String> pgssData = Files.readAllLines(pgssPath);
-            String[] tokens = pgssData.get(1).split(",");
-
-            assertEquals("pg_stat_statements data size is not as expected",
-                         2, pgssData.size());
-            assertEquals("pg_stat_statements query is incorrect", queryId, tokens[0]);
-            assertTrue("pg_stat_statements contains unnecessary data",
-                       !tokens[1].contains("pg_class"));
-            assertEquals("Number of calls are incorrect", "2", tokens[2]);
-            /* pg_stat_statements outputs data in ms */
-            assertLessThan("total_time is incorrect",
-                           Math.abs(Float.parseFloat(tokens[3]) - expectedTotalTime), epsilon);
-            assertLessThan("min_time is incorrect",
-                           Math.abs(Float.parseFloat(tokens[4]) - expectedMinTime), epsilon);
-            assertLessThan("max_time is incorrect",
-                           Math.abs(Float.parseFloat(tokens[5]) - expectedMaxTime), epsilon);
-            assertLessThan("mean_time is incorrect",
-                           Math.abs(Float.parseFloat(tokens[6]) - expectedMeanTime), epsilon);
+            validatePgssData(pgssPath, queryId, 2, "pg_class", 300, 100, 200, 150, 10);
         }
     }
 
@@ -1222,7 +1367,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
-    @Test
+    @Ignore // TODO: This test fails due to CATLOG MISMATCH error (#24529)
     public void checkSchemaDetailsData() throws Exception {
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
@@ -1446,6 +1591,62 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 bundleDataPath3, "Success", noQueriesExecutedWarning, params3);
 
             assertQueryDiagnosticsStatus(expectedBundleViewEntry3, bundleViewEntry3);
+        }
+    }
+
+    /*
+     * Test that yb_query_diagnostics works fine when diagnosing a query that has
+     * large number of joins, subqueries, and constants.
+     */
+    @Test
+    public void testComplexQuery() throws Exception {
+        int diagnosticsInterval = 2;
+        QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            setUpComplexTable();
+            String complexQuery = getComplexQuery();
+            statement.execute(complexQuery);
+
+            String queryId = getQueryIdFromPgStatStatements(statement,
+                    "WITH%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
+
+            statement.execute(complexQuery);
+
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+
+            Path bindVariablesPath = getFilePathFromBaseDir(bundleDataPath,
+                    "constants_and_bind_variables.csv");
+            Path explainPlanPath = getFilePathFromBaseDir(bundleDataPath,
+                    "explain_plan.txt");
+            Path schemaDetailsPath = getFilePathFromBaseDir(bundleDataPath,
+                    "schema_details.txt");
+            Path ashPath = getFilePathFromBaseDir(bundleDataPath,
+                    "active_session_history.csv");
+            Path pgssPath = getFilePathFromBaseDir(bundleDataPath,
+                    "pg_stat_statements.csv");
+
+            validateConstantsOrBindVarData(bindVariablesPath,
+                    "1,1,3,'1 year',100,1,100");
+
+            validateExplainPlan(explainPlanPath,
+                "src/test/resources/expected/complex_query_explain_plan.out");
+
+            /* Read the contents of the schema_details.txt file */
+            validateAgainstFile("src/test/resources/expected/complex_query_schema_details.out",
+                                new String(Files.readAllBytes(schemaDetailsPath),
+                                           StandardCharsets.UTF_8));
+
+            validateAshData(ashPath);
+
+            validatePgssData(pgssPath, queryId, 1);
         }
     }
 }

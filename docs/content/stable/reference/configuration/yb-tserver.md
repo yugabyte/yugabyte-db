@@ -809,7 +809,7 @@ Default: `false`
 
 Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
 
-Default: `false`
+Default: `true`
 
 ##### --ysql_disable_index_backfill
 

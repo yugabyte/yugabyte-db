@@ -61,8 +61,25 @@
         (test -e /usr/bin/dnf) && (dnf install -y polkit)
       when: >
         not air_gapped and ansible_os_family == 'RedHat' and
-        ansible_distribution_major_version == '9'
+        (ansible_distribution_major_version == '9' or
+         (ansible_distribution == 'Amazon' and ansible_distribution_version == '2023'))
       tags: yb-prebuilt-ami
+
+- name: "Install cronie on Amazon linux 2023 machines"
+  hosts: "{{ yb_ansible_host }}"
+  strategy: linear
+  gather_facts: no
+  become: yes
+  become_method: sudo
+  vars:
+    air_gapped: "{{ air_gap | default(false) }}"
+  tasks:
+    - name: "Install chronie on amazon linux 2023 family"
+      raw: >
+        (test -e /usr/bin/dnf) && (dnf install -y cronie)
+      when: >
+        not air_gapped and ansible_os_family == 'RedHat' and
+        (ansible_distribution == 'Amazon' and ansible_distribution_version == '2023')
 
 - name: "Pre-provisioning tasks"
   hosts: "{{ yb_ansible_host }}"
