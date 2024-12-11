@@ -323,6 +323,7 @@ void TabletInfo::UpdateReplicaInfo(const std::string& ts_uuid,
   if (it == replica_locations_->end()) {
     return;
   }
+  VLOG_WITH_FUNC(3) << "T " << id() << " P " << ts_uuid << ": " << drive_info.ToString();
   it->second.UpdateDriveInfo(drive_info);
   it->second.UpdateLeaderLeaseInfo(leader_lease_info);
 }

@@ -461,6 +461,11 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
     writer.String("idle_physical_connections");
     writer.Int64(stat.idle_servers);
 
+    // Number of logical connections stuck to a physical connection for the
+    // lifetime of the session.
+    writer.String("sticky_connections");
+    writer.Int64(stat.sticky_connections);
+
     // Avg wait time for a logical connection to be attached to a physical connection.
     // i.e. queue time + time taken to search and attach a server.
     // This average is taken for the last "stats_interval" (odyssey config) period of time.

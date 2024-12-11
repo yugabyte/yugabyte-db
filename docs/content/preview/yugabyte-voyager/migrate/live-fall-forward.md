@@ -398,13 +398,12 @@ You can use only one of the following arguments to connect to your Oracle instan
    ```sql
    psql -h <host> \
         -d <database> \
-        -U <username> \
+        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
         -v voyager_user='ybvoyager' \
         -v schema_list='<comma_separated_schema_list>' \
         -v is_live_migration=1 \
         -v is_live_migration_fall_back=0 \
         -v replication_group='<replication_group>' \
-        -v original_owner_of_tables='<original_owner_of_tables>' \
         -f <path_to_the_script>
    ```
 
@@ -435,13 +434,12 @@ You can use only one of the following arguments to connect to your Oracle instan
    ```sql
    psql -h <host> \
         -d <database> \
-        -U <username> \
+        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
         -v voyager_user='ybvoyager' \
         -v schema_list='<comma_separated_schema_list>' \
         -v is_live_migration=1 \
         -v is_live_migration_fall_back=0 \
         -v replication_group='<replication_group>' \
-        -v original_owner_of_tables='<original_owner_of_tables>' \
         -f <path_to_the_script>
    ```
 

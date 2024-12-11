@@ -1,7 +1,7 @@
 ---
 title: Manually provision on-premises nodes using a script
 headerTitle: Assisted manual provisioning
-linkTitle: Assisted manual
+linkTitle: Legacy assisted manual
 description: Provision the on-premises nodes using a script.
 headContent: Provision on-premises nodes using the script
 menu:
@@ -17,22 +17,22 @@ If the SSH user configured in the on-premises provider has sudo privileges that 
 The script is displayed under **Instances** on the **Instances** tab of the on-prem configuration you created.
 
 {{< warning title="Note" >}}
-If the SSH user does not have any sudo privileges at all, you can't use the script and need to manually provision nodes. Refer to [Fully manual](../../prepare/server-nodes-software/software-on-prem-manual/).
+If the SSH user does not have any sudo privileges at all, you can't use the script and need to manually provision nodes. Refer to [Legacy fully manual](../../prepare/server-nodes-software/software-on-prem-manual/).
 {{< /warning >}}
 
 ## Manually provision nodes using the script
 
 You can manually provision each node using the pre-provisioning Python script, as follows:
 
-1. Log in to the YBA virtual machine via SSH.
+1. Log in to the YugabyteDB Anywhere virtual machine via SSH.
 
-1. If you installed YBA using Replicated, access the Docker `yugaware` container, as follows:
+1. If you installed YugabyteDB Anywhere using Replicated, access the Docker `yugaware` container, as follows:
 
     ```sh
     sudo docker exec -it yugaware bash
     ```
 
-1. In YBA, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the on-premises provider configuration you created, and choose **Instances**.
+1. In YugabyteDB Anywhere, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the on-premises provider configuration you created, and choose **Instances**.
 
     ![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
 
@@ -43,9 +43,9 @@ You can manually provision each node using the pre-provisioning Python script, a
     - `--ask_password` - this flag instructs the script to prompt for a password, which is required if the sudo user requires password authentication.
     - `--ip` - enter the IP address of the node.
     - `--mount_points` - enter the mount point configured for the node (typically `/data`). If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
-    - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YBA to communicate with the instance.
+    - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YugabyteDB Anywhere to communicate with the instance.
     - `--api_token` - enter your API token; you can create an API token by navigating to your **User Profile** and clicking **Generate Key**.
-    - `--yba_url` - enter the URL of the machine where you are running YugabyteDB Anywhere. For example, `https://ybahost.company.com`. The node must be able to communicate with YugabyteDB Anywhere at this address.
+    - `--yba_url` - enter the URL of the machine where you are running YugabyteDB Anywhere, with port 9000. For example, `https://ybahost.company.com:9000`. The node must be able to communicate with YugabyteDB Anywhere at this address.
     - `--node_name` - enter a name for the node.
     - `--instance_type` - enter the name of the [instance type](../on-premises-nodes/#add-instance-types) to use for the node. The name must match the name of an existing instance type.
     - `--zone_name` - enter a zone name for the node.

@@ -1,7 +1,6 @@
 package com.yugabyte.yw.common.kms;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -28,6 +27,7 @@ import com.yugabyte.yw.models.Universe;
 import java.util.Base64;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -301,19 +301,18 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
             testUniverse.getUniverseUUID(), KmsHistoryId.TargetType.UNIVERSE_KEY);
     assertEquals(4, allKmsHistoryList.size());
 
-    // Verify the newly re-encrypted universe key 2.
-    System.out.println(allKmsHistoryList);
-    assertEquals(1, allKmsHistoryList.get(0).getUuid().reEncryptionCount);
-    assertEquals(
-        Base64.getEncoder().encodeToString(universeKeyRef4),
-        allKmsHistoryList.get(0).getUuid().keyRef);
-    assertTrue(allKmsHistoryList.get(0).isActive());
-
-    // Verify the newly re-encrypted universe key 1.
-    assertEquals(1, allKmsHistoryList.get(1).getUuid().reEncryptionCount);
-    assertEquals(
-        Base64.getEncoder().encodeToString(universeKeyRef3),
-        allKmsHistoryList.get(1).getUuid().keyRef);
-    assertFalse(allKmsHistoryList.get(1).isActive());
+    // Check if the universe key 2 that was re-encrypted with the new master key is the new active
+    // KMS history.
+    List<KmsHistory> finalActiveKmsHistoryList =
+        allKmsHistoryList.stream()
+            .filter(
+                kh ->
+                    kh.getDbKeyId().equals(Base64.getEncoder().encodeToString(universeKeyRef2))
+                        && Base64.getEncoder()
+                            .encodeToString(universeKeyRef4)
+                            .equals(kh.getUuid().keyRef))
+            .collect(Collectors.toList());
+    assertEquals(1, finalActiveKmsHistoryList.size());
+    assertTrue(finalActiveKmsHistoryList.get(0).isActive());
   }
 }

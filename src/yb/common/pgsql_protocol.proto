@@ -677,3 +677,26 @@ message PgsqlResponsePB {
   // Metrics changes as a result of processing the request.
   optional PgsqlRequestMetricsPB metrics = 17;
 }
+
+message PgsqlAdvisoryLockPB {
+  repeated QLExpressionPB lock_partition_column_values = 1;
+  repeated QLExpressionPB lock_range_column_values = 2;
+}
+
+message PgsqlLockRequestPB {
+  enum PgsqlAdvisoryLockMode {
+    PG_LOCK_SHARE = 1;
+    PG_LOCK_EXCLUSIVE = 2;
+  }
+  // Client info
+  optional QLClient client = 1; // required
+
+  optional PgsqlAdvisoryLockPB lock_id = 2; // All locks if not specified
+
+  optional PgsqlAdvisoryLockMode lock_mode = 3;
+  optional bool wait = 4;
+  optional bool is_lock = 5; // Lock or Unlock
+
+  optional bytes partition_key = 6;
+  optional uint32 hash_code = 7;
+}

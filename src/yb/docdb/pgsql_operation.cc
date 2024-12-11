@@ -1886,7 +1886,7 @@ Result<size_t> PgsqlReadOperation::Execute() {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSample());
   } else if (request_.has_vector_idx_options()) {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
-        data_.doc_read_context, request_.vector_idx_options()));
+      data_.doc_read_context, request_.vector_idx_options()));
   } else if (request_.index_request().has_vector_idx_options()) {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
         *data_.index_doc_read_context, request_.index_request().vector_idx_options()));
@@ -2135,8 +2135,9 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(
   RSTATUS_DCHECK(data_.vector_index, IllegalState, "Search vector when vector index is null");
 
   Slice vector_slice(options.vector().binary_value());
-  // TODO(vector_index) Use correct max_results
-  size_t max_results = std::min<size_t>(1000, options.prefetch_size());
+  // TODO(vector_index) Use correct max_results or use prefetch_size passed from options
+  // when paging is supported.
+  size_t max_results = 1000;
 
   auto result = VERIFY_RESULT(data_.vector_index->Search(vector_slice, max_results));
   // TODO(vector_index) Order keys by ybctid for fetching.
@@ -2540,6 +2541,78 @@ Status GetIntents(
     inserter.Add(VERIFY_RESULT(accessor.GetEncoded(request.ybctid_column_value())), mode);
   }
   return Status::OK();
+}
+
+PgsqlLockOperation::PgsqlLockOperation(
+    std::reference_wrapper<const PgsqlLockRequestPB> request,
+    const TransactionOperationContext& txn_op_context)
+        : DocOperationBase(request), txn_op_context_(txn_op_context) {
+}
+
+Status PgsqlLockOperation::Init(
+    PgsqlResponsePB* response, const DocReadContextPtr& doc_read_context) {
+  response_ = response;
+
+  auto& schema = doc_read_context->schema();
+
+  dockv::KeyEntryValues hashed_components;
+  dockv::KeyEntryValues range_components;
+  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+      request_.lock_id().lock_partition_column_values(), schema, 0,
+      schema.num_hash_key_columns(),
+      &hashed_components));
+  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+      request_.lock_id().lock_range_column_values(), schema,
+      schema.num_hash_key_columns(),
+      schema.num_range_key_columns(),
+      &range_components));
+  SCHECK(!hashed_components.empty(), InvalidArgument, "No hashed column values provided");
+  doc_key_ = DocKey(
+      schema, request_.hash_code(), std::move(hashed_components), std::move(range_components));
+  encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();
+  return Status::OK();
+}
+
+Status PgsqlLockOperation::GetDocPaths(GetDocPathsMode mode,
+    DocPathsToLock *paths, IsolationLevel *level) const {
+  // kStrongReadIntents is used for acquring locks on the entire row.
+  // It's duplicate with the primary intent for the advisory lock.
+  if (mode != GetDocPathsMode::kStrongReadIntents) {
+    paths->emplace_back(encoded_doc_key_);
+  }
+  return Status::OK();
+}
+
+std::string PgsqlLockOperation::ToString() const {
+  return Format("$0 $1, original request: $2",
+                request_.is_lock() ? "LOCK" : "UNLOCK",
+                doc_key_.ToString(),
+                request_.ShortDebugString());
+}
+
+void PgsqlLockOperation::ClearResponse() {
+  if (response_) {
+    response_->Clear();
+  }
+}
+
+Status PgsqlLockOperation::Apply(const DocOperationApplyData& data) {
+  Slice value(&(dockv::ValueEntryTypeAsChar::kRowLock), 1);
+  auto& entry = data.doc_write_batch->AddLock();
+  entry.lock.key = encoded_doc_key_.as_slice();
+  entry.lock.value = value;
+  entry.mode = request_.lock_mode();
+  return Status::OK();
+}
+
+dockv::IntentTypeSet PgsqlLockOperation::GetIntentTypes(IsolationLevel isolation_level) const {
+  switch (request_.lock_mode()) {
+    case PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE:
+      return dockv::GetIntentTypesForLock(dockv::DocdbLockMode::DOCDB_LOCK_EXCLUSIVE);
+    case PgsqlLockRequestPB::PG_LOCK_SHARE:
+      return dockv::GetIntentTypesForLock(dockv::DocdbLockMode::DOCDB_LOCK_SHARE);
+  }
+  FATAL_INVALID_ENUM_VALUE(PgsqlLockRequestPB::PgsqlAdvisoryLockMode, request_.lock_mode());
 }
 
 }  // namespace yb::docdb

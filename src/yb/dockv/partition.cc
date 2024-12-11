@@ -652,7 +652,7 @@ Status PartitionSchema::CreateHashPartitions(int32_t num_tablets,
                              0, kMaxPartitionKey);
   }
 
-  LOG(INFO) << "Creating partitions with num_tablets: " << num_tablets;
+  VLOG(1) << "Creating partitions with num_tablets: " << num_tablets;
 
   // May be also add an upper bound? TODO.
   if (num_tablets <= 0) {

@@ -92,25 +92,25 @@ Simplified management of YSQL transactional xCluster replication by operating at
 
 Improvements to backward scan performance now allows such queries to be 10X faster out of the box!
 
-## v2024.1 (Stable) - Jun, 2024
+## v2024.2 (Stable) - Dec, 2024
 
-**v2024.1** is the current [stable](https://docs.yugabyte.com/preview/releases/versioning/#stable-releases) release. Stable releases undergo rigorous testing for a longer period of time and are ready for production use. For the full list of features and improvements in this release, see [Release notes - v2024.1](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.1/). Here are some of the prominent features.
+**v2024.2** is the current [stable](https://docs.yugabyte.com/preview/releases/versioning/#stable-releases) release. Stable releases undergo rigorous testing for a longer period of time and are ready for production use. For the full list of features and improvements in this release, see [Release notes - v2024.2](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.2/). Here are some of the prominent features.
 
-#### [Enhanced Postgres Compatibility Mode](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.1/#highlights:~:text=Highlights-,Enhanced%20Postgres%20Compatibility%20Mode,-EA)
+#### [Yugabyte Kubernetes Operator](https://docs.yugabyte.com/preview/quick-start/kubernetes/#yugabytedb-kubernetes-operator)
 
-Enables you to take advantage of many new improvements in both PostgreSQL compatibility and performance parity, making it even easier to lift and shift your applications from PostgreSQL to YugabyteDB. When this mode is turned on, YugabyteDB uses the [Read-Committed](https://docs.yugabyte.com/stable/architecture/transactions/read-committed/) isolation mode, the [Wait-on-Conflict](https://docs.yugabyte.com/stable/architecture/transactions/concurrency-control/#wait-on-conflict) concurrency mode for predictable P99 latencies, and the new [Cost Based Optimizer](https://docs.yugabyte.com/stable/reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model).
+The [Yugabyte Kubernetes Operator](https://docs.yugabyte.com/preview/quick-start/kubernetes/#yugabytedb-kubernetes-operator) is a powerful tool designed to automate deploying, scaling, and managing YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators. For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.
 
-#### [Rollback after upgrade](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.1/#highlights:~:text=Rollback%20after%20upgrade)
+#### [Active session history](https://docs.yugabyte.com/stable/explore/observability/active-session-history/)
 
-Seamlessly roll back to the pre-upgrade version if you're not satisfied with the upgraded version.
+Get real-time and historical views of system activity by sampling session activity in the database. Use this feature to analyze and troubleshoot performance issues.
 
-#### [Batched nested loop joins](https://docs.yugabyte.com/stable/explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl)
+#### [pg_partman extension](https://docs.yugabyte.com/stable/explore/ysql-language-features/pg-extensions/extension-pgpartman/)
 
-A join execution strategy that improves on Nested Loop joins by sending one request to the inner table per batch of outer table tuples instead of once per individual outer table tuple.
+Use the [pg_partman extension](https://docs.yugabyte.com/stable/explore/ysql-language-features/pg-extensions/extension-pgpartman/) to create and manage both time- and serial-based (aka range-based) table partition sets. pg_partman is often used in combination with [pg_cron](https://docs.yugabyte.com/stable/explore/ysql-language-features/pg-extensions/extension-pgcron/) for data lifecycle management, and specifically for managing data aging, retention, and expiration.
 
-#### [Enhanced Explain Analyze output](https://docs.yugabyte.com/stable/explore/query-1-performance/explain-analyze/)
+#### [Colocated tables with tablespaces](https://docs.yugabyte.com/stable/explore/colocation/#colocated-tables-with-tablespaces)
 
-Explain Analyze, when used with DIST option, will also show the rows read from the storage layer, which can help diagnosing the query performance.
+Starting this release, you can create [colocated tables with tablespaces](https://docs.yugabyte.com/stable/explore/colocation/#colocated-tables-with-tablespaces). With this enhancement, you can now take advantage of colocated tables for geo-distributed use cases, eliminating the need for trade-offs between distributing data across specific regions.
 
 # Architecture
 

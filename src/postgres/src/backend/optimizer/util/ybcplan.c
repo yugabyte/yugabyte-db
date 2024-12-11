@@ -382,6 +382,7 @@ void
 YbCopySkippableEntities(YbSkippableEntities *dst,
 						const YbSkippableEntities *src)
 {
+	YbClearSkippableEntities(dst);
 	if (src == NULL)
 		return;
 
@@ -439,8 +440,11 @@ YbClearSkippableEntities(YbSkippableEntities *skip_entities)
 		return;
 
 	list_free(skip_entities->index_list);
+	skip_entities->index_list = NIL;
 	list_free(skip_entities->referencing_fkey_list);
+	skip_entities->referencing_fkey_list = NIL;
 	list_free(skip_entities->referenced_fkey_list);
+	skip_entities->referenced_fkey_list = NIL;
 }
 
 static AttrToColIdxMap
@@ -804,6 +808,7 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 									 YbSkippableEntities *skip_entities,
 									 int *nentities)
 {
+	bool pk_maybe_modified = false;
 	/*
 	 * Add the primary key to the head of the entity list so that it gets
 	 * evaluated first.
@@ -812,7 +817,6 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 	{
 		Bitmapset *pkbms =
 			RelationGetIndexAttrBitmap(rel, INDEX_ATTR_BITMAP_PRIMARY_KEY);
-		bool pk_maybe_modified = false;
 		int attnum = -1;
 		while ((attnum = bms_next_member(pkbms, attnum)) >= 0)
 		{
@@ -895,7 +899,7 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 			}
 		}
 
-		if (!index_maybe_modified)
+		if (!pk_maybe_modified && !index_maybe_modified)
 			YbAddEntityToSkipList(etype, index_oid, skip_entities);
 
 		RelationClose(indexDesc);
@@ -915,6 +919,9 @@ YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
 	YbSkippableEntityType etype =
 		is_referencing_rel ? SKIP_REFERENCING_FKEY : SKIP_REFERENCED_FKEY;
 	const AttrNumber offset = YBGetFirstLowInvalidAttributeNumber(rel);
+	Oid pk_oid = RelationGetPrimaryKeyIndex(rel);
+	bool pk_maybe_modified =
+		!(OidIsValid(pk_oid) && list_member_oid(skip_entities->index_list, pk_oid));
 	ListCell *cell;
 	foreach (cell, fkeylist)
 	{
@@ -933,7 +940,7 @@ YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
 			}
 		}
 
-		if (!fkey_maybe_modified)
+		if (!pk_maybe_modified && !fkey_maybe_modified)
 			YbAddEntityToSkipList(etype, fkey->conoid, skip_entities);
 	}
 }

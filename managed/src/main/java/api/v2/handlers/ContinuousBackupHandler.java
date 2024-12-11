@@ -65,6 +65,12 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
     if (!optional.isPresent()) {
       throw new PlatformServiceException(BAD_REQUEST, "no continous backup config found with UUID");
     }
+    // Delete the active continuous backup schedules
+    Schedule.getAllActiveSchedulesByOwnerUUIDAndType(bUUID, TaskType.CreateYbaBackup).stream()
+        .forEach(
+            schedule -> {
+              schedule.delete();
+            });
     ContinuousBackupConfig.delete(bUUID);
     return new ContinuousBackup();
   }

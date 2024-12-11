@@ -664,6 +664,10 @@ Status RunBatchTimeSeriesTest(
       }
       YB_LOG_EVERY_N_SECS(INFO, 5)
           << "Completed " << num_writes << " writes, num_write_errors: " << num_write_errors;
+      if (IsSanitizer()) {
+        // Give some time for compaction to go.
+        std::this_thread::sleep_for(num_writes.load() * 1ms);
+      }
     }
   };
 

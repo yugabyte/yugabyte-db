@@ -79,7 +79,7 @@ select
 This is the result:
 
 ```output
-  s1  |   s2    |  s3  
+  s1  |   s2    |  s3
 ------+---------+------
  stue | kjøkken | 跳舞
 ```

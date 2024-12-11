@@ -110,7 +110,7 @@ By default, all the rows of the table are distributed across multiple tablets an
 Choose colocation for tables with small tables that don't grow much; for example, less than 1 million rows, or smaller than 1 GB.
 
 {{<lead link="../../../explore/colocation/">}}
-For more information on when and how to create colocated tables, see [Colocated tables](../../../explore/colocation/").
+For more information on when and how to create colocated tables, see [Colocated tables](../../../explore/colocation/).
 {{</lead>}}
 
 ## Schema Migration
@@ -225,7 +225,7 @@ Regardless of how much data you decide to migrate, you can choose from the follo
 For more details, see [Offline migration](/preview/yugabyte-voyager/migrate/migrate-steps/).
 {{</lead>}}
 
-**Live migration**: Live migration aims to minimize downtime by keeping the application running during the migration process. Data is copied from the source database to the target database while the application is still live, and a final switchover is made after the migration is complete.
+**Live migration**: Live migration aims to minimize downtime by keeping the application running during the migration process. Data is copied from the source database to the new YugabyteDB cluster while the application is still live, and a final switchover is made after the migration is complete.
 
 {{<lead link="/preview/yugabyte-voyager/migrate/live-migrate/">}}
 For more details, see [Live migration](/preview/yugabyte-voyager/migrate/live-migrate/).
@@ -237,7 +237,7 @@ For more details, see [Live migration](/preview/yugabyte-voyager/migrate/live-mi
 For more details, see [Live migration with fall-forward](/preview/yugabyte-voyager/migrate/live-fall-forward/).
 {{</lead>}}
 
-**Live migration with fall-back**: Live migration with fall-back provides a safety net by allowing a return to the original database if issues are encountered after the cutover to the new database. This strategy involves maintaining bidirectional synchronization between the source and target databases for a period after the migration.
+**Live migration with fall-back**: Live migration with fall-back provides a safety net by allowing a return to the original database if issues are encountered after the cutover to the new database. This strategy involves maintaining bidirectional synchronization between the source database and the new YugabyteDB cluster for a period after the migration.
 
 {{<lead link="">}}
 For more details, see [Live migration with fall-back](/preview/yugabyte-voyager/migrate/live-fall-back/).
@@ -294,7 +294,11 @@ For more information, see [Verify migration](../verify-migration-ysql/).
 
 ### Monitoring
 
-Regularly monitor the target database to ensure it is performing efficiently. This includes tracking metrics such as query execution times, CPU usage, memory consumption, and disk I/O. Pay close attention to any errors or warnings that arise, as they can indicate potential issues with the database configuration, queries, or underlying infrastructure.
+Regularly monitor the new YugabyteDB cluster to ensure it is performing efficiently. This includes tracking metrics such as query execution times, CPU usage, memory consumption, and disk I/O. Pay close attention to any errors or warnings that arise, as they can indicate potential issues with the database configuration, queries, or underlying infrastructure.
+
+{{<lead link="../../../launch-and-manage/monitor-and-alert/metrics/">}}
+To learn more about the various useful metrics that can be monitored, see [Metrics](../../../launch-and-manage/monitor-and-alert/metrics/).
+{{</lead>}}
 
 ### Tune performance
 
@@ -317,9 +321,13 @@ For a full list of best practices to improve performance, see [Performance tunin
 Establish a comprehensive backup strategy that includes full, incremental, and differential backups, depending on your system's needs. This ensures that you have multiple restore points in case of data loss or corruption.
 You should schedule backups to run at regular intervals, ideally during off-peak hours, to minimize the impact on system performance. The frequency of backups should be based on how often the data changes and the criticality of the information.
 
+{{<lead link="../../backup-restore/">}}
+To understand the various schemes of backup, see [Backup and restore](../../backup-restore/).
+{{</lead>}}
+
 ### Decommissioning
 
-Before proceeding with decommissioning, thoroughly verify the stability and reliability of the target database. Ensure that it is functioning as expected, with no critical errors, performance issues, or compatibility problems. Once confident in the stability of the target database and after securing necessary backups, proceed with decommissioning the source database. This involves shutting down the source system and ensuring that it is no longer accessible to users or applications.
+Before proceeding with decommissioning, thoroughly verify the stability and reliability of the new YugabyteDB cluster. Ensure that it is functioning as expected, with no critical errors, performance issues, or compatibility problems. Once confident in the stability of the new YugabyteDB cluster and after securing necessary backups, proceed with decommissioning the source database. This involves shutting down the source system and ensuring that it is no longer accessible to users or applications.
 
 ## Learn more
 

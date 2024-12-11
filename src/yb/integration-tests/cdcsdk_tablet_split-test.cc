@@ -121,6 +121,40 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledFor
   ASSERT_OK(XReplValidateSplitCandidateTable(table_id));
 }
 
+TEST_F(CDCSDKTabletSplitTest, TestTabletSplitDisabledForTablesWithReplicationSlot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_replication_slot_streamed_tables) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(SetUpWithParams(/*replication_factor=*/1, /*num_masters=*/1, /*colocated=*/false));
+  const uint32_t num_tablets = 1;
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  // Should be ok to split before creating a stream.
+  ASSERT_OK(XReplValidateSplitCandidateTable(table_id));
+
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Split disallowed since FLAGS_enable_tablet_split_of_replication_slot_streamed_tables is false
+  // and we have a stream with replication slot on the table.
+  auto s = XReplValidateSplitCandidateTable(table_id);
+  ASSERT_NOK(s);
+  ASSERT_NE(
+      s.message().AsStringView().find(
+          "Tablet splitting is not supported for tables that are a part of a replication slot"),
+      std::string::npos)
+      << s.message();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_replication_slot_streamed_tables) = true;
+  // Should be ok to split since FLAGS_enable_tablet_split_of_replication_slot_streamed_tables is
+  // true.
+  ASSERT_OK(XReplValidateSplitCandidateTable(table_id));
+}
+
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitWithBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;

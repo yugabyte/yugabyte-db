@@ -4,17 +4,10 @@ description: YugabyteDB documentation is the best source to learn the most in-de
 headcontent: Open source cloud-native distributed SQL database
 weight: 1
 type: indexpage
-resourcesIntro: Quick Links
-resources:
-  - title: Download
-    url: https://download.yugabyte.com/#/
-  - title: Deploy
-    url: /v2.18/deploy/
-  - title: Migrate to YugabyteDB
-    url: /preview/yugabyte-voyager/
-  - title: Troubleshoot
-    url: /preview/troubleshoot/
+breadcrumbDisable: true
 ---
+
+YugabyteDB is an open source PostgreSQL-compatible distributed database for cloud native apps. Resilient, scalable, and flexible, it can be deployed across public and private clouds as well as in Kubernetes environments.
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box

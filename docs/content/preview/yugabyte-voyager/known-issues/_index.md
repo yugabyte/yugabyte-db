@@ -2,7 +2,6 @@
 title: Schema review workarounds for YugabyteDB Voyager
 headerTitle: Schema review workarounds
 linkTitle: Schema review workarounds
-image: /images/section_icons/develop/learn.png
 headcontent: What to watch out for when migrating data using YugabyteDB Voyager
 description: What to watch out for when migrating data using YugabyteDB Voyager.
 type: indexpage

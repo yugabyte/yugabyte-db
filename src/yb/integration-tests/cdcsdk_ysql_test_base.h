@@ -805,6 +805,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestCreateReplicationSlotWithLsnType(const std::string lsn_type);
 
+  void TestCreateReplicationSlotWithLsnTypeParam(const std::string lsn_type);
+
   void TestTableIdAndPkInCDCRecords(bool colocated_db);
 
   void VerifyTableIdAndPkInCDCRecords(

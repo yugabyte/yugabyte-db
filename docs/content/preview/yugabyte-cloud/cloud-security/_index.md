@@ -3,7 +3,6 @@ title: Security architecture overview
 headerTitle: Security architecture overview
 linkTitle: Security architecture
 description: Review and overview of the YugabyteDB Aeon database security architecture and shared responsibility model.
-image: /images/section_icons/index/secure.png
 headcontent: YugabyteDB Aeon security architecture and shared responsibility model
 menu:
   preview_yugabyte-cloud:

@@ -63,6 +63,12 @@
       state: present
     tags: yb-prebuilt-ami
 
+  - name: Check if the core dumps directory or symlink exists
+    stat:
+      path: "{{ yb_home_dir }}/cores/"
+    register: core_dumps_dir_stat
+    tags: yb-prebuilt-ami
+
   - name: Create directory for core dumps
     file:
       path: "{{ yb_home_dir }}/cores/"
@@ -70,6 +76,7 @@
       mode: '0755'
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
+    when: not core_dumps_dir_stat.stat.exists
     tags: yb-prebuilt-ami
 
   - name: Ensure gzip is installed
@@ -462,3 +469,10 @@
     when: unattendedupgrade_file.stat.exists
   when: ansible_distribution == "Ubuntu"
   tags: yb-prebuilt-ami
+
+- name: Add prometheus user to yugabyte group
+  ansible.builtin.user:
+    name: prometheus
+    groups: yugabyte
+    append: true
+  become: yes

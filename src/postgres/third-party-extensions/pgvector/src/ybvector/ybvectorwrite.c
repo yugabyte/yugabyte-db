@@ -427,3 +427,35 @@ ybvectorbackfill(Relation heap, Relation index, struct IndexInfo *indexInfo,
 {
 	return ybvectorBuildCommon(heap, index, indexInfo, bfinfo, bfresult);
 }
+
+bool
+ybvectorcopartitionedinsert(Relation index, Datum *values, bool *isnull,
+							Datum ybctid, Relation heap,
+							IndexUniqueCheck checkUnique,
+							struct IndexInfo *indexInfo,
+							bool shared_insert)
+{
+	return false;
+}
+
+void
+ybvectorcopartitioneddelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
+			Relation heap, struct IndexInfo *indexInfo)
+{
+}
+
+IndexBuildResult *
+ybvectorcopartitionedbackfill(Relation heap, Relation index, struct IndexInfo *indexInfo,
+			  struct YbBackfillInfo *bfinfo, struct YbPgExecOutParam *bfresult)
+{
+	/* No backfill supported for copartitioned vector indexes yet. */
+	return NULL;
+}
+
+IndexBuildResult *
+ybvectorcopartitionedbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
+{
+	IndexBuildResult *result = palloc0(sizeof(IndexBuildResult));
+
+	return result;
+}

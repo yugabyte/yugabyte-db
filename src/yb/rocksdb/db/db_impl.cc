@@ -3720,8 +3720,9 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, CompactionTask* compa
   assert(num_total_running_compactions_ > 0);
   num_total_running_compactions_--;
   if (compaction_task) {
-      LOG_IF_WITH_PREFIX(DFATAL, compaction_tasks_.erase(compaction_task) != 1)
-          << "Finished compaction with unknown task serial no: " << yb::ToString(compaction_task);
+    LOG_IF_WITH_PREFIX(DFATAL, compaction_tasks_.erase(compaction_task) != 1)
+        << "Finished compaction with unknown task serial no: "
+        << yb::ToString(compaction_task);
   } else {
     bg_compaction_scheduled_--;
   }
@@ -3770,8 +3771,12 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
       manual_compaction->in_progress = false;
       manual_compaction->compaction.reset();
       manual_compaction = nullptr;
-    } else if (compaction_task && compaction_task->column_family_data()->Unref()) {
-      delete compaction_task->column_family_data();
+    } else if (compaction_task) {
+      compaction_task->column_family_data()->PendingCompactionRemoved(
+          compaction_task->compaction_size_kind());
+      if (compaction_task->column_family_data()->Unref()) {
+        delete compaction_task->column_family_data();
+      }
     }
     return status;
   }

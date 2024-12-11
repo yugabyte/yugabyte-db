@@ -7,6 +7,11 @@ headcontent: YugabyteDB API reference
 type: indexpage
 showRightNav: true
 ---
+<!--menu:
+  stable_api:
+    identifier: api
+    parent: yugabyte-apis
+    weight: 1100-->
 
 ## SQL APIs
 

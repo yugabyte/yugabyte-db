@@ -171,7 +171,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     }
     ThreadSafeArena arena;
     LWKeyValueWriteBatchPB kv_write_batch(&arena);
-    dwb.TEST_CopyToWriteBatchPB(&kv_write_batch);
+    dwb.MoveToWriteBatchPB(&kv_write_batch);
     TransactionalWriter writer(
         kv_write_batch, hybrid_time, *current_txn_id_, txn_isolation_level_,
         partial_range_key_intents, /* replicated_batches_state= */ Slice(), intra_txn_write_id_);

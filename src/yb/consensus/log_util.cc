@@ -1306,6 +1306,12 @@ Status ModifyDurableWriteFlagIfNotODirect() {
 void UpdateSegmentFooterIndexes(
     const consensus::LWReplicateMsg& replicate, LogSegmentFooterPB* footer) {
   const auto index = replicate.id().index();
+  const auto log_ht = replicate.hybrid_time();
+  if (!footer->has_last_wal_op_log_ht() || !HybridTime(footer->last_wal_op_log_ht()).is_valid() ||
+      footer->last_wal_op_log_ht() < log_ht) {
+    footer->set_last_wal_op_log_ht(replicate.hybrid_time());
+  }
+
   if (!footer->has_min_replicate_index() || index < footer->min_replicate_index()) {
     footer->set_min_replicate_index(index);
   }

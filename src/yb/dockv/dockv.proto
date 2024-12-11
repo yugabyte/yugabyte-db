@@ -36,3 +36,8 @@ message SchemaPackingPB {
   // Columns that present in schema but don't participate in packing.
   repeated uint32 skipped_column_ids = 3;
 }
+
+enum DocdbLockMode {
+  DOCDB_LOCK_EXCLUSIVE = 1;
+  DOCDB_LOCK_SHARE = 2;
+}

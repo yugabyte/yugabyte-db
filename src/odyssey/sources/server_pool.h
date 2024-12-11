@@ -16,12 +16,15 @@ struct od_server_pool {
 	od_list_t idle;
 	int count_active;
 	int count_idle;
+	/* count of sticky connections in pool */
+	int yb_count_sticky;
 };
 
 static inline void od_server_pool_init(od_server_pool_t *pool)
 {
 	pool->count_active = 0;
 	pool->count_idle = 0;
+	pool->yb_count_sticky = 0;
 	od_list_init(&pool->idle);
 	od_list_init(&pool->active);
 }
@@ -72,6 +75,9 @@ OD_SERVER_POOL_FREE_DECLARE(ldap, od_ldap_server_t, od_ldap_server_free)
 		od_list_t *target = NULL;                                      \
 		switch (state) {                                               \
 		case OD_SERVER_UNDEF:                                          \
+			if (server->yb_sticky_connection) {                     \
+				pool->yb_count_sticky--;                       \
+			}													  \
 			break;                                                 \
 		case OD_SERVER_IDLE:                                           \
 			target = &pool->idle;                                  \

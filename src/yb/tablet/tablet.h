@@ -98,6 +98,7 @@ namespace tablet {
 YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
+YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
@@ -653,7 +654,7 @@ class Tablet : public AbstractTablet,
   // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
   void TEST_DocDBDumpToLog(IncludeIntents include_intents);
 
-  Result<size_t> TEST_CountRegularDBRecords();
+  Result<size_t> TEST_CountDBRecords(docdb::StorageDbType db_type);
 
   Status CreateReadIntents(
       IsolationLevel level,

@@ -9,16 +9,6 @@ breadcrumbDisable: true
 weight: 1
 showRightNav: true
 unversioned: true
-resourcesIntro: Products
-resources:
-  - title: Open source
-    url: /preview/
-  - title: Fully managed
-    url: /preview/yugabyte-cloud/
-  - title: Enterprise DBaaS
-    url: /preview/yugabyte-platform/
-  - title: Migrate from other RDBMS
-    url: /preview/yugabyte-voyager/
 ---
 
 YugabyteDB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a combination of high-performance document store, per-shard distributed consensus replication, and multi-shard ACID transactions, YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. As a cloud-native database, it can be deployed across public and private clouds as well as in Kubernetes environments.

@@ -16,6 +16,8 @@
 #pragma once
 
 #include "yb/client/client_fwd.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/common/pgsql_protocol.pb.h"
 
 namespace yb {
 
@@ -27,9 +29,16 @@ class YsqlAdvisoryLocksTable {
   explicit YsqlAdvisoryLocksTable(client::YBClient& client);
   ~YsqlAdvisoryLocksTable();
 
-  Result<client::YBTablePtr> GetTable() EXCLUDES(mutex_);
+  Result<client::YBPgsqlLockOpPtr> CreateLockOp(
+      uint32_t db_oid, uint32_t class_oid, uint32_t objid, uint32_t objsubid,
+      PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, bool wait,
+      rpc::Sidecars* sidecars) EXCLUDES(mutex_);
 
  private:
+  friend class AdvisoryLockTest;
+
+  Result<client::YBTablePtr> GetTable() EXCLUDES(mutex_);
+
   std::mutex mutex_;
   client::YBTablePtr table_ GUARDED_BY(mutex_);;
   client::YBClient& client_;

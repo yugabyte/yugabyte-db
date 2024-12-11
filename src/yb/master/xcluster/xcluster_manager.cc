@@ -119,7 +119,8 @@ void XClusterManager::StartShutdown() {
     tasks = monitored_tasks_;
   }
   for (auto& task : tasks) {
-    task->AbortAndReturnPrevState(STATUS(Aborted, "Master is shutting down"));
+    task->AbortAndReturnPrevState(
+        STATUS(Aborted, "Master is shutting down"), /* call_task_finisher */ true);
   }
 }
 

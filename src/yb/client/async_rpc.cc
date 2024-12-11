@@ -306,7 +306,8 @@ void AsyncRpc::Failed(const Status& status) {
         break;
       }
       case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::PGSQL_WRITE: {
+      case YBOperation::Type::PGSQL_WRITE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::PGSQL_LOCK: {
         PgsqlResponsePB* resp = down_cast<YBPgsqlOp*>(yb_op)->mutable_response();
         resp->set_status(status.IsTryAgain() ? PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR
                                              : PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
@@ -585,24 +586,33 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
   TRACE_TO(trace_, "WriteRpc initiated");
   VTRACE_TO(1, trace_, "Tablet $0 table $1", data.tablet->tablet_id(), table()->name().ToString());
 
-  // Add the rows
-  switch (table()->table_type()) {
-    case YBTableType::REDIS_TABLE_TYPE:
-      FillOps<YBRedisWriteOp>(
-          ops_, YBOperation::Type::REDIS_WRITE, &req_, req_.mutable_redis_write_batch());
-      break;
-    case YBTableType::YQL_TABLE_TYPE:
-      FillOps<YBqlWriteOp>(
-          ops_, YBOperation::Type::QL_WRITE, &req_, req_.mutable_ql_write_batch());
-      break;
-    case YBTableType::PGSQL_TABLE_TYPE:
-      FillOps<YBPgsqlWriteOp>(
-          ops_, YBOperation::Type::PGSQL_WRITE, &req_, req_.mutable_pgsql_write_batch());
-      break;
-    case YBTableType::UNKNOWN_TABLE_TYPE:
-    case YBTableType::TRANSACTION_STATUS_TABLE_TYPE:
-      LOG(DFATAL) << "Unsupported table type: " << table()->ToString();
-      break;
+  if (data.ops.front().yb_op->group() == OpGroup::kLock) {
+    FillOps<YBPgsqlLockOp>(
+        ops_, YBOperation::Type::PGSQL_LOCK, &req_, req_.mutable_pgsql_lock_batch());
+    // Set wait policy for non-blocking lock requests.
+    if (!down_cast<YBPgsqlLockOp*>(data.ops.front().yb_op.get())->mutable_request()->wait()) {
+      req_.mutable_write_batch()->set_wait_policy(WAIT_SKIP);
+    }
+  } else {
+    // Add the rows
+    switch (table()->table_type()) {
+      case YBTableType::REDIS_TABLE_TYPE:
+        FillOps<YBRedisWriteOp>(
+            ops_, YBOperation::Type::REDIS_WRITE, &req_, req_.mutable_redis_write_batch());
+        break;
+      case YBTableType::YQL_TABLE_TYPE:
+        FillOps<YBqlWriteOp>(
+            ops_, YBOperation::Type::QL_WRITE, &req_, req_.mutable_ql_write_batch());
+        break;
+      case YBTableType::PGSQL_TABLE_TYPE:
+        FillOps<YBPgsqlWriteOp>(
+            ops_, YBOperation::Type::PGSQL_WRITE, &req_, req_.mutable_pgsql_write_batch());
+        break;
+      case YBTableType::UNKNOWN_TABLE_TYPE:
+      case YBTableType::TRANSACTION_STATUS_TABLE_TYPE:
+        LOG(DFATAL) << "Unsupported table type: " << table()->ToString();
+        break;
+    }
   }
 
   VLOG(3) << "Created batch for " << data.tablet->tablet_id() << ":\n"
@@ -645,6 +655,7 @@ WriteRpc::~WriteRpc() {
   ReleaseOps(req_.mutable_redis_write_batch());
   ReleaseOps(req_.mutable_ql_write_batch());
   ReleaseOps(req_.mutable_pgsql_write_batch());
+  ReleaseOps(req_.mutable_pgsql_lock_batch());
 }
 
 void WriteRpc::CallRemoteMethod() {
@@ -720,6 +731,17 @@ Status WriteRpc::SwapResponses() {
               pgsql_upcall_sidecar_offset + pgsql_response.rows_data_sidecar());
         }
         pgsql_idx++;
+        break;
+      }
+      case YBOperation::Type::PGSQL_LOCK: {
+        if (pgsql_idx >= resp_.pgsql_response_batch().size()) {
+          ++pgsql_idx;
+          continue;
+        }
+        // Restore pgsql lock request and extract response.
+        auto* pgsql_op = down_cast<YBPgsqlLockOp*>(yb_op);
+        pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_response_batch(pgsql_idx));
+        ++pgsql_idx;
         break;
       }
       case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;
@@ -855,6 +877,7 @@ Status ReadRpc::SwapResponses() {
       case YBOperation::Type::PGSQL_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::QL_WRITE:
+      case YBOperation::Type::PGSQL_LOCK:
         LOG(FATAL) << "Not a read operation " << op.yb_op->type();
         break;
     }

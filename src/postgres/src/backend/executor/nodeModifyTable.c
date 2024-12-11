@@ -2400,8 +2400,7 @@ yb_lreplace:;
 	}
 
 	ModifyTable *plan = (ModifyTable *) context->mtstate->ps.plan;
-	YbCopySkippableEntities(&estate->yb_skip_entities,
-							plan->yb_skip_entities);
+	YbCopySkippableEntities(&estate->yb_skip_entities, plan->yb_skip_entities);
 
 	/*
 	 * If an update is a "single row transaction", then we have already
@@ -2430,13 +2429,6 @@ yb_lreplace:;
 	 */
 	*is_pk_updated = YbIsPrimaryKeyUpdated(resultRelationDesc,
 										   *cols_marked_for_update);
-
-	/*
-	 * TODO(alex): It probably makes more sense to pass a
-	 *             transformed slot instead of a plan slot? Note though
-	 *             that it can have tuple materialized already.
-	 */
-
 	if (*is_pk_updated)
 	{
 		YBCExecuteUpdateReplace(resultRelationDesc, context->planSlot, slot, estate);
@@ -4589,7 +4581,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	 */
 	mtstate->yb_is_update_optimization_enabled =
 		(node->yb_update_affected_entities != NULL &&
-		 operation == CMD_UPDATE && YbIsUpdateOptimizationEnabled());
+		 YbIsUpdateOptimizationEnabled());
 
 	mtstate->yb_is_inplace_index_update_enabled = yb_enable_inplace_index_update;
 
