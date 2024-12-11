@@ -60,6 +60,7 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
 * CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
 * Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations.
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
+* [Composite types](../../ysql-language-features/data-types#composite-types) are currently not supported. Issue [25221](https://github.com/yugabyte/yugabyte-db/issues/25221).
 
 In addition, CDC support for the following features will be added in upcoming releases:
 
