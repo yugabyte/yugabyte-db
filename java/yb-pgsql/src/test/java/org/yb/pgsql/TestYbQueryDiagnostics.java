@@ -30,11 +30,13 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -93,6 +95,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     private static final int YB_QD_MAX_EXPLAIN_PLAN_LEN = 16384;
     private static final int YB_QD_MAX_BIND_VARS_LEN = 2048;
     private static final int BG_WORKER_INTERVAL_MS = 1000;
+    private static final int YB_QD_MAX_CONSTANTS = 100;
     private static final String noQueriesExecutedWarning = "No query executed;";
     private static final String pgssResetWarning =
         "pg_stat_statements was reset, query string not available;";
@@ -803,6 +806,27 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 .collect(Collectors.joining("\n"));
 
         validateAgainstFile(filePath, filteredExplainPlan);
+    }
+
+    private String getLongQueryWith5000Constants(List<String> constants) throws Exception {
+        // Create a long complex query with 2500 cases and around 100000 characters
+        StringBuilder longQuery = new StringBuilder("SELECT CASE ");
+
+        for (int i = 1; i <= 2500; i++) {
+            String condition = UUID.randomUUID().toString().substring(0, 10);
+            String result = UUID.randomUUID().toString().substring(0, 10);
+
+            constants.add(condition);
+            constants.add(result);
+
+            // Each case is of the form "WHEN a = 'condition' THEN 'result' " is 40 chars long
+            longQuery.append("WHEN a = '").append(condition)
+                     .append("' THEN '").append(result).append("' ");
+        }
+
+        longQuery.append("END AS result FROM test_table1;");
+
+        return longQuery.toString();
     }
 
     /*
@@ -1646,6 +1670,68 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             validateAshData(ashPath);
 
+            validatePgssData(pgssPath, queryId, 1);
+        }
+    }
+
+    /*
+     * Tests a Long query(around 100000 chars).
+     */
+    @Test
+    public void testLongQueryWith5000Constants() throws Exception {
+        int diagnosticsInterval = 2;
+        QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+
+            List<String> constants = new ArrayList<String>();
+
+            String longQuery = getLongQueryWith5000Constants(constants);
+            LOG.info(longQuery.toString());
+
+            // Execute the long query
+            statement.execute(longQuery.toString());
+
+            String queryId = getQueryIdFromPgStatStatements(statement, "SELECT CASE%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
+
+            // Execute the long query again to ensure it is captured
+            statement.execute(longQuery.toString());
+
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+
+            // Validate the results
+            Path bindVariablesPath = getFilePathFromBaseDir(bundleDataPath,
+                    "constants_and_bind_variables.csv");
+            Path explainPlanPath = getFilePathFromBaseDir(bundleDataPath,
+                    "explain_plan.txt");
+            Path schemaDetailsPath = getFilePathFromBaseDir(bundleDataPath,
+                    "schema_details.txt");
+            Path ashPath = getFilePathFromBaseDir(bundleDataPath,
+                    "active_session_history.csv");
+            Path pgssPath = getFilePathFromBaseDir(bundleDataPath,
+                    "pg_stat_statements.csv");
+
+            String concatenatedConstants = constants.stream()
+                                                    .limit(YB_QD_MAX_CONSTANTS)
+                                                    .map(c -> "'" + c + "'")
+                                                    .collect(Collectors.joining(","));
+
+            LOG.info("Concatenated constants: " + concatenatedConstants);
+
+            validateConstantsOrBindVarData(bindVariablesPath, concatenatedConstants);
+            validateExplainPlan(explainPlanPath,
+                "src/test/resources/expected/long_query_explain_plan.out");
+            validateAgainstFile("src/test/resources/expected/long_query_schema_details.out",
+                                new String(Files.readAllBytes(schemaDetailsPath),
+                                           StandardCharsets.UTF_8));
+            validateAshData(ashPath);
             validatePgssData(pgssPath, queryId, 1);
         }
     }
