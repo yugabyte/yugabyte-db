@@ -462,4 +462,6 @@ void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::k
 std::vector<std::string> DumpDocDBToStrings(
     MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
 
+void DisableFlushOnShutdown(MiniCluster& cluster, bool disable);
+
 }  // namespace yb
