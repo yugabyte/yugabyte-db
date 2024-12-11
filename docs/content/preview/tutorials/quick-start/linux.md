@@ -6,6 +6,7 @@ description: Test YugabyteDB's APIs and core features by creating a local cluste
 headcontent: Create a local cluster on a single host
 aliases:
   - /quick-start/linux/
+  - /preview/quick-start/linux/
 type: docs
 rightNav:
   hideH4: true

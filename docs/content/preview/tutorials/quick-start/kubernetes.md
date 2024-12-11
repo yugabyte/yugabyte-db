@@ -6,6 +6,7 @@ headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on Kubernetes (Minikube).
 aliases:
   - /quick-start-kubernetes/
+  - /preview/quick-start/kubernetes/
 type: docs
 unversioned: true
 ---
