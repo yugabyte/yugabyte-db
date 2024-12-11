@@ -123,6 +123,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
       if (!res.ok()) {
         context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
             STATUS(InternalError, "Failed to increment YSQL catalog version"));
+        return;
       }
     } else if (FLAGS_log_ysql_catalog_versions && pg_req.table_id() == kPgYbCatalogVersionTableId) {
       log_versions = true;
@@ -139,6 +140,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
             doc_key.range_group().size() != 1) {
           context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
               STATUS(InternalError, "Failed to get db oid"));
+          return;
         }
         const uint32_t db_oid = doc_key.range_group()[0].GetUInt32();
         // In per-db catalog version mode, one can run a SQL script to prepare the
