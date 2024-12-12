@@ -177,6 +177,7 @@ export const K8sProviderCreateForm = ({
         kubernetesPullSecretContent
       ) as K8sPullSecretFile;
       providerPayload = {
+        //
         code: ProviderCode.KUBERNETES,
         name: formValues.providerName,
         details: {

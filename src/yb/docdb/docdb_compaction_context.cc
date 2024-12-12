@@ -516,7 +516,7 @@ class PackedRowData {
   HistoryCutoff history_cutoff_;
 
   using UsedSchemaVersionsMap =
-      std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>, UuidHash>;
+      std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>>;
 
   // Schema version ranges for each found table.
   // That could be a surprise, but when we are talking about range and use pair to represent range
@@ -773,6 +773,11 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   VLOG(4) << "Feed: " << internal_key.ToDebugHexString() << "/"
           << dockv::SubDocKey::DebugSliceToString(key) << " => " << value.ToDebugHexString();
+
+  // TODO(vector-index) implement better handing for vector index metadata, it's kept in SST now.
+  if (dockv::DecodeKeyEntryType(key) == dockv::KeyEntryType::kVectorIndexMetadata) {
+    return ForwardToNextFeed(internal_key, value);
+  }
 
   if (!IsWithinBounds(key_bounds_, key) &&
       dockv::DecodeKeyEntryType(key) != dockv::KeyEntryType::kTransactionApplyState) {

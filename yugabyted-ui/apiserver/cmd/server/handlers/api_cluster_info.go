@@ -22,8 +22,8 @@ import (
 )
 
 const SLOW_QUERY_STATS_SQL string = "SELECT a.rolname, t.datname, t.queryid, " +
-    "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, " +
-    "t.stddev_time, t.local_blks_hit, t.local_blks_written FROM " +
+    "t.query, t.calls, t.total_exec_time, t.rows, t.min_exec_time, t.max_exec_time, " +
+    "t.mean_exec_time, t.stddev_exec_time, t.local_blks_hit, t.local_blks_written FROM " +
     "pg_authid a JOIN (SELECT * FROM " +
     "pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid"
 

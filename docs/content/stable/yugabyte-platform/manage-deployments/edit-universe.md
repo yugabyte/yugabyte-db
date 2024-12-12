@@ -36,9 +36,11 @@ To change the configuration of a universe, do the following:
         - **Regions** - Select any region configured in the provider used to deploy the universe.
         - [Master Placement](../../create-deployments/dedicated-master/).
         - **Total Nodes** and **Availability Zones** - As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
-    - **Instance Configuration** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
-
-        For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
+    - **Instance Configuration**
+        - **Instance Type** and **Volume Info Size** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
+        - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
+    - **Advanced Configuration**
+        - **Override Deployment Ports** - You can change the Master and TServer HTTP and RPC ports, and the Prometheus Node Exporter port.
 
     - [User Tags](../instance-tags/). Changing tags doesn't require any node restarts or data migration.
 
@@ -49,6 +51,20 @@ To change the configuration of a universe, do the following:
 YugabyteDB automatically ensures that new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
 
 To change the number of nodes of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities, you must first add the certificates to the nodes you will add to the universe. Refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-ca/). Ensure that the certificates are signed by the same external CA and have the same root certificate. In addition, ensure that you copy the certificates to the same locations that you originally used when creating the universe.
+
+### Edit connection pooling
+
+{{<tags/feature/tp>}}If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).
+
+While in Tech Preview, the feature is not available by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+
+To enable or disable connection pooling on a universe:
+
+1. Navigate to your universe.
+1. Click **Actions > Edit Connection Pooling** to open the **Edit Connection Pooling** dialog.
+1. Enable or disable the **Built-In Connection Pooling** option.
+1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
+1. Click **Apply Changes**.
 
 ## Smart resize
 

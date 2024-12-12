@@ -30,6 +30,7 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
        "waiting_logical_connections",
        "active_physical_connections",
        "idle_physical_connections",
+       "sticky_connections",
        "avg_wait_time_ns",
        "qps",
        "tps"};
@@ -133,6 +134,15 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
         exp_val, num_physical_conn);
   }
 
+  private void testStickyConnections(String db_name,
+      String user_name, int exp_val) throws Exception {
+    JsonObject pool = getPool(db_name, user_name);
+    assertNotNull(pool);
+    int sticky_conn = pool.get("sticky_connections").getAsInt();
+    assertEquals("Did not get the expected number of sticky connections",
+        exp_val, sticky_conn);
+  }
+
   @Test
   public void testConnections() throws Exception {
     // Create a connection on the Ysql Connection Manager port
@@ -185,6 +195,7 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
         testNumPhysicalConnections("yugabyte", "yugabyte",
                                   isTestRunningInWarmupRandomMode() ? 3 : 1);
         testNumLogicalConnections("yugabyte", "yugabyte", 1);
+        testStickyConnections("yugabyte", "yugabyte", 1);
     }
 
     Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
@@ -194,6 +205,50 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
         testNumPhysicalConnections("yugabyte", "yugabyte",
                                   isTestRunningInWarmupRandomMode() ? 2 : 0);
         testNumLogicalConnections("yugabyte", "yugabyte", 0);
+        testStickyConnections("yugabyte", "yugabyte", 0);
+    }
+  }
+
+  @Test
+  public void testMultipleStickyConnections() throws Exception {
+    // Create a few connections on the Ysql Connection Manager port
+    try (Connection conn1 = getConnectionBuilder().withTServer(TSERVER_IDX)
+                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .connect();
+         Connection conn2 = getConnectionBuilder().withTServer(TSERVER_IDX)
+                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .connect();
+         Statement stmt1 = conn1.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+
+        stmt1.execute("BEGIN");
+
+        // Active transactions should not imply that the connection is sticky.
+        Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
+        testStatsFields();
+        testNumLogicalConnections("yugabyte", "yugabyte", 2);
+        testNumPhysicalConnections("yugabyte", "yugabyte",
+          isTestRunningInWarmupRandomMode() ? 3 : 1);
+        testStickyConnections("yugabyte", "yugabyte", 0);
+
+        stmt1.execute("COMMIT");
+
+        // Incrementally ensure sticky connections can be observed.
+        stmt1.execute("CREATE TEMP TABLE t1(id int)");
+        Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
+        testStickyConnections("yugabyte", "yugabyte", 1);
+
+        stmt2.execute("CREATE TEMP TABLE t2(id int)");
+        Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
+        testStickyConnections("yugabyte", "yugabyte", 2);
+    }
+
+    // Finally, ensure that closed sticky connections are reflected in the stats.
+    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
+
+    JsonObject pool = getPool("yugabyte", "yugabyte");
+    if (pool != null) {
+        testStickyConnections("yugabyte", "yugabyte", 0);
     }
   }
 }

@@ -225,6 +225,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.InstallingThirdPartySoftware,
           TaskType.UpdateUniverseIntent,
+          TaskType.PodDisruptionBudgetPolicy,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
@@ -241,6 +242,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -263,6 +265,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.ModifyBlackList,
           TaskType.KubernetesCommandExecutor,
           TaskType.UpdateUniverseIntent,
+          TaskType.PodDisruptionBudgetPolicy,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
@@ -281,6 +284,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()));
@@ -316,6 +320,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckFollowerLag,
           TaskType.KubernetesCommandExecutor,
           TaskType.UpdateUniverseIntent,
+          TaskType.PodDisruptionBudgetPolicy,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
@@ -348,6 +353,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()));

@@ -12,6 +12,7 @@
 
 #pragma once
 #include <algorithm>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -26,6 +27,8 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/raft_consensus.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -800,6 +803,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
       CDCSDKCheckpointPB checkpoint, GetChangesResponsePB* change_resp);
 
+  void TestCreateReplicationSlotWithLsnType(const std::string lsn_type);
+
+  void TestCreateReplicationSlotWithLsnTypeParam(const std::string lsn_type);
+
   void TestTableIdAndPkInCDCRecords(bool colocated_db);
 
   void VerifyTableIdAndPkInCDCRecords(
@@ -833,6 +840,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestRemovalOfColocatedTableFromCDCStream(bool start_removal_from_first_table);
 
+  void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
+
   Status CreateTables(
       const size_t num_tables, std::vector<YBTableName>* tables,
       vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>* tablets,
@@ -847,6 +856,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status GetIntentEntriesAndSSTFileCountForTablet(
       const TabletId& tablet_id, std::unordered_map<std::string, std::pair<int64_t, int64_t>>*
                                         initial_intents_and_intent_sst_file_count);
+
+  void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
 };
 
 }  // namespace cdc

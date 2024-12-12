@@ -107,6 +107,13 @@ Markdown supports [tables](https://www.markdownguide.org/extended-syntax/#tables
  1 | 2
 (1 row)
 ```|
+|
+```sql
+insert
+```|
+```sql
+update
+```|
 <!-- row with tip block -->
 | {{</*warning title="Beware" */>}} start and end rows with the pipe symbol {{</*/warning*/>}} |
 {{</*tip title="Awesome tip" */>}} Use 3 ticks for code blocks with pipe symbols {{</*/tip*/>}} |
@@ -128,6 +135,13 @@ The above markdown should render a table as follows:
 ---+---
  1 | 2
 (1 row)
+```|
+|
+```sql
+insert
+```|
+```sql
+update
 ```|
 <!-- row with tip block -->
 | {{< warning title="Beware" >}} start and end rows with the pipe symbol {{</warning>}} |
@@ -292,7 +306,7 @@ The corresponding code for this widget is as follows.
   title="Learn through examples"
   description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
   buttonText="Get started"
-  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  buttonUrl="/preview/tutorials/quick-start-yugabytedb-managed/"
   imageAlt="Yugabyte cloud"
   imageUrl="/images/homepage/learn-through-examples.svg"
 */>}}
@@ -305,7 +319,7 @@ To change image background to transparent, add `imageTransparent=true` in the co
   title="Learn through examples"
   description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
   buttonText="Get started"
-  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  buttonUrl="/preview/tutorials/quick-start-yugabytedb-managed/"
   imageAlt="Yugabyte cloud"
   imageTransparent=true
   imageUrl="/images/homepage/learn-through-examples.svg"

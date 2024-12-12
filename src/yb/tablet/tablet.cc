@@ -542,7 +542,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
   }
 
  private:
-  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion, UuidHash>;
+  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion>;
 
   void OldSchemaGC() {
     MinSchemaVersionMap table_id_to_min_schema_version;
@@ -651,7 +651,7 @@ Tablet::Tablet(const TabletInitData& data)
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
       get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)),
-      rpc_thread_pool_(data.rpc_thread_pool) {
+      vector_index_thread_pool_provider_(data.vector_index_thread_pool_provider) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->primary_table_schema_version();
@@ -944,7 +944,7 @@ Status Tablet::OpenKeyValueTablet() {
     rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(tablet_metrics_entity_);
   }
 
-  key_bounds_ = docdb::KeyBounds(metadata()->lower_bound_key(), metadata()->upper_bound_key());
+  key_bounds_ = metadata()->MakeKeyBounds();
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
@@ -1624,7 +1624,7 @@ Status Tablet::WriteTransactionalBatch(
       put_batch, hybrid_time, transaction_id, isolation_level,
       dockv::PartialRangeKeyIntents(metadata_->UsePartialRangeKeyIntents()),
       Slice(encoded_replicated_batch_idx_set.data(), encoded_replicated_batch_idx_set.size()),
-      last_batch_data.next_write_id);
+      last_batch_data.next_write_id, this);
   if (store_metadata) {
     writer.SetMetadataToStore(&put_batch.transaction());
   }
@@ -1646,7 +1646,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     docdb::ConsensusFrontiers* frontiers, HybridTime write_hybrid_time,
     HybridTime batch_hybrid_time, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
-      put_batch.apply_external_transactions().empty()) {
+      put_batch.lock_pairs().empty() && put_batch.apply_external_transactions().empty()) {
     return Status::OK();
   }
 
@@ -1664,7 +1664,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     DCHECK(!already_applied_to_regular_db);
 
     rocksdb::WriteBatch intents_write_batch;
-    docdb::ExternalIntentsBatchWriter batcher(
+    docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
         &GetSchemaPackingProvider());
     batcher.SetFrontiers(frontiers);
@@ -1926,22 +1926,14 @@ Status Tablet::DoHandlePgsqlReadRequest(
       if (pgsql_read_request.index_request().has_vector_idx_options()) {
         vector_index_table_id = index_table_id;
       }
-    } else if (pgsql_read_request.has_vector_idx_options()) {
-      // TODO(vector_index) Temporary use index_doc_read_context to pass doc_read_context for
-      // indexed table. Should be changed when postgres will send all vector index queries in
-      // index_request.
-      if (table_info->index_info) {
-        index_table_id = table_info->index_info->indexed_table_id();
-        vector_index_table_id = table_info->table_id;
-      }
     }
     auto index_doc_read_context = !index_table_id.empty()
         ? VERIFY_RESULT(GetDocReadContext(index_table_id)) : nullptr;
 
     if (!vector_index_table_id.empty()) {
       SharedLock lock(vector_indexes_mutex_);
-      auto it = all_vector_indexes_.find(vector_index_table_id);
-      if (it != all_vector_indexes_.end()) {
+      auto it = vector_indexes_map_.find(vector_index_table_id);
+      if (it != vector_indexes_map_.end()) {
         vector_index = it->second;
       }
     }
@@ -2211,7 +2203,7 @@ Status Tablet::ImportData(const std::string& source_dir) {
 // We apply intents by iterating over whole transaction reverse index.
 // Using value of reverse index record we find original intent record and apply it.
 // After that we delete both intent record and reverse index record.
-Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApplyData& data) {
+docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& data) {
   VLOG_WITH_PREFIX(4) << __func__ << ": " << data.transaction_id;
 
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
@@ -2225,11 +2217,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   docdb::VectorIndexesPtr vector_indexes;
   if (has_vector_indexes_.load(std::memory_order_acquire)) {
     SharedLock lock(vector_indexes_mutex_);
-    // TODO(vector_index) Handle insert to colocated table
-    auto it = vector_indexes_for_table_.find(metadata_->table_id());
-    if (it != vector_indexes_for_table_.end()) {
-      vector_indexes = it->second;
-    }
+    vector_indexes = vector_indexes_list_;
   }
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
@@ -2285,6 +2273,54 @@ Status Tablet::RemoveIntentsImpl(
   return Status::OK();
 }
 
+Status Tablet::RemoveAdvisoryLock(
+      const TransactionId& transaction_id, const Slice& key,
+      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler* handler) {
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Transaction " << transaction_id
+      << " is going to release lock "<< key.ToDebugString()
+      << " with type " << yb::ToString(intent_types);
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  RSTATUS_DCHECK(transaction_participant_, IllegalState,
+                 "Transaction participant is not initialized");
+  HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
+  boost::optional<docdb::ApplyTransactionState> apply_state;
+  dockv::KeyBytes advisory_lock_key(key);
+  advisory_lock_key.AppendKeyEntryType(dockv::KeyEntryType::kIntentTypeSet);
+  advisory_lock_key.AppendIntentTypeSet(intent_types);
+  docdb::RemoveIntentsContext context(
+      transaction_id, static_cast<uint8_t>(RemoveReason::kUnlock));
+  docdb::IntentsWriter writer(
+      Slice(), min_running_ht,
+      intents_db_.get(), &context, /* ignore_metadata= */ true, advisory_lock_key);
+  RETURN_NOT_OK(writer.Apply(handler));
+  LOG_IF(DFATAL, !writer.key_applied()) << "Lock not found for " << key.ToDebugString();
+  return Status::OK();
+}
+
+Status Tablet::RemoveAdvisoryLocks(const TransactionId& id, rocksdb::DirectWriteHandler* handler) {
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  RSTATUS_DCHECK(transaction_participant_, IllegalState,
+                 "Transaction participant is not initialized");
+  HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
+  boost::optional<docdb::ApplyTransactionState> apply_state;
+  for (;;) {
+    docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(RemoveReason::kUnlock));
+    docdb::IntentsWriter writer(
+        apply_state ? apply_state->key : Slice(), min_running_ht,
+        intents_db_.get(), &context, /* ignore_metadata */ true);
+    RETURN_NOT_OK(writer.Apply(handler));
+
+    if (!context.apply_state().active()) {
+      break;
+    }
+    apply_state = std::move(context.apply_state());
+  }
+  return Status::OK();
+}
 
 Status Tablet::RemoveIntents(
     const RemoveIntentsData& data, RemoveReason reason, const TransactionId& id) {
@@ -2546,14 +2582,17 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
 
   if (index_info && index_info->is_vector_idx() &&
       index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY) {
+    auto indexed_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
+        index_info->indexed_table_id()));
     std::lock_guard lock(vector_indexes_mutex_);
     has_vector_indexes_ = true;
-    auto it = all_vector_indexes_.find(table_info.table_id());
-    if (it == all_vector_indexes_.end()) {
+    auto it = vector_indexes_map_.find(table_info.table_id());
+    if (it == vector_indexes_map_.end()) {
       auto vector_index = VERIFY_RESULT(docdb::CreateVectorIndex(
-          metadata_->rocksdb_dir(), *rpc_thread_pool_, *index_info));
-      it = all_vector_indexes_.emplace(table_info.table_id(), std::move(vector_index)).first;
-      auto& indexes = vector_indexes_for_table_[index_info->indexed_table_id()];
+          metadata_->rocksdb_dir(), *vector_index_thread_pool_provider_(),
+          indexed_table_info->doc_read_context->table_key_prefix(), *index_info, doc_db()));
+      it = vector_indexes_map_.emplace(table_info.table_id(), std::move(vector_index)).first;
+      auto& indexes = vector_indexes_list_;
       if (indexes) {
         auto new_indexes = std::make_shared<docdb::VectorIndexes>();
         new_indexes->reserve(indexes->size() + 1);
@@ -2695,10 +2734,6 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
 Status Tablet::InsertPackedSchemaForXClusterTarget(
     ChangeMetadataOperation* operation, std::shared_ptr<yb::tablet::TableInfo> current_table_info) {
   SCHECK(operation->schema()->has_column_ids(), IllegalState, "Schema must have column ids");
-  // TODO(#22318) handle colocated tables later.
-  SCHECK(
-      !metadata_->colocated(), IllegalState,
-      "Colocated tables are not supported for automatic DDL replication.");
 
   metadata_->InsertPackedSchemaForXClusterTarget(
       *operation->schema(), operation->index_map(), operation->schema_version(), operation->op_id(),
@@ -4013,11 +4048,12 @@ void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
   }
 }
 
-Result<size_t> Tablet::TEST_CountRegularDBRecords() {
-  if (!regular_db_) return 0;
+Result<size_t> Tablet::TEST_CountDBRecords(docdb::StorageDbType db_type) {
+  auto* db = db_type == docdb::StorageDbType::kRegular ? regular_db_.get() : intents_db_.get();
+  if (!db) return 0;
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
-  docdb::BoundedRocksDbIterator iter(regular_db_.get(), read_opts, &key_bounds_);
+  docdb::BoundedRocksDbIterator iter(db, read_opts, &key_bounds_);
 
   size_t result = 0;
   for (iter.SeekToFirst(); iter.Valid(); iter.Next()) {

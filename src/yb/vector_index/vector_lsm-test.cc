@@ -15,10 +15,6 @@
 
 #include <google/protobuf/any.pb.h>
 
-#include "yb/docdb/docdb_rocksdb_util.h"
-
-#include "yb/dockv/doc_key.h"
-
 #include "yb/rocksdb/metadata.h"
 
 #include "yb/rpc/thread_pool.h"
@@ -47,14 +43,14 @@ class SimpleVectorLSMKeyValueStorage : public VectorLSMKeyValueStorage {
  public:
   SimpleVectorLSMKeyValueStorage() = default;
 
-  Status StoreBaseTableKeys(const BaseTableKeysBatch& batch, HybridTime write_time) {
+  Status StoreBaseTableKeys(const BaseTableKeysBatch& batch, const VectorLSMInsertContext&) {
     for (const auto& [vertex_id, base_table_key] : batch) {
       storage_.emplace(vertex_id, KeyBuffer(base_table_key));
     }
     return Status::OK();
   }
 
-  Result<KeyBuffer> ReadBaseTableKey(VertexId vertex_id) {
+  Result<KeyBuffer> ReadBaseTableKey(VectorId vertex_id) {
     auto it = storage_.find(vertex_id);
     if (it == storage_.end()) {
       return STATUS_FORMAT(NotFound, "Vertex id not found: $0", vertex_id);
@@ -63,7 +59,7 @@ class SimpleVectorLSMKeyValueStorage : public VectorLSMKeyValueStorage {
   }
 
  private:
-  std::unordered_map<VertexId, KeyBuffer> storage_;
+  std::unordered_map<VectorId, KeyBuffer> storage_;
 };
 
 class TestFrontier : public rocksdb::UserFrontier {
@@ -78,7 +74,7 @@ class TestFrontier : public rocksdb::UserFrontier {
 
   void ToPB(google::protobuf::Any* any) const override {
     VectorLSMTestFrontierPB pb;
-    pb.set_vertex_id(vertex_id_);
+    pb.set_vertex_id(vertex_id_.data(), vertex_id_.size());
     any->PackFrom(pb);
   }
 
@@ -120,7 +116,8 @@ class TestFrontier : public rocksdb::UserFrontier {
     if (!any.UnpackTo(&pb)) {
       return STATUS_FORMAT(Corruption, "Unpack test frontier failed");
     }
-    vertex_id_ = pb.vertex_id();
+
+    vertex_id_ = VERIFY_RESULT(FullyDecodeVectorId(pb.vertex_id()));
     return Status::OK();
   }
 
@@ -128,16 +125,16 @@ class TestFrontier : public rocksdb::UserFrontier {
     return 0;
   }
 
-  VertexId vertex_id() const {
+  VectorId vertex_id() const {
     return vertex_id_;
   }
 
-  void SetVertexId(VertexId vertex_id) {
+  void SetVertexId(VectorId vertex_id) {
     vertex_id_ = vertex_id;
   }
 
  private:
-  VertexId vertex_id_;
+  VectorId vertex_id_;
 };
 
 using TestFrontiers = rocksdb::UserFrontiersBase<TestFrontier>;
@@ -158,7 +155,7 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   Status InsertCube(
       FloatVectorLSM& lsm, size_t dimensions,
       size_t block_size = std::numeric_limits<size_t>::max(),
-      VertexId min_vertex_id = 0);
+      size_t min_entry_idx = 0);
 
   void VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions);
 
@@ -170,9 +167,10 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
 
   rpc::ThreadPool thread_pool_;
   SimpleVectorLSMKeyValueStorage key_value_storage_;
+  FloatVectorLSM::InsertEntries  inserted_entries_;
 };
 
-std::string VertexKey(VertexId vertex_id) {
+std::string VertexKey(size_t vertex_id) {
   return Format("vertex_$0", vertex_id);
 }
 
@@ -188,14 +186,14 @@ auto GetVectorIndexFactory(ANNMethodKind ann_method) {
 
 FloatVectorLSM::InsertEntries CubeInsertEntries(size_t dimensions) {
   FloatVectorLSM::InsertEntries result;
-  for (VertexId i = 1; i <= (1ULL << dimensions); ++i) {
+  for (size_t i = 1; i <= (1ULL << dimensions); ++i) {
     auto bits = i - 1;
     FloatVector vector(dimensions);
     for (size_t d = 0; d != dimensions; ++d) {
       vector[d] = 1.f * ((bits >> d) & 1);
     }
     result.emplace_back(FloatVectorLSM::InsertEntry {
-      .vertex_id = i,
+      .vertex_id = VectorId::GenerateRandom(),
       .base_table_key = KeyBuffer(Slice(VertexKey(i))),
       .vector = std::move(vector),
     });
@@ -203,16 +201,24 @@ FloatVectorLSM::InsertEntries CubeInsertEntries(size_t dimensions) {
   return result;
 }
 
+auto GenerateVectorIds(size_t num) {
+  std::vector<VectorId> result;
+  result.reserve(num);
+  while (result.size() < num) {
+    result.emplace_back(VectorId::GenerateRandom());
+  }
+  return result;
+}
+
 Status VectorLSMTest::InsertCube(
     FloatVectorLSM& lsm, size_t dimensions, size_t block_size,
-    VertexId min_vertex_id) {
-  HybridTime write_time(1000, 0);
-  auto entries = CubeInsertEntries(dimensions);
-  for (size_t i = 0; i < entries.size(); i += block_size) {
-    auto begin = entries.begin() + i;
-    auto end = entries.begin() + std::min(i + block_size, entries.size());
-    if (begin->vertex_id < min_vertex_id) {
-      ptrdiff_t delta = min_vertex_id - begin->vertex_id;
+    size_t min_entry_idx) {
+  inserted_entries_ = CubeInsertEntries(dimensions);
+  for (size_t i = 0; i < inserted_entries_.size(); i += block_size) {
+    auto begin = inserted_entries_.begin() + i;
+    auto end = inserted_entries_.begin() + std::min(i + block_size, inserted_entries_.size());
+    if (i < min_entry_idx) {
+      ptrdiff_t delta = min_entry_idx - i;
       if (delta >= end - begin) {
         continue;
       }
@@ -222,7 +228,7 @@ Status VectorLSMTest::InsertCube(
     TestFrontiers frontiers;
     frontiers.Smallest().SetVertexId(block_entries.front().vertex_id);
     frontiers.Largest().SetVertexId(block_entries.front().vertex_id);
-    RETURN_NOT_OK(lsm.Insert(block_entries, write_time, &frontiers));
+    RETURN_NOT_OK(lsm.Insert(block_entries, { .frontiers = &frontiers }));
   }
   return Status::OK();
 }
@@ -267,7 +273,7 @@ void VectorLSMTest::CheckQueryVector(
   bool stop = false;
 
   FloatVectorLSM::SearchResults expected_results;
-  for (const auto& entry : CubeInsertEntries(dimensions)) {
+  for (const auto& entry : inserted_entries_) {
     expected_results.push_back({
       .distance = lsm.Distance(query_vector, entry.vector),
       .base_table_key = entry.base_table_key,
@@ -336,8 +342,19 @@ void VectorLSMTest::TestBootstrap(bool flush) {
     FloatVectorLSM lsm;
     ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kChunkSize));
     auto frontier_ptr = lsm.GetFlushedFrontier();
-    auto vertex_id = frontier_ptr ? down_cast<TestFrontier*>(frontier_ptr.get())->vertex_id() : 0;
-    ASSERT_OK(InsertCube(lsm, kDimensions, kChunkSize, vertex_id));
+
+    // Find entry idx by frontier's vertex id, inserted on the first step (InitVectorLSM).
+    size_t frontier_entry_idx = 0;
+    if (frontier_ptr) {
+      const auto frontier_vertex_id = down_cast<TestFrontier*>(frontier_ptr.get())->vertex_id();
+      for (; frontier_entry_idx < inserted_entries_.size(); ++frontier_entry_idx) {
+        if (inserted_entries_[frontier_entry_idx].vertex_id == frontier_vertex_id) {
+          break;
+        }
+      }
+      ASSERT_LT(frontier_entry_idx, inserted_entries_.size());
+    }
+    ASSERT_OK(InsertCube(lsm, kDimensions, kChunkSize, frontier_entry_idx));
 
     VerifyVectorLSM(lsm, kDimensions);
   }
@@ -358,9 +375,11 @@ TEST_P(VectorLSMTest, NotSavedChunk) {
 }
 
 TEST_F(VectorLSMTest, MergeChunkResults) {
+  const auto kIds = GenerateVectorIds(7);
+
   using ChunkResults = std::vector<VertexWithDistance<float>>;
-  ChunkResults a_src = {{5, 1}, {3, 3}, {1, 5}, {7, 7}};
-  ChunkResults b_src = {{2, 2}, {3, 3}, {4, 4}, {9, 7}, {7, 7}};
+  ChunkResults a_src = {{kIds[4], 1}, {kIds[2], 3}, {kIds[0], 5}, {kIds[5], 7}};
+  ChunkResults b_src = {{kIds[1], 2}, {kIds[2], 3}, {kIds[3], 4}, {kIds[6], 7}, {kIds[5], 7}};
   for (size_t i = 1; i != a_src.size() + b_src.size(); ++i) {
     auto a = a_src;
     auto b = b_src;
@@ -380,8 +399,6 @@ std::string ANNMethodKindToString(
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    ANNMethodKind, VectorLSMTest,
-    ::testing::ValuesIn(kANNMethodKindArray),
-    ANNMethodKindToString);
+    , VectorLSMTest, ::testing::ValuesIn(kANNMethodKindArray), ANNMethodKindToString);
 
 }  // namespace yb::vector_index

@@ -32,6 +32,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/common_util.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/pgsql_error.h"
@@ -94,6 +95,7 @@ DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
+DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
 
 DECLARE_uint64(rpc_max_message_size);
 
@@ -571,7 +573,7 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
 
   CoarseTimePoint deadline;
 
-  CountDownLatch latch{1};
+  std::atomic<bool> responded_{false};
 
   SharedExchangeQuery(
       std::shared_ptr<PgClientSession> session_, PgTableCache* table_cache_,
@@ -580,6 +582,10 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
             session_->id(), table_cache_, &exchange_req, &exchange_resp, &exchange_sidecars),
         session(std::move(session_)), exchange(exchange_),
         stats_exchange_response_size(stats_exchange_response_size_) {
+  }
+
+  ~SharedExchangeQuery() {
+    LOG_IF(DFATAL, !responded_.load()) << "Response did not send";
   }
 
   // Initialize query from data stored in exchange with specified size.
@@ -594,11 +600,13 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
     return pb_util::ParseFromArray(&req, input, end - input);
   }
 
-  void Wait() {
-    latch.Wait();
-  }
-
   void SendResponse() override {
+    auto locked_session = session.lock();
+    if (!locked_session) {
+      responded_ = true;
+      return;
+    }
+
     using google::protobuf::io::CodedOutputStream;
     rpc::ResponseHeader header;
     header.set_call_id(42);
@@ -617,14 +625,10 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
     auto* start = exchange->Obtain(full_size);
     std::pair<uint64_t, std::byte*> shared_memory_segment(0, nullptr);
     RefCntBuffer buffer;
-    std::shared_ptr<PgClientSession> locked_session;
     if (!start) {
-      locked_session = session.lock();
-      if (locked_session) {
-        shared_memory_segment = locked_session->ObtainBigSharedMemorySegment(full_size);
-        if (shared_memory_segment.second) {
-          start = shared_memory_segment.second;
-        }
+      shared_memory_segment = locked_session->ObtainBigSharedMemorySegment(full_size);
+      if (shared_memory_segment.second) {
+        start = shared_memory_segment.second;
       }
 
       if (!start) {
@@ -648,13 +652,10 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
                           (shared_memory_segment.first << kBigSharedMemoryIdShift));
       }
     } else {
-      if (!locked_session) {
-        locked_session = session.lock();
-      }
-      auto id = locked_session ? locked_session->SaveData(buffer, std::move(sidecars.buffer())) : 0;
+      auto id = locked_session->SaveData(buffer, std::move(sidecars.buffer()));
       exchange->Respond(kTooBigResponseMask | id);
     }
-    latch.CountDown();
+    responded_ = true;
   }
 };
 
@@ -967,6 +968,20 @@ Status PgClientSession::CreateReplicationSlot(
     }
   }
 
+  std::optional<yb::ReplicationSlotLsnType> lsn_type;
+  if (FLAGS_ysql_yb_allow_replication_slot_lsn_types) {
+    switch (req.lsn_type()) {
+      case ReplicationSlotLsnTypePg_SEQUENCE:
+        lsn_type = ReplicationSlotLsnType::ReplicationSlotLsnType_SEQUENCE;
+        break;
+      case ReplicationSlotLsnTypePg_HYBRID_TIME:
+        lsn_type = ReplicationSlotLsnType::ReplicationSlotLsnType_HYBRID_TIME;
+        break;
+      default:
+        return STATUS_FORMAT(InvalidArgument, "invalid lsn_type $0", req.lsn_type());
+    }
+  }
+
   uint64_t consistent_snapshot_time;
   auto stream_result = VERIFY_RESULT(client().CreateCDCSDKStreamForNamespace(
       GetPgsqlNamespaceId(req.database_oid()), options,
@@ -975,7 +990,8 @@ Status PgClientSession::CreateReplicationSlot(
       req.output_plugin_name(), snapshot_option,
       context->GetClientDeadline(),
       CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
-      &consistent_snapshot_time));
+      &consistent_snapshot_time,
+      lsn_type));
   *resp->mutable_stream_id() = stream_result.ToString();
   resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
   return Status::OK();
@@ -993,7 +1009,8 @@ Status PgClientSession::WaitForBackendsCatalogVersion(
     rpc::RpcContext* context) {
   // TODO(jason): send deadline to client.
   const int num_lagging_backends = VERIFY_RESULT(client().WaitForYsqlBackendsCatalogVersion(
-      req.database_oid(), req.catalog_version(), context->GetClientDeadline()));
+      req.database_oid(), req.catalog_version(), context->GetClientDeadline(),
+      req.requestor_pg_backend_pid()));
   resp->set_num_lagging_backends(num_lagging_backends);
   return Status::OK();
 }
@@ -1682,6 +1699,7 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
     saved_priority_ = std::nullopt;
   }
   txn->SetPriority(priority);
+  txn->SetCurrentReuseVersion(options.txn_serial_no());
   session->SetTransaction(txn);
   return Status::OK();
 }
@@ -2223,12 +2241,11 @@ Status PgClientSession::CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial
   return Status::OK();
 }
 
-std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
-    size_t size, SharedExchange* exchange) {
+void PgClientSession::ProcessSharedRequest(size_t size, SharedExchange* exchange) {
   auto shared_this = shared_this_.lock();
   if (!shared_this) {
     LOG_WITH_FUNC(DFATAL) << "Shared this is null in ProcessSharedRequest";
-    return nullptr;
+    return;
   }
   auto data = std::make_shared<SharedExchangeQuery>(
       shared_this, &table_cache_, exchange, stats_exchange_response_size_);
@@ -2252,9 +2269,7 @@ std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
   if (!status.ok()) {
     StatusToPB(status, data->resp.mutable_status());
     data->SendResponse();
-    return nullptr;
   }
-  return rpc::SharedField(data, &data->latch);
 }
 
 void PgClientSession::ScheduleBigSharedMemExpirationCheck(

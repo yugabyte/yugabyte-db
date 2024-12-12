@@ -35,7 +35,7 @@ Use the following steps to perform a planned switchover:
 
 1. Stop the application traffic on the DR primary.
 
-1. Navigate to your DR primary universe and select **xCluster Disaster Recovery**.
+1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
 
 1. Click **Actions** and choose **Switchover**.
 

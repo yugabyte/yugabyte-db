@@ -24,6 +24,8 @@ namespace yb::vector_index {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
  public:
+  using Base = VectorIndexIf<Vector, DistanceResult>;
+
   ShardedVectorIndex(const VectorIndexFactory<Vector, DistanceResult>& factory,
                      size_t num_shards)
       : indexes_(num_shards), round_robin_counter_(0) {
@@ -33,22 +35,31 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
   }
 
   // Reserve capacity across all shards (each shard gets an equal portion, rounded up).
-  Status Reserve(size_t num_vectors) override {
+  Status Reserve(
+      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) override {
     size_t capacity_per_shard = (num_vectors + indexes_.size() - 1) / indexes_.size();  // Round up
     for (auto& index : indexes_) {
-      RETURN_NOT_OK(index->Reserve(capacity_per_shard));
+      RETURN_NOT_OK(index->Reserve(
+          capacity_per_shard, max_concurrent_inserts, max_concurrent_reads));
     }
     return Status::OK();
   }
 
+  size_t MaxVectors() const override {
+    return indexes_[0]->MaxVectors();
+  }
+
   // Insert a vector into the current shard using round-robin.
-  Status Insert(VertexId vertex_id, const Vector& vector) override {
-    size_t current_index = round_robin_counter_.fetch_add(1) % indexes_.size();
+  Status Insert(VectorId vertex_id, const Vector& vector) override {
+    // It is okay to use relaxed memory order here as we only need an atomic increment and don't
+    // care about counter values order.
+    size_t current_index =
+        round_robin_counter_.fetch_add(1, std::memory_order_relaxed) % indexes_.size();
     return indexes_[current_index]->Insert(vertex_id, vector);
   }
 
   // Retrieve a vector from any shard.
-  Result<Vector> GetVector(VertexId vertex_id) const override {
+  Result<Vector> GetVector(VectorId vertex_id) const override {
     for (const auto& index : indexes_) {
       auto v = VERIFY_RESULT(index->GetVector(vertex_id));
       if (!v.empty()) {
@@ -59,22 +70,22 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
   }
 
   // Define begin and end methods to return iterators
-  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> BeginImpl() const override {
+  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
     CHECK(!indexes_.empty());
     return indexes_[0]->BeginImpl();
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> EndImpl() const override {
+  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> EndImpl() const override {
     CHECK(!indexes_.empty());
     return indexes_[0]->EndImpl();
   }
 
   // Search for the closest vectors across all shards.
-  std::vector<VertexWithDistance<DistanceResult>> Search(
+  Result<typename Base::SearchResult> Search(
       const Vector& query_vector, size_t max_num_results) const override {
     std::vector<VertexWithDistance<DistanceResult>> all_results;
     for (const auto& index : indexes_) {
-      auto results = index->Search(query_vector, max_num_results);
+      auto results = VERIFY_RESULT(index->Search(query_vector, max_num_results));
       all_results.insert(all_results.end(), results.begin(), results.end());
     }
 

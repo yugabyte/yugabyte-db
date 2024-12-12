@@ -277,7 +277,8 @@ public class GFlagsValidationHandler {
                                     && regexMatcher.matcher(flag.name).find())
                     && !GFLAGS_FILTER_TAGS.stream()
                         .anyMatch(
-                            tags -> !StringUtils.isEmpty(flag.tags) && flag.tags.contains(tags)))
+                            tags -> !StringUtils.isEmpty(flag.tags) && flag.tags.contains(tags))
+                    && !GFlagsUtil.GFLAGS_FORBIDDEN_TO_OVERRIDE.contains(flag.name))
         .collect(Collectors.toList());
   }
 }

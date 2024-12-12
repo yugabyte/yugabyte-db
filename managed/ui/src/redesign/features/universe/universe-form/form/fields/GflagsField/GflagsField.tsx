@@ -148,6 +148,7 @@ export const GFlagsField = ({
   const pgGroupFlags = isPGSupported
     ? getFlagsByGroupName(pgFlags, GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY)
     : {};
+
   //options Array -- TO DRY THE CODE
   const OPTIONS = [
     {
@@ -224,64 +225,59 @@ export const GFlagsField = ({
   };
 
   const handleFormSubmit = (values: any, actions: any) => {
-    if (_.get(pgGroupFlags, values?.flagname || '', false)) {
-      toast.error(t('universeForm.gFlags.pgGroupWarning'));
-      actions.setSubmitting(false);
-    } else {
-      switch (values.option) {
-        case FREE_TEXT: {
-          try {
-            const formValues = JSON.parse(values?.flagvalue);
-            const newFlagArr: Gflag[] = [];
-            if (Object.keys(formValues).length > 0) {
-              Object.entries(formValues).forEach(([key, val]) => {
-                const obj = { Name: key, [values?.server]: val };
-                checkExistsAndPush(obj);
-                newFlagArr.push(obj);
-              });
-              callValidation(newFlagArr);
-              setToggleModal(false);
-            }
-          } catch (e) {
-            setFormError(t('universeForm.gFlags.validationError'));
-            setTimeout(() => {
-              setFormError(null);
-              actions.setSubmitting(false);
-            }, 5000);
+    switch (values.option) {
+      case FREE_TEXT: {
+        try {
+          const formValues = JSON.parse(values?.flagvalue);
+          const newFlagArr: Gflag[] = [];
+          if (Object.keys(formValues).length > 0) {
+            Object.entries(formValues).forEach(([key, val]) => {
+              const obj = { Name: key, [values?.server]: val };
+              checkExistsAndPush(obj);
+              newFlagArr.push(obj);
+            });
+            callValidation(newFlagArr);
+            setToggleModal(false);
           }
-          break;
+        } catch (e) {
+          setFormError(t('universeForm.gFlags.validationError'));
+          setTimeout(() => {
+            setFormError(null);
+            actions.setSubmitting(false);
+          }, 5000);
         }
-
-        case ADD_GFLAG: {
-          const obj: AddGFlagConfObject = {
-            Name: values?.flagname,
-            [values?.server]: values?.flagvalue
-          };
-          if (MULTILINE_GFLAGS_ARRAY.includes(values?.server)) {
-            // In case of any multi-line csv flags, the below variables
-            // will have concatenated string and preview flag value to be displayed
-            if (values?.server === TSERVER) {
-              obj.tserverFlagDetails = {
-                ConfValue: values?.tserverFlagDetails?.flagvalueobject,
-                PreviewConfValue: values?.tserverFlagDetails?.previewFlagValue
-              };
-            } else {
-              obj.masterFlagDetails = {
-                ConfValue: values?.masterFlagDetails?.flagvalueobject,
-                PreviewConfValue: values?.masterFlagDetails?.previewFlagValue
-              };
-            }
-          }
-
-          checkExistsAndPush(obj);
-          callValidation([obj]);
-          setToggleModal(false);
-          break;
-        }
-
-        default:
-          break;
+        break;
       }
+
+      case ADD_GFLAG: {
+        const obj: AddGFlagConfObject = {
+          Name: values?.flagname,
+          [values?.server]: values?.flagvalue
+        };
+        if (MULTILINE_GFLAGS_ARRAY.includes(values?.server)) {
+          // In case of any multi-line csv flags, the below variables
+          // will have concatenated string and preview flag value to be displayed
+          if (values?.server === TSERVER) {
+            obj.tserverFlagDetails = {
+              ConfValue: values?.tserverFlagDetails?.flagvalueobject,
+              PreviewConfValue: values?.tserverFlagDetails?.previewFlagValue
+            };
+          } else {
+            obj.masterFlagDetails = {
+              ConfValue: values?.masterFlagDetails?.flagvalueobject,
+              PreviewConfValue: values?.masterFlagDetails?.previewFlagValue
+            };
+          }
+        }
+
+        checkExistsAndPush(obj);
+        callValidation([obj]);
+        setToggleModal(false);
+        break;
+      }
+
+      default:
+        break;
     }
   };
 
@@ -546,7 +542,8 @@ export const GFlagsField = ({
               dbVersion,
               existingFlags: fields,
               isGFlagMultilineConfEnabled,
-              editMode
+              editMode,
+              pgGroupFlags
             }}
           />
         );

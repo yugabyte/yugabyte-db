@@ -1,3 +1,6 @@
+-- Fail the script on the first error
+\set ON_ERROR_STOP on
+
 -- Create AGGREGATE
 CREATE AGGREGATE my_sum(integer) (
     SFUNC = int4pl,
@@ -12,6 +15,9 @@ CREATE CAST (TEXT AS INTEGER)
 
 -- Create COLLATION
 CREATE COLLATION my_collation (provider = 'icu', locale='');
+
+-- COMMENT
+COMMENT ON AGGREGATE my_sum(integer) IS 'Custom aggregate function to calculate sum of integers';
 
 -- Create CONVERSION  --- Not Supported on YB yet
 -- CREATE CONVERSION my_conversion
@@ -121,3 +127,47 @@ EXECUTE FUNCTION update_modified_timestamp();
 -- Create VIEW
 CREATE VIEW employee_salaries AS
 SELECT first_name, last_name, salary FROM employees;
+
+-------------- Foreign Objects---------------------------
+
+-- Create Foreign Data Wrapper
+CREATE FOREIGN DATA WRAPPER postgres_fdw;
+
+-- Create Foreign Server (The server does not need to exist unless we want to query it)
+CREATE SERVER foreign_server
+FOREIGN DATA WRAPPER postgres_fdw
+OPTIONS (host 'dummy_server', port '1111', dbname 'dummy_db');
+
+-- Create Foreign table
+CREATE FOREIGN TABLE foreign_table_name (
+    id INT,
+    name TEXT,
+    created_at TIMESTAMP
+)
+SERVER foreign_server
+OPTIONS (table_name 'dummy_table_name');
+
+-- Create User Mapping for current user
+CREATE USER MAPPING FOR current_user
+SERVER foreign_server
+OPTIONS (user 'dummy_remote_user', password 'dummy_remote_password');
+
+--------------Text Search DDLs --------------------------
+
+CREATE TEXT SEARCH TEMPLATE simple_template (
+    init = dsimple_init,
+    lexize = dsimple_lexize
+);
+
+CREATE TEXT SEARCH PARSER simple_parser (
+    start = prsd_start,
+    gettoken = prsd_nexttoken,
+    end = prsd_end,
+    lextypes = prsd_lextype
+);
+
+CREATE TEXT SEARCH DICTIONARY simple_dict (
+    template = simple
+);
+
+CREATE TEXT SEARCH CONFIGURATION simple_config (parser = default);

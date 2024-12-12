@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.operator.KubernetesOperator;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
@@ -49,6 +50,10 @@ import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Principal;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import com.yugabyte.yw.scheduler.JobScheduler;
 import com.yugabyte.yw.scheduler.Scheduler;
 import db.migration.default_.common.R__Sync_System_Roles;
@@ -126,7 +131,8 @@ public class AppInit {
       @Named("AppStartupTimeMs") Long startupTime,
       ReleasesUtils releasesUtils,
       JobScheduler jobScheduler,
-      NodeAgentEnabler nodeAgentEnabler)
+      NodeAgentEnabler nodeAgentEnabler,
+      RoleBindingUtil roleBindingUtil)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -155,13 +161,33 @@ public class AppInit {
           alertConfigurationService.createDefaultConfigs(customer);
           // Create system roles for the newly created customer.
           R__Sync_System_Roles.syncSystemRoles();
-          // Principal entry for newly created users.
+          // Principal entry and role bindings for newly created users.
           for (Users user : Users.find.all()) {
             Principal principal = Principal.get(user.getUuid());
             if (principal == null) {
               log.info("Adding Principal entry for user with email: " + user.getEmail());
               new Principal(user).save();
             }
+            ResourceGroup resourceGroup =
+                ResourceGroup.getSystemDefaultResourceGroup(customer.getUuid(), user);
+            // Create a single role binding for the user.
+            Users.Role usersRole = user.getRole();
+            Role newRbacRole = Role.get(customer.getUuid(), usersRole.name());
+            RoleBinding createdRoleBinding =
+                roleBindingUtil.createRoleBinding(
+                    user.getUuid(),
+                    newRbacRole.getRoleUUID(),
+                    RoleBindingType.System,
+                    resourceGroup);
+            log.info(
+                "Created system role binding for user '{}' (email '{}') of customer '{}', "
+                    + "with role '{}' (name '{}'), and default role binding '{}'.",
+                user.getUuid(),
+                user.getEmail(),
+                customer.getUuid(),
+                newRbacRole.getRoleUUID(),
+                newRbacRole.getName(),
+                createdRoleBinding.toString());
           }
         }
 

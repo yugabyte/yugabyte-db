@@ -948,8 +948,10 @@ VoyagerMigrateDataMetricsDetails:
       type: integer
     count_live_rows:
       type: integer
+      format: int64
     count_total_rows:
       type: integer
+      format: int64
     invocation_timestamp:
       type: string
 # MigrateSchemaTasks:
@@ -1122,8 +1124,8 @@ RecommendedRefactoringGraph:
       items:
         $ref: '#/RefactoringCount'
 RefactoringCount:
-  title: Count of automatic and manual refactoring
-  description: count for automatic and manual refactoring
+  title: Count of automatic, manual and invalid SQL objects
+  description: Count of automatic, manual and invalid SQL objects displayed in Schema analysis page
   type: object
   properties:
     sql_object_type:
@@ -1131,6 +1133,8 @@ RefactoringCount:
     manual:
       type: integer
     automatic:
+      type: integer
+    invalid:
       type: integer
 TargetClusterRecommendationDetails:
   title: Target YugabyteDB cluster size and schema recommendations

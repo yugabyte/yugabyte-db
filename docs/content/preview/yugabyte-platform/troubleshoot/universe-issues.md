@@ -12,6 +12,9 @@ menu:
     parent: troubleshoot-yp
     weight: 20
 type: docs
+rightNav:
+  hideH3: true
+  hideH4: true
 ---
 
 YugabyteDB Anywhere (YBA) allows you to monitor and troubleshoot issues that arise from universes.
@@ -200,7 +203,7 @@ When the Core Files option is selected, you can specify the following additional
 
 - Maximum core file size: Specify the maximum file size for core files to be collected, in bytes. Only core files smaller than the specified size are collected (default is 25000000000 bytes (25GB)).
 
-You can disable core collection globally by setting the global runtime configuration flag `yb.support_bundle.allow_cores_collection` to false. You must be a Super Admin to set global runtime configuration flags.
+You can disable core collection globally by setting the [global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.support_bundle.allow_cores_collection` to false. You must be a Super Admin to set global runtime configuration flags.
 
 #### YB-Controller logs
 
@@ -355,8 +358,8 @@ During upgrades, YBA will not proceed if any tablets have fewer than the desired
 **Possible action/workaround**
 
 1. Fix the root cause of under-replication if it is due to certain YB-TServers being down.
-1. Increase the timeout that YBA waits for under-replication to clear by increasing the value for the runtime configuration flag `yb.checks.under_replicated_tablets.timeout`.
-1. If temporary unavailability during the upgrade is acceptable, disable this check briefly by turning off the runtime configuration flag `yb.checks.under_replicated_tablets.enabled` for the universe.
+1. Increase the timeout that YBA waits for under-replication to clear by increasing the value for the [global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.checks.under_replicated_tablets.timeout`.
+1. If temporary unavailability during the upgrade is acceptable, disable this check briefly by turning off the global runtime configuration flag `yb.checks.under_replicated_tablets.enabled` for the universe.
 
 </details>
 
@@ -379,9 +382,9 @@ During upgrades, YBA will not proceed if any tablets or YB-Masters have fewer th
 **Possible action/workaround**
 
 1. Fix the root cause of under-replication if it is due to certain YB-Masters or YB-TServers being down.
-1. Increase the timeout that YBA waits for under-replication to clear by increasing the value for the runtime configuration flag `yb.checks.nodes_safe_to_take_down.timeout`.
-1. Allow for YB-TServers to lag more than the default compared to their peers to be considered healthy by changing the runtime configuration flag `yb.checks.follower_lag.max_threshold`.
-1. If temporary unavailability during the rolling operation is acceptable, disable this check briefly by turning off the runtime configuration flag `yb.checks.nodes_safe_to_take_down.enabled` for the universe.
+1. Increase the timeout that YBA waits for under-replication to clear by increasing the value for the [global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.checks.nodes_safe_to_take_down.timeout`.
+1. Allow for YB-TServers to lag more than the default compared to their peers to be considered healthy by changing the global runtime configuration flag `yb.checks.follower_lag.max_threshold`.
+1. If temporary unavailability during the rolling operation is acceptable, disable this check briefly by turning off the global runtime configuration flag `yb.checks.nodes_safe_to_take_down.enabled` for the universe.
 
 </details>
 
@@ -402,8 +405,8 @@ YBA verifies that the universe is in a healthy state before starting operations.
 **Possible action/workaround**
 
 1. Fix the root cause of certain tablets having no leaders. You may need to contact {{% support-platform %}}.
-1. If the situation is temporary, you can raise the timeout for this check using the runtime configuration flag `yb.checks.leaderless_tablets.timeout`.
-1. If the universe is in an unhealthy state and you are comfortable with the risk, turn off the check using the runtime configuration flag `yb.checks.leaderless_tablets.enabled`.
+1. If the situation is temporary, you can raise the timeout for this check using the [global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.checks.leaderless_tablets.timeout`.
+1. If the universe is in an unhealthy state and you are comfortable with the risk, turn off the check using the global runtime configuration flag `yb.checks.leaderless_tablets.enabled`.
 
 </details>
 
@@ -425,7 +428,7 @@ YBA verifies that the configuration of deployed YB-Masters and YB-TServers match
 **Possible action/workaround**
 
 1. Fix the root cause of the inconsistency. You may need to contact {{% support-platform %}}.
-1. If the inconsistency was verified to be harmless, you can turn off the check using the runtime configuration flag `yb.task.verify_cluster_state`. Exercise caution before proceeding with such an inconsistency as it can have serious consequences.
+1. If the inconsistency was verified to be harmless, you can turn off the check using the [global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.task.verify_cluster_state`. Exercise caution before proceeding with such an inconsistency as it can have serious consequences.
 
 </details>
 
@@ -446,7 +449,7 @@ After a node is restarted as part of a rolling operation, YBA verifies that the 
 **Possible action/workaround**
 
 1. Fix any unhealthy nodes in the cluster or problematic network conditions that prevent the node from catching up to its peers.
-1. Allow a restarted node more time to catch up to its peers by increasing the timeout for the runtime configuration flag `yb.checks.follower_lag.timeout`.
-1. If temporary unavailability is acceptable, disable this check briefly by turning off the runtime configuration flag `yb.checks.follower_lag.enabled`.
+1. Allow a restarted node more time to catch up to its peers by increasing the timeout for the [global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.checks.follower_lag.timeout`.
+1. If temporary unavailability is acceptable, disable this check briefly by turning off the global runtime configuration flag `yb.checks.follower_lag.enabled`.
 
 </details>

@@ -18,6 +18,8 @@
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 
+#include "utils/yb_tuplecache.h"
+
 /*
  * TriggerData is the node type that is passed as fmgr "context" info
  * when a function is called by the trigger manager.
@@ -41,6 +43,7 @@ typedef struct TriggerData
 	Tuplestorestate *tg_oldtable;
 	Tuplestorestate *tg_newtable;
 	const Bitmapset *tg_updatedcols;
+	EState *estate;
 } TriggerData;
 
 /*
@@ -176,7 +179,7 @@ extern void EnableDisableTriggerNew(Relation rel, const char *tgname,
 extern void EnableDisableTrigger(Relation rel, const char *tgname,
 								 char fires_when, bool skip_system, LOCKMODE lockmode);
 
-extern void RelationBuildTriggers(Relation relation);
+extern void RelationBuildTriggers(Relation relation, const YbTupleCache *yb_pg_trigger_cache);
 
 extern TriggerDesc *CopyTriggerDesc(TriggerDesc *trigdesc);
 
@@ -278,7 +281,9 @@ extern bool RI_Initial_Check(Trigger *trigger,
 							 Relation fk_rel, Relation pk_rel);
 extern void RI_PartitionRemove_Check(Trigger *trigger, Relation fk_rel,
 									 Relation pk_rel);
-extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel, TupleTableSlot *new_slot);
+extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
+										  TupleTableSlot *new_slot,
+										  EState *estate);
 
 /* result values for RI_FKey_trigger_type: */
 #define RI_TRIGGER_PK	1		/* is a trigger on the PK relation */

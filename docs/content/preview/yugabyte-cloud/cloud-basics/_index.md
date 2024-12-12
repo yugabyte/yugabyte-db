@@ -3,7 +3,6 @@ title: Deploy clusters in YugabyteDB Aeon
 linkTitle: Deploy clusters
 description: Deploy clusters in YugabyteDB Aeon.
 headcontent: Deploy production-ready clusters
-image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed

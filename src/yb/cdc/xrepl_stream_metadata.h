@@ -17,6 +17,7 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xrepl_stream_stats.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/gutil/thread_annotations.h"
@@ -127,6 +128,11 @@ class StreamMetadata {
     DCHECK(loaded_);
     return replication_slot_name_;
   }
+  std::optional<ReplicationSlotLsnType> GetReplicationSlotLsnType() const {
+    std::lock_guard l_table(mutex_);
+    DCHECK(loaded_);
+    return replication_slot_lsn_type_;
+  }
 
   std::optional<uint32_t> GetDbOidToGetSequencesFor() const {
     std::lock_guard l_table(mutex_);
@@ -159,6 +165,7 @@ class StreamMetadata {
   CDCRequestSource source_type_ GUARDED_BY(mutex_);
   CDCCheckpointType checkpoint_type_ GUARDED_BY(mutex_);
   std::optional<CDCSDKSnapshotOption> consistent_snapshot_option_ GUARDED_BY(mutex_);
+  std::optional<ReplicationSlotLsnType> replication_slot_lsn_type_ GUARDED_BY(mutex_);
   std::optional<std::string> replication_slot_name_ GUARDED_BY(mutex_);
   // xCluster: if we are a sequences_data stream, then this holds the OID of the DB we are supposed
   // to be getting sequences for.

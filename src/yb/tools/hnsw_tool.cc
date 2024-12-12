@@ -31,12 +31,12 @@
 #include "yb/vector_index/ann_validation.h"
 #include "yb/vector_index/benchmark_data.h"
 #include "yb/vector_index/distance.h"
-#include "yb/vector_index/graph_repr_defs.h"
 #include "yb/vector_index/hnsw_options.h"
 #include "yb/vector_index/hnsw_util.h"
 #include "yb/vector_index/hnswlib_wrapper.h"
 #include "yb/vector_index/sharded_index.h"
 #include "yb/vector_index/usearch_wrapper.h"
+#include "yb/vector_index/vector_id.h"
 #include "yb/vector_index/vector_index_wrapper_util.h"
 
 #include "yb/tools/tool_arguments.h"
@@ -54,6 +54,17 @@ using namespace yb::vector_index;  // NOLINT
 #define HNSW_ACTIONS (Help)(Benchmark)
 
 YB_DEFINE_ENUM(HnswAction, HNSW_ACTIONS);
+
+
+VectorId UIntToVectorId(uint64_t value) {
+  VectorId id = VectorId::Nil();
+  BigEndian::Store64(id.data(), value);
+  return id;
+}
+
+uint64_t VectorIdToUInt(VectorId value) {
+  return BigEndian::Load64(value.data());
+}
 
 // ------------------------------------------------------------------------------------------------
 // Help command
@@ -362,7 +373,10 @@ class BenchmarkTool {
 
     vector_index_ = index_pre_factory_(hnsw_options())();
 
-    RETURN_NOT_OK(vector_index_->Reserve(num_points_to_insert()));
+    RETURN_NOT_OK(vector_index_->Reserve(
+        num_points_to_insert(),
+        std::thread::hardware_concurrency(),
+        std::thread::hardware_concurrency()));
     if (!args_.load_index_from_path.empty()) {
       LOG(INFO) << "Loading index from " << args_.load_index_from_path;
       auto load_start_time = MonoTime::Now();
@@ -492,7 +506,7 @@ class BenchmarkTool {
         SCHECK_LT(idx, total_num_vectors, IllegalState, kInvalidMsg);
         if (correct_top_k_vertex_ids.size() < args_.max_k) {
           // Only keep the first k items of the provided list.
-          correct_top_k_vertex_ids.push_back(InputVectorIndexToVertexId(idx));
+          correct_top_k_vertex_ids.push_back(InputVectorIndexToVectorId(idx));
         }
         auto [_, inserted] = used_indexes.insert(idx);
         if (!inserted) {
@@ -516,7 +530,7 @@ class BenchmarkTool {
         args_.hnsw_options.distance_kind);
 
     auto vertex_id_to_query_distance_fn =
-      [this, &distance_fn](VertexId vertex_id, const InputVector& v) -> InputDistanceResult {
+      [this, &distance_fn](VectorId vertex_id, const InputVector& v) -> InputDistanceResult {
         // Avoid vector_cast on the critical path of the brute force search here.
         return distance_fn(input_vectors_[VertexIdToInputVectorIndex(vertex_id)], v);
       };
@@ -624,13 +638,13 @@ class BenchmarkTool {
     const size_t max_to_insert = max_num_vectors_to_insert();
 
     for (size_t i = 0; i < max_to_insert; ++i) {
-      vertex_ids_to_insert_.push_back(InputVectorIndexToVertexId(i));
+      vertex_ids_to_insert_.push_back(InputVectorIndexToVectorId(i));
       num_points_used++;
     }
 
     all_vertex_ids_.reserve(input_vectors_.size());
     for (size_t i = 0; i < input_vectors_.size(); ++i) {
-      all_vertex_ids_.push_back(InputVectorIndexToVertexId(i));
+      all_vertex_ids_.push_back(InputVectorIndexToVectorId(i));
     }
 
     if (num_points_used == 0) {
@@ -639,7 +653,7 @@ class BenchmarkTool {
     return Status::OK();
   }
 
-  Status InsertOneVector(VertexId vertex_id, MonoTime load_start_time) {
+  Status InsertOneVector(VectorId vertex_id, MonoTime load_start_time) {
     const auto& v = GetVectorByVertexId(vertex_id);
     Status s = vector_index_->Insert(vertex_id, vector_cast<IndexedVector>(v));
     if (s.ok()) {
@@ -693,24 +707,26 @@ class BenchmarkTool {
     return vertex_ids_to_insert_.size();
   }
 
-  static constexpr VertexId kMinVertexId = 100;
+  // For simplicity, vector id is based on the index of input vector.
+  static constexpr size_t kMinUintVectorId = 100;
 
-  VertexId InputVectorIndexToVertexId(size_t input_vector_index) {
+  VectorId InputVectorIndexToVectorId(size_t input_vector_index) {
     CHECK_LE(input_vector_index, indexed_vector_source_->num_points());
     // Start from a small but round number to avoid making assumptions that the 0-based index of
     // a vector in the input file is the same as its vertex id.
-    return input_vector_index + kMinVertexId;
+    return UIntToVectorId(input_vector_index + kMinUintVectorId);
   }
 
-  size_t VertexIdToInputVectorIndex(VertexId vertex_id) {
-    CHECK_GE(vertex_id, kMinVertexId);
-    size_t index = vertex_id - kMinVertexId;
+  size_t VertexIdToInputVectorIndex(VectorId vertex_id) {
+    auto uint_vertex_id = VectorIdToUInt(vertex_id);
+    CHECK_GE(uint_vertex_id, kMinUintVectorId);
+    size_t index = uint_vertex_id - kMinUintVectorId;
     CHECK_GE(index, 0);
     CHECK_LT(index, indexed_vector_source_->num_points());
     return index;
   }
 
-  const InputVector& GetVectorByVertexId(VertexId vertex_id) {
+  const InputVector& GetVectorByVertexId(VectorId vertex_id) {
     auto vector_index = VertexIdToInputVectorIndex(vertex_id);
     return input_vectors_[vector_index];
   }
@@ -732,10 +748,10 @@ class BenchmarkTool {
   std::atomic<size_t> last_progress_report_count_{0};  // Last reported progress at this # vectors.
 
   // Ground truth data loaded from a provided file, not computed on the fly.
-  std::vector<std::vector<VertexId>> loaded_ground_truth_;
+  std::vector<std::vector<VectorId>> loaded_ground_truth_;
 
-  std::vector<VertexId> vertex_ids_to_insert_;
-  std::vector<VertexId> all_vertex_ids_;
+  std::vector<VectorId> vertex_ids_to_insert_;
+  std::vector<VectorId> all_vertex_ids_;
 
   // Raw input vectors in the order they appeared in the input file.
   std::vector<InputVector> input_vectors_;

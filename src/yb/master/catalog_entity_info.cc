@@ -38,6 +38,7 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_consensus_util.h"
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/schema.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
@@ -323,6 +324,7 @@ void TabletInfo::UpdateReplicaInfo(const std::string& ts_uuid,
   if (it == replica_locations_->end()) {
     return;
   }
+  VLOG_WITH_FUNC(3) << "T " << id() << " P " << ts_uuid << ": " << drive_info.ToString();
   it->second.UpdateDriveInfo(drive_info);
   it->second.UpdateLeaderLeaseInfo(leader_lease_info);
 }
@@ -460,6 +462,10 @@ bool TableInfo::is_hidden() const {
   return LockForRead()->is_hidden();
 }
 
+HybridTime TableInfo::hide_hybrid_time() const {
+  return LockForRead()->hide_hybrid_time();
+}
+
 bool TableInfo::IsPreparing() const {
   return LockForRead()->IsPreparing();
 }
@@ -474,13 +480,13 @@ string TableInfo::ToStringWithState() const {
       l->pb.name(), table_id_, SysTablesEntryPB::State_Name(l->pb.state()));
 }
 
-const NamespaceId TableInfo::namespace_id() const {
+NamespaceId TableInfo::namespace_id() const {
   return LockForRead()->namespace_id();
 }
 
 // namespace_name can be null if table was created on version < 2.3.0 (see GH17713/GH17712 for more
 // details)
-const NamespaceName TableInfo::namespace_name() const {
+NamespaceName TableInfo::namespace_name() const {
   return LockForRead()->namespace_name();
 }
 
@@ -488,8 +494,8 @@ ColocationId TableInfo::GetColocationId() const {
   return LockForRead()->schema().colocated_table_id().colocation_id();
 }
 
-const Status TableInfo::GetSchema(Schema* schema) const {
-  return SchemaFromPB(LockForRead()->schema(), schema);
+Result<Schema> TableInfo::GetSchema() const {
+  return LockForRead()->GetSchema();
 }
 
 bool TableInfo::has_pgschema_name() const {
@@ -501,13 +507,7 @@ const string TableInfo::pgschema_name() const {
 }
 
 bool TableInfo::has_pg_type_oid() const {
-  const auto lock = LockForRead();
-  for (const auto& col : lock->schema().columns()) {
-    if (!col.has_pg_type_oid()) {
-      return false;
-    }
-  }
-  return true;
+  return LockForRead()->has_pg_type_oid();
 }
 
 TableId TableInfo::pg_table_id() const {
@@ -539,9 +539,7 @@ Result<uint32_t> TableInfo::GetPgRelfilenodeOid() const {
 }
 
 Result<uint32_t> TableInfo::GetPgTableOid() const {
-  const auto pg_table_id = LockForRead()->pb.pg_table_id();
-  return pg_table_id.empty() ? GetPgsqlTableOid(id()) :
-                               GetPgsqlTableOid(pg_table_id);
+  return LockForRead()->GetPgTableOid(id());
 }
 
 TableType TableInfo::GetTableType() const {
@@ -641,14 +639,29 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
   const auto& tablet_meta = dirty.pb;
   tablets_.emplace(tablet->id(), tablet);
 
-  // Hidden tablets of live tables should not be included in partitions_
-  // as they are either split parents or children that are inactive.
-  // Including them will result in overlapping partition ranges
-  if (dirty.is_hidden() && !is_hidden()) {
+  if (dirty.is_hidden()) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.
-    return Status::OK();
+
+    // Hidden tablets of live tables should not be included in partitions_
+    // as they are either split parents or children that are inactive.
+    // Including them will result in overlapping partition ranges
+    if (!is_hidden()) {
+      VLOG(1) << Format("Tablet $0 is hidden but table $1 is not, skip add to partitions_",
+          tablet->id(), id());
+      return Status::OK();
+    }
+
+    // If a table is hidden, don't process any tablets that were hidden before the table was hidden
+    // as these are inactive tablets left behind from a split operation.
+    // Only tablets that were active at the time of the table being dropped should be included
+    // in partitions_ structure to support SELECT AS-OF, CLONE, PITR operations.
+    if (dirty.hide_hybrid_time() < hide_hybrid_time()) {
+      VLOG(1) << Format("Tablet $0 hide time is < table $1 hide time, skip add to partitions_",
+          tablet->id(), id());
+      return Status::OK();
+    }
   }
 
   // Include hidden tablets in partitions_ only for hidden tables to support features
@@ -673,7 +686,8 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
 
   if (tablet_meta.split_depth() == old_split_depth) {
     std::string msg = Format(
-        "Two tablets with the same partition key start and split depth: $0 and $1",
+        "Two tablets $0, $1 with the same partition key start and split depth: $2 and $3",
+        tablet->id(), old_tablet->tablet_id(),
         tablet_meta.ShortDebugString(), old_tablet_lock->pb.ShortDebugString());
     LOG(DFATAL) << msg;
     return STATUS(IllegalState, msg);
@@ -1021,37 +1035,40 @@ bool TableInfo::IsColocatedUserTable() const {
 }
 
 bool TableInfo::IsSequencesSystemTable() const {
-  if (GetTableType() == PGSQL_TABLE_TYPE && !IsColocationParentTable()) {
-    // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
-    if (!IsPgsqlId(namespace_id()) || !IsPgsqlId(id())) {
-      LOG(WARNING) << "Not PGSQL IDs " << namespace_id() << ", " << id();
-      return false;
-    }
-    Result<uint32_t> database_oid = GetPgsqlDatabaseOid(namespace_id());
-    if (!database_oid.ok()) {
-      LOG(WARNING) << "Invalid Namespace ID " << namespace_id();
-      return false;
-    }
-    Result<uint32_t> table_oid = GetPgsqlTableOid(id());
-    if (!table_oid.ok()) {
-      LOG(WARNING) << "Invalid Table ID " << id();
-      return false;
-    }
-    if (*database_oid == kPgSequencesDataDatabaseOid && *table_oid == kPgSequencesDataTableOid) {
-      return true;
-    }
+  return IsSequencesSystemTable(LockForRead());
+}
+
+bool TableInfo::IsSequencesSystemTable(const ReadLock& lock) const {
+  if (lock->pb.table_type() != PGSQL_TABLE_TYPE || IsColocationParentTable()) {
+    return false;
   }
-  return false;
+  // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
+  if (!IsPgsqlId(lock->namespace_id()) || !IsPgsqlId(id())) {
+    LOG(WARNING) << "Not PGSQL IDs " << namespace_id() << ", " << id();
+    return false;
+  }
+  Result<uint32_t> database_oid = GetPgsqlDatabaseOid(lock->namespace_id());
+  if (!database_oid.ok()) {
+    LOG(WARNING) << "Invalid Namespace ID " << lock->namespace_id();
+    return false;
+  }
+  if (*database_oid != kPgSequencesDataDatabaseOid) {
+    return false;
+  }
+  Result<uint32_t> table_oid = GetPgsqlTableOid(id());
+  if (!table_oid.ok()) {
+    LOG(WARNING) << "Invalid Table ID " << id();
+    return false;
+  }
+  return *table_oid == kPgSequencesDataTableOid;
 }
 
 bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
-  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
-         name() == xcluster::kDDLQueueTableName;
+  return LockForRead()->IsXClusterDDLReplicationDDLQueueTable();
 }
 
 bool TableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
-  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
-         name() == xcluster::kDDLReplicatedTableName;
+  return LockForRead()->IsXClusterDDLReplicationReplicatedDDLsTable();
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
@@ -1124,6 +1141,36 @@ Result<TabletInfoPtr> TableInfo::PromoteTabletPointer(const std::weak_ptr<Tablet
   }
 }
 
+bool TableInfo::IsUserCreated() const {
+  return IsUserCreated(LockForRead());
+}
+
+bool TableInfo::IsUserTable() const {
+  return IsUserTable(LockForRead());
+}
+
+bool TableInfo::IsUserIndex() const {
+  return IsUserIndex(LockForRead());
+}
+
+bool TableInfo::IsUserCreated(const ReadLock& lock) const {
+  if (lock->pb.table_type() != PGSQL_TABLE_TYPE && lock->pb.table_type() != YQL_TABLE_TYPE) {
+    return false;
+  }
+  return !is_system() && !IsSequencesSystemTable(lock) &&
+         !lock->IsXClusterDDLReplicationTable() &&
+         lock->namespace_id() != kSystemNamespaceId &&
+         !IsColocationParentTable();
+}
+
+bool TableInfo::IsUserTable(const ReadLock& lock) const {
+  return IsUserCreated(lock) && lock->indexed_table_id().empty();
+}
+
+bool TableInfo::IsUserIndex(const ReadLock& lock) const {
+  return IsUserCreated(lock) && !lock->indexed_table_id().empty();
+}
+
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
   VLOG_WITH_FUNC(2) << "Setting state for " << name() << " to "
                     << SysTablesEntryPB::State_Name(state) << " reason: " << msg;
@@ -1157,6 +1204,39 @@ Result<TransactionId> PersistentTableInfo::GetCurrentDdlTransactionId() const {
     txn = VERIFY_RESULT(FullyDecodeTransactionId(pb_txn_id));
   }
   return txn;
+}
+
+bool PersistentTableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
+  return pb.table_type() == PGSQL_TABLE_TYPE &&
+         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLQueueTableName;
+}
+
+bool PersistentTableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
+  return pb.table_type() == PGSQL_TABLE_TYPE &&
+         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLReplicatedTableName;
+}
+
+Result<uint32_t> PersistentTableInfo::GetPgTableOid(const std::string& id) const {
+  const auto& pg_table_id = pb.pg_table_id();
+  return pg_table_id.empty() ? GetPgsqlTableOid(id) :
+                               GetPgsqlTableOid(pg_table_id);
+}
+
+bool PersistentTableInfo::has_pg_type_oid() const {
+  for (const auto& col : schema().columns()) {
+    if (!col.has_pg_type_oid()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Result<Schema> PersistentTableInfo::GetSchema() const {
+  Schema schema;
+  RETURN_NOT_OK(SchemaFromPB(pb.schema(), &schema));
+  return schema;
 }
 
 bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {

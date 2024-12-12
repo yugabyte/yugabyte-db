@@ -709,6 +709,9 @@ GetNewObjectId(void)
 		 */
 		YBCStatus status = YBCGetNewObjectId(YbDatabaseIdForNewObjectId,
 											 &result);
+		if (*YBCGetGFlags()->TEST_ysql_log_perdb_allocated_new_objectid)
+			YBC_LOG_INFO("allocated new object id %u in database %u",
+						 result, YbDatabaseIdForNewObjectId);
 		LWLockRelease(OidGenLock);
 		HandleYBStatus(status);
 		return result;
@@ -758,10 +761,10 @@ GetNewObjectId(void)
 			Oid end_oid   = InvalidOid;
 
 			YBCReserveOids(MyDatabaseId,
-			               ShmemVariableCache->nextOid,
-			               YB_OID_PREFETCH,
-			               &begin_oid,
-			               &end_oid);
+						   ShmemVariableCache->nextOid,
+						   YB_OID_PREFETCH,
+						   &begin_oid,
+						   &end_oid);
 			ShmemVariableCache->nextOid  = begin_oid;
 			ShmemVariableCache->oidCount = end_oid - begin_oid;
 		}

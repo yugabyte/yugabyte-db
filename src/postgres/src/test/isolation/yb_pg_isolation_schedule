@@ -29,6 +29,9 @@ test: update-locked-tuple
 test: delete-abort-savept
 test: fk-deadlock
 test: fk-deadlock2
+# TODO: Test fk-partitioned-1 and fk-partitioned-2  after GH issue #24403 is resolved.
+# test: fk-partitioned-1
+# test: fk-partitioned-2
 test: insert-conflict-do-nothing
 test: insert-conflict-do-update-2
 test: insert-conflict-do-update

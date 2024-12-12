@@ -1227,6 +1227,13 @@ public class ReleaseManager {
     }
   }
 
+  public Map<String, ReleaseContainer> getAllLocalReleaseContainersByVersion() {
+    Map<String, ReleaseContainer> releaseContainers = getAllReleaseContainersByVersion();
+    return releaseContainers.entrySet().stream()
+        .filter(entry -> entry.getValue().hasLocalRelease())
+        .collect(Collectors.toMap(entry -> entry.getKey(), entry -> entry.getValue()));
+  }
+
   public ReleaseMetadata getYbcReleaseByVersion(String version, String osType, String archType) {
     version = String.format("ybc-%s-%s-%s", version, osType, archType);
     Object metadata = getReleaseMetadata(YBC_CONFIG_TYPE).get(version);

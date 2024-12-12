@@ -105,7 +105,8 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
-  virtual MonitoredTaskState AbortAndReturnPrevState(const Status& status) = 0;
+  virtual MonitoredTaskState AbortAndReturnPrevState(
+      const Status& status, bool call_task_finisher) = 0;
 
   // Task State.
   MonitoredTaskState state() const { return state_.load(std::memory_order_acquire); }

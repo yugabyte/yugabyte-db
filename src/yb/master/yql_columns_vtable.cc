@@ -93,8 +93,7 @@ Result<VTableDataPtr> YQLColumnsVTable::RetrieveData(
       continue;
     }
 
-    Schema schema;
-    RETURN_NOT_OK(table->GetSchema(&schema));
+    auto schema = VERIFY_RESULT(table->GetSchema());
 
     // Get namespace for table.
     auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(

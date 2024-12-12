@@ -119,7 +119,7 @@ func DeleteEITUtil(cmd *cobra.Command, commandCall, certType string) {
 		logrus.Errorf(
 			formatter.Colorize(
 				fmt.Sprintf(
-					"An error occurred while removing configration %s (%s)\n",
+					"An error occurred while removing configuration %s (%s)\n",
 					eitName, eitUUID),
 				formatter.RedColor))
 	}

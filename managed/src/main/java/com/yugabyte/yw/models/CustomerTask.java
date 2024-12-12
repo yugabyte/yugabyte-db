@@ -387,7 +387,10 @@ public class CustomerTask extends Model {
     RestoreContinuousBackup,
 
     @EnumValue("EnableNodeAgent")
-    EnableNodeAgent;
+    EnableNodeAgent,
+
+    @EnumValue("Decommission")
+    Decommission;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -404,6 +407,8 @@ public class CustomerTask extends Model {
           return completed ? "Rebooted" : "Rebooting";
         case Remove:
           return completed ? "Removed" : "Removing";
+        case Decommission:
+          return completed ? "Decommissioned" : "Decommissioning";
         case ResizeNode:
           return completed ? "Resized Node" : "Resizing Node";
         case Replace:

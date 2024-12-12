@@ -17,7 +17,7 @@ var describeEITCmd = &cobra.Command{
 	GroupID: "action",
 	Short:   "Describe a YugabyteDB Anywhere Encryption In Transit (EIT) configuration",
 	Long:    "Describe a YugabyteDB Anywhere Encryption In Transit (EIT) configuration",
-	Example: `yba eit delete --name <config-name>`,
+	Example: `yba eit describe --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.DescribeEITValidation(cmd)
 	},
@@ -38,6 +38,6 @@ func init() {
 	describeEITCmd.MarkFlagRequired("name")
 	describeEITCmd.Flags().StringP("cert-type", "c", "",
 		"[Optional] Type of the certificate. "+
-			"Allowed values: SelfSigned, CustomCertHostPath, "+
+			"Allowed values (case sensitive): SelfSigned, CustomCertHostPath, "+
 			"HashicorpVault, K8sCertManager.")
 }

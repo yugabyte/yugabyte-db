@@ -71,11 +71,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
+import com.yugabyte.yw.commissioner.tasks.subtasks.MasterLeaderStepdown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PodDisruptionBudgetPolicy;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent;
@@ -364,7 +366,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.PauseUniverse,
           TaskType.ResumeUniverse,
           TaskType.PauseXClusterUniverses,
-          TaskType.ResumeXClusterUniverses);
+          TaskType.ResumeXClusterUniverses,
+          TaskType.DecommissionNode);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   // This mapping blocks/allows actions on the UI done by a mapping defined in
@@ -5113,6 +5116,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createMasterLeaderStepdownTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("MasterLeaderStepdown");
+    MasterLeaderStepdown task = createTask(MasterLeaderStepdown.class);
+    MasterLeaderStepdown.Params params = new MasterLeaderStepdown.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   // Check if the node present in taskParams has a backing instance alive on the IaaS.
   public boolean instanceExists(NodeTaskParams taskParams) {
     ImmutableMap.Builder<String, String> expectedTags = ImmutableMap.builder();
@@ -6868,6 +6882,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     MarkSourceMetric task = createTask(MarkSourceMetric.class);
     task.initialize(params);
     // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createPodDisruptionBudgetPolicyTask(boolean deletePDB) {
+    return createPodDisruptionBudgetPolicyTask(deletePDB, false /* reCreatePDB */);
+  }
+
+  public SubTaskGroup createPodDisruptionBudgetPolicyTask(boolean deletePDB, boolean reCreatePDB) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("PodDisruptionBudgetPolicy");
+    PodDisruptionBudgetPolicy.Params params = new PodDisruptionBudgetPolicy.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.deletePDB = deletePDB;
+    params.reCreatePDB = reCreatePDB;
+    PodDisruptionBudgetPolicy task = createTask(PodDisruptionBudgetPolicy.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

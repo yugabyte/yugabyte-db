@@ -196,6 +196,11 @@ char Slice::consume_byte() {
   return *begin_++;
 }
 
+char Slice::consume_byte_back() {
+  DCHECK_GT(end_, begin_);
+  return *(--end_);
+}
+
 void Slice::AppendTo(std::string* out) const {
   out->append(cdata(), size());
 }

@@ -1271,7 +1271,11 @@ public class DrConfigController extends AuthenticatedController {
 
       for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
         XClusterConfigTaskBase.updateReplicationDetailsFromDB(
-            this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
+            xClusterUniverseService,
+            ybService,
+            tableHandler,
+            xClusterConfig,
+            confGetter.getGlobalConf(GlobalConfKeys.xclusterGetApiTimeoutMs));
       }
     }
 

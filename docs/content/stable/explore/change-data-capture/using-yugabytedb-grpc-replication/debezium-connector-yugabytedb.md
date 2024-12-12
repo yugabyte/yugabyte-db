@@ -702,12 +702,6 @@ A `delete` change event record provides a consumer with the information it needs
 
 When a row is deleted, the _delete_ event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the connector follows a delete event with a special _tombstone_ event that has the same key but a null value.
 
-{{< tip title="TRUNCATE tables when CDC is enabled" >}}
-
-By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-truncate-cdcsdk-table) flag to true.
-
-{{< /tip >}}
-
 {{< tip title="Suppressing tombstone events" >}}
 
 You can configure whether a connector emits tombstone events using its `tombstones.on.delete` property.
@@ -924,8 +918,8 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 Before using the connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
-* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../../admin/yb-admin#create_change_data_stream) command.
-* The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed. See [limitations](../#known-limitations).
+* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command.
+* The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed.
 
 ### WAL disk space consumption
 
@@ -1052,7 +1046,7 @@ The APIs used to fetch the changes are set up to work with TLSv1.2 only. Make su
 If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
 
 * [Local deployments](../../../../secure/tls-encryption/)
-* [YugabyteDB Anywhere](../../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
+* [YugabyteDB Anywhere](../../../../yugabyte-platform/security/enable-encryption-in-transit/#enable-encryption-in-transit)
 * [YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
@@ -1083,7 +1077,7 @@ Advanced connector configuration properties:
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 | auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
 | new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |
-| transaction.ordering | `false` | Whether to order transactions by their commit time. |
+| transaction.ordering | `false` | Whether to order transactions by their commit time.<br/>{{< warning title="Deprecation Notice" >}} This configuration property has been deprecated. For more details, see [transaction ordering](#transaction-ordering). {{< /warning >}} |
 
 ### Transformers
 
@@ -1140,6 +1134,23 @@ However, some sink connectors may not understand the preceding format. `PGCompat
 PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all the fields in a payload.
 
 ## Transaction ordering
+
+{{< warning title="Deprecation Notice" >}}
+
+Starting with YugabyteDB v2024.2, and YugabyteDB gRPC Connector `dz.1.9.5.yb.grpc.2024.2`, the configuration `transaction.ordering` is deprecated. This configuration will be removed in future releases. As the PostgreSQL Logical Replication-based [YugabyteDB connector](../../using-logical-replication/yugabytedb-connector) offers the same transactional ordering properties by default, you are advised to use the same for your use cases.
+
+Currently, for cases where you absolutely need to use transactional ordering with the YugabyteDB gRPC Connector, add the following configurations to use the deprecated configuration:
+
+```output.json
+{
+  ...
+  "transaction.ordering":"true",
+  "TEST.override.transaction.ordering.deprecation":"true"
+  ...
+}
+```
+
+{{< /warning >}}
 
 In a CDC Stream, events from different transactions in different tablets across tables may appear at different times. This works well in use cases such as archiving, or with applications where only eventual consistency is required. There is another class of applications, where the end destination is another OLTP / operational database. These databases can have constraints (such as foreign keys) and strict transactional consistency requirements. In these cases, the stream of events cannot be applied as is, as events of the same transaction may appear out of order because transactions in YugabyteDB can span two tablets.
 

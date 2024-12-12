@@ -321,6 +321,10 @@ DEFINE_test_flag(bool, crash_before_clone_target_marked_ready, false,
 DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
                  "Whether to crash before marking a clone op as completed on the source tablet.");
 
+DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
+                          "Number of threads used by vector index thread pool. "
+                          "0 - use number of CPUs for it.");
+
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
@@ -978,7 +982,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   RETURN_NOT_OK_PREPEND(create_result, "Couldn't create tablet metadata")
   RaftGroupMetadataPtr meta = std::move(*create_result);
   LOG(INFO) << TabletLogPrefix(tablet_id)
-            << "Created tablet metadata for table: " << table_info->table_id;
+            << "Created tablet metadata for table: " << table_info->table_id << ", key bounds: " <<
+            meta->MakeKeyBounds().ToString();
 
   // We must persist the consensus metadata to disk before starting a new
   // tablet's TabletPeer and Consensus implementation.
@@ -1225,8 +1230,8 @@ Status TSTabletManager::ApplyTabletSplit(
     tcmeta.raft_group_metadata = VERIFY_RESULT(tablet->CreateSubtablet(
         new_tablet_id, tcmeta.partition, tcmeta.key_bounds, split_op_id,
         operation->hybrid_time()));
-    LOG_WITH_PREFIX(INFO) << "Created raft group metadata for table: " << table_id
-                          << " tablet: " << new_tablet_id;
+    LOG(INFO) << TabletLogPrefix(new_tablet_id) << "Created raft group metadata for table: "
+              << table_id << ", key bounds: " << tcmeta.key_bounds.ToString();
 
     // Store consensus metadata.
     // Here we reuse the same cmeta instance for both new tablets. This is safe, because:
@@ -2077,8 +2082,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .get_min_xcluster_schema_version =
             std::bind(&TabletServer::GetMinXClusterSchemaVersion, server_, _1, _2),
         .messenger = server_->messenger(),
-        // TODO(vector_index) find the best thread pool for this purpose
-        .rpc_thread_pool = raft_notifications_pool(),
+        .vector_index_thread_pool_provider = [this] { return VectorIndexThreadPool(); },
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -2247,7 +2251,7 @@ void TSTabletManager::StartShutdown() {
 
   verify_tablet_data_poller_->Shutdown();
 
-  tablet_metadata_validator_->Shutdown();
+  tablet_metadata_validator_->StartShutdown();
 
   data_size_metric_updater_->Shutdown();
 
@@ -2283,13 +2287,26 @@ void TSTabletManager::StartShutdown() {
   if (waiting_txn_registry_) {
     waiting_txn_registry_->StartShutdown();
   }
+
+  if (superblock_flush_bg_task_) {
+    superblock_flush_bg_task_->StartShutdown();
+  }
 }
 
 void TSTabletManager::CompleteShutdown() {
+  tablet_metadata_validator_->CompleteShutdown();
+
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
     peer->CompleteShutdown(
         tablet::DisableFlushOnShutdown(FLAGS_TEST_disable_flush_on_shutdown),
         tablet::AbortOps::kFalse);
+  }
+
+  auto vector_index_thread_pool = vector_index_thread_pool_.get();
+  if (vector_index_thread_pool) {
+    std::lock_guard mutex(vector_index_thread_pool_mutex_);
+    vector_index_thread_pool->Shutdown();
+    vector_index_thread_pool_.reset();
   }
 
   // Shut down the apply pool.
@@ -2314,7 +2331,7 @@ void TSTabletManager::CompleteShutdown() {
     admin_triggered_compaction_pool_->Shutdown();
   }
   if (superblock_flush_bg_task_) {
-    superblock_flush_bg_task_->Shutdown();
+    superblock_flush_bg_task_->CompleteShutdown();
   }
   if (full_compaction_pool_) {
     full_compaction_pool_->Shutdown();
@@ -3448,6 +3465,28 @@ client::YBMetaDataCache* TSTabletManager::CreateYBMetaDataCache() {
 // lock.
 client::YBMetaDataCache* TSTabletManager::YBMetaDataCache() const {
   return metadata_cache_.load(std::memory_order_acquire);
+}
+
+rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool() {
+  auto result = vector_index_thread_pool_.get();
+  if (result) {
+    return result;
+  }
+  std::lock_guard lock(vector_index_thread_pool_mutex_);
+  result = vector_index_thread_pool_.get();
+  if (result) {
+    return result;
+  }
+  rpc::ThreadPoolOptions options = {
+    .name = "vector_index_tp",
+    .max_workers = FLAGS_vector_index_concurrent_writes,
+  };
+  if (options.max_workers == 0) {
+    options.max_workers = std::thread::hardware_concurrency();
+  }
+  LOG(INFO) << "Use " << options.max_workers << " for vector index thread pool";
+  vector_index_thread_pool_.reset(result = new rpc::ThreadPool(std::move(options)));
+  return result;
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

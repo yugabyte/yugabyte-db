@@ -15,6 +15,7 @@
 
 #include <string>
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -118,7 +119,8 @@ void XClusterManager::StartShutdown() {
     tasks = monitored_tasks_;
   }
   for (auto& task : tasks) {
-    task->AbortAndReturnPrevState(STATUS(Aborted, "Master is shutting down"));
+    task->AbortAndReturnPrevState(
+        STATUS(Aborted, "Master is shutting down"), /* call_task_finisher */ true);
   }
 }
 
@@ -236,6 +238,18 @@ Status XClusterManager::RemoveStreamsFromSysCatalog(
 
   RETURN_NOT_OK(xcluster_config_->RemoveStreams(epoch, xcluster_streams));
   return XClusterSourceManager::RemoveStreamsFromSysCatalog(xcluster_streams, epoch);
+}
+
+Status XClusterManager::SetUniverseReplicationEnabled(
+    const SetUniverseReplicationEnabledRequestPB* req,
+    SetUniverseReplicationEnabledResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+  SCHECK_PB_FIELDS_SET(*req, is_enabled);
+
+  return XClusterTargetManager::SetReplicationGroupEnabled(
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->is_enabled(), epoch,
+      rpc->GetClientDeadline());
 }
 
 Status XClusterManager::PauseResumeXClusterProducerStreams(
@@ -907,8 +921,22 @@ Status XClusterManager::InsertPackedSchemaForXClusterTarget(
     const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
   SCHECK_PB_FIELDS_NOT_EMPTY(*req, table_id);
+
+  TableId table_id(req->table_id());
+  if (IsColocationParentTableId(req->table_id())) {
+    SCHECK(
+        req->has_colocation_id(), InvalidArgument,
+        "Missing colocation id for given colocated table $0", req->table_id());
+    SCHECK_NE(req->colocation_id(), kColocationIdNotSet, InvalidArgument, "Invalid colocation id");
+
+    // Use the table id matching the colocation id.
+    auto tablegroup_id = GetTablegroupIdFromParentTableId(req->table_id());
+    table_id =
+        VERIFY_RESULT(catalog_manager_.GetColocatedTableId(tablegroup_id, req->colocation_id()));
+  }
+
   return XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
-      req->table_id(), req->packed_schema(), req->current_schema_version(), epoch);
+      table_id, req->packed_schema(), req->current_schema_version(), epoch);
 }
 
 Status XClusterManager::RegisterMonitoredTask(server::MonitoredTaskPtr task) {

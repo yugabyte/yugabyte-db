@@ -30,7 +30,13 @@ namespace yb {
 
 namespace {
 
-TableId GetPgsqlTableIdPg11(const uint32_t database_oid, const uint32_t table_oid);
+// Dev Note: When the major catalog version changes, meaning, for the YugabyteDB version that uses
+// PG17+ for the YSQL layer, update kPgPreviousUuidVersion to kPgCurrentUuidVersion, and increase
+// kPgCurrentUuidVersion by 1.
+// PG11
+constexpr uint8_t kPgPreviousUuidVersion = 0;
+// PG15
+constexpr uint8_t kPgCurrentUuidVersion = 1;
 
 }  // namespace
 
@@ -48,8 +54,8 @@ const uint32_t kPgTablespaceTableOid = 1213;
 const TableId kPgProcTableId = GetPgsqlTableId(kTemplate1Oid, kPgProcTableOid);
 const TableId kPgYbCatalogVersionTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgYbCatalogVersionTableOid);
-const TableId kPgYbCatalogVersionTableIdPg11 =
-    GetPgsqlTableIdPg11(kTemplate1Oid, kPgYbCatalogVersionTableOid);
+const TableId kPgYbCatalogVersionTableIdPriorVersion =
+    GetPgsqlTableIdPriorVersion(kTemplate1Oid, kPgYbCatalogVersionTableOid);
 const TableId kPgTablespaceTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgTablespaceTableOid);
 const TableId kPgSequencesDataTableId =
@@ -63,7 +69,7 @@ const string kPgSequencesDataNamespaceId =
 
 namespace {
 
-YB_STRONGLY_TYPED_BOOL(IsPg15);
+YB_STRONGLY_TYPED_BOOL(IsCurrentVersion);
 
 // Layout of Postgres database and table 4-byte oids in a YugaByte 16-byte table UUID:
 //
@@ -80,6 +86,8 @@ YB_STRONGLY_TYPED_BOOL(IsPg15);
 // pgv = for PG catalog tables only, the PG version for the table.
 // 0 = PG11
 // 1 = PG15
+// 2 = PG17 (or whatever major PG version YB integrates next)
+// ...
 // Must be set to 0 for all user tables.
 
 void UuidSetDatabaseId(const uint32_t database_oid, uuid* id) {
@@ -110,21 +118,22 @@ std::string UuidToString(uuid* id) {
 }
 
 TableId GetPgsqlTableIdInternal(
-    const uint32_t database_oid, const uint32_t table_oid, IsPg15 is_pg15) {
+    const uint32_t database_oid, const uint32_t table_oid, IsCurrentVersion is_current_version) {
   uuid id = boost::uuids::nil_uuid();
   UuidSetDatabaseId(database_oid, &id);
 
-  if (table_oid < kPgFirstNormalObjectId && is_pg15) {
-    // "pgv" in the above diagram
-    id.data[9] = 1;
+  // For catalog tables, we need to set the correct version in id.data[9], which is "pgv" in the
+  // above diagram. Note that normal object IDs are versionless, always id.data[9] == 0.
+  if (table_oid < kPgFirstNormalObjectId) {
+    if (is_current_version) {
+      id.data[9] = kPgCurrentUuidVersion;
+    } else {
+      id.data[9] = kPgPreviousUuidVersion;
+    }
   }
 
   UuidSetTableIds(table_oid, &id);
   return UuidToString(&id);
-}
-
-TableId GetPgsqlTableIdPg11(const uint32_t database_oid, const uint32_t table_oid) {
-  return GetPgsqlTableIdInternal(database_oid, table_oid, IsPg15::kFalse);
 }
 
 } // namespace
@@ -136,7 +145,11 @@ NamespaceId GetPgsqlNamespaceId(const uint32_t database_oid) {
 }
 
 TableId GetPgsqlTableId(const uint32_t database_oid, const uint32_t table_oid) {
-  return GetPgsqlTableIdInternal(database_oid, table_oid, IsPg15::kTrue);
+  return GetPgsqlTableIdInternal(database_oid, table_oid, IsCurrentVersion::kTrue);
+}
+
+TableId GetPgsqlTableIdPriorVersion(const uint32_t database_oid, const uint32_t table_oid) {
+  return GetPgsqlTableIdInternal(database_oid, table_oid, IsCurrentVersion::kFalse);
 }
 
 TablegroupId GetPgsqlTablegroupId(const uint32_t database_oid, const uint32_t tablegroup_oid) {
@@ -218,7 +231,7 @@ Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id) {
   return GetPgsqlOid(tablespace_id, 0, "tablespace id");
 }
 
-bool IsPg11CatalogId(const TableId& hex_id) {
+bool IsPriorVersionCatalogId(const TableId& hex_id) {
   if (!IsPgsqlId(hex_id)) {
     return false;
   }
@@ -228,15 +241,19 @@ bool IsPg11CatalogId(const TableId& hex_id) {
   }
   uint32_t oid = *res_oid;
   std::string id = a2b_hex(hex_id);
-  return id[9] == 0 && oid < kPgFirstNormalObjectId;
+  // Dev Note: When the major catalog version changes, meaning, for the YugabyteDB version that uses
+  // PG17+ for the YSQL layer, the check for oid being less than kPgFirstNormalObjectId will no
+  // longer be necessary because user tables will keep version 0 forever and the previous version
+  // will be > 0.
+  return id[9] == kPgPreviousUuidVersion && oid < kPgFirstNormalObjectId;
 }
 
-bool IsPg15CatalogId(const TableId& hex_id) {
+bool IsCurrentVersionCatalogId(const TableId& hex_id) {
   if (!IsPgsqlId(hex_id)) {
     return false;
   }
   std::string id = a2b_hex(hex_id);
-  return id[9] == 1;
+  return id[9] == kPgCurrentUuidVersion;
 }
 
 namespace xrepl {

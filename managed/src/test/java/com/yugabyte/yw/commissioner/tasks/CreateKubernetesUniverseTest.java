@@ -18,7 +18,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -39,6 +38,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -88,6 +88,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
+    RuntimeConfigEntry.upsertGlobal("yb.kubernetes.operator.wait_for_gflag_sync_sec", "0");
   }
 
   private void setupUniverseMultiAZ(
@@ -346,7 +347,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockClient.createRedisTable(any(), anyBoolean())).thenReturn(mockTable);
     } catch (Exception e) {
     }
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any(), anyBoolean(), anyInt()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any(), anyBoolean()))
         .thenReturn(
             ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "Command output: CREATE TABLE"));
     // WaitForServer mock.
@@ -373,6 +374,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CreateTable,
           TaskType.CreateTable,
           TaskType.UpdateConsistencyCheck,
+          TaskType.PodDisruptionBudgetPolicy,
           TaskType.UniverseUpdateSucceeded);
 
   private static final ImmutableMap<String, String> EXPECTED_RESULT_FOR_CREATE_TABLE_TASK =
@@ -399,14 +401,24 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(EXPECTED_RESULT_FOR_CREATE_TABLE_TASK),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()));
   }
 
-  private List<Integer> getTaskPositionsToSkip(boolean skipNamespace) {
+  private List<Integer> getTaskPositionsToSkip(boolean skipNamespace, boolean skipPDBTask) {
     // 4 is WAIT_FOR_PODS of type KubernetesCheckNumPod task.
     // 1 is CREATE_NAMESPACE of type KubernetesCommandExecutor
     // 0 is FreezeUniverse
-    return skipNamespace ? ImmutableList.of(1, 4) : ImmutableList.of(4);
+    // 18 is PodDisruptionBudgetPolicy
+    List<Integer> taskPositionsToSkip = new ArrayList<>();
+    taskPositionsToSkip.add(4);
+    if (skipNamespace) {
+      taskPositionsToSkip.add(1);
+    }
+    if (skipPDBTask) {
+      taskPositionsToSkip.add(18);
+    }
+    return taskPositionsToSkip;
   }
 
   private List<Integer> getTaskCountPerPosition(int namespaceTasks, int parallelTasks) {
@@ -421,6 +433,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         3,
         1,
         parallelTasks,
+        1,
         1,
         1,
         1,
@@ -604,6 +617,10 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             newNamingStyle ? NODE_PREFIX : ns3);
     verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.getUniverseUUID());
 
+    if (newNamingStyle) {
+      verify(mockKubernetesManager, times(1)).createPodDisruptionBudget(defaultUniverse);
+    }
+
     Universe u = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     Map<String, String> nodeNameToIP =
         u.getUniverseDetails().nodeDetailsSet.stream()
@@ -619,7 +636,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         subTasksByPosition,
         KUBERNETES_CREATE_UNIVERSE_TASKS,
         getExpectedCreateUniverseTaskResults(),
-        getTaskPositionsToSkip(/* skip namespace task */ false),
+        getTaskPositionsToSkip(false /* skip namespace task */, !newNamingStyle),
         getTaskCountPerPosition(numNamespaces, 3));
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -671,7 +688,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         subTasksByPosition,
         KUBERNETES_CREATE_UNIVERSE_TASKS,
         getExpectedCreateUniverseTaskResults(),
-        getTaskPositionsToSkip(/* skip namespace task */ setNamespace),
+        getTaskPositionsToSkip(setNamespace /* skip namespace task */, true /* skipPDBTask */),
         getTaskCountPerPosition(numNamespaces, 1));
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -710,12 +727,17 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     int createTableTaskIndex = createUniverseTasks.indexOf(TaskType.CreateTable);
     createUniverseTasks.remove(TaskType.CreateTable);
 
+    int pdbTaskIndex = createUniverseTasks.indexOf(TaskType.PodDisruptionBudgetPolicy);
+    createUniverseTasks.remove(TaskType.PodDisruptionBudgetPolicy);
+
     List<JsonNode> expectedResults = new ArrayList<>(getExpectedCreateUniverseTaskResults());
     expectedResults.remove(Json.toJson(EXPECTED_RESULT_FOR_CREATE_TABLE_TASK));
+    expectedResults.remove(pdbTaskIndex);
 
     List<Integer> taskCountPerPosition =
         new ArrayList<>(getTaskCountPerPosition(tasksNum, tasksNum));
     taskCountPerPosition.remove(createTableTaskIndex);
+    taskCountPerPosition.remove(pdbTaskIndex);
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -724,7 +746,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         subTasksByPosition,
         createUniverseTasks,
         expectedResults,
-        getTaskPositionsToSkip(/* skip namespace task */ false),
+        getTaskPositionsToSkip(false /* skip namespace task */, false /* skipPDBTask */),
         taskCountPerPosition);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -776,7 +798,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         subTasksByPosition,
         KUBERNETES_CREATE_UNIVERSE_TASKS,
         getExpectedCreateUniverseTaskResults(),
-        getTaskPositionsToSkip(/* skip namespace task */ false),
+        getTaskPositionsToSkip(false /* skip namespace task */, true /* skipPDBTask */),
         getTaskCountPerPosition(3, 3));
     assertEquals(Success, taskInfo.getTaskState());
   }

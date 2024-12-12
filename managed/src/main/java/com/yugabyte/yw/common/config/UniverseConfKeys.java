@@ -1404,4 +1404,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Node agent enabler reinstallation cooldown period for the universe",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> backupOffClusterPitrEnabled =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.off_cluster_pitr_enabled",
+          ScopeType.UNIVERSE,
+          "Option for Off-Cluster PITR based Backup Schedule",
+          "Enable option for creating backup schedules that support off-cluster PITR",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

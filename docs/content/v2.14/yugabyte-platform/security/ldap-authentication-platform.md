@@ -26,7 +26,7 @@ You enable LDAP authentication in the YugabyteDB cluster by setting the LDAP con
 
 This section describes how to configure YugabyteDB Anywhere to use an LDAP server such as Active Directory with TLS.
 
-For more information on LDAP in YugabyteDB, refer to [LDAP authentication](../../../secure/authentication/ldap-authentication/).
+For more information on LDAP in YugabyteDB, refer to [LDAP authentication](../../../secure/authentication/ldap-authentication-ysql/).
 
 ## Bind to the LDAP server using TLS
 
@@ -42,7 +42,7 @@ When entering the flag value in YugabyteDB Anywhere, do not enclose it in single
 
 The first host-based authentication (HBA) rule `host all yugabyte 127.0.0.1/0 password` allows access to the admin user (yugabyte) from localhost (127.0.0.1) using password authentication. This allows the administrator to log in as `yugabyte` to set up the roles and permissions for LDAP users.
 
-The second HBA rule configures LDAP authentication for all other user-host pairs using a [search+bind](../../../secure/authentication/ldap-authentication/#search-bind-mode) configuration. The YB-TServer binds to the LDAP directory using a fixed user name and password specified with `ldapbinddn` and `ldapbindpasswd`. The search is performed over the subtree at `ldapbasedn` and tries to find an exact match of the attribute specified in `ldapsearchattribute`.
+The second HBA rule configures LDAP authentication for all other user-host pairs using a [search+bind](../../../secure/authentication/ldap-authentication-ysql/#search-bind-mode) configuration. The YB-TServer binds to the LDAP directory using a fixed user name and password specified with `ldapbinddn` and `ldapbindpasswd`. The search is performed over the subtree at `ldapbasedn` and tries to find an exact match of the attribute specified in `ldapsearchattribute`.
 
 Once the user is found, to verify that the login is correct, the server disconnects and rebinds to the directory as this user using the password specified by the client.
 

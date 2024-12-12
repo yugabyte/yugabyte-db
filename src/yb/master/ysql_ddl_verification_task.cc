@@ -227,7 +227,6 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     // We need to check a tablegroup instead.
     const auto tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
     const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTablegroupId(tablegroup_id));
-    const auto pg_yb_tablegroup_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
     oid = VERIFY_RESULT(GetPgsqlTablegroupOid(tablegroup_id));
     pg_catalog_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
     name_col = kTablegroupNameColName;
@@ -361,8 +360,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     return lhs.order < rhs.order;
   });
 
-  Schema schema;
-  RETURN_NOT_OK(table->GetSchema(&schema));
+  auto schema = VERIFY_RESULT(table->GetSchema());
   Schema previous_schema;
   RETURN_NOT_OK(SchemaFromPB(l->ysql_ddl_txn_verifier_state().previous_schema(), &previous_schema));
   // CompareDdlAtomicity takes marked_for_deletion() into comparison. If a column is marked for

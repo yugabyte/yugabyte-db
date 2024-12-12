@@ -79,7 +79,7 @@ To create an Azure provider:
 
     If you want to save your progress, you can skip validation by choosing the **Ignore and save provider configuration anyway** option, which saves the provider configuration without validating. Note that you may not be able to create universes using an incomplete or unvalidated provider.
 
-The create provider process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YBA-to-YugabyteDB connectivity.
+The create provider process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
 
 When the configuration is completed, you can see all the resources managed by YBA in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
 
@@ -93,7 +93,13 @@ To edit the provider, select **Config Details**, make changes, and click **Apply
 
 - Provider Name
 - Client Secret
-- Regions - You can add regions and zones to an in-use provider. Note that you cannot edit existing region details, delete a region if any of the region's zones are in use, or delete zones that are in use.
+- Regions
+
+  - To add a region, click **Add Region**. See [Regions](#regions).
+  - To change an existing region, click **Edit** for the region. The options are the same as for [Add Region](#regions).
+  - To delete a region, click **Delete** for the region.
+
+      Note that you cannot delete a region if any of the region's zones are in use, or delete zones that are in use.
 
 To view the universes created using the provider, select **Universes**.
 
@@ -128,7 +134,7 @@ If you are using the [managed identity](https://learn.microsoft.com/en-us/entra/
 
 - **Resource Group** is the name of the resource group you created for your application, and in which YugabyteDB node compute and network resources will be created.
 - **Subscription ID** is required for cost management. The virtual machine resources managed by YBA are tagged with this subscription. To get the subscription ID, open Subscriptions in Azure portal and find your subscription. Then, copy the Subscription ID.
-- Optionally, if you created a different resource group for your network interfaces, provide the **Network Resource Group** name and the associated **Network Subscription ID**. If you do not provide a Network Resource Group or Subscription ID, network resources will be created in the default resource group.
+- Optionally, if you created a different resource group for your network interfaces, provide the **Network Resource Group** name and the associated **Network Subscription ID**. If you do not provide a Network Resource Group or Network Subscription ID, network resources will be created in the default resource group.
 - **Tenant ID** represents the tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [How to find your Microsoft Entra tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant).
 - **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [Define a private DNS zone](#define-a-private-dns-zone).
 
@@ -136,15 +142,17 @@ If you are using the [managed identity](https://learn.microsoft.com/en-us/entra/
 
 You can specify a region as follows:
 
-1. Click **Add Region**.
+1. Click **Add Region** to display the **Add Region** dialog.
 
-1. Use the **Add Region** dialog to select a region and provide a virtual network name from your Azure portal.
+1. Select an Azure region and provide a virtual network name from your Azure portal.
 
-1. Optionally, specify the security group, if the database VM is in a different network than YBA.
+1. Optionally, specify the security group, if the database VM is in a different network than your YugabyteDB Anywhere instance.
+
+1. Optionally, specify a **Network Resource Group** and **Resource Group** for the region. If you do not provide a Network Resource Group or Resource Group, node compute and network resources for the region will be created in the resource group specified for the provider.
 
 1. Click **Add Zone** and provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that YBA can deploy nodes in the correct network isolation that you need in your environment.
 
-1. Click **Add Region**.
+1. Click **Done**.
 
 ### Linux version catalog
 

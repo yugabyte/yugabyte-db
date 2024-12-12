@@ -73,6 +73,7 @@
 /* YB includes. */
 #include "catalog/binary_upgrade.h"
 #include "catalog/pg_database.h"
+#include "catalog/yb_catalog_version.h"
 #include "commands/progress.h"
 #include "commands/tablegroup.h"
 #include "miscadmin.h"
@@ -1140,12 +1141,16 @@ DefineIndex(Oid relationId,
 					errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
 
 		/*
-		 * Skip the check in a colocated database because any user can create tables
-		 * in an implicit tablegroup.
-		 * Check permissions for tablegroup. To create an index within a tablegroup, a user must
-		 * either be a superuser, the owner of the tablegroup, or have create perms on it.
+		 * YB: Check permissions for tablegroup. To create an index within a
+		 * tablegroup, a user must either be a superuser, the owner of the
+		 * tablegroup, or have create perms on it. Skip the check in a colocated
+		 * database because any user can create tables in an implicit
+		 * tablegroup. Skip the check during binary upgrade because ACLs have
+		 * not yet been restored, and CREATE INDEX, unlike CREATE TABLE, is
+		 * normally run as the table owner due to CVE-2022-1552. (See upstream
+		 * PG commit a117cebd638dd02e5c2e791c25e43745f233111b for details.)
 		 */
-		if (!MyDatabaseColocated &&
+		if (!MyDatabaseColocated && !IsBinaryUpgrade &&
 			OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
 		{
 			AclResult  aclresult;
@@ -1283,13 +1288,6 @@ DefineIndex(Oid relationId,
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("access method \"%s\" does not support exclusion constraints",
-						accessMethodName)));
-
-	/* YB: Inlined indexes are only supported in colocated mode right now. */
-	if (!MyDatabaseColocated && amRoutine->yb_amiscoveredbymaintable)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("access method \"%s\" requires colocation",
 						accessMethodName)));
 
 	amcanorder = amRoutine->amcanorder;
@@ -2192,8 +2190,7 @@ DefineIndex(Oid relationId,
 
 		/* Do backfill. */
 		/* YB: Do backfill if this is a separate DocDB table from the main table. */
-		if (!YBIsOidCoveredByMainTable(indexRelationId))
-			HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
 
 		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
 
@@ -5022,6 +5019,17 @@ YbWaitForBackendsCatalogVersion()
 	if (yb_disable_wait_for_backends_catalog_version)
 		return;
 
+	/*
+	 * We don't get the current catalog version after
+	 * YBDecrementDdlNestingLevel(), so we have to send another RPC to fetch
+	 * it.  This is needed because YbGetCatalogCacheVersion() may be behind in
+	 * case other DDLs happened concurrently.  This also means the version we
+	 * are waiting on may be higher than necessary in case other DDLs finished
+	 * before we collect the version.
+	 */
+	uint64_t catalog_version = YbGetMasterCatalogVersion();
+	Assert(catalog_version >= YbGetCatalogCacheVersion());
+
 	int num_lagging_backends = -1;
 	int retries_left = 10;
 	const TimestampTz start = GetCurrentTimestamp();
@@ -5040,12 +5048,12 @@ YbWaitForBackendsCatalogVersion()
 								   " catalog version %" PRIu64 ".",
 								   num_lagging_backends,
 								   MyDatabaseId,
-								   YbGetCatalogCacheVersion()),
+								   catalog_version),
 						 errhint("Run the following query on all tservers to find"
 								 " the lagging backends: SELECT * FROM"
 								 " pg_stat_activity WHERE catalog_version < %"
 								 PRIu64 " AND datid = %u;",
-								 YbGetCatalogCacheVersion(),
+								 catalog_version,
 								 MyDatabaseId)));
 			else
 			{
@@ -5057,12 +5065,13 @@ YbWaitForBackendsCatalogVersion()
 								   " database %u are still behind"
 								   " catalog version %" PRIu64 ".",
 								   MyDatabaseId,
-								   YbGetCatalogCacheVersion())));
+								   catalog_version)));
 			}
 		}
 
 		YBCStatus s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
-														 YbGetCatalogCacheVersion(),
+														 catalog_version,
+														 MyProcPid,
 														 &num_lagging_backends);
 
 		if (!s)		/* ok */

@@ -1004,18 +1004,33 @@ logical_read_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr, int req
 }
 
 /*
+ * Throw an error if replication slot doesn't allow LSN types.
+ */
+static void
+reportErrorIfLsnTypeNotEnabled()
+{
+	if (!yb_allow_replication_slot_lsn_types)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("LSN type parameter not allowed when "
+					"ysql_yb_allow_replication_slot_lsn_types is disabled")));
+}
+
+/*
  * Process extra options given to CREATE_REPLICATION_SLOT.
  */
 static void
 parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 						   bool *reserve_wal,
 						   CRSSnapshotAction *snapshot_action,
-						   bool *two_phase)
+						   bool *two_phase,
+						   CRSLsnType *lsn_type)
 {
 	ListCell   *lc;
 	bool		snapshot_action_given = false;
 	bool		reserve_wal_given = false;
 	bool		two_phase_given = false;
+	bool		lsn_type_given = false;
 
 	/* Parse options */
 	foreach(lc, cmd->options)
@@ -1065,6 +1080,31 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 			two_phase_given = true;
 			*two_phase = defGetBoolean(defel);
 		}
+		else if (strcmp(defel->defname, "lsn_type") == 0)
+		{
+			char	   *action;
+
+			reportErrorIfLsnTypeNotEnabled();
+
+			if (lsn_type_given || cmd->kind != REPLICATION_KIND_LOGICAL)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						errmsg("conflicting or redundant lsn_type options")));
+
+			action = defGetString(defel);
+			lsn_type_given = true;
+
+			if (strcmp(action, "SEQUENCE") == 0)
+				*lsn_type = CRS_SEQUENCE;
+			else if (strcmp(action, "HYBRID_TIME") == 0)
+				*lsn_type = CRS_HYBRID_TIME;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("unrecognized lsn_type value for CREATE_REPLICATION_SLOT "
+						 		"option \"%s\": \"%s\"",
+								defel->defname, action)));
+		}
 		else
 			elog(ERROR, "unrecognized option: %s", defel->defname);
 	}
@@ -1091,6 +1131,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	bool		reserve_wal = false;
 	bool		two_phase = false;
 	CRSSnapshotAction snapshot_action = CRS_EXPORT_SNAPSHOT;
+	CRSLsnType lsn_type = CRS_SEQUENCE;
 	DestReceiver *dest;
 	TupOutputState *tstate;
 	TupleDesc	tupdesc;
@@ -1109,7 +1150,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	if (IsYugaByteEnabled())
 		snapshot_action = CRS_USE_SNAPSHOT;
 
-	parseCreateReplSlotOptions(cmd, &reserve_wal, &snapshot_action, &two_phase);
+	parseCreateReplSlotOptions(cmd, &reserve_wal, &snapshot_action, &two_phase, &lsn_type);
 
 	if (cmd->kind == REPLICATION_KIND_PHYSICAL)
 	{
@@ -1121,7 +1162,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		ReplicationSlotCreate(cmd->slotname, false,
 							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT,
 							  false,
-							  cmd->plugin, snapshot_action, NULL);
+							  cmd->plugin, snapshot_action, NULL, lsn_type);
 	}
 	else
 	{
@@ -1144,7 +1185,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			ReplicationSlotCreate(cmd->slotname, true,
 								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL,
 								  two_phase,
-								  cmd->plugin, snapshot_action, NULL);
+								  cmd->plugin, snapshot_action, NULL, lsn_type);
 		}
 	}
 
@@ -1238,7 +1279,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT,
 								  two_phase,
 								  cmd->plugin, snapshot_action,
-								  &consistent_snapshot_time);
+								  &consistent_snapshot_time, lsn_type);
 
 			if (snapshot_action == CRS_USE_SNAPSHOT)
 			{

@@ -19,6 +19,8 @@
 #include <limits>
 #include <string>
 
+#include "boost/functional/hash.hpp"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -58,10 +60,21 @@ class ColumnId {
   operator ColumnIdRep() const { return t_; }
   ColumnIdRep rep() const { return t_; }
 
-  bool operator==(const ColumnId& rhs) const { return t_ == rhs.t_; }
-  bool operator!=(const ColumnId& rhs) const { return t_ != rhs.t_; }
-  bool operator<(const ColumnId& rhs) const { return t_ < rhs.t_; }
-  bool operator>(const ColumnId& rhs) const { return t_ > rhs.t_; }
+  friend bool operator==(const ColumnId& lhs, const ColumnId& rhs) noexcept {
+    return lhs.t_ == rhs.t_;
+  }
+
+  friend bool operator!=(const ColumnId& lhs, const ColumnId& rhs) noexcept {
+    return !(lhs.t_ == rhs.t_);
+  }
+
+  friend bool operator<(const ColumnId& lhs, const ColumnId& rhs) noexcept {
+    return lhs.t_ < rhs.t_;
+  }
+
+  friend bool operator>(const ColumnId& lhs, const ColumnId& rhs) noexcept {
+    return rhs < lhs;
+  }
 
   std::string ToString() const {
     return std::to_string(t_);
@@ -109,3 +122,7 @@ ColumnId operator"" _ColId() {
 }
 
 }  // namespace yb
+
+// Specialize std::hash for ColumnId
+template <>
+struct std::hash<yb::ColumnId> : public boost::hash<yb::ColumnId> {};

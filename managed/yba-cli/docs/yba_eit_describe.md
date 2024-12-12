@@ -13,14 +13,14 @@ yba eit describe [flags]
 ### Examples
 
 ```
-yba eit delete --name <config-name>
+yba eit describe --name <config-name>
 ```
 
 ### Options
 
 ```
   -n, --name string        [Required] Name of the configuration.
-  -c, --cert-type string   [Optional] Type of the certificate. Allowed values: SelfSigned, CustomCertHostPath, HashicorpVault, K8sCertManager.
+  -c, --cert-type string   [Optional] Type of the certificate. Allowed values (case sensitive): SelfSigned, CustomCertHostPath, HashicorpVault, K8sCertManager.
   -h, --help               help for describe
 ```
 

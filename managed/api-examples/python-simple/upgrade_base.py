@@ -17,10 +17,10 @@ CUSTOMER_UUID = "f33e3c9b-75ab-4c30-80ad-cba85646ea39"
 # https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/
 #   list-universes.ipynb
 # to list all universes and filter by name
-UNIVERSE_UUID = "4d419e8d-51d0-4c1c-9446-40849d3cec9c"
+UNIVERSE_UUID = "c7abf6a7-5330-44b7-82cc-ebdf2fde36dc"
 
 # Platform api key to be set
-X_AUTH_YW_API_TOKEN = "5e8d9e2e-894d-405d-8731-fdc2111e8d57"
+X_AUTH_YW_API_TOKEN = "3.a9190fe6-1067-409f-95cf-dbd96893c9c9.77128db3-0867-41e2-ab94-d7041f5f93fe"
 
 DEFAULT_HEADERS = {"Content-Type": "application/json", "X-AUTH-YW-API-TOKEN": X_AUTH_YW_API_TOKEN}
 

@@ -17,7 +17,7 @@ import (
 const (
 	// ExtractMetadata details
 	defaultFullExtractMetadataGeneral = "table {{.Version}}\t{{.UUID}}\t{{.ReleaseType}}" +
-		"\t{{.ReleaseDate}}\t{{.State}}"
+		"\t{{.Architecture}}\t{{.ReleaseDate}}\t{{.State}}"
 	releaseDetails1 = "table {{.SHA256}}\t{{.YbType}}"
 	releaseDetails2 = "table {{.ReleaseNotes}}"
 )

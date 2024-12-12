@@ -51,6 +51,7 @@ public class XClusterScheduler {
   private final XClusterUniverseService xClusterUniverseService;
   private final MetricService metricService;
   private final UniverseTableHandler tableHandler;
+  private final long dbSyncTimeoutMs;
 
   // This is a key lock for xCluster Config by UUID.
   private static final KeyLock<UUID> XCLUSTER_CONFIG_LOCK = new KeyLock<>();
@@ -69,6 +70,7 @@ public class XClusterScheduler {
     this.xClusterUniverseService = xClusterUniverseService;
     this.metricService = metricService;
     this.tableHandler = tableHandler;
+    dbSyncTimeoutMs = confGetter.getGlobalConf(GlobalConfKeys.xclusterDbSyncTimeoutMs);
   }
 
   private Duration getSyncSchedulerInterval() {
@@ -313,7 +315,7 @@ public class XClusterScheduler {
       XClusterConfig xClusterConfig, XClusterTableConfig xClusterTableConfig) {
     XClusterTableConfig.Status tableStatus = xClusterTableConfig.getStatus();
     if (xClusterTableConfig.getStatus().equals(XClusterTableConfig.Status.Running)) {
-      if (xClusterTableConfig.getReplicationStatusErrors().size() > 0) {
+      if (!xClusterTableConfig.getReplicationStatusErrors().isEmpty()) {
         tableStatus = XClusterTableConfig.Status.ReplicationError;
       }
     }
@@ -359,12 +361,10 @@ public class XClusterScheduler {
     }
 
     XClusterConfigTaskBase.updateReplicationDetailsFromDB(
-        xClusterUniverseService, ybClientService, tableHandler, xClusterConfig);
+        xClusterUniverseService, ybClientService, tableHandler, xClusterConfig, dbSyncTimeoutMs);
     Set<XClusterTableConfig> xClusterTableConfigs = xClusterConfig.getTableDetails();
     xClusterTableConfigs.forEach(
-        tableConfig -> {
-          metricsList.add(buildMetricTemplate(xClusterConfig, tableConfig));
-        });
+        tableConfig -> metricsList.add(buildMetricTemplate(xClusterConfig, tableConfig)));
 
     return metricsList;
   }
@@ -389,7 +389,7 @@ public class XClusterScheduler {
     } catch (Exception e) {
       metricService.setFailureStatusMetric(
           MetricService.buildMetricTemplate(PlatformMetrics.XCLUSTER_METRIC_PROCESSOR_STATUS));
-      log.error("Error running xCluster Metrics Scheduler: {}", e);
+      log.error("Error running xCluster Metrics Scheduler:", e);
     }
   }
 }

@@ -909,5 +909,17 @@ template struct GetValueHelper<PGOid>;
 template struct GetValueHelper<Uuid>;
 template struct GetValueHelper<MonoDelta>;
 
+FetchHelper<RowAsString>::RowsResult FetchHelper<RowAsString>::FetchRows(
+    Result<PGResultPtr>&& source) {
+  auto result = VERIFY_RESULT(std::move(source));
+  RowsType rows;
+  auto num_rows = PQntuples(result.get());
+  rows.reserve(num_rows);
+  for (decltype(num_rows) row = 0; row < num_rows; ++row) {
+    rows.push_back(VERIFY_RESULT(RowToString(result.get(), row, DefaultColumnSeparator())));
+  }
+  return rows;
+}
+
 } // namespace libpq_utils::internal
 } // namespace yb::pgwrapper

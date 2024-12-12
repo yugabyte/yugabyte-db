@@ -52,14 +52,11 @@ class Pg15UpgradeTestBase : public UpgradeTestBase {
   Status ExecuteStatementsInFile(const std::string& file_name);
   Status ExecuteStatementsInFiles(const std::vector<std::string>& file_names);
 
-  Result<pgwrapper::PGConn> CreateConnToTs(size_t ts_id);
+  Result<pgwrapper::PGConn> CreateConnToTs(std::optional<size_t> ts_id);
 
-  // Run a ysql statement via ysqlsh against a given tserver.
-  Result<std::string> ExecuteViaYsqlshOnTs(const std::string& sql_statement, size_t ts_id,
-                                           const std::string &db_name = "yugabyte");
-
-  // Run a ysql statement via ysqlsh against a random tserver.
+  // Run a ysql statement via ysqlsh.
   Result<std::string> ExecuteViaYsqlsh(const std::string& sql_statement,
+                                       std::optional<size_t> ts_id = std::nullopt,
                                        const std::string &db_name = "yugabyte");
 
   Status CreateSimpleTable();

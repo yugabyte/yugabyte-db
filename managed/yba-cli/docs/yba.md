@@ -38,10 +38,12 @@ yba [flags]
 * [yba eit](yba_eit.md)	 - Manage YugabyteDB Anywhere Encryption In Transit (EIT) configurations
 * [yba login](yba_login.md)	 - Authenticate yba cli using email and password
 * [yba provider](yba_provider.md)	 - Manage YugabyteDB Anywhere providers
+* [yba rbac](yba_rbac.md)	 - Manage YugabyteDB Anywhere RBAC (Role-Based Access Control)
 * [yba register](yba_register.md)	 - Register a YugabyteDB Anywhere customer using yba cli
 * [yba runtime-config](yba_runtime-config.md)	 - Manage YugabyteDB Anywhere runtime configurations
 * [yba storage-config](yba_storage-config.md)	 - Manage YugabyteDB Anywhere storage configurations
 * [yba task](yba_task.md)	 - Manage YugabyteDB Anywhere tasks
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
+* [yba user](yba_user.md)	 - Manage YugabyteDB Anywhere users
 * [yba yb-db-version](yba_yb-db-version.md)	 - Manage YugabyteDB versions
 

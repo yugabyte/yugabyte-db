@@ -355,7 +355,7 @@ Status WriteBatch::Iterate(Handler* handler) const {
       s = result.status();
     }
   }
-  if (frontiers_) {
+  if (s.ok() && frontiers_) {
     s = handler->Frontiers(*frontiers_);
     if (handler_for_logging_) {
       WARN_NOT_OK(

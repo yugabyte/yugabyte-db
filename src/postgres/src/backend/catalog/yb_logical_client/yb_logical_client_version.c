@@ -195,12 +195,9 @@ YbIncrementMasterDBLogicalClientVersionTableEntryImpl(
 	YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
-	yb_expr = YBCNewColumnRef(update_stmt,
-							  attnum,
-							  INT8OID,
-							  InvalidOid,
-							  &type_attrs);
-	HandleYBStatus(YbPgDmlAppendColumnRef(update_stmt, yb_expr, true));
+	yb_expr = YBCNewColumnRef(
+		update_stmt, attnum, INT8OID, InvalidOid, &type_attrs);
+	YbAppendPrimaryColumnRef(update_stmt, yb_expr);
 
 	int rows_affected_count = 0;
 
@@ -222,7 +219,7 @@ bool YbIncrementMasterLogicalClientVersionTableEntry()
 
 Datum YbGetMasterLogicalClientVersionTableEntryYbctid(Relation logical_client_version_rel,
 												Oid db_oid)
-{	
+{
 	/*
 	 * Construct virtual slot (db_oid, null) for computing ybctid using
 	 * YBCComputeYBTupleIdFromSlot. Note that db_oid is the primary key so we

@@ -65,6 +65,8 @@ DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
                  " for ported pg_regress tests that expect deterministic output ordering based on"
                  " ctid. This is a best-effort reproduction of that, but it still falls short in"
                  " case of UPDATEs because PG regenerates ctid while YB doesn't.");
+DEFINE_test_flag(bool, ysql_log_perdb_allocated_new_objectid, false,
+                 "Log new object id returned by per database oid allocator");
 
 namespace yb::pggate {
 namespace {

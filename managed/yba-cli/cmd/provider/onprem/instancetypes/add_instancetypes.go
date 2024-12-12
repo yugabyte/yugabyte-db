@@ -206,7 +206,7 @@ func buildVolumeDetails(volumeStrings []string) *[]ybaclient.VolumeDetails {
 		}
 		r := ybaclient.VolumeDetails{
 			MountPath:    volume["mount-points"],
-			VolumeType:   volume["type"],
+			VolumeType:   strings.ToUpper(volume["type"]),
 			VolumeSizeGB: int32(volumeSize),
 		}
 		res = append(res, r)

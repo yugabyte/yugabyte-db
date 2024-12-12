@@ -196,7 +196,6 @@ func ErrorFromResponseBody(errorBlock YbaStructuredError) string {
 
 	errorMap := (*errorBlock.Error).(map[string]interface{})
 	for k, v := range errorMap {
-		logrus.Debug("Key: ", k, " Value: ", v, "\n", "Type is ", reflect.TypeOf(v))
 		if k != "" {
 			errorString = fmt.Sprintf("Field: %s, Error:", k)
 		}

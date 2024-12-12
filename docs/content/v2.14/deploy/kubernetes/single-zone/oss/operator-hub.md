@@ -100,7 +100,7 @@ $ kubectl exec -it -n yb-operator yb-tserver-0 -- ysqlsh -h yb-tserver-0  --echo
 
 For details on the YSQL API, see:
 
-- [Explore YSQL](../../../../../quick-start/explore/ysql/)
+- [Explore YSQL](/preview/tutorials/quick-start/explore/ysql/)
 - [YSQL Reference](../../../../../api/ysql/)
 
 ## Clean up

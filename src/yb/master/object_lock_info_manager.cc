@@ -13,6 +13,7 @@
 
 #include "yb/master/object_lock_info_manager.h"
 
+#include <optional>
 #include <ranges>
 #include <string>
 #include <unordered_map>
@@ -54,6 +55,25 @@ using tserver::ReleaseObjectLockRequestPB;
 using tserver::ReleaseObjectLockResponsePB;
 using tserver::TabletServerErrorPB;
 
+namespace {
+
+Status ValidateLockRequest(const AcquireObjectLockRequestPB& req) {
+  // For now, DDLs operate under a separate transaction. So we always start an explicit distrubited
+  // txn for a DDL. As we wouldn't be re-using a transaction, we wouldn't need txn_version here.
+  if (req.txn_reuse_version()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "txn_reuse_version populated for exclusive object lock req $0", req.ShortDebugString());
+  }
+  if (!req.subtxn_id()) {
+    return STATUS_FORMAT(
+        IllegalState, "subtxn_id not set for exclusive object lock req $0", req.ShortDebugString());
+  }
+  return Status::OK();
+}
+
+} // namespace
+
 class ObjectLockInfoManager::Impl {
  public:
   Impl(Master* master, CatalogManager* catalog_manager)
@@ -62,12 +82,21 @@ class ObjectLockInfoManager::Impl {
         local_lock_manager_(std::make_shared<tablet::TSLocalLockManager>()) {}
 
   void LockObject(
-      const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+      const tserver::AcquireObjectLockRequestPB& req, tserver::AcquireObjectLockResponsePB* resp,
       rpc::RpcContext rpc);
+  void LockObject(
+      const tserver::AcquireObjectLockRequestPB& req, rpc::RpcContext context,
+      StdStatusCallback callback);
 
   void UnlockObject(
-      const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+      const tserver::ReleaseObjectLockRequestPB& req, tserver::ReleaseObjectLockResponsePB* resp,
       rpc::RpcContext rpc);
+  void UnlockObject(
+      const tserver::ReleaseObjectLockRequestPB& req, std::optional<rpc::RpcContext> context,
+      StdStatusCallback callback);
+
+  void ReleaseOldObjectLocks(
+      const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait);
 
   Status PersistRequest(LeaderEpoch epoch, const tserver::AcquireObjectLockRequestPB& req)
       EXCLUDES(mutex_);
@@ -130,8 +159,8 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
  public:
   UpdateAllTServers(
       LeaderEpoch epoch, Master* master, CatalogManager* catalog_manager,
-      ObjectLockInfoManager::Impl* object_lock_info_manager, const Req& req, Resp* resp,
-      rpc::RpcContext rpc);
+      ObjectLockInfoManager::Impl* object_lock_info_manager, const Req& req,
+      StdStatusCallback callback, std::optional<rpc::RpcContext> context);
 
   void Launch();
   const Req& request() const {
@@ -142,6 +171,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   void LaunchFrom(size_t from_idx);
   void Done(size_t i, const Status& s);
   void DoneAll();
+  void DoCallbackAndRespond(const Status& s);
 
   LeaderEpoch epoch_;
   Master* master_;
@@ -151,8 +181,8 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   std::atomic<size_t> ts_pending_;
   std::vector<Status> statuses_;
   const Req req_;
-  Resp* resp_;
-  rpc::RpcContext context_;
+  StdStatusCallback callback_;
+  std::optional<rpc::RpcContext> context_;
 };
 
 template <class Req, class Resp>
@@ -168,6 +198,8 @@ class UpdateTServer : public RetrySpecificTSRpcTask {
   std::string type_name() const override { return "Object Lock"; }
 
   std::string description() const override;
+
+  std::string ToString() const;
 
  protected:
   void Finished(const Status& status) override;
@@ -195,6 +227,8 @@ namespace {
 // by the currently registered tserver. Or is an old lock that should be released
 // when the TServer loses its lease.
 constexpr int kIncarnationId = 0;
+const std::string kNotTheMasterLeader = "Master is not the leader";
+const std::string kEpochChanged = "Epoch changed";
 
 }  // namespace
 
@@ -204,23 +238,32 @@ ObjectLockInfoManager::ObjectLockInfoManager(Master* master, CatalogManager* cat
 ObjectLockInfoManager::~ObjectLockInfoManager() = default;
 
 void ObjectLockInfoManager::LockObject(
-    const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+    const tserver::AcquireObjectLockRequestPB& req, tserver::AcquireObjectLockResponsePB* resp,
     rpc::RpcContext rpc) {
   impl_->LockObject(req, resp, std::move(rpc));
 }
+
 void ObjectLockInfoManager::UnlockObject(
-    const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+    const tserver::ReleaseObjectLockRequestPB& req, tserver::ReleaseObjectLockResponsePB* resp,
     rpc::RpcContext rpc) {
   impl_->UnlockObject(req, resp, std::move(rpc));
 }
+
 void ObjectLockInfoManager::ExportObjectLockInfo(
     const std::string& tserver_uuid, tserver::DdlLockEntriesPB* resp) {
   impl_->ExportObjectLockInfo(tserver_uuid, resp);
 }
+
+void ObjectLockInfoManager::ReleaseOldObjectLocks(
+    const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait) {
+  impl_->ReleaseOldObjectLocks(tserver_uuid, current_incarnation_num, wait);
+}
+
 void ObjectLockInfoManager::UpdateObjectLocks(
     const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info) {
   impl_->UpdateObjectLocks(tserver_uuid, info);
 }
+
 void ObjectLockInfoManager::Clear() { impl_->Clear(); }
 
 std::shared_ptr<tablet::TSLocalLockManager> ObjectLockInfoManager::TEST_ts_local_lock_manager() {
@@ -247,8 +290,10 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(key);
   auto lock = object_lock_info->LockForWrite();
   // TODO(Amit) Fetch and use the appropriate incarnation Id.
-  auto& sessions_map = (*lock.mutable_data()->pb.mutable_incarnations())[kIncarnationId];
-  auto& db_map = (*sessions_map.mutable_sessions())[req.session_id()];
+  auto& txns_map = (*lock.mutable_data()->pb.mutable_incarnations())[kIncarnationId];
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
+  auto& subtxns_map = (*txns_map.mutable_transactions())[txn_id.ToString()];
+  auto& db_map = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
   for (const auto& object_lock : req.object_locks()) {
     auto& object_map = (*db_map.mutable_dbs())[object_lock.database_oid()];
     auto& types = (*object_map.mutable_objects())[object_lock.object_oid()];
@@ -267,11 +312,13 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(key);
   auto lock = object_lock_info->LockForWrite();
   // TODO(Amit) Fetch and use the appropriate incarnation Id.
-  auto& sessions_map = (*lock.mutable_data()->pb.mutable_incarnations())[kIncarnationId];
-  if (req.release_all_locks()) {
-    sessions_map.mutable_sessions()->erase(req.session_id());
+  auto& txns_map = (*lock.mutable_data()->pb.mutable_incarnations())[kIncarnationId];
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
+  if (req.release_all_locks() || !req.subtxn_id()) {
+    txns_map.mutable_transactions()->erase(txn_id.ToString());
   } else {
-    auto& db_map = (*sessions_map.mutable_sessions())[req.session_id()];
+    auto& subtxns_map = (*txns_map.mutable_transactions())[txn_id.ToString()];
+    auto& db_map = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
     for (const auto& object_lock : req.object_locks()) {
       auto& object_map = (*db_map.mutable_dbs())[object_lock.database_oid()];
       object_map.mutable_objects()->erase(object_lock.object_oid());
@@ -285,7 +332,7 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
 
 namespace {
 
-void ExportObjectLocksForSession(
+void ExportObjectLocksForTxn(
     const master::SysObjectLockEntryPB_DBObjectsMapPB& dbs_map,
     tserver::AcquireObjectLockRequestPB* req) {
   for (const auto& [db_id, objects_map] : dbs_map.dbs()) {
@@ -301,12 +348,15 @@ void ExportObjectLocksForSession(
 }
 
 template <class Resp>
-void FillErrorAndRespond(
-    tserver::TabletServerErrorPB_Code code, const Status& status, Resp* resp,
-    rpc::RpcContext* rpc) {
-  resp->mutable_error()->set_code(code);
-  StatusToPB(status, resp->mutable_error()->mutable_status());
-  rpc->RespondSuccess();
+void FillErrorIfRequired(const Status& status, Resp* resp) {
+  if (!status.ok()) {
+    if (status.IsTryAgain() && status.message().ToBuffer() == kNotTheMasterLeader) {
+      resp->mutable_error()->set_code(TabletServerErrorPB::NOT_THE_LEADER);
+    } else {
+      resp->mutable_error()->set_code(TabletServerErrorPB::UNKNOWN_ERROR);
+    }
+    StatusToPB(status, resp->mutable_error()->mutable_status());
+  }
 }
 
 }  // namespace
@@ -325,15 +375,19 @@ void ObjectLockInfoManager::Impl::ExportObjectLockInfo(
     for (const auto& [host_uuid, per_host_entry] : object_lock_infos_map_) {
       auto l = per_host_entry->LockForRead();
       // TODO(Amit) Fetch and use the appropriate incarnation Id.
-      auto sessions_map_it = l->pb.incarnations().find(kIncarnationId);
-      if (sessions_map_it == l->pb.incarnations().end()) {
+      auto txns_map_it = l->pb.incarnations().find(kIncarnationId);
+      if (txns_map_it == l->pb.incarnations().end()) {
         continue;
       }
-      for (const auto& [session_id, dbs_map] : sessions_map_it->second.sessions()) {
-        auto* lock_entries_pb = resp->add_lock_entries();
-        lock_entries_pb->set_session_host_uuid(host_uuid);
-        lock_entries_pb->set_session_id(session_id);
-        ExportObjectLocksForSession(dbs_map, lock_entries_pb);
+      for (const auto& [txn_id_str, subtxns_map] : txns_map_it->second.transactions()) {
+        auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
+        for (const auto& [subtxn_id, dbs_map] : subtxns_map.subtxns()) {
+          auto* lock_entries_pb = resp->add_lock_entries();
+          lock_entries_pb->set_session_host_uuid(host_uuid);
+          lock_entries_pb->set_txn_id(txn_id.data(), txn_id.size());
+          lock_entries_pb->set_subtxn_id(subtxn_id);
+          ExportObjectLocksForTxn(dbs_map, lock_entries_pb);
+        }
       }
     }
   }
@@ -385,18 +439,26 @@ void ObjectLockInfoManager::Impl::ExportObjectLockInfo(
     - The RPCs can be retried by the YBClient/PgClient, or left for the release request to clean up.
 */
 void ObjectLockInfoManager::Impl::LockObject(
-    const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
+    const AcquireObjectLockRequestPB& req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
+  LockObject(req, std::move(context), [resp](const Status& s) { FillErrorIfRequired(s, resp); });
+}
+
+void ObjectLockInfoManager::Impl::LockObject(
+    const AcquireObjectLockRequestPB& req, rpc::RpcContext context, StdStatusCallback callback) {
   VLOG(3) << __PRETTY_FUNCTION__;
+  if (auto s = ValidateLockRequest(req); !s.ok()) {
+    callback(s);
+    return context.RespondSuccess();
+  }
   // First acquire the locks locally.
   std::shared_ptr<tablet::TSLocalLockManager> local_lock_manager;
   LeaderEpoch epoch;
   {
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
     if (!l.IsInitializedAndIsLeader()) {
-      FillErrorAndRespond(
-          TabletServerErrorPB::NOT_THE_LEADER, STATUS(TryAgain, "Master is not leader"), resp,
-          &context);
+      callback(STATUS(IllegalState, kNotTheMasterLeader));
+      context.RespondSuccess();
       return;
     }
     epoch = l.epoch();
@@ -405,30 +467,31 @@ void ObjectLockInfoManager::Impl::LockObject(
   // We could be waiting for a long time here, if another PGClient has already acquired the lock.
   // So let us not hold the leader lock while waiting here.
   auto s = local_lock_manager->AcquireObjectLocks(
-      *req, context.GetClientDeadline(), tablet::WaitForBootstrap::kFalse);
+      req, context.GetClientDeadline(), tablet::WaitForBootstrap::kFalse);
   if (!s.ok()) {
     LOG(WARNING) << "Failed to acquire object lock locally." << s;
-    FillErrorAndRespond(TabletServerErrorPB::UNKNOWN_ERROR, s, resp, &context);
+    callback(s);
+    context.RespondSuccess();
     return;
   }
   // Persist the request.
   {
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
     if (!l.IsInitializedAndIsLeader()) {
-      FillErrorAndRespond(
-          TabletServerErrorPB::NOT_THE_LEADER, STATUS(TryAgain, "Master is not leader"), resp,
-          &context);
+      callback(STATUS(IllegalState, kNotTheMasterLeader));
+      context.RespondSuccess();
       return;
     }
     if (l.epoch() != epoch) {
-      FillErrorAndRespond(
-          TabletServerErrorPB::NOT_THE_LEADER, STATUS(TryAgain, "Epoch changed"), resp, &context);
+      callback(STATUS(IllegalState, kEpochChanged));
+      context.RespondSuccess();
       return;
     }
-    s = PersistRequest(epoch, *req);
+    s = PersistRequest(epoch, req);
     if (!s.ok()) {
       LOG(WARNING) << "Failed to update object lock " << s;
-      FillErrorAndRespond(TabletServerErrorPB::UNKNOWN_ERROR, s, resp, &context);
+      callback(s.CloneAndReplaceCode(Status::kRemoteError));
+      context.RespondSuccess();
       return;
     }
   }
@@ -436,13 +499,19 @@ void ObjectLockInfoManager::Impl::LockObject(
   // TODO: Fix this. GetAllDescriptors may need to change to handle tserver membership reliably.
   auto lock_objects =
       std::make_shared<UpdateAllTServers<AcquireObjectLockRequestPB, AcquireObjectLockResponsePB>>(
-          epoch, master_, catalog_manager_, this, *req, resp, std::move(context));
+          epoch, master_, catalog_manager_, this, req, std::move(callback), std::move(context));
   lock_objects->Launch();
 }
 
 void ObjectLockInfoManager::Impl::UnlockObject(
-    const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
+    const ReleaseObjectLockRequestPB& req, ReleaseObjectLockResponsePB* resp,
     rpc::RpcContext context) {
+  UnlockObject(req, std::move(context), [resp](const Status& s) { FillErrorIfRequired(s, resp); });
+}
+
+void ObjectLockInfoManager::Impl::UnlockObject(
+    const ReleaseObjectLockRequestPB& req, std::optional<rpc::RpcContext> context,
+    StdStatusCallback callback) {
   VLOG(3) << __PRETTY_FUNCTION__;
   // Release the locks locally.
   std::shared_ptr<tablet::TSLocalLockManager> local_lock_manager;
@@ -450,33 +519,87 @@ void ObjectLockInfoManager::Impl::UnlockObject(
   {
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
     if (!l.IsInitializedAndIsLeader()) {
-      FillErrorAndRespond(
-          TabletServerErrorPB::NOT_THE_LEADER, STATUS(TryAgain, "Master is not leader"), resp,
-          &context);
+      callback(STATUS(IllegalState, kNotTheMasterLeader));
+      if (context.has_value()) {
+        context->RespondSuccess();
+      }
       return;
     }
     epoch = l.epoch();
     local_lock_manager = ts_local_lock_manager();
-    auto s = local_lock_manager->ReleaseObjectLocks(*req);
+    auto s = local_lock_manager->ReleaseObjectLocks(req);
     if (!s.ok()) {
       LOG(WARNING) << "Failed to release object lock locally." << s;
-      FillErrorAndRespond(TabletServerErrorPB::UNKNOWN_ERROR, s, resp, &context);
+      callback(s.CloneAndReplaceCode(Status::kRemoteError));
+      if (context.has_value()) {
+        context->RespondSuccess();
+      }
       return;
     }
 
     // Persist the request.
-    s = PersistRequest(epoch, *req);
+    s = PersistRequest(epoch, req);
     if (!s.ok()) {
       LOG(WARNING) << "Failed to update object lock " << s;
-      FillErrorAndRespond(TabletServerErrorPB::UNKNOWN_ERROR, s, resp, &context);
+      callback(s.CloneAndReplaceCode(Status::kRemoteError));
+      if (context.has_value()) {
+        context->RespondSuccess();
+      }
       return;
     }
   }
 
   auto unlock_objects =
       std::make_shared<UpdateAllTServers<ReleaseObjectLockRequestPB, ReleaseObjectLockResponsePB>>(
-          epoch, master_, catalog_manager_, this, *req, resp, std::move(context));
+          epoch, master_, catalog_manager_, this, req, std::move(callback), std::move(context));
   unlock_objects->Launch();
+}
+
+void ObjectLockInfoManager::Impl::ReleaseOldObjectLocks(
+    const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait) {
+  std::vector<std::shared_ptr<ReleaseObjectLockRequestPB>> requests_per_txn;
+  // We have not started using incarnation ids yet.
+  // TODO: fix this when we implement it.
+  CHECK_EQ(current_incarnation_num, kIncarnationId);
+  {
+    const auto& key = tserver_uuid;
+    std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(key);
+    auto l = object_lock_info->LockForRead();
+    // TODO(Amit) Fetch and use the appropriate incarnation Id.
+    auto txns_map_it = l->pb.incarnations().find(kIncarnationId);
+    if (txns_map_it == l->pb.incarnations().end()) {
+      return;
+    }
+    for (const auto& [txn_id_str, _] : txns_map_it->second.transactions()) {
+      auto request = std::make_shared<ReleaseObjectLockRequestPB>();
+      request->set_session_host_uuid(tserver_uuid);
+      auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
+      request->set_txn_id(txn_id.data(), txn_id.size());
+      request->set_release_all_locks(true);
+      requests_per_txn.push_back(request);
+    }
+  }
+  // Do we want to wait for this? Or just let it go?
+  std::shared_ptr<CountDownLatch> latch =
+      std::make_shared<CountDownLatch>(requests_per_txn.size());
+  for (const auto& request : requests_per_txn) {
+    // This is kind of best effort:
+    // If there is a master failover, in UnlockObject after the change is Persisted, but before
+    // all the TServers have unlocked, we may have some locks that are not released at some
+    // TServers. We will rely on the (TODO) Deadlock detection code path to detect this and
+    // release such locks.
+    UnlockObject(
+        *request, std::optional<rpc::RpcContext>(), [latch, request](const Status& s) {
+          WARN_NOT_OK(
+              s, yb::Format(
+                     "Failed to release old object locks $0 $1", request->session_host_uuid(),
+                     request->txn_id()));
+          latch->CountDown();
+        });
+  }
+  if (wait) {
+    latch->Wait();
+  }
 }
 
 void ObjectLockInfoManager::Impl::UpdateObjectLocks(
@@ -499,14 +622,15 @@ void ObjectLockInfoManager::Impl::Clear() {
 template <class Req, class Resp>
 UpdateAllTServers<Req, Resp>::UpdateAllTServers(
     LeaderEpoch epoch, Master* master, CatalogManager* catalog_manager,
-    ObjectLockInfoManager::Impl* olm, const Req& req, Resp* resp, rpc::RpcContext rpc)
+    ObjectLockInfoManager::Impl* olm, const Req& req, StdStatusCallback callback,
+    std::optional<rpc::RpcContext> context)
     : epoch_(epoch),
       master_(master),
       catalog_manager_(catalog_manager),
       object_lock_info_manager_(olm),
       req_(req),
-      resp_(resp),
-      context_(std::move(rpc)) {
+      callback_(callback),
+      context_(std::move(context)) {
   VLOG(3) << __PRETTY_FUNCTION__;
 }
 
@@ -543,17 +667,23 @@ void UpdateAllTServers<Req, Resp>::Launch() {
 }
 
 template <class Req, class Resp>
+void UpdateAllTServers<Req, Resp>::DoCallbackAndRespond(const Status& s) {
+  callback_(s);
+  if (context_.has_value()) {
+    context_->RespondSuccess();
+  }
+}
+
+template <class Req, class Resp>
 void UpdateAllTServers<Req, Resp>::DoneAll() {
   for (const auto& status : statuses_) {
     if (!status.ok()) {
       LOG(INFO) << "Error in acquiring object lock: " << status;
-      // We will not try to clean up the locks here. The locks will be cleaned up
-      // when the session/transaction finishes/aborts.
-      FillErrorAndRespond(TabletServerErrorPB::UNKNOWN_ERROR, status, resp_, &context_);
+      DoCallbackAndRespond(status);
       return;
     }
   }
-  context_.RespondSuccess();
+  DoCallbackAndRespond(Status::OK());
 }
 
 template <class Req, class Resp>
@@ -563,6 +693,11 @@ UpdateTServer<Req, Resp>::UpdateTServer(
     : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /* async_task_throttler */ nullptr),
       callback_(std::move(callback)),
       shared_all_tservers_(shared_all_tservers) {}
+
+template <class Req, class Resp>
+std::string UpdateTServer<Req, Resp>::ToString() const {
+  return Format("UpdateTServer for $0 ", yb::ToString(request()));
+}
 
 template <>
 bool UpdateTServer<AcquireObjectLockRequestPB, AcquireObjectLockResponsePB>::SendRequest(

@@ -363,9 +363,9 @@ void StatisticsMetricImpl::recordTick(uint32_t ticker_type, uint64_t count) {
   if (!tickers_.empty()) {
     DCHECK(ticker_type < tickers_.size());
     tickers_[ticker_type]->IncrementBy(count);
-  }
-  if (ticker_type == CURRENT_VERSION_SST_FILES_SIZE) {
-    recordTick(OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE, count);
+    if (ticker_type == CURRENT_VERSION_SST_FILES_SIZE) {
+      tickers_[OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE]->IncrementBy(count);
+    }
   }
 }
 
@@ -449,12 +449,16 @@ void ScopedStatistics::measureTime(uint32_t histogram_type, uint64_t value) {
 void ScopedStatistics::MergeAndClear(Statistics* target) {
   CHECK_NOTNULL(target);
   for (uint32_t i = 0; i < tickers_.size(); ++i) {
-    target->recordTick(i, tickers_[i]);
-    tickers_[i] = 0;
+    if (tickers_[i] > 0) {
+      target->recordTick(i, tickers_[i]);
+      tickers_[i] = 0;
+    }
   }
   for (uint32_t i = 0; i < histograms_.size(); ++i) {
-    target->addHistogram(i, histograms_[i]);
-    histograms_[i].Reset(yb::PreserveTotalStats::kFalse);
+    if (histograms_[i].CurrentCount() > 0) {
+      target->addHistogram(i, histograms_[i]);
+      histograms_[i].Reset(yb::PreserveTotalStats::kFalse);
+    }
   }
 }
 

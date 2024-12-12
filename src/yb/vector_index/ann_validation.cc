@@ -25,6 +25,111 @@
 
 namespace yb::vector_index {
 
+namespace {
+
+template<ValidDistanceResultType DistanceResult>
+using VerticesWithDistances = std::vector<VertexWithDistance<DistanceResult>>;
+
+template<ValidDistanceResultType DistanceResult>
+std::vector<VectorId> VertexIdsOnly(
+    const VerticesWithDistances<DistanceResult>& vertices_with_distances) {
+  std::vector<VectorId> result;
+  result.reserve(vertices_with_distances.size());
+  for (const auto& v_dist : vertices_with_distances) {
+    result.push_back(v_dist.vertex_id);
+  }
+  return result;
+}
+
+// Checks if the given two result sets are non-contradictory. This means that consecutive items
+// with the same distance to the query could be ordered in different ways, and that at the end of
+// the result set, we might have different vertex ids altogether provided that they all have the
+// same distance to the query. This corresponds to a situation when a group of items with the same
+// distance to the query, ordered differently in the two result sets, was cut in the middle by the
+// result set boundary.
+template<ValidDistanceResultType DistanceResult>
+bool ResultSetsEquivalent(const VerticesWithDistances<DistanceResult>& a,
+                          const VerticesWithDistances<DistanceResult>& b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  const auto k = a.size();
+  bool matches = true;
+  for (size_t i = 0; i < k; ++i) {
+    if (a[i] != b[i]) {
+      matches = false;
+      break;
+    }
+  }
+  if (matches) {
+    return true;
+  }
+
+  // Sort both result sets by increasing distance, and for the same distance, increasing vertex id.
+  auto a_sorted = a;
+  std::sort(a_sorted.begin(), a_sorted.end());
+  auto b_sorted = b;
+  std::sort(b_sorted.begin(), b_sorted.end());
+
+  size_t discrepancy_index = k;
+  for (size_t i = 0; i < k; ++i) {
+    if (a_sorted[i] != b_sorted[i]) {
+      discrepancy_index = i;
+      break;
+    }
+  }
+  if (discrepancy_index == k) {
+    // The arrays became the same after sorting.
+    return true;
+  }
+
+  // We allow a situation where vertex ids are different as long as distances are the same until
+  // the end of both result sets. In that case we still consider the two result sets equivalent.
+  float expected_distance = a_sorted[discrepancy_index].distance;
+  for (size_t i = discrepancy_index; i < k; ++i) {
+    float a_dist = a_sorted[i].distance;
+    float b_dist = b_sorted[i].distance;
+    if (a_dist != expected_distance && b_dist != expected_distance) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template<ValidDistanceResultType DistanceResult>
+std::string ResultSetDifferenceStr(const VerticesWithDistances<DistanceResult>& a,
+                                   const VerticesWithDistances<DistanceResult>& b) {
+  if (a.size() != b.size()) {
+    // This should not occur, so no details here.
+    return Format("Result set size: $0 vs. $1", a.size(), b.size());
+  }
+  const size_t k = a.size();
+
+  auto a_sorted = a;
+  std::sort(a_sorted.begin(), a_sorted.end());
+  auto b_sorted = b;
+  std::sort(b_sorted.begin(), b_sorted.end());
+
+  std::ostringstream diff_str;
+
+  bool found_differences = false;
+  for (size_t j = 0; j < k; ++j) {
+    if (a_sorted[j] != b_sorted[j]) {
+      if (found_differences) {
+        diff_str << "\n";
+      }
+      found_differences = true;
+      diff_str << "    " << a_sorted[j].ToString() << " vs. " << b_sorted[j].ToString();
+    }
+  }
+  if (found_differences) {
+    return diff_str.str();
+  }
+  return "No differences";
+}
+
+} // namespace
+
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 GroundTruth<Vector, DistanceResult>::GroundTruth(
     const VertexIdToVectorDistanceFunction<Vector, DistanceResult>& distance_fn,
@@ -33,7 +138,7 @@ GroundTruth<Vector, DistanceResult>::GroundTruth(
     const PrecomputedGroundTruthMatrix& precomputed_ground_truth,
     bool validate_precomputed_ground_truth,
     const IndexReader& index_reader,
-    const std::vector<VertexId>& vertex_ids)
+    const std::vector<VectorId>& vertex_ids)
     : distance_fn_(distance_fn),
       k_(k),
       queries_(queries),
@@ -123,9 +228,9 @@ Status GroundTruth<Vector, DistanceResult>::ProcessQuery(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-VerticesWithDistances<DistanceResult>
+std::vector<VertexWithDistance<DistanceResult>>
 GroundTruth<Vector, DistanceResult>::AugmentWithDistancesAndTrimToK(
-    const std::vector<VertexId>& precomputed_correct_results,
+    const std::vector<VectorId>& precomputed_correct_results,
     const Vector& query) {
   VerticesWithDistances<DistanceResult> result;
   result.reserve(k_);
@@ -144,10 +249,10 @@ GroundTruth<Vector, DistanceResult>::AugmentWithDistancesAndTrimToK(
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void GroundTruth<Vector, DistanceResult>::DoApproxSearchAndUpdateStats(
     const Vector& query,
-    const std::vector<VertexId>& correct_result,
+    const std::vector<VectorId>& correct_result,
     AtomicUInt64Vector& total_overlap_counters) {
-  auto approx_result = index_reader_.Search(vector_cast<Vector>(query), k_);
-  std::unordered_set<VertexId> approx_set;
+  auto approx_result = CHECK_RESULT(index_reader_.Search(vector_cast<Vector>(query), k_));
+  std::unordered_set<VectorId> approx_set;
   for (const auto& approx_entry : approx_result) {
     approx_set.insert(approx_entry.vertex_id);
   }

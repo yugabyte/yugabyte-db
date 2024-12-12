@@ -93,7 +93,7 @@ void DocRowwiseIterator::InitIterator(
 
   // Configure usage of fast backward scan. This must be done before creating of the intent
   // aware iterator and when doc_mode_ is already set.
-  // TODO(#22371): Fast backward scan is supported for flat doc reader only.
+  // TODO(#22371) fast-backward-scan is supported for flat doc reader only.
   if (FLAGS_use_fast_backward_scan && !is_forward_scan_ && doc_mode_ == DocMode::kFlat) {
     use_fast_backward_scan_ = true;
     VLOG_WITH_FUNC(1) << "Using FAST BACKWARD scan";
@@ -127,7 +127,7 @@ void DocRowwiseIterator::InitIterator(
 
   if (use_fast_backward_scan_) {
     auto lower_bound = shared_key_prefix();
-    // TODO(#22373): Do we need to consider bound_key_ here?
+    // TODO(fast-backward-scan): do we need to consider bound_key_ here?
     if (lower_bound.empty()) {
       static const auto kMinByte = dockv::KeyEntryTypeAsChar::kLowest;
       lower_bound = Slice(&kMinByte, 1);
@@ -187,7 +187,7 @@ inline void DocRowwiseIterator::Seek(Slice key) {
 
 inline void DocRowwiseIterator::SeekPrevDocKey(Slice key) {
   // TODO consider adding an operator bool to DocKey to use instead of empty() here.
-  // TODO(#22373): Do we need to play with prev_doc_found_?
+  // TODO(fast-backward-scan) do we need to play with prev_doc_found_?
   if (!key.empty()) {
     db_iter_->SeekPrevDocKey(key);
   } else {
@@ -302,6 +302,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     row_key = row_key_.AsSlice();
 
     if (has_bound_key_ && is_forward_scan_ == (row_key.compare(bound_key_) >= 0)) {
+      VLOG(3) << "Done since " << dockv::SubDocKey::DebugSliceToString(key_data.key)
+              << " out of bound: " << dockv::SubDocKey::DebugSliceToString(bound_key_);
       done_ = true;
       return false;
     }
@@ -318,8 +320,10 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
           db_iter_.get(), deadline_info_, &projection_, table_type_,
           schema_packing_storage(), schema(), use_fast_backward_scan_);
-      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
-          VERIFY_RESULT(GetTableTombstoneTime(row_key))));
+      if (!skip_table_tombstone_check()) {
+        RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
+            VERIFY_RESULT(GetTableTombstoneTime(row_key))));
+      }
       if (!ignore_ttl_) {
         doc_reader_->SetTableTtl(schema());
       }
@@ -351,14 +355,14 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
     const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row) {
   CHECK_NE(doc_mode_, DocMode::kGeneric) << "Table type: " << table_type_;
-  return doc_reader_->GetFlat(row_key_.mutable_data(), fetched_entry, table_row);
+  return doc_reader_->GetFlat(&row_key_.data(), fetched_entry, table_row);
 }
 
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
     const FetchedEntry& fetched_entry, QLTableRowPair table_row) {
   return doc_mode_ == DocMode::kFlat
-      ? doc_reader_->GetFlat(row_key_.mutable_data(), fetched_entry, table_row.table_row)
-      : doc_reader_->Get(row_key_.mutable_data(), fetched_entry, &*row_);
+      ? doc_reader_->GetFlat(&row_key_.data(), fetched_entry, table_row.table_row)
+      : doc_reader_->Get(&row_key_.data(), fetched_entry, &*row_);
 }
 
 Status DocRowwiseIterator::FillRow(dockv::PgTableRow* out) {

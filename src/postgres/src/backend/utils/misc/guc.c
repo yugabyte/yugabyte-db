@@ -2527,6 +2527,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_allow_replication_slot_lsn_types", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Allow specifying LSN type while creating replication slot"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_replication_slot_lsn_types,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -2938,30 +2949,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_ash_enable_infra", PGC_POSTMASTER, STATS_MONITORING,
-			gettext_noop("Allocate shared memory for ASH, start the "
-							"background worker, create instrumentation hooks "
-							"and enable querying the yb_active_session_history "
-							"view."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_ash_enable_infra,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"yb_enable_ash", PGC_SIGHUP, STATS_MONITORING,
-			gettext_noop("Starts sampling and instrumenting YSQL and YCQL queries, "
-						 "and various background activities. This does nothing if "
-						 "ysql_yb_ash_enable_infra is disabled."),
+		{"yb_enable_ash", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Enable Active Session History for sampling and instrumenting YSQL "
+						 "and YCQL queries, and various background activities."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_ash,
 		true,
-		yb_enable_ash_check_hook, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -2986,7 +2982,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_update_optimization_options.is_enabled,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -3046,6 +3042,7 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, INT_MAX / 2,
 		NULL, NULL, NULL
 	},
+
 	{
 		{"post_auth_delay", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the amount of time to wait after "
@@ -8264,7 +8261,11 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 												newextra);
 								changed = true;
 								if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
+								{
+									elog(LOG, "Making connection sticky for %s",
+										conf->gen.name);
 									yb_ysql_conn_mgr_sticky_guc = true;
+								}
 							}
 
 							/*
@@ -9262,10 +9263,14 @@ set_config_option_ext(const char *name, const char *value,
 	 * the value is modified by a client-issued SET statement. We cannot use
 	 * the assign hook to do so, as postgres utilizes it at connection startup.
 	 */
-	if (YbIsClientYsqlConnMgr() &&
+	if (source == PGC_S_SESSION &&
+		YbIsClientYsqlConnMgr() &&
 		((strncmp(name, "session_authorization", strlen("session_authorization")) == 0) ||
 		(strncmp(name, "role", strlen("role")) == 0)))
+		{
+			elog(LOG, "Making connection sticky for setting %s", name);
 			yb_ysql_conn_mgr_sticky_guc = true;
+		}
 
 	if (elevel == 0)
 	{
@@ -9996,7 +10001,10 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
 					if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
+					{
+						elog(LOG, "Making connection sticky for setting %s", name);
 						yb_ysql_conn_mgr_sticky_guc = true;
+					}
 				}
 
 				if (makeDefault)
@@ -15189,7 +15197,10 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 	 * explicit transaction block.
 	 */
 	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Making connection sticky for non-transactional GUC variable");
 		yb_ysql_conn_mgr_sticky_guc = true;
+	}
 	return true;
 }
 

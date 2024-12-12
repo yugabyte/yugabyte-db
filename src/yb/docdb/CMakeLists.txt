@@ -23,7 +23,7 @@ YRPC_GENERATE(
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
-        DEPS protobuf yb_common_proto
+        DEPS protobuf yb_common_proto dockv_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
@@ -136,7 +136,7 @@ ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docdb-ttl-test)
 ADD_YB_TEST(docdb-test-wrapper)
 ADD_YB_TEST(docrowwiseiterator-test)
-ADD_YB_TEST(external_intents_batch_writer-test)
+ADD_YB_TEST(non_transactional_batch_writer-test)
 ADD_YB_TEST(intent_iterator-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(scan_choices-test)
@@ -144,6 +144,7 @@ ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)
 ADD_YB_TEST(usearch_vector_index-test)
+ADD_YB_TEST(advisory_lock_doc_operation-test)
 
 if(YB_BUILD_FUZZ_TARGETS)
   # A library with common code shared between DocDB fuzz tests.

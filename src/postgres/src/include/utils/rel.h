@@ -282,6 +282,7 @@ typedef struct ForeignKeyCacheInfo
 	Oid			conrelid;		/* relation constrained by the foreign key */
 	Oid			confrelid;		/* relation referenced by the foreign key */
 	int			nkeys;			/* number of columns in the foreign key */
+	Oid			ybconindid;     /* oid of index supporting the FK constraint */
 	/* these arrays each have nkeys valid entries: */
 	AttrNumber	conkey[INDEX_MAX_KEYS]; /* cols in referencing table */
 	AttrNumber	confkey[INDEX_MAX_KEYS];	/* cols in referenced table */

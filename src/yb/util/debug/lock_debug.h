@@ -18,6 +18,9 @@
 
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+
 namespace yb {
 
 class NonRecursiveSharedLockBase {
@@ -45,7 +48,7 @@ class SCOPED_CAPABILITY NonRecursiveSharedLock : public NonRecursiveSharedLockBa
     acquired = true;
   }
 
-  void Release() RELEASE() {
+  void unlock() RELEASE() {
     if (acquired) {
       static_cast<Mutex*>(mutex())->unlock_shared();
     }
@@ -53,7 +56,7 @@ class SCOPED_CAPABILITY NonRecursiveSharedLock : public NonRecursiveSharedLockBa
   }
 
   ~NonRecursiveSharedLock() RELEASE() {
-    Release();
+    unlock();
   }
 };
 
@@ -100,6 +103,78 @@ class SingleThreadedAtomic {
  private:
   T value_;
   mutable SingleThreadedMutex mutex_;
+};
+
+class TimeTrackedLockBase {
+ protected:
+  void Acquired();
+  void Released(const char* name);
+
+  void Assign(const TimeTrackedLockBase& rhs);
+
+  bool owns_lock() const {
+    return start_ != CoarseTimePoint();
+  }
+
+ private:
+  CoarseTimePoint start_;
+};
+
+template <class MutexType>
+class SCOPED_CAPABILITY TimeTrackedUniqueLock : public TimeTrackedLockBase {
+ public:
+  explicit TimeTrackedUniqueLock(MutexType& mutex) ACQUIRE(mutex) : mutex_(mutex) {
+    lock();
+  }
+
+  ~TimeTrackedUniqueLock() RELEASE() {
+    if (owns_lock()) {
+      unlock();
+    }
+  }
+
+  void lock() ACQUIRE() {
+    mutex_.lock();
+    Acquired();
+  }
+
+  void unlock() RELEASE() {
+    CHECK(owns_lock());
+    mutex_.unlock();
+    Released("lock");
+  }
+
+ private:
+  MutexType& mutex_;
+};
+
+template <class MutexType>
+class SCOPED_CAPABILITY TimeTrackedSharedLock : public TimeTrackedLockBase {
+ public:
+  explicit TimeTrackedSharedLock(MutexType& mutex) ACQUIRE_SHARED(mutex) : mutex_(mutex) {
+    lock();
+
+  }
+
+  ~TimeTrackedSharedLock() RELEASE() {
+    if (owns_lock()) {
+      unlock();
+    }
+  }
+
+  void lock() ACQUIRE_SHARED() {
+    mutex_.lock_shared();
+    Acquired();
+  }
+
+  void unlock() RELEASE() {
+    CHECK(owns_lock());
+    mutex_.unlock_shared();
+    Released("shared lock");
+  }
+
+ private:
+  MutexType& mutex_;
 };
 
 }  // namespace yb

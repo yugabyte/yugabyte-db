@@ -2255,3 +2255,9 @@ find_matching_subplans_recurse(PartitionPruningData *prunedata,
 		}
 	}
 }
+
+Oid
+YbPartitionTupleRoutingRootRelid(PartitionTupleRouting *proute)
+{
+	return RelationGetRelid(proute->partition_root);
+}

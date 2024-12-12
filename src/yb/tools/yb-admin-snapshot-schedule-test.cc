@@ -296,11 +296,12 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
   virtual std::vector<std::string> ExtraMasterFlags() {
     // To speed up tests.
-    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
+    return {
+             "--snapshot_coordinator_cleanup_delay_ms=1000",
              "--snapshot_coordinator_poll_interval_ms=500",
              "--enable_automatic_tablet_splitting=true",
              "--enable_transactional_ddl_gc=false",
-             "--vmodule=restore_sys_catalog_state=3,catalog*=3"};
+           };
   }
 
   Result<std::string> PrepareQl(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
@@ -933,6 +934,44 @@ TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
   target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
   target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
   ASSERT_EQ(target_rows.size(), 2 * rows_per_iter);
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, DeleteRowsFromCloneYcql) {
+  ASSERT_RESULT(PrepareCql());
+  const auto kSourceNamespace = "ycql." + client::kTableName.namespace_name();
+  const auto kTableName = "test_table";
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0(key INT PRIMARY KEY, value INT) WITH TRANSACTIONS = {'enabled' : true};",
+      kTableName));
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE INDEX idx ON $0(value) WITH TRANSACTIONS = {'enabled' : true};",
+      kTableName));
+  ASSERT_OK(conn.ExecuteQueryFormat("INSERT INTO $0(key, value) VALUES (1, 2)", kTableName));
+
+  // Create a window to restore in (we can only restore with 1s granularity).
+  SleepFor(3s);
+  Timestamp restore_time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  SleepFor(3s);
+
+  ASSERT_OK(conn.ExecuteQueryFormat("DELETE FROM $0 WHERE key=1", kTableName));
+
+  const auto kTargetNamespace = "cloned";
+  ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
+  ASSERT_OK(CloneAndWait(
+      kSourceNamespace, kTargetNamespace, 30s /* timeout */,
+      restore_time.ToFormattedString()));
+
+  auto target_conn = ASSERT_RESULT(CqlConnect(kTargetNamespace));
+  auto row_count = ASSERT_RESULT(target_conn.ExecuteWithResult(
+      Format("SELECT COUNT(*) FROM $0", kTableName)));
+  ASSERT_EQ(row_count.RenderToString(), "1");
+  ASSERT_OK(target_conn.ExecuteQueryFormat("DELETE FROM $0 WHERE key=1", kTableName));
+  row_count = ASSERT_RESULT(target_conn.ExecuteWithResult(
+      Format("SELECT COUNT(*) FROM $0", kTableName)));
+  ASSERT_EQ(row_count.RenderToString(), "0");
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalZero) {
@@ -4075,7 +4114,6 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
             "--snapshot_coordinator_poll_interval_ms=500",
             "--enable_automatic_tablet_splitting=false",
             "--enable_transactional_ddl_gc=false",
-            "--vmodule=restore_sys_catalog_state=3",
             "--leader_lease_duration_ms=6000",
             "--leader_failure_max_missed_heartbeat_periods=12" };
   }
@@ -4708,9 +4746,10 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
     : public YbAdminSnapshotScheduleAutoSplitting {
  public:
   std::vector<std::string> ExtraMasterFlags() override {
-    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
-            "--snapshot_coordinator_poll_interval_ms=500",
-            "--enable_automatic_tablet_splitting=false"
+    return {
+             "--snapshot_coordinator_cleanup_delay_ms=1000",
+             "--snapshot_coordinator_poll_interval_ms=500",
+             "--enable_automatic_tablet_splitting=false",
     };
   }
   std::vector<std::string> ExtraTSFlags() override {
@@ -4849,6 +4888,82 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ReadsWithSnapshotScheduleAndSplitWithClus
     LOG(INFO) << "After split found #rows " << rows;
     ASSERT_EQ(rows, 15000);
 }
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, ReadsWithMultipleSplitsPitrsAndDrop,
+          YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+    auto schedule_id = ASSERT_RESULT(PreparePg());
+    auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) "
+        "SPLIT INTO 1 tablets",
+        client::kTableName.table_name()));
+
+    Timestamp time_before_insert = ASSERT_RESULT(GetCurrentTime());
+
+    // Insert enough data conducive to splitting.
+    ASSERT_OK(InsertDataForSplitting(&conn));
+    LOG(INFO) << "Inserted 5000 rows";
+
+    Timestamp time = ASSERT_RESULT(GetCurrentTime());
+
+    auto select_query = Format(
+        "SELECT count(*) FROM $0", client::kTableName.table_name());
+    auto rows = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(select_query));
+    LOG(INFO) << "Before split found #rows " << rows;
+    ASSERT_EQ(rows, 5000);
+
+    // Trigger a manual split.
+    ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      client::kTableName.namespace_name(), client::kTableName.table_name(),
+      /* wait_for_parent_deletion */ true));
+
+    select_query = Format(
+        "SELECT count(*) FROM $0", client::kTableName.table_name());
+    rows = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(select_query));
+    LOG(INFO) << "After split found #rows " << rows;
+    ASSERT_EQ(rows, 5000);
+
+    ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+    SleepFor(MonoDelta::FromSeconds(2));
+    auto new_conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    select_query = Format(
+        "SELECT count(*) FROM $0", client::kTableName.table_name());
+    rows = ASSERT_RESULT(new_conn.FetchRow<pgwrapper::PGUint64>(select_query));
+    LOG(INFO) << "After restore found #rows " << rows;
+    ASSERT_EQ(rows, 5000);
+
+    // Trigger another manual split.
+    ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+        client::kTableName.namespace_name(), client::kTableName.table_name(),
+        /* wait_for_parent_deletion */ true));
+
+    {
+      // Trigger another restore.
+      ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time_before_insert));
+      SleepFor(MonoDelta::FromSeconds(2));
+      auto new_conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+      select_query = Format(
+          "SELECT count(*) FROM $0", client::kTableName.table_name());
+      rows = ASSERT_RESULT(new_conn.FetchRow<pgwrapper::PGUint64>(select_query));
+      LOG(INFO) << "After 2nd restore found #rows " << rows;
+      ASSERT_EQ(rows, 0);
+    }
+
+    {
+      auto new_conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+      auto drop_query = Format(
+            "DROP TABLE $0", client::kTableName.table_name());
+        ASSERT_OK(new_conn.Execute(drop_query));
+        SleepFor(MonoDelta::FromSeconds(2));
+    }
+
+    // Perform another restore to a time after the drop.
+    Timestamp time_after_drop = ASSERT_RESULT(GetCurrentTime());
+    ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time_after_drop));
+  }
+
 
 TEST_F(YbAdminSnapshotScheduleTest, RestoreToBeforePreviousRestoreAt) {
   const auto retention = kInterval * 5 * kTimeMultiplier;
@@ -5006,8 +5121,7 @@ class YbAdminSnapshotScheduleFlushTest : public YbAdminSnapshotScheduleTest {
              "--snapshot_coordinator_poll_interval_ms=500",
              "--enable_automatic_tablet_splitting=true",
              "--enable_transactional_ddl_gc=false",
-             "--flush_rocksdb_on_shutdown=false",
-             "--vmodule=tablet_bootstrap=3" };
+             "--flush_rocksdb_on_shutdown=false" };
   }
 };
 
@@ -5062,7 +5176,6 @@ class YbAdminSnapshotScheduleFailoverTests : public YbAdminSnapshotScheduleTest 
              "--enable_automatic_tablet_splitting=true",
              "--max_concurrent_restoration_rpcs=1",
              "--schedule_restoration_rpcs_out_of_band=false",
-             "--vmodule=tablet_bootstrap=4",
              "--TEST_fatal_on_snapshot_verify=false",
              Format("--TEST_play_pending_uncommitted_entries=$0",
                     replay_uncommitted_ ? "true" : "false")};

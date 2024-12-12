@@ -107,6 +107,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
       Universe targetUniverseState = getUniverse();
       targetUniverseState.getUniverseDetails().getClusterByUuid(currentCluster.uuid).userIntent =
           userIntent;
+      // Update the communication ports in the universe details.
+      targetUniverseState.getUniverseDetails().communicationPorts = taskParams().communicationPorts;
+      targetUniverseState
+          .getNodes()
+          .forEach(
+              node ->
+                  CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node));
       createRollingUpgradeTaskFlow(
           (nodes, processTypes) -> {
             // In case of rolling restart, we only deal with one node at a time.
@@ -124,9 +131,6 @@ public class ConfigureDBApis extends UpgradeTaskBase {
             node.isYsqlServer = taskParams().enableYSQL;
             CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node);
             createNodeDetailsUpdateTask(node, false);
-            // Also updating targetUniverseState
-            CommunicationPorts.setCommunicationPorts(
-                taskParams().communicationPorts, targetUniverseState.getNode(node.getNodeName()));
           },
           masterNodes,
           tserverNodes,

@@ -39,11 +39,17 @@ uint32 GetMajorVersionOfCurrentBuild() {
   return version_info.ysql_major_version();
 }
 
+bool IsYsqlMajorCatalogOperationRunning(YsqlMajorCatalogUpgradeInfoPB::State state) {
+  return state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE ||
+         state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB ||
+         state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK;
+}
+
 }  // namespace
 
 YsqlCatalogConfig::YsqlCatalogConfig(SysCatalogTable& sys_catalog) : sys_catalog_(sys_catalog) {}
 
-Status YsqlCatalogConfig::PrepareDefaultIfNeeded(int64_t term) {
+Status YsqlCatalogConfig::PrepareDefaultIfNeeded(const LeaderEpoch& epoch) {
   std::lock_guard m_lock(mutex_);
   if (config_) {
     return Status::OK();
@@ -58,7 +64,7 @@ Status YsqlCatalogConfig::PrepareDefaultIfNeeded(int64_t term) {
   auto l = config_->LockForWrite();
   *l.mutable_data()->pb.mutable_ysql_catalog_config() = std::move(ysql_catalog_config);
 
-  RETURN_NOT_OK(sys_catalog_.Upsert(term, config_));
+  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, config_));
   l.Commit();
 
   return Status::OK();
@@ -67,21 +73,39 @@ Status YsqlCatalogConfig::PrepareDefaultIfNeeded(int64_t term) {
 void YsqlCatalogConfig::SetConfig(scoped_refptr<SysConfigInfo> config) {
   {
     auto l = config->LockForRead();
-    if (l->pb.ysql_catalog_config().has_ysql_major_catalog_upgrade_info()) {
+    auto& ysql_catalog_config = l->pb.ysql_catalog_config();
+    if (ysql_catalog_config.has_ysql_major_catalog_upgrade_info()) {
       const auto persisted_version =
-          l->pb.ysql_catalog_config().ysql_major_catalog_upgrade_info().catalog_version();
-      if (persisted_version > GetMajorVersionOfCurrentBuild()) {
-        LOG(FATAL) << "Persisted major version in YSQL catalog config is not supported. Restart "
-                      "the process in the correct version. Min required major version: "
-                   << persisted_version
-                   << ", Current version: " << VersionInfo::GetShortVersionString();
-      }
+          ysql_catalog_config.ysql_major_catalog_upgrade_info().catalog_version();
+      LOG_IF(FATAL, persisted_version > GetMajorVersionOfCurrentBuild())
+          << "Persisted major version in YSQL catalog config is not supported. Restart "
+             "the process in the correct version. Min required major version: "
+          << persisted_version
+          << ", Current major version: " << VersionInfo::GetShortVersionString();
+
+      // A new yb-master leader has started. If we were in the middle of the ysql major catalog
+      // upgrade (initdb, pg_upgrade, or rollback) then mark the major upgrade as failed. No action
+      // is taken if we are in the monitoring phase.
+      // We cannot update the config right now, so do so after the sys_catalog is loaded.
+      restarted_during_major_upgrade_ = IsYsqlMajorCatalogOperationRunning(
+          ysql_catalog_config.ysql_major_catalog_upgrade_info().state());
     }
   }
 
   std::lock_guard m_lock(mutex_);
   LOG_IF(WARNING, config_ != nullptr) << "Multiple Ysql Catalog configs found";
   config_ = std::move(config);
+}
+
+void YsqlCatalogConfig::SysCatalogLoaded(const LeaderEpoch& epoch) {
+  if (restarted_during_major_upgrade_) {
+    ERROR_NOT_OK(
+        TransitionMajorCatalogUpgradeState(
+            YsqlMajorCatalogUpgradeInfoPB::FAILED, epoch,
+            STATUS(InternalError, "yb-master restarted during ysql major catalog upgrade")),
+        "Failed to set major version upgrade state to FAILED");
+    restarted_during_major_upgrade_ = false;
+  }
 }
 
 void YsqlCatalogConfig::Reset() {
@@ -188,9 +212,7 @@ IsOperationDoneResult YsqlCatalogConfig::IsYsqlMajorCatalogUpgradeDone() const {
   }
 
   const auto state = pb.ysql_major_catalog_upgrade_info().state();
-  if (state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE ||
-      state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB ||
-      state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK) {
+  if (IsYsqlMajorCatalogOperationRunning(state)) {
     return IsOperationDoneResult::NotDone();
   }
 
@@ -205,6 +227,18 @@ IsOperationDoneResult YsqlCatalogConfig::IsYsqlMajorCatalogUpgradeDone() const {
 YsqlMajorCatalogUpgradeInfoPB::State YsqlCatalogConfig::GetMajorCatalogUpgradeState() const {
   auto [l, pb] = LockForRead();
   return pb.ysql_major_catalog_upgrade_info().state();
+}
+
+bool YsqlCatalogConfig::IsCurrentVersionCatalogEstablished() const {
+  auto [l, pb] = LockForRead();
+  auto major_upgrade_info = pb.ysql_major_catalog_upgrade_info();
+
+  // In the DONE state we either have not started the catalog upgrade or have completed it.
+  if (major_upgrade_info.state() == YsqlMajorCatalogUpgradeInfoPB::DONE) {
+    return major_upgrade_info.catalog_version() == GetMajorVersionOfCurrentBuild();
+  }
+
+  return major_upgrade_info.state() == YsqlMajorCatalogUpgradeInfoPB::MONITORING;
 }
 
 const std::unordered_map<

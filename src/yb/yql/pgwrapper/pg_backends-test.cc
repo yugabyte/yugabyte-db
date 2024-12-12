@@ -83,7 +83,6 @@ class PgBackendsTest : public LibPqTestBase {
           options->extra_master_flags.end(),
           {
             "--log_ysql_catalog_versions=true",
-            "--vmodule=ysql_backends_manager=2"
             ",master_heartbeat_service=2"
             ",transaction_coordinator=2"
             ",transaction_participant=2",
@@ -92,7 +91,6 @@ class PgBackendsTest : public LibPqTestBase {
           options->extra_tserver_flags.end(),
           {
             "--log_ysql_catalog_versions=true",
-            "--vmodule=tablet_service=2",
           });
     }
   }
@@ -105,8 +103,8 @@ class PgBackendsTest : public LibPqTestBase {
     SleepFor(sleep_time);
   }
 
-  void BumpCatalogVersion(int num_versions) {
-    LibPqTestBase::BumpCatalogVersion(num_versions, conn_.get());
+  Status BumpCatalogVersion(int num_versions) {
+    return LibPqTestBase::BumpCatalogVersion(num_versions, conn_.get());
   }
 
   Result<uint64_t> GetCatalogVersion() {
@@ -167,7 +165,7 @@ class PgBackendsTest : public LibPqTestBase {
 
 // Requests on already-satisfied versions should create jobs that finish quickly.
 TEST_F(PgBackendsTest, AlreadySatisfiedVersion) {
-  BumpCatalogVersion(2);
+  ASSERT_OK(BumpCatalogVersion(2));
 
   uint64_t master_catalog_version = ASSERT_RESULT(GetCatalogVersion());
   LOG(INFO) << "Got master catalog version " << master_catalog_version;
@@ -182,7 +180,7 @@ TEST_F(PgBackendsTest, AlreadySatisfiedVersion) {
 
 // Requests on cached versions should not create jobs.
 TEST_F(PgBackendsTest, CachedVersion) {
-  BumpCatalogVersion(2);
+  ASSERT_OK(BumpCatalogVersion(2));
 
   uint64_t master_catalog_version = ASSERT_RESULT(GetCatalogVersion());
   LOG(INFO) << "Got master catalog version " << master_catalog_version;
@@ -237,7 +235,7 @@ TEST_F(PgBackendsTest, CachedJob) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("BEGIN"));
 
-  BumpCatalogVersion(1);
+  ASSERT_OK(BumpCatalogVersion(1));
   latch.CountDown();
 
   thread_holder.JoinAll();
@@ -260,7 +258,7 @@ TEST_F(PgBackendsTest, WaitAllBackends) {
   }
   ASSERT_EQ(kNumBackends, conns.size());
 
-  BumpCatalogVersion(1);
+  ASSERT_OK(BumpCatalogVersion(1));
   const uint64_t cat_ver = ASSERT_RESULT(GetCatalogVersion());
   ASSERT_EQ(orig_cat_ver + 1, cat_ver);
 
@@ -305,7 +303,7 @@ TEST_F(PgBackendsTest, WaitOnlySameDatabase) {
   LOG(INFO) << "Bump catalog version for each database";
   for (const auto& db_name : db_names) {
     PGConn conn = ASSERT_RESULT(ConnectToDB(db_name));
-    LibPqTestBase::BumpCatalogVersion(1, &conn);
+    ASSERT_OK(LibPqTestBase::BumpCatalogVersion(1, &conn));
   }
   const uint64_t cat_ver = ASSERT_RESULT(GetCatalogVersion());
 
@@ -323,7 +321,7 @@ TEST_F(PgBackendsTest, MultipleWaiters) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("BEGIN"));
 
-  BumpCatalogVersion(1);
+  ASSERT_OK(BumpCatalogVersion(1));
   const auto cat_ver = ASSERT_RESULT(GetCatalogVersion());
   LOG(INFO) << "Got catalog version " << cat_ver;
 
@@ -466,7 +464,7 @@ TEST_F_EX(PgBackendsTest,
   // Add margin to cover time spent in setup (and teardown), such as creating the docdb index.  The
   // timeout timer starts on the first wait-for-backends call, which is after committing the initial
   // state.
-  constexpr auto kMargin = 5s;
+  constexpr auto kMargin = 5s * kTimeMultiplier;
   ASSERT_LT(time_spent, kTimeout + kRpcTimeout + kMargin);
 }
 
@@ -497,7 +495,7 @@ TEST_F_EX(PgBackendsTest, CacheLost, PgBackendsTestRf3) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("BEGIN"));
 
-  BumpCatalogVersion(1);
+  ASSERT_OK(BumpCatalogVersion(1));
 
   uint64_t master_catalog_version = ASSERT_RESULT(GetCatalogVersion());
   LOG(INFO) << "Got master catalog version " << master_catalog_version;
@@ -562,7 +560,7 @@ TEST_F_EX(PgBackendsTest, WaitAllTservers, PgBackendsTestRf3) {
   }
   ASSERT_EQ(num_ts, conns.size());
 
-  BumpCatalogVersion(1);
+  ASSERT_OK(BumpCatalogVersion(1));
   const uint64_t cat_ver = ASSERT_RESULT(GetCatalogVersion());
   ASSERT_EQ(orig_cat_ver + 1, cat_ver);
 
@@ -742,7 +740,7 @@ TEST_F_EX(PgBackendsTest, RenameDatabase, PgBackendsTestRf3) {
   LOG(INFO) << "Create connection that is behind";
   PGConn conn = ASSERT_RESULT(ConnectToDB(Format("$0_0", kDbPrefix)));
   ASSERT_OK(conn.Execute("BEGIN"));
-  BumpCatalogVersion(1);
+  ASSERT_OK(BumpCatalogVersion(1));
   uint64_t master_catalog_version = ASSERT_RESULT(GetCatalogVersion());
 
   LOG(INFO) << "Check that that connection is behind";
@@ -861,7 +859,7 @@ TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(Stress), PgBackendsTest
 
   const auto start_time = CoarseMonoClock::Now();
   while (CoarseMonoClock::Now() - start_time < kTestDuration) {
-    BumpCatalogVersion(1);
+    ASSERT_OK(BumpCatalogVersion(1));
     LOG(INFO) << "catalog version is now " << cat_ver++;
     SleepFor(kBumpPeriod);
   }
@@ -998,7 +996,7 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
   LOG(INFO) << "Make new connection in case conn_'s node was selected to be unresponsive";
   ts = cluster_->tserver_daemons()[(ts_idx + 1) % num_ts];
   PGConn conn = VERIFY_RESULT(ConnectToTs(*ts));
-  LibPqTestBase::BumpCatalogVersion(1, &conn);
+  RETURN_NOT_OK(LibPqTestBase::BumpCatalogVersion(1, &conn));
 
   LOG(INFO) << "Verify that new wait requests when ts is expired are immediate";
   num_backends = VERIFY_RESULT(client_->WaitForYsqlBackendsCatalogVersion("yugabyte", cat_ver + 1));
@@ -1101,7 +1099,7 @@ Result<int> PgBackendsTestRf3BlockAvoidAbort::TestLeaderChangeInFlight(bool expe
   PGConn conn = VERIFY_RESULT(Connect());
   RETURN_NOT_OK(conn.Execute("BEGIN"));
 
-  BumpCatalogVersion(1);
+  RETURN_NOT_OK(BumpCatalogVersion(1));
   uint64_t master_catalog_version = VERIFY_RESULT(GetCatalogVersion());
   LOG(INFO) << "Got master catalog version " << master_catalog_version;
 
@@ -1194,7 +1192,7 @@ TEST_F(PgBackendsTestRf3Block, LeaderChangeInFlightLater) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("BEGIN"));
 
-  BumpCatalogVersion(1);
+  ASSERT_OK(BumpCatalogVersion(1));
   uint64_t master_catalog_version = ASSERT_RESULT(GetCatalogVersion());
   LOG(INFO) << "Got master catalog version " << master_catalog_version;
 

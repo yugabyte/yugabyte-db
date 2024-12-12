@@ -191,6 +191,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   bool OldTransactionAborted() const;
 
+  // Sets the transaction's reuse_version_ to the value observed by Perform rpc(s)
+  // at pg_client_session.
+  void SetCurrentReuseVersion(TxnReuseVersion reuse_version);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

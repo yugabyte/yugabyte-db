@@ -407,17 +407,11 @@ public class NodeUniverseManager extends DevopsBase {
         ysqlCommand,
         timeoutSec,
         authEnabled,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
-        universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
   }
 
   public ShellResponse runYsqlCommand(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      String ysqlCommand,
-      boolean enableConnectionPooling,
-      int internalYsqlServerRpcPort) {
+      NodeDetails node, Universe universe, String dbName, String ysqlCommand, boolean cpEnabled) {
     boolean authEnabled =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
     return runYsqlCommand(
@@ -427,10 +421,22 @@ public class NodeUniverseManager extends DevopsBase {
         ysqlCommand,
         confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
         authEnabled,
-        enableConnectionPooling,
-        internalYsqlServerRpcPort);
+        cpEnabled);
   }
 
+  /**
+   * Runs a YSQL command on the given node Note: Ensure, this function is in sync with {@link
+   * #localNodeUniverseManager.runYsqlCommand}
+   *
+   * @param node Node on which to run the command
+   * @param universe Universe in which the node exists
+   * @param dbName Database name to run the command on
+   * @param ysqlCommand Command to run
+   * @param timeoutSec Timeout in seconds
+   * @param authEnabled Whether to use authentication
+   * @param cpEnabled Whether to use connection pooling
+   * @return ShellResponse object
+   */
   public ShellResponse runYsqlCommand(
       NodeDetails node,
       Universe universe,
@@ -438,12 +444,11 @@ public class NodeUniverseManager extends DevopsBase {
       String ysqlCommand,
       long timeoutSec,
       boolean authEnabled,
-      boolean enableConnectionPooling,
-      int internalYsqlServerRpcPort) {
+      boolean cpEnabled) {
     Cluster curCluster = universe.getCluster(node.placementUuid);
     if (curCluster.userIntent.providerType == CloudType.local) {
       return localNodeUniverseManager.runYsqlCommand(
-          node, universe, dbName, ysqlCommand, timeoutSec, authEnabled);
+          node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled);
     }
     List<String> command = new ArrayList<>();
     command.add("bash");
@@ -464,8 +469,8 @@ public class NodeUniverseManager extends DevopsBase {
       bashCommand.add(node.cloudInfo.private_ip);
     }
     bashCommand.add("-p");
-    if (enableConnectionPooling) {
-      bashCommand.add(String.valueOf(internalYsqlServerRpcPort));
+    if (cpEnabled) {
+      bashCommand.add(String.valueOf(node.internalYsqlServerRpcPort));
     } else {
       bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
     }

@@ -111,6 +111,8 @@ struct KeyValueEntry {
 
 class Iterator : public Cleanable {
  public:
+  class Empty;
+
   Iterator() {}
   virtual ~Iterator() {}
 
@@ -232,6 +234,12 @@ class Iterator : public Cleanable {
   virtual void UseFastNext(bool value) {
     assert(false);
   }
+};
+
+class DataBlockAwareIndexIterator : public Iterator {
+ public:
+  class Empty;
+  virtual yb::Result<std::pair<std::string, std::string>> GetCurrentDataBlockBounds() const = 0;
 };
 
 // Return an empty iterator (yields nothing).

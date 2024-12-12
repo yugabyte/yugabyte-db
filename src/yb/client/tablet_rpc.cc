@@ -82,7 +82,7 @@ TabletInvoker::TabletInvoker(const bool local_tserver_only,
                              const std::shared_ptr<const YBTable>& table,
                              rpc::RpcRetrier* retrier,
                              Trace* trace,
-                             master::IncludeInactive include_inactive,
+                             master::IncludeHidden include_hidden,
                              master::IncludeDeleted include_deleted)
       : client_(client),
         command_(command),
@@ -92,7 +92,7 @@ TabletInvoker::TabletInvoker(const bool local_tserver_only,
         table_(table),
         retrier_(retrier),
         trace_(trace),
-        include_inactive_(include_inactive),
+        include_hidden_(include_hidden),
         include_deleted_(include_deleted),
         local_tserver_only_(local_tserver_only),
         consistent_prefix_(consistent_prefix) {}
@@ -187,7 +187,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   }
 
   if (!tablet_) {
-    client_->LookupTabletById(tablet_id_, table_, include_inactive_, include_deleted_,
+    client_->LookupTabletById(tablet_id_, table_, include_hidden_, include_deleted_,
                               retrier_->deadline(),
                               std::bind(&TabletInvoker::InitialLookupTabletDone, this, _1),
                               UseCache::kTrue);
@@ -223,7 +223,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
     if (refresh_cache) {
       client_->LookupTabletById(tablet_id_,
                                 table_,
-                                include_inactive_,
+                                include_hidden_,
                                 include_deleted_,
                                 retrier_->deadline(),
                                 std::bind(&TabletInvoker::LookupTabletCb, this, _1),
@@ -253,7 +253,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   if (!current_ts_) {
     client_->LookupTabletById(tablet_id_,
                               table_,
-                              include_inactive_,
+                              include_hidden_,
                               include_deleted_,
                               retrier_->deadline(),
                               std::bind(&TabletInvoker::LookupTabletCb, this, _1),

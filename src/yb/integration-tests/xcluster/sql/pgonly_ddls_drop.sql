@@ -1,3 +1,6 @@
+-- Fail the script on the first error
+\set ON_ERROR_STOP on
+
 -- Drop AGGREGATE
 DROP AGGREGATE IF EXISTS my_sum(integer);
 
@@ -55,3 +58,23 @@ DROP VIEW IF EXISTS employee_salaries;
 
 -- Drop TABLE
 DROP TABLE IF EXISTS employees;
+
+-------------- Foreign Objects---------------------------
+
+-- DROP Foreign Data Wrapper
+DROP FOREIGN DATA WRAPPER postgres_fdw;
+
+-- DROP Foreign Server (The server does not need to exist unless we want to query it)
+DROP SERVER foreign_server;
+
+-- DROP Foreign table
+DROP FOREIGN TABLE foreign_table_name;
+
+-- DROP User Mapping for current user
+DROP USER MAPPING FOR current_user SERVER foreign_server;
+
+--------------Text Search DDLs --------------------------
+DROP TEXT SEARCH CONFIGURATION simple_config;
+DROP TEXT SEARCH DICTIONARY simple_dict;
+DROP TEXT SEARCH PARSER simple_parser;
+DROP TEXT SEARCH TEMPLATE simple_template;

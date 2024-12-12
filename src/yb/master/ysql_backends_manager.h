@@ -280,12 +280,15 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   typedef YsqlBackendsManager::DbVersion DbVersion;
 
   BackendsCatalogVersionJob(
-      Master* master, ThreadPool* callback_pool, PgOid database_oid, Version target_version)
+      Master* master, ThreadPool* callback_pool, PgOid database_oid, Version target_version,
+      TabletServerId requestor_ts_uuid, pid_t requestor_pg_backend_pid)
       : master_(master),
         callback_pool_(callback_pool),
         state_cv_(&state_mutex_),
         database_oid_(database_oid),
         target_version_(target_version),
+        requestor_ts_uuid_(requestor_ts_uuid),
+        requestor_pg_backend_pid_(requestor_pg_backend_pid),
         last_access_(CoarseMonoClock::Now()) {}
 
   std::shared_ptr<BackendsCatalogVersionJob> shared_from_this() {
@@ -298,11 +301,10 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   }
   std::string type_name() const override { return "Backends Catalog Version"; }
   std::string description() const override;
-  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override
-      EXCLUDES(mutex_);
-  bool CompareAndSwapState(server::MonitoredTaskState old_state,
-                           server::MonitoredTaskState new_state)
-      EXCLUDES(mutex_);
+  server::MonitoredTaskState AbortAndReturnPrevState(
+      const Status& status, bool call_task_finisher = true) override EXCLUDES(mutex_);
+  bool CompareAndSwapState(
+      server::MonitoredTaskState old_state, server::MonitoredTaskState new_state) EXCLUDES(mutex_);
   Result<int> HandleTerminalState() EXCLUDES(mutex_);
 
   // Put job in kRunning state and kick off TS RPCs.
@@ -336,6 +338,8 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   ThreadPool* threadpool() { return callback_pool_; }
   PgOid database_oid() const { return database_oid_; }
   Version target_version() const { return target_version_; }
+  TabletServerId requestor_ts_uuid() const { return requestor_ts_uuid_; }
+  pid_t requestor_pg_backend_pid() const { return requestor_pg_backend_pid_; }
   const std::vector<Status>& failure_statuses() const {
     return failure_statuses_;
   }
@@ -356,6 +360,8 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
 
   const PgOid database_oid_;
   const Version target_version_;
+  const TabletServerId requestor_ts_uuid_;
+  const pid_t requestor_pg_backend_pid_;
   // Master sys catalog consensus term when launching the job.
   int64_t term_ GUARDED_BY(mutex_);
   // Last time this job was accessed.  Used to determine when the job should be cleaned up for lack

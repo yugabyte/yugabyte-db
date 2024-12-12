@@ -178,7 +178,7 @@ select s.f();
 This is the result:
 
 ```output
- f  
+ f
 ----
  70
  80

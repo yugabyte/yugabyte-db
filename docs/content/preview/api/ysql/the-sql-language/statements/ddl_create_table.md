@@ -120,6 +120,10 @@ Note that the [INSERT](../dml_insert/) command can only accommodate one override
 
 Using this qualifier will create a temporary table. Temporary tables are visible only in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
+### UNLOGGED
+
+Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default persistence.
+
 ### TABLESPACE
 
 Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.

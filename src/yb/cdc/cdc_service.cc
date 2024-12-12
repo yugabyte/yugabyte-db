@@ -202,6 +202,9 @@ DEFINE_RUNTIME_AUTO_bool(
     "update these entries in cdc_state table and also move the corresponding table's entry to "
     "unqualified tables list in stream metadata.");
 
+DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
+    "When enabled, users will be able to create a CDC stream having IMPLICIT checkpointing.");
+
 DECLARE_int32(log_min_seconds_to_retain);
 
 static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
@@ -253,32 +256,6 @@ METRIC_DEFINE_entity(cdcsdk);
   RPC_VERIFY_RESULT( \
       xrepl::StreamId::FromString(stream_id_str), resp->mutable_error(), \
       CDCErrorPB::INVALID_REQUEST, context)
-
-// TODO(22655): Remove the below macro once YB_LOG_EVERY_N_SECS_OR_VLOG() is fixed.
-#define YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, n_secs, verbose_level) \
-  do { \
-    if (VLOG_IS_ON(verbose_level)) { \
-      switch (verbose_level) { \
-        case 1: \
-          VLOG(1) << (oss).str(); \
-          break; \
-        case 2: \
-          VLOG(2) << (oss).str(); \
-          break; \
-        case 3: \
-          VLOG(3) << (oss).str(); \
-          break; \
-        case 4: \
-          VLOG(4) << (oss).str(); \
-          break; \
-        default: \
-          LOG(INFO) << (oss).str(); \
-          break; \
-      } \
-    } else { \
-      YB_LOG_EVERY_N_SECS(INFO, n_secs) << (oss).str(); \
-    } \
-  } while (0)
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -1130,6 +1107,13 @@ void CDCServiceImpl::CreateCDCStream(
       req->has_checkpoint_type(),
       STATUS(InvalidArgument, "Checkpoint type is required to create a CDCSDK stream"),
       resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  if (!FLAGS_cdc_enable_implicit_checkpointing) {
+    RPC_CHECK_AND_RETURN_ERROR(
+        req->source_type() == CDCSDK && req->checkpoint_type() != IMPLICIT,
+        STATUS(InvalidArgument, "Stream creation with IMPLICIT checkpointing is disabled."),
+        resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+  }
 
   auto deadline = GetDeadline(context, client());
   Status status = CreateCDCStreamForNamespace(req, resp, deadline);
@@ -2146,6 +2130,7 @@ void CDCServiceImpl::ProcessMetricsForEmptyChildrenTablets(
 void CDCServiceImpl::UpdateMetrics() {
   auto tablet_checkpoints = impl_->TabletCheckpointsCopy();
   TabletInfoToLastReplicationTimeMap cdc_state_tablets_to_last_replication_time;
+  std::unordered_set<TabletStreamInfo, TabletStreamInfo::Hash> expired_entries;
   EmptyChildrenTabletMap empty_children_tablets;
 
   Status iteration_status;
@@ -2193,6 +2178,11 @@ void CDCServiceImpl::UpdateMetrics() {
     bool is_leader = (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY);
 
     if (record.GetSourceType() == CDCSDK) {
+      if (entry.active_time.has_value() &&
+          CheckTabletExpiredOrNotOfInterest(tablet_info, *entry.active_time)) {
+        expired_entries.insert(tablet_info);
+        continue;
+      }
       auto tablet_metric_result = GetCDCSDKTabletMetrics(
           *tablet_peer.get(), tablet_info.stream_id, CreateMetricsEntityIfNotFound::kTrue,
           record.GetReplicationSlotName());
@@ -2306,7 +2296,8 @@ void CDCServiceImpl::UpdateMetrics() {
   // longer replicating.
   for (const auto& checkpoint : tablet_checkpoints) {
     const TabletStreamInfo& tablet_info = checkpoint.producer_tablet_info;
-    if (!cdc_state_tablets_to_last_replication_time.contains(tablet_info)) {
+    if (!cdc_state_tablets_to_last_replication_time.contains(tablet_info) ||
+        expired_entries.contains(tablet_info)) {
       // We're no longer replicating this tablet, so set lag to 0.
       auto tablet_peer = context_->LookupTablet(checkpoint.tablet_id());
       if (!tablet_peer) {
@@ -3350,6 +3341,10 @@ Status CDCServiceImpl::DeleteCDCStateTableMetadata(
       }
       LOG(INFO) << "CDC state table entry for tablet " << tablet_id << " and streamid " << stream_id
                 << " is deleted";
+
+      RemoveXReplTabletMetrics(stream_id, *tablet_peer_result);
+      LOG(INFO) << "Metric object for CDC state table entry for tablet " << tablet_id
+                << " and streamid " << stream_id << " is deleted";
     }
   }
 
@@ -3439,7 +3434,7 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
       tablet_id,
       /* table =*/nullptr,
       // In case this is a split parent tablet, it will be hidden so we need this flag to access it.
-      master::IncludeInactive::kTrue,
+      master::IncludeHidden::kTrue,
       master::IncludeDeleted::kFalse,
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       callback,
@@ -4061,6 +4056,25 @@ Status CDCServiceImpl::CheckTabletNotOfInterest(
       InternalError,
       "Stream ID $0 unpolled for too long for Tablet ID $1", producer_tablet.stream_id,
       producer_tablet.tablet_id);
+}
+
+bool CDCServiceImpl::CheckTabletExpiredOrNotOfInterest(
+    const TabletStreamInfo& producer_tablet, int64_t last_active_time_passed) {
+  auto s = CheckStreamActive(producer_tablet, last_active_time_passed);
+  if (!s.ok()) {
+    VLOG(3) << "Tablet: " << producer_tablet.tablet_id
+            << " expired for stream: " << producer_tablet.stream_id;
+    return true;
+  }
+
+  s = CheckTabletNotOfInterest(producer_tablet, last_active_time_passed);
+  if (!s.ok()) {
+    VLOG(3) << "Tablet: " << producer_tablet.tablet_id
+            << " is not of interest for stream: " << producer_tablet.stream_id;
+    return true;
+  }
+
+  return false;
 }
 
 Result<int64_t> CDCServiceImpl::GetLastActiveTime(
@@ -4859,9 +4873,8 @@ void CDCServiceImpl::GetConsistentChanges(
     return;
   }
 
-  std::ostringstream oss;
-  oss << "Received GetConsistentChanges request: " << req->ShortDebugString();
-  YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
+  YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 300, 1)
+      << "Received GetConsistentChanges request: " << req->ShortDebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4998,9 +5011,8 @@ void CDCServiceImpl::UpdateAndPersistLSN(
     return;
   }
 
-  std::ostringstream oss;
-  oss << "Received UpdateAndPersistLSN request: " << req->ShortDebugString();
-  YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
+  YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 300, 1)
+      << "Received UpdateAndPersistLSN request: " << req->ShortDebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -5049,10 +5061,9 @@ void CDCServiceImpl::UpdateAndPersistLSN(
 
   resp->set_restart_lsn(*res);
 
-  oss.clear();
-  oss << "Succesfully persisted LSN values for stream_id: " << stream_id
+  YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 300, 1)
+      << "Successfully persisted LSN values for stream_id: " << stream_id
       << ", confirmed_flush_lsn = " << confirmed_flush_lsn << ", restart_lsn = " << *res;
-  YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
 
   context.RespondSuccess();
 }

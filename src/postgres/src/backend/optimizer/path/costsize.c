@@ -7100,9 +7100,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo* root, bool is_index_path,
 			/* Collect the attributes used in each expression in the local filters. */
 			foreach(lc, local_clauses)
 			{
-				Node *node = lfirst(lc);
-				Expr *local_qual = IsA(node, RestrictInfo) ?
-					((RestrictInfo *) node)->clause: (Expr *) node;
+				Expr *local_qual = (Expr*) lfirst(lc);
 				pull_varattnos_min_attr((Node*) local_qual, baserel->relid, &attrs,
 										YBFirstLowInvalidAttributeNumber + 1);
 			}
@@ -7176,6 +7174,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cost		per_merge_cost = 0.0;
 	Cost		per_seek_cost = 0.0;
 	Cost		per_next_cost = 0.0;
+	List	   *all_filter_clauses = NIL;
 	List	   *pushed_down_clauses = NIL;
 	List	   *local_clauses = NIL;
 	ListCell   *lc;
@@ -7184,12 +7183,6 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	int 		num_nexts;
 	int 		num_seeks;
 	int			docdb_result_width;
-
-	/* Mark the path with the correct row estimate */
-	if (param_info)
-		path->rows = param_info->ppi_rows;
-	else
-		path->rows = baserel->rows;
 
 	if (!enable_seqscan)
 	{
@@ -7227,9 +7220,9 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
 
 		if (ri->yb_pushable)
-			pushed_down_clauses = lappend(pushed_down_clauses, ri);
+			pushed_down_clauses = lappend(pushed_down_clauses, ri->clause);
 		else
-			local_clauses = lappend(local_clauses, ri);
+			local_clauses = lappend(local_clauses, ri->clause);
 	}
 
 	cost_qual_eval(&qual_cost, pushed_down_clauses, root);
@@ -7276,6 +7269,13 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	cost_qual_eval(&qual_cost, local_clauses, root);
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * remote_filtered_rows;
+	all_filter_clauses = list_concat(pushed_down_clauses, local_clauses);
+
+	path->rows =
+		clamp_row_est(baserel->tuples *
+					  clauselist_selectivity(root, all_filter_clauses,
+											 baserel->relid, JOIN_INNER, NULL));
+
 	path->startup_cost = startup_cost;
 	path->total_cost = startup_cost + run_cost;
 	yb_parallel_cost(path);

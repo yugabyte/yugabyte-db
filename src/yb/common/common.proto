@@ -141,6 +141,11 @@ message PgVectorIdxOptionsPB {
   optional uint32 column_id = 4;
 }
 
+message PgVectorReadOptionsPB {
+  required QLValuePB vector = 1;
+  required int32 prefetch_size = 2;
+}
+
 message TablePropertiesPB {
   optional uint64 default_time_to_live = 1;
   optional bool contain_counters = 2;
@@ -652,6 +657,13 @@ message PgDatumPB {
   }
 }
 
+// The type of LSN type which will be used with the replication slot and stream metadata.
+enum ReplicationSlotLsnType {
+  ReplicationSlotLsnType_UNSPECIFIED = 0;
+  ReplicationSlotLsnType_SEQUENCE = 1;
+  ReplicationSlotLsnType_HYBRID_TIME = 2;
+}
+
 message AshMetadataPB {
   // The root level request id. i.e. the request id
   // corresponding to the call from the application to YSQL-Pg/YCQL
@@ -706,6 +718,7 @@ message WaitStateInfoPB {
 message CDCSDKStreamCreateOptionsPB {
   optional
       CDCSDKDynamicTablesOption cdcsdk_dynamic_tables_option = 1 [default = DYNAMIC_TABLES_ENABLED];
+  optional ReplicationSlotLsnType lsn_type = 12 [default = ReplicationSlotLsnType_SEQUENCE];
 }
 
 message TserverMetricsInfoPB {

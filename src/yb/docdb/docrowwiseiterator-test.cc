@@ -431,7 +431,7 @@ Result<std::string> ConvertIteratorRowsToString(
       buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection)) << std::endl;
     }
   } else {
-    // TODO(#22371): FLAGS_use_fast_backward_scan must not be set for this case.
+    CHECK(!down_cast<docdb::DocRowwiseIterator*>(iter)->TEST_use_fast_backward_scan());
     down_cast<docdb::DocRowwiseIterator*>(iter)->TEST_force_allow_fetch_pg_table_row();
     dockv::ReaderProjection reader_projection(projection ? *projection : schema);
     dockv::PgTableRow row(reader_projection);
@@ -473,8 +473,8 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     const HybridTime &expected_max_seen_ht,
     const Schema *projection,
     const TransactionOperationContext &txn_op_context) {
-  // TODO(#22371): Fast backward scan should not be used for this test as doc mode of
-  // DocRowwiseIterator could be changed after the iterator creation.
+  // Fast backward scan should not be used for this test as doc mode of DocRowwiseIterator could
+  // be changed after the iterator creation.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = false;
 
   auto doc_read_context = DocReadContext::TEST_Create(schema);
@@ -497,8 +497,8 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     const HybridTime &expected_max_seen_ht,
     const Schema *projection,
     const TransactionOperationContext &txn_op_context) {
-  // TODO(#22371): Fast backward scan should not be used for this test as doc mode of
-  // DocRowwiseIterator could be changed after the iterator creation.
+  // Fast backward scan should not be used for this test as doc mode of DocRowwiseIterator could
+  // be changed after the iterator creation.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = false;
 
   for (auto mode : kIteratorModeArray) {
@@ -516,8 +516,8 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     const std::string &expected,
     const HybridTime &expected_max_seen_ht,
     const TransactionOperationContext &txn_op_context) {
-  // TODO(#22371): Fast backward scan should not be used for this test as doc mode of
-  // DocRowwiseIterator could be changed after the iterator creation.
+  // Fast backward scan should not be used for this test as doc mode of DocRowwiseIterator could
+  // be changed after the iterator creation.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = false;
 
   auto &projection = this->projection();
@@ -1682,8 +1682,8 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
 }
 
 void DocRowwiseIteratorTest::TestScanWithinTheSameTxn() {
-  // TODO(#22371): Fast backward scan should not be used for this test as doc mode of
-  // DocRowwiseIterator could be changed after the iterator creation.
+  // Fast backward scan should not be used for this test as doc mode of DocRowwiseIterator could
+  // be changed after the iterator creation.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = false;
 
   SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);

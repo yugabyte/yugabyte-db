@@ -51,7 +51,7 @@ class PgAnalyzeNoReadRestartsTest : public PgAnalyzeReadTimeTest {
 };
 
 TEST_F_EX(PgAnalyzeReadTimeTest, InsertRowsConcurrentlyWithAnalyze, PgAnalyzeNoReadRestartsTest) {
-  constexpr auto kNumInitialRows = 100000;
+  constexpr auto kNumInitialRows = RegularBuildVsSanitizers(100000, 10000);
 
   // Create table with keys from 1 to kNumInitialRows.
   auto setup_conn = ASSERT_RESULT(Connect());

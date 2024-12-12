@@ -1372,7 +1372,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
               tablet_id, table,
               // TODO(tablet splitting + xCluster): After splitting integration is working (+
               // metrics support), then set this to kTrue.
-              master::IncludeInactive::kFalse, master::IncludeDeleted::kFalse,
+              master::IncludeHidden::kFalse, master::IncludeDeleted::kFalse,
               CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
               [&ts_uuid, &data_mutex](const Result<client::internal::RemoteTabletPtr>& result) {
                 if (result.ok()) {
@@ -2100,7 +2100,7 @@ TEST_P(XClusterTest, AlterUniverseReplicationBootstrapStateUpdate) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(XClusterTest, ToggleReplicationEnabled) {
+TEST_F_EX(XClusterTest, ToggleReplicationEnabled, XClusterTestNoParam) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   ASSERT_OK(SetUpWithParams({2}, replication_factor));
 
@@ -2116,12 +2116,16 @@ TEST_P(XClusterTest, ToggleReplicationEnabled) {
   // Disable the replication and ensure no tablets are being polled
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
-  ASSERT_OK(CorrectlyPollingAllTablets(0));
+  ASSERT_OK(CorrectlyPollingAllTablets(2));
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_PAUSED));
 
   // Enable replication and ensure that all the tablets start being polled again
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
   ASSERT_OK(CorrectlyPollingAllTablets(2));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
 }
 
 TEST_P(XClusterTest, TestDeleteUniverse) {

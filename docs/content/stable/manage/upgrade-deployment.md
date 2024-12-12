@@ -87,7 +87,7 @@ If you are using PostgreSQL extensions, make sure to install the extensions in t
 
 Upgrade the YB-Masters one node at a time:
 
-1. Stop the `yb-master` process.
+1. Stop the yb-master process.
 
     ```sh
     pkill yb-master
@@ -109,7 +109,7 @@ Upgrade the YB-Masters one node at a time:
 
 Upgrade the YB-TServers one node at a time:
 
-1. Stop the `yb-tserver` process.
+1. Stop the yb-tserver process.
 
     ```sh
     pkill yb-tserver
@@ -195,7 +195,7 @@ Expect to see the following output:
 YSQL successfully upgraded to the latest version
 ```
 
-In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. If this happens, run the command with a greater `-timeout_ms` value. For example:
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for yb-admin. If this happens, run the command with a greater `-timeout_ms` value. For example:
 
 ```sh
 ./bin/yb-admin \
@@ -225,7 +225,7 @@ In order to roll back to the version that you were on before the upgrade, you ne
 
 Roll back the YB-TServers one node at a time:
 
-1. Stop the `yb-tserver` process.
+1. Stop the yb-tserver process.
 
     ```sh
     pkill yb-tserver
@@ -247,7 +247,7 @@ Roll back the YB-TServers one node at a time:
 
 Use the following procedure to roll back all YB-Masters:
 
-1. Stop the `yb-master` process.
+1. Stop the yb-master process.
 
     ```sh
     pkill yb-master

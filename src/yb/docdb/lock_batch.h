@@ -49,8 +49,9 @@ struct LockBatchEntry {
   LockedBatchEntry<T>* locked = nullptr;
 
   // In context of object locking, we need to ignore conflicts with self when obtaining another
-  // mode of lock on an object. The field is set to the session's current lock state on the object
-  // and we subtract the same when checking conflicts with the exisitng lock state of the object.
+  // mode of lock on an object. The field is set to the transaction's current lock state on the
+  // object and we subtract the same when checking conflicts with the exisitng lock state of the
+  // object.
   LockState existing_state = 0;
 
   std::string ToString() const;

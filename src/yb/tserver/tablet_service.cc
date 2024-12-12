@@ -92,6 +92,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
+#include "yb/tserver/heartbeater.h"
 #include "yb/tserver/read_query.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
@@ -2081,8 +2082,9 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   const std::string db_ver_tag = Format("[DB $0, V $1]", database_oid, catalog_version);
   uint64_t ts_catalog_version = 0;
   SCOPED_WAIT_STATUS(WaitForYSQLBackendsCatalogVersion);
+  bool first_run = true;
   Status s = Wait(
-      [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
+      [catalog_version, database_oid, this, &ts_catalog_version, &first_run]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
         // sure to handle that case if initdb ever goes through this codepath.
         bool perdb_mode = false;
@@ -2103,7 +2105,14 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
           server_->get_ysql_catalog_version(
               &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         }
-        return ts_catalog_version >= catalog_version;
+        if (ts_catalog_version >= catalog_version) {
+          return true;
+        }
+        if (first_run) {
+          first_run = false;
+          server_->heartbeater()->TriggerASAP();
+        }
+        return false;
       },
       modified_deadline,
       Format("Wait for tserver catalog version to reach $0", db_ver_tag));
@@ -2138,8 +2147,11 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
 
   // TODO(jason): handle or create issue for catalog version being uint64 vs int64.
   const std::string num_lagging_backends_query = Format(
-      "SELECT count(*) FROM pg_stat_activity WHERE catalog_version < $0 AND datid = $1",
-      catalog_version, database_oid);
+      "SELECT count(*) FROM pg_stat_activity WHERE catalog_version < $0 AND datid = $1$2",
+      catalog_version, database_oid,
+      (req->has_requestor_pg_backend_pid() ?
+       Format(" AND pid != $0", req->requestor_pg_backend_pid()) :
+       ""));
   int num_lagging_backends = -1;
   const std::string description = Format("Wait for update to num lagging backends $0", db_ver_tag);
   s = Wait(
@@ -2259,6 +2271,7 @@ Status TabletServiceImpl::PerformWrite(
   bool has_operations = req->ql_write_batch_size() != 0 ||
                         req->redis_write_batch_size() != 0 ||
                         req->pgsql_write_batch_size() != 0 ||
+                        req->pgsql_lock_batch_size() != 0 ||
                         (req->has_external_hybrid_time() && !EmptyWriteBatch(req->write_batch()));
   if (!has_operations && tablet.tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.

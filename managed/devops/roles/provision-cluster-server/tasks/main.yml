@@ -63,6 +63,12 @@
       state: present
     tags: yb-prebuilt-ami
 
+  - name: Check if the core dumps directory or symlink exists
+    stat:
+      path: "{{ yb_home_dir }}/cores/"
+    register: core_dumps_dir_stat
+    tags: yb-prebuilt-ami
+
   - name: Create directory for core dumps
     file:
       path: "{{ yb_home_dir }}/cores/"
@@ -70,6 +76,7 @@
       mode: '0755'
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
+    when: not core_dumps_dir_stat.stat.exists
     tags: yb-prebuilt-ami
 
   - name: Ensure gzip is installed
@@ -117,6 +124,35 @@
       state: present
     tags: yb-prebuilt-ami
 
+  - name: Provision | Comment out existing journald.conf values
+    become: yes
+    become_method: sudo
+    lineinfile:
+      path: /etc/systemd/journald.conf
+      regexp: '^([^#].*?(Storage|MaxRetentionSec|SystemMaxUse)=.*)'
+      line: '# \1'
+      state: present
+      backrefs: yes
+
+  - name: Provision | Add Yugabyte specific journald.conf values
+    become: yes
+    become_method: sudo
+    blockinfile:
+      path: /etc/systemd/journald.conf
+      marker: "###### ADDED BY YUGABYTE ######"
+      insertbefore: EOF
+      block: |
+        Storage=persistent
+        MaxRetentionSec=30days
+        SystemMaxUse=400M
+
+  - name: Provision | Restart systemd-journald to apply changes
+    become: yes
+    become_method: sudo
+    service:
+      name: systemd-journald
+      state: restarted
+
 - name: Provision | Ensure mount paths exist.
   shell: |
     mkdir -p {{ item }}
@@ -160,7 +196,7 @@
   include_role:
     name: setup-cgroup
   when: not systemd_option or (ansible_os_family == 'RedHat' and
-        ansible_distribution_major_version < "9")
+        (ansible_distribution_major_version < "9" and not ansible_distribution == 'Amazon'))
 
 - name: Grant traverse permission on yb_home directory
   file:
@@ -433,3 +469,10 @@
     when: unattendedupgrade_file.stat.exists
   when: ansible_distribution == "Ubuntu"
   tags: yb-prebuilt-ami
+
+- name: Add prometheus user to yugabyte group
+  ansible.builtin.user:
+    name: prometheus
+    groups: yugabyte
+    append: true
+  become: yes

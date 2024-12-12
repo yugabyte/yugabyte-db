@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesPartitions;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -848,7 +849,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     // Wait for gflags change to be reflected on mounted locations
     createWaitForDurationSubtask(
             taskParams().getUniverseUUID(),
-            Duration.ofSeconds(KubernetesUtil.WAIT_FOR_GFLAG_SYNC_SECS))
+            Duration.ofSeconds(confGetter.getGlobalConf(GlobalConfKeys.waitForK8sGFlagSyncSec)))
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 

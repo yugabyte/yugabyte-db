@@ -16,18 +16,14 @@
 #include <future>
 #include <map>
 
-#include "yb/common/hybrid_time.h"
-
-#include "yb/dockv/key_bytes.h"
-
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/metadata.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/kv_util.h"
 #include "yb/util/locks.h"
 
-#include "yb/vector_index/vector_lsm.fwd.h"
 #include "yb/vector_index/vector_index_if.h"
 
 namespace yb::vector_index {
@@ -51,9 +47,9 @@ struct VectorLSMSearchOptions {
 
 template<IndexableVectorType Vector>
 struct VectorLSMInsertEntry {
-  VertexId vertex_id;
+  VectorId  vertex_id;
   KeyBuffer base_table_key;
-  Vector vector;
+  Vector    vector;
 };
 
 template<IndexableVectorType Vector,
@@ -79,12 +75,18 @@ struct VectorLSMTypes {
   using VertexWithDistance = vector_index::VertexWithDistance<DistanceResult>;
 };
 
-using BaseTableKeysBatch = std::vector<std::pair<VertexId, Slice>>;
+using BaseTableKeysBatch = std::vector<std::pair<VectorId, Slice>>;
+
+struct VectorLSMInsertContext {
+  const rocksdb::UserFrontiers* frontiers = nullptr;
+};
 
 class VectorLSMKeyValueStorage {
  public:
-  virtual Status StoreBaseTableKeys(const BaseTableKeysBatch& batch, HybridTime write_time) = 0;
-  virtual Result<KeyBuffer> ReadBaseTableKey(VertexId vertex_id) = 0;
+  virtual Status StoreBaseTableKeys(
+      const BaseTableKeysBatch& batch, const VectorLSMInsertContext& context) = 0;
+
+  virtual Result<KeyBuffer> ReadBaseTableKey(VectorId vertex_id) = 0;
 
   virtual ~VectorLSMKeyValueStorage() = default;
 };
@@ -129,9 +131,7 @@ class VectorLSM {
 
   rocksdb::UserFrontierPtr GetFlushedFrontier();
 
-  Status Insert(
-      std::vector<InsertEntry> entries, HybridTime write_time,
-      const rocksdb::UserFrontiers* frontiers);
+  Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
@@ -153,7 +153,7 @@ class VectorLSM {
   friend struct MutableChunk;
 
   // Saves the current mutable chunk to disk and creates a new one.
-  Status RollChunk() REQUIRES(mutex_);
+  Status RollChunk(size_t min_points) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
 
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
@@ -165,7 +165,7 @@ class VectorLSM {
   Status UpdateManifest(
       rocksdb::WritableFile* metadata_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
 
-  Status CreateNewMutableChunk() REQUIRES(mutex_);
+  Status CreateNewMutableChunk(size_t min_points) REQUIRES(mutex_);
 
   Options options_;
   rocksdb::Env* const env_;

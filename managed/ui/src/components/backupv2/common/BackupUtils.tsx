@@ -10,16 +10,17 @@
 import React, { useState } from 'react';
 import moment from 'moment';
 import { useSelector } from 'react-redux';
-import { keyBy, mapValues, capitalize, lowerCase } from 'lodash';
+import { keyBy, mapValues, capitalize, lowerCase, find } from 'lodash';
 import { Backup_Options_Type, IBackup, IStorageConfig, IUniverse } from './IBackup';
 import { Backup_States } from '../common/IBackup';
 import { Alert } from 'react-bootstrap';
 import { TableType } from '../../../redesign/helpers/dtos';
-import './BackupUtils.scss';
+import { RunTimeConfig } from '../../../redesign/features/universe/universe-form/utils/dto';
 import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
+import './BackupUtils.scss';
 
 export const BACKUP_REFETCH_INTERVAL = 20 * 1000;
-
+export const BACKUP_PITR_ENABLED = 'yb.ui.feature_flags.off_cluster_pitr_enabled';
 /**
  * Calculates the difference between two dates
  * @param startTime start time
@@ -235,4 +236,8 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
   formValues['backupObj'] = backup;
 
   return formValues;
+};
+
+export const isBackupPITREnabled = (runtimeConfigs: RunTimeConfig) => {
+  return find(runtimeConfigs?.configEntries, (config) => config.key === BACKUP_PITR_ENABLED)?.value === 'true';
 };

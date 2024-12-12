@@ -36,8 +36,6 @@ const (
 	// StateHeader to display state
 	StateHeader      = "State"
 	expiryTimeHeader = "Expiry Time"
-	// CreateTimeHeader to display create time
-	CreateTimeHeader = "Create Time"
 	// CompletionTimeHeader to display completion time
 	CompletionTimeHeader = "Completion Time"
 	categoryHeader       = "Category"
@@ -112,7 +110,7 @@ func NewBackupContext() *Context {
 		"HasIncrementalBackups":    hasIncrementalBackupsHeader,
 		"State":                    StateHeader,
 		"ExpiryTime":               expiryTimeHeader,
-		"CreateTime":               CreateTimeHeader,
+		"CreateTime":               formatter.CreateTimeHeader,
 		"CompletionTime":           CompletionTimeHeader,
 		"KMSConfig":                formatter.KMSConfigHeader,
 		"Category":                 categoryHeader,
@@ -161,9 +159,9 @@ func (c *Context) ExpiryTime() string {
 	expiryTime := c.b.GetExpiryTime()
 	if expiryTime.IsZero() {
 		return ""
-	} else {
-		return expiryTime.Format(time.RFC1123Z)
 	}
+	return expiryTime.Format(time.RFC1123Z)
+
 }
 
 // Category fetches Category
@@ -222,9 +220,8 @@ func (c *Context) CompletionTime() string {
 	completionTime := c.b.GetCommonBackupInfo().CompletionTime
 	if completionTime == nil {
 		return ""
-	} else {
-		return completionTime.Format(time.RFC1123Z)
 	}
+	return completionTime.Format(time.RFC1123Z)
 }
 
 // MarshalJSON function

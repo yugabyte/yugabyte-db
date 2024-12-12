@@ -239,22 +239,20 @@ public class Scheduler {
             // fetch last successful full backup for the schedule on which incremental
             // backup can be taken.
             baseBackupUUID = fetchBaseBackupUUIDfromLatestSuccessfulBackup(schedule);
-            if (shouldRunTask || baseBackupUUID == null) {
+            if (shouldRunTask) {
               // We won't do incremental backups if a full backup is due since
               // full backups take priority but make sure to take an incremental backup
               // either when it's scheduled or to catch up on any backlog.
-              if (baseBackupUUID == null) {
-                // If a scheduled backup is already not in progress and avoid running full backup.
-                if (!verifyScheduledBackupInProgress(schedule)) {
-                  shouldRunTask = true;
-                }
-              }
               baseBackupUUID = null;
               log.debug("Scheduling a full backup for schedule {}", schedule.getScheduleUUID());
             } else if (isExpectedIncrementScheduleTaskTime || incrementBacklogStatus) {
-              shouldRunTask = true;
-              log.debug(
-                  "Scheduling a incremental backup for schedule {}", schedule.getScheduleUUID());
+              // Schedule next incremental backup only if there is a full backup present else
+              // wait for next scheduled full backup.
+              if (baseBackupUUID != null) {
+                shouldRunTask = true;
+                log.debug(
+                    "Scheduling a incremental backup for schedule {}", schedule.getScheduleUUID());
+              }
             }
           }
 

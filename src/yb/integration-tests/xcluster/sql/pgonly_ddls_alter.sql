@@ -1,3 +1,6 @@
+-- Fail the script on the first error
+\set ON_ERROR_STOP on
+
 -- ALTER AGGREGATE
 ALTER AGGREGATE my_sum(integer) RENAME TO my_total;
 
@@ -54,3 +57,14 @@ ALTER TRIGGER update_timestamp ON employees
 -- ALTER VIEW
 ALTER VIEW employee_salaries
     RENAME TO emp_salary_view;
+
+
+--------------Text Search DDLs --------------------------
+
+ALTER TEXT SEARCH TEMPLATE simple_template RENAME TO renamed_template;
+
+ALTER TEXT SEARCH PARSER simple_parser RENAME TO renamed_parser;
+
+ALTER TEXT SEARCH DICTIONARY simple_dict RENAME TO renamed_dict;
+
+ALTER TEXT SEARCH CONFIGURATION simple_config RENAME TO renamed_config;

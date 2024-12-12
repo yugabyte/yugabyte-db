@@ -219,6 +219,13 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 	od_logger_set_format(&instance->logger, instance->config.log_format);
 	od_logger_set_debug(&instance->logger, instance->config.log_debug);
 	od_logger_set_stdout(&instance->logger, instance->config.log_to_stdout);
+	od_logger_set_dir(&instance->logger, instance->config.log_dir);
+	if (instance->config.log_max_size) {
+		od_logger_set_max_size(&instance->logger, instance->config.log_max_size);
+	}
+	if (instance->config.log_rotate_interval) {
+		od_logger_set_rotate_interval(&instance->logger, instance->config.log_rotate_interval);
+	}
 
 	/* run as daemon */
 	if (instance->config.daemonize) {
@@ -231,13 +238,12 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 	}
 
 	/* reopen log file after config parsing */
-	if (instance->config.log_file) {
-		rc = od_logger_open(&instance->logger,
-				    instance->config.log_file);
+	if (instance->config.log_dir) {
+		rc = od_logger_open(&instance->logger);
 		if (rc == -1) {
 			od_error(&instance->logger, "init", NULL, NULL,
-				 "failed to open log file '%s'",
-				 instance->config.log_file);
+				 "failed to open log file in the dir '%s'",
+				 instance->config.log_dir);
 			goto error;
 		}
 	}

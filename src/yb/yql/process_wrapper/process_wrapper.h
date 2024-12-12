@@ -40,6 +40,7 @@ class ProcessWrapper {
   virtual Status UpdateAndReloadConfig() = 0;
   virtual Status Start() = 0;
   void Kill();
+  void Kill(int signal);
 
   // Waits for the running process to complete. Returns the exit code or an error.
   // Non-zero exit codes are considered non-error cases for the purpose of this function.
@@ -47,7 +48,7 @@ class ProcessWrapper {
 
  protected:
   static Status CheckExecutableValid(const std::string& executable_path);
-  boost::optional<Subprocess> proc_;
+  std::optional<Subprocess> proc_;
 };
 
 YB_DEFINE_ENUM(YbSubProcessState, (kNotStarted)(kRunning)(kStopping)(kStopped));
@@ -85,6 +86,8 @@ class ProcessSupervisor {
   YbSubProcessState state_ GUARDED_BY(mtx_) = YbSubProcessState::kNotStarted;
 
   scoped_refptr<Thread> supervisor_thread_;
+
+  CountDownLatch thread_finished_latch_{1};
   void RunThread();
 };
 

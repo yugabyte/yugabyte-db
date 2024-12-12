@@ -25,7 +25,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
-#include "yb/util/file_util.h"
+#include "yb/util/path_util.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/unique_lock.h"
 
@@ -54,6 +54,10 @@ DEFINE_test_flag(bool, vector_index_skip_update_metadata_during_shutdown, false,
 
 DEFINE_test_flag(uint64, vector_index_delay_saving_first_chunk_ms, 0,
                  "Delay saving the first chunk in VectorLSM for specified amount of milliseconds");
+
+DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_reads, 0,
+                          "Max number of concurrent reads on vector index chunk. "
+                          "0 - use number of CPUs for it.");
 
 namespace yb::vector_index {
 
@@ -93,7 +97,7 @@ class VectorLSMInsertTask :
     chunk_ = chunk;
   }
 
-  void Add(VertexId vertex_id, Vector vector) {
+  void Add(VectorId vertex_id, Vector&& vector) {
     vectors_.emplace_back(vertex_id, std::move(vector));
   }
 
@@ -123,11 +127,12 @@ class VectorLSMInsertTask :
   }
 
   void Done(const Status& status) override;
+
  private:
   mutable rw_spinlock mutex_;
   LSM& lsm_;
   std::shared_ptr<MutableChunk> chunk_;
-  std::vector<std::pair<VertexId, Vector>> vectors_;
+  std::vector<std::pair<VectorId, Vector>> vectors_;
 };
 
 // Registry for all active Vector LSM insert subtasks.
@@ -265,7 +270,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
     return true;
   }
 
-  void Insert(VectorLSM& lsm, VertexId vertex_id, const Vector& vector) {
+  void Insert(VectorLSM& lsm, VectorId vertex_id, const Vector& vector) {
     lsm.CheckFailure(index->Insert(vertex_id, vector));
   }
 };
@@ -410,8 +415,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Insert(
-    std::vector<InsertEntry> entries, HybridTime write_time,
-    const rocksdb::UserFrontiers* frontiers) {
+    std::vector<InsertEntry> entries, const VectorLSMInsertContext& context) {
   std::shared_ptr<MutableChunk> chunk;
   size_t num_tasks = ceil_div<size_t>(entries.size(), FLAGS_vector_index_task_size);
   {
@@ -419,12 +423,13 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     RETURN_NOT_OK(failed_status_);
 
     if (!mutable_chunk_) {
-      RETURN_NOT_OK(CreateNewMutableChunk());
+      RETURN_NOT_OK(CreateNewMutableChunk(entries.size()));
     }
-    if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, frontiers)) {
-      RETURN_NOT_OK(RollChunk());
-      RSTATUS_DCHECK(mutable_chunk_->RegisterInsert(entries, options_, num_tasks, frontiers),
-                     RuntimeError, "Failed to register insert into a new mutable chunk");
+    if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers)) {
+      RETURN_NOT_OK(RollChunk(entries.size()));
+      RSTATUS_DCHECK(
+          mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers),
+          RuntimeError, "Failed to register insert into a new mutable chunk");
     }
     chunk = mutable_chunk_;
   }
@@ -443,7 +448,7 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     tasks_it->Add(vertex_id, std::move(v));
     keys_batch.emplace_back(vertex_id, base_table_key.AsSlice());
   }
-  RETURN_NOT_OK(options_.key_value_storage->StoreBaseTableKeys(keys_batch, write_time));
+  RETURN_NOT_OK(options_.key_value_storage->StoreBaseTableKeys(keys_batch, context));
   insert_registry_->ExecuteTasks(tasks);
 
   return Status::OK();
@@ -461,7 +466,6 @@ void MergeChunkResults(
     size_t max_num_results) {
   // Store the current size of the existing results.
   auto old_size = std::min(combined_results.size(), max_num_results);
-
 
   // Because of concurrency we could get the same vertex from different sources.
   // So remove duplicates from chunk_results before merging.
@@ -556,7 +560,7 @@ auto VectorLSM<Vector, DistanceResult>::Search(
   auto intermediate_results = insert_registry_->Search(query_vector, options.max_num_results);
 
   for (const auto& index : indexes) {
-    auto chunk_results = index->Search(query_vector, options.max_num_results);
+    auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options.max_num_results));
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
 
@@ -705,15 +709,21 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::RollChunk() {
+Status VectorLSM<Vector, DistanceResult>::RollChunk(size_t min_points) {
   RETURN_NOT_OK(DoFlush(/* promise=*/ nullptr));
-  return CreateNewMutableChunk();
+  return CreateNewMutableChunk(min_points);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk() {
+Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_points) {
   auto index = options_.vector_index_factory();
-  RETURN_NOT_OK(index->Reserve(options_.points_per_chunk));
+  auto max_concurrent_reads = FLAGS_vector_index_concurrent_reads;
+  if (max_concurrent_reads == 0) {
+    max_concurrent_reads = std::thread::hardware_concurrency();
+  }
+  RETURN_NOT_OK(index->Reserve(
+      std::max(min_points, options_.points_per_chunk),
+      options_.thread_pool->options().max_workers, max_concurrent_reads));
 
   mutable_chunk_ = std::make_shared<MutableChunk>();
   mutable_chunk_->index = std::move(index);

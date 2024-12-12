@@ -191,7 +191,8 @@ void UpdateHistoricalMaxOpId(std::atomic<OpId>* historical_max_op_id, OpId const
 }
 
 class TransactionParticipant::Impl
-    : public RunningTransactionContext, public TransactionLoaderContext {
+    : public RunningTransactionContext, public TransactionLoaderContext,
+      public std::enable_shared_from_this<Impl> {
  public:
   Impl(TransactionParticipantContext* context, TransactionIntentApplier* applier,
        const scoped_refptr<MetricEntity>& entity,
@@ -917,7 +918,7 @@ class TransactionParticipant::Impl
         // TODO(wait-queues): Consider signaling before replicating the transaction update.
         wait_queue_->SignalCommitted(data.transaction_id, data.commit_ht);
       }
-      auto apply_state = CHECK_RESULT(applier_.ApplyIntents(data));
+      auto apply_state = applier_.ApplyIntents(data);
 
       VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                           << apply_state.ToString();
@@ -1493,6 +1494,10 @@ class TransactionParticipant::Impl
     std::lock_guard lock(mutex_);
     return ResultToStatus(DoProcessRecentlyAppliedTransactions(
         retryable_requests_flushed_op_id_, true /* persist */));
+  }
+
+  std::weak_ptr<void> RetainWeak() override {
+    return shared_from_this();
   }
 
  private:

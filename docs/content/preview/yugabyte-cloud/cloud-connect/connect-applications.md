@@ -16,7 +16,7 @@ type: docs
 
 Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. YugabyteDB also supports [smart drivers](../../../drivers-orms/smart-drivers/), which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
-To connect to a YugabyteDB Aeon cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using. For examples of applications that connect to YugabyteDB Aeon using common drivers, refer to [Build an application](../../../tutorials/build-apps/).
+To connect to a YugabyteDB Aeon cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using. For examples of applications that connect to YugabyteDB Aeon using common drivers, refer to [Build an application](/preview/tutorials/build-apps/).
 
 You may want to add a database user specifically for your application. Refer to [Add database users](../../cloud-secure-clusters/add-users/).
 
@@ -81,7 +81,7 @@ Select **Connection String** to display the string that YSQL applications can us
 Here's an example of a generated `ysqlsh` string:
 
 ```sh
-postgresql://<DB USER>:<DB PASSWORD>@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.ybdb.io:5433/yugabyte? \
+postgresql://<DB USER>:<DB PASSWORD>@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.yugabyte.cloud:5433/yugabyte? \
 ssl=true& \
 sslmode=verify-full& \
 sslrootcert=<ROOT_CERT_PATH>
@@ -97,7 +97,7 @@ To use the string in your application, replace the following:
 For example:
 
 ```sh
-postgresql://admin:qwerty@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.ybdb.io:5433/yugabyte?ssl=true& \
+postgresql://admin:qwerty@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.yugabyte.cloud:5433/yugabyte?ssl=true& \
 sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
@@ -127,9 +127,9 @@ To connect your application, do the following:
 
 {{< /tabpane >}}
 
-For examples of applications you can build and connect to YugabyteDB Aeon using a variety of drivers, refer to [Build an application](../../../tutorials/build-apps/).
+For examples of applications you can build and connect to YugabyteDB Aeon using a variety of drivers, refer to [Build an application](/preview/tutorials/build-apps/).
 
 ## Learn more
 
 - [Add database users](../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../tutorials/build-apps/)
+- [Build an application](/preview/tutorials/build-apps/)

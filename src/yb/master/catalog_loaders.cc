@@ -38,6 +38,7 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/master_util.h"
+#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
@@ -661,7 +662,7 @@ Status SysConfigLoader::Visit(const std::string& config_type, const SysConfigEnt
     if (config_type == kSecurityConfigType) {
       catalog_manager_->permissions_manager()->SetSecurityConfigOnLoadUnlocked(config);
     } else if (config_type == kYsqlCatalogConfigType) {
-      catalog_manager_->ysql_catalog_config_.SetConfig(config);
+      catalog_manager_->GetYsqlManagerImpl().LoadConfig(config);
     } else if (config_type == kTransactionTablesConfigType) {
       LOG_IF(WARNING, catalog_manager_->transaction_tables_config_ != nullptr)
           << "Multiple sys config type " << config_type << " found";

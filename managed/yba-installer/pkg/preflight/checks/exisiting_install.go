@@ -87,6 +87,14 @@ func (i installNotExistsCheck) Execute() Result {
 		err := fmt.Errorf("found existing YugabyteDB Anywhere install")
 		res.Error = err
 		res.Status = StatusCritical
+		return res
+	}
+	if state, err := ybactlstate.LoadState(); err == nil {
+		if state.CurrentStatus == ybactlstate.InstalledStatus {
+			res.Error = fmt.Errorf("founding existing YugabyteDB Anywhere install state")
+			res.Status = StatusCritical
+			return res
+		}
 	}
 	return res
 }

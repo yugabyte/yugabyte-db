@@ -43,7 +43,7 @@ YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
 //
 // Note that upon a server crash/restart, all acquired object locks are lost, which is the
 // desired behavior for table locks. This is because, all DMLs hosted by the query layer client
-// of the corresponding tserver would be aborted, hence we want to release all object locks
+// of the corresponding tserver would be aborted, hence we would want to release all object locks
 // held by the DMLs. The master leader is responsible for re-acquiring locks corresponding to
 // all active DDLs. The same applies on addition of a new tserver node, the master bootstraps
 // it with all exisitng DDL (global) locks.
@@ -53,16 +53,16 @@ class TSLocalLockManager {
   ~TSLocalLockManager();
 
   // Tries acquiring object locks with the specified modes and registers them against the given
-  // session id-host pair. When locking a batch of keys, if the lock mananger is unable to acquire
-  // the lock on the k'th key/record, all acquired locks i.e (1 to k-1) are released and the error
-  // is returned back to the client. Note that previous successful locks corresponding to the same
-  // session id-host pair remain unchanged until an explicit unlock request comes in.
+  // transaction <<txn, reuse_version>, subtxn>. When locking a batch of keys, if the lock mananger
+  // errors while acquiring the lock on the k'th key/record, all acquired locks i.e (1 to k-1) are
+  // released and the error is returned back to the client. Note that previous successful locks
+  // corresponding to the same txn remain unchanged until an explicit unlock request comes in.
   //
-  // Note that the lock manager ignores the session's conflict with itself. So a session can acquire
-  // conflicting lock types on a key given that there aren't other sessions with active conflciting
+  // Note that the lock manager ignores the transaction's conflict with itself. So a txn can acquire
+  // conflicting lock types on a key given that there aren't other txns with active conflciting
   // locks on the key.
   //
-  // Continuous influx of readers can starve writers. For instance, if there are multiple sessions
+  // Continuous influx of readers can starve writers. For instance, if there are multiple txns
   // requesting ACCESS_SHARE on a key, a writer requesting ACCESS_EXCLUSIVE may face starvation.
   // Since we intend to use this for table locks, DDLs may face starvation if there is influx of
   // conflicting DMLs.
@@ -73,12 +73,11 @@ class TSLocalLockManager {
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
       WaitForBootstrap wait = WaitForBootstrap::kTrue);
 
-  // The call releases all locks on the object(s) corresponding to the session id-host pair. There
-  // is no 1:1 mapping that exists among lock and unlock requests. A session can acquire different
-  // lock modes on a key multiple times, and will unlock them all with a single unlock rpc.
+  // When subtxn id is set, releases all locks tagged against <<txn, reuse_version>, subtxn>.
+  // Else releases all object locks owned by <txn, reuse_version>.
   //
-  // If the release fails with error indicating the existence of a concurrent request of the same
-  // session, then no locks corresponding to the session are released, and the rpc must be retried.
+  // There is no 1:1 mapping that exists among lock and unlock requests. A txn can acquire different
+  // lock modes on a key multiple times, and will unlock them all with a single unlock rpc.
   Status ReleaseObjectLocks(const tserver::ReleaseObjectLockRequestPB& req);
   void DumpLocksToHtml(std::ostream& out);
 

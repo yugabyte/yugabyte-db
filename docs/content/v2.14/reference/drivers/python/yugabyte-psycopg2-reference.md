@@ -29,7 +29,7 @@ type: docs
 
 This page provides details for getting started with `YugabyteDB Psycopg2 Driver` for connecting to YugabyteDB YSQL API.
 
-[Yugabyte Psycopg2 driver](https://github.com/yugabyte/psycopg2) is a distributed python driver for [YSQL](/preview/api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2).
+[Yugabyte Psycopg2 driver](https://github.com/yugabyte/psycopg2) is a distributed python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2).
 Although the upstream PostgreSQL psycopg2 driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
 
 - It is **cluster-aware**, which eliminates the need for an external load balancer.
@@ -54,7 +54,7 @@ The YugabyteDB Psycopg2 driver can be configured with pooling as well.
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](../../../../quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
 
 ## Download the driver dependency
 

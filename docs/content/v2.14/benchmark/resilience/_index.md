@@ -36,4 +36,4 @@ For more details, see [Jepsen test results](jepsen-testing/).
 
 ## Learn more
 
-- [Resiliency, high availability, and fault tolerance](../../explore/fault-tolerance/)
+- [Resiliency, high availability, and fault tolerance](../../explore/fault-tolerance/macos/)

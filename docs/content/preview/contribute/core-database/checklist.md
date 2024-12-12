@@ -25,7 +25,7 @@ type: docs
 
 ## Step 2. Start a local cluster
 
-Having built the source, you can [start a local cluster](../../../quick-start/).
+Having built the source, you can [start a local cluster](/preview/tutorials/quick-start/).
 
 ## Step 3. Make the change
 

@@ -198,7 +198,10 @@ alter_sequence_options = [ 'AS' seq_data_type ]  \
                            [ 'RESTART' [ [ 'WITH' ] int_literal ] ]  \
                            [ 'CACHE' int_literal ]  \
                            [ [ 'NO' ] 'CYCLE' ]  \
-                           [ 'OWNED BY' table_name '.' column_name | 'NONE' ] ;
+                           [ 'OWNED BY' ( table_name '.' column_name | 'NONE' ) ] \
+                           [ 'SET' ( 'LOGGED' | 'UNLOGGED' | 'SCHEMA' schema_name ) ] \
+                           [ 'OWNER' 'TO' ( new_owner | 'CURRENT_USER' | 'SESSION_USER' ) ] \
+                           [ 'RENAME' 'TO' new_name ] ;
 
 seq_data_type = ( 'smallint' | 'integer' | 'bigint' ) ;
 
@@ -228,7 +231,9 @@ alter_table_action =
     | 'DISABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'ENABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'FORCE' 'ROW' 'LEVEL' 'SECURITY'
-    | 'SET' 'TABLESPACE' tablespace_name
+    | 'SET' ( 'TABLESPACE' tablespace_name | 'LOGGED' | 'UNLOGGED'
+              | '(' param_name '=' param_value ')' )
+    | 'RESET' '(' param_name ')'
     | 'NO' 'FORCE' 'ROW' 'LEVEL' 'SECURITY' ) ;
 
 alter_table_constraint = [ 'CONSTRAINT' constraint_name ] \
@@ -704,7 +709,8 @@ create_schema_role = 'CREATE' 'SCHEMA' [ 'IF' 'NOT' 'EXISTS']
                        'AUTHORIZATION' role_specification ;
 
 (* 'CREATE' 'SEQUENCE' *)
-create_sequence = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'SEQUENCE' [ 'IF' 'NOT' 'EXISTS' ] sequence_name  sequence_options ;
+create_sequence = 'CREATE' [ 'TEMPORARY' | 'TEMP' | 'UNLOGGED' ] 'SEQUENCE'
+                    [ 'IF' 'NOT' 'EXISTS' ] sequence_name  sequence_options ;
 
 sequence_name = qualified_name ;
 
@@ -735,8 +741,9 @@ drop_tablespace = 'DROP' 'TABLESPACE' [ 'IF' 'EXISTS' ] tablespace_name;
 
 
 (* 'CREATE' 'TABLE' *)
-create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
-                 '(' [ table_elem { ',' table_elem } ] ')'  \
+create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' | 'UNLOGGED' ] 'TABLE'
+                 [ 'IF' 'NOT' 'EXISTS' ] table_name
+                 '(' [ table_elem { ',' table_elem } ] ')' \
                  [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ] \
                  [ 'TABLESPACE' tablespace_name ]

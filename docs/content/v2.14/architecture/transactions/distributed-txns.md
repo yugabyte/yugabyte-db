@@ -85,8 +85,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
 - `TxnId -> StatusTabletId, IsolationLevel, Priority`
 
   - `StatusTabletId` is the ID of the tablet that keeps track of this transaction's status.
-    Unlike the case of tables/tablets holding user data, where we are using a [hash-based
-    mapping](../../concepts/sharding/) from keys to tablets, there is no deterministic way
+    Unlike the case of tables/tablets holding user data, where we are using a [hash-based mapping](../../docdb-sharding/sharding/) from keys to tablets, there is no deterministic way
     to compute the transaction status tablet ID by transaction ID, so this information must be
     explicitly passed to all components handling a particular transaction.
   - `Isolation Level` [Snapshot Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) or

@@ -562,7 +562,7 @@ SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 		   sizeof(struct ysql_conn_mgr_shmem_header));
 
 	struct shmem_session_parameter *shmem_parameter_list =
-		(struct shmem_session_parameter*) 
+		(struct shmem_session_parameter*)
 				(shared_memory_ptr + sizeof(struct ysql_conn_mgr_shmem_header));
 
 	/*
@@ -887,6 +887,9 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 {
 	yb_is_client_ysqlconnmgr = newval;
 
+	if (MyBackendType != YB_YSQL_CONN_MGR && YbIsClientYsqlConnMgr())
+		MyBackendType = YB_YSQL_CONN_MGR;
+
 	/*
 	 * Parallel workers are created and maintained by postmaster. So physical
 	 * connections can never be of parallel worker type, therefore it makes no
@@ -897,7 +900,10 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 	 */
 	if (yb_is_client_ysqlconnmgr && !yb_is_parallel_worker &&
 		!yb_is_auth_backend)
+	{
 		send_oid_info('d', get_database_oid(MyProcPort->database_name, false));
+		SendLogicalClientCacheVersionToFrontend();
+	}
 }
 
 /*

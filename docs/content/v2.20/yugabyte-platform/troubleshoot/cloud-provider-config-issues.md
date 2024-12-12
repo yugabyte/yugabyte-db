@@ -17,7 +17,7 @@ If you have problems while troubleshooting, contact {{% support-platform %}}.
 
 ## Azure cloud provider configuration problems
 
-You can diagnose and remedy a failure that occurred when [configuring Azure cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/azure/) as follows:
+You can diagnose and remedy a failure that occurred when [configuring Azure cloud provider](../../configure-yugabyte-platform/azure/) as follows:
 
 - Navigate to **Tasks** on the left-side menu.
 

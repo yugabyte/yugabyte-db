@@ -57,7 +57,11 @@ Status XClusterDDLReplicationTestBase::SetUpClusters(
       .is_colocated = is_colocated,
       .start_yb_controller_servers = start_yb_controller_servers,
   };
-  return XClusterYsqlTestBase::SetUpClusters(kDefaultParams);
+  RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters(kDefaultParams));
+  if (is_colocated) {
+    RETURN_NOT_OK(CreateInitialColocatedTable());
+  }
+  return Status::OK();
 }
 
 Status XClusterDDLReplicationTestBase::CheckpointReplicationGroupOnNamespaces(
@@ -161,13 +165,16 @@ void XClusterDDLReplicationTestBase::InsertRowsIntoProducerTableAndVerifyConsume
   std::shared_ptr<client::YBTable> consumer_table =
       ASSERT_RESULT(GetConsumerTable(producer_table_name));
 
-  // Verify that universe was setup on consumer.
-  master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-  ASSERT_TRUE(std::any_of(
-      resp.entry().tables().begin(), resp.entry().tables().end(),
-      [&](const std::string& table) { return table == producer_table_name.table_id(); }));
+  if (!consumer_table->colocated()) {
+    // Verify that universe was setup on consumer.
+    // Skip for colocated as the table is not tracked in master replication.
+    master::GetUniverseReplicationResponsePB resp;
+    ASSERT_OK(VerifyUniverseReplication(&resp));
+    ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
+    ASSERT_TRUE(std::any_of(
+        resp.entry().tables().begin(), resp.entry().tables().end(),
+        [&](const std::string& table) { return table == producer_table_name.table_id(); }));
+  }
 
   ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
 }
@@ -212,5 +219,16 @@ Status XClusterDDLReplicationTestBase::PrintDDLQueue(Cluster& cluster) {
   LOG(INFO) << ss.str();
 
   return Status::OK();
+}
+
+Status XClusterDDLReplicationTestBase::CreateInitialColocatedTable() {
+  // Create a simple table on each side with the same colocation id.
+  return RunOnBothClusters([&](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0($1 int PRIMARY KEY) WITH (colocation_id = 999999)",
+        kInitialColocatedTableName, kKeyColumnName));
+    return Status::OK();
+  });
 }
 }  // namespace yb

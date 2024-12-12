@@ -123,7 +123,7 @@ var createAzureEARCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(strings.TrimSpace(keyAlgorithm)) != 0 {
-			requestBody[util.AzureKeyAlgorithmField] = keyAlgorithm
+			requestBody[util.AzureKeyAlgorithmField] = strings.ToUpper(keyAlgorithm)
 		}
 
 		if cmd.Flags().Changed("key-size") {
@@ -186,8 +186,8 @@ func init() {
 			"If master key with same name already exists then it will be used,"+
 			" else a new one will be created automatically.")
 	createAzureEARCmd.MarkFlagRequired("key-name")
-	createAzureEARCmd.Flags().String("key-algorithm", "RSA",
-		"[Optional] Azure Key Algorithm. Allowed values (case sensitive): RSA")
+	createAzureEARCmd.Flags().String("key-algorithm", "rsa",
+		"[Optional] Azure Key Algorithm. Allowed values: rsa")
 	createAzureEARCmd.Flags().Int("key-size", 0,
 		"[Optional] Azure Key Size. Allowed values per algorithm: RSA(Default:2048, 3072, 4096)")
 }

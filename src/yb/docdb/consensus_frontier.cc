@@ -364,7 +364,7 @@ bool ConsensusFrontier::UpdateCoTableId(const Uuid& cotable_id, const Uuid& new_
 }
 
 void ConsensusFrontier::MakeExternalSchemaVersionsAtMost(
-    std::unordered_map<Uuid, SchemaVersion, UuidHash>* min_schema_versions) const {
+    std::unordered_map<Uuid, SchemaVersion>* min_schema_versions) const {
   if (primary_schema_version_) {
     yb::MakeAtMost(Uuid::Nil(), *primary_schema_version_, min_schema_versions);
   }

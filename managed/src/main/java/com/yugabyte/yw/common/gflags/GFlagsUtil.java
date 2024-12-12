@@ -192,7 +192,7 @@ public class GFlagsUtil {
       Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
   private static final String DEFAULT_LOG_LINE_PREFIX = "%m [%p] ";
 
-  private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
+  public static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
           .add(PLACEMENT_CLOUD)
           .add(PLACEMENT_REGION)
@@ -318,14 +318,20 @@ public class GFlagsUtil {
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
     } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
-      boolean configCgroup = config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
+      Integer cgroupSize = userIntent.getCGroupSize(node);
+      boolean configCgroup =
+          (cgroupSize != null && cgroupSize > 0)
+              || config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
 
       // If the cluster is a read replica, use the read replica max mem value if its >= 0. -1 means
       // to use the primary cluster value instead.
       if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
               == UniverseDefinitionTaskParams.ClusterType.ASYNC
-          && confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0) {
-        configCgroup = config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
+          && ((cgroupSize != null && cgroupSize >= 0)
+              || confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0)) {
+        configCgroup =
+            userIntent.getCGroupSize(node) > 0
+                || config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
       }
       long historyRetentionBufferSecs =
           confGetter.getConfForScope(
@@ -1701,20 +1707,33 @@ public class GFlagsUtil {
     if (previewGFlags.size() == 0) {
       return null;
     }
+    String previewFlagsString = String.join(",", previewGFlags);
     String allowedPreviewFlags = userGFlags.get(ALLOWED_PREVIEW_FLAGS_CSV);
     if (StringUtils.isEmpty(allowedPreviewFlags)) {
       return String.format(
-          "Universe is equipped with preview flags but %s is missing. ", ALLOWED_PREVIEW_FLAGS_CSV);
+          "Universe has %s preview flags (%s) but %s is empty",
+          serverType, previewFlagsString, ALLOWED_PREVIEW_FLAGS_CSV);
     }
+
     List<String> allowedPreviewFlagsList =
         (Arrays.asList(allowedPreviewFlags.split(",")))
             .stream().map(String::trim).collect(Collectors.toList());
+    List<String> previewExcludedFlags = new ArrayList<>();
     for (String previewFlag : previewGFlags) {
       if (!allowedPreviewFlagsList.contains(previewFlag)) {
-        return String.format(
-            "Universe is equipped with preview flags %s but it is not set in %s : %s ",
-            previewFlag, ALLOWED_PREVIEW_FLAGS_CSV, allowedPreviewFlags);
+        previewExcludedFlags.add(previewFlag);
       }
+    }
+
+    if (!previewExcludedFlags.isEmpty()) {
+      String previewExcludedFlagsString = String.join(",", previewExcludedFlags);
+      return String.format(
+          "Universe has %s preview flags (%s) but (%s) are not set in %s : (%s)",
+          serverType,
+          previewFlagsString,
+          previewExcludedFlagsString,
+          ALLOWED_PREVIEW_FLAGS_CSV,
+          allowedPreviewFlags);
     }
     return null;
   }

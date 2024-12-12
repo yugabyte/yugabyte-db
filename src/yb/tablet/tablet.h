@@ -98,6 +98,7 @@ namespace tablet {
 YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
+YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
@@ -310,7 +311,7 @@ class Tablet : public AbstractTablet,
 
   Status ImportData(const std::string& source_dir);
 
-  Result<docdb::ApplyTransactionState> ApplyIntents(const TransactionApplyData& data) override;
+  docdb::ApplyTransactionState ApplyIntents(const TransactionApplyData& data) override;
 
   Status RemoveIntents(
       const RemoveIntentsData& data, RemoveReason reason, const TransactionId& id) override;
@@ -653,7 +654,7 @@ class Tablet : public AbstractTablet,
   // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
   void TEST_DocDBDumpToLog(IncludeIntents include_intents);
 
-  Result<size_t> TEST_CountRegularDBRecords();
+  Result<size_t> TEST_CountDBRecords(docdb::StorageDbType db_type);
 
   Status CreateReadIntents(
       IsolationLevel level,
@@ -1206,6 +1207,15 @@ class Tablet : public AbstractTablet,
   template <class Ids>
   Status RemoveIntentsImpl(const RemoveIntentsData& data, RemoveReason reason, const Ids& ids);
 
+  // Remove advisory lock intents for the given transaction id.
+  Status RemoveAdvisoryLocks(const TransactionId& id,
+                             rocksdb::DirectWriteHandler* handler) override;
+
+  // Remove the advisory lock intent with speficied key and intent_types for the given txn id.
+  Status RemoveAdvisoryLock(
+      const TransactionId& transaction_id, const Slice& key,
+      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler* handler) override;
+
   // Tries to find intent .SST files that could be deleted and remove them.
   void DoCleanupIntentFiles();
 
@@ -1278,7 +1288,7 @@ class Tablet : public AbstractTablet,
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
 
-  rpc::ThreadPool* rpc_thread_pool_ = nullptr;
+  VectorIndexThreadPoolProvider vector_index_thread_pool_provider_;
 
   simple_spinlock operation_filters_mutex_;
 
@@ -1292,10 +1302,9 @@ class Tablet : public AbstractTablet,
 
   std::atomic<bool> has_vector_indexes_{false};
   std::shared_mutex vector_indexes_mutex_;
-  std::unordered_map<TableId, docdb::VectorIndexPtr> all_vector_indexes_
+  std::unordered_map<TableId, docdb::VectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
-  std::unordered_map<TableId, docdb::VectorIndexesPtr> vector_indexes_for_table_
-      GUARDED_BY(vector_indexes_mutex_);
+  docdb::VectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

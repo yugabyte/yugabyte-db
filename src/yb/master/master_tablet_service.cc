@@ -117,12 +117,13 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
 
   bool log_versions = false;
   std::unordered_set<uint32_t> db_oids;
-  for (const auto& pg_req : req->pgsql_write_batch()) {
+  for (const auto &pg_req : req->pgsql_write_batch()) {
     if (pg_req.is_ysql_catalog_change_using_protobuf()) {
-      const auto &res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
+      const auto& res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
       if (!res.ok()) {
         context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
             STATUS(InternalError, "Failed to increment YSQL catalog version"));
+        return;
       }
     } else if (FLAGS_log_ysql_catalog_versions && pg_req.table_id() == kPgYbCatalogVersionTableId) {
       log_versions = true;
@@ -139,6 +140,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
             doc_key.range_group().size() != 1) {
           context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
               STATUS(InternalError, "Failed to get db oid"));
+          return;
         }
         const uint32_t db_oid = doc_key.range_group()[0].GetUInt32();
         // In per-db catalog version mode, one can run a SQL script to prepare the
@@ -214,7 +216,13 @@ void HandleUnsupportedMethod(const char* method_name, rpc::RpcContext* context) 
                              STATUS_FORMAT(NotSupported, "$0 Not Supported!", method_name));
 }
 
-} // namespace
+}  // namespace
+
+void MasterTabletServiceImpl::ListMasterServers(
+    const tserver::ListMasterServersRequestPB* req, tserver::ListMasterServersResponsePB* resp,
+    rpc::RpcContext context) {
+  HandleUnsupportedMethod("ListMasterServers", &context);
+}
 
 void MasterTabletServiceImpl::ListTablets(const tserver::ListTabletsRequestPB* req,
                                           tserver::ListTabletsResponsePB* resp,

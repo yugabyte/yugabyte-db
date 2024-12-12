@@ -176,6 +176,7 @@ set(MASTER_SRCS
   yql_vtable_iterator.cc
   ysql/ysql_catalog_config.cc
   ysql/ysql_initdb_major_upgrade_handler.cc
+  ysql/ysql_manager.cc
   ysql_backends_manager.cc
   ysql_ddl_handler.cc
   ysql_ddl_verification_task.cc
@@ -241,6 +242,7 @@ set(MASTER_TEST_COMMON_SRCS
   master-test-util.cc
   master-test_base.cc
   master_cluster_client.cc
+  master_ddl_client.cc
   ts_descriptor_test_util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common
@@ -264,6 +266,7 @@ ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(load_balancer_mocked-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(master_cluster_test)
+ADD_YB_TEST(master_tablet_service_test)
 ADD_YB_TEST(master_xrepl-test)
 ADD_YB_TEST(multi_step_monitored_task-test)
 ADD_YB_TEST(restore_sys_catalog_state_test)

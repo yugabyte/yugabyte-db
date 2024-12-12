@@ -63,7 +63,10 @@ func buildClusters(
 	if len(strings.TrimSpace(providerType)) == 0 {
 		logrus.Fatalln(formatter.Colorize("No provider code found\n", formatter.RedColor))
 	}
-	providerListRequest = providerListRequest.ProviderCode(providerType)
+	if strings.Compare(providerType, "azure") == 0 {
+		providerType = util.AzureProviderType
+	}
+	providerListRequest = providerListRequest.ProviderCode(strings.ToLower(providerType))
 	providerName := v1.GetString("provider-name")
 	if strings.TrimSpace(providerName) != "" {
 		providerListRequest = providerListRequest.Name(providerName)

@@ -176,7 +176,7 @@ The [php-pgsql](https://www.php.net/manual/en/book.pgsql.php) driver is a collec
 
 For details on installing and using php-pgsql, see the [php-pgsql documentation](https://www.php.net/manual/en/book.pgsql.php).
 
-For a tutorial on building a sample PHP application with php-pgsql, see [Build a PHP application](../../../quick-start/build-apps/php/ysql/).
+For a tutorial on building a sample PHP application with php-pgsql, see [Build a PHP application](../../../quick-start/php/ysql/).
 
 #### Install the php-pgsql driver
 

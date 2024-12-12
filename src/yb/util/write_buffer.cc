@@ -32,16 +32,6 @@ Status WriteBuffer::Write(const WriteBufferPos& pos, const char* data, const cha
       WriteBufferPos {.index = pos.index + 1, .address = blocks_[pos.index + 1].data()}, data, end);
 }
 
-void WriteBuffer::AppendToNewBlock(Slice value) {
-  auto block_size = std::max(value.size(), block_size_);
-  AllocateBlock(block_size);
-  auto& block = blocks_.back();
-  auto* block_start = block.data();
-  value.CopyTo(block_start);
-  last_block_free_begin_ = block_start + value.size();
-  last_block_free_end_ = block_start + block_size;
-}
-
 void WriteBuffer::PushBack(char value) {
   if (last_block_free_begin_ != last_block_free_end_) {
     *last_block_free_begin_++ = value;
@@ -49,19 +39,6 @@ void WriteBuffer::PushBack(char value) {
   }
 
   AppendToNewBlock(Slice(&value, 1));
-}
-
-// len_with_prefix is the total size, i.e. prefix size (1 byte) + data size.
-void WriteBuffer::AppendToNewBlock(char prefix, Slice slice) {
-  auto len_with_prefix = slice.size() + 1;
-  auto block_size = std::max(len_with_prefix, block_size_);
-  AllocateBlock(block_size);
-  auto& block = blocks_.back();
-  auto* block_start = block.data();
-  *block_start++ = prefix;
-  memcpy(block_start, slice.data(), --len_with_prefix);
-  last_block_free_begin_ = block_start + len_with_prefix;
-  last_block_free_end_ = block_start + block_size - 1;
 }
 
 void WriteBuffer::AddBlock(const RefCntBuffer& buffer, size_t skip) {
@@ -282,35 +259,6 @@ size_t WriteBuffer::BytesAfterPosition(const WriteBufferPos& pos) const {
 Slice WriteBuffer::FirstBlockSlice() const {
   return blocks_.size() > 1 ? blocks_[0].AsSlice()
                             : Slice(blocks_[0].data(), last_block_free_begin_);
-}
-
-void WriteBuffer::DoAppendSplit(char* out, size_t out_size, Slice value) {
-  memcpy(out, value.data(), out_size);
-  AppendToNewBlock(value.WithoutPrefix(out_size));
-}
-
-void WriteBuffer::DoAppendSplit(char* out, size_t out_size, char prefix, Slice slice) {
-  *out++ = prefix;
-  memcpy(out, slice.data(), --out_size);
-  AppendToNewBlock(slice.WithoutPrefix(out_size));
-}
-
-void WriteBuffer::DoAppendFallback(char* out, size_t out_size, Slice slice) {
-  if (out_size == 0) {
-    AppendToNewBlock(slice);
-    return;
-  }
-
-  DoAppendSplit(out, out_size, slice);
-}
-
-void WriteBuffer::DoAppendFallback(char* out, size_t out_size, char ch, Slice slice) {
-  if (out_size == 0) {
-    AppendToNewBlock(ch, slice);
-    return;
-  }
-
-  DoAppendSplit(out, out_size, ch, slice);
 }
 
 }  // namespace yb

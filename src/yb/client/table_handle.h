@@ -144,9 +144,8 @@ class TableHandle {
       QLConditionPB* const condition, const std::string& column_name, const QLOperator op) const;
 
  private:
-  typedef std::unordered_map<std::string, yb::ColumnId> ColumnIdsMap;
-  using ColumnTypesMap =
-      std::unordered_map<yb::ColumnId, const std::shared_ptr<QLType>, boost::hash<yb::ColumnId>>;
+  using ColumnIdsMap = std::unordered_map<std::string, yb::ColumnId>;
+  using ColumnTypesMap = std::unordered_map<yb::ColumnId, const std::shared_ptr<QLType>>;
 
   YBClient* client_;
   YBTablePtr table_;

@@ -413,6 +413,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             createTblSpace,
             20,
             userIntent.isYSQLAuthEnabled(),
+            false,
             true);
     assertTrue("Message is " + response.getMessage(), response.isSuccess());
 
@@ -681,6 +682,8 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     upgadeParams.upgradeOption = upgradeOption;
     upgadeParams.expectedUniverseVersion = universe.getVersion();
     upgadeParams.clusters = universe.getUniverseDetails().clusters;
+    upgadeParams.sleepAfterMasterRestartMillis = 10000;
+    upgadeParams.sleepAfterTServerRestartMillis = 10000;
     return upgadeParams;
   }
 

@@ -477,6 +477,30 @@ TEST_F(XClusterDDLReplicationTest, AddRenamedTable) {
   ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
 }
 
+TEST_F(XClusterDDLReplicationTest, AlterExistingColocatedTable) {
+  // Test alters on a table that is already part of replication.
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(
+      producer_conn.Execute("SET yb_xcluster_ddl_replication.TEST_allow_colocated_objects=1"));
+  ASSERT_OK(
+      producer_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN j int", kInitialColocatedTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 100) as i", kInitialColocatedTableName));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify row counts.
+  auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(GetYsqlTable(
+      &producer_cluster_, namespace_name, /*schema_name*/ "", kInitialColocatedTableName))));
+  auto consumer_table = ASSERT_RESULT(GetConsumerTable(ASSERT_RESULT(GetYsqlTable(
+      &producer_cluster_, namespace_name, /*schema_name*/ "", kInitialColocatedTableName))));
+  ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+}
+
 class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTest {
  public:
   void SetUp() override {
@@ -568,7 +592,7 @@ class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTes
 
       if (step == step_to_pause_on) {
         is_paused = true;
-        LOG(INFO) << "STARTING STEP " << kNumSteps + 1 << ": PAUSING";
+        LOG(INFO) << "STARTING STEP " << step_to_pause_on << ": PAUSING";
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = is_paused;
       }
 

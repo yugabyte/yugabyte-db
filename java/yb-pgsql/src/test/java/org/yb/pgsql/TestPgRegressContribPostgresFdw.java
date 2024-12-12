@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
@@ -26,6 +27,7 @@ public class TestPgRegressContribPostgresFdw extends BasePgRegressTest {
     return 1800;
   }
 
+  @Ignore("#24296")
   @Test
   public void schedule() throws Exception {
     runPgRegressTest(new File(TestUtils.getBuildRootDir(), "postgres_build/contrib/postgres_fdw"),

@@ -37,7 +37,7 @@ namespace yb::dockv {
 
 void AppendDocHybridTime(const DocHybridTime& doc_ht, KeyBytes* key) {
   key->AppendKeyEntryType(KeyEntryType::kHybridTime);
-  doc_ht.AppendEncodedInDocDbFormat(key->mutable_data());
+  doc_ht.AppendEncodedInDocDbFormat(&key->data());
 }
 
 void AppendHash(uint16_t hash, KeyBytes* key) {

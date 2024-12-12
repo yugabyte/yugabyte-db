@@ -55,7 +55,6 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
 
     opts.extra_master_flags.push_back("--enable_pg_cron=true");
 
-    opts.extra_tserver_flags.push_back("--vmodule=pg_cron*=4");
     opts.extra_tserver_flags.push_back("--enable_pg_cron=true");
 
     opts.extra_tserver_flags.push_back(
@@ -580,6 +579,44 @@ TEST_F(PgCronTest, DeactivateRunningJob) {
   // Make sure the other job is still running.
   const auto initial_row_count = ASSERT_RESULT(GetRowCount());
   ASSERT_OK(WaitForRowCountAbove(initial_row_count));
+}
+
+TEST_F(PgCronTest, CancelJobOnLeaderChange) {
+  // Start a job that will run for a long time.
+  ASSERT_OK(ScheduleJob("Sleep Job", "1 second", "SELECT pg_sleep(1000)"));
+  ASSERT_OK(Schedule1SecInsertJob());
+
+  ASSERT_OK(WaitForRowCountAbove(0));
+
+  auto nodes_running_sleep_jobs = [this]() -> Result<std::set<size_t>> {
+    std::set<size_t> nodes_running_job;
+    for (size_t idx = 0; idx < cluster_->num_tablet_servers(); ++idx) {
+      auto conn = VERIFY_RESULT(cluster_->ConnectToDB("yugabyte", idx));
+      if (VERIFY_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+              "SELECT COUNT(*) FROM pg_stat_activity WHERE query = 'SELECT pg_sleep(1000)'")) > 0) {
+        nodes_running_job.insert(idx);
+      }
+    }
+    return nodes_running_job;
+  };
+
+  const auto initial_nodes_running_job = ASSERT_RESULT(nodes_running_sleep_jobs());
+  ASSERT_EQ(initial_nodes_running_job.size(), 1);
+
+  ASSERT_OK(cluster_->MoveTabletLeader(tablet_id_));
+
+  // Wait for the new leader to start running.
+  const auto initial_row_count = ASSERT_RESULT(GetRowCount());
+  ASSERT_OK(WaitForRowCountAbove(initial_row_count));
+
+  const auto final_nodes_running_job = ASSERT_RESULT(nodes_running_sleep_jobs());
+  ASSERT_EQ(final_nodes_running_job.size(), 1);
+  ASSERT_NE(*final_nodes_running_job.begin(), *initial_nodes_running_job.begin());
+
+  const auto count_killed = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGUint64>(
+      "SELECT COUNT(*) FROM cron.job_run_details WHERE return_message = 'pg_cron leader changed'"));
+  ASSERT_TRUE(count_killed == 1 || count_killed == 2)
+      << count_killed << " rows found when only 1 or 2 is expected";
 }
 
 }  // namespace yb

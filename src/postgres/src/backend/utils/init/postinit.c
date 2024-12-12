@@ -1172,7 +1172,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	MyProc->databaseId = MyDatabaseId;
 
 	/* YB: Set the dbid in ASH metadata */
-	if (IsYugaByteEnabled() && yb_ash_enable_infra)
+	if (IsYugaByteEnabled() && yb_enable_ash)
 		YbAshSetDatabaseId(MyDatabaseId);
 
 	/*
@@ -1300,6 +1300,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 */
 		if (MyProcPort != NULL)
 			process_startup_options(MyProcPort, am_superuser);
+
+		if (YBIsDBLogicalClientVersionMode())
+			SendLogicalClientCacheVersionToFrontend();
 
 		/* Process pg_db_role_setting options */
 		process_settings(MyDatabaseId, GetSessionUserId());

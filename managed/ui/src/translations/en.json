@@ -172,7 +172,7 @@
         "warning": {
           "title": "Potential master failure detected",
           "threshold": "Auto master failover will attempt to remediate in {{duration}}. ",
-          "snoozeBtnText": "Snooze for 1 hour",
+          "snoozeBtnText": "Snooze failover task for 1 hour",
           "runtimeConfigMsg": "Auto master failover can be permanently disabled through the runtime config yb.auto_master_failover.enabled. "
         }
       },
@@ -181,7 +181,7 @@
           "title": "Post auto master failover actions pending",
           "threshold": "Post auto master failover actions will be attempted in {{duration}}. ",
           "manualCleanup": "Any underlying node failures need to be addressed manually through the Replace Node action.",
-          "snoozeBtnText": "Snooze for 1 hour"
+          "snoozeBtnText": "Snooze post-failover task for 1 hour"
         }
       },
       "helmOverrides": {
@@ -348,7 +348,7 @@
         "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
         "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>",
         "enableConnectionPooling": "Enable Connection Pooling",
-        "conPoolTooltip": "Use built-in YSQL service for maximizing the number of simultaneous connections to your database",
+        "conPoolTooltip": "Use built-in YSQL service for maximizing the number of<br /> simultaneous connections to your database.",
         "conPoolVersionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
         "conPoolYSQLWarn": "Enable YSQL first to use connection pooling.",
         "conPoolDBVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
@@ -478,7 +478,7 @@
         "flagsModifiedModalLine2": "Note that current changes will be lost.",
         "numNodesToRollingUpgrade": "Max batch size: ",
         "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
-        "pgGroupWarning": "You can't change this flag because it was set using the Enhanced Postgres Compatibility option"
+        "pgGroupWarning": "You can't change the disabled fields because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",

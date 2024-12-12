@@ -130,7 +130,7 @@ class TransactionStatusResolver::Impl {
     client->LookupTabletById(
         tablet_id_and_queue.first,
         nullptr /* table */,
-        master::IncludeInactive::kFalse,
+        master::IncludeHidden::kFalse,
         master::IncludeDeleted::kTrue,
         std::min(deadline_, TransactionRpcDeadline()),
         std::bind(&Impl::LookupTabletDone, this, _1),

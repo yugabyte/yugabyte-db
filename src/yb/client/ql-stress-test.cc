@@ -280,7 +280,8 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
     if (!peer->tablet() || peer->tablet()->metadata()->table_id() != table_.table()->id()) {
       continue;
     }
-    const auto tablet_entries = EXPECT_RESULT(peer->tablet()->TEST_CountRegularDBRecords());
+    const auto tablet_entries = EXPECT_RESULT(peer->tablet()->TEST_CountDBRecords(
+        docdb::StorageDbType::kRegular));
     auto raft_consensus = EXPECT_RESULT(peer->GetRaftConsensus());
     auto request_counts = raft_consensus->TEST_CountRetryableRequests();
     LOG(INFO) << "T " << peer->tablet()->tablet_id() << " P " << peer->permanent_uuid()

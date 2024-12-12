@@ -54,6 +54,7 @@
 
 // Global variables.
 extern const char *kManualReplicationErrorMsg;
+extern bool TEST_AllowColocatedObjects;
 
 // Get int64 value from string extension variable.
 int64 GetInt64FromVariable(const char *var, const char *var_name);

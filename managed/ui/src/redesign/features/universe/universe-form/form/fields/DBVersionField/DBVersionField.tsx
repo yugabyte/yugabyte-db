@@ -33,7 +33,6 @@ const MAX_RELEASE_TAG_CHAR = 20;
 
 interface DBVersionFieldProps {
   disabled?: boolean;
-  isReleasesEnabled: boolean;
 }
 
 //Declarative methods
@@ -102,10 +101,7 @@ const transformData = (data: string[] | Record<string, YBSoftwareMetadata>) => {
   }
 };
 
-export const DBVersionField = ({
-  disabled,
-  isReleasesEnabled
-}: DBVersionFieldProps): ReactElement => {
+export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
   const classes = useFormFieldStyles();
@@ -129,7 +125,7 @@ export const DBVersionField = ({
           provider?.code === CloudType.aws
           ? cpuArch ?? ArchitectureType.X86_64
           : null,
-        isReleasesEnabled
+        true
       ),
     {
       enabled: !!provider?.uuid,
@@ -137,11 +133,9 @@ export const DBVersionField = ({
         //pre-select first available db version
         const stableSorted: Record<string, string>[] = sortVersionStrings(
           data?.filter((versionData: any) => {
-            return isReleasesEnabled
-              ? isVersionStable(versionData.label.version)
-              : isVersionStable(versionData.label);
+            return isVersionStable(versionData.label.version);
           }),
-          isReleasesEnabled
+          true
         );
         // Display the latest stable version on the Create Universe page
         if (!getValues(SOFTWARE_VERSION_FIELD) && stableSorted.length) {
@@ -167,24 +161,24 @@ export const DBVersionField = ({
   const stableDbVersions: Record<string, string>[] = data
     ? sortVersionStrings(
         data?.filter((versionData: any) => {
-          return isReleasesEnabled
-            ? versionData.label.state === ReleaseState.ACTIVE &&
-                isVersionStable(versionData.label.version)
-            : isVersionStable(versionData.label);
+          return (
+            versionData.label.state === ReleaseState.ACTIVE &&
+            isVersionStable(versionData.label.version)
+          );
         }),
-        isReleasesEnabled
+        true
       )
     : [];
 
   const previewDbVersions: Record<string, string>[] = data
     ? sortVersionStrings(
         data?.filter((versionData: any) => {
-          return isReleasesEnabled
-            ? versionData.label.state === ReleaseState.ACTIVE &&
-                !isVersionStable(versionData.label.version)
-            : !isVersionStable(versionData.label);
+          return (
+            versionData.label.state === ReleaseState.ACTIVE &&
+            !isVersionStable(versionData.label.version)
+          );
         }),
-        isReleasesEnabled
+        true
       )
     : [];
 
@@ -192,7 +186,7 @@ export const DBVersionField = ({
   const dbVersions: Record<string, any>[] = [
     ...stableDbVersions.map((stableDbVersion: Record<string, string>) => ({
       label: stableDbVersion.value,
-      releaseTag: isReleasesEnabled ? stableDbVersion.releaseTag : '',
+      releaseTag: stableDbVersion.releaseTag,
       value: stableDbVersion.value,
       series: `v${stableDbVersion.value.split('.')[0]}.${
         stableDbVersion.value.split('.')[1]
@@ -200,7 +194,7 @@ export const DBVersionField = ({
     })),
     ...previewDbVersions.map((previewDbVersion: Record<string, string>) => ({
       label: previewDbVersion.value,
-      releaseTag: isReleasesEnabled ? previewDbVersion.releaseTag : '',
+      releaseTag: previewDbVersion.releaseTag,
       value: previewDbVersion.value,
       series: `v${previewDbVersion.value.split('.')[0]}.${
         previewDbVersion.value.split('.')[1]

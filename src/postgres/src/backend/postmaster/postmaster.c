@@ -1077,7 +1077,7 @@ PostmasterMain(int argc, char *argv[])
 		YbQueryDiagnosticsBgWorkerRegister();
 
 	/* Register ASH collector */
-	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
 		YbAshRegister();
 
 	/*
@@ -2388,7 +2388,6 @@ retry1:
 							 errmsg("yb_authonly can only be set "
 							   "if the connection is made over unix domain "
 							   "socket")));
-
 				yb_is_client_ysqlconnmgr = yb_is_auth_backend;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
@@ -2553,8 +2552,6 @@ retry1:
 
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
-	else if (YbIsClientYsqlConnMgr())
-		MyBackendType = YB_YSQL_CONN_MGR;
 	else
 		MyBackendType = B_BACKEND;
 
@@ -5707,7 +5704,7 @@ sigusr1_handler(SIGNAL_ARGS)
 	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_START_WALRECEIVER) &&
-	    !YBIsEnabledInPostgresEnvVar())
+		!YBIsEnabledInPostgresEnvVar())
 	{
 		/* Startup Process wants us to start the walreceiver process. */
 		/* Start immediately if possible, else remember request for later. */
@@ -6150,6 +6147,9 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				 NULL,			/* no out_dbname */
 				 NULL);			/* session id */
 
+	if (yb_enable_ash)
+		YbAshSetMetadataForBgworkers();
+
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
 		ereport(ERROR,
@@ -6178,6 +6178,9 @@ YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
 				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
 				 NULL,			/* no out_dbname */
 				 session_id);	/* session id */
+
+	if (yb_enable_ash)
+		YbAshSetMetadataForBgworkers();
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())

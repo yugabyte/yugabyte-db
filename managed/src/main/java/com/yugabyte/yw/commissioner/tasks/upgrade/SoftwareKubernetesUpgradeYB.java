@@ -109,6 +109,11 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
 
+          if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+            createPodDisruptionBudgetPolicyTask(false /* deletePDB */)
+                .setSubTaskGroupType(getTaskSubGroupType());
+          }
+
           if (!taskParams().rollbackSupport) {
             createFinalizeUpgradeTasks(taskParams().upgradeSystemCatalog);
             return;

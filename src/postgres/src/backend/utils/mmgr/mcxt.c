@@ -178,7 +178,8 @@ YbPgMemSubConsumption(Size sz)
 void
 YbPgMemResetStmtConsumption()
 {
-	PgMemTracker.stmt_max_mem_base_bytes = YbSnapshotMemory();
+	PgMemTracker.stmt_max_mem_base_bytes =
+		yb_run_with_explain_analyze ? YbSnapshotMemory() : 0;
 	PgMemTracker.stmt_max_mem_bytes = 0;
 }
 

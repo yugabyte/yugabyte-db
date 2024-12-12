@@ -442,9 +442,8 @@ public class SessionController extends AbstractPlatformController {
 
     try {
       // Persist the JWT auth token in case of successful login.
-      ProfileManager<CommonProfile> profileManager =
-          thirdPartyLoginHandler.getProfileManager(request);
-      CommonProfile profile = profileManager.get(true).get();
+      ProfileManager profileManager = thirdPartyLoginHandler.getProfileManager(request);
+      CommonProfile profile = profileManager.getProfile(CommonProfile.class).get();
       String refreshTokenEndpoint = confGetter.getGlobalConf(GlobalConfKeys.ybSecuritySecret);
       if (profile.containsAttribute("refresh_token") && refreshTokenEndpoint != null) {
         refreshAccessToken.start(profileManager, user);
@@ -709,7 +708,7 @@ public class SessionController extends AbstractPlatformController {
         runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
 
     // Sync all the built-in roles when a new customer is created.
-    R__Sync_System_Roles.syncSystemRoles();
+    R__Sync_System_Roles.syncSystemRoles(cust.getUuid());
 
     if (useNewAuthz) {
       Role newRbacRole = Role.get(cust.getUuid(), role.name());

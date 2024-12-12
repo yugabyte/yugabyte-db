@@ -229,8 +229,8 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
     VTRACE_TO(1, rpc->trace(), "Sending Rpc");
     rpc->SendRpc();
   } else {
-    // Service unavailable here means that we failed to to schedule delayed task, i.e. reactor
-    // is shutted down.
+    // Service unavailable here means that we failed to schedule delayed task, i.e. reactor
+    // is shut down.
     if (new_status.IsServiceUnavailable()) {
       new_status = STATUS_FORMAT(Aborted, "Aborted because of $0", new_status);
     }
@@ -309,8 +309,9 @@ CoarseTimePoint Rpcs::DoRequestAbortAll(RequestShutdown shutdown) {
     std::lock_guard lock(*mutex_);
     if (!shutdown_) {
       shutdown_ = shutdown;
-      calls.reserve(calls_.size());
       calls.assign(calls_.begin(), calls_.end());
+    } else if (shutdown) {
+      CHECK(calls_.empty());
     }
   }
   auto deadline = CoarseMonoClock::now() + FLAGS_rpcs_shutdown_timeout_ms * 1ms;

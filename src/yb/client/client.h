@@ -49,6 +49,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/clock.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
@@ -74,6 +75,7 @@
 
 #include "yb/server/clock.h"
 
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/util/enums.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
@@ -286,6 +288,8 @@ class YBClientBuilder {
 
   DISALLOW_COPY_AND_ASSIGN(YBClientBuilder);
 };
+
+YB_STRONGLY_TYPED_BOOL(SkipHidden);
 
 // The YBClient represents a connection to a cluster. From the user
 // perspective, they should only need to create one of these in their
@@ -607,7 +611,8 @@ class YBClient {
       CoarseTimePoint deadline = CoarseTimePoint(),
       const CDCSDKDynamicTablesOption& dynamic_tables_option =
           CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
-      uint64_t* consistent_snapshot_time_out = nullptr);
+      uint64_t* consistent_snapshot_time_out = nullptr,
+      const std::optional<ReplicationSlotLsnType>& lsn_type = std::nullopt);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -649,7 +654,8 @@ class YBClient {
       std::optional<uint64_t>* stream_creation_time = nullptr,
       std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map = nullptr,
       std::optional<std::string>* replication_slot_name = nullptr,
-      std::vector<TableId>* unqualified_table_ids = nullptr);
+      std::vector<TableId>* unqualified_table_ids = nullptr,
+      std::optional<ReplicationSlotLsnType>* lsn_type = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,
@@ -746,7 +752,7 @@ class YBClient {
       const std::string& filter = "",
       bool exclude_ysql = false,
       const std::string& ysql_db_filter = "",
-      bool skip_hidden = false);
+      SkipHidden skip_hidden = SkipHidden::kFalse);
 
   // List tables in a namespace.
   //
@@ -806,19 +812,23 @@ class YBClient {
   Result<int> WaitForYsqlBackendsCatalogVersion(
       const std::string& database_name,
       uint64_t version,
-      const MonoDelta& timeout = MonoDelta());
+      const MonoDelta& timeout = MonoDelta(),
+      pid_t requestor_pg_backend_pid = -1);
   Result<int> WaitForYsqlBackendsCatalogVersion(
       const std::string& database_name,
       uint64_t version,
-      const CoarseTimePoint& deadline);
+      const CoarseTimePoint& deadline,
+      pid_t requestor_pg_backend_pid = -1);
   Result<int> WaitForYsqlBackendsCatalogVersion(
       PgOid database_oid,
       uint64_t version,
-      const MonoDelta& timeout = MonoDelta());
+      const MonoDelta& timeout = MonoDelta(),
+      pid_t requestor_pg_backend_pid = -1);
   Result<int> WaitForYsqlBackendsCatalogVersion(
       PgOid database_oid,
       uint64_t version,
-      const CoarseTimePoint& deadline);
+      const CoarseTimePoint& deadline,
+      pid_t requestor_pg_backend_pid = -1);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   Status ListMasters(
@@ -827,7 +837,7 @@ class YBClient {
 
   // Check if the table given by 'table_name' exists. 'skip_hidden' indicates whether to consider
   // hidden tables. Result value is set only on success.
-  Result<bool> TableExists(const YBTableName& table_name, bool skip_hidden = false);
+  Result<bool> TableExists(const YBTableName& table_name);
 
   Result<bool> IsLoadBalanced(uint32_t num_servers);
   Result<bool> IsLoadBalancerIdle();
@@ -855,6 +865,7 @@ class YBClient {
 
   void OpenTableAsync(const YBTableName& table_name, const OpenTableAsyncCallback& callback);
   void OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+                      master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                       master::GetTableSchemaResponsePB* resp = nullptr);
 
   Result<YBTablePtr> OpenTable(const TableId& table_id);
@@ -956,7 +967,7 @@ class YBClient {
 
   void LookupTabletById(const std::string& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
-                        master::IncludeInactive include_inactive,
+                        master::IncludeHidden include_hidden,
                         master::IncludeDeleted include_deleted,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
@@ -1039,6 +1050,8 @@ class YBClient {
       const tserver::TabletConsensusInfoPB& newly_received_info);
 
   int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
+
+  void RequestAbortAllRpcs();
 
  private:
   class Data;
