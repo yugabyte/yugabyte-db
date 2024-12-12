@@ -641,6 +641,12 @@ extern bool yb_test_system_catalogs_creation;
  */
 extern bool yb_test_fail_next_ddl;
 
+/*
+ * If set to true,the next DDL will update the catalog in force mode which
+ * allows it to operate even during ysql major catalog upgrades.
+ */
+extern bool yb_force_catalog_update_on_next_ddl;
+
 /* If set to true, all drop commands will fail. */
 extern bool yb_test_fail_all_drops;
 

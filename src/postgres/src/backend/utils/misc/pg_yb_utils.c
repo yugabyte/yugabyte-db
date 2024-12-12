@@ -1657,6 +1657,8 @@ bool yb_test_system_catalogs_creation = false;
 
 bool yb_test_fail_next_ddl = false;
 
+bool yb_force_catalog_update_on_next_ddl = false;
+
 bool yb_test_fail_all_drops = false;
 
 bool yb_test_fail_next_inc_catalog_version = false;
@@ -1894,6 +1896,7 @@ YBResetDdlState()
 	}
 	ddl_transaction_state = (struct DdlTransactionState){0};
 	YBResetEnableSpecialDDLMode();
+	YBCForceAllowCatalogModifications(false);
 	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
 	HandleYBStatus(status);
 }
@@ -1920,7 +1923,17 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 
 		MemoryContextSwitchTo(ddl_transaction_state.mem_context);
 		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
+
+		if (yb_force_catalog_update_on_next_ddl)
+		{
+			YBCForceAllowCatalogModifications(true);
+			yb_force_catalog_update_on_next_ddl = false;
+			if (YbIsClientYsqlConnMgr())
+				YbSendParameterStatusForConnectionManager(
+					"yb_force_catalog_update_on_next_ddl", "false");
+		}
 	}
+
 	++ddl_transaction_state.nesting_level;
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
@@ -1992,6 +2005,7 @@ YBDecrementDdlNestingLevel()
 
 		ddl_transaction_state = (DdlTransactionState) {};
 
+		YBCForceAllowCatalogModifications(false);
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(
 			MyDatabaseId, is_silent_altering));
 

@@ -2244,4 +2244,8 @@ Status PgApiImpl::RestoreReadTimePoint(uint64_t read_time_point_handle) {
   return pg_txn_manager_->RestoreReadTimePoint(read_time_point_handle);
 }
 
+void PgApiImpl::ForceAllowCatalogModifications(bool allowed) {
+  pg_session_->SetForceAllowCatalogModifications(allowed);
+}
+
 } // namespace yb::pggate

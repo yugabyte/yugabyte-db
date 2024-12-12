@@ -936,6 +936,8 @@ YBCStatus YBCDatabaseClones(YBCPgDatabaseCloneInfo** databaseClones, size_t* cou
 uint64_t YBCPgGetCurrentReadTimePoint();
 YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);
 
+void YBCForceAllowCatalogModifications(bool allowed);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

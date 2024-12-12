@@ -295,6 +295,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
 
+
+  void SetForceAllowCatalogModifications(bool allowed);
+
+  bool AreCatalogModificationsForceAllowed() const { return force_allow_catalog_modifications_; }
+
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
@@ -368,6 +373,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   const bool is_major_pg_version_upgrade_;
 
   const WaitEventWatcher& wait_event_watcher_;
+
+  bool force_allow_catalog_modifications_ = false;
 };
 
 }  // namespace yb::pggate

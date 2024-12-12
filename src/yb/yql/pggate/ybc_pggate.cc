@@ -2825,6 +2825,10 @@ YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle) {
   return ToYBCStatus(pgapi->RestoreReadTimePoint(read_time_point_handle));
 }
 
-} // extern "C"
+void YBCForceAllowCatalogModifications(bool allowed) {
+  pgapi->ForceAllowCatalogModifications(allowed);
+}
+
+}  // extern "C"
 
 } // namespace yb::pggate
