@@ -89,6 +89,7 @@ typedef struct YbQueryDiagnosticsBundles
 } YbQueryDiagnosticsBundles;
 
 /* GUC variables */
+bool yb_enable_query_diagnostics;
 int yb_query_diagnostics_bg_worker_interval_ms;
 int yb_query_diagnostics_circular_buffer_size;
 
@@ -369,10 +370,10 @@ yb_get_query_diagnostics_status(PG_FUNCTION_ARGS)
 	MemoryContext oldcontext;
 
 	/* Ensure that query diagnostics is enabled */
-	if (!YBIsQueryDiagnosticsEnabled())
+	if (!yb_enable_query_diagnostics)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("TEST_yb_enable_query_diagnostics gflag must be true")));
+				 errmsg("ysql_yb_enable_query_diagnostics gflag must be true")));
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -2087,11 +2088,11 @@ FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinfo)
 Datum
 yb_query_diagnostics(PG_FUNCTION_ARGS)
 {
-	if (!YBIsQueryDiagnosticsEnabled())
+	if (!yb_enable_query_diagnostics)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("query diagnostics is not enabled"),
-				 errhint("Set TEST_yb_enable_query_diagnostics gflag to true")));
+				 errhint("Set ysql_yb_enable_query_diagnostics gflag to true")));
 
 	YbQueryDiagnosticsMetadata metadata;
 	metadata.start_time = GetCurrentTimestamp();
@@ -2115,11 +2116,11 @@ yb_query_diagnostics(PG_FUNCTION_ARGS)
 Datum
 yb_cancel_query_diagnostics(PG_FUNCTION_ARGS)
 {
-	if (!YBIsQueryDiagnosticsEnabled())
+	if (!yb_enable_query_diagnostics)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("query diagnostics is not enabled"),
-				 errhint("Set TEST_yb_enable_query_diagnostics gflag to true")));
+				 errhint("Set ysql_yb_enable_query_diagnostics gflag to true")));
 
 	int64			query_id = PG_GETARG_INT64(0);
 	YbQueryDiagnosticsEntry *entry;

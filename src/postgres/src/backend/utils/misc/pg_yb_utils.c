@@ -982,7 +982,7 @@ YBInitPostgresBackend(
 			if (yb_enable_ash)
 				YbAshInit();
 
-			if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+			if (yb_enable_query_diagnostics)
 				YbQueryDiagnosticsInstallHook();
 		}
 

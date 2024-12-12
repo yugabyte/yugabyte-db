@@ -3037,6 +3037,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_query_diagnostics", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Enables the collection of query diagnostics data "
+						 "for YSQL queries, facilitating the creation of diagnostic bundles."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_query_diagnostics,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

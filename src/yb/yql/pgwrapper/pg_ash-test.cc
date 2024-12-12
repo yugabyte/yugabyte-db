@@ -125,7 +125,9 @@ class PgBgWorkersTest : public PgAshSingleNode {
     options->extra_tserver_flags.push_back("--enable_pg_cron=true");
     options->extra_tserver_flags.push_back(
         "--ysql_pg_conf_csv=cron.yb_job_list_refresh_interval=1");
-    options->extra_tserver_flags.push_back("--TEST_yb_enable_query_diagnostics=true");
+    options->extra_tserver_flags.push_back(
+    "--allowed_preview_flags_csv=ysql_yb_enable_query_diagnostics");
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_query_diagnostics=true");
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_wait_code_to_sleep_at=$0",
         to_underlying(ash::WaitStateCode::kCatalogRead)));
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",

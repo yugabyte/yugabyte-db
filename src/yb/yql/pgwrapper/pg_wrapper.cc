@@ -298,9 +298,6 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
 DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
   "Determines the behavior of read-after-commit-visibility guarantee.");
 
-DEFINE_test_flag(bool, yb_enable_query_diagnostics, false,
-              "True to enable Query Diagnostics");
-
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
     "Enable preloading of foreign key information into the relation cache.");
 
@@ -317,6 +314,10 @@ DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
 
 DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
             "Trust YSQL connections via the local socket from the yugabyte user.");
+
+DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
+    "Enables the collection of query diagnostics data for YSQL queries, "
+    "facilitating the creation of diagnostic bundles.");
 
 DECLARE_bool(enable_pg_cron);
 

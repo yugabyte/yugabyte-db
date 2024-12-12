@@ -110,7 +110,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     public void setUp() throws Exception {
         /* Set Gflags and restart cluster */
         Map<String, String> flagMap = super.getTServerFlags();
-        flagMap.put("TEST_yb_enable_query_diagnostics", "true");
+        flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_query_diagnostics");
+        flagMap.put("ysql_yb_enable_query_diagnostics", "true");
 
         /* Required for some of the fields within schema details */
         flagMap.put("ysql_beta_features", "true");
@@ -123,7 +124,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     public void setUp(int queryDiagnosticsCircularBufferSize) throws Exception {
         /* Set Gflags and restart cluster */
         Map<String, String> flagMap = super.getTServerFlags();
-        flagMap.put("TEST_yb_enable_query_diagnostics", "true");
+        flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_query_diagnostics");
+        flagMap.put("ysql_yb_enable_query_diagnostics", "true");
         appendToYsqlPgConf(flagMap,
                             "yb_query_diagnostics_circular_buffer_size=" +
                             queryDiagnosticsCircularBufferSize);
