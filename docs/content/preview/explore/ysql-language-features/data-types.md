@@ -21,7 +21,7 @@ Whether you're storing text, numbers, dates, or more complex data like arrays an
 This guide explores the different data types to use to handle different kinds of data efficiently.
 
 {{<tip>}}
-For a list of supported and unsupported data types, see [Data types](../sql-feature-support/#data-types).
+For a list of supported and unsupported data types, see [Data types](../../../api/ysql/sql-feature-support/#data-types).
 {{</tip>}}
 
 ## Setup
