@@ -110,7 +110,8 @@ clean-package:
 	rm -rf ${PACKAGE_NAME}
 
 .PHONY: test
-test:
+test: config
+	go test ./...
 
 .PHONY: config
 config:
