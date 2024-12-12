@@ -12708,7 +12708,7 @@
           "type" : "string"
         },
         "status" : {
-          "enum" : [ "Running", "Success", "Failed" ],
+          "enum" : [ "Running", "Success", "Failed", "Aborted" ],
           "type" : "string"
         }
       },

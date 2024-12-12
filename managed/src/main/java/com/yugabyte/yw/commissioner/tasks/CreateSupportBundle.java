@@ -16,6 +16,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -52,6 +54,7 @@ import org.apache.commons.lang3.time.DateUtils;
 import play.libs.Json;
 
 @Slf4j
+@Abortable
 public class CreateSupportBundle extends AbstractTaskBase {
 
   @Inject private UniverseInfoHandler universeInfoHandler;
@@ -86,11 +89,17 @@ public class CreateSupportBundle extends AbstractTaskBase {
       operatorStatusUpdater.markSupportBundleFinished(
           supportBundle, taskParams().getKubernetesResourceDetails(), gzipPath);
     } catch (Exception e) {
-      taskParams().supportBundle.setStatus(SupportBundleStatusType.Failed);
-      operatorStatusUpdater.markSupportBundleFailed(
-          supportBundle, taskParams().getKubernetesResourceDetails());
-      Throwables.throwIfUnchecked(e);
-      throw new RuntimeException(e);
+      TaskInfo taskInfo = getRunnableTask().getTaskInfo();
+      if (taskInfo.getTaskState().equals(TaskInfo.State.Abort)) {
+        log.info("Marking support bundle with UUID: {} as aborted.", supportBundle.getBundleUUID());
+        supportBundle.setStatus(SupportBundleStatusType.Aborted);
+      } else {
+        supportBundle.setStatus(SupportBundleStatusType.Failed);
+        operatorStatusUpdater.markSupportBundleFailed(
+            supportBundle, taskParams().getKubernetesResourceDetails());
+        Throwables.throwIfUnchecked(e);
+        throw new RuntimeException(e);
+      }
     } finally {
       supportBundle.update();
     }
