@@ -62,6 +62,7 @@
 #include "utils/tuplestore.h"
 
 #include "pg_yb_utils.h"
+#include "utils/yb_tuplecache.h"
 
 /* GUC variables */
 int			SessionReplicationRole = SESSION_REPLICATION_ROLE_ORIGIN;
@@ -94,6 +95,7 @@ static void AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 					  TransitionCaptureState *transition_capture);
 static void AfterTriggerEnlargeQueryState(void);
 static bool before_stmt_triggers_fired(Oid relid, CmdType cmdType);
+static int YbTriggerNameCmp(const void *a, const void *b);
 
 
 /*
@@ -1919,7 +1921,7 @@ EnableDisableTrigger(Relation rel, const char *tgname,
  * structure into cache memory.
  */
 void
-RelationBuildTriggers(Relation relation)
+RelationBuildTriggers(Relation relation, const YbTupleCache *yb_pg_trigger_cache)
 {
 	TriggerDesc *trigdesc;
 	int			numtrigs;
@@ -1933,6 +1935,11 @@ RelationBuildTriggers(Relation relation)
 	MemoryContext ybSavedContext;
 	MemoryContext ybTriggerContext;
 	int			i;
+	YbTupleCacheIterator iter;
+
+	bool use_yb_tuple_cache = IsYugaByteEnabled() &&
+		*YBCGetGFlags()->ysql_use_optimized_relcache_update &&
+		yb_pg_trigger_cache;
 
 	if (IsYugaByteEnabled())
 	{
@@ -1951,22 +1958,32 @@ RelationBuildTriggers(Relation relation)
 	triggers = (Trigger *) palloc(maxtrigs * sizeof(Trigger));
 	numtrigs = 0;
 
+	tgrel = heap_open(TriggerRelationId, AccessShareLock);
+
 	/*
-	 * Note: since we scan the triggers using TriggerRelidNameIndexId, we will
+	 * TODO(kfranz): since we scan the triggers using TriggerRelidNameIndexId, we will
 	 * be reading the triggers in name order, except possibly during
 	 * emergency-recovery operations (ie, IgnoreSystemIndexes). This in turn
 	 * ensures that triggers will be fired in name order.
 	 */
-	ScanKeyInit(&skey,
-				Anum_pg_trigger_tgrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(relation)));
+	if (use_yb_tuple_cache)
+	{
+		Oid relid = RelationGetRelid(relation);
+		iter = YbTupleCacheIteratorBegin(yb_pg_trigger_cache, &relid);
+	}
+	else
+	{
+		ScanKeyInit(&skey,
+					Anum_pg_trigger_tgrelid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(RelationGetRelid(relation)));
+		tgscan = systable_beginscan(tgrel, TriggerRelidNameIndexId, true,
+									NULL, 1, &skey);
+	}
 
-	tgrel = heap_open(TriggerRelationId, AccessShareLock);
-	tgscan = systable_beginscan(tgrel, TriggerRelidNameIndexId, true,
-								NULL, 1, &skey);
-
-	while (HeapTupleIsValid(htup = systable_getnext(tgscan)))
+	while (HeapTupleIsValid(htup = use_yb_tuple_cache ?
+							 YbTupleCacheIteratorGetNext(iter) :
+							 systable_getnext(tgscan)))
 	{
 		Form_pg_trigger pg_trigger = (Form_pg_trigger) GETSTRUCT(htup);
 		Trigger    *build;
@@ -2051,7 +2068,18 @@ RelationBuildTriggers(Relation relation)
 		numtrigs++;
 	}
 
-	systable_endscan(tgscan);
+	if (use_yb_tuple_cache)
+	{
+		YbTupleCacheIteratorEnd(iter);
+
+		/* Vanilla PG would have loaded the triggers in name order because it does a partial
+		 * scan on pg_trigger_tgrelid_tgname_index using tgrelid. We aren't using that index
+		 * so we need to sort the triggers by name here. */
+		qsort(triggers, numtrigs, sizeof(Trigger), YbTriggerNameCmp);
+	}
+	else
+		systable_endscan(tgscan);
+
 	heap_close(tgrel, AccessShareLock);
 
 	/* There might not be any triggers */
@@ -6333,4 +6361,17 @@ Datum
 pg_trigger_depth(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_INT32(MyTriggerDepth);
+}
+
+
+/*
+ * qsort comparator to sort TriggerDesc entries by name
+ */
+static int
+YbTriggerNameCmp(const void *a, const void *b)
+{
+	const Trigger *ta = (const Trigger *) a;
+	const Trigger *tb = (const Trigger *) b;
+
+	return strcmp(ta->tgname, tb->tgname);
 }
