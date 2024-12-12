@@ -2546,6 +2546,7 @@ class TestRedisServiceExternal : public TestRedisService {
   void TestPubSub(LocalOrCluster ltype, SubOrUnsub stype, PatternOrChannel ptype);
 
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->extra_tserver_flags.push_back("--start_redis_proxy=true");
     opts->extra_tserver_flags.push_back(
         "--redis_connection_soft_limit_grace_period_sec=" +
         AsString(static_cast<int>(kSoftLimitGracePeriod.ToSeconds())));
