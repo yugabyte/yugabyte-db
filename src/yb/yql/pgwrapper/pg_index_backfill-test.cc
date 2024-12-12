@@ -2458,4 +2458,70 @@ TEST_F_EX(PgIndexBackfillTest,
   ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<PGUint64>(query)), 0);
 }
 
+class PgIndexBackfill1kRowsPerSec : public PgIndexBackfillTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        Format("--backfill_index_write_batch_size=$0", kBackfillRateRowsPerSec));
+    options->extra_tserver_flags.push_back(
+        Format("--backfill_index_rate_rows_per_sec=$0", kBackfillRateRowsPerSec));
+  }
+
+ protected:
+  static constexpr auto kBackfillRateRowsPerSec = 1000;
+  static constexpr auto kNumRows = 10000;
+};
+
+// Test for GH Issue (#25250):
+TEST_F_EX(PgIndexBackfillTest, ConcurrentDelete, PgIndexBackfill1kRowsPerSec) {
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k int, v int, PRIMARY KEY (k ASC)) split at values "
+      "(($1))", kTableName, kNumRows+1));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 (k, v) SELECT i, i FROM generate_series(1, $1) AS i;", kTableName, kNumRows));
+
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create index thread";
+    auto create_idx_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_idx_conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 (v) SPLIT INTO 10 TABLETS", kIndexName, kTableName));
+    LOG(INFO) << "End create index thread";
+  });
+
+  ASSERT_OK(EnsureClientCreated());
+  ASSERT_OK(WaitFor(
+      [this]() {
+        return client_->TableExists(client::YBTableName(
+            YQL_DATABASE_PGSQL, kDatabaseName, kIndexName));
+      },
+      30s,
+      "wait for index to exist"));
+  ASSERT_OK(WaitForIndexProgressOutput(kPhase, kPhaseBackfilling));
+  LOG(INFO) << "Index backfill has started";
+
+  // Perform a DELETE half way into the backfill. This way the DELETE happens after a backfill
+  // write time is chosen, but before the row 9999 is backfilled.
+  SleepFor(MonoDelta::FromSeconds(kNumRows / (2 * kBackfillRateRowsPerSec)));
+  ASSERT_OK(conn_->ExecuteFormat("DELETE FROM $0 WHERE k=$1", kTableName, kNumRows));
+  LOG(INFO) << "Deleted row";
+
+  // Ensure that we haven't yet finished backfilling the last row.
+  const std::string& index_progress_query =
+    "SELECT phase, tuples_done FROM pg_stat_progress_create_index";
+  auto res = ASSERT_RESULT(conn_->Fetch(index_progress_query));
+  ASSERT_EQ(ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)), kPhaseBackfilling);
+  auto tuples_backfilled = ASSERT_RESULT(GetValue<PGUint64>(res.get(), 0, 1));
+  ASSERT_LT(tuples_backfilled, kNumRows);
+
+  // Use an index only scan to ensure that the row with key kNumRows is absent in the index.
+  // If the backfilled index entry for this key has a write time higher than the DELETE above,
+  // the row would be present in the index and show up in an index only scan.
+  const std::string query = Format("/*+IndexOnlyScan($0 $1) */ SELECT count(*) FROM $0 WHERE v=$2",
+                                   kTableName, kIndexName, kNumRows);
+  ASSERT_OK(WaitForIndexScan(query));
+  ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<PGUint64>(query)), 0);
+  thread_holder_.JoinAll();
+}
+
 } // namespace yb::pgwrapper
