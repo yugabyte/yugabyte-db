@@ -6,7 +6,7 @@ menu:
   v2024.1:
     identifier: advanced-features-collations
     parent: advanced-features
-    weight: 240
+    weight: 100
 type: docs
 ---
 

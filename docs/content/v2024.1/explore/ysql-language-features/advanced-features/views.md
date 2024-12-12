@@ -6,7 +6,7 @@ menu:
   v2024.1:
     identifier: advanced-features-views
     parent: advanced-features
-    weight: 230
+    weight: 800
 type: docs
 ---
 

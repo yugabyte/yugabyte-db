@@ -6,7 +6,7 @@ menu:
   v2024.1:
     identifier: advanced-features-foreign-data-wrappers
     parent: advanced-features
-    weight: 245
+    weight: 300
 type: docs
 ---
 

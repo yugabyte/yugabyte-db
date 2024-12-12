@@ -6,7 +6,7 @@ menu:
   v2024.1:
     identifier: advanced-features-partitions
     parent: advanced-features
-    weight: 225
+    weight: 600
 type: docs
 ---
 
