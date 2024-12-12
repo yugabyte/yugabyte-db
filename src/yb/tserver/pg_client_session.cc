@@ -406,7 +406,6 @@ Result<PgClientSessionOperations> PrepareOperations(
       auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, sidecars, &write);
       if (write_time) {
         write_op->SetWriteTime(write_time);
-        write_time = HybridTime::kInvalid;
       }
       ops.push_back(PgClientSessionOperation {
         .op = std::move(write_op),
