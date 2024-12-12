@@ -622,6 +622,12 @@ class NodeChecker():
 
     def get_disk_utilization(self):
         cmd = 'df -hl -x squashfs -x overlay 2>/dev/null'
+        # On Kubernetes we only want to check the PV size and not the tmpfs/devtmpfs or others.
+        # awk NR==1 is to keep the header for the command so as to not change the output.
+        if self.is_k8s:
+            # split long lines.
+            cmd =( 'df -hl -x squashfs -x overlay -x tmpfs -x devtmpfs 2>/dev/null'
+                   ' | awk "NR==1 || /\/mnt/"')
         return self._check_output(cmd)
 
     def check_disk_utilization(self):
