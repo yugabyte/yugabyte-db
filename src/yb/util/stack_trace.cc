@@ -399,10 +399,10 @@ Result<StackTrace> ThreadStack(ThreadIdForStack tid) {
 }
 
 std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>& tids) {
-  static const Status status = STATUS(
+  static const Status default_status = STATUS(
       RuntimeError, "Thread did not respond: maybe it is blocking signals");
 
-  std::vector<Result<StackTrace>> result(tids.size(), status);
+  std::vector<Result<StackTrace>> result(tids.size(), default_status);
   std::lock_guard execution_lock(thread_stack_helper.mutex);
 
   // Ensure that our signal handler is installed. We don't need any fancy GoogleOnce here
@@ -419,17 +419,8 @@ std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>
   thread_stack_helper.completion_flag.Reset();
 
   for (size_t i = 0; i != tids.size(); ++i) {
-    // We use the raw syscall here instead of kill() to ensure that we don't accidentally
-    // send a signal to some other process in the case that the thread has exited and
-    // the TID been recycled.
-#if defined(__linux__)
-    int res = narrow_cast<int>(syscall(SYS_tgkill, getpid(), tids[i], g_stack_trace_signum));
-#else
-    int res = pthread_kill(tids[i], g_stack_trace_signum);
-#endif
-    if (res != 0) {
-      static const Status status = STATUS(
-          RuntimeError, "Unable to deliver signal: process may have exited");
+    auto status = Thread::SendSignal(tids[i], g_stack_trace_signum);
+    if (!status.ok()) {
       result[i] = status;
       thread_stack_helper.left_to_collect.fetch_sub(1, std::memory_order_acq_rel);
     }

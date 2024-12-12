@@ -4380,7 +4380,8 @@ bool CatalogManager::IsTablePartOfXRepl(const TableId& table_id) const {
   return xcluster_manager_->IsTableReplicated(table_id) || IsTablePartOfCDCSDK(table_id);
 }
 
-bool CatalogManager::IsTablePartOfCDCSDK(const TableId& table_id) const {
+bool CatalogManager::IsTablePartOfCDCSDK(
+    const TableId& table_id, bool require_replication_slot) const {
   DCHECK(xrepl_maps_loaded_);
   auto* stream_ids = FindOrNull(cdcsdk_tables_to_stream_map_, table_id);
   if (stream_ids) {
@@ -4388,9 +4389,12 @@ bool CatalogManager::IsTablePartOfCDCSDK(const TableId& table_id) const {
       auto stream_info = FindPtrOrNull(cdc_stream_map_, stream_id);
       if (stream_info) {
         auto s = stream_info->LockForRead();
-        if (!s->is_deleting()) {
-          VLOG(1) << "Found an active CDCSDK stream: " << stream_id
-                  << ", for table: " << table_id;
+        if (!s->is_deleting() &&
+            (!require_replication_slot || s->pb.has_cdcsdk_ysql_replication_slot_name())) {
+          VLOG(1) << "Found an active CDCSDK stream: " << stream_id << " for table: " << table_id
+                  << (require_replication_slot
+                          ? " with replication slot: " + s->pb.cdcsdk_ysql_replication_slot_name()
+                          : "");
           return true;
         }
       }

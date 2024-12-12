@@ -1077,7 +1077,7 @@ PostmasterMain(int argc, char *argv[])
 		YbQueryDiagnosticsBgWorkerRegister();
 
 	/* Register ASH collector */
-	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
 		YbAshRegister();
 
 	/*
@@ -2388,24 +2388,7 @@ retry1:
 							 errmsg("yb_authonly can only be set "
 							   "if the connection is made over unix domain "
 							   "socket")));
-			}
-			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_is_client_ysqlconnmgr") == 0)
-			{
-				if (!parse_bool(valptr, &yb_is_client_ysqlconnmgr))
-					ereport(FATAL,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_is_client_ysqlconnmgr",
-									valptr),
-							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
-
-				/* Client needs to be connected on the unix domain socket */
-				if (port->raddr.addr.ss_family != AF_UNIX)
-					ereport(FATAL,
-							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("ysql connection manager makes all connections "
-							   "over unix domain socket to postgres")));
+				yb_is_client_ysqlconnmgr = yb_is_auth_backend;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_auth_remote_host") == 0)
@@ -2569,8 +2552,6 @@ retry1:
 
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
-	else if (YBIsEnabledInPostgresEnvVar() && yb_is_client_ysqlconnmgr)
-		MyBackendType = YB_YSQL_CONN_MGR;
 	else
 		MyBackendType = B_BACKEND;
 
@@ -6166,7 +6147,7 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				 NULL,			/* no out_dbname */
 				 NULL);			/* session id */
 
-	if (yb_ash_enable_infra)
+	if (yb_enable_ash)
 		YbAshSetMetadataForBgworkers();
 
 	/* it had better not gotten out of "init" mode yet */
@@ -6198,7 +6179,7 @@ YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
 				 NULL,			/* no out_dbname */
 				 session_id);	/* session id */
 
-	if (yb_ash_enable_infra)
+	if (yb_enable_ash)
 		YbAshSetMetadataForBgworkers();
 
 	/* it had better not gotten out of "init" mode yet */

@@ -78,7 +78,7 @@ You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, 
 
 - In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
 
-  If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually provision nodes](#manually-provision-nodes).
+  If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually provision nodes](#provision-nodes-manually).
 
 - In the **SSH Port** field, provide the port number of SSH client connections.
 

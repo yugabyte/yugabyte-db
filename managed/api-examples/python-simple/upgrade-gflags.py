@@ -16,7 +16,14 @@ GFLAGS_UPGRADE_URL = f"/api/v1/customers/{upgrade_base.CUSTOMER_UUID}" \
 # ==================================================================================================
 
 universe_details = upgrade_base.get_base_params()
-universe_details["masterGFlags"] = {"vmodule": "secure1*"}
-universe_details["tserverGFlags"] = {"vmodule": "secure2*"}
-
+universe_details["clusters"][0]["userIntent"]["masterGFlags"] = {
+        "ysql_yb_enable_ash": "true",
+        "ysql_yb_ash_enable_infra": "true",
+        "allowed_preview_flags_csv": "ysql_yb_enable_ash,ysql_yb_ash_enable_infra"
+        }
+universe_details["clusters"][0]["userIntent"]["tserverGFlags"] = {
+        "ysql_yb_enable_ash": "true",
+        "ysql_yb_ash_enable_infra": "true",
+        "allowed_preview_flags_csv": "ysql_yb_enable_ash,ysql_yb_ash_enable_infra"
+        }
 upgrade_base.run_upgrade(GFLAGS_UPGRADE_URL, universe_details)

@@ -682,6 +682,8 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     upgadeParams.upgradeOption = upgradeOption;
     upgadeParams.expectedUniverseVersion = universe.getVersion();
     upgadeParams.clusters = universe.getUniverseDetails().clusters;
+    upgadeParams.sleepAfterMasterRestartMillis = 10000;
+    upgadeParams.sleepAfterTServerRestartMillis = 10000;
     return upgadeParams;
   }
 

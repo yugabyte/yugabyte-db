@@ -47,16 +47,13 @@ To start, click **Create Universe** and complete the first two fields of the **C
 
 - Use the **Provider** field to select the appropriate Kubernetes cloud (for example, K8s Provider). Notice that additional fields appear.
 
-
 Complete the rest of the **Cloud Configuration** section as follows:
 
 - Use the **Region** field to select the region. This enables the **Availability Zones** option that allows you to see zones belonging to that region.
 
 - Provide the value in the **Nodes** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
 
-- In the **Replication Factor** field, define the replication factor, as per the following illustration:<br><br>
-
-  ![img](/images/yb-platform/kubernetes-config5.png)
+- In the **Replication Factor** field, define the replication factor, as per the following illustration:
 
 Complete the **Instance Configuration** section as follows:
 
@@ -72,13 +69,11 @@ Complete the **Advanced** section as follows:
 
 - In the **DB Version** field, specify the YugabyteDB version. The default is either the same as the YugabyteDB Anywhere version or the latest YugabyteDB version available for YugabyteDB Anywhere.
 
-
-
 Complete the **G-Flags** section as follows:
 
 - Click **Add Flags > Add to Master** to specify YugabyteDB Masters parameters, one parameter per field.
 
-- Click **Add Flags > Add to T-Server** to specify the YugabyteDB T-Servers parameters, one parameter per field.<br>
+- Click **Add Flags > Add to T-Server** to specify the YugabyteDB T-Servers parameters, one parameter per field.
 
   For details, see the following:
 

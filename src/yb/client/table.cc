@@ -14,12 +14,15 @@
 #include "yb/client/table.h"
 
 #include "yb/client/client.h"
+#include "yb/client/client-internal.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/gutil/casts.h"
 
 #include "yb/master/master_client.pb.h"
+
+#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory_usage.h"
@@ -298,6 +301,14 @@ void YBTable::FetchPartitions(
         VLOG_WITH_FUNC(2) << Format(
             "Fetched partitions for table $0, found $1 tablets",
             table_id, resp.tablet_locations_size());
+
+        // Check the validity of the partitions list
+        auto status = CheckTabletLocations(resp.tablet_locations(),
+                                           tserver::AllowSplitTablet::kFalse);
+        if (!status.ok()) {
+          callback(status);
+          return;
+        }
 
         auto partitions = std::make_shared<VersionedTablePartitionList>();
         partitions->version = resp.partition_list_version();

@@ -17,6 +17,7 @@ static void clear_stats(struct ConnectionStats *yb_stats) {
 		yb_stats[i].waiting_clients = 0;
 		yb_stats[i].active_servers = 0;
 		yb_stats[i].idle_servers = 0;
+		yb_stats[i].sticky_connections = 0;
 		yb_stats[i].query_rate = 0;
 		yb_stats[i].transaction_rate = 0;
 		yb_stats[i].avg_wait_time_ns = 0;

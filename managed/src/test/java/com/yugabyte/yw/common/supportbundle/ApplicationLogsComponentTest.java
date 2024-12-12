@@ -36,8 +36,8 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
   @Mock public Config mockConfig;
 
   private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-  private final String testRegexPattern = "application-log-\\d{4}-\\d{2}-\\d{2}\\.gz";
-  private final String testSdfPattern = "'application-log-'yyyy-MM-dd'.gz'";
+  private final String testRegexPattern = "application-log-\\d{4}-\\d{2}-\\d{2}(\\.gz)?";
+  private final String testSdfPattern = "'application-log-'yyyy-MM-dd";
 
   private Universe universe;
   private Customer customer;

@@ -91,6 +91,24 @@ Tables can be moved to the default tablespace using:
 ALTER TABLE table_name SET TABLESPACE pg_default;
 ```
 
+#### SET LOGGED | UNLOGGED
+
+Changes the table from unlogged to logged or vice-versa. Cannot be applied to a temporary table.
+
+Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default persistence.
+
+#### SET ( *param_name* = *param_value* )
+
+Change the specified storage parameter into the provided value.
+
+Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+
+#### RESET ( *param_name* )
+
+Reset the specified storage parameter.
+
+Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+
 #### DROP [ COLUMN ] [ IF EXISTS ] *column_name* [ RESTRICT | CASCADE ]
 
 Drop the named column from the table.

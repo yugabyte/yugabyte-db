@@ -137,4 +137,4 @@ cart_key | user_id | asin | time_added | quantity
 
 ## 6. Run IoT Fleet Management app
 
-After running Yugastore, run the [IoT Fleet Management](../realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugabyteDB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
+After running Yugastore, run the [IoT Fleet Management](../../realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugabyteDB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.

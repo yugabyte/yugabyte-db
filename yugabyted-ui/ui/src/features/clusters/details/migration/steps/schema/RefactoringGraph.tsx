@@ -311,6 +311,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
   const showRightArrowSidePanel = graphData.some(
     (item) => item.rightArrowSidePanel.mapReturnedArrayLength > 0
   );
+
   const columns = [
     {
       name: "plusMinusExpansion",
@@ -334,7 +335,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
             >
               {expandedSuggestions[plusMinusExpansion.index] ? <MinusIcon /> : <PlusIcon />}
             </Box>
-          ),
+          )
       },
     },
     {
@@ -343,7 +344,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
       options: {
         sort: false,
         setCellHeaderProps: () => ({ style: { padding: "8px 30px" } }),
-        setCellProps: () => ({ style: { padding: "8px 30px", textTransform: "capitalize" } }),
+        setCellProps: () => ({ style: { padding: "8px 30px", textTransform: "capitalize" } })
       },
     },
     {
@@ -356,7 +357,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
         setCellProps: () => ({ style: { padding: "8px 30px" } }),
         customBodyRender: (count: number) => (
           <YBBadge text={count} variant={BadgeVariant.Success} />
-        ),
+        )
       },
     },
     {
@@ -369,7 +370,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
         setCellProps: () => ({ style: { padding: "8px 30px" } }),
         customBodyRender: (count: number) => (
           <YBBadge text={count} variant={BadgeVariant.Warning} />
-        ),
+        )
       },
     },
     {
@@ -382,7 +383,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
         setCellProps: () => ({ style: { padding: "8px 30px" } }),
         customBodyRender: (count: number) => (
           <YBBadge text={count} variant={BadgeVariant.Warning} />
-        ),
+        )
       },
     },
     {
@@ -433,7 +434,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
             >
               <ArrowRightIcon />
             </Box>
-          ),
+          )
       },
     },
   ];

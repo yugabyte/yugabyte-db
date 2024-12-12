@@ -1707,20 +1707,33 @@ public class GFlagsUtil {
     if (previewGFlags.size() == 0) {
       return null;
     }
+    String previewFlagsString = String.join(",", previewGFlags);
     String allowedPreviewFlags = userGFlags.get(ALLOWED_PREVIEW_FLAGS_CSV);
     if (StringUtils.isEmpty(allowedPreviewFlags)) {
       return String.format(
-          "Universe is equipped with preview flags but %s is missing. ", ALLOWED_PREVIEW_FLAGS_CSV);
+          "Universe has %s preview flags (%s) but %s is empty",
+          serverType, previewFlagsString, ALLOWED_PREVIEW_FLAGS_CSV);
     }
+
     List<String> allowedPreviewFlagsList =
         (Arrays.asList(allowedPreviewFlags.split(",")))
             .stream().map(String::trim).collect(Collectors.toList());
+    List<String> previewExcludedFlags = new ArrayList<>();
     for (String previewFlag : previewGFlags) {
       if (!allowedPreviewFlagsList.contains(previewFlag)) {
-        return String.format(
-            "Universe is equipped with preview flags %s but it is not set in %s : %s ",
-            previewFlag, ALLOWED_PREVIEW_FLAGS_CSV, allowedPreviewFlags);
+        previewExcludedFlags.add(previewFlag);
       }
+    }
+
+    if (!previewExcludedFlags.isEmpty()) {
+      String previewExcludedFlagsString = String.join(",", previewExcludedFlags);
+      return String.format(
+          "Universe has %s preview flags (%s) but (%s) are not set in %s : (%s)",
+          serverType,
+          previewFlagsString,
+          previewExcludedFlagsString,
+          ALLOWED_PREVIEW_FLAGS_CSV,
+          allowedPreviewFlags);
     }
     return null;
   }

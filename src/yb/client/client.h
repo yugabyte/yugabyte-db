@@ -289,6 +289,8 @@ class YBClientBuilder {
   DISALLOW_COPY_AND_ASSIGN(YBClientBuilder);
 };
 
+YB_STRONGLY_TYPED_BOOL(SkipHidden);
+
 // The YBClient represents a connection to a cluster. From the user
 // perspective, they should only need to create one of these in their
 // application, likely a singleton -- but it's not a singleton in YB in any
@@ -750,7 +752,7 @@ class YBClient {
       const std::string& filter = "",
       bool exclude_ysql = false,
       const std::string& ysql_db_filter = "",
-      bool skip_hidden = false);
+      SkipHidden skip_hidden = SkipHidden::kFalse);
 
   // List tables in a namespace.
   //
@@ -835,7 +837,7 @@ class YBClient {
 
   // Check if the table given by 'table_name' exists. 'skip_hidden' indicates whether to consider
   // hidden tables. Result value is set only on success.
-  Result<bool> TableExists(const YBTableName& table_name, bool skip_hidden = false);
+  Result<bool> TableExists(const YBTableName& table_name);
 
   Result<bool> IsLoadBalanced(uint32_t num_servers);
   Result<bool> IsLoadBalancerIdle();
@@ -965,7 +967,7 @@ class YBClient {
 
   void LookupTabletById(const std::string& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
-                        master::IncludeInactive include_inactive,
+                        master::IncludeHidden include_hidden,
                         master::IncludeDeleted include_deleted,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,

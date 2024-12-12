@@ -1009,6 +1009,11 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 		HeapTuple	newtup;
 
 		newtup = heap_form_tuple(tgrel->rd_att, values, nulls);
+		/*
+		 * YB: On replace, pg_trigger's PK (oid) remains the same, hence ybctid
+		 * remains the same.
+		 */
+		HEAPTUPLE_YBCTID(newtup) = HEAPTUPLE_YBCTID(tuple);
 		CatalogTupleUpdate(tgrel, &tuple->t_self, newtup);
 		heap_freetuple(newtup);
 	}
@@ -4560,6 +4565,8 @@ AfterTriggerExecute(EState *estate,
 	LocTriggerData.tg_event =
 		evtshared->ats_event & (TRIGGER_EVENT_OPMASK | TRIGGER_EVENT_ROW);
 	LocTriggerData.tg_relation = rel;
+	LocTriggerData.estate = estate;
+
 	if (TRIGGER_FOR_UPDATE(LocTriggerData.tg_trigger->tgtype))
 		LocTriggerData.tg_updatedcols = evtshared->ats_modifiedcols;
 
@@ -6597,7 +6604,7 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 		}
 
 		if (IsYBBackedRelation(rel) && RI_FKey_trigger_type(trigger->tgfoid) == RI_TRIGGER_FK)
-			YbAddTriggerFKReferenceIntent(trigger, rel, newslot);
+			YbAddTriggerFKReferenceIntent(trigger, rel, newslot, estate);
 
 		afterTriggerAddEvent(&afterTriggers.query_stack[afterTriggers.query_depth].events,
 							 &new_event, &new_shared);

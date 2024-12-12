@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-tserver`](../../reference/configuration/yb-tserver/) and [`yb-master`](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
+The yb-ctl utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [yb-tserver](../../reference/configuration/yb-tserver/) and [yb-master](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
 
 {{< note title="Note" >}}
 
@@ -23,7 +23,7 @@ The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides 
 
 ## Syntax
 
-Run `yb-ctl` commands from the YugabyteDB home directory.
+Run yb-ctl commands from the YugabyteDB home directory.
 
 ```sh
 ./bin/yb-ctl [ command ] [ flag1, flag2, ... ]
@@ -145,7 +145,7 @@ For details and examples, see [Create a local cluster with custom flags](#create
 
 **Example**
 
-To enable [YSQL authentication](../../secure/enable-authentication/ysql/), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
+To enable [YSQL authentication](../../secure/enable-authentication/ysql/), you can use the `--tserver_flags` flag to add the yb-tserver [--ysql_enable-auth](../../reference/configuration/yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
 
 ```sh
 $./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"
@@ -157,16 +157,15 @@ Specifies the cloud, region, and zone as `cloud.region.zone`, separated by comma
 
 Default: `cloud1.datacenter1.rack1`
 
-For details and examples, see [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds), [Restart node with placement information](#restart-node-with-placement-information),
-and [Wipe and restart with placement info flags](#wipe-and-restart-with-placement-info-flags).
+For details and examples, see [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds), [Restart node with placement information](#restart-node-with-placement-information), and [Wipe and restart with placement info flags](#wipe-and-restart-with-placement-info-flags).
 
 ##### --replication_factor, -rf
 
-Specifies the number of replicas for each tablet. This parameter is also known as Replication Factor (RF). Should be an odd number so that a majority consensus can be established. A miniumum value of `3` is needed to create a fault-tolerant cluster since `1` signifies that there is no only 1 replica with no fault tolerance.
+Specifies the number of replicas for each tablet. This parameter is also known as Replication Factor (RF). Should be an odd number so that a majority consensus can be established. A miniumum value of 3 is needed to create a fault-tolerant cluster since 1 signifies that there is no only 1 replica with no fault tolerance.
 
 This value also sets the default number of YB-Master servers.
 
-Default: `1`
+Default: 1
 
 ##### --require_clock_sync
 
@@ -202,9 +201,9 @@ Flag to log internal debug messages to `stderr`.
 
 To create a local YugabyteDB cluster for development and learning, use the `yb-ctl create` command.
 
-In order to ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor.  To expand or shrink the cluster, use the [`add_node`](#add-nodes) and [`remove_node`](#stop-remove-nodes) commands.
+In order to ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor.  To expand or shrink the cluster, use the [add_node](#add-nodes) and [remove_node](#stop-remove-nodes) commands.
 
-Each of these initial nodes run a `yb-tserver` server and a `yb-master` server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
+Each of these initial nodes run a yb-tserver server and a yb-master server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
 
 ### Create a local 1-node cluster with replication factor of 1
 
@@ -216,7 +215,7 @@ Note that the default replication factor is 1.
 
 ### Create a 4-node cluster with replication factor of 3
 
-First create 3-node cluster with replication factor of `3`.
+First create 3-node cluster with replication factor of 3.
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
@@ -236,7 +235,7 @@ $ ./bin/yb-ctl --rf 5 create
 
 ## Default directories for local clusters
 
-YugabyteDB clusters created with the `yb-ctl` utility are created locally on the same host and simulate a distributed multi-host cluster.
+YugabyteDB clusters created with the yb-ctl utility are created locally on the same host and simulate a distributed multi-host cluster.
 
 ### Data directory
 
@@ -451,7 +450,7 @@ $ ./bin/yb-ctl add_node --placement_info "cloud1.region1.zone1"
 
 ### Create a local cluster with custom flags
 
-When you use `yb-ctl`, you can pass "custom" flags (flags unavailable directly in `yb-ctl`) to the YB-Master and YB-TServer servers.
+When you use yb-ctl, you can pass "custom" flags (flags unavailable directly in yb-ctl) to the YB-Master and YB-TServer servers.
 
 ```sh
 $ ./bin/yb-ctl --rf 1 create --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"

@@ -979,7 +979,7 @@ YBInitPostgresBackend(
 		 */
 		if (!YbIsAuthBackend())
 		{
-			if (yb_ash_enable_infra)
+			if (yb_enable_ash)
 				YbAshInit();
 
 			if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())

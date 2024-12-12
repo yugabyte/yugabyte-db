@@ -31,13 +31,15 @@
 
 namespace rocksdb {
 
-class Iterator;
 struct ParsedInternalKey;
-class Arena;
 struct ReadOptions;
 struct TableProperties;
+
+class Arena;
+class DataBlockAwareIndexInternalIterator;
 class GetContext;
 class InternalIterator;
+class Iterator;
 class RandomAccessFileReader;
 class WritableFile;
 
@@ -70,6 +72,8 @@ class TableReader {
   // TODO(index_iter): consider allocating index iterator on arena, try and measure potential
   // performance improvements.
   virtual InternalIterator* NewIndexIterator(const ReadOptions& read_options) = 0;
+  virtual DataBlockAwareIndexInternalIterator* NewDataBlockAwareIndexIterator(
+      const ReadOptions& read_options) = 0;
 
   // Given a key, return an approximate byte offset in the file where
   // the data for that key begins (or would begin if the key were

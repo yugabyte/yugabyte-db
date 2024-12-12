@@ -35,4 +35,5 @@ yba rbac [flags]
 * [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
 * [yba rbac permission](yba_rbac_permission.md)	 - Manage YugabyteDB Anywhere RBAC permissions
 * [yba rbac role](yba_rbac_role.md)	 - Manage YugabyteDB Anywhere RBAC roles
+* [yba rbac role-binding](yba_rbac_role-binding.md)	 - Manage YugabyteDB Anywhere RBAC role bindings
 

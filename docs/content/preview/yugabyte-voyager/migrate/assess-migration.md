@@ -59,7 +59,7 @@ To get started with migration assessment, do the following:
 
 1. [Install yb-voyager](../../install-yb-voyager/).
 1. Install YugabyteDB to view migration assessment report in the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
-    1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/).
+    1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/).
     1. To see the Voyager migration workflow details in the UI, set the following environment variables before starting the migration:
 
         ```sh
@@ -67,7 +67,12 @@ To get started with migration assessment, do the following:
         export YUGABYTED_DB_CONN_STRING=<ysql-connection-parameters>
         ```
 
-        Provide the standard PostgreSQL connection parameters, including database, user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
+        Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
+
+        {{< note title="Note" >}}
+
+Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
+        {{< /note >}}
 
 1. Assess migration - Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
 

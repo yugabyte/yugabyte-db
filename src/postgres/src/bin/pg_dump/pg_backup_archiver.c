@@ -42,6 +42,7 @@
 
 /* YB includes */
 #include "catalog/pg_class_d.h"
+#include "catalog/pg_yb_tablegroup_d.h"
 
 #define TEXT_DUMP_HEADER "--\n-- YSQL database dump\n--\n\n"
 #define TEXT_DUMPALL_HEADER "--\n-- YSQL database cluster dump\n--\n\n"
@@ -3632,9 +3633,13 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 			 * catalog. So, as a hack for table creation, we set AH->outputKind
 			 * to OUTPUT_OTHERDATA, so that ahprintf sends each statement to the
 			 * backend separately, avoiding the limitation.
+			 *
+			 * We do the same for tablegroup creation because CREATE TABLEGROUP
+			 * cannot run inside a transaction block.
 			 */
 			if (AH->currentTE &&
-				AH->currentTE->catalogId.tableoid == RelationRelationId &&
+				(AH->currentTE->catalogId.tableoid == RelationRelationId ||
+				 AH->currentTE->catalogId.tableoid == YbTablegroupRelationId) &&
 				AH->outputKind == OUTPUT_SQLCMDS)
 			{
 				ArchiverOutput yb_saved_output_kind = AH->outputKind;

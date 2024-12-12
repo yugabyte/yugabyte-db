@@ -196,7 +196,7 @@ select (e).k, (e).t from c;
 It produces this result:
 
 ```plpgsql
- k  |  t  
+ k  |  t
 ----+-----
  17 | dog
  42 | cat
@@ -216,7 +216,7 @@ select pg_typeof(arr) from pg_temp.v;
 This is the result:
 
 ```output
- pg_typeof 
+ pg_typeof
 -----------
  ct[]
 ```
@@ -294,7 +294,7 @@ select to_char(s.mean(17.1, 6.5, 3.4), '99.99') as "mean";
 This is the result:
 
 ```output
-  mean  
+  mean
 --------
    9.00
 ```
@@ -311,7 +311,7 @@ select s.mean(
 This is the result:
 
 ```output
- mean 
+ mean
 ------
  e
 ```
@@ -384,7 +384,7 @@ select to_char(s.mean(17.1, 6.5, 3.4), '99.99') as "mean";
 Of course, the result is the same for this version of _mean()_ as for the previous version:
 
 ```output
-  mean  
+  mean
 --------
    9.00
 ```
@@ -402,7 +402,7 @@ select to_char(s.mean(
 This is the result:
 
 ```output
-  mean  
+  mean
 --------
   22.67
 ```

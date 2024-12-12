@@ -241,7 +241,8 @@ class BackfillTableJob : public server::MonitoredTask {
 
   void SetState(server::MonitoredTaskState new_state);
 
-  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override;
+  server::MonitoredTaskState AbortAndReturnPrevState(
+      const Status& status, bool call_task_finisher) override;
 
   void MarkDone();
 

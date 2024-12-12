@@ -5,11 +5,6 @@ linkTitle: Explore
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
 type: indexpage
 ---
-{{< tip title="Tip" >}}
-
-Use [yb-ctl](../admin/yb-ctl/) local cluster management utility to explore the core features of YugabyteDB.
-
-{{< /tip >}}
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

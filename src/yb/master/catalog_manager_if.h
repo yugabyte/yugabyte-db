@@ -191,12 +191,12 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   virtual Status GetTabletLocations(
       const TabletId& tablet_id,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
+      IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
   virtual Status GetTabletLocations(
       const TabletInfoPtr& tablet_info,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
+      IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
   virtual TSDescriptorVector GetAllLiveNotBlacklistedTServers() const = 0;
 

@@ -405,15 +405,16 @@ class index_dense_gt {
     using dynamic_allocator_t = aligned_allocator_gt<byte_t, 64>;
     using tape_allocator_t = memory_mapping_allocator_gt<64>;
 
-  private:
     /// @brief Punned index.
     using index_t = index_gt<                        //
         distance_t, vector_key_t, compressed_slot_t, //
         dynamic_allocator_t, tape_allocator_t>;
-    using index_allocator_t = aligned_allocator_gt<index_t, 64>;
 
     using member_iterator_t = typename index_t::member_iterator_t;
     using member_citerator_t = typename index_t::member_citerator_t;
+
+  private:
+    using index_allocator_t = aligned_allocator_gt<index_t, 64>;
 
     /// @brief Punned metric object.
     class metric_proxy_t {

@@ -22,7 +22,7 @@ This document describes how to deploy a read replica cluster using YugabyteDB. F
 
 You can deploy a read replica cluster that asynchronously replicates data with a primary cluster as follows:
 
-1. Start the primary `yb-master` services and let them form a quorum.
+1. Start the primary yb-master services and let them form a quorum.
 
 1. Define the primary cluster placement using the [`yb-admin modify_placement_info`](../../../admin/yb-admin/#modify-placement-info) command, as follows:
 
@@ -44,16 +44,16 @@ You can deploy a read replica cluster that asynchronously replicates data with a
     - *replication_factor*: The total number of read replicas.
     - *placement_uuid*: The identifier for the read replica cluster, using a meaningful string.
 
-1. Start the primary `yb-tserver` services, including the following configuration flags:
+1. Start the primary yb-tserver services, including the following configuration flags:
 
    - [--placement_cloud *placement_cloud*](../../../reference/configuration/yb-tserver/#placement-cloud)
    - [--placement_region *placement_region*](../../../reference/configuration/yb-tserver/#placement-region)
    - [--placement_zone *placement_zone*](../../../reference/configuration/yb-tserver/#placement-zone)
    - [--placement_uuid *live_id*](../../../reference/configuration/yb-tserver/#placement-uuid)
 
-   The placements should match the information in step 2. You do not need to add these configuration flags to your `yb-master` configurations.
+   The placements should match the information in step 2. You do not need to add these configuration flags to your yb-master configurations.
 
-1. Start the read replica `yb-tserver` services, including the following configuration flags:
+1. Start the read replica yb-tserver services, including the following configuration flags:
 
    - [--placement_cloud *placement_cloud*](../../../reference/configuration/yb-tserver/#placement-cloud)
    - [--placement_region *placement_region*](../../../reference/configuration/yb-tserver/#placement-region)

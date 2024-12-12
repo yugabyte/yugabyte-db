@@ -4,6 +4,8 @@ headerTitle: Pattern matching
 linkTitle: Pattern matching
 headcontent: Learn how to search text using pattern matching
 description: Learn how to search text with pattern matching
+tags:
+  other: ysql
 menu:
   stable:
     identifier: pattern-matching-ysql

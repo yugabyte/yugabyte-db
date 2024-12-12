@@ -1663,5 +1663,26 @@ TEST_F(AdminCliTest, TestRemoveTabletServer) {
   EXPECT_EQ(find_tserver_result, std::nullopt);
 }
 
+TEST_F(AdminCliTest, TestDisallowImplicitStreamCreation) {
+  std::string test_namespace = "pg_namespace_cdc";
+  BuildAndStart();
+  ASSERT_OK(client_->CreateNamespace(test_namespace, YQL_DATABASE_PGSQL));
+
+  ASSERT_NOK(CallAdmin("create_change_data_stream", "ysql." + test_namespace, "IMPLICIT"));
+}
+
+TEST_F(AdminCliTest, TestAllowImplicitStreamCreationWhenFlagEnabled) {
+  std::string test_namespace = "pg_namespace_cdc";
+  BuildAndStart(
+      {"--cdc_enable_implicit_checkpointing=true"}, {});
+  ASSERT_OK(client_->CreateNamespace(test_namespace, YQL_DATABASE_PGSQL));
+
+  auto output =
+      ASSERT_RESULT(CallAdmin("create_change_data_stream", "ysql." + test_namespace, "IMPLICIT"));
+
+  ASSERT_STR_CONTAINS(
+      output, "Creation of streams with IMPLICIT checkpointing is deprecated");
+}
+
 }  // namespace tools
 }  // namespace yb

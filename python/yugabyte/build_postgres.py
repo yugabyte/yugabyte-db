@@ -594,7 +594,8 @@ class PostgresBuilder(YbBuildToolBase):
                 '--with-includes=' + self.include_dirs,
                 '--with-libraries=' + self.lib_dirs,
                 # We're enabling debug symbols for all types of builds.
-                '--enable-debug']
+                '--enable-debug',
+                '--with-lz4']
         if is_macos_arm64():
             configure_cmd_line.insert(0, '/opt/homebrew/bin/bash')
 

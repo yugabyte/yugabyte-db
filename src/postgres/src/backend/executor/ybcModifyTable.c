@@ -1411,6 +1411,7 @@ YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple,
 	Bitmapset  *pkey   = YBGetTablePrimaryKeyBms(rel);
 
 	/* Bind the ybctid to the statement. */
+	Assert(HEAPTUPLE_YBCTID(tuple));
 	YBCBindTupleId(update_stmt, HEAPTUPLE_YBCTID(tuple));
 
 	/* Assign values to the non-primary-key columns to update the current row. */

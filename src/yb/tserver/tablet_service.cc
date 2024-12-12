@@ -2271,6 +2271,7 @@ Status TabletServiceImpl::PerformWrite(
   bool has_operations = req->ql_write_batch_size() != 0 ||
                         req->redis_write_batch_size() != 0 ||
                         req->pgsql_write_batch_size() != 0 ||
+                        req->pgsql_lock_batch_size() != 0 ||
                         (req->has_external_hybrid_time() && !EmptyWriteBatch(req->write_batch()));
   if (!has_operations && tablet.tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.

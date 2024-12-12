@@ -56,6 +56,7 @@ import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -75,6 +76,7 @@ import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import com.yugabyte.yw.scheduler.JobScheduler;
@@ -897,6 +899,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   protected void verifyUniverseState(Universe universe) {
+    log.info("universe definition json {}", universe.getUniverseDetailsJson());
     String certificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybClientService.getClient(universe.getMasterAddresses(), certificate)) {
       GetMasterClusterConfigResponse masterClusterConfig = client.getMasterClusterConfig();
@@ -905,13 +908,13 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       UniverseDefinitionTaskParams.Cluster primaryCluster = universeDetails.getPrimaryCluster();
       CatalogEntityInfo.ReplicationInfoPB replicationInfo = config.getReplicationInfo();
       CatalogEntityInfo.PlacementInfoPB liveReplicas = replicationInfo.getLiveReplicas();
-      verifyCluster(primaryCluster, liveReplicas);
+      verifyCluster(universe, primaryCluster, liveReplicas);
       verifyMasterAddresses(universe);
       if (!universeDetails.getReadOnlyClusters().isEmpty()) {
         UniverseDefinitionTaskParams.Cluster asyncCluster =
             universeDetails.getReadOnlyClusters().get(0);
         CatalogEntityInfo.PlacementInfoPB readReplicas = replicationInfo.getReadReplicas(0);
-        verifyCluster(asyncCluster, readReplicas);
+        verifyCluster(universe, asyncCluster, readReplicas);
       }
       if (waitForClusterToStabilize) {
         RetryTaskUntilCondition condition =
@@ -933,7 +936,9 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   protected void verifyCluster(
-      UniverseDefinitionTaskParams.Cluster cluster, CatalogEntityInfo.PlacementInfoPB replicas) {
+      Universe universe,
+      UniverseDefinitionTaskParams.Cluster cluster,
+      CatalogEntityInfo.PlacementInfoPB replicas) {
     assertEquals(cluster.uuid.toString(), replicas.getPlacementUuid().toStringUtf8());
     assertEquals(cluster.userIntent.replicationFactor, replicas.getNumReplicas());
     Map<UUID, Integer> nodeCount = localNodeManager.getNodeCount(cluster.uuid);
@@ -951,6 +956,9 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
             .map(az -> AvailabilityZone.getOrBadRequest(az.uuid).getCode())
             .collect(Collectors.toSet());
     assertEquals(zones, placementZones);
+
+    // verify node details matches cluster user intent
+    verifyNodeDetails(universe, cluster);
   }
 
   protected void verifyMasterAddresses(Universe universe) {
@@ -1208,6 +1216,35 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
         universe.getUniverseDetails().nodeDetailsSet.stream()
             .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
             .count());
+  }
+
+  protected Pair<Long, Long> verifyNodeDetails(Universe universe, Cluster cluster) {
+    // (numMasters, numTservers)
+    Pair<Long, Long> nodeCounts =
+        new Pair(
+            universe.getNodes().stream()
+                .filter(n -> n.placementUuid.equals(cluster.uuid) && n.isMaster)
+                .count(),
+            universe.getNodes().stream()
+                .filter(n -> n.placementUuid.equals(cluster.uuid) && n.isTserver)
+                .count());
+    boolean allNodesLive = universe.getNodes().stream().allMatch(n -> n.state == NodeState.Live);
+    log.info(
+        "Verifying node details for cluster {}, numMasters {}, numTservers {}, allNodesLive {}",
+        cluster.uuid,
+        nodeCounts.getFirst(),
+        nodeCounts.getSecond(),
+        allNodesLive);
+
+    if (allNodesLive) {
+      assertEquals(nodeCounts.getSecond().intValue(), cluster.userIntent.numNodes);
+
+      if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+          && cluster.userIntent.dedicatedNodes) {
+        assertEquals(nodeCounts.getFirst().intValue(), cluster.userIntent.replicationFactor);
+      }
+    }
+    return nodeCounts;
   }
 
   protected void verifyMasterLBStatus(

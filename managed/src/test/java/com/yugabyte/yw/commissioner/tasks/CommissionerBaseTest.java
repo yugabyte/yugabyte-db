@@ -114,9 +114,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.jboss.logging.MDC;
 import org.junit.Before;
 import org.mockito.Mockito;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import org.slf4j.LoggerFactory;
 import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
@@ -315,7 +315,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-                .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+                .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
                 .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies))

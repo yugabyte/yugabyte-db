@@ -150,6 +150,16 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
 
     removeMasters.addAll(mastersToStop);
 
+    log.info(
+        "editCluster: nodesToBeRemoved {}, removeMasters: {}, tserversToBeRemoved: {}, newMasters:"
+            + " {}, existingNodesToStartMasters: {}, mastersToStop: {}",
+        nodesToBeRemoved,
+        removeMasters,
+        tserversToBeRemoved,
+        newMasters,
+        existingNodesToStartMaster,
+        mastersToStop);
+
     boolean isWaitForLeadersOnPreferred =
         confGetter.getConfForScope(universe, UniverseConfKeys.ybEditWaitForLeadersOnPreferred);
 
@@ -530,5 +540,19 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       boolean enableClientToNodeEncrypt) {
     createCheckCertificateConfigTask(
         clusters, nodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
+  }
+
+  protected void setToBeRemovedState(NodeDetails currentNode) {
+    Set<NodeDetails> nodes = taskParams().nodeDetailsSet;
+    for (NodeDetails node : nodes) {
+      if (node.getNodeName() != null && node.getNodeName().equals(currentNode.getNodeName())) {
+        node.state = NodeState.ToBeRemoved;
+        return;
+      }
+    }
+    throw new RuntimeException(
+        String.format(
+            "Error setting node %s to ToBeRemoved state as node was not found",
+            currentNode.getNodeName()));
   }
 }

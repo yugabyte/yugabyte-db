@@ -377,6 +377,7 @@ std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
         case YBOperation::QL_WRITE: FALLTHROUGH_INTENDED;
         case YBOperation::PGSQL_READ: FALLTHROUGH_INTENDED;
         case YBOperation::PGSQL_WRITE: FALLTHROUGH_INTENDED;
+        case YBOperation::PGSQL_LOCK: FALLTHROUGH_INTENDED;
         case YBOperation::REDIS_READ: FALLTHROUGH_INTENDED;
         case YBOperation::REDIS_WRITE: {
           partition_contains_row = partition.ContainsKey(partition_key);
@@ -655,7 +656,8 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   };
 
   switch (op_group) {
-    case OpGroup::kWrite:
+    case OpGroup::kWrite: FALLTHROUGH_INTENDED;
+    case OpGroup::kLock:
       return std::make_shared<WriteRpc>(data);
     case OpGroup::kLeaderRead:
       return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG);

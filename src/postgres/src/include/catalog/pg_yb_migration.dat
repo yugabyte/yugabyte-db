@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V61__24439__yb_cancel_query_diagnostics.sql
-{ major => '61', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V62__24203__lsn_type_in_pg_create_replication_slot.sql
+{ major => '62', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

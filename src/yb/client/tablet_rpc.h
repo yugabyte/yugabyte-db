@@ -127,7 +127,7 @@ class TabletInvoker {
                          const std::shared_ptr<const YBTable>& table,
                          rpc::RpcRetrier* retrier,
                          Trace* trace,
-                         master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+                         master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                          master::IncludeDeleted include_deleted = master::IncludeDeleted::kFalse);
 
   virtual ~TabletInvoker();
@@ -220,8 +220,8 @@ class TabletInvoker {
   // while this object is alive.
   Trace* const trace_;
 
-  // Whether or not to allow lookups of inactive tablets.
-  const master::IncludeInactive include_inactive_;
+  // Whether or not to allow lookups of hiddden tablets.
+  const master::IncludeHidden include_hidden_;
 
   // Whether or not to allow deleted tablets.
   const master::IncludeDeleted include_deleted_;

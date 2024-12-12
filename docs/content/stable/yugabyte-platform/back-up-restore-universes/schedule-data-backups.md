@@ -46,7 +46,7 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 
 1. Specify the interval between backups or select **Use cron expression (UTC)**.
 
-1. Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups (YBA version 2.16 or later, and YugabyteDB version 2.16 or later only). The incremental backups intervals must be shorter than the full scheduled backup frequency:
+1. Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups (YugabyteDB Anywhere version 2.16 or later, and YugabyteDB version 2.16 or later only). The incremental backups intervals must be shorter than the full scheduled backup frequency:
 
     ![Incremental Backup](/images/yp/scheduled-backup-ycql-incremental.png)
 
@@ -60,6 +60,85 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 
 Subsequent backups are created based on the value you specified for **Set backup intervals** or **Use cron expression**.
 
+## Create a scheduled backup policy with PITR
+
+Creating a scheduled backup policy with PITR is currently {{<tags/feature/ea>}}.
+
+To create a scheduled backup policy with PITR support, you can set the `enablePointInTimeRestore` attribute to true in the API request. For example:
+
+```shell
+curl 'http://<platform-url>/api/v1/customers/:cUUID/create_backup_schedule_async' \
+  -d '{
+    "backupType": "YQL_TABLE_TYPE",
+    "customerUUID": "f33e3c9b-75ab-4c30-80ad-cba85646ea39",
+    "sse": true,
+    "storageConfigUUID": "20946d96-978f-4577-ae28-c156eebb6aad",
+    "universeUUID": "816ecdcd-8031-4a41-ad62-f49d8a2aa6dc",
+    "tableByTableBackup": false,
+    "useTablespaces": true,
+    "keyspaceTableList": [],
+    "timeBeforeDelete": 86400000,
+    "expiryTimeUnit": "DAYS",
+    "scheduleName": "PIT-test-ycql-2",
+    "schedulingFrequency": 86400000,
+    "frequencyTimeUnit": "DAYS",
+    "incrementalBackupFrequencyTimeUnit": "MINUTES",
+    "incrementalBackupFrequency": 900000,
+    "enablePointInTimeRestore": true
+  }'
+```
+
+<!--
+Steps to create the sceduled backup policy via the UI when the runtime config flag is available in 2024.2.1.0
+
+Before scheduling a backup of your universe data, create a policy, as follows:
+
+1. Select the **Backups** tab and then select **Scheduled Backup Policies**.
+
+1. Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
+
+    ![Create Scheduled Backup](/images/yp/create-schedule-backup-pitr.png)
+
+1. Provide the backup policy name and select the storage configuration. For more information, see [Configure backup storage](../configure-backup-storage/). When finished, click **Next**.
+
+1. Select the Keyspaces/Databases you want to backup, either **All Databases** for YSQL or, **All Keyspaces** for YCQL.
+
+1. Select the Keyspaces/Databases you want to backup, either YSQL or YCQL. You can choose to backup either all databases/keyspaces, or a single database/keyspace.
+
+     For YSQL, you have a additional **Advanced Configuration** option to include **Backup tablespace information** (enabled by default). If you don't choose to back up tablespaces, the tablespaces are not preserved and their data is backed up to the primary region.
+
+     For YCQL, you can choose to back up all tables or a selection of tables. Click **Select a subset of tables** to display the **Select Tables** dialog, where you can select one or more tables to back up, and click **Confirm**. When finished, click **Next**.
+
+1. Select a backup strategy:
+
+    - **Standard backup** (without PITR support), or
+    - **Backup with ability to restore to point-in-time**
+
+1. Specify the interval between backups or select **Use cron expression (UTC)**. Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups (supported in YugabyteDB Anywhere v2.16 or later, and YugabyteDB v2.16 or later only). The incremental backup intervals must be shorter than the full scheduled backup frequency.
+
+1. Specify the time period to retain a backup. Note that you can select **Keep indefinitely**, to never delete the backup. Click **Next** to proceed.
+
+1. Review the backup policy summary to ensure all details are correct, and click **Create Scheduled Backup Policy** to finalize and create the policy.
+
+    You should see an _in progress_ notification indicating the backup creation, and as the process is asynchronous, it may take a few minutes to complete.
+
+    After the backup creation process is complete, the policy will be automatically enabled as per the following illustration:
+
+    ![Scheduled Backup policy](/images/yp/schedule-backup-policy-pitr.png)
+
+    Backups created with PITR support will show "Enabled" status in the Point-in-Time Restore column of the **Backups** list. Hover over this status to view the restore window's start and end times as per the following illustration:
+
+    ![Restore window](/images/yp/restore-window-pitr.png)
+
+### Edit scheduled backup policy
+
+You can edit a scheduled backup policy as follows:
+
+1. Select the **Backups** tab and then select **Scheduled Backup Policies**.
+1. For your scheduled backup, click **Actions > Edit Policy**.
+
+    ![Edit Scheduled Backup policy](/images/yp/edit-schedule-backup-policy.png) -->
+
 ## Disable backups
 
 You can disable all backups, including scheduled ones, as follows:
@@ -67,7 +146,7 @@ You can disable all backups, including scheduled ones, as follows:
 1. Navigate to the universe's **Tables** tab.
 1. Click **Actions > Disable Backup**.
 
-## Delete a scheduled backup
+## Delete a scheduled backup and policy
 
 You can permanently remove a scheduled backup, as follows:
 

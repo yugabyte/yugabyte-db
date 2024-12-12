@@ -67,7 +67,7 @@ Learn how to perform common tasks required for Go application development using 
 
 The following connection properties need to be added to enable load balancing:
 
-- `load_balance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- `load_balance` - enable cluster-aware load balancing by setting this property to one of the allowed values other than `false`; disabled by default.
 - `topology_keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` connection parameter.
@@ -78,7 +78,7 @@ For more information, see [Cluster-aware load balancing](../../smart-drivers/#cl
 
 To use the driver, pass new connection properties for load balancing in the connection URL or properties pool.
 
-To enable uniform load balancing across all servers, you set the `load_balance` property to `true` in the URL, as per the following example:
+To enable uniform load balancing across all servers, you set the `load_balance` property to one of the allowed values other than `false` in the URL, as per the following example:
 
 ```go
 baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
@@ -245,7 +245,7 @@ For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set
 
 ```sh
 $ export PGSSLMODE=verify-ca
-$ export PGSSLROOTCERT=~/root.crt  # CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
+$ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
 ```
 
 | Environment Variable | Description |

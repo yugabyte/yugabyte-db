@@ -312,6 +312,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET parent = 'ggparent23', gp
 -- Query modifying the key to the row should trigger checks in only the children
 -- and grandchildren.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent30' WHERE value = 'Eddie';
+-- Same query, no modification, no triggers
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent30' WHERE value = 'Eddie';
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent3' WHERE key = 'gparent30';
 
 DROP TABLE ancestry;
@@ -387,3 +389,24 @@ DEALLOCATE updateplan1;
 
 DROP TABLE t_simple;
 DROP TABLE t_parent;
+
+--
+-- #25075: Test INSERT with UPDATE ON CONFLICT DO UPDATE
+--
+DROP TABLE IF EXISTS ioc_table;
+CREATE TABLE ioc_table (id text, uuid_col uuid, name text, primary key ((id, name), uuid_col));
+CREATE UNIQUE INDEX NONCONCURRENTLY ioc_table_name_id_uidx ON ioc_table (name, id);
+CREATE UNIQUE INDEX NONCONCURRENTLY ioc_table_name_uidx ON ioc_table (name);
+CREATE UNIQUE INDEX NONCONCURRENTLY ioc_table_uuid_col_uidx ON ioc_table (uuid_col);
+
+CREATE EXTENSION "uuid-ossp";
+-- insert
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', uuid_generate_v4(), 'Test Name 1')
+  ON CONFLICT (id, name) DO UPDATE SET uuid_col = EXCLUDED.uuid_col;
+-- conflict: update
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', uuid_generate_v4(), 'Test Name 1')
+  ON CONFLICT (id, name) DO UPDATE SET uuid_col = EXCLUDED.uuid_col;
+-- conflict: update again
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', uuid_generate_v4(), 'Test Name 1')
+  ON CONFLICT (id, name) DO UPDATE SET uuid_col = EXCLUDED.uuid_col;
+DROP TABLE IF EXISTS ioc_table;

@@ -180,7 +180,7 @@ Create a policy with access to the following AWS services:
 
 ### Enable CDC on YugabyteDB
 
-Ensure that YugabyteDB is up and running. To install YugabyteDB on your cloud virtual machine, refer to [Quick start](../../../quick-start/linux/).
+Ensure that YugabyteDB is up and running. To install YugabyteDB on your cloud virtual machine, refer to [Quick start](/preview/tutorials/quick-start/linux/).
 
 1. Create a test table:
 

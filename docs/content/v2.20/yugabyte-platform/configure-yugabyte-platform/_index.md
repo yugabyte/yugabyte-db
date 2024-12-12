@@ -1,44 +1,28 @@
 ---
-title: Configure YugabyteDB Anywhere
-headerTitle: Configure YugabyteDB Anywhere
-linkTitle: Configure
-description: Configure YugabyteDB Anywhere.
+title: Create provider configurations
+headerTitle: Create provider configurations
+linkTitle: Create providers
+description: Create provider configurations for deploying YugabyteDB universes.
 menu:
   v2.20_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
-    weight: 610
+    weight: 620
 type: indexpage
 ---
 
-After YugabytDB Anywhere (YBA) has been installed, the next step is to create provider configurations. A provider configuration comprises all the parameters needed to deploy a YugabyteDB universe on the corresponding provider. This includes cloud credentials, regions and zones, networking details, and more.
+After installing YugabyteDB Anywhere, the next step is to create provider configurations.
 
-When deploying a universe, YBA uses the provider configuration settings to create and provision the nodes that will make up the universe.
+A provider configuration describes your cloud environment (such as its security group, regions and availability zones, NTP server, SSH credentials for connecting to VMs for provisioning, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
-{{<index/block>}}
+{{<lead link="../yba-overview/#provider-configurations">}}
+Not sure what type of provider to use? Refer to [Provider configurations](../yba-overview/#provider-configurations).
+{{</lead>}}
 
-  {{<index/item
-    title="Node prerequisites"
-    body="Operating systems and architectures supported by YBA for deploying YugabyteDB universes."
-    href="supported-os-and-arch/"
-    icon="/images/section_icons/deploy/manual-deployment.png">}}
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
 
-  {{<index/item
-    title="Create admin user"
-    body="Admin user account registration and setup."
-    href="create-admin-user/"
-    icon="/images/section_icons/index/admin.png">}}
-
-  {{<index/item
-    title="Configure providers"
-    body="Create provider configurations for deploying universes."
-    href="set-up-cloud-provider/"
-    icon="/images/section_icons/manage/enterprise/edit_universe.png">}}
-
-  {{<index/item
-    title="Configure alerts"
-    body="Create health check and alerts for issues that may affect deployment."
-    href="set-up-alerts-health-check/"
-    icon="/images/section_icons/deploy/manual-deployment.png">}}
-
-{{</index/block>}}
+| To&nbsp;Deploy&nbsp;universes&nbsp;to | Create&nbsp;provider | Description |
+| :--- | :--- | :--- |
+| Private cloud<br>Bare metal, racks<br>Cloud provider (limited SSH permissions) | [On-premises](on-premises/) | Deploy universes to your own infrastructure, or to cloud providers where (due to security policies or other restrictions) you can't provide YBA with cloud permissions or SSH access to cloud VMs.<br>Provides maximum flexibility. |
+| Cloud provider (full SSH permissions) | [AWS](aws/)<br>[GCP](gcp/)<br>[Azure](azure/) | Deploy universes to cloud providers with full automation.<br>Provides maximum automation. |
+| Kubernetes | [Kubernetes](kubernetes/)<br>[VMware Tanzu](vmware-tanzu/)<br>[OpenShift](openshift/) | Deploy universes on Kubernetes. |

@@ -32,6 +32,7 @@ DECLARE_int32(index_backfill_rpc_timeout_ms);
 DECLARE_int32(index_backfill_rpc_max_delay_ms);
 DECLARE_int32(index_backfill_rpc_max_retries);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
+DECLARE_int32(rpc_reactor_task_timeout_ms);
 DECLARE_int32(master_ts_rpc_timeout_ms);
 
 ///////////////////////////////////////////////////
@@ -64,6 +65,7 @@ void YBMiniClusterTestBase<T>::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_backfill_rpc_max_retries) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_retrying_ts_rpc_max_delay_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_reactor_task_timeout_ms) = 2000 * kTimeMultiplier;
 
   verify_cluster_before_next_tear_down_ = true;
 }

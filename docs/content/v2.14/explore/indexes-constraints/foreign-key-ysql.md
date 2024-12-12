@@ -22,7 +22,7 @@ type: docs
 A foreign key represents one or more columns in a table referencing the following:
 
 - A primary key in another table.
-- A [unique index](../indexes-1#using-a-unique-index) or columns restricted with a [unique constraint](../other-constraints/#unique-constraint) in another table.
+- A [unique index](../unique-index-ysql/) or columns restricted with a [unique constraint](../other-constraints/#unique-constraint) in another table.
 
 Tables can have multiple foreign keys.
 
@@ -50,7 +50,7 @@ Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you 
 
 ## Examples
 
-Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
+Create a cluster [locally](/preview/tutorials/quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
 
 The following example creates two tables:
 

@@ -38,11 +38,11 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.oidc.profile.OidcProfile;
 import org.pac4j.play.PlayWebContext;
-import org.pac4j.play.store.PlaySessionStore;
 import play.Environment;
 import play.mvc.Http.Request;
 import play.mvc.Http.Status;
@@ -54,7 +54,7 @@ import play.mvc.Results;
 public class ThirdPartyLoginHandler {
 
   private final Environment environment;
-  private final PlaySessionStore sessionStore;
+  private final SessionStore sessionStore;
   private final RuntimeConfGetter confGetter;
   private final RoleBindingUtil roleBindingUtil;
   private final ApiHelper apiHelper;
@@ -64,7 +64,7 @@ public class ThirdPartyLoginHandler {
   @Inject
   public ThirdPartyLoginHandler(
       Environment environment,
-      PlaySessionStore sessionStore,
+      SessionStore sessionStore,
       RuntimeConfGetter confGetter,
       RoleBindingUtil roleBindingUtil,
       ApiHelper apiHelper) {
@@ -264,26 +264,26 @@ public class ThirdPartyLoginHandler {
   }
 
   void invalidateSession(Request request) {
-    final PlayWebContext context = new PlayWebContext(request, sessionStore);
-    final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
-    profileManager.logout();
+    final PlayWebContext context = new PlayWebContext(request);
+    final ProfileManager profileManager = new ProfileManager(context, sessionStore);
+    profileManager.removeProfiles();
     sessionStore.destroySession(context);
   }
 
   public CommonProfile getProfile(Request request) {
-    final PlayWebContext context = new PlayWebContext(request, sessionStore);
-    final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
+    final PlayWebContext context = new PlayWebContext(request);
+    final ProfileManager profileManager = new ProfileManager(context, sessionStore);
     return profileManager
-        .get(true)
+        .getProfile(CommonProfile.class)
         .orElseThrow(
             () ->
                 new PlatformServiceException(
                     Status.INTERNAL_SERVER_ERROR, "Unable to get profile"));
   }
 
-  public ProfileManager<CommonProfile> getProfileManager(Request request) {
-    final PlayWebContext context = new PlayWebContext(request, sessionStore);
-    final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
+  public ProfileManager getProfileManager(Request request) {
+    final PlayWebContext context = new PlayWebContext(request);
+    final ProfileManager profileManager = new ProfileManager(context, sessionStore);
 
     return profileManager;
   }

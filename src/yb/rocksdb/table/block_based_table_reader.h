@@ -179,18 +179,10 @@ class BlockBasedTable : public TableReader {
   // convert SST file to a human readable form
   Status DumpTable(WritableFile* out_file) override;
 
-  // Get the iterator from the index reader.
-  // If input_iter is not set, return new Iterator
-  // If input_iter is set, update it and return:
-  //  - newly created data index iterator in case it was created (if we use multi-level data index,
-  //    input_iter is an iterator of the top level index, but not the whole index iterator).
-  //  - nullptr if input_iter is a data index iterator and no new iterators were created.
-  //
-  // Note: ErrorIterator with error will be returned if GetIndexReader returned an error.
-  InternalIterator* NewIndexIterator(
-      const ReadOptions& read_options, BlockIter* input_iter);
-
   InternalIterator* NewIndexIterator(const ReadOptions& read_options) override;
+
+  DataBlockAwareIndexInternalIterator* NewDataBlockAwareIndexIterator(
+      const ReadOptions& read_options) override;
 
   const ImmutableCFOptions& ioptions();
 
@@ -250,6 +242,17 @@ class BlockBasedTable : public TableReader {
   // - If read_options.read_tier == kBlockCacheTier: Status::Incomplete error will be returned.
   // - If read_options.read_tier != kBlockCacheTier: new index reader will be created and cached.
   yb::Result<CachableEntry<IndexReader>> GetIndexReader(const ReadOptions& read_options);
+
+  // Get the iterator from the index reader.
+  // If input_iter is not set, return new Iterator
+  // If input_iter is set, update it and return:
+  //  - newly created data index iterator in case it was created (if we use multi-level data index,
+  //    input_iter is an iterator of the top level index, but not the whole index iterator).
+  //  - nullptr if input_iter is a data index iterator and no new iterators were created.
+  //
+  // Note: ErrorIterator with error will be returned if GetIndexReader returned an error.
+  InternalIterator* NewIndexIterator(
+      const ReadOptions& read_options, BlockIter* input_iter);
 
   // Read block cache from block caches (if set): block_cache and
   // block_cache_compressed.
@@ -345,6 +348,10 @@ class BlockBasedTable : public TableReader {
   // Helper functions for DumpTable()
   Status DumpIndexBlock(WritableFile* out_file);
   Status DumpDataBlocks(WritableFile* out_file);
+
+  template <typename IndexIteratorType>
+  void RegisterCleanupForIndexIterator(
+      const CachableEntry<IndexReader>& index_reader_entry, IndexIteratorType* iter);
 };
 
 }  // namespace rocksdb

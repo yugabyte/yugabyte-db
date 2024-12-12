@@ -90,10 +90,12 @@ extern void YBCExecuteInsert(Relation rel,
 							 OnConflictAction onConflictAction);
 
 /* HeapTuple based wrapper on YBCExecuteInsertForDb. */
-extern void
-YBCExecuteInsertHeapTupleForDb(Oid dboid, Relation rel, HeapTuple tuple,
-							   OnConflictAction onConflictAction, Datum *ybctid,
-							   YBCPgTransactionSetting transaction_setting);
+extern void YBCExecuteInsertHeapTupleForDb(Oid dboid,
+										   Relation rel,
+										   HeapTuple tuple,
+										   OnConflictAction onConflictAction,
+										   Datum *ybctid,
+										   YBCPgTransactionSetting transaction_setting);
 
 extern void YBCExecuteInsertForDb(Oid dboid,
 								  Relation rel,
@@ -128,15 +130,15 @@ extern void YBCExecuteInsertIndex(Relation rel,
 								  Datum *values,
 								  bool *isnull,
 								  Datum ybctid,
-								  const uint64_t* backfill_write_time,
+								  const uint64_t *backfill_write_time,
 								  yb_bind_for_write_function callback,
 								  void *indexstate);
 extern void YBCExecuteInsertIndexForDb(Oid dboid,
 									   Relation rel,
-									   Datum* values,
-									   bool* isnull,
+									   Datum *values,
+									   bool *isnull,
 									   Datum ybctid,
-									   const uint64_t* backfill_write_time,
+									   const uint64_t *backfill_write_time,
 									   yb_bind_for_write_function callback,
 									   void *indexstate);
 
@@ -160,9 +162,9 @@ extern bool YBCExecuteDelete(Relation rel,
  * index's backing YugaByte index table.
  */
 extern void YBCExecuteDeleteIndex(Relation index,
-                                  Datum *values,
-                                  bool *isnull,
-                                  Datum ybctid,
+								  Datum *values,
+								  bool *isnull,
+								  Datum ybctid,
 								  yb_bind_for_write_function callback,
 								  void *indexstate);
 
@@ -209,9 +211,9 @@ extern bool YBCExecuteUpdateLoginAttempts(Oid roleid,
  * This will change ybctid of a row within a tuple.
  */
 extern void YBCExecuteUpdateReplace(Relation rel,
-								    TupleTableSlot *planSlot,
-								    TupleTableSlot *slot,
-								    EState *estate);
+									TupleTableSlot *planSlot,
+									TupleTableSlot *slot,
+									EState *estate);
 
 //------------------------------------------------------------------------------
 // System tables modify-table API.
@@ -222,12 +224,12 @@ extern void YBCExecuteUpdateReplace(Relation rel,
 extern void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple);
 
 extern void YBCUpdateSysCatalogTuple(Relation rel,
-                                     HeapTuple oldtuple,
-                                     HeapTuple tuple);
+									 HeapTuple oldtuple,
+									 HeapTuple tuple);
 extern void YBCUpdateSysCatalogTupleForDb(Oid dboid,
-                                          Relation rel,
-                                          HeapTuple oldtuple,
-                                          HeapTuple tuple);
+										  Relation rel,
+										  HeapTuple oldtuple,
+										  HeapTuple tuple);
 
 //------------------------------------------------------------------------------
 // Utility methods.
@@ -244,8 +246,8 @@ extern Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot);
 
 extern Datum YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot);
 
-extern YBCPgYBTupleIdDescriptor*
-YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values);
+extern YBCPgYBTupleIdDescriptor *YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index,
+																	 Datum *values);
 
 /*
  * Returns if a table has secondary indices.

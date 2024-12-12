@@ -619,6 +619,11 @@ public enum TaskType {
       CustomerTask.TaskType.EnableNodeAgent,
       CustomerTask.TargetType.Universe),
 
+  DecommissionNode(
+      com.yugabyte.yw.commissioner.tasks.DecommissionNode.class,
+      CustomerTask.TaskType.Decommission,
+      CustomerTask.TargetType.Node),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(

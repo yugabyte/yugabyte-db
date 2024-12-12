@@ -141,4 +141,7 @@ message LogSegmentFooterPB {
   // 3. HybridTime::kInitial if both the previous values were HybridTime::kInvalid or not
   // fetched successfully.
   optional uint64 min_start_time_running_txns = 6;
+
+  // Log HT of the last appended WAL Op in the segment.
+  optional uint64 last_wal_op_log_ht = 7;
 }

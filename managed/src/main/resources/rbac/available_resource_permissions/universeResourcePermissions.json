@@ -84,8 +84,8 @@
   {
     "resourceType": "UNIVERSE",
     "action": "XCLUSTER",
-    "name": "Manage XCluster",
-    "description": "Manges XCluster on a universe.",
+    "name": "Manage xCluster",
+    "description": "Manges xCluster on a universe.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": [
       {

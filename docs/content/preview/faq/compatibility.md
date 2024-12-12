@@ -32,7 +32,7 @@ API
 
 [YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys).
 
-{{<lead link="/preview/quick-start/explore/ysql/">}}
+{{<lead link="../../explore/">}}
 Explore YSQL features
 {{</lead>}}
 
@@ -40,7 +40,7 @@ Explore YSQL features
 
 [YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP applications needing massive data ingestion and blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language.
 
-{{<lead link="/preview/quick-start/explore/ycql/">}}
+{{<lead link="../../explore/">}}
 Explore YCQL features
 {{</lead>}}
 

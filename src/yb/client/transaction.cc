@@ -1580,7 +1580,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     manager_->client()->LookupTabletById(
         tablet_id,
         /* table =*/ nullptr,
-        master::IncludeInactive::kFalse,
+        master::IncludeHidden::kFalse,
         master::IncludeDeleted::kFalse,
         deadline,
         std::bind(&Impl::LookupTabletDone, this, _1, transaction, promoting),
@@ -2084,7 +2084,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     manager_->client()->LookupTabletById(
         tablet_id,
         /* table =*/ nullptr,
-        master::IncludeInactive::kFalse,
+        master::IncludeHidden::kFalse,
         master::IncludeDeleted::kFalse,
         TransactionRpcDeadline(),
         [this, transaction = std::move(transaction), id, request_template, tablet_id](

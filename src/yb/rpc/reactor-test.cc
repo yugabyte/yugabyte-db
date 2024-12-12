@@ -35,6 +35,7 @@
 #include "yb/rpc/rpc-test-base.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/logging.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 
@@ -42,9 +43,9 @@ using namespace std::literals;
 using namespace std::placeholders;
 
 DECLARE_int32(TEST_rpc_reactor_index_for_init_failure_simulation);
+DECLARE_int32(rpc_reactor_task_timeout_ms);
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 MessengerOptions MakeMessengerOptions() {
   auto result = kDefaultClientMessengerOptions;
@@ -54,9 +55,10 @@ MessengerOptions MakeMessengerOptions() {
 
 class ReactorTest : public RpcTestBase {
  public:
-  ReactorTest()
-    : messenger_(CreateMessenger("my_messenger", MakeMessengerOptions()).release()),
-      latch_(1) {
+  ReactorTest() {
+    FLAGS_rpc_reactor_task_timeout_ms = 500;
+
+    messenger_.reset(CreateMessenger("my_messenger", MakeMessengerOptions()).release());
   }
 
   void ScheduledTask(const Status& status, const Status& expected_status) {
@@ -81,7 +83,7 @@ class ReactorTest : public RpcTestBase {
 
  protected:
   AutoShutdownMessengerHolder messenger_;
-  CountDownLatch latch_;
+  CountDownLatch latch_{1};
 };
 
 TEST_F_EX(ReactorTest, MessengerInitFailure, YBTest) {
@@ -139,5 +141,53 @@ TEST_F(ReactorTest, TestReschedulesOnSameReactorThread) {
   latch_.Wait();
 }
 
-} // namespace rpc
-} // namespace yb
+namespace {
+
+class MonitorTestLogger : public google::base::Logger {
+ public:
+  MonitorTestLogger() : impl_(google::base::GetLogger(google::GLOG_WARNING)) {
+  }
+
+  size_t num_writes() const {
+    return num_writes_.load();
+  }
+ private:
+  void Write(bool force_flush, time_t timestamp, const char* message, int message_len) override {
+    ++num_writes_;
+    impl_->Write(force_flush, timestamp, message, message_len);
+  }
+
+  void Flush() override {
+    impl_->Flush();
+  }
+
+  uint32 LogSize() override {
+    return impl_->LogSize();
+  }
+ private:
+  std::atomic<size_t> num_writes_{0};
+  google::base::Logger* impl_;
+};
+
+} // namespace
+
+TEST_F(ReactorTest, Monitor) {
+  latch_.Reset(2);
+  auto* logger = new MonitorTestLogger;
+  google::base::SetLogger(google::GLOG_WARNING, logger);
+  ASSERT_RESULT(messenger_->ScheduleOnReactor([this](const Status& status) {
+    CHECK_OK(status);
+    latch_.CountDown();
+  }, 0s, SOURCE_LOCATION()));
+  ASSERT_RESULT(messenger_->ScheduleOnReactor([this, logger](const Status& status) {
+    CHECK_OK(status);
+    while (!logger->num_writes()) {
+      std::this_thread::sleep_for(100ms);
+    }
+    latch_.CountDown();
+  }, 0s, SOURCE_LOCATION()));
+  latch_.Wait();
+  ASSERT_EQ(logger->num_writes(), 1);
+}
+
+} // namespace yb::rpc

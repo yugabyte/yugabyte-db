@@ -238,4 +238,44 @@ Status GetIntents(
     const PgsqlReadRequestPB& request, const Schema& schema, IsolationLevel level,
     LWKeyValueWriteBatchPB* out);
 
+class PgsqlLockOperation :
+    public DocOperationBase<DocOperationType::PGSQL_LOCK_OPERATION, PgsqlLockRequestPB> {
+ public:
+  PgsqlLockOperation(std::reference_wrapper<const PgsqlLockRequestPB> request,
+                     const TransactionOperationContext& txn_op_context);
+
+  bool RequireReadSnapshot() const override {
+    return false;
+  }
+
+  const PgsqlLockRequestPB& request() const { return request_; }
+  PgsqlResponsePB* response() const { return response_; }
+
+  // Init doc_key_ and encoded_doc_key_.
+  Status Init(PgsqlResponsePB* response, const DocReadContextPtr& doc_read_context);
+
+  Status Apply(const DocOperationApplyData& data) override;
+
+  // Reading path to operate on.
+  Status GetDocPaths(GetDocPathsMode mode,
+                     DocPathsToLock *paths,
+                     IsolationLevel *level) const override;
+
+  std::string ToString() const override;
+
+  dockv::IntentTypeSet GetIntentTypes(IsolationLevel isolation_level) const override;
+
+ private:
+  void ClearResponse() override;
+
+  const TransactionOperationContext txn_op_context_;
+
+  // Input arguments.
+  PgsqlResponsePB* response_ = nullptr;
+
+  // The key of the advisory lock to be locked.
+  dockv::DocKey doc_key_;
+  RefCntPrefix encoded_doc_key_;
+};
+
 }  // namespace yb::docdb

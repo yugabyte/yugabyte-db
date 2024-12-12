@@ -5269,6 +5269,7 @@ _copyForeignKeyCacheInfo(const ForeignKeyCacheInfo *from)
 	COPY_ARRAY_FIELD(conkey);
 	COPY_ARRAY_FIELD(confkey);
 	COPY_ARRAY_FIELD(conpfeqop);
+	COPY_SCALAR_FIELD(ybconindid);
 
 	return newnode;
 }
