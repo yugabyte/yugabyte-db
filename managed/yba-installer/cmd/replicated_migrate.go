@@ -102,7 +102,7 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		}
 		statInfo := info.Sys().(*syscall.Stat_t)
 		log.DebugLF(
-			fmt.Sprintf("Prometheus user:group ownership - '%s:%s'", statInfo.Uid, statInfo.Gid))
+			fmt.Sprintf("Prometheus user:group ownership - '%d:%d'", statInfo.Uid, statInfo.Gid))
 		state.Replicated.PrometheusFileUser = statInfo.Uid
 		state.Replicated.PrometheusFileGroup = statInfo.Gid
 
