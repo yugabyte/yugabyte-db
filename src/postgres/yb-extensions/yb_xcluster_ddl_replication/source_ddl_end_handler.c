@@ -14,6 +14,9 @@
 
 #include "source_ddl_end_handler.h"
 
+#include "catalog/pg_am_d.h"
+#include "catalog/pg_amop_d.h"
+#include "catalog/pg_amproc_d.h"
 #include "catalog/pg_attrdef_d.h"
 #include "catalog/pg_cast_d.h"
 #include "catalog/pg_collation_d.h"
@@ -22,6 +25,7 @@
 #include "catalog/pg_extension_d.h"
 #include "catalog/pg_foreign_data_wrapper_d.h"
 #include "catalog/pg_foreign_server_d.h"
+#include "catalog/pg_foreign_table_d.h"
 #include "catalog/pg_namespace_d.h"
 #include "catalog/pg_operator_d.h"
 #include "catalog/pg_opclass_d.h"
@@ -31,6 +35,11 @@
 #include "catalog/pg_rewrite_d.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_trigger_d.h"
+#include "catalog/pg_ts_config_d.h"
+#include "catalog/pg_ts_config_map_d.h"
+#include "catalog/pg_ts_dict_d.h"
+#include "catalog/pg_ts_parser_d.h"
+#include "catalog/pg_ts_template_d.h"
 #include "catalog/pg_type_d.h"
 #include "catalog/pg_user_mapping_d.h"
 #include "executor/spi.h"
@@ -55,8 +64,8 @@
 
 #define ALLOWED_DDL_LIST \
 	X(CMDTAG_COMMENT) \
-	X(CMDTAG_CREATE_AGGREGATE) \
 	X(CMDTAG_CREATE_ACCESS_METHOD) \
+	X(CMDTAG_CREATE_AGGREGATE) \
 	X(CMDTAG_CREATE_CAST) \
 	X(CMDTAG_CREATE_COLLATION) \
 	X(CMDTAG_CREATE_DOMAIN) \
@@ -79,13 +88,14 @@
 	X(CMDTAG_CREATE_TEXT_SEARCH_PARSER) \
 	X(CMDTAG_CREATE_TEXT_SEARCH_TEMPLATE) \
 	X(CMDTAG_CREATE_TRIGGER) \
+	X(CMDTAG_CREATE_TYPE) \
 	X(CMDTAG_CREATE_USER_MAPPING) \
 	X(CMDTAG_CREATE_VIEW) \
-	X(CMDTAG_IMPORT_FOREIGN_SCHEMA) \
 	X(CMDTAG_ALTER_AGGREGATE) \
 	X(CMDTAG_ALTER_CAST) \
 	X(CMDTAG_ALTER_COLLATION) \
 	X(CMDTAG_ALTER_DOMAIN) \
+	X(CMDTAG_ALTER_EXTENSION) \
 	X(CMDTAG_ALTER_FUNCTION) \
 	X(CMDTAG_ALTER_OPERATOR) \
 	X(CMDTAG_ALTER_OPERATOR_CLASS) \
@@ -101,7 +111,38 @@
 	X(CMDTAG_ALTER_TEXT_SEARCH_PARSER) \
 	X(CMDTAG_ALTER_TEXT_SEARCH_TEMPLATE) \
 	X(CMDTAG_ALTER_TRIGGER) \
+	X(CMDTAG_ALTER_TYPE) \
 	X(CMDTAG_ALTER_VIEW) \
+	X(CMDTAG_DROP_ACCESS_METHOD) \
+	X(CMDTAG_DROP_AGGREGATE) \
+	X(CMDTAG_DROP_CAST) \
+	X(CMDTAG_DROP_COLLATION) \
+	X(CMDTAG_DROP_DOMAIN) \
+	X(CMDTAG_DROP_EXTENSION) \
+	X(CMDTAG_DROP_FOREIGN_DATA_WRAPPER) \
+	X(CMDTAG_DROP_FOREIGN_TABLE) \
+	X(CMDTAG_DROP_FUNCTION) \
+	X(CMDTAG_DROP_OPERATOR) \
+	X(CMDTAG_DROP_OPERATOR_CLASS) \
+	X(CMDTAG_DROP_OPERATOR_FAMILY) \
+	X(CMDTAG_DROP_POLICY) \
+	X(CMDTAG_DROP_PROCEDURE) \
+	X(CMDTAG_DROP_ROUTINE) \
+	X(CMDTAG_DROP_RULE) \
+	X(CMDTAG_DROP_SCHEMA) \
+	X(CMDTAG_DROP_SERVER) \
+	X(CMDTAG_DROP_STATISTICS) \
+	X(CMDTAG_DROP_TEXT_SEARCH_CONFIGURATION) \
+	X(CMDTAG_DROP_TEXT_SEARCH_DICTIONARY) \
+	X(CMDTAG_DROP_TEXT_SEARCH_PARSER) \
+	X(CMDTAG_DROP_TEXT_SEARCH_TEMPLATE) \
+	X(CMDTAG_DROP_TRIGGER) \
+	X(CMDTAG_DROP_TYPE) \
+	X(CMDTAG_DROP_USER_MAPPING) \
+	X(CMDTAG_DROP_VIEW) \
+	X(CMDTAG_GRANT) \
+	X(CMDTAG_IMPORT_FOREIGN_SCHEMA) \
+	X(CMDTAG_REVOKE) \
 	X(CMDTAG_SECURITY_LABEL)
 
 typedef struct NewRelMapEntry
@@ -147,12 +188,8 @@ IsPrimaryIndex(Relation rel)
 }
 
 bool
-IsPassThroughDdlSupported(const char *command_tag_name)
+IsPassThroughDdlCommandSupported(CommandTag command_tag)
 {
-	if (command_tag_name == NULL || *command_tag_name == '\0')
-		return false;
-
-	CommandTag command_tag = GetCommandTagEnum(command_tag_name);
 	switch (command_tag)
 	{
 		#define X(CMD_TAG_VALUE) case CMD_TAG_VALUE: return true;
@@ -160,6 +197,18 @@ IsPassThroughDdlSupported(const char *command_tag_name)
 		#undef X
 		default: return false;
 	}
+
+	return false;
+}
+
+bool
+IsPassThroughDdlSupported(const char *command_tag_name)
+{
+	if (command_tag_name == NULL || *command_tag_name == '\0')
+		return false;
+
+	CommandTag command_tag = GetCommandTagEnum(command_tag_name);
+	return IsPassThroughDdlCommandSupported(command_tag);
 }
 
 bool
@@ -239,7 +288,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	initStringInfo(&query_buf);
 	appendStringInfo(&query_buf, "SELECT objid, command_tag FROM "
 								 "pg_catalog.pg_event_trigger_ddl_commands()");
-	int exec_res = SPI_execute(query_buf.data, /*readonly*/ true, /*tcount*/ 0);
+	int exec_res = SPI_execute(query_buf.data, /* readonly */ true, /* tcount */ 0);
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
@@ -312,7 +361,7 @@ ProcessSourceEventTriggerDroppedObjects()
 	appendStringInfo(&query_buf, "SELECT classid, is_temporary, "
 								 "object_type, schema_name, object_name FROM "
 								 "pg_catalog.pg_event_trigger_dropped_objects()");
-	int exec_res = SPI_execute(query_buf.data, /*readonly*/ true, /*tcount*/ 0);
+	int exec_res = SPI_execute(query_buf.data, /* readonly */ true, /* tcount */ 0);
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
@@ -353,6 +402,9 @@ ProcessSourceEventTriggerDroppedObjects()
 										   "supported by yb_xcluster_ddl_replication\n%s",
 										   kManualReplicationErrorMsg)));
 				switch_fallthrough();
+			case AccessMethodRelationId:
+			case AccessMethodOperatorRelationId:
+			case AccessMethodProcedureRelationId:
 			case AttrDefaultRelationId:
 			case CastRelationId:
 			case CollationRelationId:
@@ -360,13 +412,22 @@ ProcessSourceEventTriggerDroppedObjects()
 			case ConversionRelationId:
 			case ExtensionRelationId:
 			case ForeignDataWrapperRelationId:
+			case ForeignServerRelationId:
+			case ForeignTableRelationId:
+			case NamespaceRelationId:
 			case OperatorClassRelationId:
 			case OperatorFamilyRelationId:
 			case OperatorRelationId:
 			case PolicyRelationId:
 			case ProcedureRelationId:
+			case RewriteRelationId:
 			case StatisticExtRelationId:
 			case TriggerRelationId:
+			case TSConfigRelationId:
+			case TSConfigMapRelationId:
+			case TSDictionaryRelationId:
+			case TSParserRelationId:
+			case TSTemplateRelationId:
 			case TypeRelationId:
 			case UserMappingRelationId:
 				should_replicate_ddl = true;
