@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -44,7 +44,7 @@ var encryptionAtRestCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
-			_, _, err := upgrade.Validations(cmd, util.SecurityOperation)
+			_, _, err := universeutil.Validations(cmd, util.SecurityOperation)
 			if err != nil {
 				logrus.Fatalf(
 					formatter.Colorize(err.Error()+"\n", formatter.RedColor),
@@ -61,7 +61,7 @@ var encryptionAtRestCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, universe, err := upgrade.Validations(cmd, util.UpgradeOperation)
+		authAPI, universe, err := universeutil.Validations(cmd, util.UpgradeOperation)
 		if err != nil {
 			logrus.Fatalf(
 				formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -254,7 +254,7 @@ func earAPICall(
 			universeUUID,
 		))
 
-	upgrade.WaitForUpgradeUniverseTask(authAPI, universeName, ybaclient.YBPTask{
+	universeutil.WaitForUpgradeUniverseTask(authAPI, universeName, ybaclient.YBPTask{
 		TaskUUID:     util.GetStringPointer(r.GetTaskUUID()),
 		ResourceUUID: util.GetStringPointer(universeUUID),
 	})

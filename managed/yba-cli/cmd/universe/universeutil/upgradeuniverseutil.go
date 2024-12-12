@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package upgrade
+package universeutil
 
 import (
 	"encoding/json"

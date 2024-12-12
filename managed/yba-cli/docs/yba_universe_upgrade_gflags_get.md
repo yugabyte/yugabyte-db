@@ -1,19 +1,19 @@
-## yba universe upgrade gflags
+## yba universe upgrade gflags get
 
-Gflags upgrade for a YugabyteDB Anywhere Universe
+Get gflags for a YugabyteDB Anywhere Universe
 
 ### Synopsis
 
-Gflags upgrade for a YugabyteDB Anywhere Universe. Fetch the output of "yba universe upgrade gflags get" command, make required changes to the gflags and submit the json input to "yba universe upgrade gflags set"
+Get gflags for a YugabyteDB Anywhere Universe. Allowed output format: json, pretty
 
 ```
-yba universe upgrade gflags [flags]
+yba universe upgrade gflags get [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for gflags
+  -h, --help   help for get
 ```
 
 ### Options inherited from parent commands
@@ -35,7 +35,5 @@ yba universe upgrade gflags [flags]
 
 ### SEE ALSO
 
-* [yba universe upgrade](yba_universe_upgrade.md)	 - Upgrade a YugabyteDB Anywhere universe
-* [yba universe upgrade gflags get](yba_universe_upgrade_gflags_get.md)	 - Get gflags for a YugabyteDB Anywhere Universe
-* [yba universe upgrade gflags set](yba_universe_upgrade_gflags_set.md)	 - Set gflags for a YugabyteDB Anywhere Universe
+* [yba universe upgrade gflags](yba_universe_upgrade_gflags.md)	 - Gflags upgrade for a YugabyteDB Anywhere Universe
 
