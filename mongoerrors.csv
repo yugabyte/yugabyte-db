@@ -47,6 +47,7 @@ MongoError,ErrorName
 276,IndexBuildAborted
 291,UnableToFindIndex
 361,CollectionUUIDMismatch
+8000,UserCountLimitExceeded
 10065,Location10065
 10334,BsonObjectTooLarge
 11000,DuplicateKey

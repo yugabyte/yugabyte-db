@@ -494,3 +494,4 @@ Location40181,M00DN,492
 InvalidLength,M00DO,493
 Location15998,M00DP,494
 Location40229,M00DQ,495
+UserCountLimitExceeded,M00DR,496

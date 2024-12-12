@@ -1055,4 +1055,6 @@ typedef int HelioErrorEreportCode;
 
 #define ERRCODE_HELIO_LOCATION40229 MAKE_SQLSTATE('M', '0', '0', 'D', 'Q')
 
+#define ERRCODE_HELIO_USERCOUNTLIMITEXCEEDED MAKE_SQLSTATE('M', '0', '0', 'D', 'R')
+
 #endif

@@ -60,6 +60,9 @@ extern bool EnableUserCrud;
 /* GUC that controls the default salt length*/
 extern int ScramDefaultSaltLen;
 
+/* GUC that controls the max number of users allowed*/
+extern int MaxUserLimit;
+
 PG_FUNCTION_INFO_V1(helio_extension_create_user);
 PG_FUNCTION_INFO_V1(helio_extension_drop_user);
 PG_FUNCTION_INFO_V1(helio_extension_update_user);
@@ -94,6 +97,37 @@ helio_extension_create_user(PG_FUNCTION_ARGS)
 						errmsg("User spec must be specified")));
 	}
 
+	/*Verify that we have not yet hit the limit of users allowed */
+	const char *cmdStr = FormatSqlQuery(
+		"SELECT COUNT(*) FROM pg_roles parent JOIN pg_auth_members am ON parent.oid = am.roleid JOIN pg_roles child " \
+		"ON am.member = child.oid WHERE child.rolcanlogin = true AND parent.rolname IN ('helio_admin_role', 'helio_readonly_role') " \
+		"AND child.rolname NOT IN ('helio_admin_role', 'helio_readonly_role');");
+
+	bool readOnly = true;
+	bool isNull = false;
+	Datum userCountDatum = ExtensionExecuteQueryViaSPI(cmdStr, readOnly,
+													   SPI_OK_SELECT, &isNull);
+	int userCount = 0;
+
+	if (!isNull)
+	{
+		userCount = DatumGetInt32(userCountDatum);
+	}
+	else
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+						errmsg("Failed to get current user count.")));
+	}
+
+	if (userCount >= MaxUserLimit)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_USERCOUNTLIMITEXCEEDED),
+						errmsg(
+							"Exceeded the limit of %d secondary users. " \
+							"For more options, visit https://aka.ms/mongodbvcore-rbac",
+							MaxUserLimit)));
+	}
+
 	pgbson *createUserSpec = PG_GETARG_PGBSON(0);
 	CreateUserSpec *spec = ParseCreateUserSpec(createUserSpec);
 	StringInfo createUserInfo = makeStringInfo();
@@ -103,8 +137,8 @@ helio_extension_create_user(PG_FUNCTION_ARGS)
 					 PrehashPassword(spec->pwd),
 					 quote_identifier(spec->pgRole));
 
-	bool readOnly = false;
-	bool isNull = false;
+	readOnly = false;
+	isNull = false;
 	ExtensionExecuteQueryViaSPI(createUserInfo->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 

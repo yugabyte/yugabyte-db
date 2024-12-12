@@ -278,6 +278,9 @@ bool EnableShardingOrFilters = DEFAULT_ENABLE_SHARDING_OR_FILTERS;
 #define DEFAULT_THROW_DEADLOCK_ON_CRUD false
 bool ThrowDeadlockOnCrud = DEFAULT_THROW_DEADLOCK_ON_CRUD;
 
+#define MAX_USER_LIMIT 10
+int MaxUserLimit = MAX_USER_LIMIT;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -824,6 +827,15 @@ InitApiConfigurations(char *prefix)
 		&ThrowDeadlockOnCrud,
 		DEFAULT_THROW_DEADLOCK_ON_CRUD,
 		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		"helio_api.maxUserLimit",
+		gettext_noop("The default number of users allowed."),
+		NULL, &MaxUserLimit,
+		MAX_USER_LIMIT, 1, 100,
+		PGC_SUSET,
+		0,
+		NULL, NULL, NULL);
 }
 
 
