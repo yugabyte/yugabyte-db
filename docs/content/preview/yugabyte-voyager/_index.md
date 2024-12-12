@@ -1,7 +1,7 @@
 ---
 title: Migrate to YugabyteDB using Voyager
 headerTitle: YugabyteDB Voyager
-linkTitle: Overview
+linkTitle: YugabyteDB Voyager
 headcontent: Simplify migration from legacy and cloud databases to YugabyteDB
 cascade:
   unversioned: true
@@ -12,6 +12,7 @@ aliases:
   - /preview/tools/voyager/
 menu:
   preview_yugabyte-voyager:
+    name: "Overview"
     identifier: yugabyte-voyager
     parent: yugabytedb-voyager
     weight: 99
