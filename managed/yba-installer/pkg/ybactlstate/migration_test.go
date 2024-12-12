@@ -129,6 +129,29 @@ func TestNoMigrationDefinedForIndex(t *testing.T) {
 	}
 }
 
+func TestUpdateTrackingWithSkippedMigration(t *testing.T) {
+	fs = mockFS{
+		WriteBuffer: &devNullWriter{}, // we don't care about storing the state
+	}
+	schemaVersionCache = 8
+	state := &State{}
+	state._internalFields = internalFields{}
+	state._internalFields.SchemaVersion = 6
+	state._internalFields.RunSchemas = nil
+	migrations = make(map[int]migrator)
+	for _, i := range []int{2, 3, 4, 5, 6, 8, 9} {
+		addToMigrationMap(i)
+	}
+	err := updateSchemaTracking(state)
+	if err != nil {
+		t.Errorf("running migrations failed: %s", err.Error())
+	}
+	expected := []int{2, 3, 4, 5, 6}
+	if slices.Compare(expected, state._internalFields.RunSchemas) != 0 {
+		t.Errorf("expected slice %v. Found slice %v", expected, state._internalFields.RunSchemas)
+	}
+}
+
 func expectedRunSchemas(v int) []int {
 	expected := make([]int, v)
 	start := 1
