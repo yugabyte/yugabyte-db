@@ -1,27 +1,22 @@
 # Function to check if the OS is based on el7
-# (CentOS 7, RHEL 7, Oracle Linux 7, Amazon Linux 7, etc.)
-#
 check_os() {
-    if ! command -v rpm &> /dev/null
-    then
-      echo "rpm command does not exist"
-      return 1
+    if ! command -v rpm &> /dev/null; then
+        echo "rpm command does not exist"
+        return 1
     else
-      echo "rpm command exists, testing operating system version"
-      rhel_version=$(rpm -E %{rhel})
-      platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
-      if [[ "$rhel_version" == "7" ]] || [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
-          echo "Operating system is based on el7"
-          return 0
-      else
-          echo "Operating system is NOT based on el7."
-          return 1
-      fi
+        echo "rpm command exists, testing operating system version"
+        rhel_version=$(rpm -E %{rhel})
+        platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+        if [[ "$rhel_version" == "7" ]] || [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
+            echo "Operating system is based on el7"
+            return 0
+        else
+            echo "Operating system is NOT based on el7."
+            return 1
+        fi
     fi
 }
 
-
-# Needs to be done at root level in centos 7 like systems.
 # Main function to set up the systemd service and scripts
 setup_reboot_process() {
     # Define file paths
@@ -30,7 +25,7 @@ setup_reboot_process() {
     SERVICE_FILE_PATH="/etc/systemd/system/clear-reboot-required.service"
 
     # Create the schedule reboot script
-    cat > "$SCHEDULE_REBOOT_SCRIPT_PATH" << 'EOF'
+    cat > "$SCHEDULE_REBOOT_SCRIPT_PATH" <<'EOF'
 #!/bin/bash
 
 MARKER_FILE="{{tmp_directory}}/.reboot-required"
@@ -44,9 +39,10 @@ fi
 EOF
 
     # Create the clear reboot flag script
-    cat > "$CLEAR_REBOOT_SCRIPT_PATH" << 'EOF'
+    cat > "$CLEAR_REBOOT_SCRIPT_PATH" <<'EOF'
 #!/bin/bash
 
+USER={{ yb_user }}
 MARKER_FILE="{{tmp_directory}}/.reboot-required"
 
 if [ -f "$MARKER_FILE" ]; then
@@ -55,19 +51,35 @@ if [ -f "$MARKER_FILE" ]; then
 else
     echo "No reboot-required flag found."
 fi
+
+# Try restarting the yb-node-agent service in user scope if it is not already started
+SERVICE_NAME="yb-node-agent.service"
+
+# Set XDG_RUNTIME_DIR for the user and restart the service
+sudo -u $USER bash -c "export XDG_RUNTIME_DIR=\"/run/user/\$(id -u $USER)\"; systemctl --user restart $SERVICE_NAME"
 EOF
 
     # Make the scripts executable
-    chmod +x "$SCHEDULE_REBOOT_SCRIPT_PATH"
-    chmod +x "$CLEAR_REBOOT_SCRIPT_PATH"
+    chmod +x "$SCHEDULE_REBOOT_SCRIPT_PATH" "$CLEAR_REBOOT_SCRIPT_PATH"
+    # Execute the schedule reboot script
+    echo "Executing the schedule reboot script..."
+    "$SCHEDULE_REBOOT_SCRIPT_PATH"
+
+
+# Get the user ID for the specified user
+YB_USER_ID=$(id -u "{{ yb_user }}")
+if [ -z "$YB_USER_ID" ]; then
+    echo "Error: Could not determine user ID for $USER"
+    exit 1
+fi
 
     # Create the systemd service file
-    cat > "$SERVICE_FILE_PATH" << EOF
+    cat > "$SERVICE_FILE_PATH" <<EOF
 [Unit]
 Description=Clear the reboot-required flag at boot
 DefaultDependencies=no
-After=local-fs.target
-Before=basic.target
+After=local-fs.target default.target user-runtime-dir@$YB_USER_ID.service
+Requires=user-runtime-dir@$YB_USER_ID.service
 
 [Service]
 Type=oneshot
