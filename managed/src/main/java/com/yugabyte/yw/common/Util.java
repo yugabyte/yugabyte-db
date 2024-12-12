@@ -39,6 +39,7 @@ import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -81,6 +82,7 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Value;
@@ -91,6 +93,7 @@ import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
@@ -984,6 +987,38 @@ public class Util {
         addFilesToTarGZ(f.getAbsolutePath(), entryName + File.separator, tarArchive);
       }
     }
+  }
+
+  /**
+   * Compress a given directory to .tar.gz and delete the original directory.
+   *
+   * @param dirPath path to the directory to compress
+   * @return the path to the gzip.
+   * @throws Exception
+   */
+  public static Path zipAndDeleteDir(Path dirPath) throws Exception {
+    Path gzipPath = Paths.get(dirPath.toAbsolutePath().toString().concat(".tar.gz"));
+    LOG.info(
+        "Compressing the following directory: {} to {}",
+        dirPath.toAbsolutePath().toString(),
+        gzipPath.toAbsolutePath().toString());
+    // Tar the directory and delete the original folder
+    try (FileOutputStream fos = new FileOutputStream(gzipPath.toString());
+        GZIPOutputStream gos = new GZIPOutputStream(new BufferedOutputStream(fos));
+        TarArchiveOutputStream tarOS = new TarArchiveOutputStream(gos)) {
+
+      tarOS.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
+      tarOS.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX);
+      addFilesToTarGZ(dirPath.toString(), "", tarOS);
+      LOG.info("Deleting directory: " + dirPath.toAbsolutePath().toString());
+      FileUtils.deleteDirectory(new File(dirPath.toAbsolutePath().toString()));
+    } catch (Exception e) {
+      LOG.error(
+          "Error while compressing the following directory: {}",
+          dirPath.toAbsolutePath().toString());
+      throw e;
+    }
+    return gzipPath;
   }
 
   /**

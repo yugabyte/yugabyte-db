@@ -1,3 +1,12 @@
+/*
+ * Copyright 2024 YugaByte, Inc. and Contributors
+ *
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,6 +19,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SupportBundleComponentDownload;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
@@ -27,14 +37,9 @@ import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
@@ -42,10 +47,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import java.util.zip.GZIPOutputStream;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import play.libs.Json;
 
@@ -94,16 +96,12 @@ public class CreateSupportBundle extends AbstractTaskBase {
     }
   }
 
-  public Path generateBundle(SupportBundle supportBundle)
-      throws IOException, RuntimeException, ParseException {
+  public Path generateBundle(SupportBundle supportBundle) throws Exception {
     Customer customer = taskParams().customer;
     Universe universe = taskParams().universe;
     Path bundlePath = generateBundlePath(universe);
     supportBundle.setPathObject(bundlePath);
     Files.createDirectories(bundlePath);
-    Path gzipPath =
-        Paths.get(bundlePath.toAbsolutePath().toString().concat(".tar.gz")); // test this path
-    log.debug("gzip support bundle path: {}", gzipPath.toString());
     log.debug("Fetching Universe {} logs", universe.getName());
 
     // Simplified the following 4 cases to extract appropriate start and end date
@@ -131,7 +129,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
       endDate = endDateIsValid ? supportBundle.getEndDate() : new Date(Long.MAX_VALUE);
     }
 
-    // add the supportBundle metadata into the bundle
+    // Add the supportBundle metadata into the bundle
     try {
       JsonNode sbJson = Json.toJson(supportBundle);
       ((ObjectNode) sbJson).remove("status");
@@ -148,74 +146,23 @@ public class CreateSupportBundle extends AbstractTaskBase {
     // done to help optimise the speed of support bundles when a node(s) is down.
     int nodeReachableTimeout =
         confGetter.getGlobalConf(GlobalConfKeys.supportBundleNodeCheckTimeoutSec);
-    Set<NodeDetails> nodesReachable = ConcurrentHashMap.newKeySet();
+    Set<NodeDetails> reachableNodes = ConcurrentHashMap.newKeySet();
     List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
 
-    for (NodeDetails node : nodes) {
-      createCheckNodeReachableTask(node, universe, nodeReachableTimeout, nodesReachable);
-    }
     // Run checks to all nodes in parallel to optimise bundle creation time.
+    createCheckNodeReachableSubTask(nodes, universe, nodeReachableTimeout, reachableNodes);
     getRunnableTask().runSubTasks();
 
-    // Downloads each type of node level support bundle component type into the bundle path
-    for (NodeDetails node : nodesReachable) {
-      for (BundleDetails.ComponentType componentType :
-          supportBundle.getBundleDetails().getNodeLevelComponents()) {
-        SupportBundleComponent supportBundleComponent =
-            supportBundleComponentFactory.getComponent(componentType);
-        try {
-          // Call the downloadComponentBetweenDates() function for all node level components with
-          // the node object.
-          // Each component verifies if the dates are required and calls the downloadComponent().
-          Path nodeComponentsDirPath =
-              Paths.get(bundlePath.toAbsolutePath().toString(), node.nodeName);
-          Files.createDirectories(nodeComponentsDirPath);
-          supportBundleComponent.downloadComponentBetweenDates(
-              taskParams(), customer, universe, nodeComponentsDirPath, startDate, endDate, node);
-        } catch (Exception e) {
-          // Log the error and continue with the rest of support bundle collection.
-          log.error(
-              "Error occurred in node level support bundle collection for component '{} on node"
-                  + " '{}''.",
-              componentType,
-              node.getNodeName(),
-              e);
-        }
-      }
-    }
+    // Clear previous subtask so its not run again.
+    getRunnableTask().reset();
 
-    // Downloads each type of global level support bundle component type into the bundle path
-    for (BundleDetails.ComponentType componentType :
-        supportBundle.getBundleDetails().getGlobalLevelComponents()) {
-      SupportBundleComponent supportBundleComponent =
-          supportBundleComponentFactory.getComponent(componentType);
-      try {
-        // Call the downloadComponentBetweenDates() function for all global level components with
-        // node = null.
-        // Each component verifies if the dates are required and calls the downloadComponent().
-        Path globalComponentsDirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
-        Files.createDirectories(globalComponentsDirPath);
-        supportBundleComponent.downloadComponentBetweenDates(
-            taskParams(), customer, universe, globalComponentsDirPath, startDate, endDate, null);
-      } catch (Exception e) {
-        // Log the error and continue with the rest of support bundle collection.
-        log.error(
-            "Error occurred in global level support bundle collection for component '{}'.",
-            componentType,
-            e);
-      }
-    }
+    // Create new subtask groups, one for each component.
+    createSupportBundleComponentDownloadTasks(
+        supportBundle, reachableNodes, customer, universe, startDate, endDate, bundlePath);
+    getRunnableTask().runSubTasks();
 
     // Tar the support bundle directory and delete the original folder
-    try (FileOutputStream fos = new FileOutputStream(gzipPath.toString()); // need to test this path
-        GZIPOutputStream gos = new GZIPOutputStream(new BufferedOutputStream(fos));
-        TarArchiveOutputStream tarOS = new TarArchiveOutputStream(gos)) {
-
-      tarOS.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
-      tarOS.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX);
-      Util.addFilesToTarGZ(bundlePath.toString(), "", tarOS);
-      FileUtils.deleteDirectory(new File(bundlePath.toAbsolutePath().toString()));
-    }
+    Path gzipPath = Util.zipAndDeleteDir(bundlePath);
     log.debug(
         "Finished aggregating logs for support bundle with UUID {}", supportBundle.getBundleUUID());
     return gzipPath;
@@ -229,22 +176,128 @@ public class CreateSupportBundle extends AbstractTaskBase {
     return bundlePath;
   }
 
-  protected SubTaskGroup createCheckNodeReachableTask(
-      NodeDetails node,
+  private void createCheckNodeReachableSubTask(
+      List<NodeDetails> nodes,
       Universe universe,
       long nodeReachableTimeout,
-      Set<NodeDetails> nodesReachable) {
+      Set<NodeDetails> reachableNodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckNodeReachable");
-    CheckNodeReachable.Params params = new CheckNodeReachable.Params();
-    params.node = node;
-    params.universe = universe;
-    params.nodeReachableTimeout = nodeReachableTimeout;
-    params.nodesReachable = nodesReachable;
+    for (NodeDetails node : nodes) {
+      CheckNodeReachable.Params params = new CheckNodeReachable.Params();
+      params.node = node;
+      params.universe = universe;
+      params.nodeReachableTimeout = nodeReachableTimeout;
+      params.nodesReachable = reachableNodes;
 
-    CheckNodeReachable CheckNodeReachable = createTask(CheckNodeReachable.class);
-    CheckNodeReachable.initialize(params);
-    subTaskGroup.addSubTask(CheckNodeReachable);
+      CheckNodeReachable CheckNodeReachable = createTask(CheckNodeReachable.class);
+      CheckNodeReachable.initialize(params);
+      subTaskGroup.addSubTask(CheckNodeReachable);
+    }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+  }
+
+  private void createSupportBundleComponentDownloadTasks(
+      SupportBundle supportBundle,
+      Set<NodeDetails> reachableNodes,
+      Customer customer,
+      Universe universe,
+      Date startDate,
+      Date endDate,
+      Path bundlePath) {
+    for (BundleDetails.ComponentType componentType :
+        supportBundle.getBundleDetails().getComponents()) {
+      // Will be done at the end.
+      if (componentType.equals(BundleDetails.ComponentType.ApplicationLogs)) {
+        continue;
+      }
+      SubTaskGroup subTaskGroup = createSubTaskGroup(componentType.name() + "ComponentDownload");
+      final SupportBundleTaskParams taskParams = taskParams();
+      SupportBundleComponent supportBundleComponent =
+          supportBundleComponentFactory.getComponent(componentType);
+      if (componentType.getComponentLevel().equals(BundleDetails.ComponentLevel.NodeLevel)) {
+        // For Node level component, add subtasks for all nodes to the same group.
+        for (NodeDetails node : reachableNodes) {
+          try {
+            Path dirPath = Paths.get(bundlePath.toAbsolutePath().toString(), node.nodeName);
+            SupportBundleComponentDownload.Params params =
+                new SupportBundleComponentDownload.Params(
+                    supportBundleComponent,
+                    taskParams,
+                    customer,
+                    universe,
+                    dirPath,
+                    node,
+                    startDate,
+                    endDate);
+            Files.createDirectories(dirPath);
+            SupportBundleComponentDownload downloadTask =
+                createTask(SupportBundleComponentDownload.class);
+            downloadTask.initialize(params);
+            subTaskGroup.addSubTask(downloadTask);
+          } catch (Exception e) {
+            log.error(
+                "Error while creating {} component download task for {} node : {}",
+                componentType.toString(),
+                node.getNodeName(),
+                e.toString());
+          }
+        }
+      } else {
+        try {
+          Path dirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
+          SupportBundleComponentDownload.Params params =
+              new SupportBundleComponentDownload.Params(
+                  supportBundleComponent,
+                  taskParams,
+                  customer,
+                  universe,
+                  dirPath,
+                  /* node */ null,
+                  startDate,
+                  endDate);
+          Files.createDirectories(dirPath);
+          SupportBundleComponentDownload downloadTask =
+              createTask(SupportBundleComponentDownload.class);
+          downloadTask.initialize(params);
+          subTaskGroup.addSubTask(downloadTask);
+        } catch (Exception e) {
+          log.error(
+              "Error while creating {} component download task for YBA node : {}",
+              componentType.toString(),
+              e.toString());
+        }
+      }
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    // Collect application logs
+    if (supportBundle
+        .getBundleDetails()
+        .getComponents()
+        .contains(BundleDetails.ComponentType.ApplicationLogs)) {
+      try {
+        SubTaskGroup subTaskGroup = createSubTaskGroup("ApplicationLogsComponentDownload");
+        SupportBundleComponent supportBundleComponent =
+            supportBundleComponentFactory.getComponent(BundleDetails.ComponentType.ApplicationLogs);
+        Path dirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
+        SupportBundleComponentDownload.Params params =
+            new SupportBundleComponentDownload.Params(
+                supportBundleComponent,
+                taskParams(),
+                customer,
+                universe,
+                dirPath,
+                /* node */ null,
+                startDate,
+                endDate);
+        Files.createDirectories(dirPath);
+        SupportBundleComponentDownload downloadTask =
+            createTask(SupportBundleComponentDownload.class);
+        downloadTask.initialize(params);
+        subTaskGroup.addSubTask(downloadTask);
+        getRunnableTask().addSubTaskGroup(subTaskGroup);
+      } catch (Exception e) {
+        log.error("Error while collecting Application logs for support bundle: {}", e.getMessage());
+      }
+    }
   }
 }

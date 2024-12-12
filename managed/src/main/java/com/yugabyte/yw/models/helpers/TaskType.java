@@ -1104,6 +1104,9 @@ public enum TaskType {
 
   CheckNodeReachable(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable.class),
 
+  SupportBundleComponentDownload(
+      com.yugabyte.yw.commissioner.tasks.subtasks.SupportBundleComponentDownload.class),
+
   WaitStartingFromTime(WaitStartingFromTime.class),
 
   RemoveNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent.class),

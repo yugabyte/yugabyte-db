@@ -7,7 +7,9 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.stream.Collectors;
+import lombok.Data;
 
+@Data
 public class BundleDetails {
 
   public enum ComponentLevel {
