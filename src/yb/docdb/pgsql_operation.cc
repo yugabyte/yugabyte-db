@@ -2591,6 +2591,8 @@ Status PgsqlLockOperation::Init(
 
 Status PgsqlLockOperation::GetDocPaths(GetDocPathsMode mode,
     DocPathsToLock *paths, IsolationLevel *level) const {
+  // Behaviour of advisory lock is regardless of isolation level.
+  *level = IsolationLevel::NON_TRANSACTIONAL;
   // kStrongReadIntents is used for acquring locks on the entire row.
   // It's duplicate with the primary intent for the advisory lock.
   if (mode != GetDocPathsMode::kStrongReadIntents) {
