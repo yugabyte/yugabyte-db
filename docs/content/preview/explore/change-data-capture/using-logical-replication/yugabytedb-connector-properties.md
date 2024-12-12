@@ -617,7 +617,7 @@ Default: true
 
 The number of milliseconds to wait before restarting a connector after a retriable error occurs.
 
-Default: 10000 (10 seconds)
+Default: 30000 (30 seconds)
 
 ##### skipped.operations
 
@@ -685,7 +685,7 @@ No default
 
 The maximum number of retries on retriable errors (for example, connection errors) before failing (-1 = no limit, 0 = disabled, > 0 = num of retries).
 
-Default: -1
+Default: 60
 
 ## Pass-through configuration properties
 
