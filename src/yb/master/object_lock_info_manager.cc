@@ -55,6 +55,25 @@ using tserver::ReleaseObjectLockRequestPB;
 using tserver::ReleaseObjectLockResponsePB;
 using tserver::TabletServerErrorPB;
 
+namespace {
+
+Status ValidateLockRequest(const AcquireObjectLockRequestPB& req) {
+  // For now, DDLs operate under a separate transaction. So we always start an explicit distrubited
+  // txn for a DDL. As we wouldn't be re-using a transaction, we wouldn't need txn_version here.
+  if (req.txn_reuse_version()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "txn_reuse_version populated for exclusive object lock req $0", req.ShortDebugString());
+  }
+  if (!req.subtxn_id()) {
+    return STATUS_FORMAT(
+        IllegalState, "subtxn_id not set for exclusive object lock req $0", req.ShortDebugString());
+  }
+  return Status::OK();
+}
+
+} // namespace
+
 class ObjectLockInfoManager::Impl {
  public:
   Impl(Master* master, CatalogManager* catalog_manager)
@@ -271,8 +290,10 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(key);
   auto lock = object_lock_info->LockForWrite();
   // TODO(Amit) Fetch and use the appropriate incarnation Id.
-  auto& sessions_map = (*lock.mutable_data()->pb.mutable_incarnations())[kIncarnationId];
-  auto& db_map = (*sessions_map.mutable_sessions())[req.session_id()];
+  auto& txns_map = (*lock.mutable_data()->pb.mutable_incarnations())[kIncarnationId];
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
+  auto& subtxns_map = (*txns_map.mutable_transactions())[txn_id.ToString()];
+  auto& db_map = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
   for (const auto& object_lock : req.object_locks()) {
     auto& object_map = (*db_map.mutable_dbs())[object_lock.database_oid()];
     auto& types = (*object_map.mutable_objects())[object_lock.object_oid()];
@@ -291,11 +312,13 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(key);
   auto lock = object_lock_info->LockForWrite();
   // TODO(Amit) Fetch and use the appropriate incarnation Id.
-  auto& sessions_map = (*lock.mutable_data()->pb.mutable_incarnations())[kIncarnationId];
-  if (req.release_all_locks()) {
-    sessions_map.mutable_sessions()->erase(req.session_id());
+  auto& txns_map = (*lock.mutable_data()->pb.mutable_incarnations())[kIncarnationId];
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
+  if (req.release_all_locks() || !req.subtxn_id()) {
+    txns_map.mutable_transactions()->erase(txn_id.ToString());
   } else {
-    auto& db_map = (*sessions_map.mutable_sessions())[req.session_id()];
+    auto& subtxns_map = (*txns_map.mutable_transactions())[txn_id.ToString()];
+    auto& db_map = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
     for (const auto& object_lock : req.object_locks()) {
       auto& object_map = (*db_map.mutable_dbs())[object_lock.database_oid()];
       object_map.mutable_objects()->erase(object_lock.object_oid());
@@ -309,7 +332,7 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
 
 namespace {
 
-void ExportObjectLocksForSession(
+void ExportObjectLocksForTxn(
     const master::SysObjectLockEntryPB_DBObjectsMapPB& dbs_map,
     tserver::AcquireObjectLockRequestPB* req) {
   for (const auto& [db_id, objects_map] : dbs_map.dbs()) {
@@ -352,15 +375,19 @@ void ObjectLockInfoManager::Impl::ExportObjectLockInfo(
     for (const auto& [host_uuid, per_host_entry] : object_lock_infos_map_) {
       auto l = per_host_entry->LockForRead();
       // TODO(Amit) Fetch and use the appropriate incarnation Id.
-      auto sessions_map_it = l->pb.incarnations().find(kIncarnationId);
-      if (sessions_map_it == l->pb.incarnations().end()) {
+      auto txns_map_it = l->pb.incarnations().find(kIncarnationId);
+      if (txns_map_it == l->pb.incarnations().end()) {
         continue;
       }
-      for (const auto& [session_id, dbs_map] : sessions_map_it->second.sessions()) {
-        auto* lock_entries_pb = resp->add_lock_entries();
-        lock_entries_pb->set_session_host_uuid(host_uuid);
-        lock_entries_pb->set_session_id(session_id);
-        ExportObjectLocksForSession(dbs_map, lock_entries_pb);
+      for (const auto& [txn_id_str, subtxns_map] : txns_map_it->second.transactions()) {
+        auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
+        for (const auto& [subtxn_id, dbs_map] : subtxns_map.subtxns()) {
+          auto* lock_entries_pb = resp->add_lock_entries();
+          lock_entries_pb->set_session_host_uuid(host_uuid);
+          lock_entries_pb->set_txn_id(txn_id.data(), txn_id.size());
+          lock_entries_pb->set_subtxn_id(subtxn_id);
+          ExportObjectLocksForTxn(dbs_map, lock_entries_pb);
+        }
       }
     }
   }
@@ -420,6 +447,10 @@ void ObjectLockInfoManager::Impl::LockObject(
 void ObjectLockInfoManager::Impl::LockObject(
     const AcquireObjectLockRequestPB& req, rpc::RpcContext context, StdStatusCallback callback) {
   VLOG(3) << __PRETTY_FUNCTION__;
+  if (auto s = ValidateLockRequest(req); !s.ok()) {
+    callback(s);
+    return context.RespondSuccess();
+  }
   // First acquire the locks locally.
   std::shared_ptr<tablet::TSLocalLockManager> local_lock_manager;
   LeaderEpoch epoch;
@@ -526,7 +557,7 @@ void ObjectLockInfoManager::Impl::UnlockObject(
 
 void ObjectLockInfoManager::Impl::ReleaseOldObjectLocks(
     const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait) {
-  std::vector<std::shared_ptr<ReleaseObjectLockRequestPB>> requests_per_session;
+  std::vector<std::shared_ptr<ReleaseObjectLockRequestPB>> requests_per_txn;
   // We have not started using incarnation ids yet.
   // TODO: fix this when we implement it.
   CHECK_EQ(current_incarnation_num, kIncarnationId);
@@ -535,22 +566,23 @@ void ObjectLockInfoManager::Impl::ReleaseOldObjectLocks(
     std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(key);
     auto l = object_lock_info->LockForRead();
     // TODO(Amit) Fetch and use the appropriate incarnation Id.
-    auto sessions_map_it = l->pb.incarnations().find(kIncarnationId);
-    if (sessions_map_it == l->pb.incarnations().end()) {
+    auto txns_map_it = l->pb.incarnations().find(kIncarnationId);
+    if (txns_map_it == l->pb.incarnations().end()) {
       return;
     }
-    for (const auto& [session_id, _] : sessions_map_it->second.sessions()) {
+    for (const auto& [txn_id_str, _] : txns_map_it->second.transactions()) {
       auto request = std::make_shared<ReleaseObjectLockRequestPB>();
       request->set_session_host_uuid(tserver_uuid);
-      request->set_session_id(session_id);
+      auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
+      request->set_txn_id(txn_id.data(), txn_id.size());
       request->set_release_all_locks(true);
-      requests_per_session.push_back(request);
+      requests_per_txn.push_back(request);
     }
   }
   // Do we want to wait for this? Or just let it go?
   std::shared_ptr<CountDownLatch> latch =
-      std::make_shared<CountDownLatch>(requests_per_session.size());
-  for (const auto& request : requests_per_session) {
+      std::make_shared<CountDownLatch>(requests_per_txn.size());
+  for (const auto& request : requests_per_txn) {
     // This is kind of best effort:
     // If there is a master failover, in UnlockObject after the change is Persisted, but before
     // all the TServers have unlocked, we may have some locks that are not released at some
@@ -561,7 +593,7 @@ void ObjectLockInfoManager::Impl::ReleaseOldObjectLocks(
           WARN_NOT_OK(
               s, yb::Format(
                      "Failed to release old object locks $0 $1", request->session_host_uuid(),
-                     request->session_id()));
+                     request->txn_id()));
           latch->CountDown();
         });
   }

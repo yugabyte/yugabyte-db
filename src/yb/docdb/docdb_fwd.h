@@ -66,11 +66,13 @@ struct IntentKeyValueForCDC;
 struct KeyBounds;
 template <typename T>
 struct LockBatchEntry;
+struct ObjectLockOwner;
 struct ObjectLockPrefix;
 struct PgsqlReadOperationData;
 struct ReadOperationData;
 struct VectorIndexInsertEntry;
 struct VectorIndexSearchResultEntry;
+struct VersionedTransaction;
 
 using DocKeyHash = uint16_t;
 using DocReadContextPtr = std::shared_ptr<DocReadContext>;
@@ -83,7 +85,6 @@ using LockBatchEntries = std::vector<LockBatchEntry<T>>;
 // Refer shared_lock_manager.cc for further details.
 using LockState = uint64_t;
 using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
-using SessionIDHostPair = std::pair<const uint64_t, const std::string>;
 
 using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestPB>>;
 using VectorIndexPtr = std::shared_ptr<VectorIndex>;

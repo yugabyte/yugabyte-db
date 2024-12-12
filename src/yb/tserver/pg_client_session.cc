@@ -1699,6 +1699,7 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
     saved_priority_ = std::nullopt;
   }
   txn->SetPriority(priority);
+  txn->SetCurrentReuseVersion(options.txn_serial_no());
   session->SetTransaction(txn);
   return Status::OK();
 }

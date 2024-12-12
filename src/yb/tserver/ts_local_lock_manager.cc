@@ -40,24 +40,12 @@ class TSLocalLockManager::Impl {
       RETURN_NOT_OK(
           Wait([this]() -> bool { return is_bootstrapped_; }, deadline, "Waiting to Bootstrap."));
     }
-    // There should be atmost one outstanding request per session that is actively being processed
-    // by the TSLocalLockManager. In context of table locks, either the pg backend or the pg client
-    // service should be responsible for this behavior. Else this could lead to invalid lock state
-    // for objects.
-    //
-    // Consider the following scenario - the client issues a lock request with a deadline, and the
-    // client detects that the call timed out. But the request might still be active at the lock
-    // manager and could have been blocked on another request. If the client issues a following
-    // unlock call, and it gets processed by the lock manager prior to the outstanding lock request,
-    // it might leave the object in an invalid lock state. Hence it is important that we ensure at
-    // most one outstanding active request per session at the TSLocalLockManager.
-    docdb::SessionIDHostPair session_pair(req.session_id(), req.session_host_uuid());
-    RETURN_NOT_OK(AddActiveSession(session_pair));
-    auto se = ScopeExit([this, &session_pair] {
-      ReleaseActiveSession(session_pair);
-    });
+
+    docdb::ObjectLockOwner object_lock_owner(
+        VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id())), req.txn_reuse_version(),
+        req.subtxn_id());
     auto result = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
-    if (object_lock_manager_.Lock(session_pair, &result.lock_batch, deadline)) {
+    if (object_lock_manager_.Lock(object_lock_owner, &result.lock_batch, deadline)) {
       return Status::OK();
     }
     std::string batch_str;
@@ -69,15 +57,12 @@ class TSLocalLockManager::Impl {
   }
 
   Status ReleaseObjectLocks(const tserver::ReleaseObjectLockRequestPB& req) {
-    docdb::SessionIDHostPair session_pair(req.session_id(), req.session_host_uuid());
-    RETURN_NOT_OK(AddActiveSession(session_pair));
-    auto se = ScopeExit([this, &session_pair] {
-      ReleaseActiveSession(session_pair);
-    });
-
-    if (req.release_all_locks()) {
-      VLOG(2) << "Release all locks for host/session id " << yb::ToString(session_pair);
-      object_lock_manager_.Unlock(session_pair);
+    docdb::ObjectLockOwner object_lock_owner(
+        VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id())), req.txn_reuse_version(),
+        req.subtxn_id());
+    if (req.release_all_locks() || !req.subtxn_id()) {
+      VLOG(2) << "Release all locks for owner " << AsString(object_lock_owner);
+      object_lock_manager_.Unlock(object_lock_owner);
       return Status::OK();
     }
 
@@ -86,7 +71,8 @@ class TSLocalLockManager::Impl {
     std::vector<docdb::TrackedLockEntryKey<docdb::ObjectLockPrefix>> lock_entry_keys;
     for (auto lock : req.object_locks()) {
       for (const auto& type : key_entry_types) {
-        lock_entry_keys.push_back({session_pair, {lock.database_oid(), lock.object_oid(), type}});
+        lock_entry_keys.push_back(
+            {object_lock_owner, {lock.database_oid(), lock.object_oid(), type}});
       }
     }
     object_lock_manager_.Unlock(lock_entry_keys);
@@ -135,28 +121,7 @@ class TSLocalLockManager::Impl {
   }
 
  private:
-  Status AddActiveSession(const docdb::SessionIDHostPair& session_pair) EXCLUDES(mutex_) {
-    std::lock_guard lock(mutex_);
-    auto did_insert = sessions_with_active_requests_.emplace(session_pair).second;
-    if (!did_insert) {
-      return STATUS_FORMAT(
-          TryAgain,
-          "Another active request with session id $0, host uuid $1 exists at LockManager ",
-          session_pair.first, session_pair.second);
-    }
-    return Status::OK();
-  }
-
-  void ReleaseActiveSession(const docdb::SessionIDHostPair& session_pair) EXCLUDES(mutex_) {
-    std::lock_guard lock(mutex_);
-    sessions_with_active_requests_.erase(session_pair);
-  }
-
   docdb::ObjectLockManager object_lock_manager_;
-  std::mutex mutex_;
-  std::unordered_set<docdb::SessionIDHostPair,
-                     boost::hash<docdb::SessionIDHostPair>> sessions_with_active_requests_
-      GUARDED_BY(mutex_);
   std::atomic_bool is_bootstrapped_{false};
 };
 

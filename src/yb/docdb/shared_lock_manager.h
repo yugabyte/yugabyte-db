@@ -17,7 +17,7 @@
 #include <vector>
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/object_lock_prefix.h"
+#include "yb/docdb/object_lock_data.h"
 #include "yb/dockv/intent.h"
 
 #include "yb/util/monotime.h"
@@ -25,29 +25,29 @@
 
 namespace yb::docdb {
 
-// Helper struct used for keying table/object locks of a session.
+// Helper struct used for keying table/object locks of a transaction.
 template <typename T>
 struct TrackedLockEntryKey {
-  TrackedLockEntryKey(const SessionIDHostPair& session_id_pair_, T object_id_)
-      : session_id_pair(session_id_pair_), object_id(object_id_) {}
+  TrackedLockEntryKey(const ObjectLockOwner& object_lock_owner_, T object_id_)
+      : object_lock_owner(object_lock_owner_), object_id(object_id_) {}
 
-  const SessionIDHostPair session_id_pair;
+  const ObjectLockOwner object_lock_owner;
   const T object_id;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(session_id_pair, object_id);
+    return YB_STRUCT_TO_STRING(object_lock_owner, object_id);
   }
 };
 
 template <typename T>
 bool operator==(const TrackedLockEntryKey<T>& lhs, const TrackedLockEntryKey<T>& rhs) {
-  return YB_STRUCT_EQUALS(session_id_pair, object_id);
+  return YB_STRUCT_EQUALS(object_lock_owner, object_id);
 }
 
 template <typename T>
 inline size_t hash_value(const TrackedLockEntryKey<T>& key) noexcept {
   size_t seed = 0;
-  boost::hash_combine(seed, key.session_id_pair);
+  boost::hash_combine(seed, key.object_lock_owner);
   boost::hash_combine(seed, key.object_id);
   return seed;
 }
@@ -55,21 +55,29 @@ inline size_t hash_value(const TrackedLockEntryKey<T>& key) noexcept {
 template <typename T>
 struct LockedBatchEntry;
 
-// TrackedLockEntry is used to keep track of the LockState of the session for a given key. Note
-// that a session can acquire multiple lock types repeatedly on a key.
+// TrackedLockEntry is used to keep track of the LockState of the transaction for a given key.
+// Note that a transaction can acquire multiple lock types repeatedly on a key.
 //
-// In context of object/table locks, when handling release requests by SessionIDHostPair
+// In context of object/table locks, when handling release requests by ObjectLockOwner
 // (optionally with object id supplied), the LockState value is used to reset the info of the
 // corresponding LockedBatchEntry.
 template <typename T>
 struct TrackedLockEntry {
   TrackedLockEntry(
-      const SessionIDHostPair& session_id_pair_, T object_id_, LockState state_,
-      LockedBatchEntry<T>* locked_batch_entry_) : key(session_id_pair_, object_id_), state(state_),
-      locked_batch_entry(locked_batch_entry_) {}
+      const ObjectLockOwner& object_lock_owner_, T object_id_, LockState state_,
+      LockedBatchEntry<T>* locked_batch_entry_) : key(object_lock_owner_, object_id_),
+      state(state_), locked_batch_entry(locked_batch_entry_) {}
 
-  SessionIDHostPair session_id_pair() const {
-    return key.session_id_pair;
+  ObjectLockOwner object_lock_owner() const {
+    return key.object_lock_owner;
+  }
+
+  VersionedTransaction versioned_txn() const {
+    return key.object_lock_owner.versioned_txn;
+  }
+
+  std::pair<VersionedTransaction, T> txn_and_key() const {
+    return {key.object_lock_owner.versioned_txn, key.object_id};
   }
 
   T object_id() const {
@@ -125,21 +133,21 @@ class ObjectLockManager {
   ObjectLockManager();
   ~ObjectLockManager();
 
-  // Attempt to lock a batch of keys and track the lock against the given session_id_pair key. The
+  // Attempt to lock a batch of keys and track the lock against the given object_lock_owner key. The
   // call may be blocked waiting for other conflicting locks to be released. If the entries don't
   // exist, they are created. On success, the lock state is exists in-memory until an explicit
   // release is called (or the process restarts).
   //
   // Returns false if was not able to acquire lock until deadline.
   MUST_USE_RESULT bool Lock(
-      const SessionIDHostPair& session_id_pair,
+      const ObjectLockOwner& object_lock_owner,
       LockBatchEntries<ObjectLockPrefix>* key_to_intent_type, CoarseTimePoint deadline);
 
   // Release the batch of locks, if they were acquired at the first place.
   void Unlock(const std::vector<TrackedLockEntryKey<ObjectLockPrefix>>& lock_entry_keys);
 
-  // Release all locks held against the given SessionIDHostPair.
-  void Unlock(const SessionIDHostPair& session_id_pair);
+  // Release all locks held against the given object_lock_owner.
+  void Unlock(const ObjectLockOwner& object_lock_owner);
 
   void DumpStatusHtml(std::ostream& out);
 
