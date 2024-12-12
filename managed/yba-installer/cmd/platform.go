@@ -267,7 +267,7 @@ func (plat Platform) copyYbcPackages() error {
 	matches, err := filepath.Glob(ybcPattern)
 	if err != nil {
 		return fmt.Errorf("Could not find ybc components in %s. Failed with err %w",
-			plat.PlatformPackages, err.Error())
+			plat.PlatformPackages, err)
 	}
 
 	for _, f := range matches {
