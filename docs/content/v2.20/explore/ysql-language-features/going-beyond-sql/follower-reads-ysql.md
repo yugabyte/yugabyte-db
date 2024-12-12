@@ -45,7 +45,7 @@ Note that even if the tablet leader is on the closest node, you would still read
 
 ## Expected behavior
 
-The following table provides information on the expected behavior when a read happens from a follower.
+The following table describes the expected behavior when a read happens from a follower.
 
 | Conditions | Expected behavior |
 | :--------- | :---------------- |
@@ -54,13 +54,21 @@ The following table provides information on the expected behavior when a read ha
 
 ## Read-only transaction
 
-You can mark a transaction as read-only by applying any of the following:
+You can mark a transaction as read only by applying any of the following:
 
-- SET TRANSACTION READ ONLY - applies only to the current transaction block.
-- SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY - applies the read-only setting to all statements and transaction blocks that follow.
-- SET default_transaction_read_only = TRUE - applies the read-only setting to all statements and transaction blocks that follow.
+- SET TRANSACTION READ ONLY
 
-Note: The use of `pg_hint_plan` to mark a statement as read-only is not recommended. It may work in some cases, but relies on side effects and has known issues (see [GH17024](https://github.com/yugabyte/yugabyte-db/issues/17024) and  [GH17135](https://github.com/yugabyte/yugabyte-db/issues/17135)).
+    Applies only to the current transaction block.
+
+- SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY
+
+    Applies the read-only setting to all statements and transaction blocks that follow.
+
+- SET default_transaction_read_only = TRUE
+
+    Applies the read-only setting to all statements and transaction blocks that follow.
+
+Note: The use of `pg_hint_plan` to mark a statement as read only is not recommended. It may work in some cases, but relies on side effects and has known issues (see [GH17024](https://github.com/yugabyte/yugabyte-db/issues/17024) and  [GH17135](https://github.com/yugabyte/yugabyte-db/issues/17135)).
 
 ## Caveats
 
