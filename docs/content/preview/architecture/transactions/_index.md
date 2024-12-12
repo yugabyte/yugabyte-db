@@ -14,7 +14,7 @@ menu:
 type: indexpage
 ---
 
-Transactions and strong consistency are a fundamental requirement for any RDBMS. YugabyteDB's distributed transaction architecture supports fully distributed [ACID](../key-concepts#acid) transactions across rows, multiple tablets, and multiple nodes at any scale and is inspired by [Google Spanner](https://research.google.com/archive/spanner-osdi2012.pdf"). Transactions can span across tables in DocDB.
+Transactions and strong consistency are a fundamental requirement for any RDBMS. YugabyteDB's distributed transaction architecture supports fully distributed [ACID](../key-concepts#acid) transactions across rows, multiple tablets, and multiple nodes at any scale and is inspired by [Google Spanner](https://research.google.com/archive/spanner-osdi2012.pdf). Transactions can span across tables in DocDB.
 
 ## Fundamentals
 
