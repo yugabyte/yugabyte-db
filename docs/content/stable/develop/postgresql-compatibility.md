@@ -1,6 +1,6 @@
 ---
 title: Enhanced PostgreSQL Compatibility Mode
-linkTitle: Enhanced pg compatibility
+linkTitle: Enhanced PG compatibility
 description: Enhance your application performance for PostgreSQL parity
 menu:
   stable:
