@@ -30,7 +30,7 @@ After you have created the VMs with the operating system and additional software
 
 These steps prepare the node for use by YugabyteDB Anywhere. If you have already installed YugabyteDB Anywhere and it is running, the last step additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
 
-Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with YugabyteDB Anywhere node agent installed), sudo is no longer required.
+Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with [YugabyteDB Anywhere node agent](/preview/faq/yugabyte-platform/#what-is-a-node-agent) installed), sudo is no longer required.
 
 ### Download the package
 
@@ -115,7 +115,7 @@ Optionally, if YugabyteDB Anywhere is already installed and running, you can set
 | `node_name` | A name for the node. |
 | `node_external_fqdn` | The fully qualified domain name or IP address of the node, must be accessible from the YugabyteDB Anywhere server. |
 
-Enter the following provider details. If the provider does not exist, node agent creates it; otherwise, it adds the node instance to the existing provider.
+Enter the following on-premises provider configuration details. If the provider does not exist, node agent creates it; otherwise, it adds the node instance to the existing provider.
 
 | Option | Value |
 | :--- | :--- |
@@ -161,7 +161,7 @@ After the node is provisioned, YugabyteDB Anywhere does not need sudo access to 
 
 ## Next steps
 
-If you did not provide configuration details for the provider, you will need to do the following:
+If you did not provide details for the provider configuration, you will need to do the following:
 
 1. If the on-premises provider has not been created, create one.
 

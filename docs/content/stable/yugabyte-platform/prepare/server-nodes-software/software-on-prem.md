@@ -30,7 +30,7 @@ After you have created the VMs with the operating system and additional software
 
 These steps prepare the node for use by YugabyteDB Anywhere. If you have already installed YugabyteDB Anywhere and it is running, the last step additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
 
-Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with YugabyteDB Anywhere node agent installed), sudo is no longer required.
+Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with [YugabyteDB Anywhere node agent](/preview/faq/yugabyte-platform/#what-is-a-node-agent) installed), sudo is no longer required.
 
 ### Download the package
 
@@ -115,18 +115,18 @@ Optionally, if YugabyteDB Anywhere is already installed and running, you can set
 | `node_name` | A name for the node. |
 | `node_external_fqdn` | The fully qualified domain name or IP address of the node, must be accessible from the YugabyteDB Anywhere server. |
 
-Enter the following provider details. If the provider does not exist, node agent creates it; otherwise, it adds the node instance to the existing provider.
+Enter the following on-premises provider configuration details. If the provider does not exist, node agent creates it; otherwise, it adds the node instance to the existing provider.
 
 | Option | Value |
 | :--- | :--- |
-| `provider name` | Name for the provider (if new) or of the existing provider where you want to add the node. |
+| `provider name` | Name for the provider configuration (if new) or of the existing provider where you want to add the node. |
 | `region name` | Name of the region where the node is located. For example, `us-west-1`. |
 | `zone name` | Name of the zone where the node is located. For example, `us-west-1a`. |
 | `instance_type name` | Name of the instance type to use. If you are creating a new instance type, provide a name to be used internally to identify the type of VM. For example, for cloud provider VMs, you might name the instance type 'c5.large' for AWS, or 'n1-standard-4' for GCP. |
 | `cores` | The number of cores. Optional if the node is using an existing instance type. |
 | `memory_size` | The amount of memory (in GB) allocated to the instance. Optional if the node is using an existing instance type. |
 | `volume_size` | The size of the storage volume (in GB).  Optional if the node is using an existing instance type. |
-| `mount_points` | List the mount points for data storage. This is where the data directories are mounted. Optional if the node is using an existing instance type. |
+| `mount_points` | List the mount points for data storage. This is where the data directories are mounted. You need to add the directories before running the script. Optional if the node is using an existing instance type. |
 
 The following options are used for logging the provisioning itself.
 
@@ -160,7 +160,7 @@ After the node is provisioned, YugabyteDB Anywhere does not need sudo access to 
 
 ## Next steps
 
-If you did not provide configuration details for the provider, you will need to do the following:
+If you did not provide details for the provider configuration, you will need to do the following:
 
 1. If the on-premises provider has not been created, create one.
 
