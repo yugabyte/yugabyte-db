@@ -34,6 +34,10 @@ The sequence name must be distinct from any other sequences, tables, indexes, vi
 
 Using this qualifier will create a temporary sequence. Temporary sequences are visible only in the current client session in which they are created and are automatically dropped at the end of the session. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
+#### UNLOGGED
+
+Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default persistence.
+
 #### AS *seq_data_type*
 
 Specifies the data type of the sequence. This automatically determines the minimum and maximum values of the sequence. Valid types are `smallint`, `integer`, and `bigint`. Default is `bigint`.
