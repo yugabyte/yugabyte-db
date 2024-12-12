@@ -1,11 +1,12 @@
 ---
 title: YugabyteDB Anywhere
 headerTitle: YugabyteDB Anywhere
-linkTitle: Overview
+linkTitle: YugabyteDB Anywhere
 description: YugabyteDB delivered as a private database-as-a-service for enterprises.
 headcontent: YugabyteDB delivered as a private database-as-a-service for enterprises.
 menu:
   v2.14_yugabyte-platform:
+    name: "Overview"
     parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10
