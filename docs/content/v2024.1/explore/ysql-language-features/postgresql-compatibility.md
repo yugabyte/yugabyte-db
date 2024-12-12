@@ -44,17 +44,17 @@ Conversely, if you are using EPCM on a universe, you cannot set any of the featu
 
 | Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
-| Read committed | [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | 2.20 and<br>2024.1 | |
-| Wait-on-conflict | [enable_wait_queues](../../../reference/configuration/yb-tserver/#enable-wait-queues) | 2.20 | 2024.1 |
-| Cost-based optimizer | [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | 2024.1 | |
-| Batch nested loop join | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | 2.20 | 2024.1 |
-| Ascending indexing by default | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | 2024.1 | |
-| YugabyteDB bitmap scan | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | 2024.1.3 | 2024.2 |
+| [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | |
+| [Wait-on-conflict](#wait-on-conflict-concurrency) | [enable_wait_queues](../../../reference/configuration/yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1">}} |
+| [Cost-based optimizer](#cost-based-optimizer) | [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | {{<release "2024.1">}} | |
+| [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
+| [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
+| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2024.2">}} |
+| [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2">}}  |
 
 | Planned Feature | Flag/Configuration Parameter | EA |
 | :--- | :--- | :--- |
-| Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | 2024.2 |
-| Parallel query | | Planned |
+| [Parallel query](#parallel-query) | | Planned |
 
 ### Released
 
@@ -116,15 +116,15 @@ Configuration parameter: `yb_enable_bitmapscan=true`
 
 Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing AND and OR conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity. For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
 
-### Planned
-
-The following features are planned for EPCM in future releases.
-
 #### Efficient communication between PostgreSQL and DocDB
 
 Configuration parameter: `pg_client_use_shared_memory=true`
 
 Enable more efficient communication between YB-TServer and PostgreSQL using shared memory. This feature provides improved performance parity.
+
+### Planned
+
+The following features are planned for EPCM in future releases.
 
 #### Parallel query
 
