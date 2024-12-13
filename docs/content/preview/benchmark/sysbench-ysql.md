@@ -51,14 +51,14 @@ the following options:
 
 <div class="tab-content">
   <div id="github" class="tab-pane fade show active" role="tabpanel" aria-labelledby="github-tab">
-{{% readfile "./sysbench-github.md" %}}
+{{% readfile "./github.md" %}}
   </div>
 
   <div id="rhel" class="tab-pane fade" role="tabpanel" aria-labelledby="rhel-tab">
-{{% readfile "./sysbench-rhel.md" %}}
+{{% readfile "./rhel.md" %}}
   </div>
   <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
-{{% readfile "./sysbench-macos.md" %}}
+{{% readfile "./macos.md" %}}
   </div>
 
 </div>
