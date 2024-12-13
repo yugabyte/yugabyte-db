@@ -112,3 +112,5 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 - Support for transaction savepoints is tracked in issue [10936](https://github.com/yugabyte/yugabyte-db/issues/10936).
 
 - Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
+
+- Support for tablet splitting is disabled from YB version 2024.2.1. It is tracked in issue [24918](https://github.com/yugabyte/yugabyte-db/issues/24918).
