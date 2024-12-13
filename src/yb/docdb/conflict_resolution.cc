@@ -599,7 +599,8 @@ class FailOnConflictResolver : public ConflictResolver {
         VLOG(4) << self->LogPrefix() << "Abort received: " << AsString(result);
         if (result.ok()) {
           transaction.ProcessStatus(*result);
-        } else if (result.status().IsRemoteError() || result.status().IsAborted()) {
+        } else if (result.status().IsRemoteError() || result.status().IsAborted() ||
+                   result.status().IsShutdownInProgress()) {
           // Non retryable errors. Aborted could be caused by shutdown.
           transaction.failure = result.status();
         } else {

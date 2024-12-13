@@ -346,14 +346,6 @@ bool TabletInvoker::Done(Status* status) {
 
   bool assign_new_leader = assign_new_leader_;
   assign_new_leader_ = false;
-  bool consensus_info_refresh_succeeded = false;
-  if (GetAtomicFlag(&FLAGS_enable_metacache_partial_refresh)) {
-    consensus_info_refresh_succeeded = rpc_->RefreshMetaCacheWithResponse();
-    if (status->ok()) {
-      TEST_SYNC_POINT_CALLBACK(
-          "TabletInvoker::RefreshFinishedWithOkRPCResponse", &consensus_info_refresh_succeeded);
-    }
-  }
   if (status->IsAborted() || retrier_->finished()) {
     if (status->ok()) {
       *status = retrier_->controller().status();
@@ -368,6 +360,19 @@ bool TabletInvoker::Done(Status* status) {
   // Prefer early failures over controller failures.
   if (status->ok() && retrier_->HandleResponse(command_, status)) {
     return false;
+  }
+
+  // We are shutting down. Fail the rpc immediately.
+  if (status->IsShutdownInProgress() || status->IsAborted()) {
+    rpc_->Failed(*status);
+    return true;
+  }
+
+  bool consensus_info_refresh_succeeded = false;
+  if (status->ok() && GetAtomicFlag(&FLAGS_enable_metacache_partial_refresh)) {
+    consensus_info_refresh_succeeded = rpc_->RefreshMetaCacheWithResponse();
+    TEST_SYNC_POINT_CALLBACK(
+        "TabletInvoker::RefreshFinishedWithOkRPCResponse", &consensus_info_refresh_succeeded);
   }
 
   // Failover to a replica in the event of any network failure.

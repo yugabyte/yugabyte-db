@@ -234,7 +234,7 @@ class TransactionStatusResolver::Impl {
 
     if (!status.ok()) {
       LOG_WITH_PREFIX(WARNING) << "Failed to request transaction statuses: " << status;
-      if (status.IsAborted()) {
+      if (status.IsAborted() || status.IsShutdownInProgress()) {
         Complete(status);
       } else {
         Execute();
