@@ -21,7 +21,7 @@ You can manage large data volumes by partitioning based on time (say by day, wee
 
 ![Table partitioning](/images/develop/data-modeling/table-partitioning.png)
 
-{{<lead link="../ommon-patterns/timeseries/partitioning-by-time/">}}
+{{<lead link="../common-patterns/timeseries/partitioning-by-time/">}}
 To understand how large data can be partitioned for easier management, see [Partitioning data by time](../common-patterns/timeseries/partitioning-by-time/).
 {{</lead>}}
 
