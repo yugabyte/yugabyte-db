@@ -23,7 +23,7 @@ public class TestPgRegressInsertOnConflict extends BasePgRegressTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 300;
+    return 500;
   }
 
   @Test

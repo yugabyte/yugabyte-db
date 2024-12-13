@@ -37,7 +37,7 @@ class InsertOnConflictBuffer {
   void ClearIntents();
 
   // Functions to manipulate both the key cache and the intents cache
-  void Clear(); // clears both the key cache and the intents cache
+  void Clear(bool clear_intents);
   bool IsEmpty() const;
 
  private:
@@ -47,10 +47,12 @@ class InsertOnConflictBuffer {
   YBCPgInsertOnConflictKeyInfo DoDeleteIndexKey(InsertOnConflictMap::iterator& iter);
 
   InsertOnConflictMap keys_; // a map holding tuple IDs and their corresponding index scan slots
-  TableYbctidSet intent_keys_; // a set of tuple IDs representing modified tuples
 
   // An iterator to the map holding the index scan slots. Used to drop the slots one by one.
   InsertOnConflictMap::iterator keys_iter_;
+
+  // Returns a set of tuple IDs representing modified tuples
+  static TableYbctidSet& IntentKeys();
 };
 
 }  // namespace yb::pggate
