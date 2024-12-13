@@ -64,4 +64,7 @@ Status SetupDDLReplicationExtension(
     CatalogManagerIf& catalog_manager, const std::string& database_name,
     XClusterDDLReplicationRole role, CoarseTimePoint deadline, StdStatusCallback callback);
 
+Status DropDDLReplicationExtension(
+    CatalogManagerIf& catalog_manager, const NamespaceId& namespace_id, StdStatusCallback callback);
+
 }  // namespace yb::master
