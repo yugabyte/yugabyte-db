@@ -40,6 +40,9 @@ DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
 
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
+DEFINE_test_flag(bool, ysql_require_force_catalog_modifications, false,
+    "Fail YSQL catalog writes requests if force_catalog_modifications is not set.");
+
 using namespace std::chrono_literals;
 
 namespace yb {
@@ -128,6 +131,17 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
   bool log_versions = false;
   std::unordered_set<uint32_t> db_oids;
   for (const auto& pg_req : req->pgsql_write_batch()) {
+    if (FLAGS_TEST_ysql_require_force_catalog_modifications &&
+        !pg_req.force_catalog_modifications()) {
+      context.RespondRpcFailure(
+          rpc::ErrorStatusPB::ERROR_APPLICATION,
+          STATUS(
+              InternalError,
+              "Catalog update without force_catalog_modifications when "
+              "TEST_ysql_require_force_catalog_modifications is set"));
+      return;
+    }
+
     if (pg_req.is_ysql_catalog_change_using_protobuf()) {
       const auto &res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
       if (!res.ok()) {

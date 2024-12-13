@@ -1073,4 +1073,8 @@ Status PgSession::SetCronLastMinute(int64_t last_minute) {
 
 Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMinute(); }
 
+void PgSession::SetForceAllowCatalogModifications(bool allowed) {
+  force_allow_catalog_modifications_ = allowed;
+}
+
 }  // namespace yb::pggate

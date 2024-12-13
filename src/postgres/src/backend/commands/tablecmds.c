@@ -672,6 +672,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("cannot create temporary table within security-restricted operation")));
 
+	if (IsYugaByteEnabled() &&
+		stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+		YBCForceAllowCatalogModifications(true);
+
 	/*
 	 * Determine the lockmode to use when scanning parents.  A self-exclusive
 	 * lock is needed here.
@@ -1451,6 +1455,7 @@ RemoveRelations(DropStmt *drop)
 	/* Lock and validate each relation; build a list of object addresses */
 	objects = new_object_addresses();
 
+	bool only_temp_tables = IsYugaByteEnabled() && relkind == RELKIND_RELATION;
 	foreach(cell, drop->objects)
 	{
 		RangeVar   *rel = makeRangeVarFromNameList((List *) lfirst(cell));
@@ -1486,6 +1491,14 @@ RemoveRelations(DropStmt *drop)
 			continue;
 		}
 
+		if (only_temp_tables)
+		{
+			Relation relation = heap_open(relOid, NoLock);
+			only_temp_tables = relation->rd_rel->relpersistence ==
+							   RELPERSISTENCE_TEMP;
+			heap_close(relation, NoLock);
+		}
+
 		/* OK, we're ready to delete this one */
 		obj.classId = RelationRelationId;
 		obj.objectId = relOid;
@@ -1493,6 +1506,9 @@ RemoveRelations(DropStmt *drop)
 
 		add_exact_object_address(&obj, objects);
 	}
+
+	if (only_temp_tables)
+		YBCForceAllowCatalogModifications(true);
 
 	performMultipleDeletions(objects, drop->behavior, flags);
 
@@ -3651,6 +3667,10 @@ AlterTable(Oid relid, LOCKMODE lockmode, AlterTableStmt *stmt)
 	rel = relation_open(relid, NoLock);
 
 	CheckTableNotInUse(rel, "ALTER TABLE");
+
+	if (IsYugaByteEnabled() && stmt->relation->relpersistence ==
+										  RELPERSISTENCE_TEMP)
+		YBCForceAllowCatalogModifications(true);
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode);
 }
@@ -12164,7 +12184,7 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 				 errmsg("cannot set tablespaces for temporary tables")));
 	}
 
-	if (IsYugaByteEnabled() && tablespacename && 
+	if (IsYugaByteEnabled() && tablespacename &&
 		rel->rd_index &&
 		rel->rd_index->indisprimary) {
 		/*
@@ -12667,12 +12687,14 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 	CommandCounterIncrement();
 
 	/* Notify the user that this command is async */
-	ereport(NOTICE,
-			(errmsg("Data movement for table %s is successfully initiated.", 
-					RelationGetRelationName(rel)),
-			 errdetail("Data movement is a long running asynchronous process "
-					   "and can be monitored by checking the tablet placement "
-					   "in http://<YB-Master-host>:7000/tables")));
+	ereport(NOTICE, (errmsg("Data movement for table %s is successfully "
+							"initiated.",
+							RelationGetRelationName(rel)),
+					 errdetail("Data movement is a long running asynchronous "
+							   "process "
+							   "and can be monitored by checking the tablet "
+							   "placement "
+							   "in http://<YB-Master-host>:7000/tables")));
 }
 
 /*

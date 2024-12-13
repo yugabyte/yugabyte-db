@@ -287,6 +287,11 @@ message PgsqlWriteRequestPB {
   optional bytes partition_key = 22;
 
   optional PgsqlFetchSequenceParamsPB fetch_sequence_params = 25;
+
+  // During ysql major catalog upgrades, we block pg from updating the catalog
+  // data. Bypass this check when we know its safe.
+  // Valid cases are InitDB, pg_upgrade, and temp tables.
+  optional bool force_catalog_modifications = 27;
 }
 
 //--------------------------------------------------------------------------------------------------
