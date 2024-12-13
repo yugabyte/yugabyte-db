@@ -12,36 +12,33 @@
 //
 package org.yb.loadtest;
 
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+
+import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
-import com.datastax.oss.driver.api.core.CqlSession;
 import com.yugabyte.sample.apps.CassandraSparkWordCount;
 import com.yugabyte.sample.common.CmdLineOpts;
-import org.junit.Ignore;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.assertEquals;
-
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
-
+import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.YBTestRunner;
+import org.yb.util.YBTestRunnerNonMac;
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value = YBTestRunnerNonMac.class)
 public class TestCassandraSpark3WordCount extends BaseMiniClusterTest {
+  private CassandraSparkWordCount app = new CassandraSparkWordCount();
 
-    private CassandraSparkWordCount app = new CassandraSparkWordCount();
-
-    protected Map<String, String> getTServerFlags() {
-        Map<String, String> flagMap = new TreeMap<>();
-        flagMap.put("cql_update_system_query_cache_msecs", "1000");
-        return flagMap;
-    }
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = new TreeMap<>();
+    flagMap.put("cql_update_system_query_cache_msecs", "1000");
+    return flagMap;
+  }
 
   protected Iterator<Row> execSelect(String select_stmt) {
     CqlSession session = app.getCqlSession();
