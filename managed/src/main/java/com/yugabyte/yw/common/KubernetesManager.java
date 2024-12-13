@@ -225,8 +225,7 @@ public abstract class KubernetesManager {
       String ybSoftwareVersion,
       Map<String, String> config,
       String helmReleaseName,
-      String namespace,
-      String overridesFile) {
+      String namespace) {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
     List<String> commandList =
@@ -238,8 +237,6 @@ public abstract class KubernetesManager {
             helmPackagePath,
             "--debug",
             "--reuse-values",
-            "-f",
-            overridesFile,
             "--namespace",
             namespace,
             "--timeout",
