@@ -63,7 +63,7 @@ Most YugabyteDB servers are configured to not retain the complete history of the
 
 #### Default workflow behavior of initial snapshots
 
-The default behavior for performing a snapshot consists of the following steps. You can change this behavior by setting the `snapshot.mode` [connector configuration property](#advanced-configuration-properties) to a value other than `initial`.
+The default behavior for performing a snapshot consists of the following steps. You can change this behavior by setting the `snapshot.mode` [connector configuration property](../yugabytedb-connector-properties/#advanced-configuration-properties) to a value other than `initial`.
 
 1. Start a transaction.
 2. Set the transaction read time to the [consistent point](../../../../architecture/docdb-replication/cdc-logical-replication/#initial-snapshot) associated with the replication slot.
@@ -1401,7 +1401,7 @@ To deploy the connector, you install the connector archive, configure the connec
 If [auto creation of topics](https://debezium.io/documentation/reference/2.5/configuration/topic-auto-create-config.html) is not enabled in the Kafka Connect cluster then you will need to create the following topics manually:
 
 * Topic for each table in the format `<topic.prefix>.<schemaName>.<tableName>`
-* Heartbeat topic in the format `<topic.heartbeat.prefix>.<topic.prefix>`. The [topic.heartbeat.prefix](../yugabytedb-connector-properties) has a default value of `__debezium-heartbeat`.
+* Heartbeat topic in the format `<topic.heartbeat.prefix>.<topic.prefix>`. The [topic.heartbeat.prefix](../yugabytedb-connector-properties/#topic-heartbeat-prefix) has a default value of `__debezium-heartbeat`.
 
 ### Connector configuration example
 
@@ -1435,7 +1435,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 8. The topic prefix for the YugabyteDB server/cluster, which forms a namespace and is used in all the names of the Kafka topics to which the connector writes, the Kafka Connect schema names, and the namespaces of the corresponding Avro schema when the Avro converter is used.
 9. A list of all tables hosted by this server that this connector will monitor. This is optional, and there are other properties for listing the schemas and tables to include or exclude from monitoring.
 
-See the [complete list of YugabyteDB connector properties](../yugabytedb-connector-properties) that can be specified in these configurations.
+See the [complete list of YugabyteDB connector properties](../yugabytedb-connector-properties/) that can be specified in these configurations.
 
 You can send this configuration with a `POST` command to a running Kafka Connect service. The service records the configuration and starts one connector task that performs the following actions:
 

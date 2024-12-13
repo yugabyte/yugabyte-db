@@ -9,7 +9,7 @@ tags:
 menu:
   stable:
     identifier: explore-change-data-capture
-    parent: explore
+    parent: develop
     weight: 280
 type: indexpage
 ---
