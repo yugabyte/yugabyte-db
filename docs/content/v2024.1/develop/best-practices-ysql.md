@@ -92,8 +92,8 @@ For more details, see [Fast single-row transactions](../../develop/learn/transac
 
 Use [table partitioning](../../explore/ysql-language-features/advanced-features/partitions/) to split your data into multiple partitions according to date so that you can quickly delete older data by dropping the partition.
 
-{{<lead link="../common-patterns/timeseries/partitioning-by-time/">}}
-For more details, see [Partition data by time](../common-patterns/timeseries/partitioning-by-time/).
+{{<lead link="../data-modeling/common-patterns/timeseries/partitioning-by-time/">}}
+For more details, see [Partition data by time](../data-modeling/common-patterns/timeseries/partitioning-by-time/).
 {{</lead>}}
 
 ## Use the right data types for partition keys

@@ -96,7 +96,7 @@ The following connection properties need to be added to enable load balancing:
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes ). You can change this value by including the `yb-servers-refresh-interval` parameter.
 
-For more information, see [Cluster-aware load balancing](../../smart-drivers/#cluster-aware-load-balancing).
+For more information, see [Cluster-aware load balancing](../../../../drivers-orms/smart-drivers/#cluster-aware-load-balancing).
 
 ### Use the driver
 
