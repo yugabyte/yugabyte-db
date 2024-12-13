@@ -1,0 +1,182 @@
+Table name: customers
+- Table information:
+|Table Name       |Table Groupname |Colocated |
++-----------------+----------------+----------+
+|public.customers |                |false     |
+
+- Columns:
+|Column |Type    |Collation |Nullable |Default                               |Storage  |Stats Target |Description |
++-------+--------+----------+---------+--------------------------------------+---------+-------------+------------+
+|id     |integer |          |not null |nextval('customers_id_seq'::regclass) |plain    |             |            |
+|name   |text    |          |         |                                      |extended |             |            |
+|age    |integer |          |         |                                      |plain    |             |            |
+
+- Indexes:
+|Name           |Index Definition                                                    |Constraint Definition |
++---------------+--------------------------------------------------------------------+----------------------+
+|customers_pkey |CREATE UNIQUE INDEX customers_pkey ON customers USING lsm (id HASH) |PRIMARY KEY (id)      |
+
+
+============================================================
+
+Table name: orders
+- Table information:
+|Table Name    |Table Groupname |Colocated |
++--------------+----------------+----------+
+|public.orders |                |false     |
+
+- Columns:
+|Column      |Type                        |Collation |Nullable |Default                            |Storage |Stats Target |Description |
++------------+----------------------------+----------+---------+-----------------------------------+--------+-------------+------------+
+|id          |integer                     |          |not null |nextval('orders_id_seq'::regclass) |plain   |             |            |
+|customer_id |integer                     |          |         |                                   |plain   |             |            |
+|order_date  |timestamp without time zone |          |         |                                   |plain   |             |            |
+
+- Indexes:
+|Name                |Index Definition                                                        |Constraint Definition |
++--------------------+------------------------------------------------------------------------+----------------------+
+|orders_pkey         |CREATE UNIQUE INDEX orders_pkey ON orders USING lsm (id HASH)           |PRIMARY KEY (id)      |
+|idx_orders_customer |CREATE INDEX idx_orders_customer ON orders USING lsm (customer_id HASH) |                      |
+
+
+============================================================
+
+Table name: order_items
+- Table information:
+|Table Name         |Table Groupname |Colocated |
++-------------------+----------------+----------+
+|public.order_items |                |false     |
+
+- Columns:
+|Column     |Type    |Collation |Nullable |Default |Storage |Stats Target |Description |
++-----------+--------+----------+---------+--------+--------+-------------+------------+
+|order_id   |integer |          |         |        |plain   |             |            |
+|product_id |integer |          |         |        |plain   |             |            |
+|quantity   |integer |          |         |        |plain   |             |            |
+
+- Indexes:
+|Name                  |Index Definition                                                            |Constraint Definition |
++----------------------+----------------------------------------------------------------------------+----------------------+
+|idx_order_items_order |CREATE INDEX idx_order_items_order ON order_items USING lsm (order_id HASH) |                      |
+
+
+============================================================
+
+Table name: products
+- Table information:
+|Table Name      |Table Groupname |Colocated |
++----------------+----------------+----------+
+|public.products |                |false     |
+
+- Columns:
+|Column |Type    |Collation |Nullable |Default                              |Storage  |Stats Target |Description |
++-------+--------+----------+---------+-------------------------------------+---------+-------------+------------+
+|id     |integer |          |not null |nextval('products_id_seq'::regclass) |plain    |             |            |
+|name   |text    |          |         |                                     |extended |             |            |
+|price  |numeric |          |         |                                     |main     |             |            |
+
+- Indexes:
+|Name          |Index Definition                                                  |Constraint Definition |
++--------------+------------------------------------------------------------------+----------------------+
+|products_pkey |CREATE UNIQUE INDEX products_pkey ON products USING lsm (id HASH) |PRIMARY KEY (id)      |
+
+
+============================================================
+
+Table name: product_categories
+- Table information:
+|Table Name                |Table Groupname |Colocated |
++--------------------------+----------------+----------+
+|public.product_categories |                |false     |
+
+- Columns:
+|Column      |Type    |Collation |Nullable |Default |Storage |Stats Target |Description |
++------------+--------+----------+---------+--------+--------+-------------+------------+
+|product_id  |integer |          |         |        |plain   |             |            |
+|category_id |integer |          |         |        |plain   |             |            |
+
+- Indexes:
+|Name                   |Index Definition                                                                                       |Constraint Definition |
++-----------------------+-------------------------------------------------------------------------------------------------------+----------------------+
+|idx_product_categories |CREATE INDEX idx_product_categories ON product_categories USING lsm (product_id HASH, category_id ASC) |                      |
+
+
+============================================================
+
+Table name: categories
+- Table information:
+|Table Name        |Table Groupname |Colocated |
++------------------+----------------+----------+
+|public.categories |                |false     |
+
+- Columns:
+|Column |Type    |Collation |Nullable |Default                                |Storage  |Stats Target |Description |
++-------+--------+----------+---------+---------------------------------------+---------+-------------+------------+
+|id     |integer |          |not null |nextval('categories_id_seq'::regclass) |plain    |             |            |
+|name   |text    |          |         |                                       |extended |             |            |
+
+- Indexes:
+|Name            |Index Definition                                                      |Constraint Definition |
++----------------+----------------------------------------------------------------------+----------------------+
+|categories_pkey |CREATE UNIQUE INDEX categories_pkey ON categories USING lsm (id HASH) |PRIMARY KEY (id)      |
+
+
+============================================================
+
+Table name: inventory
+- Table information:
+|Table Name       |Table Groupname |Colocated |
++-----------------+----------------+----------+
+|public.inventory |                |false     |
+
+- Columns:
+|Column       |Type    |Collation |Nullable |Default |Storage |Stats Target |Description |
++-------------+--------+----------+---------+--------+--------+-------------+------------+
+|product_id   |integer |          |         |        |plain   |             |            |
+|warehouse_id |integer |          |         |        |plain   |             |            |
+|stock        |integer |          |         |        |plain   |             |            |
+
+
+============================================================
+
+Table name: warehouses
+- Table information:
+|Table Name        |Table Groupname |Colocated |
++------------------+----------------+----------+
+|public.warehouses |                |false     |
+
+- Columns:
+|Column   |Type    |Collation |Nullable |Default                                |Storage  |Stats Target |Description |
++---------+--------+----------+---------+---------------------------------------+---------+-------------+------------+
+|id       |integer |          |not null |nextval('warehouses_id_seq'::regclass) |plain    |             |            |
+|location |text    |          |         |                                       |extended |             |            |
+
+- Indexes:
+|Name            |Index Definition                                                      |Constraint Definition |
++----------------+----------------------------------------------------------------------+----------------------+
+|warehouses_pkey |CREATE UNIQUE INDEX warehouses_pkey ON warehouses USING lsm (id HASH) |PRIMARY KEY (id)      |
+
+
+============================================================
+
+Table name: employees
+- Table information:
+|Table Name       |Table Groupname |Colocated |
++-----------------+----------------+----------+
+|public.employees |                |false     |
+
+- Columns:
+|Column     |Type    |Collation |Nullable |Default                               |Storage  |Stats Target |Description |
++-----------+--------+----------+---------+--------------------------------------+---------+-------------+------------+
+|id         |integer |          |not null |nextval('employees_id_seq'::regclass) |plain    |             |            |
+|name       |text    |          |         |                                      |extended |             |            |
+|manager_id |integer |          |         |                                      |plain    |             |            |
+
+- Indexes:
+|Name           |Index Definition                                                    |Constraint Definition |
++---------------+--------------------------------------------------------------------+----------------------+
+|employees_pkey |CREATE UNIQUE INDEX employees_pkey ON employees USING lsm (id HASH) |PRIMARY KEY (id)      |
+
+
+============================================================
+
