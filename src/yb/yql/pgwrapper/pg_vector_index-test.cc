@@ -13,6 +13,8 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include "yb/integration-tests/cluster_itest_util.h"
+
 #include "yb/qlexpr/index.h"
 
 #include "yb/tablet/tablet.h"
@@ -32,6 +34,7 @@ namespace yb::pgwrapper {
 class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
+    itest::SetupQuickSplit(1_KB);
     PgMiniTestBase::SetUp();
   }
 
@@ -65,6 +68,8 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
   }
 
   Result<PGConn> MakeIndexAndFill(int num_rows);
+
+  Status VerifyRead(PGConn& conn, int limit);
 
   void TestSimple();
 };
@@ -148,18 +153,36 @@ Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(int num_rows) {
   return conn;
 }
 
+Status PgVectorIndexTest::VerifyRead(PGConn& conn, int limit) {
+  auto result = VERIFY_RESULT((conn.FetchRows<RowAsString>(Format(
+      "SELECT * FROM test ORDER BY embedding <-> '[0.0, 0.0, 0.0]' LIMIT $0", limit))));
+  SCHECK_EQ(result.size(), limit, IllegalState, "Wrong number of rows");
+  for (size_t i = 0; i != result.size(); ++i) {
+    SCHECK_EQ(
+        result[i], ExpectedRow(i + 1), IllegalState, Format("Wrong value for row: $0", i + 1));
+  }
+  return Status::OK();
+}
+
 TEST_P(PgVectorIndexTest, ManyRows) {
   constexpr int kNumRows = RegularBuildVsSanitizers(2000, 64);
   constexpr int kQueryLimit = 5;
 
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(VerifyRead(conn, kQueryLimit));
+}
 
-  auto result = ASSERT_RESULT((conn.FetchRows<RowAsString>(Format(
-      "SELECT * FROM test ORDER BY embedding <-> '[0.0, 0.0, 0.0]' LIMIT $0", kQueryLimit))));
-  ASSERT_EQ(result.size(), kQueryLimit);
-  for (size_t i = 0; i != result.size(); ++i) {
-    ASSERT_EQ(result[i], ExpectedRow(i + 1));
-  }
+TEST_P(PgVectorIndexTest, Split) {
+  constexpr int kNumRows = RegularBuildVsSanitizers(500, 64);
+  constexpr int kQueryLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Give some time for split to happen.
+  std::this_thread::sleep_for(2s * kTimeMultiplier);
+
+  ASSERT_OK(VerifyRead(conn, kQueryLimit));
 }
 
 TEST_P(PgVectorIndexTest, ManyReads) {
