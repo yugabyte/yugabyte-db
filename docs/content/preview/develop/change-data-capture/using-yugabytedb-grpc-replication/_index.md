@@ -8,6 +8,7 @@ tags:
   feature: early-access
 aliases:
   - /preview/explore/change-data-capture/cdc-overview/
+  - /preview/explore/change-data-capture/using-yugabytedb-grpc-replication/
 menu:
   preview:
     identifier: explore-change-data-capture-grpc-replication

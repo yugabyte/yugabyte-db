@@ -4,6 +4,8 @@ headerTitle: Get started
 linkTitle: Get started
 description: Get started with Change Data Capture in YugabyteDB.
 headcontent: Start using CDC with logical replication
+aliases:
+  - /preview/explore/change-data-capture/using-logical-replication/get-started/
 menu:
   preview:
     parent: explore-change-data-capture-logical-replication

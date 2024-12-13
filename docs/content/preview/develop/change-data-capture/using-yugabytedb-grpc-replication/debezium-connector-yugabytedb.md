@@ -9,6 +9,7 @@ aliases:
   - /preview/explore/change-data-capture/debezium
   - /preview/explore/change-data-capture/debezium-connector-postgresql
   - /preview/explore/change-data-capture/debezium-connector-yugabytedb
+  - /preview/explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/
 menu:
   preview:
     parent: explore-change-data-capture-grpc-replication

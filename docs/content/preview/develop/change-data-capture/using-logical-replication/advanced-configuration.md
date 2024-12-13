@@ -4,6 +4,8 @@ headerTitle: Advanced configuration
 linkTitle: Advanced configuration
 description: Advanced Configurations for Logical Replication.
 headcontent: Tune your CDC configuration
+aliases:
+  - /preview/explore/change-data-capture/using-logical-replication/advanced-configuration/
 menu:
   preview:
     parent: explore-change-data-capture-logical-replication
