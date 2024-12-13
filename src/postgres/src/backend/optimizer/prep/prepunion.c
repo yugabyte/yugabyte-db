@@ -2320,6 +2320,12 @@ adjust_appendrel_attrs_mutator(Node *node,
 		newinfo->right_relids = adjust_child_relids(oldinfo->right_relids,
 													context->nappinfos,
 													context->appinfos);
+	
+		/* YB: Also adjust rinfos within yb_batched_rinfo. */
+		newinfo->yb_batched_rinfo = (List *)
+			expression_tree_mutator((Node *) oldinfo->yb_batched_rinfo,
+								  adjust_appendrel_attrs_mutator,
+								  context);
 
 		/*
 		 * Reset cached derivative fields, since these might need to have

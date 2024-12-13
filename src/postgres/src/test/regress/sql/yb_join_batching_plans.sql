@@ -248,3 +248,35 @@ analyze tab2;
 explain (costs off) /*+YbBatchedNL(tab1 tab2)*/ select * from tab1, tab2 where tab1.c1 = tab2.c1;
 drop table tab1;
 drop table tab2;
+
+CREATE TABLE t_part (i int, a int, b int) PARTITION BY RANGE (i);
+CREATE TABLE t_part1 PARTITION OF t_part FOR VALUES FROM (1) TO (200);
+CREATE TABLE t_part2 PARTITION OF t_part FOR VALUES FROM (200) TO (400);
+CREATE TABLE t_part3 PARTITION OF t_part FOR VALUES FROM (400) TO (600);
+CREATE TABLE t_part4 PARTITION OF t_part FOR VALUES FROM (600) TO (MAXVALUE);
+
+CREATE INDEX ON t_part (b);
+
+INSERT INTO t_part SELECT (i % 200) + 1,   ((i-1) / 4) * 4, i  FROM generate_series(1, 2500) i;
+INSERT INTO t_part SELECT (i % 200) + 201, ((i-1) / 4) * 4 + 1, i  FROM generate_series(1, 2500) i;
+INSERT INTO t_part SELECT (i % 200) + 401, ((i-1) / 4) * 4 + 2, i  FROM generate_series(1, 2500) i;
+INSERT INTO t_part SELECT (i % 200) + 601, ((i-1) / 4) * 4 + 3, i  FROM generate_series(1, 2500) i;
+
+CREATE TABLE t_nopart (i int, a int, b int);
+INSERT INTO t_nopart SELECT * FROM t_part;
+
+ANALYZE t_part;
+ANALYZE t_nopart;
+
+/*+
+  Leading((np p))
+  IndexScan(p)
+  Set(yb_enable_batchednl on)
+  Set(yb_bnl_batch_size 1024)
+  Set(enable_nestloop off)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_prefer_bnl on)
+*/
+EXPLAIN (COSTS OFF)SELECT * FROM t_nopart np JOIN t_part p ON np.a = p.b and np.b < 1000 and p.i <= 201;
