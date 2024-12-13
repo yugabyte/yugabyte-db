@@ -281,7 +281,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
         result,
         String.format(
             "Backup config TEST11 is associated with the following backup schedules and can't be"
-                + " deleted: [%s]",
+                + " deleted: %s",
             schedule.getScheduleName()));
     assertAuditEntry(1, defaultCustomer.getUuid());
   }
