@@ -38,6 +38,8 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     public boolean checkVolumesAttached = false;
     // Set it to deconfigure the server like deleting the conf file.
     public boolean deconfigure = false;
+    // Skip stopping processes if VM is paused.
+    public boolean skipStopForPausedVM = false;
   }
 
   @Override

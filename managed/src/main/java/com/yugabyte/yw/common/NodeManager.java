@@ -2313,8 +2313,13 @@ public class NodeManager extends DevopsBase {
                   String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
             }
           }
-          if ("stop".equalsIgnoreCase(taskParam.command) && taskParam.deconfigure) {
-            commandArgs.add("--deconfigure");
+          if ("stop".equalsIgnoreCase(taskParam.command)) {
+            if (taskParam.deconfigure) {
+              commandArgs.add("--deconfigure");
+            }
+            if (taskParam.skipStopForPausedVM) {
+              commandArgs.add("--skip_stop_for_paused_vm");
+            }
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
