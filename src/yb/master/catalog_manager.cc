@@ -4642,7 +4642,7 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
       req, schema, partition_schema, namespace_id, namespace_name, colocated, index_info);
   const TableId& table_id = (*table)->id();
 
-  LOG_WITH_PREFIX_AND_FUNC(INFO)
+  VLOG_WITH_PREFIX_AND_FUNC(2)
       << "Table: " << (**table).ToString() << ", create_tablets: " << (tablets ? "YES" : "NO");
 
   auto table_map_checkout = tables_.CheckOut();
