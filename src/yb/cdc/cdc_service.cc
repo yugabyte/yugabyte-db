@@ -1891,13 +1891,18 @@ void CDCServiceImpl::GetChanges(
 
     // If snapshot operation or before image is enabled, don't allow compaction.
     std::optional<HybridTime> cdc_sdk_safe_time;
-    if (record.GetCheckpointType() == EXPLICIT ) {
+    if (record.GetCheckpointType() == EXPLICIT) {
       if (snapshot_bootstrap) {
-        cdc_sdk_safe_time = HybridTime::FromPB(resp->safe_hybrid_time());
-      } else {
-        if (cdc_sdk_explicit_safe_time != 0) {
-          cdc_sdk_safe_time = HybridTime::FromPB(cdc_sdk_explicit_safe_time);
+        if (resp->safe_hybrid_time() == 0) {
+          LOG(WARNING) << "Response safe time is 0 for tablet " << tablet_peer->tablet_id()
+                       << ", stream: " << stream_id
+                       << ", setting cdc_sdk_safe_time to HybridTime::kInitial";
         }
+        cdc_sdk_safe_time = (resp->safe_hybrid_time() == 0)
+                                ? HybridTime::kInitial
+                                : HybridTime::FromPB(resp->safe_hybrid_time());
+      } else if (cdc_sdk_explicit_safe_time != 0) {
+        cdc_sdk_safe_time = HybridTime::FromPB(cdc_sdk_explicit_safe_time);
       }
     } else if (req->safe_hybrid_time() != -1) {
       cdc_sdk_safe_time = HybridTime::FromPB(req->safe_hybrid_time());
@@ -2639,7 +2644,9 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
         }
 
         if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
-          if (replica_identity_map.at(table_id) == PgReplicaIdentity::FULL) {
+          auto table_replica_identity = replica_identity_map.at(table_id);
+          if (table_replica_identity != PgReplicaIdentity::CHANGE &&
+              table_replica_identity != PgReplicaIdentity::NOTHING) {
             is_before_image_active = true;
             break;
           }
@@ -2650,16 +2657,20 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     } else {
       auto table_id = tablet_peer->tablet_metadata()->table_id();
       if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
-        is_before_image_active = (replica_identity_map.at(table_id) == PgReplicaIdentity::FULL);
+        auto table_replica_identity = replica_identity_map.at(table_id);
+        if (table_replica_identity != PgReplicaIdentity::CHANGE &&
+            table_replica_identity != PgReplicaIdentity::NOTHING) {
+          is_before_image_active = true;
+        }
       } else {
         return STATUS_FORMAT(NotFound, "Replica identity not found for table: $0 ", table_id);
       }
     }
 
   } else {
-    is_before_image_active =
-        (stream_metadata.GetRecordType() == CDCRecordType::ALL ||
-         stream_metadata.GetRecordType() == CDCRecordType::PG_FULL);
+    auto stream_record_type = stream_metadata.GetRecordType();
+    is_before_image_active = stream_record_type != CDCRecordType::CHANGE &&
+                             stream_record_type != CDCRecordType::PG_NOTHING;
   }
 
   return is_before_image_active;
