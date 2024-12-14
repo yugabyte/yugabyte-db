@@ -19,7 +19,7 @@ First, enable the extension:
 CREATE EXTENSION "uuid-ossp";
 ```
 
-Connect using `ysqlsh` and run the following:
+Connect using ysqlsh and run the following:
 
 ```sql
 SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();

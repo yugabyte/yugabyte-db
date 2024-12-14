@@ -4,7 +4,7 @@ private = true
 +++
 -->
 
-Run `ycqlsh` to connect to the service as follows:
+Run ycqlsh to connect to the service as follows:
 
 ```sh
 $ ./bin/ycqlsh

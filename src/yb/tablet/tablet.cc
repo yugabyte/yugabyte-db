@@ -1935,6 +1935,11 @@ Status Tablet::DoHandlePgsqlReadRequest(
       auto it = vector_indexes_map_.find(vector_index_table_id);
       if (it != vector_indexes_map_.end()) {
         vector_index = it->second;
+      } else {
+        LOG_WITH_PREFIX_AND_FUNC(DFATAL)
+            << "Vector index query but don't have vector index for "
+            << vector_index_table_id << ", all vector indexes: "
+            << CollectionToString(vector_indexes_map_, [](const auto& pair) { return pair.first; });
       }
     }
 

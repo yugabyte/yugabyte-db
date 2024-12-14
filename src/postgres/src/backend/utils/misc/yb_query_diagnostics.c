@@ -36,6 +36,7 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_namespace_d.h"
+#include "catalog/yb_catalog_version.h"
 #include "commands/dbcommands.h"
 #include "commands/tablespace.h"
 #include "commands/explain.h"
@@ -990,6 +991,17 @@ AppendToDescription(char *description, const char *format, ...)
 }
 
 /*
+ * RefreshCache
+ *		Refreshes the catalog cache to ensure that the latest catalog version is used.
+ */
+static void
+RefreshCache()
+{
+	YBCPgResetCatalogReadTime();
+	YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
+}
+
+/*
  * FlushAndCleanBundles
  * 		This function is invoked every yb_query_diagnostics_bg_worker_interval_ms and is
  * 		responsible for cleaning up expired query diagnostic bundles and flushing their
@@ -1223,6 +1235,9 @@ end_of_loop:
 
 		PG_TRY();
 		{
+			/* This prevents `CATALOG MISMATCHED_SCHEMA` error */
+			RefreshCache();
+
 			/* Fetch schema details for each schema oid */
 			for (int i = 0; i < YB_QD_MAX_SCHEMA_OIDS; i++)
 			{

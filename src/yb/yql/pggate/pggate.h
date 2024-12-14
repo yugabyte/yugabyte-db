@@ -60,6 +60,7 @@
 
 namespace yb::pggate {
 class PgSession;
+class PgDmlRead;
 
 struct PgMemctxComparator {
   using is_transparent = void;
@@ -438,9 +439,9 @@ class PgApiImpl {
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
-  Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
+  Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_for_secondary_index);
 
-  Status DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_primary);
+  Status DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_for_secondary_index);
 
   // Binding Columns: Bind column with a value (expression) in a statement.
   // + This API is used to identify the rows you want to operate on. If binding columns are not
@@ -597,9 +598,9 @@ class PgApiImpl {
   Status SetHashBounds(PgStatement *handle, uint16_t low_bound, uint16_t high_bound);
 
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
-  Status RetrieveYbctids(PgStatement *handle, const YBCPgExecParameters *exec_params, int natts,
-                         SliceVector *ybctids, size_t *count,
-                         bool *exceeded_work_mem);
+  Result<bool> RetrieveYbctids(
+      PgStatement *handle, const YBCPgExecParameters *exec_params, int natts, SliceVector *ybctids,
+      size_t *count);
   Status FetchRequestedYbctids(PgStatement *handle, const PgExecParameters *exec_params,
                                ConstSliceVector ybctids);
 
@@ -722,14 +723,16 @@ class PgApiImpl {
 
   // INSERT ... ON CONFLICT batching ---------------------------------------------------------------
   Status AddInsertOnConflictKey(
-      PgOid table_id, const Slice& ybctid, const YBCPgInsertOnConflictKeyInfo& info);
-  YBCPgInsertOnConflictKeyState InsertOnConflictKeyExists(PgOid table_id, const Slice& ybctid);
+      PgOid table_id, const Slice& ybctid, void* state, const YBCPgInsertOnConflictKeyInfo& info);
+  YBCPgInsertOnConflictKeyState InsertOnConflictKeyExists(
+      PgOid table_id, const Slice& ybctid, void* state);
   Result<YBCPgInsertOnConflictKeyInfo> DeleteInsertOnConflictKey(
-      PgOid table_id, const Slice& ybctid);
-  Result<YBCPgInsertOnConflictKeyInfo> DeleteNextInsertOnConflictKey();
-  uint64_t GetInsertOnConflictKeyCount();
+      PgOid table_id, const Slice& ybctid, void* state);
+  Result<YBCPgInsertOnConflictKeyInfo> DeleteNextInsertOnConflictKey(void* state);
+  uint64_t GetInsertOnConflictKeyCount(void* state);
   void AddInsertOnConflictKeyIntent(PgOid table_id, const Slice& ybctid);
-  void ClearInsertOnConflictCache();
+  void ClearAllInsertOnConflictCaches();
+  void ClearInsertOnConflictCache(void* state);
   //------------------------------------------------------------------------------------------------
 
   // Sets the specified timeout in the rpc service.
@@ -821,8 +824,13 @@ class PgApiImpl {
   [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);
 
+  void ForceAllowCatalogModifications(bool allowed);
+
  private:
   void ClearSessionState();
+
+  Result<bool> RetrieveYbctidsImpl(
+      PgDmlRead& dml_read, int natts, size_t max_mem_bytes, std::vector<Slice>& ybctids);
 
   class Interrupter;
 

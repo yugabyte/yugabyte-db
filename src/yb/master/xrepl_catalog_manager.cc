@@ -864,7 +864,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   bool has_consistent_snapshot_option = false;
   bool consistent_snapshot_option_use = false;
-  bool has_replica_identity_full = false;
+  bool is_history_required_for_replica_identity = false;
   bool disable_dynamic_tables = false;
 
   CDCStreamInfoPtr stream;
@@ -973,10 +973,13 @@ Status CatalogManager::CreateNewCdcsdkStream(
       auto schema = VERIFY_RESULT(table->GetSchema());
       PgReplicaIdentity replica_identity = schema.table_properties().replica_identity();
 
-      // If atleast one of the tables in the stream has replica identity full, we will set the
-      // history cutoff. UpdatepPeersAndMetrics thread will remove the retention barriers for
-      // the tablets belonging to the tables with "non-full" replica identity.
-      has_replica_identity_full |= (replica_identity == PgReplicaIdentity::FULL);
+      // If atleast one of the tables in the stream has replica identity other than CHANGE &
+      // NOTHING, we will set the history cutoff. UpdatepPeersAndMetrics thread will remove the
+      // retention barriers for the tablets belonging to the tables with replica identity CHANGE or
+      // NOTHING.
+      is_history_required_for_replica_identity |=
+          (replica_identity != PgReplicaIdentity::CHANGE &&
+           replica_identity != PgReplicaIdentity::NOTHING);
 
       metadata->mutable_replica_identity_map()->insert({table_id, replica_identity});
       VLOG(1) << "Storing replica identity: " << replica_identity
@@ -1085,11 +1088,13 @@ Status CatalogManager::CreateNewCdcsdkStream(
   // that all of the ALTER TABLE operations have completed.
 
   uint64 consistent_snapshot_time = 0;
-  bool record_type_option_all = false;
+  bool is_history_required_for_record_type = false;
   if (!FLAGS_ysql_yb_enable_replica_identity || !has_replication_slot_name) {
     for (auto option : req.options()) {
       if (option.key() == cdc::kRecordType) {
-        record_type_option_all = option.value() == CDCRecordType_Name(cdc::CDCRecordType::ALL);
+        is_history_required_for_record_type =
+            option.value() != CDCRecordType_Name(cdc::CDCRecordType::CHANGE) &&
+            option.value() != CDCRecordType_Name(cdc::CDCRecordType::PG_NOTHING);
       }
     }
   }
@@ -1108,11 +1113,12 @@ Status CatalogManager::CreateNewCdcsdkStream(
       TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kAfterDummyCDCStateEntries"));
 
     // Step 2: Set retention barriers for all tables.
-    auto require_history_cutoff =
-        consistent_snapshot_option_use || record_type_option_all || has_replica_identity_full;
-    RETURN_NOT_OK(SetAllCDCSDKRetentionBarriers(
-        req, rpc, epoch, table_ids, stream->StreamId(), has_consistent_snapshot_option,
-        require_history_cutoff));
+  auto require_history_cutoff = consistent_snapshot_option_use ||
+                                is_history_required_for_record_type ||
+                                is_history_required_for_replica_identity;
+  RETURN_NOT_OK(SetAllCDCSDKRetentionBarriers(
+      req, rpc, epoch, table_ids, stream->StreamId(), has_consistent_snapshot_option,
+      require_history_cutoff));
 
   RETURN_NOT_OK(
       TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kAfterRetentionBarriers"));

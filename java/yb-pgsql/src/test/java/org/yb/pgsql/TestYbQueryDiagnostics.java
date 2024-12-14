@@ -45,7 +45,6 @@ import java.util.stream.Stream;
 
 import org.json.JSONObject;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -1391,7 +1390,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
-    @Ignore // TODO: This test fails due to CATLOG MISMATCH error (#24529)
+    @Test
     public void checkSchemaDetailsData() throws Exception {
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(

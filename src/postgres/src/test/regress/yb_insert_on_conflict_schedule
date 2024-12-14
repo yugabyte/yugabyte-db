@@ -1,1 +1,4 @@
+# Make multiplan the first test in the schedule since it has an error message
+# which emits oid.
+test: yb_insert_on_conflict_multiplan
 test: yb_insert_on_conflict

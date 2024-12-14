@@ -6,7 +6,7 @@ menu:
   stable:
     identifier: advanced-features-views
     parent: advanced-features
-    weight: 230
+    weight: 800
 type: docs
 ---
 

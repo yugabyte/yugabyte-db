@@ -1288,13 +1288,14 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary) {
-  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_primary));
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_for_secondary_index) {
+  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_for_secondary_index));
 }
 
-YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref, bool is_primary) {
+YBCStatus YbPgDmlAppendColumnRef(
+    YBCPgStatement handle, YBCPgExpr colref, bool is_for_secondary_index) {
   return ToYBCStatus(pgapi->DmlAppendColumnRef(
-      handle, down_cast<PgColumnRef*>(colref), is_primary));
+      handle, down_cast<PgColumnRef*>(colref), is_for_secondary_index));
 }
 
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
@@ -1571,8 +1572,9 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec
 YBCStatus YBCPgRetrieveYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,
                                    int natts, SliceVector *ybctids, size_t *count,
                                    bool *exceeded_work_mem) {
-  return ToYBCStatus(pgapi->RetrieveYbctids(handle, exec_params, natts, ybctids, count,
-                                            exceeded_work_mem));
+  return ExtractValueFromResult(
+      pgapi->RetrieveYbctids(handle, exec_params, natts, ybctids, count),
+      [exceeded_work_mem](bool retrieved) { *exceeded_work_mem = !retrieved; });
 }
 
 YBCStatus YBCPgFetchRequestedYbctids(YBCPgStatement handle, const YBCPgExecParameters *exec_params,
@@ -1910,33 +1912,35 @@ YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents() {
 }
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
-YBCStatus YBCPgAddInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+YBCStatus YBCPgAddInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid, void* state,
                                       YBCPgInsertOnConflictKeyInfo* info) {
-  return ProcessYbctid(*tupleid, [info](auto table_id, const auto& ybctid) {
+  return ProcessYbctid(*tupleid, [state, info](auto table_id, const auto& ybctid) {
     return pgapi->AddInsertOnConflictKey(
-        table_id, ybctid, info ? *info : YBCPgInsertOnConflictKeyInfo());
+        table_id, ybctid, state, info ? *info : YBCPgInsertOnConflictKeyInfo());
   });
 }
 
 YBCStatus YBCPgInsertOnConflictKeyExists(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         void* state,
                                          YBCPgInsertOnConflictKeyState* res) {
-  return ProcessYbctid(*tupleid, [res](auto table_id, const auto& ybctid) {
-    *res = pgapi->InsertOnConflictKeyExists(table_id, ybctid);
+  return ProcessYbctid(*tupleid, [res, state](auto table_id, const auto& ybctid) {
+    *res = pgapi->InsertOnConflictKeyExists(table_id, ybctid, state);
     return Status::OK();
   });
 }
 
 YBCStatus YBCPgDeleteInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         void* state,
                                          YBCPgInsertOnConflictKeyInfo* info) {
-  return ProcessYbctid(*tupleid, [info](auto table_id, const auto& ybctid) {
-    auto result = VERIFY_RESULT(pgapi->DeleteInsertOnConflictKey(table_id, ybctid));
+  return ProcessYbctid(*tupleid, [state, info](auto table_id, const auto& ybctid) {
+    auto result = VERIFY_RESULT(pgapi->DeleteInsertOnConflictKey(table_id, ybctid, state));
     *info = result;
     return (Status) Status::OK();
   });
 }
 
-YBCStatus YBCPgDeleteNextInsertOnConflictKey(YBCPgInsertOnConflictKeyInfo* info) {
-  return ExtractValueFromResult(pgapi->DeleteNextInsertOnConflictKey(), info);
+YBCStatus YBCPgDeleteNextInsertOnConflictKey(void* state, YBCPgInsertOnConflictKeyInfo* info) {
+  return ExtractValueFromResult(pgapi->DeleteNextInsertOnConflictKey(state), info);
 }
 
 YBCStatus YBCPgAddInsertOnConflictKeyIntent(const YBCPgYBTupleIdDescriptor* tupleid) {
@@ -1946,12 +1950,16 @@ YBCStatus YBCPgAddInsertOnConflictKeyIntent(const YBCPgYBTupleIdDescriptor* tupl
   });
 }
 
-void YBCPgClearInsertOnConflictCache() {
-  pgapi->ClearInsertOnConflictCache();
+void YBCPgClearAllInsertOnConflictCaches() {
+  pgapi->ClearAllInsertOnConflictCaches();
 }
 
-uint64_t YBCPgGetInsertOnConflictKeyCount() {
-  return pgapi->GetInsertOnConflictKeyCount();
+void YBCPgClearInsertOnConflictCache(void* state) {
+  pgapi->ClearInsertOnConflictCache(state);
+}
+
+uint64_t YBCPgGetInsertOnConflictKeyCount(void* state) {
+  return pgapi->GetInsertOnConflictKeyCount(state);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2819,6 +2827,10 @@ YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle) {
   return ToYBCStatus(pgapi->RestoreReadTimePoint(read_time_point_handle));
 }
 
-} // extern "C"
+void YBCForceAllowCatalogModifications(bool allowed) {
+  pgapi->ForceAllowCatalogModifications(allowed);
+}
+
+}  // extern "C"
 
 } // namespace yb::pggate

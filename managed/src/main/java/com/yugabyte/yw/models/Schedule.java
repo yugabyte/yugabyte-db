@@ -666,14 +666,12 @@ public class Schedule extends Model {
     List<Schedule> scheduleList =
         find.query()
             .where()
-            .or()
-            .eq("task_type", TaskType.BackupUniverse)
-            .eq("task_type", TaskType.MultiTableBackup)
-            .endOr()
-            .or()
-            .eq("status", "Paused")
-            .eq("status", "Active")
-            .endOr()
+            .in(
+                "task_type",
+                TaskType.BackupUniverse,
+                TaskType.MultiTableBackup,
+                TaskType.CreateBackup)
+            .notIn("status", State.Deleting, State.Error)
             .findList();
     // This should be safe to do since storageConfigUUID is a required constraint.
     scheduleList =

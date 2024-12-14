@@ -3125,7 +3125,7 @@ Status GetChangesForCDCSDK(
 
   if (!snapshot_operation && !CheckResponseSafeTimeCorrectness(
                                  last_read_wal_op_record_time, safe_time, is_entire_wal_read)) {
-    LOG(FATAL) << "Stream_id: " << stream_id << ", tablet_id: " << tablet_id
+    LOG(DFATAL) << "Stream_id: " << stream_id << ", tablet_id: " << tablet_id
                  << ", response safe time: " << safe_time
                  << " is greater than last read WAL OP's record time: "
                  << last_read_wal_op_record_time

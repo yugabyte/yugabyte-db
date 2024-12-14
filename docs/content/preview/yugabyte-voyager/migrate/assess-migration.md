@@ -133,9 +133,9 @@ For the most accurate migration assessment, the source database must be actively
 
 1. Create a target YugabyteDB cluster as follows:
 
-    1. Create a cluster in [Enhanced PostgreSQL Compatibility Mode](../../../explore/ysql-language-features/postgresql-compatibility/#enhanced-postgresql-compatibility-mode), based on the sizing recommendations in the assessment report.
+    1. Create a cluster in [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/), based on the sizing recommendations in the assessment report.
 
-        For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../explore/ysql-language-features/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
+        For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../develop/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
 
     1. Create a database with colocation set to TRUE.
 

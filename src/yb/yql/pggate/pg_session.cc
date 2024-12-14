@@ -403,7 +403,6 @@ PgSession::PgSession(
       pg_txn_manager_(std::move(pg_txn_manager)),
       ybctid_reader_(std::move(ybctid_reader)),
       explicit_row_lock_buffer_(aux_ybctid_container_provider_, ybctid_reader_),
-      insert_on_conflict_buffer_(),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
       buffer_(
@@ -865,6 +864,52 @@ void PgSession::DeleteForeignKeyReference(const LightweightTableYbctid& key) {
   Erase(&fk_reference_cache_, key);
 }
 
+InsertOnConflictBuffer& PgSession::GetInsertOnConflictBuffer(void* plan) {
+  auto iter = std::find_if(
+      insert_on_conflict_buffers_.begin(), insert_on_conflict_buffers_.end(),
+      [&plan](const InsertOnConflictPlanBuffer& buffer) {
+        return buffer.first == plan;
+      });
+
+  if (iter == insert_on_conflict_buffers_.end()) {
+    insert_on_conflict_buffers_.emplace_back(std::make_pair(plan, InsertOnConflictBuffer()));
+    return insert_on_conflict_buffers_.back().second;
+  }
+
+  return iter->second;
+}
+
+InsertOnConflictBuffer& PgSession::GetInsertOnConflictBuffer() {
+  CHECK_EQ(insert_on_conflict_buffers_.empty(), false);
+  return insert_on_conflict_buffers_.front().second;
+}
+
+void PgSession::ClearAllInsertOnConflictBuffers() {
+  for (auto& buffer : insert_on_conflict_buffers_) {
+    // Since we will end up clearing all intents, might as well simply pass true for all the calls.
+    buffer.second.Clear(true /* clear_intents */);
+  }
+
+  insert_on_conflict_buffers_.clear();
+}
+
+void PgSession::ClearInsertOnConflictBuffer(void* plan) {
+  auto iter = std::find_if(
+      insert_on_conflict_buffers_.begin(), insert_on_conflict_buffers_.end(),
+      [&plan](const InsertOnConflictPlanBuffer& buffer) {
+        return buffer.first == plan;
+      });
+
+  DCHECK(iter != insert_on_conflict_buffers_.end());
+  // Only clear the global intents cache if this is the final buffer. */
+  iter->second.Clear(insert_on_conflict_buffers_.size() == 1 /* clear_intents */);
+  insert_on_conflict_buffers_.erase(iter);
+}
+
+bool PgSession::IsInsertOnConflictBufferEmpty() const {
+  return insert_on_conflict_buffers_.empty();
+}
+
 Result<int> PgSession::TabletServerCount(bool primary_only) {
   return pg_client_.TabletServerCount(primary_only);
 }
@@ -1093,5 +1138,9 @@ Status PgSession::SetCronLastMinute(int64_t last_minute) {
 }
 
 Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMinute(); }
+
+void PgSession::SetForceAllowCatalogModifications(bool allowed) {
+  force_allow_catalog_modifications_ = allowed;
+}
 
 }  // namespace yb::pggate

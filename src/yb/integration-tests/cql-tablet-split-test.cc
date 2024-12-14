@@ -147,21 +147,10 @@ const auto kSecondaryIndexTestTableName =
 class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
  protected:
   void SetUp() override {
+    itest::SetupQuickSplit(64_KB);
+
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
-    // Setting this very low will just cause to include metrics in every heartbeat, no overhead on
-    // setting it lower than FLAGS_heartbeat_interval_ms.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 1000;
-
-    // Reduce cleanup waiting time, so tests are completed faster.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
-
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 64_KB;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) =
         FLAGS_tablet_force_split_threshold_bytes;

@@ -6,7 +6,7 @@ menu:
   v2024.1:
     identifier: explore-ysql-language-features-triggers
     parent: advanced-features
-    weight: 310
+    weight: 700
 type: docs
 ---
 

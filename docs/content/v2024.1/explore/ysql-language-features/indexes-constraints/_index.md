@@ -8,7 +8,7 @@ menu:
   v2024.1:
     identifier: explore-indexes-constraints-ysql
     parent: explore-ysql-language-features
-    weight: 600
+    weight: 700
 type: indexpage
 ---
 

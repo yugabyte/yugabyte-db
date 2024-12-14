@@ -13,13 +13,16 @@ type: docs
 **Purpose:** Return a new array where _every_ occurrence of the specified value has been removed from the specified input array.
 
 **Signature:**
-```
+
+```output
 input value:       anyarray, anyelement
 return value:      anyarray
 ```
-**Note:** This function requires the array from which values are to be removed is one-dimensional. This restriction is understood in light of the fact that arrays are rectilinear—in other words, the geometry of an array whose dimensionality is two or more is fixed at creation time. For examples illustrating this rule, see [`array_fill()`](.././array-fill).
+
+**Note:** This function requires the array from which values are to be removed is one-dimensional. This restriction is understood in light of the fact that arrays are rectilinear—in other words, the geometry of an array whose dimensionality is two or more is fixed at creation time. For examples illustrating this rule, see [`array_fill()`](../array-fill).
 
 **Example:**
+
 ```plpgsql
 create table t(k int primary key, arr int[]);
 insert into t(k, arr)
@@ -33,8 +36,10 @@ where k = 1;
 
 select arr as "new value of arr" from t where k = 1;
 ```
+
 This is the result of the two queries:
-```
+
+```output
  old value of arr
 ------------------
  {1,2,2,2,5,6}

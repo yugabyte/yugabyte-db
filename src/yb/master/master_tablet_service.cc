@@ -40,6 +40,9 @@ DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
 
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
+DEFINE_test_flag(bool, ysql_require_force_catalog_modifications, false,
+    "Fail YSQL catalog writes requests if force_catalog_modifications is not set.");
+
 using namespace std::chrono_literals;
 
 namespace yb {
@@ -118,12 +121,22 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
   bool log_versions = false;
   std::unordered_set<uint32_t> db_oids;
   for (const auto &pg_req : req->pgsql_write_batch()) {
+    if (FLAGS_TEST_ysql_require_force_catalog_modifications &&
+        !pg_req.force_catalog_modifications()) {
+      context.RespondRpcFailure(
+          rpc::ErrorStatusPB::ERROR_APPLICATION,
+          STATUS(
+              InternalError,
+              "Catalog update without force_catalog_modifications when "
+              "TEST_ysql_require_force_catalog_modifications is set"));
+      return;
+    }
+
     if (pg_req.is_ysql_catalog_change_using_protobuf()) {
       const auto& res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
       if (!res.ok()) {
         context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
             STATUS(InternalError, "Failed to increment YSQL catalog version"));
-        return;
       }
     } else if (FLAGS_log_ysql_catalog_versions && pg_req.table_id() == kPgYbCatalogVersionTableId) {
       log_versions = true;
@@ -140,7 +153,6 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
             doc_key.range_group().size() != 1) {
           context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
               STATUS(InternalError, "Failed to get db oid"));
-          return;
         }
         const uint32_t db_oid = doc_key.range_group()[0].GetUInt32();
         // In per-db catalog version mode, one can run a SQL script to prepare the

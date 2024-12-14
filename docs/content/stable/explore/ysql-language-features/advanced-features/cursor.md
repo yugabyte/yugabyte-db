@@ -6,7 +6,7 @@ menu:
   stable:
     identifier: advanced-features-cursor
     parent: advanced-features
-    weight: 220
+    weight: 200
 type: docs
 ---
 

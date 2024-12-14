@@ -22,7 +22,7 @@ rightNav:
 
 The [Yugabyte Structured Query Language (YSQL) API](../../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL 11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
 
-For details on PostgreSQL feature support in YSQL, refer to [SQL feature support](../../explore/ysql-language-features/sql-feature-support/).
+For details on PostgreSQL feature support in YSQL, refer to [SQL feature support](../../api/ysql/sql-feature-support/).
 
 Client drivers listed below are supported for developing applications that connect to and interact with the YSQL API. Most of the drivers use [libpq](#libpq) and support the [SCRAM-SHA-256 authentication method](../../secure/authentication/password-authentication/#scram-sha-256).
 

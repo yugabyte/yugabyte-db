@@ -2148,7 +2148,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
 
 Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(
     const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options) {
-  RSTATUS_DCHECK(data_.vector_index, IllegalState, "Search vector when vector index is null");
+  RSTATUS_DCHECK(
+      data_.vector_index, IllegalState, "Search vector when vector index is null: $0", request_);
 
   Slice vector_slice(options.vector().binary_value());
   // TODO(vector_index) Use correct max_results or use prefetch_size passed from options

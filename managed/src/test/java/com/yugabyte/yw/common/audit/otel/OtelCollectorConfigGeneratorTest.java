@@ -58,7 +58,9 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     doNothing().when(mockTelemetryProviderService).validateBean(any());
     customer = ModelFactory.testCustomer();
     provider = ModelFactory.awsProvider(customer);
-    universe = ModelFactory.createUniverse(customer.getId());
+    universe =
+        ModelFactory.createUniverse(
+            "test-universe", UUID.fromString("00000000-0000-0000-0000-000000000000"));
     universe = ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
     // update the node name
     universe =

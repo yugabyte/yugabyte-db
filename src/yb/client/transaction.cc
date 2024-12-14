@@ -1970,8 +1970,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       auto state = state_.load(std::memory_order_acquire);
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status << ", txn state: " << state;
 
-      if (status.IsAborted() || status.IsExpired()) {
-        // IsAborted - Service is shutting down, no reason to retry.
+      if (status.IsAborted() || status.IsExpired() || status.IsShutdownInProgress()) {
+        // IsAborted/IsShutdownInProgress - Service is shutting down, no reason to retry.
         // IsExpired - Transaction expired.
         if (transaction_status == TransactionStatus::CREATED ||
             transaction_status == TransactionStatus::PROMOTED) {
