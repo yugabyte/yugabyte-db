@@ -31,8 +31,8 @@ While YugabyteDB is a distributed database, it leverages PostgreSQL's query laye
 
 Implementing all PostgreSQL features in a distributed system can be challenging, and some features are still under development. To ensure that the features your applications depend on are supported in the version of YugabyteDB you are using, double-check that the feature is included in the list of supported features.
 
-{{<lead link="../../../explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features">}}
-Review the [list of unsupported features](../../../explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features) to make sure that the PostgreSQL features used by your application are supported by YugabyteDB.
+{{<lead link="../../../develop/postgresql-compatibility/#unsupported-postgresql-features">}}
+Review the [list of unsupported features](../../../develop/postgresql-compatibility/#unsupported-postgresql-features) to make sure that the PostgreSQL features used by your application are supported by YugabyteDB.
 {{</lead>}}
 
 ### Extension support

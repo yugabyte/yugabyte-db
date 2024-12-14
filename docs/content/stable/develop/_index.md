@@ -78,3 +78,11 @@ Yugabyte provides multiple step-by-step guides for building scalable and fault-t
 {{<lead link="/preview/tutorials/">}}
 For step-by-step guides for various frameworks, see [Tutorials](/preview/tutorials/).
 {{</lead>}}
+
+## PostgreSQL compatibility
+
+YugabyteDB aims to be a fully PostgreSQL-compatible distributed database that supports the majority of PostgreSQL syntax. This means that existing applications built on PostgreSQL can often be migrated to YugabyteDB without changing application code. YugabyteDB also includes many optimizations to enable PostgreSQL applications to run with predictable performance.
+
+{{<lead link="postgresql-compatibility/">}}
+To learn more, see [PostgreSQL compatibility](postgresql-compatibility/).
+{{</lead>}}

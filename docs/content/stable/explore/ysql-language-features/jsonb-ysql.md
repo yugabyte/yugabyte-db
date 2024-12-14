@@ -9,7 +9,7 @@ menu:
     name: JSON support
     identifier: explore-json-support-ysql
     parent: explore-ysql-language-features
-    weight: 250
+    weight: 600
 type: docs
 ---
 
