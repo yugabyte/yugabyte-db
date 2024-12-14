@@ -673,9 +673,9 @@ YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query, JumbleSt
 			SpinLockAcquire(&entry->mutex);
 
 			entry->query_location = query_location;
-			entry->constants_count = jstate->clocations_count;
+			entry->constants_count = Min(jstate->clocations_count, YB_QD_MAX_CONSTANTS);
 			memcpy(entry->constant_locations, jstate->clocations,
-				   sizeof(LocationLen) * jstate->clocations_count);
+				   sizeof(LocationLen) * entry->constants_count);
 
 			SpinLockRelease(&entry->mutex);
 		}
