@@ -15,7 +15,7 @@ rightnav:
 
 ### Unable to authenticate after fresh installation
 
-You may encounter the following error when trying to connect to YSQL using the `ysqlsh` CLI after creating a fresh cluster:
+You may encounter the following error when trying to connect to YSQL using the ysqlsh CLI after creating a fresh cluster:
 
 ```output
 ysqlsh: FATAL:  password authentication failed for user "yugabyte"
@@ -23,7 +23,7 @@ ysqlsh: FATAL:  password authentication failed for user "yugabyte"
 
 By default, PostgreSQL listens on port `5432`. To avoid conflict, the YSQL port is set to `5433`. But because you can create multiple PostgreSQL clusters locally, each one takes the next port available, starting from `5433`, and thus conflicting with the YSQL port.
 
-If you have created two PostgreSQL clusters before creating the YugabyteDB cluster, the `ysqlsh` shell is trying to connect to PostgreSQL running on port `5433` and fails to authenticate. To verify, you can run the following command to check which process is listening on port `5433`:
+If you have created two PostgreSQL clusters before creating the YugabyteDB cluster, the ysqlsh shell is trying to connect to PostgreSQL running on port `5433` and fails to authenticate. To verify, you can run the following command to check which process is listening on port `5433`:
 
 ```sh
 sudo lsof -i :5433

@@ -78,7 +78,7 @@ To get the connection parameters for your cluster:
 
 Select **Connection String** to display the string that YSQL applications can use to connect. Select **Parameters** to display the individual parameters.
 
-Here's an example of a generated `ysqlsh` string:
+Here's an example of a generated ysqlsh string:
 
 ```sh
 postgresql://<DB USER>:<DB PASSWORD>@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.yugabyte.cloud:5433/yugabyte? \
@@ -101,7 +101,7 @@ postgresql://admin:qwerty@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.yuga
 sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
-The connection string includes parameters for TLS settings (`ssl`, `sslmode`, and `sslrootcert`). The generated `ysqlsh` connection string uses the `verify-full` SSL mode by default.
+The connection string includes parameters for TLS settings (`ssl`, `sslmode`, and `sslrootcert`). The generated ysqlsh connection string uses the `verify-full` SSL mode by default.
 
 For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 

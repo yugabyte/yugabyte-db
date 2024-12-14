@@ -58,7 +58,7 @@ To connect to a cluster via Cloud Shell:
 
 1. Enter the password for the user you specified.
 
-The `ysqlsh` or `ycqlsh` prompt appears and is ready to use.
+The ysqlsh or ycqlsh prompt appears and is ready to use.
 
 ```output
 ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)

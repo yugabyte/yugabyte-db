@@ -43,7 +43,7 @@ yugabyte=# CREATE TABLE t (k VARCHAR, v VARCHAR);
 yugabyte=# INSERT INTO t VALUES ('k1', 'v1');
 ```
 
-Next, connect to the universe using two independent `ysqlsh` instances. You can connect both session `ysqlsh` instances to the same server or to different servers.
+Next, connect to the universe using two independent ysqlsh instances. You can connect both session ysqlsh instances to the same server or to different servers.
 
 Begin a transaction in the first session and perform a `SELECT FOR UPDATE` on the row in the table `t`. This locks the row for an update as a part of a transaction that has a very high priority (that is, in the `high priority bucket`, as explained in [Transaction priorities](../../../architecture/transactions/transaction-priorities/)):
 

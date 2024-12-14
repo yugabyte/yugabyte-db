@@ -100,7 +100,7 @@ insert into account values
   ('kevin','checking', 500);
 ```
 
-Next, connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2.
+Next, connect to the universe using two independent ysqlsh instances, referred to as session #1 and session #2.
 
 <table>
   <tr>
@@ -238,7 +238,7 @@ CREATE TABLE IF NOT EXISTS example (k INT PRIMARY KEY);
 TRUNCATE TABLE example;
 ```
 
-Next, connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2:
+Next, connect to the universe using two independent ysqlsh instances, referred to as session #1 and session #2:
 
 <table>
   <tr>
@@ -369,7 +369,7 @@ CREATE TABLE test (k int PRIMARY KEY, v int);
 INSERT INTO test VALUES (1, 2);
 ```
 
-Connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2:
+Connect to the universe using two independent ysqlsh instances, referred to as session #1 and session #2:
 
 <table>
   <tr>

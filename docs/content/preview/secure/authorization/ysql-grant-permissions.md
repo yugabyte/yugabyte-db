@@ -40,7 +40,7 @@ The exercise assumes you have [enabled authentication for YSQL](../../enable-aut
 
 ## 1. Create role hierarchy
 
-Connect to the cluster using a superuser role. For this tutorial, use the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
+Connect to the cluster using a superuser role. For this tutorial, use the default `yugabyte` user and connect to the cluster using ysqlsh as follows:
 
 ```sh
 $ ./bin/ysqlsh
