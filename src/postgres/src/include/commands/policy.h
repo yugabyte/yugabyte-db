@@ -18,8 +18,9 @@
 #include "catalog/objectaddress.h"
 #include "nodes/parsenodes.h"
 #include "utils/relcache.h"
+#include "utils/yb_tuplecache.h"
 
-extern void RelationBuildRowSecurity(Relation relation);
+extern void RelationBuildRowSecurity(Relation relation, const YbTupleCache *yb_pg_policy_cache);
 
 extern void RemovePolicyById(Oid policy_id);
 

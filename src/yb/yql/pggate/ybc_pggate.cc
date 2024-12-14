@@ -1548,6 +1548,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
+      .ysql_use_optimized_relcache_update       = &FLAGS_ysql_use_optimized_relcache_update,
       .ysql_enable_pg_per_database_oid_allocator =
           &FLAGS_ysql_enable_pg_per_database_oid_allocator,
       .TEST_ysql_hide_catalog_version_increment_log =

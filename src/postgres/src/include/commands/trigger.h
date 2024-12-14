@@ -17,6 +17,8 @@
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 
+#include "utils/yb_tuplecache.h"
+
 /*
  * TriggerData is the node type that is passed as fmgr "context" info
  * when a function is called by the trigger manager.
@@ -175,7 +177,7 @@ extern ObjectAddress renametrig(RenameStmt *stmt);
 extern void EnableDisableTrigger(Relation rel, const char *tgname,
 					 char fires_when, bool skip_system, LOCKMODE lockmode);
 
-extern void RelationBuildTriggers(Relation relation);
+extern void RelationBuildTriggers(Relation relation, const YbTupleCache *yb_pg_trigger_cache);
 
 extern TriggerDesc *CopyTriggerDesc(TriggerDesc *trigdesc);
 
