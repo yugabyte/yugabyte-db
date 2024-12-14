@@ -76,6 +76,11 @@ std::string GetChunkPath(const std::string& storage_dir, size_t chunk_serial_no)
   return JoinPathSegments(storage_dir, Format("vectorindex_$0", chunk_serial_no));
 }
 
+size_t MaxConcurrentReads() {
+  auto max_concurrent_reads = FLAGS_vector_index_concurrent_reads;
+  return max_concurrent_reads == 0 ? std::thread::hardware_concurrency() : max_concurrent_reads;
+}
+
 } // namespace
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -399,7 +404,8 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   for (size_t i = 0; i != immutable_chunks_.size(); ++i) {
     options_.thread_pool->EnqueueFunctor([this, &latch, &chunk = immutable_chunks_[i]] {
       CheckFailure(chunk->index->LoadFromFile(
-          GetChunkPath(options_.storage_dir, chunk->serial_no)));
+          GetChunkPath(options_.storage_dir, chunk->serial_no),
+          MaxConcurrentReads()));
       latch.CountDown();
     });
   }
@@ -598,6 +604,9 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
           ++it;
         }
       }
+      if (updates_queue_.empty()) {
+        updates_queue_empty_.notify_all();
+      }
       return Status::OK();
     }
     if (writing_update_) {
@@ -648,9 +657,7 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
       chunk->flush_promise = nullptr;
     }
 
-    auto num_erased = updates_queue_.erase(chunk->order_no);
-    RSTATUS_DCHECK_EQ(
-        num_erased, 1, RuntimeError, "Failed to remove written chunk from updates queue");
+    RETURN_NOT_OK(RemoveUpdateQueueEntry(chunk->order_no));
     if (updates_queue_.empty() ||
         updates_queue_.begin()->second->state != ImmutableChunkState::kOnDisk) {
       writing_update_ = false;
@@ -672,8 +679,8 @@ void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk
     }
     LOG(DFATAL) << "Save chunk failed: " << status;
     std::lock_guard lock(mutex_);
-    auto erased = updates_queue_.erase(chunk->order_no);
-    LOG_IF(DFATAL, !erased) << "Chunk is not present in updates queue: " << chunk->order_no;
+    auto remove_status = RemoveUpdateQueueEntry(chunk->order_no);
+    LOG_IF(DFATAL, !remove_status.ok()) << remove_status;
     if (failed_status_.ok()) {
       failed_status_ = status;
     }
@@ -717,13 +724,9 @@ Status VectorLSM<Vector, DistanceResult>::RollChunk(size_t min_points) {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_points) {
   auto index = options_.vector_index_factory();
-  auto max_concurrent_reads = FLAGS_vector_index_concurrent_reads;
-  if (max_concurrent_reads == 0) {
-    max_concurrent_reads = std::thread::hardware_concurrency();
-  }
   RETURN_NOT_OK(index->Reserve(
       std::max(min_points, options_.points_per_chunk),
-      options_.thread_pool->options().max_workers, max_concurrent_reads));
+      options_.thread_pool->options().max_workers, MaxConcurrentReads()));
 
   mutable_chunk_ = std::make_shared<MutableChunk>();
   mutable_chunk_->index = std::move(index);
@@ -731,20 +734,17 @@ Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_point
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::Flush() {
+Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
   std::promise<Status> promise;
   {
     std::lock_guard lock(mutex_);
     if (!mutable_chunk_) {
       return Status::OK();
     }
-    auto status = DoFlush(&promise);
-    if (!status.ok()) {
-      promise.set_value(status);
-    }
+    RETURN_NOT_OK(DoFlush(wait ? &promise : nullptr));
   }
 
-  return promise.get_future().get();
+  return wait ? promise.get_future().get() : Status::OK();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -789,6 +789,26 @@ DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
     }
   }
   return index->Distance(lhs, rhs);
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::WaitForFlush() {
+  std::unique_lock lock(mutex_);
+  // TODO(vector-index) Don't wait flushes that started after this call.
+  updates_queue_empty_.wait(
+      lock, [this]() NO_THREAD_SAFETY_ANALYSIS { return updates_queue_.empty(); });
+  return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::RemoveUpdateQueueEntry(size_t order_no) {
+  auto num_erased = updates_queue_.erase(order_no);
+  if (updates_queue_.empty()) {
+    updates_queue_empty_.notify_all();
+  }
+  RSTATUS_DCHECK_EQ(
+      num_erased, 1, RuntimeError, "Failed to remove written chunk from updates queue");
+  return Status::OK();
 }
 
 YB_INSTANTIATE_TEMPLATE_FOR_ALL_VECTOR_AND_DISTANCE_RESULT_TYPES(VectorLSM);

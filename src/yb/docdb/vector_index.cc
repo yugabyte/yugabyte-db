@@ -184,6 +184,14 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     return EncodeDistance(lsm_.Distance(lhs_vec, rhs_vec));
   }
 
+  Status Flush() override {
+    return lsm_.Flush(false);
+  }
+
+  Status WaitForFlush() override {
+    return lsm_.WaitForFlush();
+  }
+
  private:
   Status StoreBaseTableKeys(
       const vector_index::BaseTableKeysBatch& batch,

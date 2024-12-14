@@ -56,6 +56,8 @@ class VectorIndex {
       DocHybridTime write_time) = 0;
   virtual Result<VectorIndexSearchResult> Search(Slice vector, size_t max_num_results) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
+  virtual Status Flush() = 0;
+  virtual Status WaitForFlush() = 0;
 };
 
 Result<VectorIndexPtr> CreateVectorIndex(

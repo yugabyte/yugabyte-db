@@ -179,9 +179,10 @@ class UsearchIndex :
     return Status::OK();
   }
 
-  Status DoLoadFromFile(const std::string& path) {
+  Status DoLoadFromFile(const std::string& path, size_t max_concurrent_reads) {
     auto result = decltype(index_)::make(path.c_str(), /* view= */ true);
     if (result) {
+      search_semaphore_.emplace(max_concurrent_reads);
       index_ = std::move(result.index);
       return Status::OK();
     }

@@ -62,7 +62,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
     RETURN_NOT_OK(conn.Execute(
         "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))" + create_suffix));
 
-  RETURN_NOT_OK(conn.Execute("CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
 
     return conn;
   }
@@ -209,6 +209,18 @@ TEST_P(PgVectorIndexTest, ManyReads) {
   }
 
   threads.WaitAndStop(5s);
+}
+
+TEST_P(PgVectorIndexTest, Restart) {
+  constexpr int kNumRows = 64;
+  constexpr int kQueryLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(VerifyRead(conn, kQueryLimit));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(VerifyRead(conn, kQueryLimit));
 }
 
 std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {
