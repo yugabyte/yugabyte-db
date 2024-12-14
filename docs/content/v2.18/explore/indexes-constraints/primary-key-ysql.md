@@ -28,12 +28,11 @@ type: docs
   </li>
 </ul>
 
-The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../indexes-1/#using-a-unique-index) applied to the table columns.
+The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../unique-index-ysql/) applied to the table columns.
 
 ## Syntax and examples
 
 {{% explore-setup-single %}}
-
 
 ### Primary key for a single column
 

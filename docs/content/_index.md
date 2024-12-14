@@ -55,7 +55,7 @@ Learn about the internals of query, transactions, sharding, replication, and sto
 
 Problem areas in PostgreSQL and how to resolve them in YugabyteDB.
 
-## Migrate from RBDMS
+## Migrate from RDBMS
 
 ##### Playlist: [Database Migration using YugabyteDB Voyager](https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJuqQ2ZH1cnL1yxVEi9swwR)
 

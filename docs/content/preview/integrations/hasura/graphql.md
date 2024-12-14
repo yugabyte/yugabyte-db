@@ -147,7 +147,7 @@ Deploying the benchmark setup is a multi-step process that involves deployment o
 
 ### Prepare the database with table schema
 
-- Open `ysqlsh`, specify the Yugabyte user, and trigger the password prompt by executing the following command:
+- Open ysqlsh, specify the Yugabyte user, and trigger the password prompt by executing the following command:
 
   ```shell
   $ ./ysqlsh -U yugabyte -W

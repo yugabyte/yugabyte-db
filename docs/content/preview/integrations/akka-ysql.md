@@ -287,7 +287,7 @@ To write a sample application and customize its configuration, do the following:
 
 ### Create the tables
 
-Create the tables documented in [Creating the schema](https://doc.akka.io/docs/akka-persistence-r2dbc/current/getting-started.html#creating-the-schema) with `ysqlsh`. Note the Yugabyte tab.
+Create the tables documented in [Creating the schema](https://doc.akka.io/docs/akka-persistence-r2dbc/current/getting-started.html#creating-the-schema) with ysqlsh. Note the Yugabyte tab.
 
 ### Run the application
 

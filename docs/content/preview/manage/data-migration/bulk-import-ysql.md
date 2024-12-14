@@ -154,7 +154,7 @@ COPY <table_name>
 
 ### Import data from SQL script
 
-To import an entire database from a `pg_dump` or `ysql_dump` export, use `ysqlsh` as follows:
+To import an entire database from a `pg_dump` or `ysql_dump` export, use ysqlsh as follows:
 
 ```sql
 ysqlsh -f <database_name>.sql

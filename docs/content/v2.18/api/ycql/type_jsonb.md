@@ -245,5 +245,5 @@ Note that JSONB upsert only works for JSON objects and not for other data types 
 
 ## See also
 
-- [`Explore JSON documents`](../../../explore/transactional/json-documents)
+- [JSON documents](../../../explore/json-support/jsonb-ysql/)
 - [Data types](..#data-types)

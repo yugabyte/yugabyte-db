@@ -26,7 +26,7 @@ When a query quits for unexpected reasons, information about the query and the r
 
 ## Supported fields
 
-At a `ysqlsh` prompt, run the following meta-commands to return the fields supported by `yb_terminated_queries`:
+At a ysqlsh prompt, run the following meta-commands to return the fields supported by `yb_terminated_queries`:
 
 ```sql
 yugabyte=# \x

@@ -36,7 +36,7 @@ Using the YugabyteDB SQL shell, [ysqlsh](/preview/api/ysqlsh/), you can connect 
 
 (If you have previously installed YugabyteDB version 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](/preview/manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.)
 
-To open the YSQL shell, run `ysqlsh`:
+To open the YSQL shell, run ysqlsh:
 
 ```sh
 ./bin/ysqlsh

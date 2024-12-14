@@ -36,7 +36,7 @@ Versions of YugabyteDB prior to 2.0.1 do not have a default password. In this ca
 
 If you are using YugabyteDB 2.0 (and **not** 2.0.1 or later) and have not yet assigned a password to the `yugabyte` user, do the following:
 
-1. With your YugabyteDB cluster up and running, [open `ysqlsh`](#open-the-ysql-shell-ysqlsh).
+1. With your YugabyteDB cluster up and running, [open ysqlsh](#open-the-ysql-shell-ysqlsh).
 1. Run the following `ALTER ROLE` statement, specifying a password (`yugabyte` or a password of your choice):
 
     ```sql
@@ -71,7 +71,7 @@ You can also enable YSQL authentication by adding the `--ysql_enable_auth=true` 
 
 ## Open the YSQL shell (ysqlsh)
 
-A YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the [YSQL shell](../../../api/ysqlsh/) by running the following `ysqlsh` command from the YugabyteDB home directory:
+A YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the [YSQL shell](../../../api/ysqlsh/) by running the following ysqlsh command from the YugabyteDB home directory:
 
 ```sh
 $ ./bin/ysqlsh -U yugabyte
@@ -301,7 +301,7 @@ yugabyte=# SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname='john';
 (1 row)
 ```
 
-Trying to log in as `john` using `ysqlsh` now fails:
+Trying to log in as `john` using ysqlsh now fails:
 
 ```sh
 $ ./bin/ysqlsh -U john

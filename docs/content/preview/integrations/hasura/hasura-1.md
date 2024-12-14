@@ -77,7 +77,7 @@ You can add tables to the database that you specified in the `HASURA_GRAPHQL_DAT
 
 Finally, load sample data, as follows:
 
-- On the command line, change your directory to the root `yugabyte` directory, and then open `ysqlsh` to connect to the YugabyteDB cluster, as follows:
+- On the command line, change your directory to the root `yugabyte` directory, and then open ysqlsh to connect to the YugabyteDB cluster, as follows:
 
   ```sh
   $ ./bin/ysqlsh

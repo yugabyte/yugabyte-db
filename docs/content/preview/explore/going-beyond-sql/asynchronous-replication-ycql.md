@@ -54,7 +54,7 @@ Create and start your local clusters that simulate "Data Center - East" and "Dat
 
 Create the keyspace `customers` and table `users` on the "Data Center - East" cluster:
 
-1. Open `ycqlsh` by specifying the host IP address of `127.0.0.1`, as follows:
+1. Open ycqlsh by specifying the host IP address of `127.0.0.1`, as follows:
 
    ```sh
    ./bin/ycqlsh 127.0.0.1
@@ -80,7 +80,7 @@ Create the keyspace `customers` and table `users` on the "Data Center - East" cl
 
 Create the identical database table on the second cluster:
 
-1. Open `ycqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`, as follows:
+1. Open ycqlsh for "Data Center - West" by specifying the host IP address of `127.0.0.2`, as follows:
 
    ```sh
    ./bin/ycqlsh 127.0.0.2

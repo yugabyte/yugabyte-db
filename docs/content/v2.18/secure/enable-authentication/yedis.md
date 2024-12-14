@@ -38,7 +38,7 @@ YEDIS authentication is based on passwords. Each client connecting using the YED
 
 ## 1. Enable YEDIS authentication
 
-You can enable password-based authentication in YEDIS API using the [CONFIG](../../../api/yedis/config/) command.
+You can enable password-based authentication in YEDIS API using the [CONFIG](/preview/yedis/api/config/) command.
 
 To do so, connect to the cluster using `redis-cli` and run the following command:
 
@@ -62,7 +62,7 @@ Next exit `redis-cli`, connect to the cluster again using `redis-cli` and run th
 (error) NOAUTH PING: Authentication required.
 ```
 
-You would need to authenticate the client (`redis-cli` in this case) by running the [AUTH](../../../api/yedis/auth/) command:
+You would need to authenticate the client (`redis-cli` in this case) by running the [AUTH](/preview/yedis/api/auth/) command:
 
 ```sql
 127.0.0.1:6379> AUTH password
