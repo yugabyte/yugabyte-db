@@ -24,7 +24,7 @@ Each client that connects to a YugabyteDB cluster needs the following file to be
 
 - `ca.crt` — root certificate file (for YSQL and YCQL). See [Generate the root certificate file](../server-certificates/#generate-the-root-certificate-file) for instructions on how to generate this file.
 
-  This file should be available in the `~/.yugabytedb`, the default location for TLS certificates when running the YSQL shell (`ysqlsh`) locally.
+  This file should be available in the `~/.yugabytedb`, the default location for TLS certificates when running the YSQL shell (ysqlsh) locally.
 
 ## Connecting to a YugabyteDB Cluster
 
@@ -35,11 +35,11 @@ For each client, the steps assume that you have performed the following:
 
 ## ysqlsh
 
-The `ysqlsh` CLI is available in the `bin` directory of your YugabyteDB home directory.
+The ysqlsh CLI is available in the `bin` directory of your YugabyteDB home directory.
 
-To connect to a remote YugabyteDB cluster, you need to have a local copy of `ysqlsh` available. You can use the `ysqlsh` CLI available on a locally installed YugabyteDB.
+To connect to a remote YugabyteDB cluster, you need to have a local copy of ysqlsh available. You can use the ysqlsh CLI available on a locally installed YugabyteDB.
 
-To open the local `ysqlsh` CLI and access your YugabyteDB cluster, run `ysqlsh` with the following flags defined:
+To open the local ysqlsh CLI and access your YugabyteDB cluster, run ysqlsh with the following flags defined:
 
 - host: `-h <node-ip-address>` (required for remote node; default is `127.0.0.1`)
 - port: `-p <port>` (optional; default is `5433`)
@@ -80,7 +80,7 @@ UUID_3    node3:7100      ALIVE FOLLOWER
 
 ## ycqlsh
 
-To enable `ycqlsh` to connect to a YugabyteDB cluster with encryption enabled, you need to set the following environment variables:
+To enable ycqlsh to connect to a YugabyteDB cluster with encryption enabled, you need to set the following environment variables:
 
 Variable       | Description
 ---------------|------------------------------
@@ -113,9 +113,9 @@ system_schema  system_auth  system
 
 ### Remote Cluster
 
-To connect to a remote YugabyteDB cluster, you need to have a local copy of `ycqlsh` available. You can use the `ycqlsh` CLI available on a locally-installed YugabyteDB.
+To connect to a remote YugabyteDB cluster, you need to have a local copy of ycqlsh available. You can use the ycqlsh CLI available on a locally-installed YugabyteDB.
 
-To open the local `ycqlsh` CLI and access the remote cluster, run `ycqlsh` with flags set for the host and port of the remote cluster. You must also add the `--ssl` flag to enable the use of the client-to-server encryption using TLS (successor to SSL), as follows:
+To open the local ycqlsh CLI and access the remote cluster, run ycqlsh with flags set for the host and port of the remote cluster. You must also add the `--ssl` flag to enable the use of the client-to-server encryption using TLS (successor to SSL), as follows:
 
 ```sh
 $ ./bin/ycqlsh <node-ip-address> <port> --ssl

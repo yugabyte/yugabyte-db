@@ -161,7 +161,7 @@ The cluster you have created consists of two processes:
 
 Using the YugabyteDB SQL shell, [ysqlsh](../../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
-To open the YSQL shell, run `ysqlsh`.
+To open the YSQL shell, run ysqlsh.
 
 ```sh
 docker exec -it yugabyte bash -c '/home/yugabyte/bin/ysqlsh --echo-queries --host $(hostname)'

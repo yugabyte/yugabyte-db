@@ -460,7 +460,8 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 // Currently only SELECT statement supports WHERE clause conditions.
 // Only serialized Postgres expressions are allowed.
 // Multiple quals added to the same statement are implicitly AND'ed.
-YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary);
+YBCStatus YbPgDmlAppendQual(
+    YBCPgStatement handle, YBCPgExpr qual, bool is_for_secondary_index);
 
 // Add column reference needed to evaluate serialized Postgres expression.
 // PgExpr's other than serialized Postgres expressions are inspected and if they contain any
@@ -468,10 +469,11 @@ YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_prima
 // for serialized postgres expression because it may be expensive to deserialize and analyze
 // potentially complex expressions. While expressions are deserialized anyway by DocDB, the
 // concern about cost of analysis still stands.
-// While optional in regular column refenence expressions, column references needed to evaluate
+// While optional in regular column reference expressions, column references needed to evaluate
 // serialized Postgres expression must contain Postgres data type information. DocDB needs to know
 // how to convert values from the DocDB formats to use them to evaluate Postgres expressions.
-YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref, bool is_primary);
+YBCStatus YbPgDmlAppendColumnRef(
+    YBCPgStatement handle, YBCPgExpr colref, bool is_for_secondary_index);
 
 // Binding Columns: Bind column with a value (expression) in a statement.
 // + This API is used to identify the rows you want to operate on. If binding columns are not
@@ -777,16 +779,17 @@ YBCPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
 YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
-YBCStatus YBCPgAddInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+YBCStatus YBCPgAddInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid, void* state,
                                       YBCPgInsertOnConflictKeyInfo* info);
-YBCStatus YBCPgInsertOnConflictKeyExists(const YBCPgYBTupleIdDescriptor* tupleid,
+YBCStatus YBCPgInsertOnConflictKeyExists(const YBCPgYBTupleIdDescriptor* tupleid, void* state,
                                          YBCPgInsertOnConflictKeyState* res);
-YBCStatus YBCPgDeleteInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+YBCStatus YBCPgDeleteInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid, void* state,
                                          YBCPgInsertOnConflictKeyInfo* info);
-YBCStatus YBCPgDeleteNextInsertOnConflictKey(YBCPgInsertOnConflictKeyInfo* info);
+YBCStatus YBCPgDeleteNextInsertOnConflictKey(void* state, YBCPgInsertOnConflictKeyInfo* info);
 YBCStatus YBCPgAddInsertOnConflictKeyIntent(const YBCPgYBTupleIdDescriptor* tupleid);
-void YBCPgClearInsertOnConflictCache();
-uint64_t YBCPgGetInsertOnConflictKeyCount();
+void YBCPgClearAllInsertOnConflictCaches();
+void YBCPgClearInsertOnConflictCache(void* state);
+uint64_t YBCPgGetInsertOnConflictKeyCount(void* state);
 //--------------------------------------------------------------------------------------------------
 
 bool YBCIsInitDbModeEnvVarSet();
@@ -934,6 +937,8 @@ YBCStatus YBCDatabaseClones(YBCPgDatabaseCloneInfo** databaseClones, size_t* cou
 
 uint64_t YBCPgGetCurrentReadTimePoint();
 YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);
+
+void YBCForceAllowCatalogModifications(bool allowed);
 
 #ifdef __cplusplus
 }  // extern "C"

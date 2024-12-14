@@ -17,6 +17,7 @@
 #include "access/xact.h"
 #include "catalog/pg_type_d.h"
 #include "commands/event_trigger.h"
+#include "nodes/pg_list.h"
 #include "executor/spi.h"
 #include "utils/fmgrprotos.h"
 
@@ -129,7 +130,7 @@ bool
 IsReplicationSource()
 {
 	return ReplicationRole == REPLICATION_ROLE_SOURCE ||
-		   ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL;
+			ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL;
 }
 
 bool
@@ -180,6 +181,46 @@ InsertIntoDDLQueue(Jsonb *yb_data)
 	InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, random(), yb_data);
 }
 
+bool
+IsExtensionDdl(CommandTag command_tag)
+{
+	if (command_tag == CMDTAG_CREATE_EXTENSION ||
+		command_tag == CMDTAG_DROP_EXTENSION ||
+		command_tag == CMDTAG_ALTER_EXTENSION)
+	{
+		return true;
+	}
+
+	return false;
+}
+
+// Extensions DDLs result in multiple DDL statements being executed during
+// create/alter/drop of extensions. This function checks whether the current
+// DDL is being executed as part of an Extension DDL such as CREATE/ALTER/DROP extension.
+bool
+IsCurrentDdlPartOfExtensionDdlBatch(CommandTag command_tag)
+{
+	// Extension DDL cannot be executed within another extension DDL.
+	if (IsExtensionDdl(command_tag))
+	{
+		return false;
+	}
+
+	List *parse_tree = pg_parse_query(debug_query_string);
+	ListCell *lc;
+	foreach (lc, parse_tree)
+	{
+		RawStmt *stmt = (RawStmt *) lfirst(lc);
+		CommandTag stmt_command_tag = CreateCommandTag(stmt->stmt);
+		if (IsExtensionDdl(stmt_command_tag))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 /*
  * Reports an error if the query string has multiple commands in it, or a
  * command tag that doesn't match up with the one captured from the event
@@ -204,14 +245,32 @@ DisallowMultiStatementQueries(CommandTag command_tag)
 		++count;
 		RawStmt *stmt = (RawStmt *) lfirst(lc);
 		CommandTag stmt_command_tag = CreateCommandTag(stmt->stmt);
-
-		if (count > 1 || command_tag != stmt_command_tag)
+		// Only Extension DDLs are allowed to be part of multi-statement as they
+		// typically executes multiple DDLs under the covers.
+		if (!IsExtensionDdl(stmt_command_tag))
+		{
+			if (count > 1 || command_tag != stmt_command_tag)
+				elog(ERROR,
+					"Database is replicating DDLs for xCluster. In this mode only "
+					"a single DDL command is allowed in the query string.\n"
+					"Please run the commands one at a time.\n"
+					"Full query string: %s. \n"
+					"Statement 1: %s\n"
+					"Statement 2: %s",
+					debug_query_string,
+					GetCommandTagName(command_tag),
+					GetCommandTagName(stmt_command_tag));
+		}
+		else if (!IsPassThroughDdlCommandSupported(command_tag))
+		{
 			elog(ERROR,
-				 "Database is replicating DDLs for xCluster. In this mode only "
-				 "a single DDL command is allowed in the query string.\n"
-				 "Please run the commands one at a time.\n"
-				 " Full query string: %s",
-				 debug_query_string);
+				"Database is replicating DDLs for xCluster. Extension cannot be supported "
+				"because it contains DDLs that are not yet supported by replication. \n"
+				"Full query string: %s. \n"
+				"Unsupported DDL within extension : %s\n",
+				debug_query_string,
+				GetCommandTagName(command_tag));
+		}
 	}
 }
 
@@ -369,13 +428,17 @@ handle_ddl_end(PG_FUNCTION_ARGS)
 	if (IsInIgnoreList(trig_data))
 		PG_RETURN_NULL();
 
-	if (IsReplicationSource())
+	// Capture the DDL as long as its not a step within another Extension DDL batch.
+	if (!IsCurrentDdlPartOfExtensionDdlBatch(trig_data->tag))
 	{
-		HandleSourceDDLEnd(trig_data);
-	}
-	if (IsReplicationTarget())
-	{
-		HandleTargetDDLEnd(trig_data);
+		if (IsReplicationSource())
+		{
+			HandleSourceDDLEnd(trig_data);
+		}
+		if (IsReplicationTarget())
+		{
+			HandleTargetDDLEnd(trig_data);
+		}
 	}
 
 	PG_RETURN_NULL();
@@ -396,7 +459,7 @@ handle_sql_drop(PG_FUNCTION_ARGS)
 	if (IsInIgnoreList(trig_data))
 		PG_RETURN_NULL();
 
-	if (IsReplicationSource())
+	if (IsReplicationSource() && !IsCurrentDdlPartOfExtensionDdlBatch(trig_data->tag))
 	{
 		HandleSourceSQLDrop(trig_data);
 	}
@@ -406,14 +469,63 @@ handle_sql_drop(PG_FUNCTION_ARGS)
 	PG_RETURN_NULL();
 }
 
+static char *GetExtensionName(CommandTag tag, List *parse_tree)
+{
+	switch (tag)
+	{
+		case CMDTAG_CREATE_EXTENSION:
+		{
+			CreateExtensionStmt *stmt = (CreateExtensionStmt *)
+										linitial_node(RawStmt, parse_tree)->stmt;
+			return stmt->extname;
+		}
+		case CMDTAG_ALTER_EXTENSION:
+		{
+			AlterExtensionStmt *stmt = (AlterExtensionStmt *)
+										linitial_node(RawStmt, parse_tree)->stmt;
+			return stmt->extname;
+		}
+		case CMDTAG_DROP_EXTENSION:
+		{
+			DropStmt *stmt = (DropStmt *) linitial_node(RawStmt, parse_tree)->stmt;
+
+			// Ensure there is at least one object in the list.
+			if (stmt->objects == NULL || list_length(stmt->objects) != 1)
+			{
+				elog(WARNING, "Unexpected number of objects in DROP EXTENSION statement");
+				return NULL;
+			}
+
+			Node *object = linitial(stmt->objects);
+			if (!IsA(object, String))
+			{
+				elog(WARNING, "Unexpected object type in DROP EXTENSION statement");
+				return NULL;
+			}
+
+			return strVal(castNode(String, object));
+		}
+		default:
+			return NULL;
+	}
+}
+
 static bool
 IsInIgnoreList(EventTriggerData *trig_data)
 {
-	if (trig_data->tag == CMDTAG_CREATE_EXTENSION ||
-		trig_data->tag == CMDTAG_DROP_EXTENSION ||
-		trig_data->tag == CMDTAG_ALTER_EXTENSION)
+	if (!IsExtensionDdl(trig_data->tag))
+	{
+		return false;
+	}
+
+	List *parse_tree = pg_parse_query(debug_query_string);
+	char *extname = GetExtensionName(trig_data->tag, parse_tree);
+
+	if (extname != NULL && strcmp(extname, EXTENSION_NAME) == 0)
 	{
 		return true;
 	}
+
 	return false;
 }
+

@@ -156,23 +156,21 @@ class ExplicitRowLockErrorInfoAdapter {
 };
 
 std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
-    const PgObjectId& index_id, const PgPrepareParameters* prepare_params) {
+    const PgObjectId& index_id, const PgPrepareParameters* params) {
   if (!index_id.IsValid()) {
     return std::nullopt;
   }
-  return PgSelect::IndexQueryInfo{
-      index_id, prepare_params && prepare_params->querying_colocated_table};
+  return PgSelect::IndexQueryInfo{index_id, params && params->querying_colocated_table};
 }
 
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
-    const PgObjectId& index_id, const PgPrepareParameters* prepare_params, bool is_region_local) {
-  if (prepare_params && prepare_params->index_only_scan) {
+    const PgObjectId& index_id, const PgPrepareParameters* params, bool is_region_local) {
+  if (params && (params->index_only_scan || YBCIsNonColocatedYbctidsOnlyFetch(params))) {
     return PgSelectIndex::Make(pg_session, index_id, is_region_local);
   }
-
   return PgSelect::Make(
-      pg_session, table_id, is_region_local, MakeIndexQueryInfo(index_id, prepare_params));
+      pg_session, table_id, is_region_local, MakeIndexQueryInfo(index_id, params));
 }
 
 namespace get_statement_as::internal {
@@ -371,6 +369,28 @@ Status ExecDdlWithSyscatalogChanges(PgStatement* handle, PgSession& session) {
   auto& stmt = VERIFY_RESULT_REF(GetStatementAs<T>(handle));
   session.SetDdlHasSyscatalogChanges();
   return stmt.Exec();
+}
+
+Result<bool> RetrieveYbctidsFromIndex(
+    PgSelectIndex& index, std::vector<Slice>& ybctids, size_t max_mem_bytes) {
+  size_t consumed_bytes = 0;
+
+  for (;;) {
+    auto batch = VERIFY_RESULT(index.FetchYbctidBatch());
+    if (!batch) {
+      break;
+    }
+    ybctids.reserve(ybctids.size() + batch->ybctids.size());
+    for(auto ybctid : batch->ybctids) {
+      const auto sz = ybctid.size();
+      if (consumed_bytes += sz > max_mem_bytes) {
+        return false;
+      }
+      ybctid.relocate(new uint8_t[sz]);
+      ybctids.push_back(ybctid);
+    }
+  }
+  return true;
 }
 
 } // namespace
@@ -1226,12 +1246,15 @@ Status PgApiImpl::DmlAppendTarget(PgStatement* handle, PgExpr* target) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).AppendTarget(target);
 }
 
-Status PgApiImpl::DmlAppendQual(PgStatement* handle, PgExpr* qual, bool is_primary) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AppendQual(qual, is_primary);
+Status PgApiImpl::DmlAppendQual(PgStatement* handle, PgExpr* qual, bool is_for_secondary_index) {
+  return VERIFY_RESULT_REF(
+      GetStatementAs<PgDmlRead>(handle)).AppendQual(qual, is_for_secondary_index);
 }
 
-Status PgApiImpl::DmlAppendColumnRef(PgStatement* handle, PgColumnRef* colref, bool is_primary) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).AppendColumnRef(colref, is_primary);
+Status PgApiImpl::DmlAppendColumnRef(
+    PgStatement* handle, PgColumnRef* colref, bool is_for_secondary_index) {
+  return VERIFY_RESULT_REF(
+      GetStatementAs<PgDml>(handle)).AppendColumnRef(colref, is_for_secondary_index);
 }
 
 Status PgApiImpl::DmlBindColumn(PgStatement* handle, int attr_num, PgExpr* attr_value) {
@@ -1490,63 +1513,56 @@ Slice PgApiImpl::GetYbctidAsSlice(uint64_t ybctid) {
   return Slice(value, bytes);
 }
 
-Status PgApiImpl::RetrieveYbctids(
-    PgStatement* handle, const YBCPgExecParameters* exec_params, int natts, SliceVector* ybctids,
-    size_t* count, bool* exceeded_work_mem) {
-  auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
-
-  auto vec = new std::vector<Slice>();
-
-  // If there's a secondary index request (secondary index scans or primary key scans on
-  // non-colocated tables) return the ybctids from the secondary index request.
-  if (select.has_secondary_index_with_doc_op()) {
-    RETURN_NOT_OK(select.RetrieveYbctidsFromSecondaryIndex(
-        exec_params, vec, exceeded_work_mem));
-  } else {
-    // Otherwise (colocated case): fetch the results one at a time.
-    RETURN_NOT_OK(select.Exec(exec_params));
-
-    uint64_t       *values = new uint64_t[natts];
-    bool           *nulls = new bool[natts];
-    YBCPgSysColumns syscols;
-    bool            has_data;
-    size_t          consumed_bytes = 0;
-
-    do {
-      RETURN_NOT_OK(select.Fetch(natts, values, nulls, &syscols, &has_data));
-
-      if (has_data && syscols.ybctid != NULL) {
-        Slice s = GetYbctidAsSlice((uintptr_t) syscols.ybctid);
-        uint8_t *slice_data = new uint8_t[s.size()];
-        consumed_bytes += s.size();
-        s.relocate(slice_data);
-        vec->emplace_back(s);
-      }
-
-      if (consumed_bytes >= (size_t) exec_params->work_mem * 1024L) {
-        *exceeded_work_mem = true;
-        break;
-      }
-    } while (has_data);
-
-    delete[] values;
-    delete[] nulls;
+Result<bool> PgApiImpl::RetrieveYbctidsImpl(
+    PgDmlRead& dml_read, int natts, size_t max_mem_bytes, std::vector<Slice>& ybctids) {
+  if (dml_read.IsPgSelectIndex()) {
+    return RetrieveYbctidsFromIndex(down_cast<PgSelectIndex&>(dml_read), ybctids, max_mem_bytes);
   }
+  std::unique_ptr<uint64_t[]> values{new uint64_t[natts]};
+  std::unique_ptr<bool[]> nulls{new bool[natts]};
+  YBCPgSysColumns syscols;
+  size_t consumed_bytes = 0;
+  for(bool has_data = true;;) {
+    RETURN_NOT_OK(dml_read.Fetch(natts, values.get(), nulls.get(), &syscols, &has_data));
+    if (!has_data) {
+      break;
+    }
+    if (syscols.ybctid) {
+      auto s = GetYbctidAsSlice(reinterpret_cast<uint64_t>(syscols.ybctid));
+      const auto sz = s.size();
+      if (consumed_bytes += sz > max_mem_bytes) {
+        return false;
+      }
+      s.relocate(new uint8_t[s.size()]);
+      ybctids.push_back(s);
+    }
+  }
+  return true;
+}
 
-  if (*exceeded_work_mem)
+Result<bool> PgApiImpl::RetrieveYbctids(
+    PgStatement* handle, const YBCPgExecParameters* exec_params, int natts, SliceVector* ybctids,
+    size_t* count) {
+  auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
+  RETURN_NOT_OK(select.Exec(exec_params));
+  const auto max_mem_bytes = exec_params->work_mem * 1024L;
+  auto vec = std::make_unique<std::vector<Slice>>();
+  if (!VERIFY_RESULT(RetrieveYbctidsImpl(select, natts, max_mem_bytes, *vec))) {
     // delete these allocated ybctids, we won't use them
-    for (auto ybctid : *vec)
-      delete[] ybctid.cdata(), ybctid.size();
-
+    for (auto ybctid : *vec) {
+      delete[] ybctid.cdata();
+    }
+    return false;
+  }
   *count = vec->size();
-  *ybctids = vec;
-  return Status::OK();
+  *ybctids = vec.release();
+  return true;
 }
 
 Status PgApiImpl::FetchRequestedYbctids(
     PgStatement* handle, const PgExecParameters* exec_params, ConstSliceVector ybctids) {
   auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
-  RETURN_NOT_OK(select.SetRequestedYbctids((const std::vector<Slice> *) ybctids));
+  select.SetRequestedYbctids(*pointer_cast<const std::vector<Slice>*>(ybctids));
   return select.Exec(exec_params);
 }
 
@@ -1855,7 +1871,7 @@ bool PgApiImpl::IsRestartReadPointRequested() {
 
 Status PgApiImpl::CommitPlainTransaction() {
   DCHECK(pg_session_->explicit_row_lock_buffer().IsEmpty());
-  DCHECK(pg_session_->insert_on_conflict_buffer().IsEmpty());
+  DCHECK(pg_session_->IsInsertOnConflictBufferEmpty());
   pg_session_->InvalidateForeignKeyReferenceCache();
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_txn_manager_->CommitPlainTransaction();
@@ -2021,38 +2037,42 @@ Status PgApiImpl::FlushExplicitRowLockIntents(PgExplicitRowLockErrorInfo& error_
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
 Status PgApiImpl::AddInsertOnConflictKey(
-    PgOid table_id, const Slice& ybctid, const YBCPgInsertOnConflictKeyInfo& info) {
-  return pg_session_->insert_on_conflict_buffer().AddIndexKey(
+    PgOid table_id, const Slice& ybctid, void* state, const YBCPgInsertOnConflictKeyInfo& info) {
+  return pg_session_->GetInsertOnConflictBuffer(state).AddIndexKey(
       LightweightTableYbctid(table_id, ybctid), info);
 }
 
 YBCPgInsertOnConflictKeyState PgApiImpl::InsertOnConflictKeyExists(
-    PgOid table_id, const Slice& ybctid) {
-  return pg_session_->insert_on_conflict_buffer().IndexKeyExists(
+    PgOid table_id, const Slice& ybctid, void* state) {
+  return pg_session_->GetInsertOnConflictBuffer(state).IndexKeyExists(
       LightweightTableYbctid(table_id, ybctid));
 }
 
-uint64_t PgApiImpl::GetInsertOnConflictKeyCount() {
-  return pg_session_->insert_on_conflict_buffer().GetNumIndexKeys();
+uint64_t PgApiImpl::GetInsertOnConflictKeyCount(void* state) {
+  return pg_session_->GetInsertOnConflictBuffer(state).GetNumIndexKeys();
 }
 
 Result<YBCPgInsertOnConflictKeyInfo> PgApiImpl::DeleteInsertOnConflictKey(
-    PgOid table_id, const Slice& ybctid) {
-  return pg_session_->insert_on_conflict_buffer().DeleteIndexKey(
+    PgOid table_id, const Slice& ybctid, void* state) {
+  return pg_session_->GetInsertOnConflictBuffer(state).DeleteIndexKey(
       LightweightTableYbctid(table_id, ybctid));
 }
 
-Result<YBCPgInsertOnConflictKeyInfo> PgApiImpl::DeleteNextInsertOnConflictKey() {
-  return pg_session_->insert_on_conflict_buffer().DeleteNextIndexKey();
+Result<YBCPgInsertOnConflictKeyInfo> PgApiImpl::DeleteNextInsertOnConflictKey(void* state) {
+  return pg_session_->GetInsertOnConflictBuffer(state).DeleteNextIndexKey();
 }
 
 void PgApiImpl::AddInsertOnConflictKeyIntent(PgOid table_id, const Slice& ybctid) {
-  pg_session_->insert_on_conflict_buffer().AddIndexKeyIntent(
+  pg_session_->GetInsertOnConflictBuffer().AddIndexKeyIntent(
       LightweightTableYbctid(table_id, ybctid));
 }
 
-void PgApiImpl::ClearInsertOnConflictCache() {
-  pg_session_->insert_on_conflict_buffer().Clear();
+void PgApiImpl::ClearAllInsertOnConflictCaches() {
+  pg_session_->ClearAllInsertOnConflictBuffers();
+}
+
+void PgApiImpl::ClearInsertOnConflictCache(void* state) {
+  pg_session_->ClearInsertOnConflictBuffer(state);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2220,7 +2240,7 @@ void PgApiImpl::ClearSessionState() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   pg_session_->DropBufferedOperations();
   pg_session_->explicit_row_lock_buffer().Clear();
-  pg_session_->insert_on_conflict_buffer().Clear();
+  pg_session_->ClearAllInsertOnConflictBuffers();
 }
 
 bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }
@@ -2238,6 +2258,10 @@ uint64_t PgApiImpl::GetCurrentReadTimePoint() const {
 Status PgApiImpl::RestoreReadTimePoint(uint64_t read_time_point_handle) {
   RETURN_NOT_OK(FlushBufferedOperations());
   return pg_txn_manager_->RestoreReadTimePoint(read_time_point_handle);
+}
+
+void PgApiImpl::ForceAllowCatalogModifications(bool allowed) {
+  pg_session_->SetForceAllowCatalogModifications(allowed);
 }
 
 } // namespace yb::pggate

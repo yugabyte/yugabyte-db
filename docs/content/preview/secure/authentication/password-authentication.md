@@ -29,7 +29,7 @@ YugabyteDB database passwords are separate from operating system passwords. The 
 Database passwords can be managed using the following:
 
 - YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role)
-- `ysqlsh` meta-command: [\password](../../../api/ysqlsh-meta-commands/#password-username)
+- ysqlsh meta-command: [\password](../../../api/ysqlsh-meta-commands/#password-username)
 
 The [passwordcheck extension](../../../explore/ysql-language-features/pg-extensions/extension-passwordcheck) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
 
@@ -111,7 +111,7 @@ To use SCRAM-SHA-256 password authentication on a new YugabyteDB cluster, follow
 
 2. Start the YugabyteDB cluster.
 
-3. Open the YSQL shell (`ysqlsh`), specifying the `yugabyte` user and prompting for the password.
+3. Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password.
 
     ```sh
     $ ./ysqlsh -U yugabyte -W
@@ -128,7 +128,7 @@ To use SCRAM-SHA-256 password authentication on a new YugabyteDB cluster, follow
 
 4. Change the password for `yugabyte` to a SCRAM-SHA-256 password.
 
-    You can use either the ALTER ROLE statement or the `ysqlsh` `\password\` meta-command to change the password. The new password is encrypted using the SCRAM-SHA-256 hashing algorithm. In the following example, the `\password` meta-command is used to change the password.
+    You can use either the ALTER ROLE statement or the ysqlsh `\password\` meta-command to change the password. The new password is encrypted using the SCRAM-SHA-256 hashing algorithm. In the following example, the `\password` meta-command is used to change the password.
 
     ```sql
     \password

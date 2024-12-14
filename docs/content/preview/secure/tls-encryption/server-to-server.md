@@ -57,7 +57,7 @@ For information on starting YB-TServers for a deployment, see [start YB-TServers
 
 ## Connect to the cluster
 
-Because you have only enabled server-to-server encryption and not [client-to-server encryption](../client-to-server/), you can now connect to this cluster using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`) without enabling encryption as shown here.
+Because you have only enabled server-to-server encryption and not [client-to-server encryption](../client-to-server/), you can now connect to this cluster using the YSQL shell (ysqlsh) or the YCQL shell (ycqlsh) without enabling encryption as shown here.
 
 ### YSQL
 

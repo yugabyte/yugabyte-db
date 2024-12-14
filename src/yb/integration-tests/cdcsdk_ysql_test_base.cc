@@ -3671,7 +3671,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ValidateColumnCounts(change_resp, 2);
   }
 
-  void CDCSDKYsqlTest::WaitForCompaction(YBTableName table) {
+  void CDCSDKYsqlTest::WaitForCompaction(
+      YBTableName table, bool expect_equal_entries_after_compaction) {
     auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
     int count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
     int count_after_compaction = 0;
@@ -3682,10 +3683,9 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           return false;
         }
         count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
-        if (count_after_compaction < count_before_compaction) {
-          return true;
-        }
-        return false;
+        return (expect_equal_entries_after_compaction &&
+                count_before_compaction == count_after_compaction) ||
+               count_after_compaction < count_before_compaction;
       },
       MonoDelta::FromSeconds(60), "Expected compaction did not happen"));
     LOG(INFO) << "count_before_compaction: " << count_before_compaction

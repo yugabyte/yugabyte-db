@@ -65,7 +65,7 @@ You can enable encryption at rest on an existing universe as follows:
 
    When the encryption is enabled, the **Key Management Service Config** option appears.
 
-1. Select your KMS configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration](../create-kms-config/).
+1. Select your KMS configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration](../create-kms-config/aws-kms/).
 
 1. Click **Apply**.
 

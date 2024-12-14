@@ -260,7 +260,7 @@ func (plat Platform) copyYbcPackages() error {
 	matches, err := filepath.Glob(ybcPattern)
 	if err != nil {
 		return fmt.Errorf("Could not find ybc components in %s. Failed with err %w",
-			plat.PlatformPackages, err.Error())
+			plat.PlatformPackages, err)
 	}
 
 	for _, f := range matches {
@@ -390,7 +390,7 @@ func (plat Platform) Uninstall(removeData bool) error {
 		}
 		// reload systemd daemon
 		if err := systemd.DaemonReload(); err != nil {
-			return fmt.Errorf("failed to uninstall platform: %w")
+			return fmt.Errorf("failed to uninstall platform: %w", err)
 		}
 	}
 

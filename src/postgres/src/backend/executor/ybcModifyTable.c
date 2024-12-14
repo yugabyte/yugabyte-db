@@ -556,7 +556,6 @@ YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo)
 	return (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 			!IsCatalogRelation(resultRelInfo->ri_RelationDesc) &&
 			resultRelInfo->ri_BatchSize > 1 &&
-			!resultRelInfo->ri_projectReturning &&
 			!(resultRelInfo->ri_TrigDesc &&
 			  (resultRelInfo->ri_TrigDesc->trig_delete_after_row ||
 			   resultRelInfo->ri_TrigDesc->trig_delete_before_row ||

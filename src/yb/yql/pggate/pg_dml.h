@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <list>
 #include <memory>
 #include <optional>
@@ -30,7 +31,14 @@ DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 namespace yb::pggate {
 
+class PgDmlRead;
 class PgSelectIndex;
+
+class YbctidProvider {
+ public:
+  virtual ~YbctidProvider() = default;
+  virtual Result<std::optional<YbctidBatch>> Fetch() = 0;
+};
 
 class PgDml : public PgStatement {
  public:
@@ -43,7 +51,7 @@ class PgDml : public PgStatement {
   // If any serialized Postgres expressions appended to other lists require explicit addition
   // of their column references. Those column references should have Postgres type information.
   // Other PgExpr kinds are automatically scanned and their column references are appended.
-  Status AppendColumnRef(PgColumnRef* colref, bool is_primary);
+  virtual Status AppendColumnRef(PgColumnRef* colref, bool is_for_secondary_index);
 
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
@@ -70,10 +78,6 @@ class PgDml : public PgStatement {
   // Assign an expression to a column.
   Status AssignColumn(int attnum, PgExpr* attr_value);
 
-  // Process the secondary index request if it is nested within this statement.
-  Result<bool> ProcessSecondaryIndexRequest();
-  Result<const std::vector<Slice>*> FetchYbctidsFromSecondaryIndex();
-
   // Fetch a row and return it to Postgres layer.
   Status Fetch(
       int32_t natts, uint64_t* values, bool* isnulls, PgSysColumns* syscols, bool* has_data);
@@ -92,11 +96,21 @@ class PgDml : public PgStatement {
 
   [[nodiscard]] bool has_aggregate_targets() const { return has_aggregate_targets_; }
 
-  [[nodiscard]] bool has_secondary_index_with_doc_op() const;
-
-  [[nodiscard]] bool has_doc_op() const { return doc_op_ != nullptr; }
-
  protected:
+  class SecondaryIndexQueryWrapper {
+   public:
+    SecondaryIndexQueryWrapper(
+        std::unique_ptr<PgDmlRead>&& query, std::reference_wrapper<const PgExecParameters*> params);
+    Status Execute();
+    void RequireReExecution() { is_executed_ = false; }
+    PgDmlRead& query() const { return *query_; }
+
+   private:
+    const std::unique_ptr<PgDmlRead> query_;
+    const PgExecParameters*& params_;
+    bool is_executed_;
+  };
+
   explicit PgDml(const PgSession::ScopedRefPtr& pg_session);
 
   // Allocate protobuf for a SELECTed expression.
@@ -141,7 +155,18 @@ class PgDml : public PgStatement {
     }
   }
 
-  Status ExecSecondaryIndexOnce();
+  Result<bool> ProcessProvidedYbctids();
+
+  SecondaryIndexQueryWrapper* SecondaryIndex() {
+      return secondary_index_ ? &*secondary_index_ : nullptr; }
+  PgDmlRead* SecondaryIndexQuery() const {
+      return secondary_index_ ? &secondary_index_->query() : nullptr; }
+  YbctidProvider* ybctid_provider() const { return ybctid_provider_.get(); }
+
+  void SetYbctidProvider(std::unique_ptr<YbctidProvider>&& ybctid_provider);
+  void SetSecondaryIndex(std::unique_ptr<PgSelectIndex>&& index);
+
+  Status DoAppendColumnRef(PgColumnRef* colref, bool is_for_secondary_index);
 
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.
@@ -160,27 +185,6 @@ class PgDml : public PgStatement {
   //   The bound values will be used to read base_ybctid which is then used to read actual data
   //   from the main table.
   PgTable bind_;
-
-  // -----------------------------------------------------------------------------------------------
-  // Data members for YB Bitmap Scans.
-
-  // If requested_ybctids_ is populated, replace the statement binds with this list of ybctids.
-  // This is used by YB Bitmap Table Scans.
-  const std::vector<Slice>* requested_ybctids_ = nullptr;
-  // To allow for the ybctid list to be broken up into batches, we only want to initialize doc_op
-  // on the first ybctid request.
-  bool first_ybctid_request_ = true;
-
-  // -----------------------------------------------------------------------------------------------
-  // Data members for nested query: This is used for an optimization in PgGate.
-  //
-  // - Each DML operation can be understood as
-  //     Read / Write TABLE WHERE ybctid IN (SELECT ybctid from INDEX).
-  // - In most cases, the Postgres layer processes the subquery "SELECT ybctid from INDEX".
-  // - Under certain conditions, to optimize the performance, the PgGate layer might operate on
-  //   the INDEX subquery itself.
-  std::unique_ptr<PgSelectIndex> secondary_index_query_;
-  bool is_secondary_index_executed_ = false;
 
   // -----------------------------------------------------------------------------------------------
   // Data members for generated protobuf.
@@ -217,6 +221,9 @@ class PgDml : public PgStatement {
 
  private:
   [[nodiscard]] virtual ArenaList<LWPgsqlColRefPB>& ColRefPBs() = 0;
+
+  std::optional<SecondaryIndexQueryWrapper> secondary_index_;
+  std::unique_ptr<YbctidProvider> ybctid_provider_;
 };
 
 }  // namespace yb::pggate

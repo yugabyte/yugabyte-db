@@ -279,7 +279,8 @@ void TableInfo::CompleteInit() {
     if (!index_info->vector_idx_options().has_column_id()) {
       LOG_WITH_PREFIX(DFATAL) << "It is expected to have column id specified for vector index";
     } else {
-      ColumnId id { make_signed(index_info->vector_idx_options().column_id()) };
+      // NB! Index schema must have the last column be a vector for which vector index created.
+      ColumnId id = doc_read_context->schema().column_ids().back();
       doc_read_context->mutable_schema()->SetVectorColumns({ id });
     }
   }

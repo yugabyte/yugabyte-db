@@ -1228,7 +1228,7 @@ Default: 1
 
 ##### yb_read_from_followers
 
-Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/).
 
 Default: false
 
@@ -1240,7 +1240,7 @@ Default: 30000 (30 seconds)
 
 ##### default_transaction_read_only
 
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
 
 Default: false
 

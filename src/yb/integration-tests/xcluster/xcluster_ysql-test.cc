@@ -125,6 +125,9 @@ using pgwrapper::PGConn;
 using pgwrapper::PGResultPtr;
 using pgwrapper::ToString;
 
+const auto kMaxAsyncTaskWait =
+    3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
+
 static const client::YBTableName producer_transaction_table_name(
     YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
 
@@ -2947,7 +2950,6 @@ void XClusterYsqlTest::TestDropTableOnProducerThenConsumer(bool restart_master) 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = restart_master;
-  const auto kMaxAsyncTaskWait = 2s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs;
 
   // Create replication with 2 tables.
   const std::vector<uint32_t> kNumTablets = {1, 1};
@@ -3053,8 +3055,6 @@ TEST_F(XClusterYsqlTest, DropTableWithWorkload) {
 TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1000;
-  const auto kMaxAsyncTaskWait =
-      3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1000;
 

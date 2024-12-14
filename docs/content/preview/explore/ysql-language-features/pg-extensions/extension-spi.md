@@ -22,7 +22,7 @@ YugabyteDB supports the following four (of five &mdash; `timetravel` is not curr
 
 ## Example
 
-1. Connect using `ysqlsh` and run the following commands:
+1. Connect using ysqlsh and run the following commands:
 
     ```sql
     CREATE EXTENSION insert_username;

@@ -1593,6 +1593,10 @@ DefineIndex(Oid relationId,
 			stmt->options, tablespaceId, stmt->relation->relpersistence);
 	}
 
+	if (IsYugaByteEnabled() && stmt->relation &&
+		stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+		YBCForceAllowCatalogModifications(true);
+
 	indexRelationId =
 		index_create(rel, indexRelationName, indexRelationId, parentIndexId,
 					 parentConstraintId,

@@ -4,7 +4,7 @@ private = true
 +++
 -->
 
-To open the YSQL shell, run `ysqlsh`.
+To open the YSQL shell, run ysqlsh.
 
 ```sh
 $ docker exec -it yugabyte /home/yugabyte/bin/ysqlsh --echo-queries

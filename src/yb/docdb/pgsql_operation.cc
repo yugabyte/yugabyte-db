@@ -2148,7 +2148,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
 
 Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(
     const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options) {
-  RSTATUS_DCHECK(data_.vector_index, IllegalState, "Search vector when vector index is null");
+  RSTATUS_DCHECK(
+      data_.vector_index, IllegalState, "Search vector when vector index is null: $0", request_);
 
   Slice vector_slice(options.vector().binary_value());
   // TODO(vector_index) Use correct max_results or use prefetch_size passed from options
@@ -2591,6 +2592,8 @@ Status PgsqlLockOperation::Init(
 
 Status PgsqlLockOperation::GetDocPaths(GetDocPathsMode mode,
     DocPathsToLock *paths, IsolationLevel *level) const {
+  // Behaviour of advisory lock is regardless of isolation level.
+  *level = IsolationLevel::NON_TRANSACTIONAL;
   // kStrongReadIntents is used for acquring locks on the entire row.
   // It's duplicate with the primary intent for the advisory lock.
   if (mode != GetDocPathsMode::kStrongReadIntents) {

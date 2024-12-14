@@ -124,7 +124,7 @@ class TransactionRpc : public TransactionRpcBase {
       }
       VLOG(1) << "Partial refresh of tablet for " << Traits::kName
               << " RPC failed because the response did not "
-                 "have a tablet_consensus_info";
+                 "have a tablet_consensus_info: " << AsString(resp_);
     }
     return false;
   }

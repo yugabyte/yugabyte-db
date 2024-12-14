@@ -685,7 +685,7 @@ Ensure that `enable_ysql` values in yb-tserver configurations match the values i
 
 Enables YSQL authentication.
 
-When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte`.
+When YSQL authentication is enabled, you can sign into ysqlsh using the default `yugabyte` user that has a default password of `yugabyte`.
 
 Default: `false`
 

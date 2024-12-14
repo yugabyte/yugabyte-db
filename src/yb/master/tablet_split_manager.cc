@@ -229,18 +229,25 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
-  {
-    auto l = table->LockForRead();
-    if (l->started_deleting()) {
-      return STATUS_FORMAT(
-          NotSupported, "Table is deleted; ignoring for splitting. table_id: $0", table->id());
-    }
+  auto table_lock = table->LockForRead();
+  if (table_lock->started_deleting()) {
+    return STATUS_FORMAT(
+        NotSupported, "Table is deleted; ignoring for splitting. table: $0", *table);
+  }
 
-    if (l->is_index() && l->pb.index_info().has_vector_idx_options()) {
+  if (table_lock->is_index() && table_lock->pb.index_info().has_vector_idx_options()) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for vector index tables, table: $0",
+        *table);
+  }
+
+  for (const auto& index : table_lock->pb.indexes()) {
+    if (index.has_vector_idx_options()) {
       return STATUS_FORMAT(
           NotSupported,
-          "Tablet splitting is not supported for vector index tables, table_id: $0",
-          table->id());
+          "Tablet splitting is not supported for tables indexed with vector index: $0",
+          *table);
     }
   }
 
@@ -258,33 +265,31 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         " some active PITR schedule, table_id: $0", table->id());
   }
 
-  if (table->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+  if (table_lock->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     return STATUS_FORMAT(
         NotSupported,
-        "Tablet splitting is not supported for transaction status tables, table_id: $0",
-        table->id());
+        "Tablet splitting is not supported for transaction status tables, table: $0",
+        *table);
   }
   if (table->is_system()) {
     return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for system table: $0 with table_id: $1",
-        table->name(), table->id());
+        NotSupported, "Tablet splitting is not supported for system table: $0", *table);
   }
   if (table->id() == kPgSequencesDataTableId) {
     return STATUS_FORMAT(
-        NotSupported, "Tablet splitting is not supported for Sequences table: $0 with table_id: $1",
-        table->name(), table->id());
+        NotSupported, "Tablet splitting is not supported for Sequences table: $0",
+        *table);
   }
-  if (table->GetTableType() == REDIS_TABLE_TYPE) {
+  if (table_lock->GetTableType() == REDIS_TABLE_TYPE) {
     return STATUS_FORMAT(
         NotSupported,
-        "Tablet splitting is not supported for YEDIS tables, table_id: $0", table->id());
+        "Tablet splitting is not supported for YEDIS tables, table: $0", *table);
   }
-  if (table->IsXClusterDDLReplicationTable()) {
+  if (table_lock->IsXClusterDDLReplicationTable()) {
     return STATUS_FORMAT(
         NotSupported,
-        "Tablet splitting is not supported for xCluster DDL Replication tables, table_id: $0",
-        table->id());
+        "Tablet splitting is not supported for xCluster DDL Replication tables, table: $0",
+        *table);
   }
 
   auto replication_info = VERIFY_RESULT(catalog_manager_.GetTableReplicationInfo(table));
@@ -297,9 +302,7 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
     }
   }
   if (!s.ok()) {
-    return STATUS_FORMAT(
-        IllegalState,
-        "Cannot create more tablets, table_id: $0. $1", table->id(), s.message());
+    return s.CloneAndPrepend(Format("Cannot create more tablets, table: $0", *table));
   }
 
   if (FLAGS_tablet_split_limit_per_table != 0 &&
@@ -307,12 +310,12 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
     // TODO(tsplit): Avoid tablet server of scanning tablets for the tables that already
     //  reached the split limit of tablet #6220
     return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::REACHED_SPLIT_LIMIT),
-                            "Too many tablets for the table, table_id: $0, limit: $1",
-                            table->id(), FLAGS_tablet_split_limit_per_table);
+                            "Too many tablets for the table, table: $0, limit: $1",
+                            *table, FLAGS_tablet_split_limit_per_table);
   }
   if (table->IsBackfilling()) {
     return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
-                            "Backfill operation in progress, table_id: $0", table->id());
+                            "Backfill operation in progress, table: $0", *table);
   }
 
   // Check if this table hosts stateful services. Only sys_catalog and ysql tables are currently
@@ -321,8 +324,8 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   if (!table->GetHostedStatefulServices().empty()) {
     return STATUS_EC_FORMAT(
         IllegalState, MasterError(MasterErrorPB::INVALID_REQUEST),
-        "Tablet splitting is not supported on tables that host stateful services, table_id: $0",
-        table->id());
+        "Tablet splitting is not supported on tables that host stateful services, table: $0",
+        *table);
   }
 
   return ValidatePartitioningVersion(*table);

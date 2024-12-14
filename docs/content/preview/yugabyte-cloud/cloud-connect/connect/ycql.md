@@ -4,7 +4,7 @@ private = true
 +++
 -->
 
-To connect to a cluster using `ycqlsh`:
+To connect to a cluster using ycqlsh:
 
 1. On the **Clusters** tab, select a cluster.
 1. Click **Connect**.
@@ -16,7 +16,7 @@ To connect to a cluster using `ycqlsh`:
 
     The connection string includes the cluster host and port, with flags for the database username (`-u`), and TLS settings (`--ssl`). The command specifies that the connection will use the CA certificate you installed on your computer.
 
-    Here's an example of the generated `ycqlsh` command:
+    Here's an example of the generated ycqlsh command:
 
     ```sh
     SSL_CERTFILE=<ROOT_CERT_PATH> \
@@ -32,7 +32,7 @@ To connect to a cluster using `ycqlsh`:
     - `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
     - `<DB USER>` with your database username.
 
-The `ycqlsh` shell opens connected to the remote cluster.
+The ycqlsh shell opens connected to the remote cluster.
 
 ```output
 Connected to local cluster at 35.236.85.97:12200.
