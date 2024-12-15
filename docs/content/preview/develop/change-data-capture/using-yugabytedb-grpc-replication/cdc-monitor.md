@@ -49,7 +49,7 @@ You can use the rest APIs to monitor your deployed connectors. The following ope
    curl -X GET localhost:8083/connectors/<connector-name>/status
    ```
 
-{{< note title= "Note" >}}
+{{< note title= "How to check task status">}}
 
 It is possible that upon retrieving the status of the connector, it can show a RUNNING state while no data is being ingested to Kafka. As a connector consists of one or more tasks, the tasks have likely failed, independently from the connector. To verify this, you need to check for the status of the tasks.
 
