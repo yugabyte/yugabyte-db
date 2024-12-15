@@ -136,6 +136,8 @@ class WriteBuffer {
     CopyTo(0, size(), out);
   }
 
+  void Swap(WriteBuffer& rhs);
+
  private:
   void ShrinkLastBlock();
 

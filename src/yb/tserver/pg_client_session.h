@@ -97,7 +97,14 @@ class TserverXClusterContextIf;
     (GetTableKeyRanges) \
     /**/
 
-using PgClientSessionOperations = std::vector<std::shared_ptr<client::YBPgsqlOp>>;
+struct PgClientSessionOperation {
+  std::shared_ptr<client::YBPgsqlOp> op;
+  // TODO(vector_index) Support multiple reads in a single perform.
+  std::unique_ptr<rpc::Sidecars> vector_index_sidecars;
+  std::unique_ptr<PgsqlReadRequestPB> vector_index_read_request;
+};
+
+using PgClientSessionOperations = std::vector<PgClientSessionOperation>;
 
 YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence));
 

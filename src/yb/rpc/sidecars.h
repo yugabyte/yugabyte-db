@@ -72,6 +72,11 @@ class Sidecars {
     return buffer_;
   }
 
+  void Swap(Sidecars& rhs) {
+    buffer_.Swap(rhs.buffer_);
+    offsets_.Swap(&rhs.offsets_);
+  }
+
  private:
   simple_spinlock take_mutex_;
   WriteBuffer buffer_;
