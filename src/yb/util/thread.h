@@ -232,6 +232,10 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // This callback is guaranteed to be called except in the case of a process crash.
   void CallAtExit(const Closure& cb);
 
+  // Abandons the thread. We will no longer join it on destruction. This is needed if you fork(),
+  // since threads are not copied on fork(), but the Thread object is.
+  void Abandon();
+
   // The thread ID assigned to this thread by the operating system. If the OS does not
   // support retrieving the tid, returns Thread::INVALID_TID.
   int64_t tid() const { return tid_; }

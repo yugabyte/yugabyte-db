@@ -26,11 +26,11 @@
 #include "yb/util/crash_point.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
-#include "yb/util/interprocess_semaphore.h"
 #include "yb/util/math_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_mem.h"
+#include "yb/util/shmem/interprocess_semaphore.h"
 #include "yb/util/tsan_util.h"
 
 DEFINE_test_flag(uint64, address_segment_negotiator_initial_address, 0,

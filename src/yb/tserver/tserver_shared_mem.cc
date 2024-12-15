@@ -23,9 +23,9 @@
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
-#include "yb/util/interprocess_semaphore.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/shmem/interprocess_semaphore.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/thread.h"
 
