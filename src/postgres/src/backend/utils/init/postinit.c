@@ -1059,7 +1059,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	if (YBIsDBLogicalClientVersionMode())
 	{
 		int32_t logical_client_version = YbGetMasterLogicalClientVersion();
-		elog(LOG, "logical_client_version = %d", logical_client_version);
+		elog(DEBUG1, "logical_client_version = %d", logical_client_version);
 		YbSetLogicalClientCacheVersion(logical_client_version);
 	}
 

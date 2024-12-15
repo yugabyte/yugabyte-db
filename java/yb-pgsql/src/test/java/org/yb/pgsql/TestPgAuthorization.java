@@ -56,6 +56,14 @@ public class TestPgAuthorization extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("ysql_hba_conf", CUSTOM_PG_HBA_CONFIG);
+    if(isTestRunningWithConnectionManager()) {
+       flags.put("allowed_preview_flags_csv",
+                ",enable_ysql_conn_mgr,ysql_conn_mgr_version_matching,"
+                + "ysql_conn_mgr_version_matching_connect_higher_version");
+      flags.put("enable_ysql_conn_mgr", "true");
+      flags.put("ysql_conn_mgr_version_matching", "true");
+      flags.put("ysql_conn_mgr_version_matching_connect_higher_version", "true");
+    }
     return flags;
   }
 
@@ -1080,13 +1088,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testAlterRoleConfiguration() throws Exception {
-
-    // The test fails with Connection Manager as it is expected that a new
-    // session would latch onto a new physical connection. Instead, two logical
-    // connections use the same physical connection, leading to unexpected
-    // results as per the expectations of the test.
-    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
-
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE test_role LOGIN");
 
