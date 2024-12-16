@@ -17,6 +17,10 @@ Use the `cluster db-query-logging` resource to perform operations on a YugabyteD
 - enable, disable, and update db query logging
 - get information about db query logging
 
+## Prerequisite
+
+Before using these commands, you must have an [integration configuration](../../../cloud-monitor/logging-export.md/#prerequisites) already set up. This configuration defines the authentication and connection details for the third-party tool where logs will be exported.
+
 ## Syntax
 
 ```text
