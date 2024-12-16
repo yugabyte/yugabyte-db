@@ -64,6 +64,8 @@ class XClusterOutboundReplicationGroup
         delete_from_sys_catalog_func;
     const std::function<Status(const NamespaceId&, StdStatusCallback)>
         setup_ddl_replication_extension_func;
+    const std::function<Status(const NamespaceId&, const xcluster::ReplicationGroupId&)>
+        drop_ddl_replication_extension_func;
   };
 
   explicit XClusterOutboundReplicationGroup(

@@ -34,6 +34,7 @@ DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
 DECLARE_bool(TEST_xcluster_enable_ddl_replication);
 DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 
+using namespace std::chrono_literals;
 using namespace std::placeholders;
 using testing::_;
 using testing::AtLeast;
@@ -130,7 +131,7 @@ const PgSchemaName kPgSchemaName = "public", kPgSchemaName2 = "public2";
 const xcluster::ReplicationGroupId kReplicationGroupId = xcluster::ReplicationGroupId("rg1");
 const TableName kTableName1 = "table1", kTableName2 = "table2";
 const TableId kTableId1 = "table_id_1", kTableId2 = "table_id_2";
-const MonoDelta kTimeout = MonoDelta::FromSeconds(5 * kTimeMultiplier);
+const MonoDelta kTimeout = 5s * kTimeMultiplier;
 
 class XClusterOutboundReplicationGroupMockedTest : public YBTest {
  public:
@@ -370,6 +371,17 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
         callback(Status::OK());
         return Status::OK();
       },
+      .drop_ddl_replication_extension_func =
+          [this](
+              const NamespaceId& namespace_id,
+              const xcluster::ReplicationGroupId& drop_replication_group_id) -> Status {
+        SCHECK(UseAutomaticMode(), InternalError, "Should only be called in automatic mode");
+        for (const auto& table_name :
+             {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+          DropTable(namespace_id, table_name);
+        }
+        return Status::OK();
+      },
   };
 
   Result<scoped_refptr<NamespaceInfo>> GetNamespace(const NamespaceIdentifierPB& ns_identifier) {
@@ -423,6 +435,20 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     EXPECT_TRUE(table_ids.contains(table_id1));
     EXPECT_TRUE(table_ids.contains(table_id2));
   }
+
+  Status VerifyExtensionTablesDeleted(const NamespaceId namespace_id) {
+    if (!UseAutomaticMode()) {
+      return Status::OK();
+    }
+    for (const auto& table_name :
+         {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+      if (TableExists(namespace_id, table_name)) {
+        return STATUS_FORMAT(
+            InternalError, "Table $0 still exists in namespace $1", table_name, namespace_id);
+      }
+    }
+    return Status::OK();
+  }
 };
 
 class XClusterOutboundReplicationGroupMockedParameterized
@@ -474,6 +500,7 @@ TEST_P(XClusterOutboundReplicationGroupMockedParameterized, TestMultipleTable) {
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsNotFound());
   ASSERT_TRUE(outbound_rg.IsDeleted());
+  ASSERT_OK(VerifyExtensionTablesDeleted(kNamespaceId));
 
   // We should have 0 streams now.
   ASSERT_TRUE(xcluster_streams.empty());
@@ -565,6 +592,7 @@ TEST_P(XClusterOutboundReplicationGroupMockedParameterized, AddDeleteNamespaces)
   ASSERT_NOK(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
   ASSERT_NOK(outbound_rg.GetNamespaceCheckpointInfo(namespace_id_2));
   ASSERT_TRUE(xcluster_streams.empty());
+  ASSERT_OK(VerifyExtensionTablesDeleted(kNamespaceId));
 }
 
 TEST_P(XClusterOutboundReplicationGroupMockedParameterized, CreateTargetReplicationGroup) {

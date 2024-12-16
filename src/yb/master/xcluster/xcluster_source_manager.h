@@ -164,7 +164,7 @@ class XClusterSourceManager {
       const LeaderEpoch& epoch);
 
   std::vector<xcluster::ReplicationGroupId> GetXClusterOutboundReplicationGroups(
-      NamespaceId namespace_filter);
+      NamespaceId namespace_filter) const;
 
   struct XClusterOutboundReplicationGroupUserInfo {
     std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>
@@ -251,6 +251,10 @@ class XClusterSourceManager {
 
   Status SetupDDLReplicationExtension(
       const NamespaceId& namespace_id, StdStatusCallback callback) const;
+
+  Status DropDDLReplicationExtension(
+      const NamespaceId& namespace_id,
+      const xcluster::ReplicationGroupId& drop_replication_group_id) const;
 
   Master& master_;
   CatalogManager& catalog_manager_;

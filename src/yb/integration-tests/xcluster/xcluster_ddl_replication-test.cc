@@ -13,6 +13,7 @@
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/table.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_types.pb.h"
@@ -34,7 +35,20 @@ namespace yb {
 
 const MonoDelta kTimeout = 60s * kTimeMultiplier;
 
-class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {};
+class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
+ public:
+  Status AddDatabaseToReplication(
+      const NamespaceId& source_db_id, const NamespaceId& target_db_id) {
+    auto source_xcluster_client = client::XClusterClient(*producer_client());
+    RETURN_NOT_OK(source_xcluster_client.AddNamespaceToOutboundReplicationGroup(
+        kReplicationGroupId, source_db_id));
+    auto bootstrap_required =
+        VERIFY_RESULT(IsXClusterBootstrapRequired(kReplicationGroupId, source_db_id));
+    SCHECK(!bootstrap_required, IllegalState, "Bootstrap should not be required");
+
+    return AddNamespaceToXClusterReplication(source_db_id, target_db_id);
+  }
+};
 
 // In automatic mode, sequences_data should have been created on both universe.
 TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
@@ -51,23 +65,60 @@ TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
   }));
 }
 
-TEST_F(XClusterDDLReplicationTest, CheckExtensionTableTabletCount) {
+TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
+  auto source_xcluster_client = client::XClusterClient(*producer_client());
+  const auto target_master_address = consumer_cluster()->GetMasterAddresses();
+
   // Ensure that tables are properly created with only one tablet each.
-  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-    for (const auto& table_name :
-         {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
-      auto yb_table_name = VERIFY_RESULT(
-          GetYsqlTable(cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, table_name));
-      std::shared_ptr<client::YBTable> table;
-      RETURN_NOT_OK(cluster->client_->OpenTable(yb_table_name, &table));
-      SCHECK_EQ(table->GetPartitionCount(), 1, IllegalState, "Expected 1 tablet");
-    }
-    return Status::OK();
-  }));
+  ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name));
+
+  // Alter replication to add a new database.
+  const auto namespace_name2 = namespace_name + "2";
+  auto [source_db2_id, target_db2_id] =
+      ASSERT_RESULT(CreateDatabaseOnBothClusters(namespace_name2));
+  ASSERT_OK(AddDatabaseToReplication(source_db2_id, target_db2_id));
+  ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name2));
+
+  // Alter replication to remove the new database.
+  ASSERT_OK(source_xcluster_client.RemoveNamespaceFromOutboundReplicationGroup(
+      kReplicationGroupId, source_db2_id, target_master_address));
+  ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name2));
+  // First namespace should not be affected.
+  ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name));
+
+  // Add the second database to replication again to test dropping everything.
+  ASSERT_OK(AddDatabaseToReplication(source_db2_id, target_db2_id));
+  ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name2));
+
+  // Drop replication.
+  ASSERT_OK(source_xcluster_client.DeleteOutboundReplicationGroup(
+      kReplicationGroupId, target_master_address));
+
+  // Extension should no longer exist on either side.
+  ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name));
+  ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name2));
+}
+
+TEST_F(XClusterDDLReplicationTest, TestExtensionDeletionWithMultipleReplicationGroups) {
+  const xcluster::ReplicationGroupId kReplicationGroupId2("ReplicationGroup2");
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name, /*only_source=*/true));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId2));
+  ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name, /*only_source=*/true));
+
+  auto source_xcluster_client = client::XClusterClient(*producer_client());
+  ASSERT_OK(source_xcluster_client.DeleteOutboundReplicationGroup(
+      kReplicationGroupId, /*target_master_address*/ {}));
+  ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name, /*only_source=*/true));
+
+  ASSERT_OK(source_xcluster_client.DeleteOutboundReplicationGroup(
+      kReplicationGroupId2, /*target_master_address*/ {}));
+  ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name, /*only_source=*/true));
 }
 
 TEST_F(XClusterDDLReplicationTest, DisableSplitting) {
