@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -101,6 +102,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock CustomerTaskManager customerTaskManager;
   @Mock UpgradeUniverseHandler upgradeUniverseHandler;
   @Mock KubernetesOperatorStatusUpdater kubernetesStatusUpdator;
+  @Mock ReleaseManager releaseManager;
 
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
@@ -127,7 +129,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     envVars = Mockito.mockStatic(KubernetesEnvironmentVariables.class);
     envVars.when(KubernetesEnvironmentVariables::getServiceHost).thenReturn("host");
     envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
-    operatorUtils = new OperatorUtils(confGetterForOperatorUtils);
+    operatorUtils = new OperatorUtils(confGetterForOperatorUtils, releaseManager);
     // Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
     Mockito.when(
             confGetterForOperatorUtils.getGlobalConf(GlobalConfKeys.KubernetesOperatorCustomerUUID))
