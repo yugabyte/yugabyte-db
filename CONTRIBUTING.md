@@ -4,7 +4,7 @@ Thank you for your interest in contributing to HelioDB. There are several ways a
 
 ## Asking Questions
 
-Follow us on Discord and engage with our team directly for any questions you may have, and we will be happy to help. In addition, our community will be a great forum to raise questions and discuss ideas for and about the project.
+[Join us on Discord](https://discord.gg/WXUrVbnt4n) to engage directly with our team and the community with any questions you may have. Our channel inside the Microsoft OSS server is not only a place for immediate assistance but also a hub for discussing project updates, upcoming features, and technical challenges. We host regular meetings where team members and contributors can interact directly to ask questions, share feedback, and discuss their ideas in real time. 
 
 ## Reporting Issues
 
@@ -12,19 +12,32 @@ Before a new issue is created for a bug or feature request, please check the lis
 
 ## How to Contribute
 
-We request that you file a single issue per problem or feature request to maximize highlighting the issue.
+We encourage community members to participate by reporting issues, suggesting new features, or contributing code.
+
+### 1. General Contributions
 
 The more descriptive the issue is and the more information that can be provided, the more helpful it will be to the community and the contributors to pick up the issue.
 
-Please include the following with each issue:
+For each issue created, please include: 
 
-* The operating system on which HelioDB was run to discover the issue
+*  A brief description of the suggestion or issue.
 
-* A set of detailed reproducible steps that lead to the issue
+*  Relevant details such as the operating system you were using, if applicable.
+    
+*  Clear, step-by-step instructions or context that describe how the issue occurred or how the feature would function.
+    
+*  The expected outcome versus the actual result or behavior observed, if relevant.
 
-* The expected results versus the results or failures that were seen
+### Code Contributions
 
-* A code snippet that reproduces the issues or an accessible repository that can be cloned, built, and run to reproduce the issue
+For those looking to contribute code, whether for bug fixes or new features, please ensure your issues and pull requests include the following: 
+
+*  A code snippet that reliably reproduces the issue or demonstrates the new feature. 
+    
+*  An accessible repository link that can be cloned, built, and run, providing a complete environment for testing and verifying the issue or feature. 
+    
+*  Clear documentation or comments in the code explaining the changes made and their purpose. 
+
 
 ## Pull Requests
 
@@ -43,6 +56,8 @@ We’re keen to hear your feedback on the future of HelioDB. Feature Requests ca
 * Description of the problem space that will be solved or addressed by this feature
 
 * Description of a few scenarios that will help test and validate this feature
+
+For even quicker engagement and real-time discussions about your feature ideas, join our [Discord channel](https://discord.gg/WXUrVbnt4n). Our team and community members are actively available there to provide feedback, answer questions, and collaborate on refining your suggestions before they are formally submitted through the issue tracker. 
 
 ## Discussion Etiquette
 
