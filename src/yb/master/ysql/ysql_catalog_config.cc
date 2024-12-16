@@ -71,25 +71,21 @@ Status YsqlCatalogConfig::PrepareDefaultIfNeeded(const LeaderEpoch& epoch) {
 }
 
 void YsqlCatalogConfig::SetConfig(scoped_refptr<SysConfigInfo> config) {
-  {
-    auto l = config->LockForRead();
-    auto& ysql_catalog_config = l->pb.ysql_catalog_config();
-    if (ysql_catalog_config.has_ysql_major_catalog_upgrade_info()) {
-      const auto persisted_version =
-          ysql_catalog_config.ysql_major_catalog_upgrade_info().catalog_version();
-      LOG_IF(FATAL, persisted_version > GetMajorVersionOfCurrentBuild())
-          << "Persisted major version in YSQL catalog config is not supported. Restart "
-             "the process in the correct version. Min required major version: "
-          << persisted_version
-          << ", Current major version: " << VersionInfo::GetShortVersionString();
+  auto& ysql_catalog_config = config->mutable_metadata()->mutable_dirty()->pb.ysql_catalog_config();
+  if (ysql_catalog_config.has_ysql_major_catalog_upgrade_info()) {
+    const auto persisted_version =
+        ysql_catalog_config.ysql_major_catalog_upgrade_info().catalog_version();
+    LOG_IF(FATAL, persisted_version > GetMajorVersionOfCurrentBuild())
+        << "Persisted major version in YSQL catalog config is not supported. Restart "
+           "the process in the correct version. Min required major version: "
+        << persisted_version << ", Current major version: " << VersionInfo::GetShortVersionString();
 
-      // A new yb-master leader has started. If we were in the middle of the ysql major catalog
-      // upgrade (initdb, pg_upgrade, or rollback) then mark the major upgrade as failed. No action
-      // is taken if we are in the monitoring phase.
-      // We cannot update the config right now, so do so after the sys_catalog is loaded.
-      restarted_during_major_upgrade_ = IsYsqlMajorCatalogOperationRunning(
-          ysql_catalog_config.ysql_major_catalog_upgrade_info().state());
-    }
+    // A new yb-master leader has started. If we were in the middle of the ysql major catalog
+    // upgrade (initdb, pg_upgrade, or rollback) then mark the major upgrade as failed. No action
+    // is taken if we are in the monitoring phase.
+    // We cannot update the config right now, so do so after the sys_catalog is loaded.
+    restarted_during_major_upgrade_ = IsYsqlMajorCatalogOperationRunning(
+        ysql_catalog_config.ysql_major_catalog_upgrade_info().state());
   }
 
   std::lock_guard m_lock(mutex_);
