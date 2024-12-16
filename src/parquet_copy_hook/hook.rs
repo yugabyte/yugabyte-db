@@ -128,7 +128,7 @@ extern "C" fn parquet_copy_hook(
     let query_env = unsafe { PgBox::from_pg(query_env) };
     let mut completion_tag = unsafe { PgBox::from_pg(completion_tag) };
 
-    if ENABLE_PARQUET_COPY_HOOK.get() && is_copy_to_parquet_stmt(&p_stmt) {
+    if is_copy_to_parquet_stmt(&p_stmt) {
         let nprocessed = process_copy_to_parquet(&p_stmt, query_string, &params, &query_env);
 
         if !completion_tag.is_null() {
@@ -136,7 +136,7 @@ extern "C" fn parquet_copy_hook(
             completion_tag.commandTag = CommandTag::CMDTAG_COPY;
         }
         return;
-    } else if ENABLE_PARQUET_COPY_HOOK.get() && is_copy_from_parquet_stmt(&p_stmt) {
+    } else if is_copy_from_parquet_stmt(&p_stmt) {
         let nprocessed = process_copy_from_parquet(&p_stmt, query_string, &query_env);
 
         if !completion_tag.is_null() {

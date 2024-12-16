@@ -1,7 +1,7 @@
 use std::{ffi::CStr, str::FromStr};
 
 use pgrx::{
-    is_a,
+    ereport, is_a,
     pg_sys::{
         addRangeTableEntryForRelation, defGetInt32, defGetInt64, defGetString, get_namespace_name,
         get_rel_namespace, makeDefElem, makeString, make_parsestate, quote_qualified_identifier,
@@ -9,18 +9,21 @@ use pgrx::{
         NodeTag::T_CopyStmt, Oid, ParseNamespaceItem, ParseState, PlannedStmt, QueryEnvironment,
         RangeVar, RangeVarGetRelidExtended, RowExclusiveLock, TupleDescInitEntry,
     },
-    PgBox, PgList, PgRelation, PgTupleDesc,
+    PgBox, PgList, PgLogLevel, PgRelation, PgSqlErrorCode, PgTupleDesc,
 };
 use url::Url;
 
-use crate::arrow_parquet::{
-    compression::{all_supported_compressions, PgParquetCompression},
-    match_by::MatchBy,
-    parquet_writer::{DEFAULT_ROW_GROUP_SIZE, DEFAULT_ROW_GROUP_SIZE_BYTES},
-    uri_utils::parse_uri,
+use crate::{
+    arrow_parquet::{
+        compression::{all_supported_compressions, PgParquetCompression},
+        match_by::MatchBy,
+        parquet_writer::{DEFAULT_ROW_GROUP_SIZE, DEFAULT_ROW_GROUP_SIZE_BYTES},
+        uri_utils::parse_uri,
+    },
+    pgrx_utils::extension_exists,
 };
 
-use super::pg_compat::strVal;
+use super::{hook::ENABLE_PARQUET_COPY_HOOK, pg_compat::strVal};
 
 pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri: &Url) {
     validate_copy_option_names(
@@ -297,7 +300,12 @@ pub(crate) fn copy_stmt_get_option(
     PgBox::null()
 }
 
-pub(crate) fn is_copy_to_parquet_stmt(p_stmt: &PgBox<PlannedStmt>) -> bool {
+fn is_copy_parquet_stmt(p_stmt: &PgBox<PlannedStmt>, copy_from: bool) -> bool {
+    // the GUC pg_parquet.enable_copy_hook must be set to true
+    if !ENABLE_PARQUET_COPY_HOOK.get() {
+        return false;
+    }
+
     let is_copy_stmt = unsafe { is_a(p_stmt.utilityStmt, T_CopyStmt) };
 
     if !is_copy_stmt {
@@ -306,7 +314,7 @@ pub(crate) fn is_copy_to_parquet_stmt(p_stmt: &PgBox<PlannedStmt>) -> bool {
 
     let copy_stmt = unsafe { PgBox::<CopyStmt>::from_pg(p_stmt.utilityStmt as _) };
 
-    if copy_stmt.is_from {
+    if copy_from != copy_stmt.is_from {
         return false;
     }
 
@@ -320,33 +328,41 @@ pub(crate) fn is_copy_to_parquet_stmt(p_stmt: &PgBox<PlannedStmt>) -> bool {
 
     let uri = copy_stmt_uri(p_stmt).expect("uri is None");
 
-    is_parquet_format_option(p_stmt) || is_parquet_uri(uri)
+    if !is_parquet_format_option(p_stmt) && !is_parquet_uri(uri) {
+        return false;
+    }
+
+    // extension checks are done via catalog (not yet searched via cache by postgres till pg18)
+    // this is why we check them after the uri checks
+
+    // crunchy_query_engine should not be created
+    if extension_exists("crunchy_query_engine") {
+        return false;
+    }
+
+    // pg_parquet should be created
+    if !extension_exists("pg_parquet") {
+        ereport!(
+            PgLogLevel::WARNING,
+            PgSqlErrorCode::ERRCODE_WARNING,
+            "pg_parquet can handle this COPY command but is not enabled",
+            "Run CREATE EXTENSION pg_parquet; to enable the pg_parquet extension.",
+        );
+
+        return false;
+    }
+
+    true
+}
+
+pub(crate) fn is_copy_to_parquet_stmt(p_stmt: &PgBox<PlannedStmt>) -> bool {
+    let copy_from = false;
+    is_copy_parquet_stmt(p_stmt, copy_from)
 }
 
 pub(crate) fn is_copy_from_parquet_stmt(p_stmt: &PgBox<PlannedStmt>) -> bool {
-    let is_copy_stmt = unsafe { is_a(p_stmt.utilityStmt, T_CopyStmt) };
-
-    if !is_copy_stmt {
-        return false;
-    }
-
-    let copy_stmt = unsafe { PgBox::<CopyStmt>::from_pg(p_stmt.utilityStmt as _) };
-
-    if !copy_stmt.is_from {
-        return false;
-    }
-
-    if copy_stmt.is_program {
-        return false;
-    }
-
-    if copy_stmt.filename.is_null() {
-        return false;
-    }
-
-    let uri = copy_stmt_uri(p_stmt).expect("uri is None");
-
-    is_parquet_format_option(p_stmt) || is_parquet_uri(uri)
+    let copy_from = true;
+    is_copy_parquet_stmt(p_stmt, copy_from)
 }
 
 fn is_parquet_format_option(p_stmt: &PgBox<PlannedStmt>) -> bool {
