@@ -922,7 +922,8 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
                 () -> {
                   try {
                     return CheckClusterConsistency.checkCurrentServers(
-                        client, universe, null, true, false);
+                            client, universe, null, true, false)
+                        .getErrors();
                   } catch (Exception e) {
                     return Collections.singletonList("Got error: " + e.getMessage());
                   }
