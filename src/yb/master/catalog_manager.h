@@ -2267,7 +2267,8 @@ class CatalogManager : public TabletSplitCandidateFilterIf,
 
   bool IsTablePartOfXClusterUnlocked(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
-  bool IsTablePartOfCDCSDK(const TableId& table_id) const REQUIRES_SHARED(mutex_);
+  bool IsTablePartOfCDCSDK(const TableId& table_id, bool require_replication_slot = false) const
+      REQUIRES_SHARED(mutex_);
 
   Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema) const;
 
