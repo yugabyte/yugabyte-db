@@ -78,8 +78,6 @@ The following example shows a client that uses the YSQL shell ([ysqlsh](../../..
 
 ```sh
 docker run yugabytedb/yugabyte-client ysqlsh -h 98.138.219.232
-
-yugabyte=# CREATE TABLE demo(id INT PRIMARY KEY);
 ```
 
 ```sql
