@@ -31,7 +31,8 @@ Datum PostProcessCursorPage(PG_FUNCTION_ARGS,
 							pgbson_writer *cursorDoc,
 							pgbson_array_writer *arrayWriter,
 							pgbson_writer *topLevelWriter, int64_t cursorId,
-							pgbson *continuation, bool persistConnection);
+							pgbson *continuation, bool persistConnection,
+							bool isTailableCursor);
 
 HTAB * CreateCursorHashSet(void);
 HTAB * CreateTailableCursorHashSet(void);

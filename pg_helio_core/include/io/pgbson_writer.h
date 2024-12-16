@@ -79,12 +79,15 @@ void PgbsonWriterAppendInt32OrDouble(pgbson_writer *writer, const char *path, ui
 									 pathLength, int64 value);
 void PgbsonWriterAppendUtf8(pgbson_writer *writer, const char *path, uint32_t pathLength,
 							const char *value);
-void PgbsonWriterAppendTimestampTz(pgbson_writer *writer, const char *path,
-								   uint32_t pathLength, TimestampTz timestamp);
+void PgbsonWriterAppendDateTime(pgbson_writer *writer, const char *path,
+								uint32_t pathLength, TimestampTz timestamp);
 void PgbsonWriterAppendBool(pgbson_writer *writer, const char *path, uint32_t pathLength,
 							bool value);
 void PgbsonWriterAppendDocument(pgbson_writer *writer, const char *path,
 								uint32_t pathLength, const pgbson *bson);
+void PgbsonWriterAppendTimestamp(pgbson_writer *writer, const char *path, uint32_t
+								 pathLength,
+								 TimestampTz timestamp);
 void PgbsonWriterAppendEmptyArray(pgbson_writer *writer, const char *path, uint32_t
 								  pathLength);
 void PgbsonWriterAppendBsonValueAsArray(pgbson_writer *writer, const char *path, uint32_t

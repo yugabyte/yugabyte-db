@@ -297,6 +297,7 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 
 	bool queryFullyDrained;
 	pgbson *continuationDoc;
+	bool isTailableCursor = false;
 	switch (getMoreInfo.cursorKind)
 	{
 		case CursorKind_Persisted:
@@ -370,6 +371,7 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 			Query *query;
 			bool generateCursorParams = true;
 			QueryData queryData = { 0 };
+			isTailableCursor = true;
 			query = GenerateAggregationQuery(PointerGetDatum(database),
 											 getMoreInfo.querySpec, &queryData,
 											 generateCursorParams);
@@ -397,9 +399,10 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 	}
 
 	bool persistConnection = false;
+
 	Datum responseDatum = PostProcessCursorPage(fcinfo, &cursorDoc, &arrayWriter, &writer,
 												getMoreInfo.cursorId, continuationDoc,
-												persistConnection);
+												persistConnection, isTailableCursor);
 	PG_RETURN_DATUM(responseDatum);
 }
 
@@ -554,7 +557,8 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 	}
 
 	return PostProcessCursorPage(fcinfo, &cursorDoc, &arrayWriter, &writer, cursorId,
-								 continuationDoc, persistConnection);
+								 continuationDoc, persistConnection,
+								 queryData->isTailableCursor);
 }
 
 

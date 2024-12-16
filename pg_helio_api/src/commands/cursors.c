@@ -20,6 +20,7 @@
 #include <metadata/metadata_cache.h>
 #include <io/helio_bson_core.h>
 #include <utils/snapmgr.h>
+#include <utils/timestamp.h>
 #include <common/hashfn.h>
 #include <commands/portalcmds.h>
 #include <utils/helio_errors.h>
@@ -1160,13 +1161,23 @@ Datum
 PostProcessCursorPage(PG_FUNCTION_ARGS,
 					  pgbson_writer *cursorDoc, pgbson_array_writer *arrayWriter,
 					  pgbson_writer *topLevelWriter, int64_t cursorId,
-					  pgbson *continuation, bool persistConnection)
+					  pgbson *continuation, bool persistConnection,
+					  bool isTailableCursor)
 {
 	/* Finish the cursor doc*/
 	PgbsonWriterEndArray(cursorDoc, arrayWriter);
 	PgbsonWriterEndDocument(topLevelWriter, cursorDoc);
 	PgbsonWriterAppendDouble(topLevelWriter, "ok", 2, 1);
-
+	if (isTailableCursor)
+	{
+		/*
+		 * TODO:  Currently, the operationTime field is applicable only for change
+		 * stream cursors. In future, if there is another tailable cursor type is
+		 * supported, then update the condition above to check specific cursor type.
+		 */
+		TimestampTz currentTime = GetCurrentTimestamp();
+		PgbsonWriterAppendTimestamp(topLevelWriter, "operationTime", 13, currentTime);
+	}
 
 	bool queryFullyDrained = continuation == NULL;
 
