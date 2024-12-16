@@ -148,6 +148,23 @@ SELECT bson_dollar_add_fields(document, '{ "rank": { "$meta": "textScore" }}') F
 -- Returns 32, 31
 SELECT bson_dollar_add_fields(document, '{ "rank": { "$meta": "textScore" }}') FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "d" } }' ORDER BY bson_orderby(document, '{ "score": {"$meta": "textScore"} }') DESC;
 
+-- test wildcard handling
+-- this is a variant of the JS test: blog_textwild.js
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "x_1" }');
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 33, "title": "my blog post", "text": "this is a new blog i am writing. yay eliot" }');
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 34, "title": "my 2nd post", "text": "this is a new blog i am writing. yay" }');
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 35, "title": "knives are Fun for writing eliot", "text": "this is a new blog i am writing. yay" }');
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "dummy": "text", "$**": "text" }, "name": "x_1" } ] }', TRUE);
+
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "blog" } }' ORDER BY object_id;
+
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "x_1" }');
+
+-- recreate this so that test output for further tests does not change
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "x": "text" }, "name": "x_1", "weights": { "x": 10, "y": 1 } } ] }', TRUE);
+
 -- Test TSQuery generation.
 SELECT helio_api_internal.bson_query_to_tsquery('{ "$search": "\"ssl certificate\"" }'::helio_core.bson);
 

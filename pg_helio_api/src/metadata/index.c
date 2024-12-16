@@ -1702,9 +1702,16 @@ GetIndexBuildStatusFromIndexQueue(int indexId)
  * Merges the weights field with the set of paths used in the key declaration.
  * If the path is there, it updates the weight. Otherwise, adds the weight
  * as a new path.
+ * Wildcard weights need special handling. When merging weights, if we are
+ * building the model definition (an IndexDef struct), then we do not add the
+ * wildcard to the weights. This is because the IndexDef is used to construct
+ * the index options, where the wildcard is represented by a 'iswildcard' boolean.
+ * If we get called from SerializeIndexSpec, then we want to maintain fidelity with
+ * the spec. So we add the wildcard to the weights.
  */
 List *
-MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights, bool *isWildCard)
+MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights, bool *isWildCard,
+					  bool includeWildCardInWeights)
 {
 	if (weights->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -1718,15 +1725,20 @@ MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights, bool *isWi
 	{
 		const char *weightPath = bson_iter_key(&weightsIter);
 		const bson_value_t *currentValue = bson_iter_value(&weightsIter);
+		bool isWeightWildCard = false;
 		if (!BsonValueIsNumber(currentValue))
 		{
 			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDINDEXSPECIFICATIONOPTION),
 							errmsg("weight for text index needs numeric type")));
 		}
 
-		if (isWildCard != NULL && strcmp(weightPath, "$**") == 0)
+		if (strcmp(weightPath, "$**") == 0)
 		{
-			*isWildCard = true;
+			isWeightWildCard = true;
+			if (isWildCard != NULL)
+			{
+				*isWildCard = true;
+			}
 		}
 
 		double weight = BsonValueAsDouble(currentValue);
@@ -1747,7 +1759,7 @@ MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights, bool *isWi
 			}
 		}
 
-		if (!found)
+		if (!found && (includeWildCardInWeights || !isWeightWildCard))
 		{
 			TextIndexWeights *weightEntry = palloc0(sizeof(TextIndexWeights));
 			weightEntry->path = weightPath;
@@ -2012,9 +2024,11 @@ SerializeIndexSpec(const IndexSpec *indexSpec, bool isGetIndexes,
 				if (StringViewEqualsCString(&keyView, "weights"))
 				{
 					bool isWildCardIgnore = false;
+					bool includeWildCardInWeights = true;
 					textColumns = MergeTextIndexWeights(textColumns, bson_iter_value(
 															&optionsIter),
-														&isWildCardIgnore);
+														&isWildCardIgnore,
+														includeWildCardInWeights);
 				}
 				else if (StringViewEqualsCString(&keyView, "language_override"))
 				{

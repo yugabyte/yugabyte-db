@@ -205,7 +205,7 @@ void DeleteAllCollectionIndexRecords(uint64 collectionId);
 void DeleteCollectionIndexRecord(uint64 collectionId, int indexId);
 
 List * MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights,
-							 bool *isWildCard);
+							 bool *isWildCard, bool includeWildCardInWeights);
 
 /*
  * An equivalency for Index Specifications.

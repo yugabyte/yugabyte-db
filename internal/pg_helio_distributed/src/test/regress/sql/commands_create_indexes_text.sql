@@ -73,6 +73,43 @@ SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_
 \d helio_data.documents_6770
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
 
+-- more tests with wildcard text indexes
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "$**": "text", "a": "text" }, "name": "idx1" }]}', true);
+SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+\d helio_data.documents_6770
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "a": "text", "$**": "text" }, "name": "idx1" }]}', true);
+SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+\d helio_data.documents_6770
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "a": "text" }, "name": "idx1", "weights": { "$**": 1 } }]}', true);
+SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+\d helio_data.documents_6770
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "a": "text" }, "name": "idx1", "weights": { "$**": 1, "b": 2 } }]}', true);
+SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+\d helio_data.documents_6770
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "a": "text" }, "name": "idx1", "weights": { "b": 2, "$**": 1 } }]}', true);
+SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+\d helio_data.documents_6770
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "a": "text", "$**": "text" }, "name": "idx1", "weights": { "b": 2 } }]}', true);
+SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+\d helio_data.documents_6770
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "$**": "text" }, "name": "idx1", "default_language": "es" } ] }', true);
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
 \d helio_data.documents_6770

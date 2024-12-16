@@ -2000,9 +2000,11 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 	{
 		/* Wildcard for text can come via weights */
 		bool isTextWildcard = false;
+		bool includeWildCardInWeights = false;
 		bson_value_t docValue = ConvertPgbsonToBsonValue(indexDef->weightsDocument);
 		indexDef->key->textPathList = MergeTextIndexWeights(indexDef->key->textPathList,
-															&docValue, &isTextWildcard);
+															&docValue, &isTextWildcard,
+															includeWildCardInWeights);
 		if (isTextWildcard)
 		{
 			/* Find the text index */
@@ -2532,16 +2534,6 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 									"Index key contains an illegal field name: field name starts with '$'.")));
 			}
 
-			if (!wildcardOnWholeDocument)
-			{
-				TextIndexWeights *textWeight = palloc0(sizeof(TextIndexWeights));
-				textWeight->path = keyPath;
-				textWeight->weight = 1.0;
-
-				indexDefKey->textPathList = lappend(indexDefKey->textPathList,
-													textWeight);
-			}
-
 			/* We only add the first key - the rest are tracked within the index itself. */
 			if (lastIndexKind == MongoIndexKind_Text)
 			{
@@ -2551,6 +2543,41 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			{
 				/* We always add the first text key (even if it's the root wildcard) */
 				addIndexKey = true;
+			}
+
+			if (!wildcardOnWholeDocument)
+			{
+				TextIndexWeights *textWeight = palloc0(sizeof(TextIndexWeights));
+				textWeight->path = keyPath;
+				textWeight->weight = 1.0;
+
+				indexDefKey->textPathList = lappend(indexDefKey->textPathList,
+													textWeight);
+			}
+			else
+			{
+				/* For text indexes we only add the first key, and the other
+				 * keys are tracked in the weights/textPathList. However, a
+				 * wildcard text index on the root, if it appears in the key
+				 * document *and* is not the first key, will need special
+				 * handling. We do not add the wildcard index into either the
+				 * textPathList or the keyPathList. However, when we construct
+				 * the index options, we check the wildcard flag on the index
+				 * key path. So here we iterate the keyPathList, and set the
+				 * wildcard flag on the first text index we find. Indeed this is
+				 * the only text index we will find on the keyPathList if a text
+				 * index is specified in the key document.
+				 */
+				ListCell *keyPathCell = NULL;
+				foreach(keyPathCell, indexDefKey->keyPathList)
+				{
+					IndexDefKeyPath *keyPath = lfirst(keyPathCell);
+					if (keyPath->indexKind == MongoIndexKind_Text)
+					{
+						keyPath->isWildcard = true;
+						break;
+					}
+				}
 			}
 		}
 
