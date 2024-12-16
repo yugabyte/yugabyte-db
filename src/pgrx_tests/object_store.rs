@@ -2,6 +2,7 @@
 mod tests {
     use std::io::Write;
 
+    use aws_config::BehaviorVersion;
     use pgrx::{pg_test, Spi};
 
     use crate::pgrx_tests::common::TestTable;
@@ -31,11 +32,13 @@ mod tests {
         std::env::remove_var("AWS_SECRET_ACCESS_KEY");
         let region = std::env::var("AWS_REGION").unwrap();
         std::env::remove_var("AWS_REGION");
+        let endpoint = std::env::var("AWS_ENDPOINT_URL").unwrap();
+        std::env::remove_var("AWS_ENDPOINT_URL");
 
         // create a config file
         let aws_config_file_content = format!(
-            "[profile pg_parquet_test]\nregion = {}\naws_access_key_id = {}\naws_secret_access_key = {}\n",
-            region, access_key_id, secret_access_key
+            "[profile pg_parquet_test]\nregion = {}\naws_access_key_id = {}\naws_secret_access_key = {}\nendpoint_url = {}\n",
+            region, access_key_id, secret_access_key, endpoint
         );
         std::env::set_var("AWS_PROFILE", "pg_parquet_test");
 
@@ -154,15 +157,78 @@ mod tests {
     }
 
     #[pg_test]
-    #[should_panic(expected = "404 Not Found")]
-    fn test_s3_object_store_read_invalid_uri() {
-        let s3_uri = "s3://randombucketwhichdoesnotexist/pg_parquet_test.parquet";
+    fn test_s3_object_store_with_temporary_token() {
+        let tokio_rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap_or_else(|e| panic!("failed to create tokio runtime: {}", e));
 
-        let create_table_command = "CREATE TABLE test_table (a int);";
-        Spi::run(create_table_command).unwrap();
+        let s3_uri = tokio_rt.block_on(async {
+            let config = aws_config::load_defaults(BehaviorVersion::v2024_03_28()).await;
+            let client = aws_sdk_sts::Client::new(&config);
 
-        let copy_from_command = format!("COPY test_table FROM '{}';", s3_uri);
-        Spi::run(copy_from_command.as_str()).unwrap();
+            let assume_role_result = client
+                .assume_role()
+                .role_session_name("testsession")
+                .role_arn("arn:xxx:xxx:xxx:xxxx")
+                .send()
+                .await
+                .unwrap();
+
+            let assumed_creds = assume_role_result.credentials().unwrap();
+
+            std::env::set_var("AWS_ACCESS_KEY_ID", assumed_creds.access_key_id());
+            std::env::set_var("AWS_SECRET_ACCESS_KEY", assumed_creds.secret_access_key());
+            std::env::set_var("AWS_SESSION_TOKEN", assumed_creds.session_token());
+
+            let test_bucket_name: String =
+                std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+
+            format!("s3://{}/pg_parquet_test.parquet", test_bucket_name)
+        });
+
+        let test_table = TestTable::<i32>::new("int4".into()).with_uri(s3_uri);
+
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "403 Forbidden")]
+    fn test_s3_object_store_with_missing_temporary_token_fail() {
+        let tokio_rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap_or_else(|e| panic!("failed to create tokio runtime: {}", e));
+
+        let s3_uri = tokio_rt.block_on(async {
+            let config = aws_config::load_defaults(BehaviorVersion::v2024_03_28()).await;
+            let client = aws_sdk_sts::Client::new(&config);
+
+            let assume_role_result = client
+                .assume_role()
+                .role_session_name("testsession")
+                .role_arn("arn:xxx:xxx:xxx:xxxx")
+                .send()
+                .await
+                .unwrap();
+
+            let assumed_creds = assume_role_result.credentials().unwrap();
+
+            // we do not set the session token on purpose
+            std::env::set_var("AWS_ACCESS_KEY_ID", assumed_creds.access_key_id());
+            std::env::set_var("AWS_SECRET_ACCESS_KEY", assumed_creds.secret_access_key());
+
+            let test_bucket_name: String =
+                std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+
+            format!("s3://{}/pg_parquet_test.parquet", test_bucket_name)
+        });
+
+        let test_table = TestTable::<i32>::new("int4".into()).with_uri(s3_uri);
+
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
     }
 
     #[pg_test]

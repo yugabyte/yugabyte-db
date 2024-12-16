@@ -23,10 +23,12 @@ services:
     env_file:
       - .env
     network_mode: host
-    command: server /data
+    entrypoint: "./entrypoint.sh"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "http://localhost:9000"]
       interval: 6s
       timeout: 2s
       retries: 3
+    volumes:
+      - ./minio-entrypoint.sh:/entrypoint.sh

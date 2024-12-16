@@ -5,6 +5,7 @@ use pgrx::{prelude::*, GucContext, GucFlags, GucRegistry};
 mod arrow_parquet;
 mod parquet_copy_hook;
 mod parquet_udfs;
+#[cfg(any(test, feature = "pg_test"))]
 mod pgrx_tests;
 mod pgrx_utils;
 mod type_compat;

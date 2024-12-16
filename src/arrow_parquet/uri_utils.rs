@@ -1,11 +1,7 @@
 use std::{sync::Arc, sync::LazyLock};
 
 use arrow::datatypes::SchemaRef;
-use aws_config::{
-    environment::{EnvironmentVariableCredentialsProvider, EnvironmentVariableRegionProvider},
-    meta::{credentials::CredentialsProviderChain, region::RegionProviderChain},
-    profile::{ProfileFileCredentialsProvider, ProfileFileRegionProvider},
-};
+use aws_config::BehaviorVersion;
 use aws_credential_types::provider::ProvideCredentials;
 use object_store::{
     aws::{AmazonS3, AmazonS3Builder},
@@ -89,51 +85,43 @@ fn object_store_with_location(uri: &Url, copy_from: bool) -> (Arc<dyn ObjectStor
     }
 }
 
+// get_s3_object_store creates an AmazonS3 object store with the given bucket name.
+// It is configured by environment variables and aws config files as fallback method.
+// We need to read the config files to make the fallback method work since object_store
+// does not provide a way to read them. Currently, we only support to extract
+// "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_ENDPOINT_URL",
+// and "AWS_REGION" from the config files.
 async fn get_s3_object_store(bucket_name: &str) -> AmazonS3 {
-    let mut aws_s3_builder = AmazonS3Builder::new().with_bucket_name(bucket_name);
+    let mut aws_s3_builder = AmazonS3Builder::from_env().with_bucket_name(bucket_name);
 
-    let is_test_running = std::env::var("PG_PARQUET_TEST").is_ok();
+    // first tries environment variables and then the config files
+    let sdk_config = aws_config::defaults(BehaviorVersion::v2024_03_28())
+        .load()
+        .await;
 
-    if is_test_running {
-        // use minio for testing
-        aws_s3_builder = aws_s3_builder.with_endpoint("http://localhost:9000");
-        aws_s3_builder = aws_s3_builder.with_allow_http(true);
-    }
+    if let Some(credential_provider) = sdk_config.credentials_provider() {
+        if let Ok(credentials) = credential_provider.provide_credentials().await {
+            // AWS_ACCESS_KEY_ID
+            aws_s3_builder = aws_s3_builder.with_access_key_id(credentials.access_key_id());
 
-    let aws_profile_name = std::env::var("AWS_PROFILE").unwrap_or("default".to_string());
+            // AWS_SECRET_ACCESS_KEY
+            aws_s3_builder = aws_s3_builder.with_secret_access_key(credentials.secret_access_key());
 
-    let region_provider = RegionProviderChain::first_try(EnvironmentVariableRegionProvider::new())
-        .or_else(
-            ProfileFileRegionProvider::builder()
-                .profile_name(aws_profile_name.clone())
-                .build(),
-        );
-
-    let region = region_provider.region().await;
-
-    if let Some(region) = region {
-        aws_s3_builder = aws_s3_builder.with_region(region.to_string());
-    }
-
-    let credential_provider = CredentialsProviderChain::first_try(
-        "Environment",
-        EnvironmentVariableCredentialsProvider::new(),
-    )
-    .or_else(
-        "Profile",
-        ProfileFileCredentialsProvider::builder()
-            .profile_name(aws_profile_name)
-            .build(),
-    );
-
-    if let Ok(credentials) = credential_provider.provide_credentials().await {
-        aws_s3_builder = aws_s3_builder.with_access_key_id(credentials.access_key_id());
-
-        aws_s3_builder = aws_s3_builder.with_secret_access_key(credentials.secret_access_key());
-
-        if let Some(token) = credentials.session_token() {
-            aws_s3_builder = aws_s3_builder.with_token(token);
+            if let Some(token) = credentials.session_token() {
+                // AWS_SESSION_TOKEN
+                aws_s3_builder = aws_s3_builder.with_token(token);
+            }
         }
+    }
+
+    // AWS_ENDPOINT_URL
+    if let Some(aws_endpoint_url) = sdk_config.endpoint_url() {
+        aws_s3_builder = aws_s3_builder.with_endpoint(aws_endpoint_url);
+    }
+
+    // AWS_REGION
+    if let Some(aws_region) = sdk_config.region() {
+        aws_s3_builder = aws_s3_builder.with_region(aws_region.as_ref());
     }
 
     aws_s3_builder.build().unwrap_or_else(|e| panic!("{}", e))

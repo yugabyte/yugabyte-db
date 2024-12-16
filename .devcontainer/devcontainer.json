@@ -3,7 +3,6 @@
     "dockerComposeFile": "docker-compose.yml",
     "service": "app",
     "workspaceFolder": "/workspace",
-    "postStartCommand": "bash .devcontainer/create-test-buckets.sh",
     "postAttachCommand": "sudo chown -R rust /workspace",
     "customizations": {
         "vscode": {
