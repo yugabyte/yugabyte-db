@@ -379,6 +379,11 @@ get_cheapest_path_for_pathkeys(List *paths, List *pathkeys,
 		if (require_parallel_safe && !path->parallel_safe)
 			continue;
 
+		if (matched_path != NULL && yb_prefer_bnl &&
+			YB_PATH_NEEDS_BATCHED_RELS(matched_path)
+			&& !YB_PATH_NEEDS_BATCHED_RELS(path))
+			continue;
+
 		if (pathkeys_contained_in(pathkeys, path->pathkeys) &&
 			bms_is_subset(PATH_REQ_OUTER(path), required_outer))
 			matched_path = path;
