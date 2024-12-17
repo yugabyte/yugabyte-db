@@ -2998,6 +2998,9 @@ typedef struct LockRowsState
 	PlanState	ps;				/* its first field is NodeTag */
 	List	   *lr_arowMarks;	/* List of ExecAuxRowMarks */
 	EPQState	lr_epqstate;	/* for evaluating EvalPlanQual rechecks */
+
+	bool 		yb_are_row_marks_for_yb_rels; /* lr_arowMarks relates to YB
+											   * relations */
 } LockRowsState;
 
 /* ----------------
