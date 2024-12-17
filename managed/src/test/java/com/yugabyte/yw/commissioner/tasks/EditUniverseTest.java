@@ -64,6 +64,7 @@ import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.master.CatalogEntityInfo;
@@ -218,9 +219,12 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
-
       when(mockClient.getLoadMoveCompletion())
           .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+      ListLiveTabletServersResponse mockListLiveTabletServersResponse =
+          mock(ListLiveTabletServersResponse.class);
+      when(mockListLiveTabletServersResponse.getTabletServers()).thenReturn(new ArrayList<>());
+      when(mockClient.listLiveTabletServers()).thenReturn(mockListLiveTabletServersResponse);
     } catch (Exception e) {
       fail();
     }
