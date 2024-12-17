@@ -124,7 +124,7 @@ The [Prometheus](https://prometheus.io/docs/introduction/overview/) integration 
 
 - Prometheus instance
   - Deployed in a VPC on AWS or GCP.
-  - [OLTP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled.
+  - [OTLP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled.
   - Publicly-accessible endpoint URL that resolves to the private IP of the Prometheus instance.
 
     The DNS for the endpoint must be in a publicly accessible DNS record, allowing it to resolve globally. This typically involves adding the URL to a public DNS zone. For example, in AWS, this would mean adding the URL to a Public Hosted Zone in Route 53. To confirm that the address is publicly resolvable, you can use a tool like nslookup.
