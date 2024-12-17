@@ -2252,10 +2252,11 @@ Status get_xcluster_safe_time_action(
   return PrintJsonResult(client->GetXClusterSafeTime(include_lag_and_skew));
 }
 
-const auto create_xcluster_checkpoint_args = "<replication_group_id> <namespace_names>";
+const auto create_xcluster_checkpoint_args =
+    "<replication_group_id> <namespace_names> [automatic_ddl_mode]";
 Status create_xcluster_checkpoint_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() != 2) {
+  if (args.size() != 2 && args.size() != 3) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
@@ -2270,8 +2271,13 @@ Status create_xcluster_checkpoint_action(
     namespace_ids.push_back(namespace_info.id());
   }
 
-  RETURN_NOT_OK(
-      client->XClusterClient().CreateOutboundReplicationGroup(replication_group_id, namespace_ids));
+  if (args.size() == 3 && !IsEqCaseInsensitive(args[2], "automatic_ddl_mode")) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  bool automatic_ddl_mode = args.size() == 3;
+
+  RETURN_NOT_OK(client->XClusterClient().CreateOutboundReplicationGroup(
+      replication_group_id, namespace_ids, automatic_ddl_mode));
 
   std::cout << "Waiting for checkpointing of database(s) to complete" << std::endl << std::endl;
 

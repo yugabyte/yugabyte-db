@@ -808,16 +808,13 @@ TEST_F(XClusterDBScopedTest, DeleteWhenSourceIsDown) {
         "already included in replication group");
   }
 
-  TEST_F_EX(XClusterDBScopedTest, TestYbAdmin, XClusterDBScopedTestWithTwoDBs) {
-    // TODO: replace this once there is a way to use automatic mode with ybadmin.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_automatic_ddl_replication_mode) =
-        UseAutomaticMode();
-
+  TEST_F_EX(XClusterDBScopedTest, TestYbAdmin, XClusterDBScopedTestWithTwoDBsAutomaticDDLMode) {
     ASSERT_OK(SetUpClusters());
 
     // Create replication with 1 db.
     auto result = ASSERT_RESULT(CallAdmin(
-        producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name));
+        producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name,
+        "automatic_ddl_mode"));
     ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
 
     result = ASSERT_RESULT(CallAdmin(
@@ -828,6 +825,9 @@ TEST_F(XClusterDBScopedTest, DeleteWhenSourceIsDown) {
     ASSERT_OK(CallAdmin(
         producer_cluster(), "setup_xcluster_replication", kReplicationGroupId,
         target_master_address));
+
+    // The extension should exist on both sides with all the tables.
+    ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name));
 
     result =
         ASSERT_RESULT(CallAdmin(producer_cluster(), "list_xcluster_outbound_replication_groups"));
@@ -914,9 +914,11 @@ TEST_F(XClusterDBScopedTest, DeleteWhenSourceIsDown) {
         VerifyUniverseReplication(&resp), "Could not find xCluster replication group");
 
     ASSERT_NOK_STR_CONTAINS(GetAllXClusterStreams(source_namespace_id), "Not found");
+    ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name));
 
     result = ASSERT_RESULT(CallAdmin(
-        producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name));
+        producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name,
+        "automatic_ddl_mode"));
     ASSERT_STR_CONTAINS(result, "Bootstrap is required");
   }
 
