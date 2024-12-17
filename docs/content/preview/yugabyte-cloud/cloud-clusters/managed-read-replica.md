@@ -3,7 +3,7 @@ title: Read replicas in YugabyteDB Aeon
 headerTitle: Read replicas
 linkTitle: Read replicas
 description: Add read replicas to YugabyteDB Aeon clusters.
-headcontent: Reduce read latencies in remote regions
+headcontent: Reduce read latencies in geographically distributed regions
 menu:
   preview_yugabyte-cloud:
     identifier: managed-readreplica

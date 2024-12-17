@@ -1,7 +1,7 @@
 ---
 title: Distributed Data modeling
 linkTitle: Data modeling
-description: Learn to develop YugabyteDB applications
+description: Data modeling in a distributed database
 menu:
   v2024.1:
     identifier: data-modeling

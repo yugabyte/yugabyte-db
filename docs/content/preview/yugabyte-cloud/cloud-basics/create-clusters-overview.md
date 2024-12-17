@@ -204,7 +204,7 @@ If you identify a performance problem or regression with an update, set an exclu
 
 ### Backups
 
-YugabyteDB Aeon provides a default recommended backup schedule (daily, with 8 day retention), and manages backups for you. You can [change the default schedule](../../cloud-clusters/backup-clusters/#schedule-backups), as well as perform [on-demand backups](../../cloud-clusters/backup-clusters/#on-demand-backups).
+YugabyteDB Aeon provides a default recommended backup schedule (daily, with 8 day retention), and manages backups for you. You can [change the default schedule](../../cloud-clusters/backup-clusters/#manage-scheduled-backups), as well as perform [on-demand backups](../../cloud-clusters/backup-clusters/#on-demand-backups).
 
 YugabyteDB Aeon performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster.
 

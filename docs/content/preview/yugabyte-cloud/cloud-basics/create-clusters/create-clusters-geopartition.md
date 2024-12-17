@@ -57,7 +57,7 @@ To create a partition-by-region cluster, on the **Clusters** page, click **Add C
 
 The **Create Cluster** wizard has the following pages:
 
-1. [General Settings](#general-settings)
+1. [General Settings](#general-and-database-settings)
 1. [Cluster Setup](#cluster-setup)
 1. [Network Access](#network-access)
 1. [Security](#security)
