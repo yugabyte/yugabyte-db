@@ -158,7 +158,7 @@ CreateSharedMemoryAndSemaphores(int port)
 		size = add_size(size, ShmemBackendArraySize());
 #endif
 
-		if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+		if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
 			size = add_size(size, YbAshShmemSize());
 
 		if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
@@ -278,7 +278,7 @@ CreateSharedMemoryAndSemaphores(int port)
 	AsyncShmemInit();
 	BackendRandomShmemInit();
 
-	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
 		YbAshShmemInit();
 
 	if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())

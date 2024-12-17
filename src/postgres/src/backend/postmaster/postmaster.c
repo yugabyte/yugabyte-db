@@ -1048,7 +1048,7 @@ PostmasterMain(int argc, char *argv[])
 		YbQueryDiagnosticsBgWorkerRegister(); 
 
 	/* Register ASH collector */
-	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
 		YbAshRegister();
 
 	/*

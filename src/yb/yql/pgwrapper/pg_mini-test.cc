@@ -124,7 +124,6 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 
-DECLARE_bool(ysql_yb_ash_enable_infra);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_int32(ysql_yb_ash_sample_size);
 

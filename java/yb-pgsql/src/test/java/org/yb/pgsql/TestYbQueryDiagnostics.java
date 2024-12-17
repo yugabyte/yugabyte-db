@@ -65,13 +65,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         flagMap.put("TEST_yb_enable_query_diagnostics", "true");
         /* Enable ASH for active_session_history.csv */
         if (isTestRunningWithConnectionManager()) {
-            flagMap.put("allowed_preview_flags_csv",
-                    "ysql_yb_ash_enable_infra,ysql_yb_enable_ash,enable_ysql_conn_mgr");
-        } else {
-            flagMap.put("allowed_preview_flags_csv",
-                        "ysql_yb_ash_enable_infra,ysql_yb_enable_ash");
+            flagMap.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
         }
-        flagMap.put("ysql_yb_ash_enable_infra", "true");
         flagMap.put("ysql_yb_enable_ash", "true");
         flagMap.put("ysql_yb_ash_sampling_interval_ms",
                     String.valueOf(ASH_SAMPLING_INTERVAL_MS));

@@ -34,7 +34,6 @@
 
 using namespace std::literals;
 
-DECLARE_bool(ysql_yb_ash_enable_infra);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_int32(ysql_yb_ash_sample_size);
 DECLARE_int32(ysql_yb_ash_sampling_interval_ms);
@@ -121,7 +120,6 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_slow_query_threshold_ms) = kTimeMultiplier * 10000;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ash_enable_infra) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ash) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_export_wait_state_names) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ash_fetch_wait_states_for_raft_log) = true;

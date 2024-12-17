@@ -936,10 +936,8 @@ RemoveExpiredEntries()
 					goto removeEntry;
 
 				/* Dump ASH */
-				if (yb_ash_enable_infra)
+				if (yb_enable_ash)
 				{
-					Assert(yb_enable_ash);
-
 					StringInfoData ash_buffer;
 					initStringInfo(&ash_buffer);
 
