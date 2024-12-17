@@ -29,7 +29,7 @@ Usage: ybm cluster db-query-logging [command] [flags]
 
 ## Examples
 
-Enable a database query-logging for a cluster:
+Enable database query logging for a cluster:
 
 ```sh
 ybm cluster db-query-logging enable \
@@ -70,13 +70,13 @@ $ ybm cluster db-query-logging update \
 
 ### enable
 
-Enables database query logs for a cluster and exports them to integration passed in flag `--integration-name`.
+Enable database query logging for a cluster and export the logs to the integration passed in the flag `--integration-name`.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. Name of the cluster whose database logging you want to disable. |
-| --integration-name | Required. Name of the Integration. |
-| --debug-print-plan | Optional. Enables various debugging output to be emitted. Default is `"false"`. |
+| --cluster-name | Required. Name of the cluster whose database logging you want to enable. |
+| --integration-name | Required. Name of the integration that you want to use to export the logs. |
+| --debug-print-plan | Optional. Enables output of debugging output. Default is `"false"`. |
 | --log-min-duration-statement | Optional. Duration (in ms) of each completed statement to be logged if the statement ran for at least the specified amount of time. Default is `-1` (log all statements). |
 | --log-connections | Optional. Log connection attempts. Default is `"false"`. |
 | --log-disconnections | Optional. Log session disconnections. Default is `"false"`. |
@@ -88,7 +88,7 @@ Enables database query logs for a cluster and exports them to integration passed
 
 ### disable
 
-Disable database query logs for a cluster.
+Disable database query logging for a cluster.
 
 | Flag | Description |
 | :--- | :--- |
@@ -97,21 +97,21 @@ Disable database query logs for a cluster.
 
 ### Describe
 
-Fetch detailed information about a logging configuration for a cluster
+Fetch detailed information about the logging configuration for a cluster.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. Name of the cluster database query logging configuration you want to fetch. |
+| --cluster-name | Required. Name of the cluster for which you want to fetch the database query logging configuration. |
 
 ### update
 
-Update a database query logging configuration of a cluster.
+Update the database query logging configuration of a cluster.
 
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. Name of the cluster with database query logging config you want to update. |
-| --debug-print-plan | Optional. Enables various debugging output to be emitted. |
+| --cluster-name | Required. Name of the cluster with database query logging configuration you want to update. |
+| --debug-print-plan | Optional. Enables output of debugging output. |
 | -h, --help | Help for update. |
 | --integration-name | Optional. Name of the Integration. |
 | --log-connections | Optional. Log connection attempts. |
