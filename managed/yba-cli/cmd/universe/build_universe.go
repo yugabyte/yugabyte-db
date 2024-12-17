@@ -155,6 +155,11 @@ func buildClusters(
 		}
 	}
 
+	imageBundleLen = len(imageBundleUUIDs)
+	for i := 0; i < noOfClusters-imageBundleLen; i++ {
+		imageBundleUUIDs = append(imageBundleUUIDs, "")
+	}
+
 	logrus.Info("Using image bundles: ", imageBundleUUIDs, "\n")
 
 	dedicatedNodes := v1.GetBool("dedicated-nodes")
