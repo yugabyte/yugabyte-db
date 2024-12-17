@@ -1,31 +1,31 @@
-## yba universe upgrade os
+## yba universe upgrade gflags set
 
-VM Linux OS patch for a YugabyteDB Anywhere Universe
+Set gflags for a YugabyteDB Anywhere Universe
 
 ### Synopsis
 
-VM Linux OS patch for a YugabyteDB Anywhere Universe. Supported only for universes of cloud type AWS, GCP and Azure. Triggers Rolling restart of all DB nodes.
+Set gflags for a YugabyteDB Anywhere Universe. Refer to https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/templates for structure of specific gflags file.
 
 ```
-yba universe upgrade os [flags]
+yba universe upgrade gflags set [flags]
 ```
 
 ### Examples
 
 ```
-yba universe upgrade os --name <universe-name> \
-		--primary-linux-version <image-bundle-name-in-provider> 
+yba universe upgrade gflags set -n <universe-name> \
+	--specific-gflags-file-path <file-path>
 ```
 
 ### Options
 
 ```
-      --primary-linux-version string         [Required] Primary cluster linux OS version name to be applied as listed in the provider.
-      --inherit-from-primary                 [Optional] Apply the same linux OS version of primary cluster to read replica cluster. (default true)
-      --rr-linux-version string              [Optional] Read replica cluster linux OS version name to be applied. Ignored if inherit-from-primary is set to true.
+      --specific-gflags string               [Optional] Specific gflags to be set. Use the modified output of "yba universe upgrade gflags get" command as the flag value. Quote the string with single quotes. Provider either specific-gflags or specific-gflags-file-path
+      --specific-gflags-file-path string     [Optional] Path to modified json output file of "yba universe upgrade gflags get" command. Provider either specific-gflags or specific-gflags-file-path
+      --upgrade-option string                [Optional] Upgrade Options, defaults to Rolling. Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime), Non-Restart (default "Rolling")
       --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). (default 18000)
       --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). (default 18000)
-  -h, --help                                 help for os
+  -h, --help                                 help for set
 ```
 
 ### Options inherited from parent commands
@@ -47,5 +47,5 @@ yba universe upgrade os --name <universe-name> \
 
 ### SEE ALSO
 
-* [yba universe upgrade](yba_universe_upgrade.md)	 - Upgrade a YugabyteDB Anywhere universe
+* [yba universe upgrade gflags](yba_universe_upgrade_gflags.md)	 - Gflags upgrade for a YugabyteDB Anywhere Universe
 

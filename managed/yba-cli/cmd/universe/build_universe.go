@@ -12,7 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -488,14 +488,16 @@ func buildClusters(
 
 	userTagsMap := v1.GetStringMapString("user-tags")
 
+	specificGFlagsList := make([]ybaclient.SpecificGFlags, 2)
+
 	masterGFlagsString := v1.GetString("master-gflags")
 	var masterGFlags map[string]string
 	if len(strings.TrimSpace(masterGFlagsString)) > 0 {
 		if strings.HasPrefix(strings.TrimSpace(masterGFlagsString), "{") {
-			masterGFlags = upgrade.ProcessMasterGflagsJSONString(masterGFlagsString)
+			masterGFlags = universeutil.ProcessMasterGflagsJSONString(masterGFlagsString)
 		} else {
 			// Assume YAML format
-			masterGFlags = upgrade.ProcessMasterGflagsYAMLString(masterGFlagsString)
+			masterGFlags = universeutil.ProcessMasterGflagsYAMLString(masterGFlagsString)
 		}
 	} else {
 		masterGflagsMap := v1.GetStringMapString("master-gflags")
@@ -505,15 +507,28 @@ func buildClusters(
 		}
 	}
 
+	for i := 0; i < noOfClusters; i++ {
+		specificGFlags := ybaclient.SpecificGFlags{
+			InheritFromPrimary: util.GetBoolPointer(false),
+			PerProcessFlags: &ybaclient.PerProcessFlags{
+				Value: map[string]map[string]string{
+					util.MasterServerType: masterGFlags,
+				},
+			},
+		}
+		specificGFlagsList[i] = specificGFlags
+	}
+
 	var tserverGflagsMapOfMaps map[string]map[string]string
 	if strings.TrimSpace(tserverGflagsString) != "" {
-		if err := upgrade.ProcessTServerGFlagsFromString(tserverGflagsString, &tserverGflagsMapOfMaps); err != nil {
+		if err := universeutil.ProcessTServerGFlagsFromString(
+			tserverGflagsString, &tserverGflagsMapOfMaps); err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 	} else {
 		tserverGflags := v1.GetStringMap("tserver-gflags")
 		if len(tserverGflags) != 0 {
-			tserverGflagsMapOfMaps = upgrade.ProcessTServerGFlagsFromConfig(tserverGflags)
+			tserverGflagsMapOfMaps = universeutil.ProcessTServerGFlagsFromConfig(tserverGflags)
 			logrus.Debugf("TServer GFlags from config file: %v", tserverGflagsMapOfMaps)
 		}
 	}
@@ -522,12 +537,24 @@ func buildClusters(
 	for k, v := range tserverGflagsMapOfMaps {
 		if strings.Compare(strings.ToUpper(k), util.PrimaryClusterType) == 0 {
 			tserverGFlagsList[0] = v
+			perProcessFlags := specificGFlagsList[0].GetPerProcessFlags()
+			value := perProcessFlags.GetValue()
+			value[util.TserverServerType] = v
+			perProcessFlags.SetValue(value)
+			specificGFlagsList[0].SetPerProcessFlags(perProcessFlags)
 		} else if strings.Compare(
 			strings.ToUpper(k), util.ReadReplicaClusterType) == 0 {
 			if len(v) != 0 {
 				tserverGFlagsList[1] = v
+				perProcessFlags := specificGFlagsList[1].GetPerProcessFlags()
+				value := perProcessFlags.GetValue()
+				value[util.TserverServerType] = v
+				perProcessFlags.SetValue(value)
+				specificGFlagsList[1].SetPerProcessFlags(perProcessFlags)
+				specificGFlagsList[1].SetInheritFromPrimary(false)
 			} else {
 				tserverGFlagsList[1] = tserverGFlagsList[0]
+				specificGFlagsList[1].SetInheritFromPrimary(true)
 			}
 		} else {
 			logrus.Debug("Not a valid cluster type, ignoring value\n")
@@ -585,6 +612,7 @@ func buildClusters(
 				TserverGFlags:     util.StringtoStringMap(tserverGFlagsList[i]),
 				UniverseOverrides: util.GetStringPointer(k8sUniverseOverrides),
 				AzOverrides:       util.StringtoStringMap(k8sAZOverridesMap),
+				SpecificGFlags:    &specificGFlagsList[i],
 			},
 		}
 		if providerType == util.K8sProviderType {
