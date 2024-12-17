@@ -863,7 +863,7 @@ mod tests {
 
     #[pg_test]
     #[should_panic(
-        expected = "numeric value contains 23 digits before decimal point, which exceeds max allowed integral digits 22 during copy to parquet"
+        expected = "numeric value contains 30 digits before decimal point, which exceeds max allowed integral digits 29 during copy to parquet"
     )]
     fn test_invalid_unbounded_numeric_integral_digits() {
         let invalid_integral_digits =
@@ -879,7 +879,7 @@ mod tests {
 
     #[pg_test]
     #[should_panic(
-        expected = "numeric value contains 17 digits after decimal point, which exceeds max allowed decimal digits 16 during copy to parquet"
+        expected = "numeric value contains 10 digits after decimal point, which exceeds max allowed decimal digits 9 during copy to parquet"
     )]
     fn test_invalid_unbounded_numeric_decimal_digits() {
         let invalid_decimal_digits = DEFAULT_UNBOUNDED_NUMERIC_SCALE + 1;
