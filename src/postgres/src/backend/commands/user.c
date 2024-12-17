@@ -1604,6 +1604,16 @@ AddRoleMems(const char *rolename, Oid roleid,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser to set grantor")));
 
+	if (!superuser() && *YBCGetGFlags()->ysql_block_dangerous_roles &&
+		(roleid == ROLE_PG_EXECUTE_SERVER_PROGRAM ||
+		 roleid == ROLE_PG_READ_ALL_DATA ||
+		 roleid == ROLE_PG_READ_SERVER_FILES ||
+		 roleid == ROLE_PG_WRITE_ALL_DATA ||
+		 roleid == ROLE_PG_WRITE_SERVER_FILES))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("read/write data/files roles are disabled")));
+
 	pg_authmem_rel = table_open(AuthMemRelationId, RowExclusiveLock);
 	pg_authmem_dsc = RelationGetDescr(pg_authmem_rel);
 

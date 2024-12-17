@@ -405,6 +405,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     TEST_ysql_enable_db_logical_client_version_mode;
   const bool*     ysql_conn_mgr_superuser_sticky;
   const bool*     TEST_ysql_log_perdb_allocated_new_objectid;
+  const bool*     ysql_block_dangerous_roles;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

@@ -136,6 +136,11 @@ DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
+DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
+    "Block roles that can potentially be used to escalate to superuser privileges. Intended to be "
+    "used with superuser login disabled, such as in YBM. When true, this assumes those blocked "
+    "roles are not already in use.");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -2044,6 +2049,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
       .TEST_ysql_log_perdb_allocated_new_objectid =
           &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
+      .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
   };
   // clang-format on
   return &accessor;
