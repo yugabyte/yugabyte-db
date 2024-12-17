@@ -51,14 +51,45 @@ the following options:
 
 <div class="tab-content">
   <div id="github" class="tab-pane fade show active" role="tabpanel" aria-labelledby="github-tab">
-{{% readfile "./github.md" %}}
+
+Install sysbench using the following steps:
+
+```sh
+$ cd $HOME
+$ git clone https://github.com/yugabyte/sysbench.git
+$ cd sysbench
+$ ./autogen.sh && ./configure --with-pgsql && make -j && sudo make install
+```
+
+This installs the sysbench utility in `/usr/local/bin`.
+
+Make sure you have the [YSQL shell](../../api/ysqlsh/) `ysqlsh` exported to the `PATH` variable.
+
+```sh
+$ export PATH=$PATH:/path/to/ysqlsh
+```
+
   </div>
 
   <div id="rhel" class="tab-pane fade" role="tabpanel" aria-labelledby="rhel-tab">
-{{% readfile "./rhel.md" %}}
+
+```sh
+wget https://github.com/yugabyte/sysbench/releases/download/1.0.0-yb/sysbench-1.0.0-1.el8.x86_64.rpm
+
+sudo yum install -y sysbench-1.0.0-1.el8.x86_64.rpm 
+```
+
   </div>
   <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
-{{% readfile "./macos.md" %}}
+
+```sh
+brew install postgresql@14 wget
+
+wget https://github.com/yugabyte/sysbench/releases/download/1.0.0-yb/Sysbench.pkg
+
+sudo  installer -pkg Sysbench.pkg -target /
+```
+
   </div>
 
 </div>
