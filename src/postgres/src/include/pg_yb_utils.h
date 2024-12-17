@@ -717,6 +717,11 @@ extern bool yb_use_hash_splitting_by_default;
  */
 extern bool yb_enable_inplace_index_update;
 
+/*
+ * Enable the advisory lock feature.
+ */
+extern bool yb_enable_advisory_locks;
+
 typedef struct YBUpdateOptimizationOptions
 {
 	bool has_infra;
@@ -1005,7 +1010,7 @@ extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
 extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
 												GucSource source);
 extern void assign_yb_xcluster_consistency_level(const char *newval,
-												 void		*extra);
+												 void *extra);
 
 /*
  * Updates the session stats snapshot with the collected stats and copies the
@@ -1123,18 +1128,18 @@ OptSplit *YbGetSplitOptions(Relation rel);
 		YBCStatus _status = (status); \
 		if (_status) \
 		{ \
-			const int 		adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
-			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
-			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
-			const char	   *filename = YBCStatusFilename(_status); \
-			int				lineno = YBCStatusLineNumber(_status); \
-			const char	   *funcname = YBCStatusFuncname(_status); \
-			const char	   *msg_buf = NULL; \
-			const char	   *detail_buf = NULL; \
-			size_t		    msg_nargs = 0; \
-			size_t		    detail_nargs = 0; \
-			const char	  **msg_args = NULL; \
-			const char	  **detail_args = NULL; \
+			const int adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
+			const uint32_t pg_err_code = YBCStatusPgsqlError(_status); \
+			const uint16_t txn_err_code = YBCStatusTransactionError(_status); \
+			const char *filename = YBCStatusFilename(_status); \
+			int lineno = YBCStatusLineNumber(_status); \
+			const char *funcname = YBCStatusFuncname(_status); \
+			const char *msg_buf = NULL; \
+			const char *detail_buf = NULL; \
+			size_t msg_nargs = 0; \
+			size_t detail_nargs = 0; \
+			const char **msg_args = NULL; \
+			const char **detail_args = NULL; \
 			GetStatusMsgAndArgumentsByCode(pg_err_code, txn_err_code, _status, \
 										   &msg_buf, &msg_nargs, &msg_args, \
 										   &detail_buf, &detail_nargs, \

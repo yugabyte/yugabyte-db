@@ -290,7 +290,7 @@ bool
 IsYBRelationById(Oid relid)
 {
 	Relation relation     = RelationIdGetRelation(relid);
-	bool     is_supported = IsYBRelation(relation);
+	bool is_supported = IsYBRelation(relation);
 	RelationClose(relation);
 	return is_supported;
 }
@@ -335,7 +335,7 @@ AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation)
 
 AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
 {
-	Relation   relation = RelationIdGetRelation(relid);
+	Relation relation = RelationIdGetRelation(relid);
 	AttrNumber attr_num = YBGetFirstLowInvalidAttributeNumber(relation);
 	RelationClose(relation);
 	return attr_num;
@@ -371,11 +371,11 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 										AttrNumber minattr,
 										bool includeYBSystemColumns)
 {
-	Oid            dboid         = YBCGetDatabaseOid(rel);
-	int            natts         = RelationGetNumberOfAttributes(rel);
-	Bitmapset      *pkey         = NULL;
+	Oid dboid = YBCGetDatabaseOid(rel);
+	int natts = RelationGetNumberOfAttributes(rel);
+	Bitmapset *pkey = NULL;
 	YBCPgTableDesc ybc_tabledesc = NULL;
-	MemoryContext  oldctx;
+	MemoryContext oldctx;
 
 	/* Get the primary key columns 'pkey' from YugaByte. */
 	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetRelfileNodeId(rel),
@@ -482,8 +482,8 @@ YBRelHasSecondaryIndices(Relation relation)
 	if (!relation->rd_rel->relhasindex)
 		return false;
 
-	bool	 has_indices = false;
-	List	 *indexlist = RelationGetIndexList(relation);
+	bool has_indices = false;
+	List *indexlist = RelationGetIndexList(relation);
 	ListCell *lc;
 
 	foreach(lc, indexlist)
@@ -777,7 +777,7 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
 							   size_t *detail_nargs, const char ***detail_args)
 {
 	const char	*status_msg = YBCMessageAsCString(s);
-	size_t		 status_nargs;
+	size_t status_nargs;
 	const char **status_args = YBCStatusArguments(s, &status_nargs);
 
 
@@ -794,7 +794,7 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
 	switch(pg_err_code)
 	{
 		case ERRCODE_T_R_SERIALIZATION_FAILURE:
-			if(YBCIsTxnConflictError(txn_err_code))
+			if (YBCIsTxnConflictError(txn_err_code))
 			{
 				*msg_buf = "could not serialize access due to concurrent update";
 				*msg_nargs = 0;
@@ -804,7 +804,7 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
 				*detail_nargs = status_nargs;
 				*detail_args = status_args;
 			}
-			else if(YBCIsTxnAbortedError(txn_err_code))
+			else if (YBCIsTxnAbortedError(txn_err_code))
 			{
 				*msg_buf = "current transaction is expired or aborted";
 				*msg_nargs = 0;
@@ -904,7 +904,7 @@ YBCheckDefinedOids()
 typedef struct YbSessionStats
 {
 	YBCPgExecStatsState current_state;
-	YBCPgExecStats		latest_snapshot;
+	YBCPgExecStats latest_snapshot;
 } YbSessionStats;
 
 static YbSessionStats yb_session_stats = {0};
@@ -1484,7 +1484,7 @@ Oid
 YBCGetDatabaseOidByRelid(Oid relid)
 {
 	Relation relation    = RelationIdGetRelation(relid);
-	bool     relisshared = relation->rd_rel->relisshared;
+	bool relisshared = relation->rd_rel->relisshared;
 	RelationClose(relation);
 	return YBCGetDatabaseOidFromShared(relisshared);
 }
@@ -1636,6 +1636,7 @@ int yb_insert_on_conflict_read_batch_size = 1024;
 bool yb_enable_fkey_catcache = true;
 bool yb_enable_nop_alter_role_optimization = true;
 bool yb_enable_inplace_index_update = true;
+bool yb_enable_advisory_locks = false;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,
@@ -3013,7 +3014,7 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	size_t size = 0;
 	for (int i = 0; i < PG_NARGS(); i++)
 	{
-		Oid	argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
+		Oid argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
 
 		if (unlikely(argtype == UNKNOWNOID))
 		{
@@ -3050,7 +3051,7 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	size_t total_bytes = 0;
 	for (int i = 0; i < PG_NARGS(); i++)
 	{
-		Oid	argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
+		Oid argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
 		const YBCPgTypeEntity *typeentity =
 				 YbDataTypeFromOidMod(InvalidAttrNumber, argtype);
 		size_t written;
@@ -3203,7 +3204,7 @@ yb_database_clones(PG_FUNCTION_ARGS)
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 
-	YBCPgDatabaseCloneInfo	*database_clones_info = NULL;
+	YBCPgDatabaseCloneInfo *database_clones_info = NULL;
 	size_t		num_clones = 0;
 	HandleYBStatus(YBCDatabaseClones(&database_clones_info, &num_clones));
 
@@ -3264,10 +3265,10 @@ appendStringToString(StringInfo buf, const char *str, int encoding,
 					 bool use_quote_strategy_token)
 {
 	const char *s;
-	int			num_quotes = 0;
-	int			num_backslashes = 0;
-	int 		len = strlen(str);
-	int			input_len;
+	int num_quotes = 0;
+	int num_backslashes = 0;
+	int len = strlen(str);
+	int input_len;
 
 	/* Scan the string for characters that must be escaped. */
 	for (s = str; (s - str) < strlen(str) && *s != '\0'; ++s)
@@ -3346,7 +3347,7 @@ appendStringToString(StringInfo buf, const char *str, int encoding,
 				appendStringInfoChar(buf, *s);
 			else
 			{
-				int	charlen = pg_encoding_mblen(encoding, s);
+				int charlen = pg_encoding_mblen(encoding, s);
 
 				while (1)
 				{
@@ -3757,11 +3758,11 @@ const char*
 yb_fetch_current_transaction_priority(void)
 {
 	TxnPriorityRequirement txn_priority_type;
-	double				   txn_priority;
-	static char			   buf[50];
+	double txn_priority;
+	static char buf[50];
 
 	txn_priority_type = YBCGetTransactionPriorityType();
-	txn_priority	  = YBCGetTransactionPriority();
+	txn_priority = YBCGetTransactionPriority();
 
 	if (txn_priority_type == kHighestPriority)
 		snprintf(buf, sizeof(buf), "Highest priority transaction");
@@ -3967,7 +3968,7 @@ yb_local_tablets(PG_FUNCTION_ARGS)
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 
-	YBCPgTabletsDescriptor	*tablets = NULL;
+	YBCPgTabletsDescriptor *tablets = NULL;
 	size_t		num_tablets = 0;
 	HandleYBStatus(YBCLocalTablets(&tablets, &num_tablets));
 
@@ -4088,8 +4089,8 @@ yb_servers_metrics(PG_FUNCTION_ARGS)
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 
-	YBCPgServerMetricsInfo	*servers_metrics_info = NULL;
-	size_t		num_servers = 0;
+	YBCPgServerMetricsInfo *servers_metrics_info = NULL;
+	size_t num_servers = 0;
 	HandleYBStatus(YBCServersMetrics(&servers_metrics_info, &num_servers));
 
 	for (i = 0; i < num_servers; ++i)
@@ -4240,8 +4241,8 @@ YBComputeNonCSortKey(Oid collation_id, const char* value, int64_t bytes) {
 	buf1[buflen1] = '\0';
 
 #ifdef USE_ICU
-	int32_t		ulen = -1;
-	UChar		*uchar = NULL;
+	int32_t ulen = -1;
+	UChar *uchar = NULL;
 #endif
 
 #ifdef USE_ICU
@@ -4700,8 +4701,8 @@ void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
 bool
 parse_yb_read_time(const char *value, unsigned long long *result, bool* is_ht_unit)
 {
-	unsigned long long	val;
-	char	           *endptr;
+	unsigned long long val;
+	char *endptr;
 
 	if (is_ht_unit)
 	{
@@ -4758,7 +4759,7 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 	unsigned long long read_time_ull;
 	unsigned long long value_ull;
 	bool is_ht_unit;
-	if(!parse_yb_read_time(*newval, &value_ull, &is_ht_unit))
+	if (!parse_yb_read_time(*newval, &value_ull, &is_ht_unit))
 	{
 		return false;
 	}
@@ -4788,7 +4789,7 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 	struct timeval now_tv;
 	gettimeofday(&now_tv, NULL);
 	unsigned long long now_micro_sec = ((unsigned long long)now_tv.tv_sec * USECS_PER_SEC) + now_tv.tv_usec;
-	if(read_time_ull > now_micro_sec)
+	if (read_time_ull > now_micro_sec)
 	{
 		GUC_check_errdetail("Provided timestamp is in the future.");
 		return false;
@@ -4928,7 +4929,7 @@ static void
 refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 {
 	const YBCPgExecStats *current = &stats->current_state.stats;
-	YBCPgExecStats		 *old = &stats->latest_snapshot;
+	YBCPgExecStats *old = &stats->latest_snapshot;
 
 	old->tables = current->tables;
 	old->indices = current->indices;
@@ -5144,8 +5145,8 @@ bool YbIsColumnPartOfKey(Relation rel, const char *column_name)
 {
 	if (column_name)
 	{
-		Bitmapset  *pkey   = YBGetTablePrimaryKeyBms(rel);
-		HeapTuple  attTup =
+		Bitmapset *pkey = YBGetTablePrimaryKeyBms(rel);
+		HeapTuple attTup =
 			SearchSysCacheCopyAttName(RelationGetRelid(rel), column_name);
 		if (HeapTupleIsValid(attTup))
 		{
@@ -5244,8 +5245,8 @@ bool YbIsStickyConnection(int *change)
 
 void**
 YbPtrListToArray(const List* str_list, size_t* length) {
-	void		**buf;
-	ListCell	*lc;
+	void **buf;
+	ListCell *lc;
 
 	/* Assumes that the pointer sizes are equal for every type */
 	buf = (void **) palloc(sizeof(void *) * list_length(str_list));
@@ -5444,11 +5445,11 @@ void
 YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 						 bool yb_copy_split_options)
 {
-	bool		isNull;
-	HeapTuple	tuple;
-	Datum		reloptions = (Datum) 0;
-	Relation	indexedRel;
-	IndexInfo	*indexInfo;
+	bool isNull;
+	HeapTuple tuple;
+	Datum reloptions = (Datum) 0;
+	Relation indexedRel;
+	IndexInfo *indexInfo;
 
 	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(
 		RelationGetRelid(indexRel)));

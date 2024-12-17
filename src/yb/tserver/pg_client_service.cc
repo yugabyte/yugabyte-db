@@ -69,6 +69,7 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
@@ -306,6 +307,7 @@ class SessionInfo {
   static auto Make(rw_spinlock* txn_assignment_mutex,
                    CoarseDuration lifetime,
                    const TransactionBuilder& builder,
+                   const YsqlAdvisoryLocksTableProvider& advisory_locks_table_provider,
                    Args&&... args) {
     struct ConstructorAccessor : public SessionInfo {
       explicit ConstructorAccessor(rw_spinlock* txn_assignment_mutex)
@@ -318,6 +320,7 @@ class SessionInfo {
         [&builder, txn_assignment = &session_info->txn_assignment_](auto&&... builder_args) {
           return builder(txn_assignment, std::forward<decltype(builder_args)>(builder_args)...);
         },
+        advisory_locks_table_provider,
         accessor,
         std::forward<Args>(args)...);
     return std::shared_ptr<SessionInfo>(std::move(accessor), session_info);
@@ -497,10 +500,11 @@ class PgClientServiceImpl::Impl {
     auto session_id = ++session_serial_no_;
     auto session_info = SessionInfo::Make(
         &txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
-        FLAGS_pg_client_session_expiration_ms * 1ms,
-        transaction_builder_, session_id, &client(), clock_, &table_cache_, xcluster_context_,
-        pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_, shared_mem_pool_,
-        stats_exchange_response_size_, messenger_.scheduler());
+        FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_,
+        GetYsqlAdvisoryLocksTableFunc(),
+        session_id, &client(), clock_, &table_cache_,
+        xcluster_context_, pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_,
+        shared_mem_pool_, stats_exchange_response_size_, messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);
@@ -2096,6 +2100,24 @@ class PgClientServiceImpl::Impl {
       std::chrono::seconds(FLAGS_check_pg_object_id_allocators_interval_secs));
   }
 
+  YsqlAdvisoryLocksTableProvider GetYsqlAdvisoryLocksTableFunc() {
+    return [this]() -> YsqlAdvisoryLocksTable& { return *GetYsqlAdvisoryLocksTable(); };
+  }
+
+  YsqlAdvisoryLocksTable* GetYsqlAdvisoryLocksTable() EXCLUDES(advisory_locks_table_mutex_) {
+    {
+      SharedLock lock(advisory_locks_table_mutex_);
+      if (advisory_locks_table_) {
+        return advisory_locks_table_.get();
+      }
+    }
+    UniqueLock lock(advisory_locks_table_mutex_);
+    if (!advisory_locks_table_) {
+      advisory_locks_table_ = std::make_unique<YsqlAdvisoryLocksTable>(client());
+    }
+    return advisory_locks_table_.get();
+  }
+
   const TabletServerIf& tablet_server_;
   std::shared_future<client::YBClient*> client_future_;
   scoped_refptr<ClockBase> clock_;
@@ -2159,6 +2181,10 @@ class PgClientServiceImpl::Impl {
   > sessions_ GUARDED_BY(mutex_);
 
   std::vector<SessionInfoPtr> stopping_sessions_ GUARDED_BY(mutex_);
+
+  std::shared_mutex advisory_locks_table_mutex_;
+  std::unique_ptr<YsqlAdvisoryLocksTable> advisory_locks_table_
+      GUARDED_BY(advisory_locks_table_mutex_);
 };
 
 PgClientServiceImpl::PgClientServiceImpl(

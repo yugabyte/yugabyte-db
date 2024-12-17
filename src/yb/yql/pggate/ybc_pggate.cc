@@ -2831,6 +2831,19 @@ void YBCForceAllowCatalogModifications(bool allowed) {
   pgapi->ForceAllowCatalogModifications(allowed);
 }
 
-}  // extern "C"
+YBCStatus YBCAcquireAdvisoryLock(
+    YBAdvisoryLockId lock_id, YBAdvisoryLockMode mode, bool wait, bool session) {
+  return ToYBCStatus(pgapi->AcquireAdvisoryLock(lock_id, mode, wait, session));
+}
+
+YBCStatus YBCReleaseAdvisoryLock(YBAdvisoryLockId lock_id, YBAdvisoryLockMode mode) {
+  return ToYBCStatus(pgapi->ReleaseAdvisoryLock(lock_id, mode));
+}
+
+YBCStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid) {
+  return ToYBCStatus(pgapi->ReleaseAllAdvisoryLocks(db_oid));
+}
+
+} // extern "C"
 
 } // namespace yb::pggate

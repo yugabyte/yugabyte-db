@@ -35,7 +35,7 @@
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_uint32(num_advisory_locks_tablets);
-DECLARE_bool(yb_enable_advisory_lock);
+DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb {
 
@@ -79,7 +79,7 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
     ASSERT_OK(cluster_->Start());
 
     ASSERT_OK(CreateClient());
-    if (ANNOTATE_UNPROTECTED_READ(FLAGS_yb_enable_advisory_lock)) {
+    if (ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_enable_advisory_locks)) {
       ASSERT_OK(WaitForCreateTableToFinishAndLoadTable());
     }
     sidecars_ = std::make_unique<rpc::Sidecars>();
@@ -132,7 +132,7 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
 
  protected:
   virtual void SetFlags() {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_advisory_lock) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_advisory_locks_tablets) = kNumAdvisoryLocksTablets;
   }
 
@@ -422,7 +422,7 @@ class AdvisoryLocksDisabledTest : public AdvisoryLockTest {
  protected:
   void SetFlags() override {
     AdvisoryLockTest::SetFlags();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_advisory_lock) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = false;
   }
 };
 
@@ -432,7 +432,7 @@ TEST_F(AdvisoryLocksDisabledTest, ToggleAdvisoryLockFlag) {
   auto res = GetTable();
   ASSERT_NOK(res);
   ASSERT_TRUE(res.status().IsNotSupported());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_advisory_lock) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = true;
   ASSERT_OK(WaitForCreateTableToFinishAndLoadTable());
   ASSERT_OK(CheckNumTablets());
 }

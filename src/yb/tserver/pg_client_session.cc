@@ -53,6 +53,8 @@
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
@@ -97,6 +99,7 @@ DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
+DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 DECLARE_uint64(rpc_max_message_size);
 
@@ -896,7 +899,9 @@ void PgClientSession::ReadPointHistory::Clear() {
 }
 
 PgClientSession::PgClientSession(
-    TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source, uint64_t id,
+    TransactionBuilder&& transaction_builder,
+    const YsqlAdvisoryLocksTableProvider& advisory_locks_table_provider,
+    SharedThisSource shared_this_source, uint64_t id,
     client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
     const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
@@ -907,6 +912,7 @@ PgClientSession::PgClientSession(
       client_(*client),
       clock_(clock),
       transaction_builder_(std::move(transaction_builder)),
+      advisory_locks_table_provider_(advisory_locks_table_provider),
       table_cache_(*table_cache),
       xcluster_context_(xcluster_context),
       pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
@@ -1480,7 +1486,8 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
 
   const auto in_txn_limit = GetInTxnLimit(options, clock_.get());
   VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
-  auto setup_session_result = VERIFY_RESULT(SetupSession(data->req, deadline, in_txn_limit));
+  auto setup_session_result = VERIFY_RESULT(SetupSession(
+      data->req.options(), deadline, in_txn_limit));
   auto* session = setup_session_result.session_data.session.get();
   auto& transaction = setup_session_result.session_data.transaction;
 
@@ -1606,8 +1613,7 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
 }
 
 Result<PgClientSession::SetupSessionResult> PgClientSession::SetupSession(
-    const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit) {
-  const auto& options = req.options();
+    const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit) {
   const auto txn_serial_no = options.txn_serial_no();
   const auto read_time_serial_no = options.read_time_serial_no();
   auto kind = PgClientSessionKind::kPlain;
@@ -2461,6 +2467,42 @@ std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(si
         FLAGS_big_shared_memory_segment_session_expiration_time_ms * 1ms);
   }
   return result;
+}
+
+Status PgClientSession::AcquireAdvisoryLock(
+    const PgAcquireAdvisoryLockRequestPB& req, PgAcquireAdvisoryLockResponsePB* resp,
+    rpc::RpcContext* context) {
+  VLOG(2) << "Servicing AcquireAdvisoryLock: " << req.ShortDebugString();
+  SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
+  SCHECK(!req.session(), NotSupported, "session-level advisory locks are not yet implemented");
+  auto& advisory_locks_table = advisory_locks_table_provider_();
+  auto setup_session_result = VERIFY_RESULT(SetupSession(
+      req.options(), context->GetClientDeadline(), HybridTime()));
+  auto* session = setup_session_result.session_data.session.get();
+  for (const auto& lock : req.locks()) {
+    auto lock_op = VERIFY_RESULT(advisory_locks_table.CreateLockOp(
+      req.db_oid(), lock.lock_id().classid(), lock.lock_id().objid(), lock.lock_id().objsubid(),
+      lock.lock_mode() == AdvisoryLockMode::LOCK_SHARE
+          ? PgsqlLockRequestPB::PG_LOCK_SHARE : PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
+      req.wait(), &context->sidecars()));
+    VLOG(4) << "Applying lock op: " << lock_op->ToString();
+    session->Apply(lock_op);
+  }
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  auto flush_status = session->FlushFuture().get();
+  return CombineErrorsToStatus(flush_status.errors, flush_status.status);
+}
+
+Status PgClientSession::ReleaseAdvisoryLock(
+    const PgReleaseAdvisoryLockRequestPB& req, PgReleaseAdvisoryLockResponsePB* resp,
+    rpc::RpcContext* context) {
+  VLOG(2) << "Servicing ReleaseAdvisoryLock: " << req.ShortDebugString();
+  // TODO(advisory-lock #24709): integrate with docdb unlock op.
+  // if req.locks_size() == 0, it's an unlock-all operation, should call
+  // advisory_locks_table_provider_().CreateUnlockAllOp().
+  // otherwise, it's releasing specific locks, should call
+  // advisory_locks_table_provider_().CreateUnlockOp().
+  return STATUS(NotSupported, "session-level advisory locks are not yet implemented");
 }
 
 void PgClientSession::StartShutdown() {

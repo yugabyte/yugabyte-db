@@ -1,0 +1,394 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin_rr s1_xact_lock s2_begin_rr s2_xact_lock s1_commit s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock: SELECT pg_advisory_xact_lock(1);
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock: SELECT pg_advisory_xact_lock(1); <waiting ...>
+step s1_commit: COMMIT;
+step s2_xact_lock: <... completed>
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_xact_lock s2_begin_rr s2_xact_lock_shared s1_commit s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock: SELECT pg_advisory_xact_lock(1);
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock_shared: SELECT pg_advisory_xact_lock_shared(1); <waiting ...>
+step s1_commit: COMMIT;
+step s2_xact_lock_shared: <... completed>
+pg_advisory_xact_lock_shared
+----------------------------
+
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_xact_lock_bigint s2_begin_rr s2_xact_lock_bigint s1_commit s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock_bigint: SELECT pg_advisory_xact_lock(1, 1);
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock_bigint: SELECT pg_advisory_xact_lock(1, 1); <waiting ...>
+step s1_commit: COMMIT;
+step s2_xact_lock_bigint: <... completed>
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_xact_lock_bigint s2_begin_rr s2_xact_lock_bigint_shared s1_commit s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock_bigint: SELECT pg_advisory_xact_lock(1, 1);
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock_bigint_shared: SELECT pg_advisory_xact_lock_shared(1, 1); <waiting ...>
+step s1_commit: COMMIT;
+step s2_xact_lock_bigint_shared: <... completed>
+pg_advisory_xact_lock_shared
+----------------------------
+
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_xact_lock_shared s2_begin_rr s2_xact_lock s1_commit s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock_shared: SELECT pg_advisory_xact_lock_shared(1);
+pg_advisory_xact_lock_shared
+----------------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock: SELECT pg_advisory_xact_lock(1); <waiting ...>
+step s1_commit: COMMIT;
+step s2_xact_lock: <... completed>
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_xact_lock_shared s2_begin_rr s2_xact_lock_shared s1_commit s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock_shared: SELECT pg_advisory_xact_lock_shared(1);
+pg_advisory_xact_lock_shared
+----------------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock_shared: SELECT pg_advisory_xact_lock_shared(1);
+pg_advisory_xact_lock_shared
+----------------------------
+
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_xact_lock_bigint_shared s2_begin_rr s2_xact_lock_bigint s1_commit s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock_bigint_shared: SELECT pg_advisory_xact_lock_shared(1, 1);
+pg_advisory_xact_lock_shared
+----------------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock_bigint: SELECT pg_advisory_xact_lock(1, 1); <waiting ...>
+step s1_commit: COMMIT;
+step s2_xact_lock_bigint: <... completed>
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_xact_lock_bigint_shared s2_begin_rr s2_xact_lock_bigint_shared s1_commit s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock_bigint_shared: SELECT pg_advisory_xact_lock_shared(1, 1);
+pg_advisory_xact_lock_shared
+----------------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock_bigint_shared: SELECT pg_advisory_xact_lock_shared(1, 1);
+pg_advisory_xact_lock_shared
+----------------------------
+
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_xact_lock s2_begin_rr s2_try_xact_lock s2_commit s2_begin_rr s2_try_xact_lock_shared s2_commit s1_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock: SELECT pg_advisory_xact_lock(1);
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_try_xact_lock: SELECT pg_try_advisory_xact_lock(1);
+pg_try_advisory_xact_lock
+-------------------------
+f
+(1 row)
+
+step s2_commit: COMMIT;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_try_xact_lock_shared: SELECT pg_try_advisory_xact_lock_shared(1);
+pg_try_advisory_xact_lock_shared
+--------------------------------
+f
+(1 row)
+
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_xact_lock_bigint s2_begin_rr s2_try_xact_lock_bigint s2_commit s2_begin_rr s2_try_xact_lock_bigint_shared s2_commit s1_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock_bigint: SELECT pg_advisory_xact_lock(1, 1);
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_try_xact_lock_bigint: SELECT pg_try_advisory_xact_lock(1, 1);
+pg_try_advisory_xact_lock
+-------------------------
+f
+(1 row)
+
+step s2_commit: COMMIT;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_try_xact_lock_bigint_shared: SELECT pg_try_advisory_xact_lock_shared(1, 1);
+pg_try_advisory_xact_lock_shared
+--------------------------------
+f
+(1 row)
+
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_xact_lock_shared s2_begin_rr s2_try_xact_lock s2_commit s2_begin_rr s2_try_xact_lock_shared s2_commit s1_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock_shared: SELECT pg_advisory_xact_lock_shared(1);
+pg_advisory_xact_lock_shared
+----------------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_try_xact_lock: SELECT pg_try_advisory_xact_lock(1);
+pg_try_advisory_xact_lock
+-------------------------
+f
+(1 row)
+
+step s2_commit: COMMIT;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_try_xact_lock_shared: SELECT pg_try_advisory_xact_lock_shared(1);
+pg_try_advisory_xact_lock_shared
+--------------------------------
+t
+(1 row)
+
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_xact_lock_bigint_shared s2_begin_rr s2_try_xact_lock_bigint s2_commit s2_begin_rr s2_try_xact_lock_bigint_shared s2_commit s1_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock_bigint_shared: SELECT pg_advisory_xact_lock_shared(1, 1);
+pg_advisory_xact_lock_shared
+----------------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_try_xact_lock_bigint: SELECT pg_try_advisory_xact_lock(1, 1);
+pg_try_advisory_xact_lock
+-------------------------
+f
+(1 row)
+
+step s2_commit: COMMIT;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_try_xact_lock_bigint_shared: SELECT pg_try_advisory_xact_lock_shared(1, 1);
+pg_try_advisory_xact_lock_shared
+--------------------------------
+t
+(1 row)
+
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+
+starting permutation: s1_lock
+step s1_lock: SELECT pg_advisory_lock(1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_lock_shared
+step s1_lock_shared: SELECT pg_advisory_lock_shared(1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_lock_bigint
+step s1_lock_bigint: SELECT pg_advisory_lock(1, 1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_lock_bigint_shared
+step s1_lock_bigint_shared: SELECT pg_advisory_lock_shared(1, 1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_try_lock
+step s1_try_lock: SELECT pg_try_advisory_lock(1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_try_lock_shared
+step s1_try_lock_shared: SELECT pg_try_advisory_lock_shared(1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_try_lock_bigint
+step s1_try_lock_bigint: SELECT pg_try_advisory_lock(1, 1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_try_lock_bigint_shared
+step s1_try_lock_bigint_shared: SELECT pg_try_advisory_lock_shared(1, 1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_unlock
+step s1_unlock: SELECT pg_advisory_unlock(1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_unlock_shared
+step s1_unlock_shared: SELECT pg_advisory_unlock_shared(1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_unlock_bigint
+step s1_unlock_bigint: SELECT pg_advisory_unlock(1, 1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_unlock_bigint_shared
+step s1_unlock_bigint_shared: SELECT pg_advisory_unlock_shared(1, 1);
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_unlock_all
+step s1_unlock_all: SELECT pg_advisory_unlock_all();
+ERROR:  session-level advisory locks are not yet implemented
+
+starting permutation: s1_begin_rr s1_xact_lock s2_begin_rr s2_xact_lock s1_rollback s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_xact_lock: SELECT pg_advisory_xact_lock(1);
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock: SELECT pg_advisory_xact_lock(1); <waiting ...>
+step s1_rollback: ROLLBACK;
+step s2_xact_lock: <... completed>
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_savepoint_a s1_savepoint_b s1_xact_lock s2_begin_rr s2_xact_lock s1_release_savepoint_b s1_rollback_to_savepoint_a s2_commit s1_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_savepoint_a: SAVEPOINT a;
+step s1_savepoint_b: SAVEPOINT b;
+step s1_xact_lock: SELECT pg_advisory_xact_lock(1);
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock: SELECT pg_advisory_xact_lock(1); <waiting ...>
+step s1_release_savepoint_b: RELEASE SAVEPOINT b;
+step s1_rollback_to_savepoint_a: ROLLBACK TO SAVEPOINT a;
+step s2_xact_lock: <... completed>
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+
+starting permutation: s1_create_table s1_begin_rr s1_select s1_xact_lock s2_begin_rr s2_xact_lock s1_commit s2_commit
+step s1_create_table: CREATE TABLE test (k int primary key, v int);
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_select: SELECT * FROM test;
+k|v
+-+-
+(0 rows)
+
+step s1_xact_lock: SELECT pg_advisory_xact_lock(1);
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock: SELECT pg_advisory_xact_lock(1); <waiting ...>
+step s1_commit: COMMIT;
+step s2_xact_lock: <... completed>
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_insert s1_xact_lock s2_begin_rr s2_xact_lock s1_commit s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_insert: INSERT INTO test VALUES (1, 1);
+step s1_xact_lock: SELECT pg_advisory_xact_lock(1);
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_xact_lock: SELECT pg_advisory_xact_lock(1); <waiting ...>
+step s1_commit: COMMIT;
+step s2_xact_lock: <... completed>
+pg_advisory_xact_lock
+---------------------
+
+(1 row)
+
+step s2_commit: COMMIT;

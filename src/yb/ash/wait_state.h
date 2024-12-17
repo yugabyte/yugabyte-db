@@ -261,6 +261,8 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kListClones)
   (kCronGetLastMinute)
   (kCronSetLastMinute)
+  (kAcquireAdvisoryLock)
+  (kReleaseAdvisoryLock)
 );
 
 struct WaitStatesDescription {

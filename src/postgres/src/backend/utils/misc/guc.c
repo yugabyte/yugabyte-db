@@ -3049,6 +3049,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Enable advisory lock feature"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_advisory_locks,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -10912,7 +10923,7 @@ void
 ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 {
 	GucAction	action = stmt->is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET;
-	bool 		YbDbAdminCanSet = false;
+	bool YbDbAdminCanSet = false;
 
 	if (IsYbDbAdminUser(GetUserId()))
 	{

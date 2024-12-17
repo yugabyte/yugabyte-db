@@ -39,5 +39,5 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
 DEFINE_RUNTIME_AUTO_bool(ycql_suppress_group_by_error, kLocalVolatile, true, false,
     "This flag is deprecated, please use ycql_ignore_group_by_error");
 
-DEFINE_RUNTIME_bool(yb_enable_advisory_lock, false,
-                    "Whether to enable advisory locks.");
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_advisory_locks, false,
+                               "Whether to enable advisory locks.");
