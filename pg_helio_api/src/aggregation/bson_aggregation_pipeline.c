@@ -38,8 +38,11 @@
 #include <utils/builtins.h>
 #include <utils/lsyscache.h>
 #include <utils/numeric.h>
+#include <utils/lsyscache.h>
+#include <utils/fmgroids.h>
 #include <nodes/supportnodes.h>
 #include <parser/parse_relation.h>
+#include <parser/parse_func.h>
 
 #include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
@@ -4093,7 +4096,6 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 	/* Grab a copy of the targetList */
 	List *targetEntryList = list_copy(query->targetList);
 
-
 	ParseState *parseState = make_parsestate(NULL);
 	parseState->p_expr_kind = EXPR_KIND_ORDER_BY;
 
@@ -4101,6 +4103,10 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 	parseState->p_next_resno = list_length(query->targetList) + 1;
 	List *sortlist = NIL;
 	bool isNaturalSort = false;
+	bool isNaturalReverseSort = false;
+	int naturalCount = 0;
+	int nonNaturalCount = 0;
+
 	while (bson_iter_next(&sortSpec))
 	{
 		pgbsonelement element;
@@ -4108,80 +4114,143 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 
 		if (strcmp(element.path, "$natural") == 0)
 		{
-			isNaturalSort = true;
-			break;
-		}
-
-		Expr *sortInput = entry->expr;
-		pgbsonelement subOrderingElement;
-		if (element.bsonValue.value_type == BSON_TYPE_DOCUMENT &&
-			TryGetBsonValueToPgbsonElement(&element.bsonValue, &subOrderingElement) &&
-			subOrderingElement.pathLength == 5 &&
-			strncmp(subOrderingElement.path, "$meta", 5) == 0)
-		{
-			RangeTblEntry *rte = linitial(query->rtable);
-			if (rte->rtekind == RTE_RELATION ||
-				rte->rtekind == RTE_FUNCTION)
-			{
-				/* This is a base table */
-				sortInput = (Expr *) MakeSimpleDocumentVar();
-			}
-			else
+			if (!BsonValueIsNumber(&element.bsonValue))
 			{
 				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("Invalid sort direction %s",
 									   BsonValueToJsonForLogging(
 										   &element.bsonValue))));
 			}
-		}
 
-		Expr *expr = NULL;
-		pgbson *sortDoc = PgbsonElementToPgbson(&element);
-		Const *sortBson = MakeBsonConst(sortDoc);
-		bool isAscending = ValidateOrderbyExpressionAndGetIsAscending(sortDoc);
-		SortByNulls sortByNulls = SORTBY_NULLS_DEFAULT;
+			int64_t naturalValue = BsonValueAsInt64(&element.bsonValue);
 
-		/* If the sort is on _id and we can push it down to the primary key index, use ORDER BY object_id instead. */
-		if (strcmp(element.path, "_id") == 0 &&
-			CanSortByObjectId(query, context))
-		{
-			expr = (Expr *) makeVar(1, MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
-									BsonTypeId(), -1, InvalidOid, 0);
+			isNaturalSort = false;
+			isNaturalReverseSort = false;
+
+			if (naturalValue == 1)
+			{
+				isNaturalSort = true;
+			}
+			else if (naturalValue == -1)
+			{
+				isNaturalReverseSort = true;
+			}
+			else
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+								errmsg(
+									"$natural sort cannot be set to a value other than -1 or 1.")));
+			}
+			naturalCount++;
 		}
 		else
 		{
-			/* match mongo behavior. */
-			sortByNulls = isAscending ? SORTBY_NULLS_FIRST : SORTBY_NULLS_LAST;
-			expr = (Expr *) makeFuncExpr(BsonOrderByFunctionOid(),
-										 BsonTypeId(),
-										 list_make2(sortInput, sortBson),
-										 InvalidOid, InvalidOid,
-										 COERCE_EXPLICIT_CALL);
+			nonNaturalCount++;
+			Expr *sortInput = entry->expr;
+			pgbsonelement subOrderingElement;
+			if (element.bsonValue.value_type == BSON_TYPE_DOCUMENT &&
+				TryGetBsonValueToPgbsonElement(&element.bsonValue, &subOrderingElement) &&
+				subOrderingElement.pathLength == 5 &&
+				strncmp(subOrderingElement.path, "$meta", 5) == 0)
+			{
+				RangeTblEntry *rte = linitial(query->rtable);
+				if (rte->rtekind == RTE_RELATION ||
+					rte->rtekind == RTE_FUNCTION)
+				{
+					/* This is a base table */
+					sortInput = (Expr *) MakeSimpleDocumentVar();
+				}
+				else
+				{
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+									errmsg("Invalid sort direction %s",
+										   BsonValueToJsonForLogging(
+											   &element.bsonValue))));
+				}
+			}
+
+			Expr *expr = NULL;
+			pgbson *sortDoc = PgbsonElementToPgbson(&element);
+			Const *sortBson = MakeBsonConst(sortDoc);
+			bool isAscending = ValidateOrderbyExpressionAndGetIsAscending(sortDoc);
+			SortByNulls sortByNulls = SORTBY_NULLS_DEFAULT;
+
+			/* If the sort is on _id and we can push it down to the primary key index, use ORDER BY object_id instead. */
+			if (strcmp(element.path, "_id") == 0 &&
+				CanSortByObjectId(query, context))
+			{
+				expr = (Expr *) makeVar(1, MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
+										BsonTypeId(), -1, InvalidOid, 0);
+			}
+			else
+			{
+				/* match mongo behavior. */
+				sortByNulls = isAscending ? SORTBY_NULLS_FIRST : SORTBY_NULLS_LAST;
+				expr = (Expr *) makeFuncExpr(BsonOrderByFunctionOid(),
+											 BsonTypeId(),
+											 list_make2(sortInput, sortBson),
+											 InvalidOid, InvalidOid,
+											 COERCE_EXPLICIT_CALL);
+			}
+
+			SortBy *sortBy = makeNode(SortBy);
+			sortBy->location = -1;
+			sortBy->sortby_dir = isAscending ? SORTBY_ASC : SORTBY_DESC;
+			sortBy->sortby_nulls = sortByNulls;
+			sortBy->node = (Node *) expr;
+
+			bool resjunk = true;
+			TargetEntry *sortEntry = makeTargetEntry((Expr *) expr,
+													 (AttrNumber) parseState->p_next_resno
+													 ++,
+													 "?sort?",
+													 resjunk);
+			targetEntryList = lappend(targetEntryList, sortEntry);
+			sortlist = addTargetToSortList(parseState, sortEntry,
+										   sortlist, targetEntryList, sortBy);
 		}
+	}
+
+	/* if there is other operator exist with $natural, should throw exception, example like db.coll.find().sort({$size:1, $natural: -1}) */
+	if (naturalCount > 0 && nonNaturalCount > 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+						errmsg(
+							"$natural sort cannot be set to a value other than -1 or 1.")));
+	}
+
+	if (isNaturalReverseSort || isNaturalSort)
+	{
+		/*server would throw exception Exception while reading from stream if collection is null, directly return query when collection is null*/
+		if (context->mongoCollection == NULL)
+		{
+			return query;
+		}
+
+		Var *ctid_var = makeVar(1, SelfItemPointerAttributeNumber,
+								TIDOID, -1, 0, 0);
+		TargetEntry *tle_ctid = makeTargetEntry((Expr *) ctid_var,
+												(AttrNumber) parseState->p_next_resno++,
+												"?ctid?",
+												true);
 
 		SortBy *sortBy = makeNode(SortBy);
 		sortBy->location = -1;
-		sortBy->sortby_dir = isAscending ? SORTBY_ASC : SORTBY_DESC;
-		sortBy->sortby_nulls = sortByNulls;
-		sortBy->node = (Node *) expr;
+		sortBy->sortby_dir = isNaturalSort ? SORTBY_ASC : SORTBY_DESC;
+		sortBy->sortby_nulls = isNaturalSort ? SORTBY_NULLS_FIRST : SORTBY_NULLS_LAST;
+		sortBy->node = (Node *) ctid_var;
 
-		bool resjunk = true;
-		TargetEntry *sortEntry = makeTargetEntry((Expr *) expr,
-												 (AttrNumber) parseState->p_next_resno++,
-												 "?sort?",
-												 resjunk);
-		targetEntryList = lappend(targetEntryList, sortEntry);
-		sortlist = addTargetToSortList(parseState, sortEntry,
+		targetEntryList = lappend(targetEntryList, tle_ctid);
+		sortlist = addTargetToSortList(parseState, tle_ctid,
 									   sortlist, targetEntryList, sortBy);
-	}
 
-	pfree(parseState);
-	if (isNaturalSort)
-	{
-		/* $natural sort overrides everything */
+		query->targetList = targetEntryList;
+		query->sortClause = sortlist;
+		pfree(parseState);
 		return query;
 	}
 
+	pfree(parseState);
 	if (sortlist == NIL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15976),

@@ -152,8 +152,25 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipelin
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "filter": { "_id": { "$gt": "1" } }, "projection": { "a.b": 1 }, "sort": { "_id": 1 }, "skip": 1, "limit": 2 }');
 
+-- FIND with $natural
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": {}, "sort": { "$natural": 1 }}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": {}, "sort": { "$natural": -1 }}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": {}, "sort": { "$natural": 1, "$natural": -1 }}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": { "a.b": 1 }, "sort": { "$natural": -1 }}');
 
-SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "filter": { "_id": { "$gt": "1" } }, "projection": { "a.b": 1 }, "sort": { "_id": 1 }, "skip": 1, "limit": -2 }');
+-- FIND with $natural when target is view
+SELECT helio_api.create_collection_view('db', '{ "create": "targetView", "viewOn": "aggregation_pipeline", "pipeline": [ { "$project": { "_id": 1, "a" : 1 } } ] }');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "targetView", "projection": {}, "sort": { "$natural": 1 }}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "targetView", "projection": {}, "sort": { "$natural": -1 }}');
+
+-- $natural negative 
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": { "a.b": 1 }, "sort": { "$natural": "string" }}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": { "a.b": 1 }, "sort": { "$natural": 2.12 }}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": { "a.b": 1 }, "sort": { "$natural": 3 }}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": { "a.b": 1 }, "sort": { "$natural": true }}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": { "a.b": 1 }, "sort": { "$size":1, "$natural": 1 }}');
+-- $natural EXPLAIN
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": {}, "sort": { "$natural": 1 }}');
 
 -- count
 SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline" }');
@@ -347,6 +364,11 @@ SELECT document FROM bson_aggregation_pipeline('db',
 
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+
+--$natural with shared collection
+SELECT document FROM bson_aggregation_find('db', '{ "find": "agg_pipeline_inventory", "projection": {}, "sort": { "$natural": 1 }}');
+-- $natural with shared collection EXPLAIN
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": {}, "sort": { "$natural": 1 }}');
 
 BEGIN;
 set local citus.enable_local_execution to off;
