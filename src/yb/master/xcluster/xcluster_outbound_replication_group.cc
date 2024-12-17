@@ -564,6 +564,12 @@ Status XClusterOutboundReplicationGroup::RemoveNamespace(
 
   RETURN_NOT_OK(DeleteNamespaceStreams(epoch, namespace_id, outbound_group_pb));
 
+  if (outbound_group_pb.automatic_ddl_mode()) {
+    // Need to drop the DDL Replication extension for automatic mode.
+    RETURN_NOT_OK(helper_functions_.drop_ddl_replication_extension_func(
+        namespace_id, outbound_rg_info_->ReplicationGroupId()));
+  }
+
   outbound_group_pb.mutable_namespace_infos()->erase(namespace_id);
 
   return Upsert(l, epoch);
@@ -595,6 +601,11 @@ Status XClusterOutboundReplicationGroup::Delete(
 
   for (const auto& [namespace_id, _] : *outbound_group_pb.mutable_namespace_infos()) {
     RETURN_NOT_OK(DeleteNamespaceStreams(epoch, namespace_id, outbound_group_pb));
+    if (outbound_group_pb.automatic_ddl_mode()) {
+      // Need to drop the DDL Replication extension for automatic mode.
+      RETURN_NOT_OK(helper_functions_.drop_ddl_replication_extension_func(
+          namespace_id, outbound_rg_info_->ReplicationGroupId()));
+    }
   }
   outbound_group_pb.mutable_namespace_infos()->clear();
   outbound_group_pb.set_state(SysXClusterOutboundReplicationGroupEntryPB::DELETED);

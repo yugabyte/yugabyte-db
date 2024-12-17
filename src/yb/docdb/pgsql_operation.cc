@@ -512,14 +512,6 @@ dockv::ReaderProjection CreateProjection(const Schema& schema, const PB& request
   return result;
 }
 
-template<class PB>
-dockv::ReaderProjection CreateIndexedProjection(const Schema& schema, const PB& request) {
-  dockv::ReaderProjection result;
-  // TODO(vector_index) Create actual projection
-  result.Init(schema, {schema.column_id(1)});
-  return result;
-}
-
 YB_DEFINE_ENUM(FetchResult, (NotFound)(FilteredOut)(Found));
 
 Result<std::unique_ptr<YQLRowwiseIteratorIf>> CreateYbctidIterator(
@@ -789,12 +781,6 @@ class ExpressionHelper {
       [](const auto& cv) { return !cv.expr().has_value(); });
 }
 
-void WriteNumRows(size_t result_rows, const WriteBufferPos& pos, WriteBuffer* buffer) {
-  char encoded_rows[sizeof(uint64_t)];
-  NetworkByteOrder::Store64(encoded_rows, result_rows);
-  CHECK_OK(buffer->Write(pos, encoded_rows, sizeof(encoded_rows)));
-}
-
 [[nodiscard]] inline bool IsNonKeyColumn(const Schema& schema, int32_t column_id) {
   return !schema.is_key_column(ColumnId(column_id));
 }
@@ -823,9 +809,9 @@ class VectorIndexKeyProvider {
  public:
   VectorIndexKeyProvider(
       VectorIndexSearchResult& search_result, PgsqlResponsePB& response, VectorIndex& vector_index,
-      Slice vector_slice, size_t max_results)
+      Slice vector_slice, size_t max_results, WriteBuffer& result_buffer)
       : search_result_(search_result), response_(response), vector_index_(vector_index),
-        vector_slice_(vector_slice), max_results_(max_results) {}
+        vector_slice_(vector_slice), max_results_(max_results), result_buffer_(result_buffer) {}
 
   Slice FetchKey() {
     if (index_ >= search_result_.size()) {
@@ -838,9 +824,8 @@ class VectorIndexKeyProvider {
 
   void AddedKeyToResultSet() {
     // TODO(vector_index) Support universal distance
-    auto distance = bit_cast<float>(static_cast<uint32_t>(
-        search_result_[index_ - 1].encoded_distance));
-    response_.add_distances(distance);
+    response_.add_vector_index_distances(search_result_[index_ - 1].encoded_distance);
+    response_.add_vector_index_ends(result_buffer_.size());
   }
 
   Status Prefetch(FilteringIterator& iterator, const dockv::ReaderProjection& projection) {
@@ -893,6 +878,7 @@ class VectorIndexKeyProvider {
   VectorIndex& vector_index_;
   Slice vector_slice_;
   const size_t max_results_;
+  WriteBuffer& result_buffer_;
   size_t index_ = 0;
 };
 
@@ -1103,7 +1089,7 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
   auto scope_exit = ScopeExit([this] {
     if (write_buffer_) {
-      WriteNumRows(result_rows_, row_num_pos_, write_buffer_);
+      CHECK_OK(pggate::PgWire::WriteInt64(result_rows_, write_buffer_, row_num_pos_));
       response_->set_rows_data_sidecar(narrow_cast<int32_t>(sidecars_->Complete()));
     }
   });
@@ -1868,7 +1854,7 @@ class ANNKeyProvider {
 
   ANNPagingState GetNextBatchPagingState() const { return next_batch_paging_state_; }
 
-  void AddedKeyToResultSet() { response_.add_distances(current_entry_->distance_); }
+  void AddedKeyToResultSet() { response_.add_vector_index_distances(current_entry_->distance_); }
 
  private:
   PgsqlResponsePB& response_;
@@ -1889,7 +1875,7 @@ Result<size_t> PgsqlReadOperation::Execute() {
   // Reserve space for fetched rows count.
   pggate::PgWire::WriteInt64(0, result_buffer_);
   auto se = ScopeExit([&fetched_rows, num_rows_pos, this] {
-    WriteNumRows(fetched_rows, num_rows_pos, result_buffer_);
+    CHECK_OK(pggate::PgWire::WriteInt64(fetched_rows, result_buffer_, num_rows_pos));
   });
   VLOG(4) << "Read, read operation data: " << data_.read_operation_data.ToString() << ", txn: "
           << data_.txn_op_context;
@@ -1905,8 +1891,9 @@ Result<size_t> PgsqlReadOperation::Execute() {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
       data_.doc_read_context, request_.vector_idx_options()));
   } else if (request_.index_request().has_vector_idx_options()) {
-    std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
+    fetched_rows = VERIFY_RESULT(ExecuteVectorLSMSearch(
         *data_.index_doc_read_context, request_.index_request().vector_idx_options()));
+    has_paging_state = false;
   } else {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteScalar());
   }
@@ -2061,12 +2048,6 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
   // to get the index iterator. Then do ExecuteBatchKeys on the index iterator.
   RSTATUS_DCHECK(options.has_vector(), InvalidArgument, "Query vector not provided");
 
-  if (doc_read_context.vector_idx_options.has_value() &&
-      doc_read_context.vector_idx_options->idx_type() == PgVectorIndexType::HNSW) {
-    return std::tuple<size_t, bool>(VERIFY_RESULT(ExecuteVectorLSMSearch(
-        doc_read_context, options)), false);
-  }
-
   auto query_vec = options.vector().binary_value();
 
   auto ysql_query_vec = pointer_cast<const vector_index::YSQLVector*>(query_vec.data());
@@ -2154,13 +2135,13 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(
   Slice vector_slice(options.vector().binary_value());
   // TODO(vector_index) Use correct max_results or use prefetch_size passed from options
   // when paging is supported.
-  size_t max_results = 1000;
+  size_t max_results = std::min(options.prefetch_size(), 1000);
 
   auto result = VERIFY_RESULT(data_.vector_index->Search(vector_slice, max_results));
   // TODO(vector_index) Order keys by ybctid for fetching.
   VectorIndexKeyProvider key_provider(
-      result, response_, *data_.vector_index, vector_slice, max_results);
-  return ExecuteBatchKeys(key_provider, &doc_read_context != data_.index_doc_read_context);
+      result, response_, *data_.vector_index, vector_slice, max_results, *result_buffer_);
+  return ExecuteBatchKeys(key_provider);
 }
 
 void PgsqlReadOperation::BindReadTimeToPagingState(const ReadHybridTime& read_time) {
@@ -2290,8 +2271,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 }
 
 template <class KeyProvider>
-Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(
-    KeyProvider& key_provider, bool use_indexed_table) {
+Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
   // We limit the response's size.
   auto response_size_limit = std::numeric_limits<std::size_t>::max();
 
@@ -2299,18 +2279,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(
     response_size_limit = request_.size_limit();
   }
 
-  const auto& doc_read_context = use_indexed_table
-      ? *DCHECK_NOTNULL(data_.index_doc_read_context) : data_.doc_read_context;
-  auto projection = use_indexed_table ? CreateIndexedProjection(doc_read_context.schema(), request_)
-                                      : CreateProjection(doc_read_context.schema(), request_);
+  const auto& doc_read_context = data_.doc_read_context;
+  auto projection = CreateProjection(doc_read_context.schema(), request_);
   dockv::PgTableRow row(projection);
-
-  if (use_indexed_table) {
-    // TODO(vector_index) Use actual targets
-    google::protobuf::RepeatedPtrField<PgsqlExpressionPB> targets;
-    targets.Add()->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
-    InitTargetEncoders(targets, row);
-  }
 
   std::optional<FilteringIterator> iter;
   size_t found_rows = 0;

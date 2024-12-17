@@ -120,23 +120,21 @@ std::vector<VertexWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbor
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<VectorIndexIfPtr<Vector, DistanceResult>> Merge(
     VectorIndexFactory<Vector, DistanceResult> index_factory,
-    VectorIndexIfPtr<Vector, DistanceResult> index_a,
-    VectorIndexIfPtr<Vector, DistanceResult> index_b) {
+    const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& indexes) {
   VectorIndexIfPtr<Vector, DistanceResult> merged_index = index_factory();
 
-  size_t max_vectors_a = index_a->MaxVectors();
-  size_t max_vectors_b = index_b->MaxVectors();
-
-  RETURN_NOT_OK(merged_index->Reserve(
-      max_vectors_a + max_vectors_b, std::thread::hardware_concurrency(),
-      std::thread::hardware_concurrency()));
-
-  for (const auto& [vertex_id, vector] : *index_a) {
-    RETURN_NOT_OK(merged_index->Insert(vertex_id, vector));
+  size_t total_max_vectors = 0;
+  for (const auto& index : indexes) {
+    total_max_vectors += index->MaxVectors();
   }
 
-  for (const auto& [vertex_id, vector] : *index_b) {
-    RETURN_NOT_OK(merged_index->Insert(vertex_id, vector));
+  RETURN_NOT_OK(merged_index->Reserve(
+      total_max_vectors, std::thread::hardware_concurrency(), std::thread::hardware_concurrency()));
+
+  for (const auto& index : indexes) {
+    for (const auto& [vertex_id, vector] : *index) {
+      RETURN_NOT_OK(merged_index->Insert(vertex_id, vector));
+    }
   }
 
   return merged_index;

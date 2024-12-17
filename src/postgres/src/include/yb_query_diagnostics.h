@@ -54,6 +54,7 @@
 #define YB_QD_MAX_EXPLAIN_PLAN_LEN 16384
 
 /* GUC variables */
+extern bool yb_enable_query_diagnostics;
 extern int yb_query_diagnostics_bg_worker_interval_ms;
 extern int yb_query_diagnostics_circular_buffer_size;
 

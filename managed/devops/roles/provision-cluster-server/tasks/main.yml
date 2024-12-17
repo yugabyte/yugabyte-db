@@ -476,3 +476,13 @@
     groups: yugabyte
     append: true
   become: yes
+
+- name: Restart the node_exporter service
+  service:
+    name: "node_exporter.service"
+    state: restarted
+
+- name: Ensure the service is running
+  service:
+    name: "node_exporter.service"
+    state: started

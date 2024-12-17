@@ -2699,7 +2699,6 @@ Status GetChangesForCDCSDK(
     }
     checkpoint_updated = true;
   } else {
-    RequestScope request_scope;
     OpId last_seen_op_id = op_id;
     bool saw_non_actionable_message = false;
     std::unordered_set<std::string> streamed_txns;
@@ -2759,9 +2758,6 @@ Status GetChangesForCDCSDK(
       }
 
       auto txn_participant = tablet_ptr->transaction_participant();
-      if (txn_participant) {
-        request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
-      }
       have_more_messages = HaveMoreMessages(true);
 
       Schema current_schema = *tablet_ptr->metadata()->schema();

@@ -78,7 +78,8 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
 
   // Loads index from the file in immutable state.
   // Implementation could load index partially, fetching data on demand and unload it if necessary.
-  virtual Status LoadFromFile(const std::string& path) = 0;
+  // max_concurrent_reads - max number of concurrent reads that could be run against this index.
+  virtual Status LoadFromFile(const std::string& path, size_t max_concurrent_reads) = 0;
 
   virtual ~VectorIndexIf() = default;
 };

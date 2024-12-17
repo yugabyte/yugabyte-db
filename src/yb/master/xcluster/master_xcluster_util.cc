@@ -19,6 +19,8 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 
+DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
+
 namespace yb::master {
 
 static const auto kXClusterDDLExtensionName = xcluster::kDDLQueuePgSchemaName;
@@ -140,7 +142,6 @@ Status SetupDDLReplicationExtension(
   } else {
     // We could have older data in the table due to a backup restore from the source universe.
     // So, we drop the extension and recreate it so that we start with empty tables.
-    // TODO(#19185) Revisit this GUC disabling when we implement proper extension shutdown.
     statements.push_back(Format("SET $0.replication_role = DISABLED", kXClusterDDLExtensionName));
     statements.push_back(Format("DROP EXTENSION IF EXISTS $0", kXClusterDDLExtensionName));
     statements.push_back(Format("CREATE EXTENSION $0", kXClusterDDLExtensionName));
@@ -153,6 +154,27 @@ Status SetupDDLReplicationExtension(
 
   return ExecutePgsqlStatements(
       database_name, statements, catalog_manager, deadline, std::move(callback));
+}
+
+Status DropDDLReplicationExtension(
+    CatalogManagerIf& catalog_manager, const NamespaceId& namespace_id,
+    StdStatusCallback callback) {
+  auto namespace_name = VERIFY_RESULT(catalog_manager.FindNamespaceById(namespace_id))->name();
+  LOG(INFO) << "Dropping " << kXClusterDDLExtensionName << " extension for namespace "
+            << namespace_id << " (" << namespace_name << ")";
+  std::vector<std::string> statements;
+  // Disable the extension first to prevent any conflicts with later setups.
+  statements.push_back(Format(
+      "ALTER DATABASE \"$0\" SET $1.replication_role = DISABLED", namespace_name,
+      kXClusterDDLExtensionName));
+  // Also disable for the current session.
+  statements.push_back(Format("SET $0.replication_role = DISABLED", kXClusterDDLExtensionName));
+  statements.push_back(Format("DROP EXTENSION IF EXISTS $0", kXClusterDDLExtensionName));
+
+  return ExecutePgsqlStatements(
+      namespace_name, statements, catalog_manager,
+      CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
+      std::move(callback));
 }
 
 }  // namespace yb::master

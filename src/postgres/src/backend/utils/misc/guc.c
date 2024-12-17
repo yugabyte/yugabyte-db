@@ -2997,7 +2997,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_update_optimization_options.is_enabled,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3034,6 +3034,18 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_nop_alter_role_optimization,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_query_diagnostics", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Enables the collection of query diagnostics data "
+						 "for YSQL queries, facilitating the creation of diagnostic bundles."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_query_diagnostics,
+		false,
 		NULL, NULL, NULL
 	},
 

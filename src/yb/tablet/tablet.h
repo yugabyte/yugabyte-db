@@ -1232,6 +1232,18 @@ class Tablet : public AbstractTablet,
 
   HybridTime DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMetaData*>& inputs);
 
+  Result<rocksdb::Options> CommonRocksDBOptions();
+  Status OpenRegularDB(const rocksdb::Options& common_options);
+  Status OpenIntentsDB(const rocksdb::Options& common_options);
+  Status OpenVectorIndexes();
+  // Creates vector index for specified index and indexed tables.
+  // allow_inplace_insert is set to true only during initial tablet bootstrap, so nobody should
+  // hold external pointer to vector index list at this moment.
+  Status CreateVectorIndex(
+      const TableInfo& index_table, const TableInfo& indexed_table, bool allow_inplace_insert)
+      REQUIRES(vector_indexes_mutex_);
+  docdb::VectorIndexesPtr VectorIndexesList() EXCLUDES(vector_indexes_mutex_);
+
   mutable std::mutex flush_filter_mutex_;
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_
       GUARDED_BY(flush_filter_mutex_);

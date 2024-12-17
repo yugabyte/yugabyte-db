@@ -1073,7 +1073,7 @@ PostmasterMain(int argc, char *argv[])
 		ApplyLauncherRegister();
 
 	/* Register the query diagnostics background worker */
-	if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_query_diagnostics)
 		YbQueryDiagnosticsBgWorkerRegister();
 
 	/* Register ASH collector */

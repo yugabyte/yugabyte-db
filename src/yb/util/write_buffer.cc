@@ -261,4 +261,12 @@ Slice WriteBuffer::FirstBlockSlice() const {
                             : Slice(blocks_[0].data(), last_block_free_begin_);
 }
 
+void WriteBuffer::Swap(WriteBuffer& rhs) {
+  std::swap(last_block_free_begin_, rhs.last_block_free_begin_);
+  std::swap(last_block_free_end_, rhs.last_block_free_end_);
+  std::swap(size_without_last_block_, rhs.size_without_last_block_);
+  blocks_.swap(rhs.blocks_);
+  std::swap(consumption_, rhs.consumption_);
+}
+
 }  // namespace yb

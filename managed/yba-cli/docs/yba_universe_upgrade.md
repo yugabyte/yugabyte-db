@@ -14,7 +14,7 @@ yba universe upgrade [flags]
 
 ```
   -f, --force              [Optional] Bypass the prompt for non-interactive usage.
-  -n, --name string        [Required] The name of the universe to be ugraded.
+  -n, --name string        [Required] The name of the universe to be upgraded.
   -s, --skip-validations   [Optional] Skip validations before running the CLI command.
   -h, --help               help for upgrade
 ```

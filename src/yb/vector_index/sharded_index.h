@@ -105,7 +105,7 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return STATUS(NotSupported, "Saving to file is not implemented for ShardedVectorIndex");
   }
 
-  Status LoadFromFile(const std::string& path) override {
+  Status LoadFromFile(const std::string& path, size_t) override {
     return STATUS(NotSupported, "Loading from file is not implemented for ShardedVectorIndex");
   }
 

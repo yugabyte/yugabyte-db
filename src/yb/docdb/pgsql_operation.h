@@ -199,7 +199,7 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   // Execute a READ operator for a given batch of keys.
   template <class KeyProvider>
-  Result<size_t> ExecuteBatchKeys(KeyProvider& key_provider, bool use_indexed_table = false);
+  Result<size_t> ExecuteBatchKeys(KeyProvider& key_provider);
 
   Result<std::tuple<size_t, bool>> ExecuteSample();
 

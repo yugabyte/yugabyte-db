@@ -18989,14 +18989,11 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		int	i_tablegroup_oid = PQfnumber(res, "tablegroup_oid");
 		int	i_colocation_id = PQfnumber(res, "colocation_id");
 
-#ifdef YB_TODO
-		/* Need rework to match Pg15 */
 		if (i_colocation_id == -1)
-			fatal("cannot create a dump with YSQL metadata included, "
-				  "please run YSQL upgrade first.\n"
-				  "DETAILS: yb_table_properties system function definition "
-				  "is out of date.\n");
-#endif
+			pg_fatal("cannot create a dump with YSQL metadata included, "
+					 "please run YSQL upgrade first.\n"
+					 "DETAILS: yb_table_properties system function definition "
+					 "is out of date.\n");
 
 		properties->num_tablets = atoi(PQgetvalue(res, 0, i_num_tablets));
 		properties->num_hash_key_columns = atoi(PQgetvalue(res, 0, i_num_hash_key_columns));
@@ -19009,12 +19006,9 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		PQclear(res);
 		destroyPQExpBuffer(query);
 
-#ifdef YB_TODO
-		/* Need rework to match Pg15 */
 		if (properties->is_colocated && !OidIsValid(properties->colocation_id))
-			fatal("colocation ID is not defined for a colocated table \"%s\"\n",
-				  relname);
-#endif
+			pg_fatal("colocation ID is not defined for a colocated table \"%s\"\n",
+					 relname);
 
 		if (is_colocated_database && !is_legacy_colocated_database &&  properties->is_colocated)
 		{

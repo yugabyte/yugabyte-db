@@ -1927,3 +1927,50 @@ templates:
         Clock drift is high for universe '{{ $labels.source_name }}'.
         Current drift from actual clock is {{ $value }} milliseconds.
         Affected nodes: {{ $labels.affected_node_names }}
+
+  UNIVERSE_UNEXPECTED_MASTERS_RUNNING:
+    name: Unexpected masters are running in the universe
+    description: Found master processes that are not expected to run
+    queryTemplate: count by (universe_uuid) (last_over_time(yb_node_unexpected_master_running{universe_uuid="__universeUuid__"}[1m]) > 0)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "last_over_time(yb_node_unexpected_master_running{universe_uuid='{{
+        $labels.universe_uuid }}'}[1m]) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Found master process that is not expected to run on {{ $value | printf "%.0f" }}
+        nodes(s) for universe '{{ $labels.source_name }}'.
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  UNIVERSE_UNEXPECTED_TSERVERS_RUNNING:
+    name: Unexpected tservers are running in the universe
+    description: Found tserver processes that is are not expected to run
+    queryTemplate: count by (universe_uuid) (last_over_time(yb_node_unexpected_tserver_running{universe_uuid="__universeUuid__"}[1m]) > 0)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "last_over_time(yb_node_unexpected_tserver_running{universe_uuid='{{
+        $labels.universe_uuid }}'}[1m]) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Found tserver process that is not expected to run on {{ $value | printf "%.0f" }}
+        nodes(s) for universe '{{ $labels.source_name }}'.
+        Affected nodes: {{ $labels.affected_node_names }}
+

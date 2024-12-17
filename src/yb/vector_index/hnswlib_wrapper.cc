@@ -125,7 +125,7 @@ class HnswlibIndex :
     return Status::OK();
   }
 
-  Status DoLoadFromFile(const std::string& path) {
+  Status DoLoadFromFile(const std::string& path, size_t) {
     // Create hnsw_ before loading from file.
     RETURN_NOT_OK(Reserve(0, 0, 0));
     try {

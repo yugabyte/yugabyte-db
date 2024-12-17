@@ -12,41 +12,32 @@
 //
 package org.yb.loadtest;
 
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.spark.connector.CassandraSparkExtensions;
+import com.datastax.spark.connector.cql.CassandraConnector;
+import java.net.InetSocketAddress;
+import java.net.URL;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import org.apache.spark.SparkConf;
-import org.apache.spark.SparkContext;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.assertEquals;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.net.InetSocketAddress;
-import java.net.URL;
-import java.util.Iterator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
 import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.YBTestRunner;
+import org.yb.util.YBTestRunnerNonMac;
 
-import com.datastax.oss.driver.api.core.CqlSession;
-import com.datastax.oss.driver.api.core.cql.ResultSet;
-import com.datastax.spark.connector.cql.CassandraConnector;
-import com.datastax.spark.connector.CassandraSparkExtensions;
-
-@RunWith(value=YBTestRunner.class)
+@RunWith(value = YBTestRunnerNonMac.class)
 public class TestSpark3Jsonb extends BaseMiniClusterTest {
-
   private Logger logger = LoggerFactory.getLogger(TestSpark3Jsonb.class);
   private static String KEYSPACE = "test";
   private static String INPUT_TABLE = "person";

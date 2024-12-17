@@ -125,7 +125,9 @@ class PgBgWorkersTest : public PgAshSingleNode {
     options->extra_tserver_flags.push_back("--enable_pg_cron=true");
     options->extra_tserver_flags.push_back(
         "--ysql_pg_conf_csv=cron.yb_job_list_refresh_interval=1");
-    options->extra_tserver_flags.push_back("--TEST_yb_enable_query_diagnostics=true");
+    options->extra_tserver_flags.push_back(
+    "--allowed_preview_flags_csv=ysql_yb_enable_query_diagnostics");
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_query_diagnostics=true");
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_wait_code_to_sleep_at=$0",
         to_underlying(ash::WaitStateCode::kCatalogRead)));
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
@@ -519,16 +521,15 @@ TEST_F_EX(PgWaitEventAuxTest, PgCronRPCs, PgCronWaitEventAux) {
   static constexpr auto kTableName = "test";
   static constexpr auto kCreatePgCronQuery = "CREATE EXTENSION pg_cron";
   const auto kInsertQuery = Format("INSERT INTO $0 VALUES (1)", kTableName);
-  static constexpr auto kSleepBuffer = 5s;
 
   ASSERT_OK(conn_->Execute(kCreatePgCronQuery));
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
   ASSERT_OK(conn_->FetchFormat("SELECT cron.schedule('job', '1 second', '$0')", kInsertQuery));
 
-  SleepFor(1s + kSleepBuffer);
+  SleepFor(5s * kTimeMultiplier);
   ASSERT_OK(conn_->Execute("DROP EXTENSION pg_cron"));
   ASSERT_OK(conn_->Execute(kCreatePgCronQuery));
-  SleepFor(1min + kSleepBuffer);
+  SleepFor(65s * kTimeMultiplier);
 
   ASSERT_OK(CheckWaitEventAux());
 }

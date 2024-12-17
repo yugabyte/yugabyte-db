@@ -860,6 +860,9 @@ Status CatalogManager::CreateNewCdcsdkStream(
     const CreateCDCStreamRequestPB& req, const std::vector<TableId>& table_ids,
     const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
     const LeaderEpoch& epoch, rpc::RpcContext* rpc) {
+  VLOG_WITH_FUNC(1) << "table_ids: " << AsString(table_ids)
+                    << ", namespace_id: " << AsString(namespace_id);
+
   auto start_time = MonoTime::Now();
 
   bool has_consistent_snapshot_option = false;

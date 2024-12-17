@@ -1108,3 +1108,38 @@ TABLE with_a;
 (16 rows)
 
 ABORT;
+--- GH-25070
+CREATE TABLE main (a INT, b TEXT, PRIMARY KEY (a, b));
+CREATE TABLE copy (a INT, b TEXT, PRIMARY KEY (b, a));
+INSERT INTO main (SELECT i, 'name_' || i FROM generate_series(1, 10) AS i);
+INSERT INTO copy (SELECT a, b FROM main) ON CONFLICT DO NOTHING;
+TABLE copy ORDER BY a;
+ a  |    b
+----+---------
+  1 | name_1
+  2 | name_2
+  3 | name_3
+  4 | name_4
+  5 | name_5
+  6 | name_6
+  7 | name_7
+  8 | name_8
+  9 | name_9
+ 10 | name_10
+(10 rows)
+
+INSERT INTO copy (SELECT a, b FROM main) ON CONFLICT (b, a) DO UPDATE SET b = 'replaced_' || EXCLUDED.b;
+TABLE copy ORDER BY a;
+ a  |        b
+----+------------------
+  1 | replaced_name_1
+  2 | replaced_name_2
+  3 | replaced_name_3
+  4 | replaced_name_4
+  5 | replaced_name_5
+  6 | replaced_name_6
+  7 | replaced_name_7
+  8 | replaced_name_8
+  9 | replaced_name_9
+ 10 | replaced_name_10
+(10 rows)

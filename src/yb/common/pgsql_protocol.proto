@@ -600,6 +600,8 @@ message PgsqlRequestMetricsPB {
 
 // Response from tablet server for both read and write.
 message PgsqlResponsePB {
+  reserved 18;
+
   // Response status
   enum RequestStatus {
     PGSQL_STATUS_OK = 0;
@@ -637,7 +639,15 @@ message PgsqlResponsePB {
 
   // For use with geometric indexes. The nth value here is the distance of the
   // nth returned row from the query point/vector.
-  repeated double distances = 18;
+  // The distance is encoded into binary representation and converted to int64.
+  // So if we have original_distance1 < original_distance2, then
+  // encoded_distance1 < encoded_distance2.
+  // We are widely use the similar approach for table primary key when it is converted to
+  // binary representation. Here we do the same with addendum that distance could be always encoded
+  // to 8 bytes or less.
+  repeated uint64 vector_index_distances = 19;
+  // The offset of end of encoded row for particular vector.
+  repeated uint64 vector_index_ends = 20;
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;

@@ -45,7 +45,7 @@ class TSLocalLockManager::Impl {
         VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id())), req.txn_reuse_version(),
         req.subtxn_id());
     auto result = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
-    if (object_lock_manager_.Lock(object_lock_owner, &result.lock_batch, deadline)) {
+    if (object_lock_manager_.Lock(object_lock_owner, result.lock_batch, deadline)) {
       return Status::OK();
     }
     std::string batch_str;
@@ -68,7 +68,7 @@ class TSLocalLockManager::Impl {
 
     static auto const key_entry_types =
         {dockv::KeyEntryType::kWeakObjectLock, dockv::KeyEntryType::kStrongObjectLock};
-    std::vector<docdb::TrackedLockEntryKey<docdb::ObjectLockPrefix>> lock_entry_keys;
+    std::vector<docdb::TrackedLockEntryKey<docdb::ObjectLockManager>> lock_entry_keys;
     for (auto lock : req.object_locks()) {
       for (const auto& type : key_entry_types) {
         lock_entry_keys.push_back(

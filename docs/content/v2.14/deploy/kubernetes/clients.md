@@ -29,18 +29,27 @@ NAME          TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                    
 yb-tservers   ClusterIP   None         <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   56m
 ```
 
-The following example shows a client that uses the YSQL shell ([`ysqlsh`](../../../admin/ysqlsh/)) to connect:
+The following example shows a client that uses the YSQL shell ([ysqlsh](../../../admin/ysqlsh/)) to connect:
 
 ```sh
 $ kubectl run ysqlsh-client -it --rm  --image yugabytedb/yugabyte-client --command -- ysqlsh -h yb-tservers.yb-demo.svc.cluster.local
+```
+
+```sql
 yugabyte=# CREATE TABLE demo(id INT PRIMARY KEY);
+```
+
+```output
 CREATE TABLE
 ```
 
-The following example shows a client that uses the YCQL shell ([`ycqlsh`](../../../admin/ycqlsh)) to connect:
+The following example shows a client that uses the YCQL shell ([ycqlsh](../../../admin/ycqlsh)) to connect:
 
 ```sh
 $ kubectl run cqlsh-shell -it --rm  --image yugabytedb/yugabyte-client --command -- cqlsh yb-tservers.yb-demo.svc.cluster.local 9042
+```
+
+```cql
 ycqlsh> CREATE KEYSPACE demo;
 ycqlsh> use demo;
 ycqlsh:demo> CREATE TABLE t_demo(id INT PRIMARY KEY);
@@ -61,18 +70,27 @@ yb-tserver-service   LoadBalancer   10.99.76.181    98.138.219.232   6379:30141/
 yb-tservers          ClusterIP      None            <none>           7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   43h
 ```
 
-The following example shows a client that uses the YSQL shell ([`ysqlsh`](../../../admin/ysqlsh/)) to connect:
+The following example shows a client that uses the YSQL shell ([ysqlsh](../../../admin/ysqlsh/)) to connect:
 
 ```sh
 $ docker run yugabytedb/yugabyte-client ysqlsh -h 98.138.219.232
+```
+
+```sql
 yugabyte=# CREATE TABLE demo(id INT PRIMARY KEY);
+```
+
+```output
 CREATE TABLE
 ```
 
-The following example shows a client that uses the YCQL shell ([`ycqlsh`](../../../admin/ycqlsh)) to connect:
+The following example shows a client that uses the YCQL shell ([ycqlsh](../../../admin/ycqlsh)) to connect:
 
 ```sh
 $ docker run yugabytedb/yugabyte-client ycqlsh 98.138.219.232 9042
+```
+
+```cql
 ycqlsh> CREATE KEYSPACE demo;
 ycqlsh> use demo;
 ycqlsh:demo> CREATE TABLE t_demo(id INT PRIMARY KEY);
@@ -86,6 +104,9 @@ Another option that does not require an external LoadBalancer is to create a tun
 
 ```sh
 $ kubectl port-forward pod/yb-master-0 7000:7000 -n yb-demo
+```
+
+```output
 Forwarding from 127.0.0.1:7000 -> 7000
 Forwarding from [::1]:7000 -> 7000
 ```

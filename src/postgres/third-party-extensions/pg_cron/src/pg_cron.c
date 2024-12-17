@@ -1891,7 +1891,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 				if (task->freeErrorMessage)
 				{
-					free(task->errorMessage);
+					pfree(task->errorMessage);
 				}
 			}
 			else
@@ -1967,7 +1967,7 @@ GetTaskFeedback(PGresult *result, CronTask *task)
 		case PGRES_BAD_RESPONSE:
 		case PGRES_FATAL_ERROR:
 		{
-			task->errorMessage = strdup(PQresultErrorMessage(result));
+			task->errorMessage = pstrdup(PQresultErrorMessage(result));
 			task->freeErrorMessage = true;
 			task->pollingStatus = 0;
 			task->state = CRON_TASK_ERROR;
@@ -2110,7 +2110,7 @@ ProcessBgwTaskFeedback(CronTask *task, bool running)
 					char *nonconst_tag;
 					char *cmdTuples;
 
-					nonconst_tag = strdup(tag);
+					nonconst_tag = pstrdup(tag);
 
 					if (CronLogRun)
 						UpdateJobRunDetail(task->runId, NULL, GetCronStatus(CRON_STATUS_SUCCEEDED), nonconst_tag, NULL, &end_time);
@@ -2121,7 +2121,7 @@ ProcessBgwTaskFeedback(CronTask *task, bool running)
 											 task->jobId, nonconst_tag, cmdTuples)));
 					}
 
-					free(nonconst_tag);
+					pfree(nonconst_tag);
 					break;
 				}
 			case 'A':

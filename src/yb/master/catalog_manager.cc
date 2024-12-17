@@ -4168,12 +4168,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         // Adding a table to an existing colocation tablet.
         if (is_vector_index) {
           tablets = VERIFY_RESULT(indexed_table->GetTablets());
-          auto options = req.index_info().vector_idx_options();
-          if (options.idx_type() != PgVectorIndexType::DUMMY &&
-              tablets.size() != 1) {
-            return STATUS(InvalidArgument,
-              "Copartitioned vector index must have only one tablet for now.");
-          }
         } else {
           auto tablet = tablegroup ?
               tablegroup->tablet() :
@@ -4642,7 +4636,7 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
       req, schema, partition_schema, namespace_id, namespace_name, colocated, index_info);
   const TableId& table_id = (*table)->id();
 
-  LOG_WITH_PREFIX_AND_FUNC(INFO)
+  VLOG_WITH_PREFIX_AND_FUNC(2)
       << "Table: " << (**table).ToString() << ", create_tablets: " << (tablets ? "YES" : "NO");
 
   auto table_map_checkout = tables_.CheckOut();

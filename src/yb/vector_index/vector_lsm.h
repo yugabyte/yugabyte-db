@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <condition_variable>
 #include <future>
 #include <map>
 
@@ -135,7 +136,9 @@ class VectorLSM {
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
-  Status Flush();
+  Status Flush(bool wait);
+  Status WaitForFlush();
+
   void StartShutdown();
   void CompleteShutdown();
 
@@ -167,6 +170,8 @@ class VectorLSM {
 
   Status CreateNewMutableChunk(size_t min_points) REQUIRES(mutex_);
 
+  Status RemoveUpdateQueueEntry(size_t order_no) REQUIRES(mutex_);
+
   Options options_;
   rocksdb::Env* const env_;
 
@@ -182,6 +187,7 @@ class VectorLSM {
 
   // order_no is used as key in this map.
   std::map<size_t, ImmutableChunkPtr> updates_queue_ GUARDED_BY(mutex_);
+  std::condition_variable_any updates_queue_empty_;
 
   bool writing_update_ GUARDED_BY(mutex_) = false;
   Status failed_status_ GUARDED_BY(mutex_);

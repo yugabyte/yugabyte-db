@@ -54,24 +54,22 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
       create_suffix = " WITH (COLOCATED = 1)";
       RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE colocated_db COLOCATION = true"));
       conn = VERIFY_RESULT(Connect());
-    } else {
-      // TODO(vector_index) Remove it when multi-tablet vector indexes will be supported
-      create_suffix = " SPLIT INTO 1 TABLETS";
     }
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
     RETURN_NOT_OK(conn.Execute(
         "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))" + create_suffix));
 
-  RETURN_NOT_OK(conn.Execute("CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
 
     return conn;
   }
 
   Result<PGConn> MakeIndexAndFill(int num_rows);
 
-  Status VerifyRead(PGConn& conn, int limit);
+  Status VerifyRead(PGConn& conn, int limit, bool add_filter);
 
   void TestSimple();
+  void TestManyRows(bool add_filter);
 };
 
 void PgVectorIndexTest::TestSimple() {
@@ -153,9 +151,11 @@ Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(int num_rows) {
   return conn;
 }
 
-Status PgVectorIndexTest::VerifyRead(PGConn& conn, int limit) {
+Status PgVectorIndexTest::VerifyRead(PGConn& conn, int limit, bool add_filter) {
   auto result = VERIFY_RESULT((conn.FetchRows<RowAsString>(Format(
-      "SELECT * FROM test ORDER BY embedding <-> '[0.0, 0.0, 0.0]' LIMIT $0", limit))));
+      "SELECT * FROM test $0 ORDER BY embedding <-> '[0.0, 0.0, 0.0]' LIMIT $1",
+      add_filter ? "WHERE id + 3 <= 5" : "",
+      limit))));
   SCHECK_EQ(result.size(), limit, IllegalState, "Wrong number of rows");
   for (size_t i = 0; i != result.size(); ++i) {
     SCHECK_EQ(
@@ -164,12 +164,12 @@ Status PgVectorIndexTest::VerifyRead(PGConn& conn, int limit) {
   return Status::OK();
 }
 
-TEST_P(PgVectorIndexTest, ManyRows) {
+void PgVectorIndexTest::TestManyRows(bool add_filter) {
   constexpr int kNumRows = RegularBuildVsSanitizers(2000, 64);
-  constexpr int kQueryLimit = 5;
+  const int query_limit = add_filter ? 1 : 5;
 
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
-  ASSERT_OK(VerifyRead(conn, kQueryLimit));
+  ASSERT_OK(VerifyRead(conn, query_limit, add_filter));
 }
 
 TEST_P(PgVectorIndexTest, Split) {
@@ -182,7 +182,15 @@ TEST_P(PgVectorIndexTest, Split) {
   // Give some time for split to happen.
   std::this_thread::sleep_for(2s * kTimeMultiplier);
 
-  ASSERT_OK(VerifyRead(conn, kQueryLimit));
+  ASSERT_OK(VerifyRead(conn, kQueryLimit, false));
+}
+
+TEST_P(PgVectorIndexTest, ManyRows) {
+  TestManyRows(false);
+}
+
+TEST_P(PgVectorIndexTest, ManyRowsWithFilter) {
+  TestManyRows(true);
 }
 
 TEST_P(PgVectorIndexTest, ManyReads) {
@@ -209,6 +217,18 @@ TEST_P(PgVectorIndexTest, ManyReads) {
   }
 
   threads.WaitAndStop(5s);
+}
+
+TEST_P(PgVectorIndexTest, Restart) {
+  constexpr int kNumRows = 64;
+  constexpr int kQueryLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(VerifyRead(conn, kQueryLimit, false));
 }
 
 std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {

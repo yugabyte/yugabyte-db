@@ -334,7 +334,7 @@ void VectorLSMTest::TestBootstrap(bool flush) {
     FloatVectorLSM lsm;
     ASSERT_OK(InitVectorLSM(lsm, kDimensions, kChunkSize));
     if (flush) {
-      ASSERT_OK(lsm.Flush());
+      ASSERT_OK(lsm.Flush(true));
     }
   }
 

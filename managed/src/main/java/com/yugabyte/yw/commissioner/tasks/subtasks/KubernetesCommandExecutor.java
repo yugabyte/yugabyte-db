@@ -504,7 +504,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
         break;
       case RESUME_AZ:
-        overridesFile = this.generateHelmOverride();
         kubernetesManagerFactory
             .getManager()
             .helmResume(
@@ -512,8 +511,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 taskParams().ybSoftwareVersion,
                 config,
                 taskParams().helmReleaseName,
-                taskParams().namespace,
-                overridesFile);
+                taskParams().namespace);
 
         break;
     }

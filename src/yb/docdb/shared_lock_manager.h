@@ -17,7 +17,9 @@
 #include <vector>
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/lock_manager_traits.h"
 #include "yb/docdb/object_lock_data.h"
+
 #include "yb/dockv/intent.h"
 
 #include "yb/util/monotime.h"
@@ -26,74 +28,33 @@
 namespace yb::docdb {
 
 // Helper struct used for keying table/object locks of a transaction.
-template <typename T>
+template <typename LockManager>
 struct TrackedLockEntryKey {
-  TrackedLockEntryKey(const ObjectLockOwner& object_lock_owner_, T object_id_)
+  using KeyType = LockManagerTraits<LockManager>::KeyType;
+
+  TrackedLockEntryKey(const ObjectLockOwner& object_lock_owner_, KeyType object_id_)
       : object_lock_owner(object_lock_owner_), object_id(object_id_) {}
 
   const ObjectLockOwner object_lock_owner;
-  const T object_id;
+  const KeyType object_id;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(object_lock_owner, object_id);
   }
+
+  bool operator==(const TrackedLockEntryKey& other) const = default;
 };
 
-template <typename T>
-bool operator==(const TrackedLockEntryKey<T>& lhs, const TrackedLockEntryKey<T>& rhs) {
-  return YB_STRUCT_EQUALS(object_lock_owner, object_id);
-}
-
-template <typename T>
-inline size_t hash_value(const TrackedLockEntryKey<T>& key) noexcept {
+template <typename LockManager>
+inline size_t hash_value(const TrackedLockEntryKey<LockManager>& key) noexcept {
   size_t seed = 0;
   boost::hash_combine(seed, key.object_lock_owner);
   boost::hash_combine(seed, key.object_id);
   return seed;
 }
 
-template <typename T>
-struct LockedBatchEntry;
-
-// TrackedLockEntry is used to keep track of the LockState of the transaction for a given key.
-// Note that a transaction can acquire multiple lock types repeatedly on a key.
-//
-// In context of object/table locks, when handling release requests by ObjectLockOwner
-// (optionally with object id supplied), the LockState value is used to reset the info of the
-// corresponding LockedBatchEntry.
-template <typename T>
-struct TrackedLockEntry {
-  TrackedLockEntry(
-      const ObjectLockOwner& object_lock_owner_, T object_id_, LockState state_,
-      LockedBatchEntry<T>* locked_batch_entry_) : key(object_lock_owner_, object_id_),
-      state(state_), locked_batch_entry(locked_batch_entry_) {}
-
-  ObjectLockOwner object_lock_owner() const {
-    return key.object_lock_owner;
-  }
-
-  VersionedTransaction versioned_txn() const {
-    return key.object_lock_owner.versioned_txn;
-  }
-
-  std::pair<VersionedTransaction, T> txn_and_key() const {
-    return {key.object_lock_owner.versioned_txn, key.object_id};
-  }
-
-  T object_id() const {
-    return key.object_id;
-  }
-
-  // Key against which this TrackedLockEntry is tracked/stored.
-  TrackedLockEntryKey<T> key;
-  LockState state;
-  // LockedBatchEntry<T> object's memory is managed by LockManagerImpl<T>.
-  LockedBatchEntry<T>* locked_batch_entry;
-  size_t ref_count = 1;
-};
-
-template <typename T>
-class LockManagerImpl;
+template<typename LockManager>
+struct LockManagerInternalTraits;
 
 // This class manages locks on keys of type RefCntPrefix. On each key, the possibilities arise
 // from a combination of kWeak/kStrong Read/Write intent types.
@@ -111,14 +72,15 @@ class SharedLockManager {
   //
   // Returns false if was not able to acquire lock until deadline.
   MUST_USE_RESULT bool Lock(
-      LockBatchEntries<RefCntPrefix>* key_to_intent_type, CoarseTimePoint deadline);
+      LockBatchEntries<SharedLockManager>& key_to_intent_type, CoarseTimePoint deadline);
 
   // Release the batch of locks. Requires that the locks are held.
-  void Unlock(const LockBatchEntries<RefCntPrefix>& key_to_intent_type);
+  void Unlock(const LockBatchEntries<SharedLockManager>& key_to_intent_type);
 
   void DumpStatusHtml(std::ostream& out);
 
  private:
+  friend struct LockManagerInternalTraits<SharedLockManager>;
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
@@ -131,6 +93,7 @@ class SharedLockManager {
 class ObjectLockManager {
  public:
   ObjectLockManager();
+
   ~ObjectLockManager();
 
   // Attempt to lock a batch of keys and track the lock against the given object_lock_owner key. The
@@ -141,10 +104,10 @@ class ObjectLockManager {
   // Returns false if was not able to acquire lock until deadline.
   MUST_USE_RESULT bool Lock(
       const ObjectLockOwner& object_lock_owner,
-      LockBatchEntries<ObjectLockPrefix>* key_to_intent_type, CoarseTimePoint deadline);
+      LockBatchEntries<ObjectLockManager>& key_to_intent_type, CoarseTimePoint deadline);
 
   // Release the batch of locks, if they were acquired at the first place.
-  void Unlock(const std::vector<TrackedLockEntryKey<ObjectLockPrefix>>& lock_entry_keys);
+  void Unlock(const std::vector<TrackedLockEntryKey<ObjectLockManager>>& lock_entry_keys);
 
   // Release all locks held against the given object_lock_owner.
   void Unlock(const ObjectLockOwner& object_lock_owner);
@@ -155,6 +118,7 @@ class ObjectLockManager {
   size_t TEST_WaitingLocksSize() const;
 
  private:
+  friend struct LockManagerInternalTraits<ObjectLockManager>;
   class Impl;
   std::unique_ptr<Impl> impl_;
 };

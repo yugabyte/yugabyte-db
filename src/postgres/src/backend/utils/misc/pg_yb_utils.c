@@ -982,7 +982,7 @@ YBInitPostgresBackend(
 			if (yb_enable_ash)
 				YbAshInit();
 
-			if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+			if (yb_enable_query_diagnostics)
 				YbQueryDiagnosticsInstallHook();
 		}
 
@@ -1639,7 +1639,7 @@ bool yb_enable_inplace_index_update = true;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,
-	.is_enabled = false,
+	.is_enabled = true,
 	.num_cols_to_compare = 50,
 	.max_cols_size_to_compare = 10 * 1024
 };
