@@ -107,3 +107,19 @@ are started. You can also see the required environment variables from
 
 We use `cargo-fmt` as formatter and `cargo-clippy` as linter. You can check
 how we run them from [ci.yml](.github/workflows/ci.yml).
+
+
+# Release
+
+We apply semantic versioning for our releases. We do not support long term release branches (backporting) yet.
+The release process is as follows:
+
+1. Open PR to start release preparation,
+2. Bump the package version at `Cargo.toml` file
+3. Upgrade dependencies via `cargo update`
+4. Use a schema diff tool, if possible (or manually), to generate
+  - sql upgrade file from previous release to the current release `pg_parquet--<prev-version>-<next-version>.sql`
+  - sql file of the current schema `pg_parquet.sql`
+5. Merge the PR into main
+6. Tag the latest commit with naming convention of `v<major>.<minor>.<patch>`
+7. Release it with important and breaking (if any) changes
