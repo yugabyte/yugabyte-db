@@ -117,15 +117,15 @@ You can choose to run the following workloads individually:
 Before starting the workload, load the data as follows:
 
 ```sh
-$ sysbench <workload>               			\
-      --tables=10                   		\
-      --table-size=100000          			\
-      --range_key_partitioning=true 			\
-      --db-driver=pgsql             			\
-      --pgsql-host=<comma-separated-ips>        	\
-      --pgsql-port=5433             			\
-      --pgsql-user=yugabyte         			\
-      --pgsql-db=yugabyte           			\
+$ sysbench <workload>                       \
+      --tables=10                           \
+      --table-size=100000                   \
+      --range_key_partitioning=true         \
+      --db-driver=pgsql                     \
+      --pgsql-host=<comma-separated-ips>    \
+      --pgsql-port=5433                     \
+      --pgsql-user=yugabyte                 \
+      --pgsql-db=yugabyte                   \
       prepare
 ```
 
