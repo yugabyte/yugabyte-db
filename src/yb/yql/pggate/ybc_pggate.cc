@@ -145,6 +145,11 @@ DEFINE_RUNTIME_PREVIEW_bool(
     "If ysql_conn_mgr_version_matching is enabled is enabled, then connect to higher version "
     "server if this flag is set to true");
 
+DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
+    "Block roles that can potentially be used to escalate to superuser privileges. Intended to be "
+    "used with superuser login disabled, such as in YBM. When true, this assumes those blocked "
+    "roles are not already in use.");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -2065,6 +2070,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_version_matching = &FLAGS_ysql_conn_mgr_version_matching,
       .ysql_conn_mgr_version_matching_connect_higher_version =
           &FLAGS_ysql_conn_mgr_version_matching_connect_higher_version,
+      .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
   };
   // clang-format on
   return &accessor;
