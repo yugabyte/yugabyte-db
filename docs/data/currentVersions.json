@@ -40,9 +40,9 @@
     {
       "series": "v2.20",
       "display": "v2.20 (LTS)",
-      "version": "2.20.8.0",
+      "version": "2.20.8.1",
       "versionShort": "2.20.8",
-      "appVersion": "2.20.8.0-b53",
+      "appVersion": "2.20.8.1-b2",
       "isStable": true,
       "isLTS": true,
       "initialRelease": "2023-11-13",

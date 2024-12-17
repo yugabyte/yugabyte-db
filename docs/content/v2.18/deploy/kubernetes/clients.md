@@ -30,7 +30,7 @@ NAME          TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                    
 yb-tservers   ClusterIP   None         <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   56m
 ```
 
-The following example shows a client that uses the YSQL shell ([`ysqlsh`](../../../admin/ysqlsh/)) to connect:
+The following example shows a client that uses the YSQL shell ([ysqlsh](../../../admin/ysqlsh/)) to connect:
 
 ```sh
 kubectl run ysqlsh-client -it --rm  --image yugabytedb/yugabyte-client --command -- ysqlsh -h yb-tservers.yb-demo.svc.cluster.local
@@ -74,12 +74,10 @@ yb-tserver-service   LoadBalancer   10.99.76.181    98.138.219.232   6379:30141/
 yb-tservers          ClusterIP      None            <none>           7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP  43h
 ```
 
-The following example shows a client that uses the YSQL shell ([`ysqlsh`](../../../admin/ysqlsh/)) to connect:
+The following example shows a client that uses the YSQL shell ([ysqlsh](../../../admin/ysqlsh/)) to connect:
 
 ```sh
 docker run yugabytedb/yugabyte-client ysqlsh -h 98.138.219.232
-
-yugabyte=# CREATE TABLE demo(id INT PRIMARY KEY);
 ```
 
 ```sql
