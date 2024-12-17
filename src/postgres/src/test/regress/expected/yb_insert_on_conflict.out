@@ -1189,3 +1189,27 @@ TABLE copy ORDER BY a;
   9 | replaced_name_9
  10 | replaced_name_10
 (10 rows)
+
+--- GH-25296
+CREATE TABLE dupidx (a int);
+CREATE UNIQUE INDEX ON dupidx (a);
+CREATE UNIQUE INDEX ON dupidx (a);
+INSERT INTO dupidx VALUES (1);
+INSERT INTO dupidx VALUES (1) ON CONFLICT DO NOTHING;
+TABLE dupidx;
+ a
+---
+ 1
+(1 row)
+
+CREATE TABLE multidx (a int, b int);
+CREATE UNIQUE INDEX ON multidx (a);
+CREATE UNIQUE INDEX ON multidx (b);
+INSERT INTO multidx VALUES (1, 2);
+INSERT INTO multidx VALUES (1, 2) ON CONFLICT DO NOTHING;
+TABLE multidx;
+ a | b
+---+---
+ 1 | 2
+(1 row)
+

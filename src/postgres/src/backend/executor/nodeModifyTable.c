@@ -5526,7 +5526,6 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 	 */
 	YBCPgInsertOnConflictKeyInfo info = {NULL};
 	const uint64_t key_count = YBCPgGetInsertOnConflictKeyCount(state);
-	Assert(state->num_slots >= key_count);
 	for (uint64_t i = 0; i < key_count; i++)
 	{
 		HandleYBStatus(YBCPgDeleteNextInsertOnConflictKey(state,
