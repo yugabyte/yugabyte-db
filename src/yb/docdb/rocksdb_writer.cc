@@ -767,6 +767,11 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
       continue;
     }
     auto column_value = decoder.FetchValue(vector_index.column_id());
+    if (column_value.IsNull()) {
+      VLOG_WITH_FUNC(3) << "Ignoring null vector value for key '" << key.ToDebugHexString() << "'";
+      continue;
+    }
+
     vector_index_batches_[i].push_back(VectorIndexInsertEntry {
       .key = KeyBuffer(key.WithoutPrefix(table_key_prefix.size())),
       .value = ValueBuffer(*column_value),

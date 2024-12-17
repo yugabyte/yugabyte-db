@@ -95,6 +95,8 @@ template<vector_index::IndexableVectorType Vector>
 Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
     const VectorIndexInsertEntry& entry) {
 
+  RSTATUS_DCHECK(!entry.value.empty(), InvalidArgument, "Vector value is not specified");
+
   auto encoded = dockv::EncodedDocVectorValue::FromSlice(entry.value.AsSlice());
   return vector_index::VectorLSMInsertEntry<Vector> {
     .vertex_id = VERIFY_RESULT(encoded.DecodeId()),
