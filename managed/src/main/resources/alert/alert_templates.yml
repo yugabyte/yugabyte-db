@@ -1492,6 +1492,33 @@ templates:
         Maximum throughput for YSQL operations for universe '{{ $labels.source_name }}'
         is above {{ $labels.threshold }}. Current value is {{ $value | printf "%.0f" }}
 
+  YCQL_MICROSECOND_TIMESTAMPS_DETECTED:
+    name: YCQL inserts with microseconds precision
+    description: YCQL inserts with microseconds precision detected, which is not fully supported.
+    queryTemplate: max by (universe_uuid) (increase(cql_microseconds_timestamps_used{universe_uuid="__universeUuid__"}[{{ query_threshold }}m])) {{ query_condition }} 0
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 60
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MINUTE
+    thresholdUnitName: min
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (increase(cql_microseconds_timestamps_used{universe_uuid='{{ $labels.universe_uuid }}'}[{{ query_threshold }}m]))
+        {{ query_condition }} 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        YCQL inserts with microseconds precision detected on universe '{{ $labels.source_name }}',
+        which is not fully supported. Please change application code to use milliseconds precision,
+        or set cql_revert_to_partial_microsecond_support=false gflag value to round
+        down all future microsecond precision timestamps to previous millisecond.
+        See https://docs.yugabyte.com/preview/releases/techadvisories/ta-23476
+        for more details.
+        Affected nodes: {{ $labels.affected_node_names }}
+
   YCQL_OP_AVG_LATENCY:
     name: YCQL average latency is high
     description: Average latency of YCQL operations is above threshold
@@ -1662,27 +1689,28 @@ templates:
 
   INCREASED_REMOTE_BOOTSTRAPS:
     name: Increase in remote bootstraps
-    description: Increase in remote bootstraps detected during last 5 minutes
-    queryTemplate: sum by (universe_uuid) (increase(rpc_latency_count{export_type="tserver_export", service_type="ConsensusService", universe_uuid="__universeUuid__", server_type="yb_consensus", service_method="StartRemoteBootstrap"}[5m]))
+    description: Increase in remote bootstraps detected during last 10 minutes
+    queryTemplate: sum by (universe_uuid) (increase(rpc_latency_count{export_type="tserver_export",
+      service_type="ConsensusService", universe_uuid="__universeUuid__", server_type="yb_consensus",
+      service_method="StartRemoteBootstrap"}[10m])) / max by (universe_uuid)
+      (ts_live_tablet_peers{universe_uuid="__universeUuid__"}) * 100
       {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: false
     defaultThresholdMap:
       WARNING:
-        threshold: 0.0
+        threshold: 10.0
     targetType: UNIVERSE
     defaultThresholdCondition: GREATER_THAN
-    defaultThresholdUnit: COUNT
-    thresholdUnitName: bootstrap(s)
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
     labels:
       affected_node_names: >-
-        {{ range $index, $element := query "sum by (universe_uuid, node_name)
-        (increase(rpc_latency_count{export_type='tserver_export', service_type='ConsensusService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_consensus', service_method='StartRemoteBootstrap'}[5m]))
-        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Increase in remote bootstraps detected for universe '{{ $labels.source_name }}'.
-
-        Affected nodes: {{ $labels.affected_node_names }}
 
 
   TABLET_SERVER_AVG_READ_LATENCY:

@@ -50,6 +50,13 @@ public enum Unit {
           .metricName("sec")
           .integer(true)
           .thresholdConditionReadOnly(true)),
+  MINUTE(
+      new UnitBuilder()
+          .measure(Measure.TIME)
+          .displayName("min")
+          .metricName("min")
+          .integer(true)
+          .thresholdConditionReadOnly(true)),
   DAY(
       new UnitBuilder()
           .measure(Measure.TIME)
