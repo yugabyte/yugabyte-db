@@ -819,7 +819,7 @@ Default: `""` (uses `<data drive>/yb-data/master/data/certs`.)
 
 ##### --allow_insecure_connections
 
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled.
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
 
 Default: `true`
 
@@ -829,9 +829,17 @@ Adds certificate entries, including IP addresses and hostnames, to log for hands
 
 Default: `false`
 
+##### --use_client_to_server_encryption
+
+Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs.
+
+Default: `false`
+
 ##### --use_node_to_node_encryption
 
-Enables server-server or node-to-node encryption between YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) flag enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) flag must be disabled.
+Enables server-server (node-to-node) encryption between YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-TServer servers must also have their [`--use_node_to_node_encryption`](../yb-tserver/#use-node-to-node-encryption) flag enabled.
+
+When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) should be set to false to disallow insecure connections.
 
 Default: `false`
 

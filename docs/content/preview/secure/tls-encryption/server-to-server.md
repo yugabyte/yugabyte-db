@@ -20,11 +20,11 @@ Before you can enable and use server-to-server encryption, you need to create an
 
 To enable server-to-server encryption using TLS, start your YB-Master and YB-TServer nodes using the following flags.
 
-Flag                           | Node                  | Description                  |
--------------------------------|--------------------------|------------------------------|
-`use_node_to_node_encryption`  | YB-Master, YB-TServer | Set to `true` to enable encryption between YugabyteDB nodes. Default value is `false`. |
-`allow_insecure_connections`   | YB-Master, YB-TServer | Set to `false` to disallow any service with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires `--use_node_to_node_encryption` to be enabled. |
-`certs_dir`                    | YB-Master, YB-TServer | Optional. Directory containing the certificates created for this node to perform encrypted communication with the other nodes. See [Create server certificates](../server-certificates). Default for YB-Masters is `<data drive>/yb-data/master/data/certs` and for YB-TServers is `<data drive>/yb-data/tserver/data/certs`. |
+| Configuration flag          | Description                  |
+| --------------------------- | ---------------------------- |
+| use_node_to_node_encryption | Set to `true` to enable encryption between YugabyteDB nodes. Default is `false`. |
+| allow_insecure_connections  | Set to `false` to disallow any service with unencrypted communication from joining this cluster. Default is `true`. Note that this flag requires `--use_node_to_node_encryption` to be enabled. |
+| certs_dir                   | Optional. Directory containing the certificates created for this node to perform encrypted communication with the other nodes. Default for YB-Masters is `<data drive>/yb-data/master/data/certs` and for YB-TServers is `<data drive>/yb-data/tserver/data/certs`. |
 
 ## Start the YB-Masters
 
