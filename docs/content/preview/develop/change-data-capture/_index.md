@@ -6,8 +6,6 @@ description: CDC or Change data capture is a process to capture changes made to 
 headcontent: Capture changes made to data in the database
 tags:
   feature: early-access
-aliases:
-  - /preview/explore/change-data-capture/
 menu:
   preview:
     identifier: explore-change-data-capture
@@ -15,6 +13,7 @@ menu:
     weight: 280
 type: indexpage
 ---
+
 In databases, change data capture (CDC) is a set of software design patterns used to determine and track the data that has changed so that action can be taken using the changed data. CDC is beneficial in a number of scenarios:
 
 - **Microservice-oriented architectures**: Some microservices require a stream of changes to the data, and using CDC in YugabyteDB can provide consumable data changes to CDC subscribers.
