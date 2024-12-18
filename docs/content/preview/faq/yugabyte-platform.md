@@ -139,9 +139,9 @@ Installation depends on how you choose to prepare the nodes.
 
 #### Run the provisioning script
 
-After creating VMs and installing a supported Linux operating system and additional software, (such as Python), you download the YugabyteDB Anywhere node agent package to the VM, modify the configuration file, and run the included script (node-agent-provision.sh) as root or via sudo.
+After creating VMs and installing a supported Linux operating system and additional software (such as Python), you download the YugabyteDB Anywhere node agent package to the VM, modify the configuration file, and run the included script (node-agent-provision.sh) as root or via sudo.
 
-This process prepares the node for YugabyteDB and installs the node agent on the node. When finished, YugabyteDB Anywhere does not require root or sudo privileges.
+This process prepares the node for YugabyteDB, including installation of node agent on the node.
 
 If you have already installed YugabyteDB Anywhere and it is running, the script can additionally create (or update) an on-premises provider with the node already added.
 
@@ -188,9 +188,9 @@ No provider-level details are needed for registration.
 
 Unregistration is the process of removing the node agent entry from YugabyteDB Anywhere such that there is no further communication. In effect, unregistration makes YugabyteDB Anywhere and the node forget each other.
 
-### Why does node agent installation ask for provider and other details during on-prem manual node agent setup?
+### Why does node agent installation ask for provider and other details during legacy on-premises manual node agent setup?
 
-Node agent is used to run pre-flight checks on the node during various day-0 and day-2 operations. These checks need information like the non-root user's home directory, expected port number for Node exporter, the NTP servers, and so on. These are attributes configured with a provider. As a result, to run these pre-flight checks the node agent needs to be configured to a provider in YugabyteDB Anywhere, and these details are needed to make the node agent aware of the YugabyteDB Anywhere provider which the node will become a part of.
+Node agent is used to run pre-flight checks on the node during various day-0 and day-2 operations. These checks need information like the non-root user's home directory, expected port number for Prometheus Node Exporter, the NTP servers, and so on. These are attributes configured with a provider. As a result, to run these pre-flight checks the node agent needs to be configured to a provider in YugabyteDB Anywhere, and these details are needed to make the node agent aware of the YugabyteDB Anywhere provider which the node will become a part of.
 
 ### How do I move a node provisioned for one provider to a different provider?
 
