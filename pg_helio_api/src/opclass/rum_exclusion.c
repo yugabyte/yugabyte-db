@@ -46,19 +46,21 @@
 #include <executor/executor.h>
 #include <utils/typcache.h>
 
+#include "io/helio_bson_core.h"
+#include "io/bson_hash.h"
 #include "utils/helio_errors.h"
 #include "utils/version_utils.h"
+#include "utils/hashset_utils.h"
 #include "opclass/helio_bson_gin_private.h"
 #include "opclass/helio_gin_index_mgmt.h"
 #include "metadata/metadata_cache.h"
-#include "io/helio_bson_core.h"
-#include "io/bson_hash.h"
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
 extern bool ForceEnableNewUniqueOpClass;
+extern uint64_t DefaultUniqueIndexKeyhashOverride;
 
 static pgbson * GetShardKeyAndDocument(HeapTupleHeader input, int64_t *shardKey);
 static IndexTraverseOption GetExclusionIndexTraverseOption(void *contextOptions,
@@ -69,6 +71,9 @@ static void GenerateTermsForExclusion(pgbson *document, int64_t shardKey,
 									  GenerateTermsContext *context,
 									  bool generateRootTerm);
 static void ValidateExclusionPathSpec(const char *prefix);
+static bool ProcessUniqueShardDocumentKeys(pgbson *uniqueShardDocument,
+										   HTAB *termsHashSet, HASHACTION hashAction);
+static HTAB * GetUniqueShardDocumentTermsHTAB(pgbson *document);
 
 typedef struct IndexBounds
 {
@@ -329,7 +334,7 @@ generate_unique_shard_document(PG_FUNCTION_ARGS)
 		BsonGinSinglePathOptions *singlePathOptions = (BsonGinSinglePathOptions *) buffer;
 		singlePathOptions->isWildcard = false;
 		singlePathOptions->generateNotFoundTerm = !sparse;
-		singlePathOptions->base.indexTermTruncateLimit = UINT32_MAX;
+		singlePathOptions->base.indexTermTruncateLimit = INT32_MAX;
 		singlePathOptions->base.type = IndexOptionsType_SinglePath;
 		singlePathOptions->base.version = IndexOptionsVersion_V0;
 		singlePathOptions->path = sizeof(BsonGinSinglePathOptions);
@@ -415,8 +420,31 @@ generate_unique_shard_document(PG_FUNCTION_ARGS)
 Datum
 bson_unique_shard_path_equal(PG_FUNCTION_ARGS)
 {
-	/* TODO Fill this */
-	PG_RETURN_BOOL(true);
+	/*
+	 * Logging for testing purposes. We need to assert that we recheck the index when there's a hash collision and the
+	 * terms are truncated.
+	 */
+	ereport(DEBUG1, (errmsg("Executing unique index runtime recheck.")));
+
+	pgbson *left = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *right = PG_GETARG_PGBSON_PACKED(1);
+
+
+	/* Build HTAB with every pair of { <path> : <term> } */
+	HTAB *leftHashTable = GetUniqueShardDocumentTermsHTAB(left);
+
+	/*
+	 * Iterate through pgbson on the right to check if every path (key) has
+	 * a term match on the left.
+	 */
+	bool uniquenessConflict = ProcessUniqueShardDocumentKeys(right, leftHashTable,
+															 HASH_FIND);
+
+	hash_destroy(leftHashTable);
+	PG_FREE_IF_COPY(left, 0);
+	PG_FREE_IF_COPY(right, 1);
+
+	PG_RETURN_BOOL(uniquenessConflict);
 }
 
 
@@ -544,8 +572,14 @@ ExtractUniqueShardTermsFromInput(pgbson *input, int32_t *nentries, Pointer **ext
 			*firstBytes = shardKeyValue;
 			int64_t *lastBytes = (int64_t *) &uuid->data[8];
 
-			/* hash the value */
-			*lastBytes = HashBsonValueComparableExtended(indexTerm, keyhash);
+			/*
+			 * Hash the value.
+			 * We check the GUC in order to force a hash collision.
+			 * This is only used for testing and should not be set in production.
+			 */
+			*lastBytes = DefaultUniqueIndexKeyhashOverride > 0 ?
+						 DefaultUniqueIndexKeyhashOverride :
+						 HashBsonValueComparableExtended(indexTerm, keyhash);
 
 			if (index > numTerms)
 			{
@@ -760,4 +794,87 @@ GenerateTermsForExclusion(pgbson *document,
 		*lastBytes = BsonValueHash(&indexTerm.element.bsonValue, 0);
 		context->terms.entries[i] = UUIDPGetDatum(uuid);
 	}
+}
+
+
+/*
+ * Utility function that iterates on all keys of a unique shard document and takes action
+ * against a terms hash set. In case of a HASH_FIND action, this function also returns a
+ * boolean indicating an uniqueness conflict.
+ */
+static bool
+ProcessUniqueShardDocumentKeys(pgbson *uniqueShardDocument, HTAB *termsHashSet, HASHACTION
+							   hashAction)
+{
+	bson_iter_t specIter;
+	PgbsonInitIterator(uniqueShardDocument, &specIter);
+
+	while (bson_iter_next(&specIter))
+	{
+		/*
+		 * This skips the loop until we reach the keys that contain arrays. These are the ones
+		 * that store the terms we need to process.
+		 */
+		if (!BSON_ITER_HOLDS_ARRAY(&specIter))
+		{
+			continue;
+		}
+
+		const char *key = bson_iter_key(&specIter);
+		bson_iter_t arrayIter;
+		bson_iter_recurse(&specIter, &arrayIter);
+
+		bool keyTermMatch = false;
+		while (bson_iter_next(&arrayIter))
+		{
+			pgbson_writer writer;
+			PgbsonWriterInit(&writer);
+
+			const bson_value_t *indexTerm = bson_iter_value(&arrayIter);
+			PgbsonWriterAppendValue(&writer, key, strlen(key), indexTerm);
+
+			/* Get bson containing both key and indexTerm. */
+			pgbson *pgbson = PgbsonWriterGetPgbson(&writer);
+			const bson_value_t keyValueTerm = ConvertPgbsonToBsonValue(pgbson);
+
+			/* Query hash table with given action. */
+			bool found;
+			hash_search(termsHashSet, &keyValueTerm, hashAction, &found);
+
+			if (found)
+			{
+				/* keyTerm pair on the document was found on the hash table. */
+				keyTermMatch = true;
+				break;
+			}
+		}
+
+		if (!keyTermMatch && hashAction == HASH_FIND)
+		{
+			/*
+			 * No term for this key was found on the hash table, meaning the unique shard
+			 * documents don't have a uniqueness conflict. We return early if action is HASH_FIND.
+			 */
+			return false;
+		}
+	}
+
+	/*
+	 * Each path (key) on the document has a term match on the hash table, meaning
+	 * there's a uniqueness conflict.
+	 */
+	return true;
+}
+
+
+/*
+ * Utility function that receives a unique shard document (i.e. document returned from the generate_unique_shard_document function),
+ * inserts all terms in a hash table and returns it to the caller.
+ */
+static HTAB *
+GetUniqueShardDocumentTermsHTAB(pgbson *uniqueShardDocument)
+{
+	HTAB *termsHashSet = CreateBsonValueHashSet();
+	ProcessUniqueShardDocumentKeys(uniqueShardDocument, termsHashSet, HASH_ENTER);
+	return termsHashSet;
 }

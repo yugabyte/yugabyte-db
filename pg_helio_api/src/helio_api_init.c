@@ -272,6 +272,9 @@ char *ClusterAdminRole = DEFAULT_CLUSTER_ADMIN_ROLE;
 #define SCRAM_DEFAULT_SALT_LEN 28
 int ScramDefaultSaltLen = SCRAM_DEFAULT_SALT_LEN;
 
+#define DEFAULT_UNIQUE_INDEX_KEYHASH_OVERIDE 0
+int DefaultUniqueIndexKeyhashOverride = DEFAULT_UNIQUE_INDEX_KEYHASH_OVERIDE;
+
 #define DEFAULT_ENABLE_SHARDING_OR_FILTERS true
 bool EnableShardingOrFilters = DEFAULT_ENABLE_SHARDING_OR_FILTERS;
 
@@ -811,6 +814,15 @@ InitApiConfigurations(char *prefix)
 		0,
 		NULL, NULL, NULL);
 
+	DefineCustomIntVariable(
+		"helio_api.defaultUniqueIndexKeyhashOverride",
+		gettext_noop(
+			"Do not set this in production. GUC used to force a single keyhash result value for testing hash conflicts on unique indexes that require a runtime recheck."),
+		NULL, &DefaultUniqueIndexKeyhashOverride,
+		DEFAULT_UNIQUE_INDEX_KEYHASH_OVERIDE, 0, INT_MAX,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		"helio_api.enableShardingOrFilters",

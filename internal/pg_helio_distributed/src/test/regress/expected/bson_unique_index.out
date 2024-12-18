@@ -1015,6 +1015,178 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
  { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
 (1 row)
 
+-- reset data
+set helio_api.enable_large_unique_index_keys to on;
+set helio_api.indexTermLimitOverride to 60;
+DELETE FROM helio_data.documents_5600;
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+\d helio_data.documents_5600
+                      Table "helio_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           | not null | now()
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- now test composite not-sparse unique index
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a": 1, "b": 1 }, "name": "constraint1", "unique": true, "sparse": false }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d helio_data.documents_5600
+                      Table "helio_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           | not null | now()
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5614" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='60', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='60', generatenotfoundterm='true') WITH =?=)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- insert data in a way that bson_rum_single_path_ops will match truncated and bson_rum_unique_shard_path_ops recheck won't
+set helio_api.defaultUniqueIndexKeyhashOverride to 1;
+-- set log level in order to test hash collision flow
+SET client_min_messages TO DEBUG1;
+-- works
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should succeed with hash collision and truncation
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters2", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters2" }');
+DEBUG:  Executing unique index runtime recheck.
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters3", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters3" }');
+DEBUG:  Executing unique index runtime recheck.
+DEBUG:  Executing unique index runtime recheck.
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters4", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters4" }');
+DEBUG:  Executing unique index runtime recheck.
+DEBUG:  Executing unique index runtime recheck.
+DEBUG:  Executing unique index runtime recheck.
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- reset log level
+RESET client_min_messages;
+-- should fail even with hash collision and truncation
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+-- reset data
+set helio_api.enable_large_unique_index_keys to on;
+set helio_api.indexTermLimitOverride to 60;
+DELETE FROM helio_data.documents_5600;
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+\d helio_data.documents_5600
+                      Table "helio_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           | not null | now()
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- now test composite not-sparse unique index
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a": 1, "b": 1 }, "name": "constraint1", "unique": true, "sparse": false }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d helio_data.documents_5600
+                      Table "helio_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           | not null | now()
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5615" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='60', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='60', generatenotfoundterm='true') WITH =?=)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- insert data in a way that bson_rum_single_path_ops will match truncated but unique shard uuid won't match
+set helio_api.defaultUniqueIndexKeyhashOverride to 0;
+-- set log level in order to test hash collision flow
+SET client_min_messages TO DEBUG1;
+-- works -
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should succeed without recheck logs
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters2", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters2" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters3", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters3" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters4", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters4" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- reset log level
+RESET client_min_messages;
+-- should fail
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
 -- test new op class (generate_unique_shard_document) for composite sparse indexes
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": 1, "key2": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
                                                                            generate_unique_shard_document                                                                            

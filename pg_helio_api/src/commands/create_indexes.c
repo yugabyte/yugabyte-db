@@ -1244,11 +1244,16 @@ ParseCreateIndexesArg(Datum dbNameDatum, pgbson *arg)
 				EnsureTopLevelFieldType(fieldNameStr->data, &indexesArrayIter,
 										BSON_TYPE_DOCUMENT);
 
+				IndexDef *indexDef = ParseIndexDefDocument(&indexesArrayIter,
+														   createIndexesArg.
+														   ignoreUnknownIndexOptions);
 				createIndexesArg.indexDefList =
-					lappend(createIndexesArg.indexDefList,
-							ParseIndexDefDocument(&indexesArrayIter,
-												  createIndexesArg.
-												  ignoreUnknownIndexOptions));
+					lappend(createIndexesArg.indexDefList, indexDef);
+
+				if (indexDef->unique && indexDef->enableLargeIndexKeys)
+				{
+					ReportFeatureUsage(FEATURE_CREATE_UNIQUE_INDEX_WITH_TERM_TRUNCATION);
+				}
 			}
 		}
 		else if (strcmp(argKey, "ignoreUnknownIndexOptions") == 0)

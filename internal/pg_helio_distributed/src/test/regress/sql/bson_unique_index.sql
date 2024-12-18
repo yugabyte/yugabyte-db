@@ -320,6 +320,78 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "z": 1 }');
 SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1 }');
 SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
 
+-- reset data
+set helio_api.enable_large_unique_index_keys to on;
+set helio_api.indexTermLimitOverride to 60;
+
+DELETE FROM helio_data.documents_5600;
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+
+\d helio_data.documents_5600
+
+-- now test composite not-sparse unique index
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a": 1, "b": 1 }, "name": "constraint1", "unique": true, "sparse": false }] }', true);
+
+\d helio_data.documents_5600
+
+-- insert data in a way that bson_rum_single_path_ops will match truncated and bson_rum_unique_shard_path_ops recheck won't
+set helio_api.defaultUniqueIndexKeyhashOverride to 1;
+
+-- set log level in order to test hash collision flow
+SET client_min_messages TO DEBUG1;
+
+-- works
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+
+-- should succeed with hash collision and truncation
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters2", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters2" }');
+
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters3", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters3" }');
+
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters4", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters4" }');
+
+-- reset log level
+RESET client_min_messages;
+
+-- should fail even with hash collision and truncation
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+
+-- reset data
+set helio_api.enable_large_unique_index_keys to on;
+set helio_api.indexTermLimitOverride to 60;
+
+DELETE FROM helio_data.documents_5600;
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+
+\d helio_data.documents_5600
+
+-- now test composite not-sparse unique index
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a": 1, "b": 1 }, "name": "constraint1", "unique": true, "sparse": false }] }', true);
+
+\d helio_data.documents_5600
+
+-- insert data in a way that bson_rum_single_path_ops will match truncated but unique shard uuid won't match
+set helio_api.defaultUniqueIndexKeyhashOverride to 0;
+
+-- set log level in order to test hash collision flow
+SET client_min_messages TO DEBUG1;
+
+-- works -
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+
+-- should succeed without recheck logs
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters2", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters2" }');
+
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters3", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters3" }');
+
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters4", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters4" }');
+
+-- reset log level
+RESET client_min_messages;
+
+-- should fail
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+
 -- test new op class (generate_unique_shard_document) for composite sparse indexes
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": 1, "key2": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
