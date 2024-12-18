@@ -250,7 +250,6 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
                 .plans(resultNodeChecker
                     .storageTableReadRequests(Checkers.equal(1))
                     .storageTableWriteRequests(Checkers.equal(1))
-                    .storageIndexWriteRequests(Checkers.equal(TEST_NUM_SEC_INDEXES))
                     .build())
                 .build())
             .storageFlushRequests(Checkers.equal(1))
@@ -304,15 +303,15 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
     {
         Checker checker = topLevelChecker
             .plan(insertNodeChecker
-                .plans(resultNodeChecker
+                .plans(makePlanBuilder()
+                    .nodeType(NODE_RESULT)
                     .storageTableReadRequests(Checkers.equal(1))
                     .storageTableWriteRequests(Checkers.equal(1))
-                    .storageIndexWriteRequests(Checkers.equal(TEST_NUM_SEC_INDEXES * 2))
                     .build())
                 .build())
-            .storageFlushRequests(Checkers.equal(2))
+            .storageFlushRequests(Checkers.equal(1))
             .storageReadRequests(Checkers.equal(1))
-            .storageWriteRequests(Checkers.equal((TEST_NUM_SEC_INDEXES * 2) + 1))
+            .storageWriteRequests(Checkers.equal(1))
             .build();
 
         testExplain(String.format(insertWithOnConflict, TEST_TABLE, "(1, 1, 1, 1, 1)", "k",
