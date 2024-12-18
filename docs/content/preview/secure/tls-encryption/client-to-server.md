@@ -30,6 +30,8 @@ To enable client-to-server encryption for YSQL and YCQL, start your YB-Master an
 | allow_insecure_connections      | Set to `false` to disallow any client with unencrypted communication from joining this cluster. Default is `true`. Note that this flag requires `--use_client_to_server_encryption` to be enabled. |
 | certs_for_client_dir            | Optional. Defaults to the same directory as the server-to-server encryption. Directory containing the configuration for the client to perform TLS communication with the cluster. Default for YB-Masters is `<data drive>/yb-data/master/data/certs` and for YB-TServer is `<data drive>/yb-data/tserver/data/certs`. |
 
+## Start the servers
+
 To enable access control, start the yb-master and yb-tserver services with the following flag:
 
 ```output

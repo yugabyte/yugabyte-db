@@ -28,7 +28,7 @@ To enable server-to-server encryption using TLS, start your YB-Master and YB-TSe
 
 ## Start the YB-Masters
 
-You can enable access control by starting the yb-master services with the `--use_node_to_node_encryption=true` flag as described above. Your command should look similar to this:
+You can enable access control by starting the yb-master services with the `--use_node_to_node_encryption=true` flag. Your command should look similar to this:
 
 ```sh
 bin/yb-master                               \
@@ -43,7 +43,7 @@ For information on starting YB-Master nodes for a deployment, see [Start YB-Mast
 
 ## Start the YB-TServers
 
-You can enable access control by starting the yb-tserver services using the `--use_node_to_node_encryption=true` flag described above. Your command should look similar to this:
+You can enable access control by starting the yb-tserver services using the `--use_node_to_node_encryption=true` flag. Your command should look similar to this:
 
 ```sh
 bin/yb-tserver                                  \
