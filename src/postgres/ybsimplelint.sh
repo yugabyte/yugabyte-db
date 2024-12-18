@@ -27,6 +27,35 @@ grep -nE '\s(if|else if|for|while)\(' "$1" \
   | grep -vE 'while\((0|1)\)' \
   | sed 's/^/error:bad_spacing_after_if_else_for_while:/'
 
+# Comments
+grep -nE '//\s' "$1" \
+  | sed 's/^/error:bad_comment_style:/'
+# /* this is a bad
+#  * multiline comment */
+# TupleTableSlot slot /* this is a good
+#                      * inline comment */
+# /**************
+#  * this is fine
+#  */
+# /*-------------
+#  * this is fine
+#  */
+# /* TypeCategory()
+#  * this is fine
+#  */
+# /*		box_same
+#  * this is fine
+#  */
+grep -nE '^\s*/\*[^/]*[^)*-/]$' "$1" \
+  | grep -vE '/\*		\w' \
+  | sed 's/^/warning:likely_bad_multiline_comment_start:/'
+# /*
+# * this is a bad
+# * multiline comment
+# */
+grep -nE '(^|^\s*	)\*/' "$1" \
+  | sed 's/^/warning:likely_bad_multiline_comment_end:/'
+
 # Pointers
 #
 # Second grep below is to exclude comments:
