@@ -30,7 +30,8 @@ using YsqlDdlWhitelistTest = pgwrapper::PgMiniTestBase;
 TEST_F(YsqlDdlWhitelistTest, TestDDLBlocking) {
   // Prepare the cluster.
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_STMT_OK("CREATE TABLE normal_table (id INT)");
+  ASSERT_STMT_OK("CREATE TABLE normal_table (id INT, b INT)");
+  ASSERT_STMT_OK("CREATE INDEX normal_idx ON normal_table (b)");
 
   // Block non temp DDLs.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_require_force_catalog_modifications) = true;
@@ -45,7 +46,9 @@ TEST_F(YsqlDdlWhitelistTest, TestDDLBlocking) {
 
   // Temp table with an index.
   ASSERT_STMT_OK("CREATE TEMP TABLE test_temp_table_with_pk (id INT PRIMARY KEY)");
-  ASSERT_DDL_NOK("ALTER TABLE test_temp_table_with_pk ADD COLUMN b INT");
+  ASSERT_STMT_OK("ALTER TABLE test_temp_table_with_pk ADD COLUMN b INT");
+  ASSERT_STMT_OK("CREATE INDEX temp_idx ON test_temp_table_with_pk (b)");
+  ASSERT_STMT_OK("DROP INDEX temp_idx");
 
   // Drop a collection of temp tables.
   ASSERT_STMT_OK("CREATE TEMP TABLE test_temp_table (id INT)");
@@ -55,7 +58,9 @@ TEST_F(YsqlDdlWhitelistTest, TestDDLBlocking) {
   ASSERT_DDL_NOK("CREATE TABLE normal_table2 (id INT)");
   ASSERT_DDL_NOK("CREATE TABLE normal_table2 (id INT PRIMARY KEY)");
   ASSERT_DDL_NOK("DROP TABLE normal_table");
-  ASSERT_DDL_NOK("ALTER TABLE normal_table ADD COLUMN b INT");
+  ASSERT_DDL_NOK("ALTER TABLE normal_table ADD COLUMN c INT");
+  ASSERT_DDL_NOK("CREATE INDEX normal_idx2 ON normal_table (b)");
+  ASSERT_DDL_NOK("DROP INDEX normal_idx");
 
   // Ensure mix of temp and normal table drops are not allowed.
   ASSERT_STMT_OK("CREATE TEMP TABLE test_temp_table (id INT)");

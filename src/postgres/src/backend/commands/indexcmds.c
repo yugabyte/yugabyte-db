@@ -1272,8 +1272,8 @@ DefineIndex(Oid relationId,
 			stmt->options, tablespaceId, stmt->relation->relpersistence);
 	}
 
-	if (IsYugaByteEnabled() && stmt->relation &&
-		stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+	if (IsYugaByteEnabled() &&
+		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 		YBCForceAllowCatalogModifications(true);
 
 	indexRelationId =

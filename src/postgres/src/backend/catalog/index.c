@@ -1645,6 +1645,10 @@ index_drop(Oid indexId, bool concurrent)
 	 */
 	CheckTableNotInUse(userIndexRelation, "DROP INDEX");
 
+	if (IsYugaByteEnabled() &&
+		userIndexRelation->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+		YBCForceAllowCatalogModifications(true);
+
 	/*
 	 * Drop Index Concurrently is more or less the reverse process of Create
 	 * Index Concurrently.
