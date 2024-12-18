@@ -1108,7 +1108,7 @@ To upgrade from an older version that doesn't support RPC compression (such as 2
 
 ## Security flags
 
-For details on enabling client-server encryption, see [Client-server encryption](../../../secure/tls-encryption/client-to-server/).
+For details on enabling encryption in transit, see [Encryption in transit](../../../secure/tls-encryption/).
 
 ##### --certs_dir
 

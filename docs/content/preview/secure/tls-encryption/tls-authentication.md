@@ -24,7 +24,7 @@ type: docs
 TLS can be configured in conjunction with authentication using the following configuration flags related to TLS and authentication:
 
 * [`ysql_enable_auth`](../../authentication/password-authentication/) to enable password (md5) authentication
-* [`use_client_to_server_encryption`](../client-to-server/) to enable client-server TLS encryption
+* [`use_client_to_server_encryption`](../server-to-server/) to enable client-server TLS encryption
 * [`ysql_hba_conf_csv`](../../authentication/host-based-authentication/) to manually set a host-based authentication (HBA) configuration
 
 The default (auto-generated) configuration in the `ysql_hba.conf` file depends on whether auth (`ysql_enable_auth`) and/or TLS (`use_client_to_server_encryption`) are enabled.
