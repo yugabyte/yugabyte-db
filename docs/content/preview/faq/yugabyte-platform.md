@@ -92,11 +92,15 @@ For software prerequisites for YugabyteDB data nodes, refer to [Software prerequ
 
 ### How does the YugabyteDB Anywhere UI interact with YugabyteDB data nodes?
 
-The YugabyteDB Anywhere UI creates a passwordless SSH connection to interact with the data nodes.
+YugabyteDB Anywhere communicates with nodes using a service installed on each node called the [YugabyteDB Anywhere node agent](#what-is-a-node-agent). The node agent is an RPC service, and once installed on a node, YugabyteDB Anywhere does not require SSH or elevated (root) permissions to interact with the data nodes.
+
+For universes deployed using earlier versions of YugabyteDB Anywhere, YugabyteDB Anywhere creates a passwordless SSH connection to interact with the data nodes.
 
 ### Can I access the database machines that get spawned in public clouds?
 
-Yes, you have access to all machines spawned. The machines are spawned by YugabyteDB Anywhere. YugabyteDB Anywhere runs on your machine in your region/data center. If you have configured YugabyteDB Anywhere to work with any public cloud (such as AWS or GCP), it will spawn YugabyteDB nodes using your credentials on your behalf. These machines run in your account, but are created and managed by YugabyteDB Anywhere on your behalf. You can log on to these machines any time. The YugabyteDB Anywhere UI additionally displays metrics per node and per universe.
+Yes, you have access to all machines spawned by YugabyteDB Anywhere. YugabyteDB Anywhere runs on your machine in your region/data center.
+
+If you have configured YugabyteDB Anywhere to work with any public cloud (such as AWS or GCP), it will spawn YugabyteDB nodes using your credentials. These machines run in your account, but are created and managed by YugabyteDB Anywhere on your behalf. You can log on to these machines any time. The YugabyteDB Anywhere UI additionally displays metrics per node and per universe.
 
 ### How many machines do I need to try out YugabyteDB Anywhere against my load?
 
@@ -127,29 +131,45 @@ Node agent is an RPC service running on a YugabyteDB node, and is used to manage
 - Invoke shell commands directly on the remote host, similar to running commands over SSH. Like SSH, the agent also does shell-login such that any previous command modifying the environment in the resource files (for example, `~/.bashrc`) gets reflected in the subsequent command.
 - Additionally, for on-premises (manually provisioned nodes) deployments, node agent also functions as a utility to run preflight checks, and add node instances.
 
+After node agent is installed on a node, YugabyteDB Anywhere no longer requires SSH or elevated (root) privileges to communicate with the node.
+
 ### How is node agent installed on a YugabyteDB node?
 
-Installation depends on how the nodes are provisioned.
+Installation depends on how you choose to prepare the nodes.
 
-Currently, there are three ways to provision a node, depending on the level of access provided to YugabyteDB Anywhere, as follows:
+#### Run the provisioning script
+
+After creating VMs and installing a supported Linux operating system and additional software, (such as Python), you download the YugabyteDB Anywhere node agent package to the VM, modify the configuration file, and run the included script (node-agent-provision.sh) as root or via sudo.
+
+This process prepares the node for YugabyteDB and installs the node agent on the node. When finished, YugabyteDB Anywhere does not require root or sudo privileges.
+
+If you have already installed YugabyteDB Anywhere and it is running, the script can additionally create (or update) an on-premises provider with the node already added.
+
+{{<lead link="/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem/">}}
+Automatically provision on-premises nodes
+{{</lead>}}
+
+#### Legacy provisioning
+
+In addition, there are three legacy methods for preparing a node, depending on the level of access provided to YugabyteDB Anywhere, as follows:
 
 - _Automatic provisioning_, where an SSH user with sudo access for the node is provided to YugabyteDB Anywhere (for example, the `ec2-user` for an AWS EC2 instance).
 
-- _Assisted manual provisioning_ via a script (`provision_instance.py`), where YugabyteDB Anywhere doesn't have access to an SSH user with sudo access, but you can run the script interactively in YugabyteDB Anywhere, providing parameters for credentials for the SSH user with sudo access.
+- _Assisted manual provisioning_, where YugabyteDB Anywhere doesn't have access to an SSH user with sudo access, but you can run a script (provision_instance.py) interactively in YugabyteDB Anywhere, providing parameters for credentials for the SSH user with sudo access.
 
 - _Fully manual provisioning_, where neither you nor YugabyteDB Anywhere has access to an SSH user with sudo access. In this case, only a local (non-SSH) user with sudo access is available, and you must follow a series of manual steps to provision the node.
 
-For cloud (AWS, GCP, and Azure) and automatic on-premises (sudo access provided) providers, agents are automatically installed on each universe node during provisioning using SSH. After the node agent is installed, all the legacy SSH calls are replaced with node agent calls. Just like an SSH daemon, node agent is run as a root user to perform provisioning of the nodes. After node provisioning, you can revoke the SSH access, but it's recommended to retain access for debugging.
+For cloud (AWS, GCP, and Azure) and automatic on-premises (sudo access provided) providers, node agents are automatically installed on each universe node during provisioning using SSH. After the node agent is installed, all the legacy SSH calls are replaced with node agent calls. Just like an SSH daemon, node agent is run as a root user to perform provisioning of the nodes. After node provisioning, you can revoke the SSH access, but it's recommended to retain access for debugging.
 
 For manually provisioned on-premises providers, node agent is installed on each node either using a script or manually as part of the manual provisioning process.
 
-{{<lead link="../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#install-node-agent">}}
-Install node agent
+{{<lead link="/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-legacy">}}
+Legacy provisioning
 {{</lead>}}
 
 ### Why does YugabyteDB Anywhere prompt for SSH details if the node agent is installed manually and can replace SSH?
 
-When creating an on-premises provider, you are prompted to provide SSH credentials, which are used during provisioning of automatically provisioned providers. After provisioning and adding the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+When creating an on-premises provider, you are prompted to provide SSH credentials, which are used during legacy provisioning of automatically provisioned providers. After provisioning and adding the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
 
 If you are manually provisioning nodes, these credentials aren't needed to provision nodes.
 
@@ -199,6 +219,8 @@ A node agent does the following when the preflight-check command is run:
 You can disable node agents of a provider's universes any time by setting the `yb.node_agent.client.enabled` [Provider Runtime Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) for the provider to false.
 
 This disables all node agents for universes created using the provider, and YugabyteDB Anywhere falls back to using SSH to communicate with universe nodes, using credentials provided during provider creation.
+
+Note that in future versions of YugabyteDB Anywhere, node agent must be enabled on all nodes managed by YugabyteDB Anywhere in order to upgrade YugabyteDB Anywhere.
 
 ### How do I change the node agent default port of 9070?
 
