@@ -1521,71 +1521,25 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 }
 
 bool
-YbUseWholeRowJunkAttribute(Relation relation, Bitmapset *updatedCols,
-						   CmdType operation, List *returningList)
+YbWholeRowAttrRequired(Relation relation, CmdType operation)
 {
-	if (!IsYBRelation(relation))
-		return false;
+	Assert(IsYBRelation(relation));
 
 	/*
-	 * 1. For tables with secondary indexes we need the (old) ybctid for
-	 *    removing old index entries (for UPDATE and DELETE)
-	 * 2. For tables with row triggers we need to pass the old row for
-	 *    trigger execution.
+	 * For UPDATE, wholerow attribute is required to get the values of unchanged
+	 * columns.
 	 */
-	if (YBRelHasSecondaryIndices(relation) ||
-		YBRelHasOldRowTriggers(relation, operation))
-		return true;
-
 	if (operation == CMD_UPDATE)
-		return YbUseScanTupleInUpdate(relation, updatedCols, returningList);
-
-	return false;
-}
-
-/*
- * With PG upstream commit 86dc90056dfdbd9d1b891718d2e5614e3e432f35, UPDATE's
- * child node only returns the columns being updated along with junk columns. PG
- * then fetches the pre-existing old tuple to reconstruct the new tuple. This is
- * be an expensive operation in YB. To workaround this problem, YB stores the
- * old tuple as "wholerow" junk column when required. This function
- * returns true when this should be done.
- */
-bool
-YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols, List *returningList)
-{
-	/* Use scan tuple for non-YB relation. */
-	if (!IsYBRelation(relation))
 		return true;
 
 	/*
-	 * Scenarios when the new tuple must contain non-modified columns in UPDATE:
-	 *  - partitions: to check partition constraints and to perform
-	 * cross-partition update (deletion followed by insertion).
-	 *  - constraints: to check for constraint violation.
-	 *  - secondary index: index update works by deletion followed by
-	 * re-insertion, and a multi-column secondary index can contain some updated
-	 * and some non-updated columns.
-	 *  - BR update triggers: to correctly check for "extra updated" columns.
-	 *  - PK update: works by deletion followed by re-insertion, hence the old
-	 * tuple is required.
-	 *  - Updates with RETURNING clause: to serve any non-modified columns
-	 * in the returning clause.
-	 * YB_TODO: Check if RETURNING clause can be optimized to work with
-	 * only requested columns instead of using wholerow junk attribute.
-	 *
-	 * In these cases, the non-modified columns in "new tuple" are populated
-	 * from the old scanned tuple.
+	 * For DELETE, wholerow is required for tables with:
+	 * 1. secondary indexes to removing index entries
+	 * 2. row triggers to pass the old row for trigger execution.
 	 */
-	if (relation->rd_partkey != NULL || relation->rd_rel->relispartition ||
-		relation->rd_att->constr || YBRelHasSecondaryIndices(relation) ||
-		YbRelHasBRUpdateTrigger(relation) ||
-		!YbReturningListSubsetOfUpdatedCols(relation, updatedCols, returningList))
-		return true;
-
-	Bitmapset *primary_key_bms = YBGetTablePrimaryKeyBms(relation);
-	bool is_pk_updated = bms_overlap(primary_key_bms, updatedCols);
-	return is_pk_updated;
+	return operation == CMD_DELETE &&
+		   (YBRelHasSecondaryIndices(relation) ||
+			YBRelHasOldRowTriggers(relation, operation));
 }
 
 //------------------------------------------------------------------------------

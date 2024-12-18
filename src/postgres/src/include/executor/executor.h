@@ -322,8 +322,7 @@ extern ProjectionInfo *ExecBuildUpdateProjection(List *targetList,
 												 TupleDesc relDesc,
 												 ExprContext *econtext,
 												 TupleTableSlot *slot,
-												 PlanState *parent,
-												 bool ybUseScanTuple);
+												 PlanState *parent);
 extern ExprState *ExecPrepareExpr(Expr *node, EState *estate);
 extern ExprState *ExecPrepareQual(List *qual, EState *estate);
 extern ExprState *ExecPrepareCheck(List *qual, EState *estate);

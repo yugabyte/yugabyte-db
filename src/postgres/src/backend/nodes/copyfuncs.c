@@ -240,8 +240,6 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_NODE_FIELD(yb_skip_entities);
 	COPY_NODE_FIELD(yb_update_affected_entities);
 	COPY_SCALAR_FIELD(no_row_trigger);
-	COPY_SCALAR_FIELD(ybUseScanTupleInUpdate);
-	COPY_SCALAR_FIELD(ybHasWholeRowAttribute);
 
 	return newnode;
 }
