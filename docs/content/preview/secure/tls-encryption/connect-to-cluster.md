@@ -24,7 +24,7 @@ Each client that connects to a YugabyteDB cluster that has encryption in transit
 
   This file should be available in `~/.yugabytedb`, the default location for TLS certificates when running the YSQL shell (ysqlsh) locally.
 
-## Connecting to a YugabyteDB Cluster
+## Connect to a YugabyteDB cluster
 
 For each client, the steps assume that you have [Enabled encryption in transit](../server-to-server/) on the YugabyteDB cluster.
 
@@ -89,7 +89,7 @@ $ export SSL_CERTFILE=<path to file>/ca.crt
 
 The next step is to connect using the `--ssl` flag.
 
-### Local Cluster
+### Local cluster
 
 ```sh
 $ ./bin/ycqlsh --ssl
@@ -106,7 +106,7 @@ ycqlsh> DESCRIBE KEYSPACES;
 system_schema  system_auth  system
 ```
 
-### Remote Cluster
+### Remote cluster
 
 To connect to a remote YugabyteDB cluster, you need to have a local copy of ycqlsh available. You can use the ycqlsh CLI available on a locally-installed YugabyteDB.
 
