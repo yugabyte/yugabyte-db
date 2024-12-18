@@ -738,8 +738,7 @@ ExecInitUpdateProjection(ModifyTableState *mtstate,
 								  relDesc,
 								  mtstate->ps.ps_ExprContext,
 								  resultRelInfo->ri_newTupleSlot,
-								  &mtstate->ps,
-								  node->ybUseScanTupleInUpdate);
+								  &mtstate->ps);
 
 	resultRelInfo->ri_projectNewInfoValid = true;
 }
@@ -3953,8 +3952,7 @@ ExecInitMerge(ModifyTableState *mtstate, EState *estate)
 												  relationDesc,
 												  econtext,
 												  resultRelInfo->ri_newTupleSlot,
-												  &mtstate->ps,
-												  node->ybUseScanTupleInUpdate);
+												  &mtstate->ps);
 					mtstate->mt_merge_subcommands |= MERGE_UPDATE;
 					break;
 				case CMD_DELETE:
@@ -4204,7 +4202,6 @@ static TupleTableSlot *
 ExecModifyTable(PlanState *pstate)
 {
 	ModifyTableState *node = castNode(ModifyTableState, pstate);
-	ModifyTable *plan = (ModifyTable *) node->ps.plan;
 	ModifyTableContext context;
 	EState	   *estate = node->ps.state;
 	CmdType		operation = node->operation;
@@ -4414,48 +4411,43 @@ ExecModifyTable(PlanState *pstate)
 			bool		isNull;
 
 			relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
-			/*
-			 * For YugaByte relations extract the old row from the wholerow junk
-			 * attribute if needed.
-			 */
-			if (plan->ybHasWholeRowAttribute)
+
+			if (IsYBRelation(relation))
 			{
-				AttrNumber  resno;
-				Plan	   *subplan = outerPlan(node->ps.plan);
-
-				resno = ExecFindJunkAttributeInTlist(subplan->targetlist, "wholerow");
-				datum = ExecGetJunkAttribute(slot, resno, &isNull);
-
-				/* shouldn't ever get a null result... */
-				if (isNull)
-					elog(ERROR, "wholerow is NULL");
-
-				oldtupdata.t_data = DatumGetHeapTupleHeader(datum);
-				oldtupdata.t_len =
-					HeapTupleHeaderGetDatumLength(oldtupdata.t_data);
-				ItemPointerSetInvalid(&(oldtupdata.t_self));
-				/* Historically, view triggers see invalid t_tableOid. */
-				oldtupdata.t_tableOid =
-					(relkind == RELKIND_VIEW) ? InvalidOid :
-					RelationGetRelid(resultRelInfo->ri_RelationDesc);
-
-				resno = ExecFindJunkAttributeInTlist(subplan->targetlist, "ybctid");
-				datum = ExecGetJunkAttribute(slot, resno, &isNull);
-
+				/* ri_RowIdAttNo refers to a ybctid attribute */
+				Assert(AttributeNumberIsValid(resultRelInfo->ri_RowIdAttNo));
+				datum = ExecGetJunkAttribute(slot, resultRelInfo->ri_RowIdAttNo,
+											 &isNull);
 				/* shouldn't ever get a null result... */
 				if (isNull)
 					elog(ERROR, "ybctid is NULL");
-
 				TABLETUPLE_YBCTID(context.planSlot) = datum;
-				HEAPTUPLE_YBCTID(&oldtupdata) = datum;
 
-				oldtuple = &oldtupdata;
+				if (AttributeNumberIsValid(resultRelInfo->ri_YbWholeRowAttNo))
+				{
+					/* Extract the old row from wholerow junk attribute. */
+					Datum wholerow = ExecGetJunkAttribute(
+						slot, resultRelInfo->ri_YbWholeRowAttNo, &isNull);
+
+					/* shouldn't ever get a null result... */
+					if (isNull)
+						elog(ERROR, "wholerow is NULL");
+
+					oldtupdata.t_data = DatumGetHeapTupleHeader(wholerow);
+					oldtupdata.t_len =
+						HeapTupleHeaderGetDatumLength(oldtupdata.t_data);
+					ItemPointerSetInvalid(&(oldtupdata.t_self));
+					oldtupdata.t_tableOid =
+						RelationGetRelid(resultRelInfo->ri_RelationDesc);
+					HEAPTUPLE_YBCTID(&oldtupdata) = datum;
+					oldtuple = &oldtupdata;
+				}
 			}
 			else if (relkind == RELKIND_RELATION ||
 					 relkind == RELKIND_MATVIEW ||
 					 relkind == RELKIND_PARTITIONED_TABLE)
 			{
-				/* ri_RowIdAttNo refers to a ctid/ybctid attribute */
+				/* ri_RowIdAttNo refers to a ctid attribute */
 				Assert(AttributeNumberIsValid(resultRelInfo->ri_RowIdAttNo));
 				datum = ExecGetJunkAttribute(slot,
 											 resultRelInfo->ri_RowIdAttNo,
@@ -4478,22 +4470,10 @@ ExecModifyTable(PlanState *pstate)
 						ExecMerge(&context, node->resultRelInfo, NULL, node->canSetTag);
 						continue;	/* no RETURNING support yet */
 					}
-
-					if(IsYBRelation(relation))
-						elog(ERROR, "ybctid is NULL");
-					else
-						elog(ERROR, "ctid is NULL");
+					elog(ERROR, "ctid is NULL");
 				}
-
-				if(IsYBRelation(relation))
-				{
-					TABLETUPLE_YBCTID(context.planSlot) = datum;
-				}
-				else
-				{
-					tupleid = (ItemPointer) DatumGetPointer(datum);
-					tuple_ctid = *tupleid;	/* be sure we don't free ctid!! */
-				}
+				tupleid = (ItemPointer) DatumGetPointer(datum);
+				tuple_ctid = *tupleid;	/* be sure we don't free ctid!! */
 				tupleid = &tuple_ctid;
 			}
 
@@ -4580,18 +4560,17 @@ ExecModifyTable(PlanState *pstate)
 					}
 					else
 					{
+						/*
+						 * For UPDATE, oldtuple must be populated for YB
+						 * relations.
+						 */
+						Assert(!IsYBRelation(relation));
 						/* Fetch the most recent version of old tuple. */
-						Relation relation = resultRelInfo->ri_RelationDesc;
-						bool row_found = false;
-						if (IsYBRelation(relation))
-							row_found = true;
-						else
-						{
-							row_found = table_tuple_fetch_row_version(
-								relation, tupleid, SnapshotAny, oldSlot);
-						}
+						Relation	relation = resultRelInfo->ri_RelationDesc;
 
-						if (!row_found)
+						if (!table_tuple_fetch_row_version(relation, tupleid,
+														SnapshotAny,
+														oldSlot))
 							elog(ERROR, "failed to fetch tuple being updated");
 					}
 					slot = internalGetUpdateNewTuple(resultRelInfo, context.planSlot,
@@ -4888,12 +4867,24 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 			relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
 			if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 			{
+				/* YB note: MERGE command not supported yet. */
+				Assert(operation != CMD_MERGE);
+
 				if (mtstate->yb_fetch_target_tuple)
 				{
 					resultRelInfo->ri_RowIdAttNo =
 						ExecFindJunkAttributeInTlist(subplan->targetlist, "ybctid");
 					if (!AttributeNumberIsValid(resultRelInfo->ri_RowIdAttNo))
 						elog(ERROR, "could not find junk ybctid column");
+
+					resultRelInfo->ri_YbWholeRowAttNo =
+						ExecFindJunkAttributeInTlist(subplan->targetlist, "wholerow");
+
+					Assert(!YbWholeRowAttrRequired(
+							   resultRelInfo->ri_RelationDesc, operation) ||
+						   AttributeNumberIsValid(
+							   resultRelInfo->ri_YbWholeRowAttNo));
+
 				}
 			}
 			else if (relkind == RELKIND_RELATION ||
@@ -5101,8 +5092,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 									  relationDesc,
 									  econtext,
 									  onconfl->oc_ProjSlot,
-									  &mtstate->ps,
-									  node->ybUseScanTupleInUpdate);
+									  &mtstate->ps);
 
 		/* initialize state to evaluate the WHERE clause, if any */
 		if (node->onConflictWhere)

@@ -538,3 +538,14 @@ INSERT INTO fk VALUES (1, 10); -- should fail
 SELECT * from fk;
 
 DROP TABLE pk, pk2, fk;
+
+-- test updating a subset of foreign constraint keys.
+CREATE TABLE pk(a INT, b INT, PRIMARY KEY (a, b));
+CREATE TABLE fk(a INT, b INT, FOREIGN KEY(a, b) REFERENCES pk);
+INSERT INTO pk VALUES (1, 1);
+INSERT INTO fk VALUES (1, 1);
+UPDATE fk set a = a + 1; -- should fail
+INSERT INTO pk VALUES (5, 1);
+UPDATE fk set a = a + 4; -- should pass
+SELECT * from fk;
+DROP TABLE pk, fk;

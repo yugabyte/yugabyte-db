@@ -875,12 +875,9 @@ add_row_identity_columns(PlannerInfo *root, Index rtindex,
 	if (IsYBRelation(target_relation))
 	{
 		/*
-		 * If there are secondary indices on the target table, or if we have a
-		 * row-level trigger corresponding to the operations, then also return
-		 * the whole row.
+		 * Emit wholerow if required.
 		 */
-		if (YbUseWholeRowJunkAttribute(target_relation, target_rte->updatedCols,
-									   commandType, root->parse->returningList))
+		if (YbWholeRowAttrRequired(target_relation, commandType))
 		{
 			var = makeVar(rtindex, InvalidAttrNumber, RECORDOID, -1, InvalidOid,
 						  0);

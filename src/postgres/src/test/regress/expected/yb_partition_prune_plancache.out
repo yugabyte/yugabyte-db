@@ -54,27 +54,27 @@ EXPLAIN EXECUTE t1(1);
 SET yb_planner_custom_plan_for_partition_pruning=true;
 -- UPDATE list partitioned table using a JOIN with a non-partitioned table.
 PREPARE t2(int) AS UPDATE np SET d = 1 FROM lp WHERE lp.a = np.a AND lp.a = $1;
-EXPLAIN EXECUTE t2(1);
-                                           QUERY PLAN
-------------------------------------------------------------------------------------------------
- Update on np  (cost=0.00..232.75 rows=0 width=0)
-   ->  Nested Loop  (cost=0.00..232.75 rows=1000000 width=100)
-         ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=36)
+EXPLAIN(COSTS OFF) EXECUTE t2(1);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Update on np
+   ->  Nested Loop
+         ->  Seq Scan on np
                Storage Filter: (a = 1)
-         ->  Materialize  (cost=0.00..5.27 rows=10 width=40)
-               ->  Index Scan using lp_p1_a_idx on lp_p1 lp  (cost=0.00..5.22 rows=10 width=40)
+         ->  Materialize
+               ->  Index Scan using lp_p1_a_idx on lp_p1 lp
                      Index Cond: (a = 1)
 (7 rows)
 
-EXPLAIN EXECUTE t2(1);
-                                           QUERY PLAN
-------------------------------------------------------------------------------------------------
- Update on np  (cost=0.00..232.75 rows=0 width=0)
-   ->  Nested Loop  (cost=0.00..232.75 rows=1000000 width=100)
-         ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=36)
+EXPLAIN(COSTS OFF) EXECUTE t2(1);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Update on np
+   ->  Nested Loop
+         ->  Seq Scan on np
                Storage Filter: (a = 1)
-         ->  Materialize  (cost=0.00..5.27 rows=10 width=40)
-               ->  Index Scan using lp_p1_a_idx on lp_p1 lp  (cost=0.00..5.22 rows=10 width=40)
+         ->  Materialize
+               ->  Index Scan using lp_p1_a_idx on lp_p1 lp
                      Index Cond: (a = 1)
 (7 rows)
 

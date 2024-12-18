@@ -446,16 +446,7 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
 /*
  * Return whether to use wholerow junk attribute for YB relations.
  */
-extern bool YbUseWholeRowJunkAttribute(Relation relation,
-									   Bitmapset *updatedCols,
-									   CmdType operation,
-									   List *returningList);
-
-/*
- * Return whether to use scanned "old" tuple to reconstruct the new tuple during
- * UPDATE operations for YB relations. See function definition for details.
- */
-extern bool YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols, List *returningList);
+extern bool YbWholeRowAttrRequired(Relation relation, CmdType operation);
 
 /*
  * Return whether the returning list for an UPDATE statement is a subset of the columns being

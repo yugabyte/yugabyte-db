@@ -831,8 +831,7 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 											  partrelDesc,
 											  econtext,
 											  onconfl->oc_ProjSlot,
-											  &mtstate->ps,
-											  node->ybUseScanTupleInUpdate);
+											  &mtstate->ps);
 
 				/*
 				 * If there is a WHERE clause, initialize state where it will
@@ -953,8 +952,7 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 												  RelationGetDescr(leaf_part_rri->ri_RelationDesc),
 												  econtext,
 												  leaf_part_rri->ri_newTupleSlot,
-												  NULL,
-												  node->ybUseScanTupleInUpdate);
+												  NULL);
 					break;
 				case CMD_DELETE:
 					break;
