@@ -271,13 +271,22 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       VLOG(1) << "DDL already processed on table " << table->id();
       continue;
     }
+    auto table_txn_id = table->LockForRead()->pb_transaction_id();
+    // If the table is no longer involved in a DDL transaction, then txn has already completed.
+    if (table_txn_id.empty()) {
+      LOG(INFO) << "table " << table->id() << " has no txn id"
+                << " so is no longer bound by txn " << txn;
+      RemoveDdlTransactionState(table->id(), {txn});
+      continue;
+    }
     // If the table is already involved in a new DDL transaction, then txn
     // has already completed. The table will be taken care of by the new
     // transaction.
-    auto table_txn_id = table->LockForRead()->pb_transaction_id();
     if (table_txn_id != pb_txn_id) {
-      LOG(INFO) << "table " << table->id() << " has a new txn id " << table_txn_id
-                << " and is no longer bound by txn " << pb_txn_id;
+      auto new_txn = VERIFY_RESULT(FullyDecodeTransactionId(table_txn_id));
+      LOG(INFO) << "table " << table->id() << " has a new txn id " << new_txn
+                << " and is no longer bound by txn " << txn;
+      RemoveDdlTransactionState(table->id(), {txn});
       continue;
     }
     if (table->is_index() && is_committed.has_value()) {
