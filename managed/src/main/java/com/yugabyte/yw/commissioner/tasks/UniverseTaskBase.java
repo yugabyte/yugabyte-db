@@ -1327,6 +1327,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdaterConfig updaterConfig =
         UniverseUpdaterConfig.builder()
             .expectedUniverseVersion(expectedUniverseVersion)
+            .checkSuccess(true)
             .ignoreAbsence(true)
             .build();
     return lockUniverseForUpdate(universeUuid, getLockingUniverseUpdater(updaterConfig));
