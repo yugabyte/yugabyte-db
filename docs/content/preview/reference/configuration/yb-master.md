@@ -817,6 +817,12 @@ Directory that contains certificate authority, private key, and certificates for
 
 Default: `""` (uses `<data drive>/yb-data/master/data/certs`.)
 
+##### --certs_for_client_dir
+
+The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
+
+Default: `""` (Use the same directory as certs_dir.)
+
 ##### --allow_insecure_connections
 
 Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
