@@ -70,6 +70,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
 
   void TestSimple();
   void TestManyRows(bool add_filter);
+  void TestRestart(tablet::FlushFlags flush_flags);
 };
 
 void PgVectorIndexTest::TestSimple() {
@@ -219,16 +220,29 @@ TEST_P(PgVectorIndexTest, ManyReads) {
   threads.WaitAndStop(5s);
 }
 
-TEST_P(PgVectorIndexTest, Restart) {
+void PgVectorIndexTest::TestRestart(tablet::FlushFlags flush_flags) {
   constexpr int kNumRows = 64;
   constexpr int kQueryLimit = 5;
 
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
   ASSERT_OK(VerifyRead(conn, kQueryLimit, false));
-  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, flush_flags));
+  DisableFlushOnShutdown(*cluster_, true);
   ASSERT_OK(RestartCluster());
   conn = ASSERT_RESULT(Connect());
   ASSERT_OK(VerifyRead(conn, kQueryLimit, false));
+}
+
+TEST_P(PgVectorIndexTest, Restart) {
+  TestRestart(tablet::FlushFlags::kAllDbs);
+}
+
+TEST_P(PgVectorIndexTest, Bootstrap) {
+  TestRestart(tablet::FlushFlags::kRegular);
+}
+
+TEST_P(PgVectorIndexTest, BootstrapFlushedIntentsDB) {
+  TestRestart(tablet::FlushFlags::kIntents);
 }
 
 std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {

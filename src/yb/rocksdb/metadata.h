@@ -37,6 +37,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/enums.h"
 
+#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/types.h"
 
 namespace google { namespace protobuf {
@@ -52,13 +53,6 @@ namespace rocksdb {
 struct ColumnFamilyMetaData;
 struct LevelMetaData;
 struct SstFileMetaData;
-
-class UserFrontier;
-
-// Frontier should be copyable, but should still preserve its polymorphic nature. We cannot use
-// shared_ptr here, because we are planning to modify the copied value. If we used shared_ptr and
-// modified the copied value, the original value would also change.
-typedef yb::clone_ptr<UserFrontier> UserFrontierPtr;
 
 void UpdateUserFrontier(UserFrontierPtr* value, const UserFrontierPtr& update,
                         UpdateUserValueType type);

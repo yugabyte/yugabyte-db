@@ -194,6 +194,14 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     return lsm_.WaitForFlush();
   }
 
+  rocksdb::UserFrontierPtr GetFlushedFrontier() override {
+    return lsm_.GetFlushedFrontier();
+  }
+
+  rocksdb::FlushAbility GetFlushAbility() override {
+      return lsm_.GetFlushAbility();
+  }
+
  private:
   Status StoreBaseTableKeys(
       const vector_index::BaseTableKeysBatch& batch,

@@ -58,6 +58,8 @@ class VectorIndex {
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
+  virtual rocksdb::UserFrontierPtr GetFlushedFrontier() = 0;
+  virtual rocksdb::FlushAbility GetFlushAbility() = 0;
 };
 
 Result<VectorIndexPtr> CreateVectorIndex(

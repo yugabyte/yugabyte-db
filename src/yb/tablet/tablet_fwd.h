@@ -22,8 +22,7 @@
 #include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 class AbstractTablet;
 
@@ -86,11 +85,6 @@ YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
 YB_STRONGLY_TYPED_BOOL(ShouldAbortActiveTransactions);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
 
-// Used to indicate that a transaction-related operation has already been applied to regular RocksDB
-// (which was flushed) but the corresponding deletion of intents from the intents RocksDB has not
-// been flushed and was therefore lost.
-YB_STRONGLY_TYPED_BOOL(AlreadyAppliedToRegularDB);
-
 enum class FlushFlags {
   kNone = 0,
 
@@ -102,5 +96,4 @@ enum class FlushFlags {
   kAllDbs = kRegular | kIntents | kVectorIndexes
 };
 
-}  // namespace tablet
-}  // namespace yb
+} // namespace yb::tablet

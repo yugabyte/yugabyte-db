@@ -742,6 +742,7 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
       return Status::OK();
     }
     RETURN_NOT_OK(DoFlush(wait ? &promise : nullptr));
+    mutable_chunk_ = nullptr;
   }
 
   return wait ? promise.get_future().get() : Status::OK();
@@ -760,6 +761,20 @@ rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier()
         &chunk->user_frontiers->Largest(), rocksdb::UpdateUserValueType::kLargest, &result);
   }
   return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+rocksdb::FlushAbility VectorLSM<Vector, DistanceResult>::GetFlushAbility() {
+  std::lock_guard lock(mutex_);
+  if (mutable_chunk_ && mutable_chunk_->num_entries) {
+    return rocksdb::FlushAbility::kHasNewData;
+  }
+  for (const auto& chunk : immutable_chunks_) {
+    if (chunk->state != ImmutableChunkState::kInManifest) {
+      return rocksdb::FlushAbility::kAlreadyFlushing;
+    }
+  }
+  return rocksdb::FlushAbility::kNoNewData;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

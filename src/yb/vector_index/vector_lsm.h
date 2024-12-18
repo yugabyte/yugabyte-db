@@ -131,6 +131,7 @@ class VectorLSM {
   Status Open(Options options);
 
   rocksdb::UserFrontierPtr GetFlushedFrontier();
+  rocksdb::FlushAbility GetFlushAbility();
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 
