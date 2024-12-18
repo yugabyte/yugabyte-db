@@ -2,8 +2,8 @@
 title: Enable encryption in transit
 headerTitle: Enable encryption in transit
 linkTitle: Enable encryption in transit
-description: Enable encryption (using TLS) for client and intranode communication.
-headcontent: Enable encryption (using TLS) for client and intranode communication
+description: Enable encryption (using TLS) for client- and server-server communication.
+headcontent: Enable encryption (using TLS) for client- and server-server communication
 aliases:
     - /preview/secure/tls-encryption/client-to-server/
 menu:
@@ -16,7 +16,7 @@ type: docs
 
 ## Prerequisites
 
-Before you can enable and use server-to-server (intranode) and client-to-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create server certificates](../server-certificates).
+Before you can enable and use server-to-server (inter node) and client-to-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create server certificates](../server-certificates).
 
 ## Configure YB-Master and YB-TServer nodes
 
