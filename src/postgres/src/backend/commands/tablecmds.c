@@ -1737,13 +1737,8 @@ RemoveRelations(DropStmt *drop)
 									   state.heap_lockmode,
 									   NULL);
 
-		if (only_temp_tables)
-		{
-			Relation relation = table_open(relOid, NoLock);
-			only_temp_tables = relation->rd_rel->relpersistence ==
-							   RELPERSISTENCE_TEMP;
-			table_close(relation, NoLock);
-		}
+		only_temp_tables = only_temp_tables &&
+						   get_rel_persistence(relOid) == RELPERSISTENCE_TEMP;
 
 		/* OK, we're ready to delete this one */
 		obj.classId = RelationRelationId;
@@ -4408,8 +4403,8 @@ AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
 
 	CheckTableNotInUse(rel, "ALTER TABLE");
 
-	if (IsYugaByteEnabled() && stmt->relation->relpersistence ==
-										  RELPERSISTENCE_TEMP)
+	if (IsYugaByteEnabled() &&
+		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 		YBCForceAllowCatalogModifications(true);
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode, context);
