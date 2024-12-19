@@ -120,4 +120,25 @@ SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like '
 (10 rows)
 
 reset enable_sort;
+-- forced parallel scan by PK
+set parallel_setup_cost=0;
+set parallel_tuple_cost=0;
+EXPLAIN (costs off)
+SELECT * FROM pcustomer WHERE pc_id = 42;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Index Scan using pcustomer_pkey on pcustomer
+         Index Cond: (pc_id = 42)
+(4 rows)
+
+SELECT * FROM pcustomer WHERE pc_id = 42;
+ pc_id |   pc_name    |                   pc_address                   |   pc_phone    |        pc_email        | pc_acctbalance
+-------+--------------+------------------------------------------------+---------------+------------------------+----------------
+    42 | Customer #42 | 1318 Unknown Str., Some Random City, XX, 33815 | (142)156-5363 | customer42@example.com |         100.00
+(1 row)
+
+reset parallel_setup_cost;
+reset parallel_tuple_cost;
 DROP TABLE pcustomer;

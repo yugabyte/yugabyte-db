@@ -421,7 +421,8 @@ Status PgDmlRead::Exec(const PgExecParameters* exec_params) {
     first_ybctid_request_ = false;
   } else if (has_doc_op() &&
       !secondary_index_query_ &&
-      IsAllPrimaryKeysBound()) {
+      IsAllPrimaryKeysBound() &&
+      !(read_req_->has_lower_bound() || read_req_->has_upper_bound())) {
     const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
     RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(exec_params, ybctids));
   } else {
