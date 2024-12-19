@@ -300,7 +300,7 @@ YbBindColumnNotNull(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum)
  */
 static void
 ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum,
-					int nvalues, Datum *values)
+					int nvalues, Datum *values, bool bind_to_null)
 {
 	Oid atttypid = ybc_get_atttypid(bind_desc, attnum);
 	Oid attcollation = YBEncodingCollation(ybScan->handle, attnum,
@@ -310,20 +310,22 @@ ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum,
 	YBCPgExpr colref = YBCNewColumnRef(ybScan->handle, attnum, atttypid,
 									   attcollation, NULL);
 
-	YBCPgExpr ybc_exprs[nvalues]; /* VLA - scratch space */
+	int total_num_values = nvalues + (bind_to_null ? 1 : 0);
+	YBCPgExpr ybc_exprs[total_num_values]; /* VLA - scratch space */
+
+	/* First, create expr for non-null values. */
 	for (int i = 0; i < nvalues; i++)
-	{
-		/*
-		 * For IN we are removing all null values in ybcBindScanKeys before
-		 * getting here (relying on btree/lsm operators being strict).
-		 * So we can safely set is_null to false for all options left here.
-		 */
 		ybc_exprs[i] = YBCNewConstant(ybScan->handle, atttypid, attcollation,
 									  values[i], false /* is_null */);
-	}
 
-	HandleYBStatus(YBCPgDmlBindColumnCondIn(ybScan->handle, colref, nvalues,
-											ybc_exprs));
+	/* Create expr for NULL if bind_to_null is set. */
+	if (bind_to_null)
+		ybc_exprs[nvalues] = YBCNewConstant(ybScan->handle, atttypid,
+											attcollation, (Datum) 0,
+											true /* is_null */);
+
+	HandleYBStatus(YBCPgDmlBindColumnCondIn(ybScan->handle, colref,
+											total_num_values, ybc_exprs));
 }
 
 /*
@@ -1048,6 +1050,12 @@ static bool
 YbIsRowHeader(ScanKey key)
 {
 	return key->sk_flags & SK_ROW_HEADER;
+}
+
+static bool
+YbSearchArrayRetainNulls(ScanKey key)
+{
+	return key->sk_flags & YB_SK_SEARCHARRAY_RETAIN_NULLS;
 }
 
 /*
@@ -1779,10 +1787,18 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 														 scan_plan->bind_desc,
 														 length_of_key,
 														 &ybScan->keys[i]));
+
+	bool retain_nulls = YbSearchArrayRetainNulls(key);
+	bool bind_to_null = false;
 	for (j = 0; j < num_elems; j++)
 	{
 		if (elem_nulls[j])
+		{
+			Assert(!is_row);
+			if (retain_nulls)
+				bind_to_null = true;
 			continue;
+		}
 
 		/* Skip integer element where the value overflows the column type */
 		if (!is_row && (atttype == INT2OID || atttype == INT4OID) &&
@@ -1791,28 +1807,33 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 								atttype == INT2OID ? SHRT_MAX : INT_MAX))
 			continue;
 
-		/* Skip any rows that have NULLs in them. */
 		/*
-		 * TODO: record_eq considers NULL record elements to
-		 * be equal. However, the only way we receive IN filters
-		 * with tuples is through
-		 * compound batched nested loop joins where NULL
-		 * elements of batched record are not considered equal.
-		 * This needs to be rechecked when row IN filters can
-		 * arise through other means.
+		 * If YB_SK_SEARCHARRAY_RETAIN_NULLS is not set, skip any rows that have
+		 * NULLs in them.
 		 */
 		if (is_row)
 		{
-			if (HeapTupleHeaderHasNulls(DatumGetHeapTupleHeader(elem_values[j])))
+			if (!retain_nulls &&
+				HeapTupleHeaderHasNulls(
+					DatumGetHeapTupleHeader(elem_values[j])))
 				continue;
 
-			if (should_check_row_range &&
-				!YbIsTupleInRange(elem_values[j],
-								  scan_plan->bind_desc,
-								  length_of_key,
-								  &ybScan->keys[i],
-								  &scan_plan->bind_key_attnums[i]))
-				continue;
+			if (should_check_row_range)
+			{
+				/*
+				 * This is reachable only during BNL, which does not set
+				 * YB_SK_SEARCHARRAY_RETAIN_NULLS. If the row had nulls, it
+				 * should have been skipped already.
+				 */
+				Assert(!HeapTupleHeaderHasNulls(
+					DatumGetHeapTupleHeader(elem_values[j])));
+				if (!YbIsTupleInRange(elem_values[j],
+									  scan_plan->bind_desc,
+									  length_of_key,
+									  &ybScan->keys[i],
+									  &scan_plan->bind_key_attnums[i]))
+					continue;
+			}
 		}
 
 		elem_values[num_valid++] = elem_values[j];
@@ -1821,10 +1842,10 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	pfree(elem_nulls);
 
 	/*
-	 * If there's no non-nulls, the scan qual is unsatisfiable
-	 * Example: SELECT ... FROM ... WHERE h = ... AND r IN (NULL,NULL);
+	 * If there are no non-nulls, and binding to NULL is not required, the scan
+	 * qual is unsatisfiable.
 	 */
-	if (num_valid == 0)
+	if (num_valid == 0 && !bind_to_null)
 	{
 		*bail_out = true;
 		pfree(elem_values);
@@ -1862,8 +1883,8 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	}
 	else
 		ybcBindColumnCondIn(ybScan, scan_plan->bind_desc,
-							scan_plan->bind_key_attnums[i],
-							num_elems, elem_values);
+							scan_plan->bind_key_attnums[i], num_elems,
+							elem_values, bind_to_null);
 
 	pfree(elem_values);
 
