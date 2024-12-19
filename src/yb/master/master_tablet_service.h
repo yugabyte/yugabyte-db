@@ -46,9 +46,13 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
                 tserver::ChecksumResponsePB* resp,
                 rpc::RpcContext context) override;
 
-  void IsTabletServerReady(const tserver::IsTabletServerReadyRequestPB* req,
-                           tserver::IsTabletServerReadyResponsePB* resp,
-                           rpc::RpcContext context) override;
+  void IsTabletServerReady(
+      const tserver::IsTabletServerReadyRequestPB* req,
+      tserver::IsTabletServerReadyResponsePB* resp, rpc::RpcContext context) override;
+
+  void ListMasterServers(
+      const tserver::ListMasterServersRequestPB* req, tserver::ListMasterServersResponsePB* resp,
+      rpc::RpcContext context) override;
 
  private:
   Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
