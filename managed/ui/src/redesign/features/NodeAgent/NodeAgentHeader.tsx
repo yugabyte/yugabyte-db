@@ -1,6 +1,9 @@
-import React, { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { useMutation } from 'react-query';
 import { toast } from 'react-toastify';
+import { Box } from '@material-ui/core';
+import { useTranslation } from 'react-i18next';
+
 import { NodeAgentAPI } from './api';
 import { NODE_AGENT_TABS } from './NodeAgentConfig';
 import { NodeAgentAssignedNodes } from './NodeAgentAssignedNodes';
@@ -14,12 +17,16 @@ import { ProviderNode } from '../../utils/dtos';
 import { NodeDetails } from '../universe/universe-form/utils/dto';
 import { MetricConsts, NodeType } from '../../../components/metrics/constants';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { YBCheckbox } from '../../components';
+
 import '../../../components/metrics/GraphPanelHeader/GraphPanelHeader.scss';
 import './NodeAgent.scss';
 
 interface NodeAgentHeaderProps {
   tabKey: string;
 }
+
+const TRANSLATION_KEY_PREFIX = 'nodeAgent';
 
 export const NodeAgentHeader: FC<NodeAgentHeaderProps> = ({ tabKey }) => {
   const [universe, setUniverse] = useState<typeof MetricConsts.ALL | Universe>(MetricConsts.ALL);
@@ -35,6 +42,8 @@ export const NodeAgentHeader: FC<NodeAgentHeaderProps> = ({ tabKey }) => {
   const [zoneName, setZoneName] = useState<string | null>(null);
   const [nodeDetails, setNodeDetails] = useState<any>([]);
   const [nodeIPs, setNodeIPs] = useState<string[]>([]);
+  const [isErrorFilterChecked, setIsErrorFilterChecked] = useState(false);
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   // Get the list of OnPrem providers to display on Provider dropdown list
   const onPremProviderNodeList = useMutation((providerUUID: string) =>
@@ -150,6 +159,8 @@ export const NodeAgentHeader: FC<NodeAgentHeaderProps> = ({ tabKey }) => {
     }
   }, [providerName]);
 
+  const handleIsErrorFilterCheckedToggle = () => setIsErrorFilterChecked(!isErrorFilterChecked);
+
   return (
     <>
       <div className="node-agent-panel">
@@ -188,10 +199,18 @@ export const NodeAgentHeader: FC<NodeAgentHeaderProps> = ({ tabKey }) => {
           filterRegionsByUniverse={tabKey === NODE_AGENT_TABS.AssignedNodes}
           selectedProvider={provider}
         />
+        <Box marginLeft="auto">
+          <YBCheckbox
+            label={t('errorStatusFilterCheckbox')}
+            checked={isErrorFilterChecked}
+            onChange={handleIsErrorFilterCheckedToggle}
+          />
+        </Box>
       </div>
       {tabKey === NODE_AGENT_TABS.AssignedNodes && (
         <NodeAgentAssignedNodes
           nodeIPs={nodeIPs}
+          isErrorFilterChecked={isErrorFilterChecked}
           selectedUniverse={universe}
           isNodeAgentDebugPage={true}
         />
@@ -199,6 +218,7 @@ export const NodeAgentHeader: FC<NodeAgentHeaderProps> = ({ tabKey }) => {
       {tabKey === NODE_AGENT_TABS.UnassignedNodes && (
         <NodeAgentUnassignedNodes
           nodeIPs={nodeIPs}
+          isErrorFilterChecked={isErrorFilterChecked}
           selectedProvider={provider}
           isNodeAgentDebugPage={true}
         />

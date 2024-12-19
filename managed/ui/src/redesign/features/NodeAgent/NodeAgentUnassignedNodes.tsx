@@ -3,13 +3,14 @@ import { useMutation } from 'react-query';
 import { NodeAgentAPI } from './api';
 import { NodeAgentData } from './NodeAgentData';
 import { Provider } from '../../helpers/dtos';
-import { NodeAgentEntities, ProviderNode, SortDirection } from '../../utils/dtos';
+import { NodeAgent, ProviderNode, SortDirection } from '../../utils/dtos';
 import { MetricConsts } from '../../../components/metrics/constants';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 
 interface NodeAgentUnassignedNodesProps {
   isNodeAgentDebugPage: boolean;
   nodeIPs: string[];
+  isErrorFilterChecked: boolean;
   // In case universe selected is 'All Providers', we use string data type
   selectedProvider?: Provider | typeof MetricConsts.ALL | ProviderNode[];
 }
@@ -17,10 +18,11 @@ interface NodeAgentUnassignedNodesProps {
 export const NodeAgentUnassignedNodes: FC<NodeAgentUnassignedNodesProps> = ({
   isNodeAgentDebugPage,
   nodeIPs,
+  isErrorFilterChecked,
   selectedProvider
 }) => {
   const [isNodeAgentDeleted, setNodeAgentDeleted] = useState<boolean>(false);
-  const [nodeAgentData, setNodeAgentData] = useState<NodeAgentEntities[]>([]);
+  const [nodeAgentData, setNodeAgentData] = useState<NodeAgent[]>([]);
   const nodeAgentStatusByIPs = useMutation(
     (queryParams) => NodeAgentAPI.fetchNodeAgentByIPs(queryParams),
     {
@@ -65,7 +67,8 @@ export const NodeAgentUnassignedNodes: FC<NodeAgentUnassignedNodesProps> = ({
   return (
     <NodeAgentData
       isAssignedNodes={false}
-      nodeAgentData={nodeAgentData}
+      nodeAgents={nodeAgentData}
+      isErrorFilterChecked={isErrorFilterChecked}
       isNodeAgentDebugPage={isNodeAgentDebugPage}
       onNodeAgentDeleted={onNodeAgentDeleted}
     />

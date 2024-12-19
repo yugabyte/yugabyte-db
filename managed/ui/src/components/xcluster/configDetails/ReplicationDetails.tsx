@@ -509,9 +509,9 @@ export function ReplicationDetails({
                       )}
                       subMenus={{
                         // eslint-disable-next-line react/display-name
-                        [ActionMenu.ADVANCED]: (navigateToMainMenu) => (
+                        [ActionMenu.ADVANCED]: (setActiveSubmenu) => (
                           <>
-                            <MenuItem onClick={navigateToMainMenu}>
+                            <MenuItem onSelect={() => setActiveSubmenu(null)}>
                               <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">
                                 Back
                               </YBLabelWithIcon>

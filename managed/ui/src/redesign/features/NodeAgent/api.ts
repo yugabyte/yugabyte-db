@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { ROOT_URL } from '../../../config';
-import { NodeAgentEntities, ProviderNode } from '../../utils/dtos';
+import { NodeAgent, ProviderNode } from '../../utils/dtos';
 
 export enum QUERY_KEY {
   fetchNodeAgents = 'fetchNodeAgents',
@@ -9,14 +9,13 @@ export enum QUERY_KEY {
 }
 
 type NodeAgentResponse = {
-  entities: NodeAgentEntities[];
+  entities: NodeAgent[];
   hasNext: boolean;
   hasPrev: boolean;
   totalCount: number;
 };
 
 class ApiService {
-
   private getCustomerId(): string {
     const customerId = localStorage.getItem('customerId');
     return customerId ?? '';
@@ -24,7 +23,7 @@ class ApiService {
 
   fetchNodeAgents = () => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/node_agents`;
-    return axios.get(requestURL).then((res) => res.data);
+    return axios.get<NodeAgent[]>(requestURL).then((res) => res.data);
   };
 
   fetchOnPremProviderNodeList = (providerUUID: string) => {
@@ -40,6 +39,11 @@ class ApiService {
   deleteNodeAgent = (nodeAgentUuid: string) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/node_agents/${nodeAgentUuid}`;
     return axios.delete(requestURL).then((res) => res.data);
+  };
+
+  installNodeAgent = (universeUuid: string, { nodeNames }: { nodeNames: string[] }) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/node_agents`;
+    return axios.post(requestUrl, { nodeNames }).then((response) => response.data);
   };
 }
 

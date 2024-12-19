@@ -43,6 +43,8 @@
       "clear": "Clear",
       "reminder": "Reminder",
       "reset": "Reset",
+      "expand": "Expand",
+      "collapse": "Collapse",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -66,6 +68,7 @@
       "failedToFetchCustomerRuntimeConfig": "Failed to fetch runtime configurations for the current customer.",
       "failedToFetchUniverseRuntimeConfig": "Failed to fetch runtime configurations for the current universe.",
       "failedToFetchCurrentUniverse": "Unable to fetch universe details for the current universe.",
+      "failedToFetchSpecificUniverse": "Unable to fetch universe details for universe UUID: {{universeUuid}}",
       "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
       "failedToFetchTargetUniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
       "failedToFetchDrPrimaryUniverse": "Unable to fetch universe details for DR primary universe UUID: {{universeUuid}}",
@@ -88,6 +91,13 @@
       "consumer_safe_time_skew": "Consumer Safe Time Skew",
       "yba_ha_last_backup_seconds": "HA Backup Lag (Seconds)",
       "yba_ha_last_backup_size_mb": "HA Last Backup Size (mb)"
+    },
+    "dashboard": {
+      "nodeAgentReminderBanner": {
+        "primaryText": "Automatic installation of node agent failed on some nodes.",
+        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>Click View Node Agents to find the problem nodes, verify they fulfill the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph><paragraph><nodeAgentFaqDocsLink>Learn more about Node Agent.</nodeAgentFaqDocsLink></paragraph>",
+        "viewNodeAgentsButton": "View Node Agents"
+      }
     },
     "universeActions": {
       "lbState": {
@@ -1634,14 +1644,73 @@
     },
     "nodeAgent": {
       "title": "Node Agents",
-      "assignedNodesTitle": "Assigned Nodes",
-      "unassignedNodesTitle": "Unassigned Nodes",
+      "assignedNodesTitle": "Deployed Nodes",
+      "unassignedNodesTitle": "Free Nodes",
       "viewDetailsButton": "View Details",
       "unreachableInstanceAgents": "Instance agents are unreachable",
       "contactSupport": "Contact Support",
-      "delete": "Delete",
-      "deleteNodeAgent": "Delete Node Agent",
-      "confirmDeletionMessage": "Are you sure you want to delete the Node Agent associated with the provider {{provider_name}} ?"
+      "deleteNodeAgent": "Unregister Node Agent",
+      "confirmDeletionMessage": "Are you sure you want to unregister the node agent associated with the node {{nodeName}}?",
+      "errorStatusFilterCheckbox": "Show only agents with error status",
+      "runtimeConfig": {
+        "nodeAgentClientEnabledWarning": "Disabling this runtime configuration will prevent you from upgrading YugabyteDB Anywhere to future major versions."
+      },
+      "action": {
+        "install": {
+          "label": "Reinstall node agent",
+          "onPremManuallyProvisionedTooltip": "Reinstalling via YugabyteDB Anywhere is not available for manually provisioned on-prem nodes. Please reinstall the node agent manually."
+        },
+        "delete": {
+          "label": "Unregister node agent"
+        }
+      },
+      "statusLabel": {
+        "READY": "Ready",
+        "REGISTERING": "Registering",
+        "REGISTERED": "Registered",
+        "UPGRADE": "Upgrading",
+        "UPGRADED": "Upgrading",
+        "unreachable": "Unreachable",
+        "unknownStatus": "N/A"
+      },
+      "errorLabel": {
+        "UNKNOWN_ERROR": "Unknown Error",
+        "INTERNAL_ERROR": "Internal Error",
+        "PLATFORM_SHUTDOWN": "Platform Shutdown",
+        "PLATFORM_RESTARTED": "Platform Restarted",
+        "INSTALLATION_ERROR": "Installation Error",
+        "SERVICE_START_ERROR": "Service Start Error",
+        "CONNECTION_ERROR": "Connection Error",
+        "TIMED_OUT": "Timed Out",
+        "universePaused": "Universe Paused"
+      },
+      "installNodeAgentModal": {
+        "title": {
+          "install": "Install Node Agent",
+          "reinstall": "Reinstall Node Agent"
+        },
+        "prerequisitesInfo": "Ensure that the selected nodes in {{universeName}} satisfy the <nodeAgentPrereqDocsLink>prerequisites</nodeAgentPrereqDocsLink>.",
+        "beforeYouStart": "Before you start",
+        "installNodeAgentFor": {
+          "install": "Install node agent for:",
+          "reinstall": "Reinstall node agent for:"
+        },
+        "allNodeInUniverse": "All nodes in this Universe",
+        "selectedNode": "Selected node",
+        "specificSelectedNode": "Selected node ({{nodeName}})",
+        "confirmButton": {
+          "install": "Install Node Agent",
+          "reinstall": "Reinstall Node Agent"
+        },
+        "error": {
+          "requestFailureLabel": "Install node agent request failed",
+          "taskFailure": "Failed to install node agent."
+        },
+        "success": {
+          "requestSuccess": "Node agent installation started.",
+          "taskSuccess": "Installed node agent."
+        }
+      }
     },
     "OIDCJWT": {
       "emailId": "Email ID",

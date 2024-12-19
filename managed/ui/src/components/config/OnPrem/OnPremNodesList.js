@@ -389,16 +389,12 @@ class OnPremNodesList extends Component {
     };
 
     const nodeAgentStatus = (cell, row) => {
-      let status = '';
-      let isReachable = false;
       if (nodeAgentStatusByIPs.isSuccess) {
-        const nodeAgents = nodeAgentStatusByIPs.data.entities;
+        const nodeAgents = nodeAgentStatusByIPs.data?.entities ?? [];
         const nodeAgent = nodeAgents.find((nodeAgent) => row.ip === nodeAgent.ip);
-        status = nodeAgent?.state;
-        isReachable = nodeAgent?.reachable;
+        return nodeAgent ? <NodeAgentStatus nodeAgent={nodeAgent} /> : null;
       }
-
-      return <NodeAgentStatus status={status} isReachable={isReachable} />;
+      return null;
     };
 
     const rowClassNameFormat = (row) => {

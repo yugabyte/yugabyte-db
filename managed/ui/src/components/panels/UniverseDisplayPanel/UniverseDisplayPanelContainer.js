@@ -1,7 +1,6 @@
 // Copyright YugaByte Inc.
 
 import { connect } from 'react-redux';
-import { UniverseDisplayPanel } from '../../../components/panels';
 import {
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse,
@@ -9,6 +8,7 @@ import {
 } from '../../../actions/customers';
 import { closeUniverseDialog, fetchUniverseMetadata } from '../../../actions/universe';
 import { openDialog, closeDialog } from '../../../actions/modal';
+import { UniverseDisplayPanel } from './UniverseDisplayPanel';
 
 const mapDispatchToProps = (dispatch) => {
   return {

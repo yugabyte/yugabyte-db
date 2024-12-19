@@ -4,7 +4,7 @@ import { NodeAgentAPI, QUERY_KEY } from './api';
 import { NodeAgentData } from './NodeAgentData';
 import { YBErrorIndicator, YBLoading } from '../../../components/common/indicators';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { NodeAgentEntities, SortDirection } from '../../utils/dtos';
+import { NodeAgent, SortDirection } from '../../utils/dtos';
 import { MetricConsts } from '../../../components/metrics/constants';
 import { Universe } from '../../helpers/dtos';
 
@@ -12,6 +12,7 @@ const IP = 'ip';
 interface NodeAgentAssignedNodesProps {
   isNodeAgentDebugPage: boolean;
   nodeIPs: string[];
+  isErrorFilterChecked: boolean;
   // In case universe selected is 'All Universes', we use string data type
   selectedUniverse?: Universe | typeof MetricConsts.ALL;
 }
@@ -19,9 +20,10 @@ interface NodeAgentAssignedNodesProps {
 export const NodeAgentAssignedNodes: FC<NodeAgentAssignedNodesProps> = ({
   isNodeAgentDebugPage,
   nodeIPs,
+  isErrorFilterChecked,
   selectedUniverse
 }) => {
-  const [nodeAgentData, setNodeAgentData] = useState<NodeAgentEntities[]>([]);
+  const [nodeAgentData, setNodeAgentData] = useState<NodeAgent[]>([]);
   const [isAPIError, setIsAPIError] = useState<boolean>(false);
 
   const nodeAgentStatusByIPs = useMutation(
@@ -77,7 +79,8 @@ export const NodeAgentAssignedNodes: FC<NodeAgentAssignedNodesProps> = ({
   return (
     <NodeAgentData
       isAssignedNodes={true}
-      nodeAgentData={nodeAgentData}
+      nodeAgents={nodeAgentData}
+      isErrorFilterChecked={isErrorFilterChecked}
       isNodeAgentDebugPage={isNodeAgentDebugPage}
     />
   );

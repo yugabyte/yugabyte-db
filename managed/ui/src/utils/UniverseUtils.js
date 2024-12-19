@@ -218,7 +218,7 @@ export function hasLiveNodes(universe) {
   return false;
 }
 
-export function isKubernetesUniverse(currentUniverse) {
+export function getIsKubernetesUniverse(currentUniverse) {
   return (
     isDefinedNotNull(currentUniverse.universeDetails) &&
     isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) &&
