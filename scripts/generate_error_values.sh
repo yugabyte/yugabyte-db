@@ -2,7 +2,7 @@
 
 #########################################################
 # This script generates the error code mappings for
-# Helio API/Helio Core.
+# DocumentDB API/DocumentDB Core.
 # As an input takes the base error csv file that is expected
 # to be of the form 
 #           ErrorName,OrdinalPosition
@@ -24,6 +24,7 @@ set -e
 sourceFile=$1
 filePathDest=$2
 errorNamesPathDest=$3
+extensionObjectName=$4
 
 # Get a temp path to write to for staging
 filePathName=$(basename $filePathDest)
@@ -50,7 +51,7 @@ cat << EOF > $_filePath
  *
  * include/utils/$_fileName
  *
- * Utilities for Helio Error Definition.
+ * Utilities for $extensionObjectName Error Definition.
  * This file is generated - please modify the source ($_sourceFileName)
  *
  *-------------------------------------------------------------------------
@@ -64,11 +65,15 @@ cat << EOF > $_filePath
 EOF
 }
 
+extensionObjectNameUpper=${extensionObjectName^^}
+extensionObjectNameLower=${extensionObjectName,,}
+extensionObjectNameTitle="${extensionObjectName[@]^}"
+
 echo "Writing initial content for $filePath"
-WriteHeaderBase $filePath "helio_errors.h" HELIO_ERRORS_H
+WriteHeaderBase $filePath "${extensionObjectName}_errors.h" ${extensionObjectNameUpper}_ERRORS_H
 cat << EOF >> $filePath
-/* Represents a Helio error */
-typedef int HelioErrorEreportCode;
+/* Represents a $extensionObjectNameTitle error */
+typedef int ${extensionObjectNameTitle}ErrorEreportCode;
 EOF
 
 # Write the CSV header file.
@@ -80,7 +85,7 @@ ValidChars=(0 1 2 3 4 5 6 7 8 9 A B C D E F G H I J K L M N O P Q R S T U V W X 
 
 isFirst=""
 
-# The error codes for helio start at "M0000"
+# The error codes for the extension start at "M0000"
 baseLetter="M"
 baseSecond="0"
 baseThird="0"
@@ -244,14 +249,14 @@ for fileIndex in $(seq 1 $maxIndex); do
     fifthChar=${ValidChars[$baseFifth]}
 
     # Write the macro out.
-    lineToWrite="#define ERRCODE_HELIO_$errorNameUpper MAKE_SQLSTATE('$baseLetter', '$secondChar', '$thirdChar', '$fourthChar', '$fifthChar')"
+    lineToWrite="#define ERRCODE_{$extensionObjectNameUpper}_$errorNameUpper MAKE_SQLSTATE('$baseLetter', '$secondChar', '$thirdChar', '$fourthChar', '$fifthChar')"
 
     if (( ${#lineToWrite} > 89 )); then
         # make citus indent happy
-        echo "#define ERRCODE_HELIO_$errorNameUpper \\" >> $filePath
+        echo "#define ERRCODE_${extensionObjectNameUpper}_$errorNameUpper \\" >> $filePath
         echo "	MAKE_SQLSTATE('$baseLetter', '$secondChar', '$thirdChar', '$fourthChar', '$fifthChar')"  >> $filePath
     else
-        echo "#define ERRCODE_HELIO_$errorNameUpper MAKE_SQLSTATE('$baseLetter', '$secondChar', '$thirdChar', '$fourthChar', '$fifthChar')"  >> $filePath
+        echo "#define ERRCODE_${extensionObjectNameUpper}_$errorNameUpper MAKE_SQLSTATE('$baseLetter', '$secondChar', '$thirdChar', '$fourthChar', '$fifthChar')"  >> $filePath
     fi
     echo >> $filePath
 

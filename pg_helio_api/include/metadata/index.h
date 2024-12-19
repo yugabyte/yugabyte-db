@@ -3,7 +3,7 @@
  *
  * include/metadata/index.h
  *
- * Accessors around mongo_catalog.collection_indexes.
+ * Accessors around ApiCatalogSchema.collection_indexes.
  *
  *-------------------------------------------------------------------------
  */
@@ -17,7 +17,7 @@
 
 #define INVALID_INDEX_ID ((int) 0)
 
-/* arg1: mongo_catalog.collection_indexes.index_id */
+/* arg1: ApiCatalogSchema.collection_indexes.index_id */
 #define MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX "documents_rum_index_"
 #define MONGO_DATA_TABLE_INDEX_NAME_FORMAT MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX "%d"
 

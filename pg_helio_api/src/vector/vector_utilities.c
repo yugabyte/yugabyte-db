@@ -330,9 +330,9 @@ IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
  * PG index, generates a vector sort Operator that can be pushed down to
  * that specified index.
  * e.g.
- *      vector(mongo_catalog.bson_extract_vector(document, 'v_path'), 3, true)
+ *      vector(ApiCatalogSchema.bson_extract_vector(document, 'v_path'), 3, true)
  *      <->
- *      vector(mongo_catalog.bson_extract_vector('{ "vector" : [8.0, 1.0, 9.0], "k" : 2, "path" : "v"}', 'vector'), 3, true)
+ *      vector(ApiCatalogSchema.bson_extract_vector('{ "vector" : [8.0, 1.0, 9.0], "k" : 2, "path" : "v"}', 'vector'), 3, true)
  */
 Expr *
 GenerateVectorSortExpr(const char *queryVectorPath,

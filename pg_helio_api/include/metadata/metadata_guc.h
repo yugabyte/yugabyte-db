@@ -3,7 +3,7 @@
  *
  * include/metadata/index.h
  *
- * Accessors around mongo_catalog.collection_indexes.
+ * Accessors around ApiCatalogSchema.collection_indexes.
  *
  *-------------------------------------------------------------------------
  */

@@ -340,11 +340,11 @@ HandleDistributedColocation(MongoCollection *collection, const
 /*
  * Rewrite/Update the metadata query for distributed information.
  * The original listCollections query looks like
- * SELECT bson_dollar_project(row_get_bson(collections), '{ "ns": { "$concat": [ "$database_name", "$collection_name" ], ... }}) FROM mongo_catalog.collections WHERE database_name = 'db';
+ * SELECT bson_dollar_project(row_get_bson(collections), '{ "ns": { "$concat": [ "$database_name", "$collection_name" ], ... }}) FROM ApiCatalogSchema.collections WHERE database_name = 'db';
  *
  * This modifies it to the following:
  * SELECT bson_dollar_addfields(bson_dollar_project(row_get_bson(collections), '{ "ns": { "$concat": [ "$database_name", "$collection_name" ], ... }}),
- *		  bson_repath_and_build('shardcount', pg_dist_colocation.shard_count, 'colocationid', pg_dist_partition.colocationid) FROM mongo_catalog.collections, pg_dist_partition, pg_dist_colocation
+ *		  bson_repath_and_build('shardcount', pg_dist_colocation.shard_count, 'colocationid', pg_dist_partition.colocationid) FROM ApiCatalogSchema.collections, pg_dist_partition, pg_dist_colocation
  * WHERE database_name = 'db'
  * AND pg_dist_partition.colocationid = pg_dist_colocation.colocationid AND textcatany('ApiDataSchema.documents_', collections.collection_id)::regclass = pg_dist_partition.logicalrelid;
  */
@@ -574,7 +574,7 @@ GetCitusShardSizesFunctionOid(void)
 /*
  * Provides the output for the config.chunks query after consulting with Citus.
  * This will be the query:
- * WITH coll AS (SELECT database_name, collection_name, ('mongo_data.documents_' || collection_id)::regclass AS tableId FROM mongo_catalog.collections)
+ * WITH coll AS (SELECT database_name, collection_name, ('mongo_data.documents_' || collection_id)::regclass AS tableId FROM ApiCatalogSchema.collections)
  * SELECT database_name, collection_name, shardid, size, shardminvalue, shardmaxvalue FROM coll
  *  JOIN pg_dist_shard dist ON coll.tableId = dist.logicalrelid
  *  JOIN citus_shard_sizes() sz ON dist.shardid = sz.shard_id;

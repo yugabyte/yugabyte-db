@@ -769,15 +769,15 @@ AddPathStringToHashset(List *indexIdList, HTAB *stringHashSet)
  * 1. Search query:
  *    SELECT
  *        document,
- *        (public.vector(mongo_catalog.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(mongo_catalog.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::mongo_catalog.bson, 'vector'::text), 3, true)) AS orderVal,
+ *        (public.vector(ApiCatalogSchema.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(ApiCatalogSchema.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::CoreSchema.bson, 'vector'::text), 3, true)) AS orderVal,
  *        ctid
  *    FROM
  *        mongo_data.documents_1 collection
  *    WHERE
  *        shard_key_value = 0
- *        AND ((mongo_catalog.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL))
+ *        AND ((ApiCatalogSchema.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL))
  *    ORDER BY
- *        (public.vector(mongo_catalog.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(mongo_catalog.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::mongo_catalog.bson, 'vector'::text), 3, true))
+ *        (public.vector(ApiCatalogSchema.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(ApiCatalogSchema.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::CoreSchema.bson, 'vector'::text), 3, true))
  *
  * 2. Filter query:
  *    SELECT

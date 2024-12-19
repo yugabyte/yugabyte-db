@@ -924,7 +924,7 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
 /* **_Explain before rewrite:_** */
 /* ``` */
 /*                ->  Bitmap Index Scan on val_accid_vid  (cost=0.00..0.00 rows=1 width=0) (actual time=23.937..23.937 rows=7 loops=1) */
-/*                       Index Cond: Index Cond: ((document OPERATOR(mongo_catalog.@*=) '[{ "val" : { "$numberInt" : "1" } }, { "val" : { "$numberInt" : "3" } }]'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::mongo_catalog.bson))* / */
+/*                       Index Cond: Index Cond: ((document OPERATOR(ApiCatalogSchema.@*=) '[{ "val" : { "$numberInt" : "1" } }, { "val" : { "$numberInt" : "3" } }]'::CoreSchema.bson) AND (document OPERATOR(ApiCatalogSchema.@=) '{ "accid" : { "$numberInt" : "1" } }'::CoreSchema.bson) AND (document OPERATOR(ApiCatalogSchema.@=) '{ "vid" : { "$numberInt" : "1" } }'::CoreSchema.bson))* / */
 
 /* ``` */
 /* **_Explain after rewrite:_** */
@@ -936,13 +936,13 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
 /*    ->  Task */
 /*          Node: host=localhost port=58080 dbname=regression */
 /*          ->  Bitmap Heap Scan on documents_33000_330023 collection */
-/*                Recheck Cond: (((document OPERATOR(mongo_catalog.@=) '{ "val" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::mongo_catalog.bson)) OR ((document OPERATOR(mongo_catalog.@=) '{ "val" : { "$numberInt" : "3" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::mongo_catalog.bson))) */
-/*                Filter: ((document OPERATOR(mongo_catalog.@*=) '{ "val" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }'::mongo_catalog.bson) AND (shard_key_value = '4322365043291501017'::bigint)) */
+/*                Recheck Cond: (((document OPERATOR(ApiCatalogSchema.@=) '{ "val" : { "$numberInt" : "1" } }'::CoreSchema.bson) AND (document OPERATOR(ApiCatalogSchema.@=) '{ "accid" : { "$numberInt" : "1" } }'::CoreSchema.bson) AND (document OPERATOR(ApiCatalogSchema.@=) '{ "vid" : { "$numberInt" : "1" } }'::CoreSchema.bson)) OR ((document OPERATOR(ApiCatalogSchema.@=) '{ "val" : { "$numberInt" : "3" } }'::CoreSchema.bson) AND (document OPERATOR(ApiCatalogSchema.@=) '{ "accid" : { "$numberInt" : "1" } }'::CoreSchema.bson) AND (document OPERATOR(ApiCatalogSchema.@=) '{ "vid" : { "$numberInt" : "1" } }'::CoreSchema.bson))) */
+/*                Filter: ((document OPERATOR(ApiCatalogSchema.@*=) '{ "val" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }'::CoreSchema.bson) AND (shard_key_value = '4322365043291501017'::bigint)) */
 /*                ->  BitmapOr */
 /*                      ->  Bitmap Index Scan on val_accid_vid */
-/*                            Index Cond: ((document OPERATOR(mongo_catalog.@=) '{ "val" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::mongo_catalog.bson)) */
+/*                            Index Cond: ((document OPERATOR(ApiCatalogSchema.@=) '{ "val" : { "$numberInt" : "1" } }'::CoreSchema.bson) AND (document OPERATOR(ApiCatalogSchema.@=) '{ "accid" : { "$numberInt" : "1" } }'::ApiCatalogSchema.bson) AND (document OPERATOR(ApiCatalogSchema.@=) '{ "vid" : { "$numberInt" : "1" } }'::CoreSchema.bson)) */
 /*                      ->  Bitmap Index Scan on val_accid_vid */
-/*                            Index Cond: ((document OPERATOR(mongo_catalog.@=) '{ "val" : { "$numberInt" : "3" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::mongo_catalog.bson)) */
+/*                            Index Cond: ((document OPERATOR(ApiCatalogSchema.@=) '{ "val" : { "$numberInt" : "3" } }'::CoreSchema.bson) AND (document OPERATOR(ApiCatalogSchema.@=) '{ "accid" : { "$numberInt" : "1" } }'::ApiCatalogSchema.bson) AND (document OPERATOR(ApiCatalogSchema.@=) '{ "vid" : { "$numberInt" : "1" } }'::CoreSchema.bson)) */
 /* (13 rows) */
 /* ``` */
 static Path *
@@ -987,7 +987,7 @@ OptimizeIndexExpressionsForDollarIn(PlannerInfo *root, RelOptInfo *rel, Path *pa
 	}
 
 	/* Example $in Query Index Condition:
-	 *  mongo_catalog.@*=(document, '{ "val" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }'::mongo_catalog.bson) */
+	 *  ApiCatalogSchema.@*=(document, '{ "val" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }'::CoreSchema.bson) */
 	OpExpr *inOpExpr = (OpExpr *) inIndexClause->rinfo->clause;
 	Node *inList = lsecond(inOpExpr->args);
 

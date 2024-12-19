@@ -1,4 +1,5 @@
-EXTENSION = pg_helio_core
+EXTENSION = documentdb_core
+MODULE_big = pg_documentdb_core
 
 SQL_DEPDIR=.deps/sql
 SQL_BUILDDIR=build/sql
@@ -8,21 +9,20 @@ generated_sql_files = $(patsubst %,build/%,$(template_sql_files))
 DATA_built = $(generated_sql_files)
 sql_file_inputs = $(wildcard sql/**/*.sql)
 
-HELIO_CORE_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+DOCDB_CORE_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 BUILD_SCRIPT_DIR = ../
-OSS_SRC_DIR = $(HELIO_CORE_DIR)/../
+OSS_SRC_DIR = $(DOCDB_CORE_DIR)/../
 OSS_COMMON_SQL_HEADER = $(wildcard $(OSS_SRC_DIR)/common_header.sql)
 
 # Extension configuration
 SKIP_API_SCHEMA=yes
-CORE_SCHEMA_NAME=helio_core
-EXTENSION_OBJECT_PREFIX=helio
+CORE_SCHEMA_NAME=documentdb_core
+EXTENSION_OBJECT_PREFIX=documentdb
 
 # TODO: Need to remove this with PG16 and expose only valid exports
 ALLOW_DEFAULT_VISIBILITY=yes
 
 # compilation configuration
-MODULE_big = $(EXTENSION)
 include $(OSS_SRC_DIR)/Makefile.cflags
 SOURCES = $(wildcard src/*.c) $(wildcard src/**/*.c)
 
@@ -54,7 +54,7 @@ clean-sql:
 	rm -rf .deps/ build/
 
 check:
-	$(MAKE) -C src/test all
+#	$(MAKE) -C src/test all
 
 citus-indent:
 	citus_indent
@@ -72,15 +72,14 @@ trim_installed_data_files:
 
 build-sql: $(generated_sql_files)
 
-generate_errors_file: $(HELIO_CORE_DIR)include/utils/helio_errors.h $(OSS_SRC_DIR)/documentdb_errors.csv
+generate_errors_file: $(DOCDB_CORE_DIR)include/utils/documentdb_errors.h $(OSS_SRC_DIR)/documentdb_errors.csv
 
 all: generate_errors_file
 
-$(HELIO_CORE_DIR)include/utils/helio_errors.h: $(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/documentdb_errors.csv
-	mkdir -p $(HELIO_CORE_DIR)/build
-	mkdir -p $(HELIO_CORE_DIR)/generated/src/utils
-	mkdir -p $(HELIO_CORE_DIR)/generated/include/utils
-	$(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/documentdb_errors.csv $(HELIO_CORE_DIR)include/utils/helio_errors.h $(HELIO_CORE_DIR)include/utils/helio_codes.txt helio
+$(DOCDB_CORE_DIR)include/utils/documentdb_errors.h: $(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/documentdb_errors.csv
+	mkdir -p $(DOCDB_CORE_DIR)/build
+	mkdir -p $(DOCDB_CORE_DIR)/include/utils
+	$(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/documentdb_errors.csv $(DOCDB_CORE_DIR)include/utils/documentdb_errors.h $(DOCDB_CORE_DIR)include/utils/documentdb_codes.txt documentdb
 
 $(generated_sql_files): build/%: %
 	@mkdir -p $(SQL_DEPDIR) $(SQL_BUILDDIR)

@@ -565,17 +565,17 @@ HandleInverseMatch(const bson_value_t *existingValue, Query *query,
 		 * WHERE helio_api_internal.bson_dollar_inverse_match(
 		 *  document,
 		 *  (
-		 *      SELECT mongo_catalog.bson_dollar_add_fields(
-		 *          '{ "path" : "rule", "defaultResult" : false }'::mongo_catalog.bson,
+		 *      SELECT ApiCatalogSchema.bson_dollar_add_fields(
+		 *          '{ "path" : "rule", "defaultResult" : false }'::ApiCatalogSchema.bson,
 		 *          (
 		 *              SELECT COALESCE(
-		 *                  mongo_catalog.bson_array_agg(collection_0_1.document, 'input'::text),
-		 *                  '{ "input" : [  ] }'::mongo_catalog.bson
+		 *                  ApiCatalogSchema.bson_array_agg(collection_0_1.document, 'input'::text),
+		 *                  '{ "input" : [  ] }'::CoreSchema.bson
 		 *              ) AS document
 		 *              FROM mongo_data.documents_963001_9630019 collection_0_1
-		 *              WHERE mongo_catalog.bson_dollar_ne(
+		 *              WHERE ApiCatalogSchema.bson_dollar_ne(
 		 *                  collection_0_1.document,
-		 *                  '{ "user_id" : { "$numberInt" : "200" } }'::mongo_catalog.bson
+		 *                  '{ "user_id" : { "$numberInt" : "200" } }'::CoreSchema.bson
 		 *              )
 		 *              AND collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963001'::bigint
 		 *              LIMIT '1'::bigint

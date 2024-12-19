@@ -18,10 +18,10 @@ repoScriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
 
 declare -A headerMap;
 
-# Ensure unique headers between helio_core and helio_api
-for f in $repoScriptDir/../pg_helio_core/include/**/*; do
+# Ensure unique headers between OSS extensions
+echo "Checking helio_core"
+for f in `find $repoScriptDir/../pg_helio_core/include/ -name *.h`; do
     subPath=${f#$repoScriptDir/../pg_helio_core/include/}
-
     if [ "${headerMap[$subPath]}" != "" ]; then
         echo "Duplicate header path found at $subPath. Header files must be unique across the extensions";
         exit 1;
@@ -30,8 +30,49 @@ for f in $repoScriptDir/../pg_helio_core/include/**/*; do
 
 done;
 
-for f in $repoScriptDir/../pg_helio_api/include/**/*; do
+echo "Checking helio_api"
+for f in `find $repoScriptDir/../pg_helio_api/include/ -name *.h`; do
     subPath=${f#$repoScriptDir/../pg_helio_api/include/}
+    if [ "${headerMap[$subPath]}" != "" ]; then
+        echo "Duplicate header path found at $subPath. Header files must be unique across the extensions";
+        exit 1;
+    fi
+    headerMap[$subPath]=1;
+done;
+
+echo "Checking pg_documentdb_core"
+for f in `find $repoScriptDir/../pg_documentdb_core/include/ -name *.h`; do
+    subPath=${f#$repoScriptDir/../pg_documentdb_core/include/}
+    if [ "${headerMap[$subPath]}" != "" ]; then
+        echo "Duplicate header path found at $subPath. Header files must be unique across the extensions";
+        exit 1;
+    fi
+    headerMap[$subPath]=1;
+done;
+
+echo "Checking pg_documentdb"
+for f in `find $repoScriptDir/../pg_documentdb/include/ -name *.h`; do
+    subPath=${f#$repoScriptDir/../pg_documentdb/include/}
+    if [ "${headerMap[$subPath]}" != "" ]; then
+        echo "Duplicate header path found at $subPath. Header files must be unique across the extensions";
+        exit 1;
+    fi
+    headerMap[$subPath]=1;
+done;
+
+echo "Checking pg_helio_distributed"
+for f in `find $repoScriptDir/../internal/pg_helio_distributed/include/ -name *.h`; do
+    subPath=${f#$repoScriptDir/../internal/pg_helio_distributed/include/}
+    if [ "${headerMap[$subPath]}" != "" ]; then
+        echo "Duplicate header path found at $subPath. Header files must be unique across the extensions";
+        exit 1;
+    fi
+    headerMap[$subPath]=1;
+done;
+
+echo "Checking pg_documentdb_distributed"
+for f in `find $repoScriptDir/../internal/pg_documentdb_distributed/include/ -name *.h`; do
+    subPath=${f#$repoScriptDir/../internal/pg_documentdb_distributed/include/}
     if [ "${headerMap[$subPath]}" != "" ]; then
         echo "Duplicate header path found at $subPath. Header files must be unique across the extensions";
         exit 1;

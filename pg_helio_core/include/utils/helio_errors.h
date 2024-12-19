@@ -4,8 +4,8 @@
  *
  * include/utils/helio_errors.h
  *
- * Utilities for Helio Error Definition.
- * This file is generated - please modify the source (helioerrors.csv)
+ * Utilities for helio Error Definition.
+ * This file is generated - please modify the source (documentdb_errors.csv)
  *
  *-------------------------------------------------------------------------
  */
@@ -98,7 +98,8 @@ typedef int HelioErrorEreportCode;
 
 #define ERRCODE_HELIO_QUERYFEATURENOTALLOWED MAKE_SQLSTATE('M', '0', '0', '1', '3')
 
-#define ERRCODE_HELIO_MAXSUBPIPELINEDEPTHEXCEEDED MAKE_SQLSTATE('M', '0', '0', '1', '4')
+#define ERRCODE_HELIO_MAXSUBPIPELINEDEPTHEXCEEDED \
+	MAKE_SQLSTATE('M', '0', '0', '1', '4')
 
 #define ERRCODE_HELIO_CONVERSIONFAILURE MAKE_SQLSTATE('M', '0', '0', '1', '5')
 
@@ -126,7 +127,8 @@ typedef int HelioErrorEreportCode;
 
 #define ERRCODE_HELIO_LOCATION13068 MAKE_SQLSTATE('M', '0', '0', '1', 'G')
 
-#define ERRCODE_HELIO_MERGESTAGENOMATCHINGDOCUMENT MAKE_SQLSTATE('M', '0', '0', '1', 'H')
+#define ERRCODE_HELIO_MERGESTAGENOMATCHINGDOCUMENT \
+	MAKE_SQLSTATE('M', '0', '0', '1', 'H')
 
 #define ERRCODE_HELIO_DBALREADYEXISTS MAKE_SQLSTATE('M', '0', '0', '1', 'I')
 
@@ -170,7 +172,8 @@ typedef int HelioErrorEreportCode;
 
 #define ERRCODE_HELIO_LOCATION16433 MAKE_SQLSTATE('M', '0', '0', '2', '2')
 
-#define ERRCODE_HELIO_DOLLARADDNUMERICORDATETYPES MAKE_SQLSTATE('M', '0', '0', '2', '3')
+#define ERRCODE_HELIO_DOLLARADDNUMERICORDATETYPES \
+	MAKE_SQLSTATE('M', '0', '0', '2', '3')
 
 #define ERRCODE_HELIO_DOLLARMODBYZEROPROHIBITED MAKE_SQLSTATE('M', '0', '0', '2', '4')
 
@@ -237,7 +240,8 @@ typedef int HelioErrorEreportCode;
 
 #define ERRCODE_HELIO_LOCATION17049 MAKE_SQLSTATE('M', '0', '0', '2', 'Z')
 
-#define ERRCODE_HELIO_DOLLARCONDMISSINGIFPARAMETER MAKE_SQLSTATE('M', '0', '0', '3', '0')
+#define ERRCODE_HELIO_DOLLARCONDMISSINGIFPARAMETER \
+	MAKE_SQLSTATE('M', '0', '0', '3', '0')
 
 #define ERRCODE_HELIO_DOLLARCONDMISSINGTHENPARAMETER \
 	MAKE_SQLSTATE('M', '0', '0', '3', '1')
@@ -372,7 +376,8 @@ typedef int HelioErrorEreportCode;
 
 #define ERRCODE_HELIO_LOCATION28765 MAKE_SQLSTATE('M', '0', '0', '4', 'K')
 
-#define ERRCODE_HELIO_DOLLARLNMUSTBEPOSITIVENUMBER MAKE_SQLSTATE('M', '0', '0', '4', 'L')
+#define ERRCODE_HELIO_DOLLARLNMUSTBEPOSITIVENUMBER \
+	MAKE_SQLSTATE('M', '0', '0', '4', 'L')
 
 #define ERRCODE_HELIO_LOCATION28769 MAKE_SQLSTATE('M', '0', '0', '4', 'M')
 
@@ -820,7 +825,8 @@ typedef int HelioErrorEreportCode;
 
 #define ERRCODE_HELIO_INTERMEDIATERESULTTOOLARGE MAKE_SQLSTATE('M', '0', '0', 'A', 'H')
 
-#define ERRCODE_HELIO_DOLLARSETFIELDREQUIRESOBJECT MAKE_SQLSTATE('M', '0', '0', 'A', 'I')
+#define ERRCODE_HELIO_DOLLARSETFIELDREQUIRESOBJECT \
+	MAKE_SQLSTATE('M', '0', '0', 'A', 'I')
 
 #define ERRCODE_HELIO_DOLLARSETFIELDUNKNOWNARGUMENT \
 	MAKE_SQLSTATE('M', '0', '0', 'A', 'J')

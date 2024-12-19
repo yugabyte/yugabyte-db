@@ -1068,24 +1068,24 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
  { "_id" : { "$numberInt" : "18" }, "ikey" : {  } }
 (15 rows)
 
--- _S_TEMP_STR_ specific tests
+-- specific tests
 SET helio_api.enableIndexTermTruncationOnNestedObjects to off;
 set helio_api.indexTermLimitOverride to 250;
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "_S_TEMP_STR__index_truncation_tests_nested", "indexes": [ { "key": { "$**" : 1 }, "name": "wildcardIndex",  "enableLargeIndexKeys": true  } ] }', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_tests_nested", "indexes": [ { "key": { "$**" : 1 }, "name": "wildcardIndex",  "enableLargeIndexKeys": true  } ] }', true);
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT helio_distributed_test_helpers.drop_primary_key('db', '_S_TEMP_STR__index_truncation_tests_nested');
+SELECT helio_distributed_test_helpers.drop_primary_key('db', 'index_truncation_tests_nested');
  drop_primary_key 
 ---------------------------------------------------------------------
  
 (1 row)
 
 -- 1. Failes without nested object truncation support
-SELECT helio_api.insert_one('db', '_S_TEMP_STR__index_truncation_tests_nested', '
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested', '
 {
     "_id" : 1,
     "data": {
@@ -2326,7 +2326,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
 (344 rows)
 
 -- 3. Now insert the document with nested object index term truncation support
-SELECT helio_api.insert_one('db', '_S_TEMP_STR__index_truncation_tests_nested', '
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested', '
 {
     "_id": 1, 
     "data": {
@@ -2534,7 +2534,7 @@ SELECT helio_api.insert_one('db', '_S_TEMP_STR__index_truncation_tests_nested', 
 (1 row)
 
 -- 4. Now issue a find query
-SELECT document FROM bson_aggregation_find('db', '{ "find": "_S_TEMP_STR__index_truncation_tests_nested", "filter": { "memberships": { "$eq": 
+SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships": { "$eq": 
 
 {
             "sourceSystemAttributes": {
@@ -2624,7 +2624,7 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "_S_TEMP_STR__index_
 (1 row)
 
 -- 5. Index usage explain
-EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "_S_TEMP_STR__index_truncation_tests_nested", "filter": { "memberships": { "$eq": 
+EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships": { "$eq": 
 
 {
             "sourceSystemAttributes": {
@@ -2728,7 +2728,7 @@ EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT docu
                                  Index Cond: (document OPERATOR(helio_api_catalog.@=) '{ "memberships" : { "sourceSystemAttributes" : { "cdb" : { "referenceData" : { "coverageTypeCode" : null }, "nonCs" : { "legalEntityName" : null } } }, "cancelReasonType" : null, "customerPurchaseIdentifier" : "0714867GIW", "enrolleeSourceId" : "07148670016266119100001", "individualIdentifier" : "cdb:4:150813964:CS:07148670016266119100001", "membershipGroupData" : null, "legacyAttributes" : { "stateIssueCode" : "" }, "eligibilitySystemType" : { "code" : "01" }, "coverageStatus" : { "code" : "A", "description" : null }, "terminationDate" : "2010-12-31", "subscriberIndividualIdentifier" : null, "panelNumber" : null, "enrolleeMemberFacingIdentifier" : null, "claimSystemType" : null, "medicareAndRetirementMembershipProfiles" : null, "organizationIdentifier" : null, "subscriberMemberFacingIdentifier" : null, "customerAccountIdentifier" : "0714867", "segmentId" : null, "enrolleeSourceCode" : "CS", "plan" : { "planCode" : "" }, "areaGroup" : null, "packageBenefitPlanCode" : null, "product" : { "healthCoverageType" : { "code" : "G" } }, "active" : true, "applicationIdentifier" : null, "divisionCode" : "", "site" : null, "productCode" : "", "membershipIdentifier" : "cdb:health:0714867:2009-01-01:G:IW", "organization" : { "planVariationCode" : "0013", "reportingCode" : "0013" }, "hContractId" : null, "customerAccount" : { "lineOfBusiness" : { "code" : "E&I" }, "policySuffixCode" : null, "planCoverageIdentifier" : "cdb:CS:0714867:0013:0013:G", "businessArrangement" : { "code" : "A" }, "customerAccountIdentifier" : "0714867", "sharedArrangement" : { "code" : "00" }, "obligor" : { "code" : "01" }, "purchasePlanIdentifier" : null }, "memberMarketNumber" : null, "subscriberEnrolleeSourceId" : null, "effectiveDate" : "2009-01-01" } }'::helio_core.bson)
 (16 rows)
 
-SELECT document FROM bson_aggregation_find('db', '{ "find": "_S_TEMP_STR__index_truncation_tests_nested", "filter": { "memberships.organization.planVariationCode": { "$eq": 
+SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships.organization.planVariationCode": { "$eq": 
 
 "0013"
 
@@ -2738,7 +2738,7 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "_S_TEMP_STR__index_
  { "_id" : { "$numberInt" : "1" } }
 (1 row)
 
-EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "_S_TEMP_STR__index_truncation_tests_nested", "filter": { "memberships.organization.planVariationCode": { "$eq": 
+EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships.organization.planVariationCode": { "$eq": 
 
 "0013"
 

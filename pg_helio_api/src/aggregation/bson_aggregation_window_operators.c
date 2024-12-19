@@ -535,7 +535,7 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
  *
  * The Postgres query that is formed at the end of the function is:
  *
- * SELECT helio_api_internal.bson_dollar_merge_documents(document, mongo_catalog.bson_repath_and_build(<field1>::text, total)) AS document
+ * SELECT helio_api_internal.bson_dollar_merge_documents(document, ApiCatalogSchema.bson_repath_and_build(<field1>::text, total)) AS document
  * FROM (
  *     SELECT
  *         document,

@@ -840,7 +840,7 @@ DeleteCollectionIndexRecord(uint64 collectionId, int indexId)
 
 /*
  * DeleteCollectionIndexRecordCore deletes the record inserted for given index from
- * mongo_catalog.collection_indexes using SPI. Delete all indexes of the collection
+ * ApiCatalogSchema.collection_indexes using SPI. Delete all indexes of the collection
  * if indexId is NULL. The delete is done as a commutative write
  */
 static void

@@ -198,18 +198,18 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
 SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$ne": [{ "$numberDecimal" : "1234567891011" }] } }';
 
 
--- _S_TEMP_STR_ specific tests
+-- specific tests
 
 SET helio_api.enableIndexTermTruncationOnNestedObjects to off;
 set helio_api.indexTermLimitOverride to 250;
 
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "_S_TEMP_STR__index_truncation_tests_nested", "indexes": [ { "key": { "$**" : 1 }, "name": "wildcardIndex",  "enableLargeIndexKeys": true  } ] }', true);
-SELECT helio_distributed_test_helpers.drop_primary_key('db', '_S_TEMP_STR__index_truncation_tests_nested');
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_tests_nested", "indexes": [ { "key": { "$**" : 1 }, "name": "wildcardIndex",  "enableLargeIndexKeys": true  } ] }', true);
+SELECT helio_distributed_test_helpers.drop_primary_key('db', 'index_truncation_tests_nested');
 
 
 -- 1. Failes without nested object truncation support
-SELECT helio_api.insert_one('db', '_S_TEMP_STR__index_truncation_tests_nested', '
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested', '
 {
     "_id" : 1,
     "data": {
@@ -758,7 +758,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
 
 -- 3. Now insert the document with nested object index term truncation support
 
-SELECT helio_api.insert_one('db', '_S_TEMP_STR__index_truncation_tests_nested', '
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested', '
 {
     "_id": 1, 
     "data": {
@@ -964,7 +964,7 @@ SELECT helio_api.insert_one('db', '_S_TEMP_STR__index_truncation_tests_nested', 
 
 -- 4. Now issue a find query
 
-SELECT document FROM bson_aggregation_find('db', '{ "find": "_S_TEMP_STR__index_truncation_tests_nested", "filter": { "memberships": { "$eq": 
+SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships": { "$eq": 
 
 {
             "sourceSystemAttributes": {
@@ -1051,7 +1051,7 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "_S_TEMP_STR__index_
 
 -- 5. Index usage explain
 
-EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "_S_TEMP_STR__index_truncation_tests_nested", "filter": { "memberships": { "$eq": 
+EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships": { "$eq": 
 
 {
             "sourceSystemAttributes": {
@@ -1137,13 +1137,13 @@ EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT docu
 } }, "projection": { "_id": 1 }, "sort": { "_id": 1 }, "skip": 0, "limit": 5 }');
 
 
-SELECT document FROM bson_aggregation_find('db', '{ "find": "_S_TEMP_STR__index_truncation_tests_nested", "filter": { "memberships.organization.planVariationCode": { "$eq": 
+SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships.organization.planVariationCode": { "$eq": 
 
 "0013"
 
 } }, "projection": { "_id": 1 }, "sort": { "_id": 1 }, "skip": 0, "limit": 5 }');
 
-EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "_S_TEMP_STR__index_truncation_tests_nested", "filter": { "memberships.organization.planVariationCode": { "$eq": 
+EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships.organization.planVariationCode": { "$eq": 
 
 "0013"
 

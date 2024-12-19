@@ -7,11 +7,17 @@ Makefile:;
 .PHONY: %
 
 .DEFAULT:
+	$(MAKE) -C pg_documentdb_core
+	$(MAKE) -C pg_documentdb
+	$(MAKE) -C internal/pg_documentdb_distributed
 	$(MAKE) -C pg_helio_core
 	$(MAKE) -C pg_helio_api
 	$(MAKE) -C internal/pg_helio_distributed
 
 %:
+	$(MAKE) -C pg_documentdb_core $@
+	$(MAKE) -C pg_documentdb $@
+	$(MAKE) -C internal/pg_documentdb_distributed $@
 	$(MAKE) -C pg_helio_core $@
 	$(MAKE) -C pg_helio_api $@
 	$(MAKE) -C internal/pg_helio_distributed $@
