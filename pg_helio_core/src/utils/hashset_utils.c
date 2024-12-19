@@ -67,7 +67,7 @@ PgbsonElementHashEntryHashFunc(const void *obj, size_t objsize)
  * on string_compare()) used to determine if keys of the bson elements hold
  * by given two PgbsonElementHashEntry objects are the same.
  *
- * Returns 0 if those two bson element keys are same, 1 otherwise.
+ * Returns 0 if those two bson element keys are same, +ve Int if first is greater otherwise -ve Int.
  */
 static int
 PgbsonElementHashEntryCompareFunc(const void *obj1, const void *obj2, Size objsize)
@@ -75,17 +75,14 @@ PgbsonElementHashEntryCompareFunc(const void *obj1, const void *obj2, Size objsi
 	const PgbsonElementHashEntry *hashEntry1 = obj1;
 	const PgbsonElementHashEntry *hashEntry2 = obj2;
 
-	if (hashEntry1->element.pathLength != hashEntry2->element.pathLength)
-	{
-		return 1;
-	}
+	int minLength = Min(hashEntry1->element.pathLength, hashEntry2->element.pathLength);
+	int result = strncmp(hashEntry1->element.path, hashEntry2->element.path, minLength);
 
-	if (strcmp(hashEntry1->element.path, hashEntry2->element.path) != 0)
+	if (result == 0)
 	{
-		return 1;
+		return hashEntry1->element.pathLength - hashEntry2->element.pathLength;
 	}
-
-	return 0;
+	return result;
 }
 
 
