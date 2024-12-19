@@ -1842,7 +1842,7 @@ pgss_store(const char *query, uint64 queryId,
 			gc_qtexts();
 	}
 
-	if (YBIsQueryDiagnosticsEnabled())
+	if (yb_enable_query_diagnostics)
 		YbSetPgssNormalizedQueryText(queryId, entry->query_offset,
 									 entry->query_len);
 
@@ -1956,7 +1956,7 @@ done:
 Datum
 pg_stat_statements_reset_1_7(PG_FUNCTION_ARGS)
 {
-	if (YBIsQueryDiagnosticsEnabled())
+	if (yb_enable_query_diagnostics)
 		*yb_pgss_last_reset_time = GetCurrentTimestamp();
 
 	Oid			userid;
@@ -1978,7 +1978,7 @@ pg_stat_statements_reset_1_7(PG_FUNCTION_ARGS)
 Datum
 pg_stat_statements_reset(PG_FUNCTION_ARGS)
 {
-	if (YBIsQueryDiagnosticsEnabled())
+	if (yb_enable_query_diagnostics)
 		*yb_pgss_last_reset_time = GetCurrentTimestamp();
 
 	entry_reset(0, 0, 0);
