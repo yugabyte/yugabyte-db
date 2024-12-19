@@ -109,9 +109,7 @@ DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 102
 DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
              "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
 
-// Use big enough default value for rocksdb_max_write_buffer_number, so behavior defined by
-// db_max_flushing_bytes will be actual default.
-DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
+DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 2,
              "Maximum number of write buffers that are built up in memory.");
 
 // The manifest file persists min/max schema versions in flushed frontiers. A default 10MB limit
@@ -137,7 +135,7 @@ DEFINE_UNKNOWN_int32(memstore_size_mb, 128,
              "Max size (in mb) of the memstore, before needing to flush.");
 
 // Use a value slightly less than 2 default mem store sizes.
-DEFINE_NON_RUNTIME_uint64(db_max_flushing_bytes, 250_MB,
+DEFINE_NON_RUNTIME_uint64(db_max_flushing_bytes, 0,
     "The limit for the number of bytes in immutable mem tables. "
     "After reaching this limit new writes are blocked. 0 - unlimited.");
 
