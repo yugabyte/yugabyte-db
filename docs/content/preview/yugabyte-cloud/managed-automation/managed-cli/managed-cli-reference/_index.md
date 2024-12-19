@@ -97,9 +97,6 @@ Use the following commands to configure ybm:
 
 The following flags can be passed in with any command. These flags can also be added to your configuration file (see [Configure ybm](../managed-cli-overview/#configure-ybm)).
 
--h, --help
-: Displays help information for ybm CLI commands.
-
 -a, --apiKey string
 : YugabyteDB Aeon account API Key.
 
@@ -108,6 +105,9 @@ The following flags can be passed in with any command. These flags can also be a
 
 --debug
 : Use debug mode, same as `--logLevel debug`.
+
+-h, --help
+: Displays help information for ybm CLI commands.
 
 <!--
 --host string
