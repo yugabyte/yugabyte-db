@@ -17,6 +17,7 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/doc_write_batch_cache.h"
@@ -67,10 +68,18 @@ class ValueRef {
         value_type_(dockv::ValueEntryType::kInvalid) {
   }
 
+  // TODO(AR) the following members are not initialized: value_type_, sorting_type_,
+  //          write_instruction_, list_extend_order_.
   explicit ValueRef(dockv::ValueEntryType key_entry_type);
 
+  // TODO(AR) the following members are not initialized: value_pb_, value_type_, sorting_type_,
+  //          write_instruction_, list_extend_order_.
   explicit ValueRef(std::reference_wrapper<const Slice> encoded_value)
       : encoded_value_(&encoded_value.get()) {}
+
+  // TODO(AR) the following members are not initialized: write_instruction_, list_extend_order_.
+  explicit ValueRef(std::reference_wrapper<const dockv::DocVectorValue> vector_value,
+                    SortingType sorting_type = SortingType::kNotSpecified);
 
   const QLValuePB& value_pb() const {
     return *value_pb_;
@@ -112,6 +121,10 @@ class ValueRef {
     return encoded_value_;
   }
 
+  const dockv::DocVectorValue* vector_value() const {
+    return vector_value_;
+  }
+
   bool is_array() const;
 
   bool is_set() const;
@@ -131,6 +144,7 @@ class ValueRef {
   dockv::ListExtendOrder list_extend_order_;
   dockv::ValueEntryType value_type_;
   const Slice* encoded_value_ = nullptr;
+  const dockv::DocVectorValue* vector_value_ = nullptr;
 };
 
 // This controls whether "init markers" are required at all intermediate levels.
@@ -149,6 +163,11 @@ YB_STRONGLY_TYPED_BOOL(HasAncestor);
 struct DocWriteBatchEntry {
   std::string key;
   std::string value;
+};
+
+struct DocLockBatchEntry {
+  DocWriteBatchEntry lock;
+  PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode;
 };
 
 // The DocWriteBatch class is used to build a RocksDB write batch for a DocDB batch of operations
@@ -248,19 +267,16 @@ class DocWriteBatch {
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
 
   void Clear();
-  bool IsEmpty() const { return put_batch_.empty(); }
+  bool IsEmpty() const { return put_batch_.empty() && lock_batch_.empty(); }
 
-  size_t size() const { return put_batch_.size(); }
+  size_t size() const { return put_batch_.size() + lock_batch_.size(); }
 
   const std::vector<DocWriteBatchEntry>& key_value_pairs() const {
     return put_batch_;
   }
 
-  void MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb);
-
-  // This method has worse performance comparing to MoveToWriteBatchPB and intented to be used in
-  // testing. Consider using MoveToWriteBatchPB in production code.
-  void TEST_CopyToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const;
+  void MoveLocksToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb, bool is_lock) const;
+  void MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const;
 
   // This is used in tests when measuring the number of seeks that a given update to this batch
   // performs. The internal seek count is reset.
@@ -278,6 +294,11 @@ class DocWriteBatch {
   DocWriteBatchEntry& AddRaw() {
     put_batch_.emplace_back();
     return put_batch_.back();
+  }
+
+  DocLockBatchEntry& AddLock() {
+    lock_batch_.emplace_back();
+    return lock_batch_.back();
   }
 
   void UpdateMaxValueTtl(const MonoDelta& ttl);
@@ -352,6 +373,7 @@ class DocWriteBatch {
   std::atomic<int64_t>* monotonic_counter_;
 
   std::vector<DocWriteBatchEntry> put_batch_;
+  std::vector<DocLockBatchEntry> lock_batch_;
 
   // Taken from internal_doc_iterator
   dockv::KeyBytes key_prefix_;

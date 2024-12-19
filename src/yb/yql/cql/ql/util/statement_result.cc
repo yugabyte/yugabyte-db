@@ -94,7 +94,8 @@ shared_ptr<vector<ColumnSchema>> GetColumnSchemasFromOp(const YBqlOp& op, const 
     case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;
     case YBOperation::Type::PGSQL_WRITE: FALLTHROUGH_INTENDED;
     case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
-    case YBOperation::Type::REDIS_WRITE:
+    case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
+    case YBOperation::Type::PGSQL_LOCK:
       break;
     // default: fallthrough
   }
@@ -112,7 +113,8 @@ QLClient GetClientFromOp(const YBqlOp& op) {
     case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;
     case YBOperation::Type::PGSQL_WRITE: FALLTHROUGH_INTENDED;
     case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
-    case YBOperation::Type::REDIS_WRITE:
+    case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
+    case YBOperation::Type::PGSQL_LOCK:
       break;
     // default: fallthrough
   }

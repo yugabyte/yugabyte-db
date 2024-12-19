@@ -1578,6 +1578,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       UUID providerUUID) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    Provider provider = Provider.getOrBadRequest(providerUUID);
     params.universeName = universeName;
     params.commandType = KubernetesCommandExecutor.CommandType.RESUME_AZ;
     params.azCode = azCode;

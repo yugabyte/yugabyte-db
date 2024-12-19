@@ -28,6 +28,7 @@
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/result.h"
@@ -477,6 +478,7 @@ Status RemoveNamespaceFromReplicationGroup(
 
   auto l = universe->LockForWrite();
   auto& universe_pb = l.mutable_data()->pb;
+  auto is_automatic_ddl_mode = IsAutomaticDdlMode(universe_pb);
 
   NamespaceId consumer_namespace_id;
   auto* namespace_infos = universe_pb.mutable_db_scoped_info()->mutable_namespace_infos();
@@ -509,8 +511,19 @@ Status RemoveNamespaceFromReplicationGroup(
 
   // For DB Scoped replication the streams will be cleaned up when the namespace is removed from
   // the outbound replication group on the source.
-  return RemoveTablesFromReplicationGroupInternal(
-      *universe, l, producer_table_ids, catalog_manager, epoch, /*cleanup_source_streams=*/false);
+  RETURN_NOT_OK(RemoveTablesFromReplicationGroupInternal(
+      *universe, l, producer_table_ids, catalog_manager, epoch, /*cleanup_source_streams=*/false));
+
+  if (is_automatic_ddl_mode) {
+    // Need to drop the DDL Replication extension for automatic mode.
+    // We don't support N:1 replication or daisy-chaining, so we can safely drop on the target.
+    Synchronizer sync;
+    RETURN_NOT_OK(master::DropDDLReplicationExtension(
+        catalog_manager, consumer_namespace_id,
+        [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
+    RETURN_NOT_OK(sync.Wait());
+  }
+  return Status::OK();
 }
 
 Status RemoveTablesFromReplicationGroup(
@@ -731,6 +744,17 @@ Status DeleteUniverseReplication(
         }
       }
       RETURN_NOT_OK(ReturnErrorOrAddWarning(s, ignore_errors | ignore_missing_streams, resp));
+    }
+  }
+
+  // For each namespace, also cleanup the DDL Replication extension if needed.
+  if (l->IsAutomaticDdlMode()) {
+    for (const auto& namespace_info : l->pb.db_scoped_info().namespace_infos()) {
+      Synchronizer sync;
+      RETURN_NOT_OK(master::DropDDLReplicationExtension(
+          catalog_manager, namespace_info.consumer_namespace_id(),
+          [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
+      RETURN_NOT_OK(sync.Wait());
     }
   }
 

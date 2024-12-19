@@ -95,7 +95,7 @@ using yb::pgwrapper::PgSupervisor;
 using namespace yb::size_literals;  // NOLINT
 using namespace std::chrono_literals;
 
-DEFINE_NON_RUNTIME_bool(start_redis_proxy, true,
+DEFINE_NON_RUNTIME_bool(start_redis_proxy, false,
     "Starts a redis proxy along with the tablet server");
 
 DEFINE_NON_RUNTIME_bool(start_cql_proxy, true, "Starts a CQL proxy along with the tablet server");

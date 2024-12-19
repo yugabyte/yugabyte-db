@@ -41,7 +41,7 @@ DocDB is the underlying document storage engine of YugabyteDB and is built on to
 
 ## Fault domain
 
-A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. {{<link dest="../../../explore/fault-tolerance/#fault-domains">}}
+A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. {{<link dest="../../explore/fault-tolerance/#fault-domains">}}
 
 ## Fault tolerance
 

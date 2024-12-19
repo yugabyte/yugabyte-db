@@ -521,13 +521,12 @@ You can use only one of the following arguments to connect to your Oracle instan
    ```sql
    psql -h <host> \
         -d <database> \
-        -U <username> \
+        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
         -v voyager_user='ybvoyager' \
         -v schema_list='<comma_separated_schema_list>' \
         -v is_live_migration=1 \
         -v is_live_migration_fall_back=1 \
         -v replication_group='<replication_group>' \
-        -v original_owner_of_tables='<original_owner_of_tables>'
         -f <path_to_the_script>
    ```
 
@@ -558,13 +557,12 @@ You can use only one of the following arguments to connect to your Oracle instan
    ```sql
    psql -h <host> \
         -d <database> \
-        -U <username> \
+        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
         -v voyager_user='ybvoyager' \
         -v schema_list='<comma_separated_schema_list>' \
         -v is_live_migration=1 \
         -v is_live_migration_fall_back=1 \
         -v replication_group='<replication_group>' \
-        -v original_owner_of_tables='<original_owner_of_tables>' \
         -f <path_to_the_script>
    ```
 
@@ -899,7 +897,7 @@ Perform the following steps as part of the cutover process:
     yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back true
     ```
 
-    Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-initiate) for details about the arguments.
+    Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
 
     As part of the cutover process, the following occurs in the background:
 

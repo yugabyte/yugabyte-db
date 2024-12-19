@@ -360,8 +360,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     return lhs.order < rhs.order;
   });
 
-  Schema schema;
-  RETURN_NOT_OK(table->GetSchema(&schema));
+  auto schema = VERIFY_RESULT(table->GetSchema());
   Schema previous_schema;
   RETURN_NOT_OK(SchemaFromPB(l->ysql_ddl_txn_verifier_state().previous_schema(), &previous_schema));
   // CompareDdlAtomicity takes marked_for_deletion() into comparison. If a column is marked for

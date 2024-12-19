@@ -11,13 +11,13 @@ menu:
 type: docs
 ---
 
-The `yb-admin` utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
+The yb-admin utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
 
-It invokes the [`yb-master`](../../reference/configuration/yb-master/) and [`yb-tserver`](../../reference/configuration/yb-tserver/) servers to perform the necessary administration.
+It invokes the [yb-master](../../reference/configuration/yb-master/) and [yb-tserver](../../reference/configuration/yb-tserver/) servers to perform the necessary administration.
 
 ## Syntax
 
-To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
+To use yb-admin from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
 
 ```sh
 yb-admin \
@@ -285,7 +285,9 @@ yb-admin \
 Splits the specified hash-sharded tablet and computes the split point as the middle of tablet's sharding range.
 
 ```sh
-split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
+yb-admin \
+    -master_addresses <master-addresses> \
+    split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -523,7 +525,7 @@ Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:700
 
 Setting placement for tables is not supported for clusters with read-replicas or leader affinity policies enabled.
 
-Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
+Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [Tablespaces](../../explore/going-beyond-sql/tablespaces) instead.
 {{< /note >}}
 
 #### create_transaction_table
@@ -1143,7 +1145,7 @@ Take a snapshot of the YSQL database `yugabyte` once per minute, and retain each
     create_snapshot_schedule 1 10 ysql.yugabyte
 ```
 
-The equivalent command for a YCQL keyspace (for example, yugabyte) would be the following:
+The equivalent command for the YCQL keyspace `yugabyte` would be the following:
 
 ```sh
 ./bin/yb-admin \
@@ -1600,7 +1602,7 @@ yb-admin \
 
 {{< note title="Note" >}}
 
-After adding the universe keys to all YB-Master nodes, you can verify the keys exist using the `yb-admin` [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-in-memory) command and enable encryption using the [`rotate_universe_key_in_memory`](#rotate-universe-key-in-memory) command.
+After adding the universe keys to all YB-Master nodes, you can verify the keys exist using the [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-in-memory) command and enable encryption using the [`rotate_universe_key_in_memory`](#rotate-universe-key-in-memory) command.
 
 {{< /note >}}
 
@@ -1741,13 +1743,13 @@ To create a change data capture (CDC) DB stream which also supports sending the 
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    create_change_data_stream ysql.<namespace_name> IMPLICIT ALL
+    create_change_data_stream ysql.<namespace_name> EXPLICIT <before_image_mode>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
-* `IMPLICIT`: Checkpointing type on the server.
-* `ALL`: Record type indicating to the server that the stream should send the before image too.
+* `EXPLICIT`: Checkpointing type on the server.
+* *before_image_mode*: Record type indicating the stream should include the before image.
 
 A successful operation of the above command returns a message with a DB stream ID:
 
@@ -1776,6 +1778,12 @@ A successful operation of the above command returns a message with a DB stream I
 ```output
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
+
+{{< note title="IMPLICIT checkpointing is deprecated" >}}
+
+It is recommended that you create streams in EXPLICIT checkpointing mode only (the default). IMPLICIT checkpointing mode will be completely removed in future releases.
+
+{{< /note >}}
 
 #### list_change_data_streams
 
@@ -2614,7 +2622,7 @@ A successful upgrade returns the following message:
 YSQL successfully upgraded to the latest version
 ```
 
-In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for yb-admin. To account for that, run the command with a higher timeout value:
 
 ```sh
 ./bin/yb-admin \

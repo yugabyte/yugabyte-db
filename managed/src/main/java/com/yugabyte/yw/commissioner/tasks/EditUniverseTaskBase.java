@@ -2,6 +2,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -26,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -150,6 +152,16 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
 
     removeMasters.addAll(mastersToStop);
 
+    log.info(
+        "editCluster: nodesToBeRemoved {}, removeMasters: {}, tserversToBeRemoved: {}, newMasters:"
+            + " {}, existingNodesToStartMasters: {}, mastersToStop: {}",
+        nodesToBeRemoved,
+        removeMasters,
+        tserversToBeRemoved,
+        newMasters,
+        existingNodesToStartMaster,
+        mastersToStop);
+
     boolean isWaitForLeadersOnPreferred =
         confGetter.getConfForScope(universe, UniverseConfKeys.ybEditWaitForLeadersOnPreferred);
 
@@ -272,11 +284,19 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
 
     Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(nodes);
     if (!newTservers.isEmpty()) {
-      // Blacklist all the new tservers before starting so that they do not join.
-      // Idempotent as same set of servers are blacklisted.
-      createModifyBlackListTask(
-              newTservers /* addNodes */, null /* removeNodes */, false /* isLeaderBlacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      Set<NodeDetails> nonLiveNewTservers =
+          isFirstTry()
+              ? newTservers
+              : new HashSet<>(Sets.difference(newTservers, getLiveTserverNodes(universe)));
+      if (!nonLiveNewTservers.isEmpty()) {
+        // Blacklist all the new stopped tservers before starting so that they do not join.
+        // Idempotent as same set of servers are blacklisted.
+        createModifyBlackListTask(
+                nonLiveNewTservers /* addNodes */,
+                null /* removeNodes */,
+                false /* isLeaderBlacklist */)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       // Make sure clock skew is low enough.
       createWaitForClockSyncTasks(universe, newTservers)
@@ -530,5 +550,19 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       boolean enableClientToNodeEncrypt) {
     createCheckCertificateConfigTask(
         clusters, nodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
+  }
+
+  protected void setToBeRemovedState(NodeDetails currentNode) {
+    Set<NodeDetails> nodes = taskParams().nodeDetailsSet;
+    for (NodeDetails node : nodes) {
+      if (node.getNodeName() != null && node.getNodeName().equals(currentNode.getNodeName())) {
+        node.state = NodeState.ToBeRemoved;
+        return;
+      }
+    }
+    throw new RuntimeException(
+        String.format(
+            "Error setting node %s to ToBeRemoved state as node was not found",
+            currentNode.getNodeName()));
   }
 }

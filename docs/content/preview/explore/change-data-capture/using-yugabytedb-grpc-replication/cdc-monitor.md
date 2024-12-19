@@ -48,6 +48,24 @@ You can use the rest APIs to monitor your deployed connectors. The following ope
    curl -X GET localhost:8083/connectors/<connector-name>/status
    ```
 
+{{< note title= "Note" >}}
+
+It is possible that upon retrieving the status of the connector, it can show a RUNNING state while no data is being ingested to Kafka. As a connector consists of one or more tasks, the tasks have likely failed, independently from the connector. To verify this, you need to check for the status of the tasks.
+
+To show the status, use the following command:
+
+```sh
+curl -X GET localhost:8083/connectors/<connector-name>/status
+```
+
+You can also get the status of a specific task by passing in the task ID as follows:
+
+```sh
+curl -X GET localhost:8083/connectors/<connector-name>/tasks/<task-id>/status
+```
+
+{{< /note >}}
+
 ## Metrics
 
 In addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide, the YugabyteDB source connector provides the following types of metrics.

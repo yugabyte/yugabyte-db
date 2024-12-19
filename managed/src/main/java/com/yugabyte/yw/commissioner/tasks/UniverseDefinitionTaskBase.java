@@ -85,6 +85,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -121,6 +122,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 
 /**
@@ -3029,6 +3031,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected SubTaskGroup createUpdateUniverseIntentTask(Cluster cluster) {
+    return createUpdateUniverseIntentTask(cluster, false /*updatePlacementInfo*/);
+  }
+
+  protected SubTaskGroup createUpdateUniverseIntentTask(
+      Cluster cluster, boolean updatePlacementInfo) {
     if (cluster == null) {
       // can be null if only editing read replica
       return null;
@@ -3036,7 +3043,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateDetails");
     UpdateUniverseIntent.Params params = new UpdateUniverseIntent.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.updatePlacementInfo = updatePlacementInfo;
     params.clusters = Collections.singletonList(cluster);
+    params.clusterNodeDetails =
+        taskParams().getNodesInCluster(cluster.uuid).stream()
+            .filter(n -> n.state != NodeState.ToBeRemoved)
+            .collect(Collectors.toList());
     UpdateUniverseIntent task = createTask(UpdateUniverseIntent.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
@@ -3453,6 +3465,76 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       rollMaxBatchSize.setPrimaryBatchSize(fallback.getPrimaryBatchSize());
     }
     return rollMaxBatchSize;
+  }
+
+  protected boolean isTabletMovementAvailable(String nodeName) {
+    Universe universe = getUniverse();
+    NodeDetails currentNode = universe.getNode(nodeName);
+    String softwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (CommonUtils.isReleaseBefore(CommonUtils.MIN_LIVE_TABLET_SERVERS_RELEASE, softwareVersion)) {
+      log.debug("ListLiveTabletServers is not supported for {} version", softwareVersion);
+      return true;
+    }
+
+    // taskParams().placementUuid is not used because it will be null for RR.
+    Cluster currCluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
+    UserIntent userIntent = currCluster.userIntent;
+    PlacementInfo pi = currCluster.placementInfo;
+
+    Collection<NodeDetails> nodesExcludingCurrentNode =
+        new HashSet<>(universe.getNodesByCluster(currCluster.uuid));
+    nodesExcludingCurrentNode.remove(currentNode);
+    int rfInZone =
+        PlacementInfoUtil.getZoneRF(
+            pi,
+            currentNode.cloudInfo.cloud,
+            currentNode.cloudInfo.region,
+            currentNode.cloudInfo.az);
+
+    if (rfInZone == -1) {
+      log.error(
+          "Unexpected placement info in universe: {} rfInZone: {}", universe.getName(), rfInZone);
+      throw new RuntimeException(
+          "Error getting placement info for cluster with node: " + currentNode.nodeName);
+    }
+
+    // We do not get isActive() tservers due to new masters starting up changing
+    //   nodeStates to not-active node states which will cause retry to fail.
+    // Note: On master leader failover, if a tserver was already down, it will not be reported as a
+    //    "live" tserver even though it has been less than
+    //    "follower_unavailable_considered_failed_sec" secs since the tserver was down. This is
+    //    fine because we do not take into account the current node and if it is not the current
+    //    node that is down we may prematurely fail, which is expected.
+    List<TabletServerInfo> liveTabletServers = getLiveTabletServers(universe);
+
+    List<TabletServerInfo> tserversActiveInAZExcludingCurrentNode =
+        liveTabletServers.stream()
+            .filter(
+                tserverInfo ->
+                    currentNode.cloudInfo.cloud.equals(tserverInfo.getCloudInfo().getCloud())
+                        && currentNode.cloudInfo.region.equals(
+                            tserverInfo.getCloudInfo().getRegion())
+                        && currentNode.cloudInfo.az.equals(tserverInfo.getCloudInfo().getZone())
+                        && currCluster.uuid.equals(tserverInfo.getPlacementUuid())
+                        && !currentNode.cloudInfo.private_ip.equals(
+                            tserverInfo.getPrivateAddress().getHost()))
+            .collect(Collectors.toList());
+
+    long numActiveTservers = tserversActiveInAZExcludingCurrentNode.size();
+
+    // We have replication number of copies a tablet so we need more than the replication
+    //   factor number of nodes for tablets to move off.
+    // We only want to move data if the number of nodes in the zone are more than or equal
+    //   the RF of the zone.
+    log.debug(
+        "Cluster: {}, numNodes in cluster: {}, number of active tservers excluding current node"
+            + " removing: {}, RF in az: {}",
+        currCluster.uuid,
+        userIntent.numNodes,
+        numActiveTservers,
+        rfInZone);
+    return userIntent.numNodes > userIntent.replicationFactor && numActiveTservers >= rfInZone;
   }
 
   public void createResumeUniverseTasks(Universe universe, UUID customerUUID) {

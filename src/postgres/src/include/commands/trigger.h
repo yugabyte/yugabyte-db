@@ -43,6 +43,7 @@ typedef struct TriggerData
 	Tuplestorestate *tg_oldtable;
 	Tuplestorestate *tg_newtable;
 	const Bitmapset *tg_updatedcols;
+	EState *estate;
 } TriggerData;
 
 /*
@@ -280,7 +281,9 @@ extern bool RI_Initial_Check(Trigger *trigger,
 							 Relation fk_rel, Relation pk_rel);
 extern void RI_PartitionRemove_Check(Trigger *trigger, Relation fk_rel,
 									 Relation pk_rel);
-extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel, TupleTableSlot *new_slot);
+extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
+										  TupleTableSlot *new_slot,
+										  EState *estate);
 
 /* result values for RI_FKey_trigger_type: */
 #define RI_TRIGGER_PK	1		/* is a trigger on the PK relation */

@@ -30,11 +30,13 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
 
+#include "yb/common/transaction_error.h"
 #include "yb/docdb/doc_pg_expr.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_pgapi.h"
@@ -50,6 +52,7 @@
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value_util.h"
 #include "yb/dockv/reader_projection.h"
+#include "yb/dockv/vector_id.h"
 
 #include "yb/gutil/macros.h"
 
@@ -509,14 +512,6 @@ dockv::ReaderProjection CreateProjection(const Schema& schema, const PB& request
   return result;
 }
 
-template<class PB>
-dockv::ReaderProjection CreateIndexedProjection(const Schema& schema, const PB& request) {
-  dockv::ReaderProjection result;
-  // TODO(vector_index) Create actual projection
-  result.Init(schema, {schema.column_id(1)});
-  return result;
-}
-
 YB_DEFINE_ENUM(FetchResult, (NotFound)(FilteredOut)(Found));
 
 Result<std::unique_ptr<YQLRowwiseIteratorIf>> CreateYbctidIterator(
@@ -786,12 +781,6 @@ class ExpressionHelper {
       [](const auto& cv) { return !cv.expr().has_value(); });
 }
 
-void WriteNumRows(size_t result_rows, const WriteBufferPos& pos, WriteBuffer* buffer) {
-  char encoded_rows[sizeof(uint64_t)];
-  NetworkByteOrder::Store64(encoded_rows, result_rows);
-  CHECK_OK(buffer->Write(pos, encoded_rows, sizeof(encoded_rows)));
-}
-
 [[nodiscard]] inline bool IsNonKeyColumn(const Schema& schema, int32_t column_id) {
   return !schema.is_key_column(ColumnId(column_id));
 }
@@ -820,9 +809,9 @@ class VectorIndexKeyProvider {
  public:
   VectorIndexKeyProvider(
       VectorIndexSearchResult& search_result, PgsqlResponsePB& response, VectorIndex& vector_index,
-      Slice vector_slice, size_t max_results)
+      Slice vector_slice, size_t max_results, WriteBuffer& result_buffer)
       : search_result_(search_result), response_(response), vector_index_(vector_index),
-        vector_slice_(vector_slice), max_results_(max_results) {}
+        vector_slice_(vector_slice), max_results_(max_results), result_buffer_(result_buffer) {}
 
   Slice FetchKey() {
     if (index_ >= search_result_.size()) {
@@ -835,9 +824,8 @@ class VectorIndexKeyProvider {
 
   void AddedKeyToResultSet() {
     // TODO(vector_index) Support universal distance
-    auto distance = bit_cast<float>(static_cast<uint32_t>(
-        search_result_[index_ - 1].encoded_distance));
-    response_.add_distances(distance);
+    response_.add_vector_index_distances(search_result_[index_ - 1].encoded_distance);
+    response_.add_vector_index_ends(result_buffer_.size());
   }
 
   Status Prefetch(FilteringIterator& iterator, const dockv::ReaderProjection& projection) {
@@ -855,10 +843,11 @@ class VectorIndexKeyProvider {
       auto vector_value = table_row.GetValueByIndex(indexed_column_index);
       RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
                      vector_index_.column_id(), table_row.ToString());
+      auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
       search_result_.push_back(VectorIndexSearchResultEntry {
         // TODO(vector_index) Avoid decoding vector_slice for each vector
         .encoded_distance = VERIFY_RESULT(vector_index_.Distance(
-            vector_slice_, vector_value->binary_value())),
+            vector_slice_, encoded_value.data)),
         .key = KeyBuffer(iterator.impl().GetTupleId()),
       });
     }
@@ -889,6 +878,7 @@ class VectorIndexKeyProvider {
   VectorIndex& vector_index_;
   Slice vector_slice_;
   const size_t max_results_;
+  WriteBuffer& result_buffer_;
   size_t index_ = 0;
 };
 
@@ -1099,7 +1089,7 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
   auto scope_exit = ScopeExit([this] {
     if (write_buffer_) {
-      WriteNumRows(result_rows_, row_num_pos_, write_buffer_);
+      CHECK_OK(pggate::PgWire::WriteInt64(result_rows_, write_buffer_, row_num_pos_));
       response_->set_rows_data_sidecar(narrow_cast<int32_t>(sidecars_->Complete()));
     }
   });
@@ -1155,19 +1145,32 @@ Status PgsqlWriteOperation::InsertColumn(
                     InvalidArgument, "Only values support during insert");
   const auto& value = column_value.expr().value();
 
-  if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, value))) {
-    // Inserting into specified column.
-    DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
-    // If the column has a missing value, we don't want any null values that are inserted to be
-    // compacted away. So we store kNullLow instead of kTombstone.
-    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-        sub_path,
-        IsNull(value) && !IsNull(column.missing_value()) ?
-            ValueRef(dockv::ValueEntryType::kNullLow) : ValueRef(value, column.sorting_type()),
-        data.read_operation_data, request_.stmt_id()));
+  if (!column.is_vector()) {
+    return DoInsertColumn(data, column_id, column, value, pack_context);
   }
 
-  return Status::OK();
+  dockv::DocVectorValue vector_value(value, vector_index::VectorId::GenerateRandom());
+  return DoInsertColumn(data, column_id, column, vector_value, pack_context);
+}
+
+template <class Value>
+Status PgsqlWriteOperation::DoInsertColumn(
+    const DocOperationApplyData& data, ColumnId column_id, const ColumnSchema& column,
+    Value&& value, RowPackContext* pack_context) {
+  if (pack_context && VERIFY_RESULT(pack_context->Add(column_id, value))) {
+    return Status::OK();
+  }
+
+  // Inserting into specified column.
+  DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
+
+  // If the column has a missing value, we don't want any null values that are inserted to be
+  // compacted away. So we store kNullLow instead of kTombstone.
+  return data.doc_write_batch->InsertSubDocument(
+      sub_path,
+      IsNull(value) && !IsNull(column.missing_value()) ?
+          ValueRef(dockv::ValueEntryType::kNullLow) : ValueRef(value, column.sorting_type()),
+      data.read_operation_data, request_.stmt_id());
 }
 
 Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUpsert is_upsert) {
@@ -1851,7 +1854,7 @@ class ANNKeyProvider {
 
   ANNPagingState GetNextBatchPagingState() const { return next_batch_paging_state_; }
 
-  void AddedKeyToResultSet() { response_.add_distances(current_entry_->distance_); }
+  void AddedKeyToResultSet() { response_.add_vector_index_distances(current_entry_->distance_); }
 
  private:
   PgsqlResponsePB& response_;
@@ -1872,7 +1875,7 @@ Result<size_t> PgsqlReadOperation::Execute() {
   // Reserve space for fetched rows count.
   pggate::PgWire::WriteInt64(0, result_buffer_);
   auto se = ScopeExit([&fetched_rows, num_rows_pos, this] {
-    WriteNumRows(fetched_rows, num_rows_pos, result_buffer_);
+    CHECK_OK(pggate::PgWire::WriteInt64(fetched_rows, result_buffer_, num_rows_pos));
   });
   VLOG(4) << "Read, read operation data: " << data_.read_operation_data.ToString() << ", txn: "
           << data_.txn_op_context;
@@ -1886,10 +1889,11 @@ Result<size_t> PgsqlReadOperation::Execute() {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSample());
   } else if (request_.has_vector_idx_options()) {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
-        data_.doc_read_context, request_.vector_idx_options()));
+      data_.doc_read_context, request_.vector_idx_options()));
   } else if (request_.index_request().has_vector_idx_options()) {
-    std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
+    fetched_rows = VERIFY_RESULT(ExecuteVectorLSMSearch(
         *data_.index_doc_read_context, request_.index_request().vector_idx_options()));
+    has_paging_state = false;
   } else {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteScalar());
   }
@@ -2044,12 +2048,6 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
   // to get the index iterator. Then do ExecuteBatchKeys on the index iterator.
   RSTATUS_DCHECK(options.has_vector(), InvalidArgument, "Query vector not provided");
 
-  if (doc_read_context.vector_idx_options.has_value() &&
-      doc_read_context.vector_idx_options->idx_type() == PgVectorIndexType::HNSW) {
-    return std::tuple<size_t, bool>(VERIFY_RESULT(ExecuteVectorLSMSearch(
-        doc_read_context, options)), false);
-  }
-
   auto query_vec = options.vector().binary_value();
 
   auto ysql_query_vec = pointer_cast<const vector_index::YSQLVector*>(query_vec.data());
@@ -2060,8 +2058,6 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
   DummyANNFactory<FloatVector> ann_factory;
   auto ann_store = ann_factory.Create(ysql_query_vec->dim);
 
-  auto index_extraction_schema = Schema();
-  std::vector<ColumnSchema> indexed_column_ids;
   dockv::ReaderProjection index_doc_projection;
 
   auto key_col_id = doc_read_context.schema().column_id(0);
@@ -2088,14 +2084,15 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
     ++scanned_table_rows_;
     if (fetch_result == FetchResult::Found) {
       auto vec_value = row.GetValueByColumnId(vector_col_id);
-      if (!vec_value.has_value()) continue;
+      if (!vec_value.has_value()) {
+        continue;
+      }
+
       // Add the vector to the ANN store
-      auto vec = VERIFY_RESULT(VectorANN<FloatVector>::GetVectorFromYSQLWire(
-          *pointer_cast<const vector_index::YSQLVector*>(vec_value->binary_value().data()),
-          vec_value->binary_value().size()));
+      auto encoded = dockv::EncodedDocVectorValue::FromSlice(vec_value->binary_value());
+      auto vec = VERIFY_RESULT(VectorANN<FloatVector>::GetVectorFromYSQLWire(encoded.data));
       auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
-      ann_store->Add(vector_index::VectorId::GenerateRandom(),
-                     std::move(vec), doc_iter->GetTupleId());
+      ann_store->Add(VERIFY_RESULT(encoded.DecodeId()), std::move(vec), doc_iter->GetTupleId());
     }
   }
 
@@ -2132,17 +2129,19 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
 
 Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(
     const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options) {
-  RSTATUS_DCHECK(data_.vector_index, IllegalState, "Search vector when vector index is null");
+  RSTATUS_DCHECK(
+      data_.vector_index, IllegalState, "Search vector when vector index is null: $0", request_);
 
   Slice vector_slice(options.vector().binary_value());
-  // TODO(vector_index) Use correct max_results
-  size_t max_results = std::min<size_t>(1000, options.prefetch_size());
+  // TODO(vector_index) Use correct max_results or use prefetch_size passed from options
+  // when paging is supported.
+  size_t max_results = std::min(options.prefetch_size(), 1000);
 
   auto result = VERIFY_RESULT(data_.vector_index->Search(vector_slice, max_results));
   // TODO(vector_index) Order keys by ybctid for fetching.
   VectorIndexKeyProvider key_provider(
-      result, response_, *data_.vector_index, vector_slice, max_results);
-  return ExecuteBatchKeys(key_provider, &doc_read_context != data_.index_doc_read_context);
+      result, response_, *data_.vector_index, vector_slice, max_results, *result_buffer_);
+  return ExecuteBatchKeys(key_provider);
 }
 
 void PgsqlReadOperation::BindReadTimeToPagingState(const ReadHybridTime& read_time) {
@@ -2272,8 +2271,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 }
 
 template <class KeyProvider>
-Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(
-    KeyProvider& key_provider, bool use_indexed_table) {
+Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
   // We limit the response's size.
   auto response_size_limit = std::numeric_limits<std::size_t>::max();
 
@@ -2281,18 +2279,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(
     response_size_limit = request_.size_limit();
   }
 
-  const auto& doc_read_context = use_indexed_table
-      ? *DCHECK_NOTNULL(data_.index_doc_read_context) : data_.doc_read_context;
-  auto projection = use_indexed_table ? CreateIndexedProjection(doc_read_context.schema(), request_)
-                                      : CreateProjection(doc_read_context.schema(), request_);
+  const auto& doc_read_context = data_.doc_read_context;
+  auto projection = CreateProjection(doc_read_context.schema(), request_);
   dockv::PgTableRow row(projection);
-
-  if (use_indexed_table) {
-    // TODO(vector_index) Use actual targets
-    google::protobuf::RepeatedPtrField<PgsqlExpressionPB> targets;
-    targets.Add()->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
-    InitTargetEncoders(targets, row);
-  }
 
   std::optional<FilteringIterator> iter;
   size_t found_rows = 0;
@@ -2540,6 +2529,115 @@ Status GetIntents(
     inserter.Add(VERIFY_RESULT(accessor.GetEncoded(request.ybctid_column_value())), mode);
   }
   return Status::OK();
+}
+
+PgsqlLockOperation::PgsqlLockOperation(
+    std::reference_wrapper<const PgsqlLockRequestPB> request,
+    const TransactionOperationContext& txn_op_context)
+        : DocOperationBase(request), txn_op_context_(txn_op_context) {
+}
+
+Status PgsqlLockOperation::Init(
+    PgsqlResponsePB* response, const DocReadContextPtr& doc_read_context) {
+  response_ = response;
+
+  auto& schema = doc_read_context->schema();
+
+  dockv::KeyEntryValues hashed_components;
+  dockv::KeyEntryValues range_components;
+  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+      request_.lock_id().lock_partition_column_values(), schema, 0,
+      schema.num_hash_key_columns(),
+      &hashed_components));
+  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+      request_.lock_id().lock_range_column_values(), schema,
+      schema.num_hash_key_columns(),
+      schema.num_range_key_columns(),
+      &range_components));
+  SCHECK(!hashed_components.empty(), InvalidArgument, "No hashed column values provided");
+  doc_key_ = DocKey(
+      schema, request_.hash_code(), std::move(hashed_components), std::move(range_components));
+  encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();
+  return Status::OK();
+}
+
+Status PgsqlLockOperation::GetDocPaths(GetDocPathsMode mode,
+    DocPathsToLock *paths, IsolationLevel *level) const {
+  // Behaviour of advisory lock is regardless of isolation level.
+  *level = IsolationLevel::NON_TRANSACTIONAL;
+  // kStrongReadIntents is used for acquring locks on the entire row.
+  // It's duplicate with the primary intent for the advisory lock.
+  if (mode != GetDocPathsMode::kStrongReadIntents) {
+    paths->emplace_back(encoded_doc_key_);
+  }
+  return Status::OK();
+}
+
+std::string PgsqlLockOperation::ToString() const {
+  return Format("$0 $1, original request: $2",
+                request_.is_lock() ? "LOCK" : "UNLOCK",
+                doc_key_.ToString(),
+                request_.ShortDebugString());
+}
+
+void PgsqlLockOperation::ClearResponse() {
+  if (response_) {
+    response_->Clear();
+  }
+}
+
+Result<bool> PgsqlLockOperation::LockExists(const DocOperationApplyData& data) {
+  dockv::KeyBytes advisory_lock_key(encoded_doc_key_.as_slice());
+  advisory_lock_key.AppendKeyEntryType(dockv::KeyEntryType::kIntentTypeSet);
+  advisory_lock_key.AppendIntentTypeSet(GetIntentTypes(IsolationLevel::NON_TRANSACTIONAL));
+  dockv::KeyBytes txn_reverse_index_prefix;
+  AppendTransactionKeyPrefix(txn_op_context_.transaction_id, &txn_reverse_index_prefix);
+  txn_reverse_index_prefix.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
+  auto reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
+  auto iter = CreateRocksDBIterator(
+      data.doc_write_batch->doc_db().intents, &KeyBounds::kNoBounds,
+      BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
+      rocksdb::kDefaultQueryId, nullptr, &reverse_index_upperbound,
+      rocksdb::CacheRestartBlockKeys::kFalse);
+  Slice key_prefix = txn_reverse_index_prefix.AsSlice();
+  key_prefix.remove_suffix(1);
+  iter.Seek(key_prefix);
+  bool found = false;
+  while (iter.Valid()) {
+    if (!iter.key().starts_with(key_prefix)) {
+      break;
+    }
+    if (iter.value().starts_with(advisory_lock_key.AsSlice())) {
+      found = true;
+      break;
+    }
+    iter.Next();
+  }
+  RETURN_NOT_OK(iter.status());
+  return found;
+}
+
+Status PgsqlLockOperation::Apply(const DocOperationApplyData& data) {
+  if (!request_.is_lock() && !VERIFY_RESULT(LockExists(data))) {
+    return STATUS_EC_FORMAT(InternalError, TransactionError(TransactionErrorCode::kSkipLocking),
+                            "Try to release non-existing lock $0", doc_key_.ToString());
+  }
+  Slice value(&(dockv::ValueEntryTypeAsChar::kRowLock), 1);
+  auto& entry = data.doc_write_batch->AddLock();
+  entry.lock.key = encoded_doc_key_.as_slice();
+  entry.lock.value = value;
+  entry.mode = request_.lock_mode();
+  return Status::OK();
+}
+
+dockv::IntentTypeSet PgsqlLockOperation::GetIntentTypes(IsolationLevel isolation_level) const {
+  switch (request_.lock_mode()) {
+    case PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE:
+      return dockv::GetIntentTypesForLock(dockv::DocdbLockMode::DOCDB_LOCK_EXCLUSIVE);
+    case PgsqlLockRequestPB::PG_LOCK_SHARE:
+      return dockv::GetIntentTypesForLock(dockv::DocdbLockMode::DOCDB_LOCK_SHARE);
+  }
+  FATAL_INVALID_ENUM_VALUE(PgsqlLockRequestPB::PgsqlAdvisoryLockMode, request_.lock_mode());
 }
 
 }  // namespace yb::docdb

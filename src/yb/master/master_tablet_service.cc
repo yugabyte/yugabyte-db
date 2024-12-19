@@ -21,7 +21,6 @@
 
 #include "yb/dockv/doc_key.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -33,12 +32,14 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/trace.h"
 
 DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
     "Reject specified percentage of writes to the YSQL catalog tables.");
 
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+
+DEFINE_test_flag(bool, ysql_require_force_catalog_modifications, false,
+    "Fail YSQL catalog writes requests if force_catalog_modifications is not set.");
 
 using namespace std::chrono_literals;
 
@@ -70,33 +71,17 @@ Result<std::shared_ptr<tablet::AbstractTablet>> MasterTabletServiceImpl::GetTabl
 void MasterTabletServiceImpl::AcquireObjectLocks(
     const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
-  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
-    context.RespondRpcFailure(
-        rpc::ErrorStatusPB::ERROR_APPLICATION,
-        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
-    return;
-  }
-
-  TRACE("Start AcquireObjectLocks");
-  VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
-
-  master_->catalog_manager_impl()->AcquireObjectLocks(req, resp, std::move(context));
+  context.RespondRpcFailure(
+      rpc::ErrorStatusPB::ERROR_APPLICATION,
+      STATUS(NotSupported, "AcquireObjectLocks is not implemented at masters"));
 }
 
 void MasterTabletServiceImpl::ReleaseObjectLocks(
     const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
     rpc::RpcContext context) {
-  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
-    context.RespondRpcFailure(
-        rpc::ErrorStatusPB::ERROR_APPLICATION,
-        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
-    return;
-  }
-
-  TRACE("Start ReleaseObjectLocks");
-  VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
-
-  master_->catalog_manager_impl()->ReleaseObjectLocks(req, resp, std::move(context));
+  context.RespondRpcFailure(
+      rpc::ErrorStatusPB::ERROR_APPLICATION,
+      STATUS(NotSupported, "ReleaseObjectLocks is not implemented at masters"));
 }
 
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
@@ -118,6 +103,17 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
   bool log_versions = false;
   std::unordered_set<uint32_t> db_oids;
   for (const auto &pg_req : req->pgsql_write_batch()) {
+    if (FLAGS_TEST_ysql_require_force_catalog_modifications &&
+        !pg_req.force_catalog_modifications()) {
+      context.RespondRpcFailure(
+          rpc::ErrorStatusPB::ERROR_APPLICATION,
+          STATUS(
+              InternalError,
+              "Catalog update without force_catalog_modifications when "
+              "TEST_ysql_require_force_catalog_modifications is set"));
+      return;
+    }
+
     if (pg_req.is_ysql_catalog_change_using_protobuf()) {
       const auto& res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
       if (!res.ok()) {
@@ -214,7 +210,13 @@ void HandleUnsupportedMethod(const char* method_name, rpc::RpcContext* context) 
                              STATUS_FORMAT(NotSupported, "$0 Not Supported!", method_name));
 }
 
-} // namespace
+}  // namespace
+
+void MasterTabletServiceImpl::ListMasterServers(
+    const tserver::ListMasterServersRequestPB* req, tserver::ListMasterServersResponsePB* resp,
+    rpc::RpcContext context) {
+  HandleUnsupportedMethod("ListMasterServers", &context);
+}
 
 void MasterTabletServiceImpl::ListTablets(const tserver::ListTabletsRequestPB* req,
                                           tserver::ListTabletsResponsePB* resp,

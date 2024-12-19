@@ -143,7 +143,7 @@ The following libraries are officially supported by YugabyteDB.
 | :--------- | :------------ | :----------- |
 | [YugabyteDB Psycopg2 Smart Driver](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD](python/yugabyte-psycopg2/) |
 | [PostgreSQL Psycopg2 Driver](python/postgres-psycopg2/) | Full | [CRUD](python/postgres-psycopg2/) |
-| aiopg | Full | [Hello World](../develop/build-apps/python/ysql-aiopg/) |
+| aiopg | Full | |
 | [Django](python/django/) | Full | [CRUD](python/django/) |
 | [SQLAlchemy](python/sqlalchemy/) | Full | [CRUD](python/sqlalchemy/) |
 

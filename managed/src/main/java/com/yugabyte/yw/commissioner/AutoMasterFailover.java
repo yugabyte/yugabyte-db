@@ -231,11 +231,12 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     try {
       List<String> errors =
           CheckClusterConsistency.checkCurrentServers(
-              ybClient,
-              universe,
-              null /* skip nodes */,
-              false /* strict */,
-              false /* cloud enabled */);
+                  ybClient,
+                  universe,
+                  null /* skip nodes */,
+                  false /* strict */,
+                  false /* cloud enabled */)
+              .getErrors();
       if (!errors.isEmpty()) {
         String errMsg =
             String.format(

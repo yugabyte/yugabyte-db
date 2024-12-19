@@ -35,6 +35,8 @@
 
 #include "yb/rocksdb/options.h"
 
+#include "yb/tablet/transaction_intent_applier.h"
+
 #include "yb/util/bitmap.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/fast_varint.h"
@@ -209,14 +211,16 @@ TransactionalWriter::TransactionalWriter(
     IsolationLevel isolation_level,
     dockv::PartialRangeKeyIntents partial_range_key_intents,
     const Slice& replicated_batches_state,
-    IntraTxnWriteId intra_txn_write_id)
+    IntraTxnWriteId intra_txn_write_id,
+    tablet::TransactionIntentApplier* applier)
     : put_batch_(put_batch),
       hybrid_time_(hybrid_time),
       transaction_id_(transaction_id),
       isolation_level_(isolation_level),
       partial_range_key_intents_(partial_range_key_intents),
       replicated_batches_state_(replicated_batches_state),
-      intra_txn_write_id_(intra_txn_write_id) {
+      intra_txn_write_id_(intra_txn_write_id),
+      applier_(applier) {
 }
 
 // We have the following distinct types of data in this "intent store":
@@ -270,6 +274,27 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
           return (*this)(intent_types, ancestor_doc_key, full_doc_key, value, key, last_key);
         },
         partial_range_key_intents_));
+  }
+
+  // Apply advisory locks.
+  for (auto& lock_pair : put_batch_.lock_pairs()) {
+    if (lock_pair.is_lock()) {
+      KeyBytes key(lock_pair.lock().key());
+      RETURN_NOT_OK((*this)(dockv::GetIntentTypesForLock(lock_pair.mode()),
+          dockv::AncestorDocKey::kFalse, dockv::FullDocKey::kFalse,
+          lock_pair.lock().value(), &key, dockv::LastKey::kTrue));
+    } else {
+      RSTATUS_DCHECK(applier_, IllegalState, "Can't apply unlock operation without applier");
+      // Unlock operation.
+      if (lock_pair.lock().key().empty()) {
+        // Unlock All.
+        RETURN_NOT_OK(applier_->RemoveAdvisoryLocks(transaction_id_, handler_));
+      } else {
+        // Unlock a specific key.
+        RETURN_NOT_OK(applier_->RemoveAdvisoryLock(transaction_id_, lock_pair.lock().key(),
+            dockv::GetIntentTypesForLock(lock_pair.mode()), handler_));
+      }
+    }
   }
 
   if (!put_batch_.read_pairs().empty()) {
@@ -444,8 +469,11 @@ IntentsWriterContext::IntentsWriterContext(const TransactionId& transaction_id)
 IntentsWriter::IntentsWriter(const Slice& start_key,
                              HybridTime file_filter_ht,
                              rocksdb::DB* intents_db,
-                             IntentsWriterContext* context)
-    : start_key_(start_key), intents_db_(intents_db), context_(*context) {
+                             IntentsWriterContext* context,
+                             bool ignore_metadata,
+                             const Slice& key_to_apply)
+    : start_key_(start_key), intents_db_(intents_db), context_(*context),
+      ignore_metadata_(ignore_metadata), key_to_apply_(key_to_apply) {
   AppendTransactionKeyPrefix(context_.transaction_id(), &txn_reverse_index_prefix_);
   txn_reverse_index_prefix_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
   reverse_index_upperbound_ = txn_reverse_index_prefix_.AsSlice();
@@ -467,7 +495,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   context_.Start(
       reverse_index_iter_.Valid() ? boost::make_optional(reverse_index_iter_.key()) : boost::none);
 
-  while (reverse_index_iter_.Valid()) {
+  for (; reverse_index_iter_.Valid(); reverse_index_iter_.Next()) {
     const Slice key_slice(reverse_index_iter_.key());
 
     if (!key_slice.starts_with(key_prefix)) {
@@ -475,11 +503,19 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
     }
 
     auto reverse_index_value = reverse_index_iter_.value();
+    // Ignore keys other than key_to_apply_ if it's specified.
+    if (!key_to_apply_.empty() && !reverse_index_value.starts_with(key_to_apply_)) {
+      continue;
+    }
 
     // Check if they key is transaction metadata (1 byte prefix + transaction id) or
     // post-apply transaction metadata (1 byte prefix + transaction id + 1 byte suffix).
     bool metadata = key_slice.size() == 1 + TransactionId::StaticSize() ||
                     key_slice.size() == 2 + TransactionId::StaticSize();
+    if (ignore_metadata_ && metadata) {
+      // For advisory lock Unlock all operation, we don't want to remove txn metadata entry.
+      continue;
+    }
     // At this point, txn_reverse_index_prefix is a prefix of key_slice. If key_slice is equal to
     // txn_reverse_index_prefix in size, then they are identical, and we are seeked to transaction
     // metadata. Otherwise, we're seeked to an intent entry in the index which we may process.
@@ -495,7 +531,11 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       return Status::OK();
     }
 
-    reverse_index_iter_.Next();
+    // The first lock specified by key_to_apply_ was found and processed.
+    if (!key_to_apply_.empty()) {
+      key_applied_ = true;
+      break;
+    }
   }
   RETURN_NOT_OK(reverse_index_iter_.status());
 
@@ -727,6 +767,11 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
       continue;
     }
     auto column_value = decoder.FetchValue(vector_index.column_id());
+    if (column_value.IsNull()) {
+      VLOG_WITH_FUNC(3) << "Ignoring null vector value for key '" << key.ToDebugHexString() << "'";
+      continue;
+    }
+
     vector_index_batches_[i].push_back(VectorIndexInsertEntry {
       .key = KeyBuffer(key.WithoutPrefix(table_key_prefix.size())),
       .value = ValueBuffer(*column_value),
@@ -742,10 +787,11 @@ Status ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
     PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
   }
   if (vector_indexes_) {
+    DocHybridTime write_time { commit_ht_, write_id_ };
     for (size_t i = 0; i != vector_index_batches_.size(); ++i) {
       if (!vector_index_batches_[i].empty()) {
         RETURN_NOT_OK((*vector_indexes_)[i]->Insert(
-            vector_index_batches_[i], commit_ht_, frontiers()));
+            vector_index_batches_[i], frontiers(), handler, write_time));
       }
     }
   }
@@ -793,10 +839,19 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
                       colocation_id, schema_version, s);
         }
         FlushSchemaVersion();
-        cotable_id = VERIFY_RESULT(schema_packing_provider_->ColocationPacking(
-            colocation_id, kLatestSchemaVersion, HybridTime::kMax)).cotable_id;
-        DCHECK(!cotable_id.IsNil()) << cotable_id.ToString();
-        schema_version_table_ = cotable_id;
+        auto packing = schema_packing_provider_->ColocationPacking(
+            colocation_id, kLatestSchemaVersion, HybridTime::kMax);
+        if (packing.ok()) {
+          cotable_id = packing->cotable_id;
+          DCHECK(!cotable_id.IsNil()) << cotable_id.ToString();
+          schema_version_table_ = cotable_id;
+        } else if (packing.status().IsNotFound()) { // Table was deleted.
+          schema_version_table_ = Uuid::Nil();
+          schema_version_colocation_id_ = 0;
+          return Status::OK();
+        } else {
+          return packing.status();
+        }
         schema_version_colocation_id_ = colocation_id;
       }
     }
@@ -846,7 +901,7 @@ Status RemoveIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
   return Status::OK();
 }
 
-ExternalIntentsBatchWriter::ExternalIntentsBatchWriter(
+NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
     SchemaPackingProvider* schema_packing_provider)
@@ -864,7 +919,7 @@ ExternalIntentsBatchWriter::ExternalIntentsBatchWriter(
   }
 }
 
-bool ExternalIntentsBatchWriter::Empty() const {
+bool NonTransactionalBatchWriter::Empty() const {
   return !put_batch_.write_pairs_size() && !put_batch_.apply_external_transactions_size();
 }
 
@@ -898,7 +953,7 @@ Result<ExternalTxnApplyState> ProcessApplyExternalTransactions(
 
 }  // namespace
 
-Result<bool> ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
+Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     const Slice& original_input_value, ExternalTxnApplyStateData* apply_data,
     rocksdb::DirectWriteHandler* regular_write_handler) {
   bool can_delete_entire_batch = true;
@@ -974,7 +1029,7 @@ Result<bool> ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
 
 // Reads all stored external intents for provided transactions and prepares batches that will apply
 // them into regular db and remove from intents db.
-Status ExternalIntentsBatchWriter::PrepareApplyExternalIntents(
+Status NonTransactionalBatchWriter::PrepareApplyExternalIntents(
     ExternalTxnApplyState* apply_external_transactions, rocksdb::DirectWriteHandler* handler) {
   KeyBytes key_prefix;
   KeyBytes key_upperbound;
@@ -1013,7 +1068,7 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntents(
   return Status::OK();
 }
 
-Result<bool> ExternalIntentsBatchWriter::AddExternalPairToWriteBatch(
+Result<bool> NonTransactionalBatchWriter::AddEntryToWriteBatch(
     const yb::docdb::LWKeyValuePairPB& kv_pair, ExternalTxnApplyState* apply_external_transactions,
     rocksdb::DirectWriteHandler* regular_write_handler, IntraTxnWriteId* write_id) {
   SCHECK(!kv_pair.key().empty(), InvalidArgument, "Write pair key cannot be empty.");
@@ -1067,7 +1122,7 @@ Result<bool> ExternalIntentsBatchWriter::AddExternalPairToWriteBatch(
   return false;
 }
 
-Status ExternalIntentsBatchWriter::Apply(rocksdb::DirectWriteHandler* handler) {
+Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   auto apply_external_transactions = VERIFY_RESULT(ProcessApplyExternalTransactions(put_batch_));
   if (!apply_external_transactions.empty()) {
     DCHECK(intents_db_iter_.Initialized());
@@ -1077,7 +1132,7 @@ Status ExternalIntentsBatchWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   DocHybridTimeBuffer doc_ht_buffer;
   IntraTxnWriteId write_id = 0;
   for (const auto& write_pair : put_batch_.write_pairs()) {
-    if (VERIFY_RESULT(AddExternalPairToWriteBatch(
+    if (VERIFY_RESULT(AddEntryToWriteBatch(
             write_pair, &apply_external_transactions, handler, &write_id))) {
       HandleExternalRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
 

@@ -60,8 +60,8 @@ Status PgSelect::Prepare(
           read_req_, read_req_->mutable_index_request());
     }
 
-    secondary_index_query_ = VERIFY_RESULT(PgSelectIndex::Make(
-        pg_session_, index_info->id, is_region_local, std::move(index_req)));
+    SetSecondaryIndex(VERIFY_RESULT(PgSelectIndex::Make(
+        pg_session_, index_info->id, is_region_local, std::move(index_req))));
   }
 
   // Prepare binds for the request.

@@ -61,6 +61,7 @@ class YBqlWriteOp;
 class YBPgsqlOp;
 class YBPgsqlReadOp;
 class YBPgsqlWriteOp;
+class YBPgsqlLockOp;
 
 class YBRedisOp;
 class YBRedisReadOp;
@@ -114,6 +115,7 @@ using YBqlReadOpPtr = std::shared_ptr<YBqlReadOp>;
 using YBqlWriteOpPtr = std::shared_ptr<YBqlWriteOp>;
 using YBPgsqlReadOpPtr = std::shared_ptr<YBPgsqlReadOp>;
 using YBPgsqlWriteOpPtr = std::shared_ptr<YBPgsqlWriteOp>;
+using YBPgsqlLockOpPtr = std::shared_ptr<YBPgsqlLockOp>;
 
 enum class YBTableType;
 

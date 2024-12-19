@@ -23,7 +23,6 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.List;
@@ -78,10 +77,6 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
     try {
       if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
         System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
-      }
-      List<Schedule> scheduleList = Schedule.findAllScheduleWithCustomerConfig(params().configUUID);
-      for (Schedule schedule : scheduleList) {
-        schedule.stopSchedule();
       }
       CustomerConfig customerConfig =
           CustomerConfig.get(params().customerUUID, params().configUUID);

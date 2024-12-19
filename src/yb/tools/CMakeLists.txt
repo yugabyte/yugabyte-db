@@ -35,14 +35,9 @@ set(YB_PCH_DEP_LIBS yb_test_util boost_program_options)
 
 set(LINK_LIBS
   yb_client
-  log
-  consensus
-  tserver
   yb_common
-  yb_fs
   yb_util
   gutil
-  tablet
   ${YB_BASE_LIBS}
 )
 
@@ -67,10 +62,13 @@ target_link_libraries(yb-admin
 add_library(yb-admin_lib
   yb-admin_client.cc
   yb-admin_util.cc)
-target_link_libraries(yb-admin_lib ${LINK_LIBS})
+target_link_libraries(yb-admin_lib
+  encryption
+  ${LINK_LIBS})
 
 add_executable(yb-ts-cli ts-cli.cc)
 target_link_libraries(yb-ts-cli
+  server_base_proto
   ${LINK_LIBS})
 
 add_executable(data-patcher data-patcher.cc)

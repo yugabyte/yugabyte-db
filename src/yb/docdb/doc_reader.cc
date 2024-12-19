@@ -1236,6 +1236,7 @@ class GetHelperBase : public PackedRowContext {
       .id = ColumnId(dockv::KeyEntryValue::kLivenessColumn.GetColumnId()),
       .subkey = dockv::KeyEntryValue::kLivenessColumn,
       .data_type = DataType::NULL_VALUE_TYPE,
+      .is_vector = false,
     };
     return kProjectedLivenessColumn;
   }

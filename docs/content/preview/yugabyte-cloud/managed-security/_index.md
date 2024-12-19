@@ -3,7 +3,6 @@ title: Manage YugabyteDB Aeon Account
 headerTitle: Configure access to your account
 linkTitle: Account access
 description: Manage access to your YugabyteDB Aeon account.
-image: /images/section_icons/index/admin.png
 headcontent: Invite team members and assign roles
 menu:
   preview_yugabyte-cloud:

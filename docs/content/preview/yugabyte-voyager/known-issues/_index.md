@@ -2,7 +2,6 @@
 title: Schema review workarounds for YugabyteDB Voyager
 headerTitle: Schema review workarounds
 linkTitle: Schema review workarounds
-image: /images/section_icons/develop/learn.png
 headcontent: What to watch out for when migrating data using YugabyteDB Voyager
 description: What to watch out for when migrating data using YugabyteDB Voyager.
 type: indexpage
@@ -29,7 +28,7 @@ Currently, yb-voyager doesn't support the following features:
 | USERS/GRANTS | Voyager does not support migrating the USERS and GRANTS from the source database to the target cluster. | |
 | CREATE CAST<br>CREATE SERVER <br> CREATE&nbsp;ACCESS&nbsp;METHOD | Voyager does not support migrating these object types from the source database to the target cluster. | |
 | Unsupported data types | Data migration is unsupported for some data types, such as BLOB and XML. For others such as ANY and BFile, both schema and data migration is unsupported. Refer to [datatype mapping](../reference/datatype-mapping-oracle/) for the detailed list of data types. | |
-| Unsupported PostgreSQL features | Yugabyte currently doesn't support the PostgreSQL features listed in [PostgreSQL compatibility](../../explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features). If such schema clauses are encountered, Voyager results in an error. | |
+| Unsupported PostgreSQL features | Yugabyte currently doesn't support the PostgreSQL features listed in [PostgreSQL compatibility](../../develop/postgresql-compatibility/#unsupported-postgresql-features). If such schema clauses are encountered, Voyager results in an error. | |
 
 ## Schema review
 

@@ -70,7 +70,10 @@ Status XClusterSourceManager::Init() {
 }
 
 void XClusterSourceManager::Clear() {
-  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(GetAllOutboundGroups());
+  // todo(hsunder): This method is called while the catalog manager mutex is held during sys catalog
+  // reload. We may want to skip calling task callbacks here by passing false.
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(
+      GetAllOutboundGroups(), /* call_task_finisher */ true);
   {
     std::lock_guard l(outbound_replication_group_map_mutex_);
     outbound_replication_group_map_.clear();
@@ -238,6 +241,8 @@ XClusterSourceManager::InitOutboundReplicationGroup(
           },
       .setup_ddl_replication_extension_func =
           std::bind(&XClusterSourceManager::SetupDDLReplicationExtension, this, _1, _2),
+      .drop_ddl_replication_extension_func =
+          std::bind(&XClusterSourceManager::DropDDLReplicationExtension, this, _1, _2),
   };
 
   return std::make_shared<XClusterOutboundReplicationGroup>(
@@ -1222,7 +1227,7 @@ Status XClusterSourceManager::RepairOutboundReplicationGroupRemoveTable(
 }
 
 std::vector<xcluster::ReplicationGroupId>
-XClusterSourceManager::GetXClusterOutboundReplicationGroups(NamespaceId namespace_filter) {
+XClusterSourceManager::GetXClusterOutboundReplicationGroups(NamespaceId namespace_filter) const {
   std::vector<xcluster::ReplicationGroupId> replication_groups;
   for (const auto& outbound_group : GetAllOutboundGroups()) {
     if (namespace_filter.empty() || outbound_group->HasNamespace(namespace_filter)) {
@@ -1279,6 +1284,25 @@ Status XClusterSourceManager::SetupDDLReplicationExtension(
       catalog_manager_, namespace_name, XClusterDDLReplicationRole::kSource,
       CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
       std::move(callback));
+}
+
+Status XClusterSourceManager::DropDDLReplicationExtension(
+    const NamespaceId& namespace_id,
+    const xcluster::ReplicationGroupId& drop_replication_group_id) const {
+  // Check that there are no other automatic mode replication groups for this namespace.
+  for (const auto& outbound_group : GetAllOutboundGroups()) {
+    if (outbound_group->Id() != drop_replication_group_id && outbound_group->AutomaticDDLMode() &&
+        outbound_group->HasNamespace(namespace_id)) {
+      LOG(INFO) << "Skipping drop of DDL replication extension for namespace " << namespace_id
+                << " as it also belongs to replication group " << outbound_group->Id();
+      return Status::OK();
+    }
+  }
+  Synchronizer sync;
+  RETURN_NOT_OK(master::DropDDLReplicationExtension(
+      catalog_manager_, namespace_id,
+      [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
+  return sync.Wait();
 }
 
 }  // namespace yb::master

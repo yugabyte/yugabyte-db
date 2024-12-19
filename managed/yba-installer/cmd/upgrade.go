@@ -43,7 +43,7 @@ func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 	findArgs := []string{common.GetActiveSymlink() + "/", "-name", "yba-ctl", "-exec", "cp", "{}",
 		common.YbactlInstallDir(), ";"}
 	if out := shell.Run("find", findArgs...); !out.SucceededOrLog() {
-		log.Warn(fmt.Sprintf("failed to reinstall yba-ctl: %w", out.Error))
+		log.Warn(fmt.Sprintf("failed to reinstall yba-ctl: %s", out.Error.Error()))
 	}
 
 	// Remove newest install
@@ -57,7 +57,7 @@ func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 
 	// reconfigure with the old binary
 	if out := shell.Run(filepath.Join(common.YbactlInstallDir(), "yba-ctl"), "reconfigure"); !out.SucceededOrLog() {
-		log.Warn(fmt.Sprintf("failed to reconfigure with old yba version: %w", out.Error))
+		log.Warn(fmt.Sprintf("failed to reconfigure with old yba version: %s", out.Error.Error()))
 	}
 
 	// cleanup old backups

@@ -115,24 +115,6 @@ using dockv::SchemaPackingStorage;
 namespace {
 YB_DEFINE_ENUM(OpType, (INSERT)(UPDATE)(DELETE));
 
-Result<TransactionStatusResult> GetTransactionStatus(
-    const TransactionId& txn_id,
-    const HybridTime& hybrid_time,
-    tablet::TransactionParticipant* txn_participant) {
-  static const std::string reason = "cdc";
-
-  std::promise<Result<TransactionStatusResult>> txn_status_promise;
-  auto future = txn_status_promise.get_future();
-  auto callback = [&txn_status_promise](Result<TransactionStatusResult> result) {
-    txn_status_promise.set_value(std::move(result));
-  };
-
-  txn_participant->RequestStatusAt(
-      {&txn_id, hybrid_time, hybrid_time, 0, &reason, TransactionLoadFlags{}, callback});
-  future.wait();
-  return future.get();
-}
-
 void SetOperation(RowMessage* row_message, OpType type, const Schema& schema) {
   switch (type) {
     case OpType::INSERT:
@@ -2530,6 +2512,22 @@ bool IsReplicationSlotStream(const StreamMetadata& stream_metadata) {
          !stream_metadata.GetReplicationSlotName()->empty();
 }
 
+// Response safe time follows the invaraint:
+// Request safe time <= Response safe time <= value from GetConsistentStreamSafeTime().
+// If response safe time is set to GetConsistentStreamSafeTime()'s value, then it implies that we
+// have read the entire WAL. In any other case, the response safe time can either be the last read
+// WAL segment's footer safe time ('min_start_time_running_txns') or commit time of the last
+// transaction being shipped in the current response. Both these values (footer safe time or commit
+// time of last txn) will be <= last read WAL OP's record time.
+bool CheckResponseSafeTimeCorrectness(
+    HybridTime last_read_wal_op_record_time, HybridTime resp_safe_time, bool is_entire_wal_read) {
+  if (!last_read_wal_op_record_time.is_valid() || resp_safe_time <= last_read_wal_op_record_time) {
+    return true;
+  }
+
+  return is_entire_wal_read;
+}
+
 // CDC get changes is different from xCluster as it doesn't need
 // to read intents from WAL.
 
@@ -2683,7 +2681,6 @@ Status GetChangesForCDCSDK(
     }
     checkpoint_updated = true;
   } else {
-    RequestScope request_scope;
     OpId last_seen_op_id = op_id;
     bool saw_non_actionable_message = false;
     std::unordered_set<std::string> streamed_txns;
@@ -2742,10 +2739,6 @@ Status GetChangesForCDCSDK(
         break;
       }
 
-      auto txn_participant = tablet_ptr->transaction_participant();
-      if (txn_participant) {
-        request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
-      }
       have_more_messages = HaveMoreMessages(true);
 
       Schema current_schema = *tablet_ptr->metadata()->schema();
@@ -2830,7 +2823,6 @@ Status GetChangesForCDCSDK(
             if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
               auto txn_id = VERIFY_RESULT(
                   FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
-              auto result = GetTransactionStatus(txn_id, tablet_peer->Now(), txn_participant);
 
               // It is possible for a transaction to have two APPLYs in WAL. This check
               // prevents us from streaming the same transaction twice in the same GetChanges
@@ -3107,6 +3099,17 @@ Status GetChangesForCDCSDK(
                              leader_safe_time.get(), safe_hybrid_time_resp, have_more_messages,
                              consistent_stream_safe_time, snapshot_operation);
 
+  if (!snapshot_operation && !CheckResponseSafeTimeCorrectness(
+                                 last_read_wal_op_record_time, safe_time, is_entire_wal_read)) {
+    LOG(DFATAL) << "Stream_id: " << stream_id << ", tablet_id: " << tablet_id
+                 << ", response safe time: " << safe_time
+                 << " is greater than last read WAL OP's record time: "
+                 << last_read_wal_op_record_time
+                 << ", req_safe_time: " << computed_safe_hybrid_time_req
+                 << ", consistent stream safe time: " << HybridTime(consistent_stream_safe_time)
+                 << ", leader safe time: " << leader_safe_time.get()
+                 << ", is_entire_wal_read: " << is_entire_wal_read;
+  }
   resp->set_safe_hybrid_time(safe_time.ToUint64());
 
   // It is possible in case of a partially streamed transaction.

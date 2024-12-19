@@ -98,6 +98,7 @@ namespace tablet {
 YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
+YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
@@ -653,7 +654,7 @@ class Tablet : public AbstractTablet,
   // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
   void TEST_DocDBDumpToLog(IncludeIntents include_intents);
 
-  Result<size_t> TEST_CountRegularDBRecords();
+  Result<size_t> TEST_CountDBRecords(docdb::StorageDbType db_type);
 
   Status CreateReadIntents(
       IsolationLevel level,
@@ -1206,6 +1207,15 @@ class Tablet : public AbstractTablet,
   template <class Ids>
   Status RemoveIntentsImpl(const RemoveIntentsData& data, RemoveReason reason, const Ids& ids);
 
+  // Remove advisory lock intents for the given transaction id.
+  Status RemoveAdvisoryLocks(const TransactionId& id,
+                             rocksdb::DirectWriteHandler* handler) override;
+
+  // Remove the advisory lock intent with speficied key and intent_types for the given txn id.
+  Status RemoveAdvisoryLock(
+      const TransactionId& transaction_id, const Slice& key,
+      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler* handler) override;
+
   // Tries to find intent .SST files that could be deleted and remove them.
   void DoCleanupIntentFiles();
 
@@ -1221,6 +1231,18 @@ class Tablet : public AbstractTablet,
   auto GetRegularDbStat(const F& func, const decltype(func())& default_value) const;
 
   HybridTime DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMetaData*>& inputs);
+
+  Result<rocksdb::Options> CommonRocksDBOptions();
+  Status OpenRegularDB(const rocksdb::Options& common_options);
+  Status OpenIntentsDB(const rocksdb::Options& common_options);
+  Status OpenVectorIndexes();
+  // Creates vector index for specified index and indexed tables.
+  // allow_inplace_insert is set to true only during initial tablet bootstrap, so nobody should
+  // hold external pointer to vector index list at this moment.
+  Status CreateVectorIndex(
+      const TableInfo& index_table, const TableInfo& indexed_table, bool allow_inplace_insert)
+      REQUIRES(vector_indexes_mutex_);
+  docdb::VectorIndexesPtr VectorIndexesList() EXCLUDES(vector_indexes_mutex_);
 
   mutable std::mutex flush_filter_mutex_;
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_

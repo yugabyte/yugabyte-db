@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner;
 
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
-import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.models.TaskInfo;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
@@ -12,13 +11,12 @@ import org.slf4j.MDC;
 @Slf4j
 public class DefaultTaskExecutionListener implements TaskExecutionListener {
   private final Consumer<TaskInfo> beforeTaskConsumer;
-  private final ProviderEditRestrictionManager providerEditRestrictionManager;
+  private final Consumer<TaskInfo> afterTaskConsumer;
 
   public DefaultTaskExecutionListener(
-      ProviderEditRestrictionManager providerEditRestrictionManager,
-      Consumer<TaskInfo> beforeTaskConsumer) {
-    this.providerEditRestrictionManager = providerEditRestrictionManager;
+      Consumer<TaskInfo> beforeTaskConsumer, Consumer<TaskInfo> afterTaskConsumer) {
     this.beforeTaskConsumer = beforeTaskConsumer;
+    this.afterTaskConsumer = afterTaskConsumer;
   }
 
   @Override
@@ -34,6 +32,8 @@ public class DefaultTaskExecutionListener implements TaskExecutionListener {
   public void afterTask(TaskInfo taskInfo, Throwable t) {
     MDC.remove(Commissioner.TASK_ID);
     log.info("Task {} is completed", taskInfo);
-    providerEditRestrictionManager.onTaskFinished(taskInfo.getUuid());
+    if (afterTaskConsumer != null) {
+      afterTaskConsumer.accept(taskInfo);
+    }
   }
 }

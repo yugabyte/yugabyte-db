@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
@@ -33,13 +34,13 @@ var RestartCmd = &cobra.Command{
 				formatter.Colorize("No universe name found to restart\n", formatter.RedColor))
 		}
 
-		// Validations before restart operation
+		// universeutil.Validations before restart operation
 		skipValidations, err := cmd.Flags().GetBool("skip-validations")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
-			_, _, err := Validations(cmd, util.UpgradeOperation)
+			_, _, err := universeutil.Validations(cmd, util.UpgradeOperation)
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
@@ -54,7 +55,7 @@ var RestartCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 
-		authAPI, universe, err := Validations(cmd, util.UpgradeOperation)
+		authAPI, universe, err := universeutil.Validations(cmd, util.UpgradeOperation)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -97,7 +98,7 @@ var RestartCmd = &cobra.Command{
 			fmt.Sprintf("Restarting universe %s\n",
 				formatter.Colorize(universeName, formatter.GreenColor)))
 
-		WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
+		universeutil.WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
 	},
 }
 

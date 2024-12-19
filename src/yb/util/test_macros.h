@@ -346,6 +346,13 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
   } while (false)
   /**/
 
+#define ASSERT_NOK_PG_ERROR_CODE(expr, pg_error_code) \
+  do { \
+    auto&& _status = (expr); \
+    ASSERT_NOK(_status); \
+    ASSERT_EQ(PgsqlError(_status), pg_error_code); \
+  } while (false)
+
 #define ASSERT_NOK_STR_CONTAINS(expr, expected_failure_substr) \
   do { \
     auto&& _result = (expr); \

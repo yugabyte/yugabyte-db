@@ -23,6 +23,7 @@ class CompactionContext;
 class CompactionFeed;
 class DataBlockAwareIndexInternalIterator;
 class DB;
+class DirectWriteHandler;
 class Env;
 class MemTable;
 class InternalIterator;
@@ -59,5 +60,7 @@ class MergeIteratorBuilderBase;
 using MergeIteratorBuilder = MergeIteratorBuilderBase<IteratorWrapper>;
 
 using CompactionContextPtr = std::unique_ptr<CompactionContext>;
+
+class DirectWriteHandler;
 
 } // namespace rocksdb

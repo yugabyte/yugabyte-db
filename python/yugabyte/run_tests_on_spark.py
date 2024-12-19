@@ -1250,7 +1250,10 @@ def main() -> None:
     # End of argument validation.
     # ---------------------------------------------------------------------------------------------
 
-    os.environ['YB_BUILD_HOST'] = socket.gethostname()
+    if os.getenv('YB_SPARK_COPY_MODE') == 'SSH':
+        os.environ['YB_BUILD_HOST'] = os.environ['USER'] + '@' + socket.gethostname()
+    else:
+        os.environ['YB_BUILD_HOST'] = socket.gethostname()
     thirdparty_path = build_paths.BuildPaths(args.build_root).thirdparty_path
     assert thirdparty_path is not None
     os.environ['YB_THIRDPARTY_DIR'] = thirdparty_path
@@ -1319,6 +1322,14 @@ def main() -> None:
             for test_descriptor in test_descriptors
             for i in range(1, num_repetitions + 1)
         ]
+
+    if args.save_report_to_build_dir:
+        planned_report_paths = []
+        planned_report_paths.append(os.path.join(global_conf.build_root, 'planned_tests.json'))
+        planned = []
+        for td in test_descriptors:
+            planned.append(td.descriptor_str)
+        save_json_to_paths('planned tests', planned, planned_report_paths, should_gzip=False)
 
     app_name_details = ['{} tests total'.format(total_num_tests)]
     if num_repetitions > 1:

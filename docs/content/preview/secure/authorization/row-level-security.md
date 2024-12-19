@@ -29,7 +29,7 @@ This example uses the row-level security policies to restrict employees to view 
 
 ## Step 1. Create example table
 
-Open the YSQL shell (`ysqlsh`), specifying the `yugabyte` user and prompting for the password.
+Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password.
 
 ```sh
 $ ./ysqlsh -U yugabyte -W

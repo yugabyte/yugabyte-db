@@ -70,6 +70,9 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
 
     auto s = CallAdminVec(args);
     LOG(INFO) << "Command output: " << s;
+
+    // Assert that the script executed without any errors.
+    ASSERT_OK(s);
   }
 
   Status TestPgRegress(const std::string& create_file_name, const std::string& drop_file_name) {
@@ -80,6 +83,9 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     RETURN_NOT_OK(SetUpClusters());
     RETURN_NOT_OK(CheckpointReplicationGroup());
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
+
+    // Some of the scripts do take a long time to run so setting this timeout high.
+    propagation_timeout_ = MonoDelta::FromMinutes(4 * kTimeMultiplier);
 
     // First run just the create table part of the file, then run the drop parts.
     for (const auto& file_name : {create_file_name, drop_file_name}) {
@@ -155,6 +161,11 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropPgOnlyDdls) {
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterPgOnlyDdls) {
   // Tests create and alters of pass through ddls that dont require special handling.
   ASSERT_OK(TestPgRegress("pgonly_ddls_create.sql", "pgonly_ddls_alter.sql"));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropExtensions) {
+  // Tests create and drops of the extensions supported by YB
+  ASSERT_OK(TestPgRegress("pgonly_extensions_create.sql", "pgonly_extensions_drop.sql"));
 }
 
 }  // namespace yb

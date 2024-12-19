@@ -3660,5 +3660,80 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocationWithIndexes) {
   }
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCompactionWithReplicaIdentityDefault) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(SetUpWithParams(
+      /* replication_factor */ 3, /* num_masters */ 1, /* colocated */ false,
+      /* cdc_populate_safepoint_record */ true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY DEFAULT"));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto expected_row = ReadFromCdcStateTable(stream_id, tablets[0].tablet_id());
+  if (!expected_row.ok()) {
+    FAIL();
+  }
+  ASSERT_GE((*expected_row).op_id.term, 0);
+  ASSERT_GE((*expected_row).op_id.index, 0);
+  ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
+  ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
+
+  // Assert that the safe time is not invalid in the tablet_peers
+  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1));
+  int expected_dml_records = 1;
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, false /* init_virtual_wal */,
+      kVWALSessionId1));
+  LOG(INFO) << "Got " << get_consistent_changes_resp.records.size() << " records.";
+  // (BEGIN + DML + COMMIT )
+  ASSERT_EQ(get_consistent_changes_resp.records.size(), 3);
+
+  // Additional call to send explicit checkpoint
+  auto resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id, kVWALSessionId1));
+  ASSERT_EQ(resp.cdc_sdk_proto_records_size(), 0);
+
+  ASSERT_OK(UpdateRows(1 /* key */, 6 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 10 /* value */, &test_cluster_));
+  LOG(INFO) << "Sleep for UpdatePeersAndMetrics to move barriers";
+  SleepFor(MonoDelta::FromSeconds(2 * FLAGS_update_min_cdc_indices_interval_secs));
+  auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
+  auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
+  int count_after_compaction;
+  ASSERT_NOK(WaitFor(
+      [&]() {
+        auto result = test_cluster_.mini_cluster_->CompactTablets();
+        if (!result.ok()) {
+          return false;
+        }
+        count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+        if (count_after_compaction < count_before_compaction) {
+          return true;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(15), "Compaction is restricted for the stream."));
+  LOG(INFO) << "count_before_compaction: " << count_before_compaction
+            << " count_after_compaction: " << count_after_compaction;
+  ASSERT_EQ(count_after_compaction, count_before_compaction);
+
+  expected_dml_records = 2;
+  get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, false /* init_virtual_wal */,
+      kVWALSessionId1));
+  LOG(INFO) << "Got " << get_consistent_changes_resp.records.size() << " records.";
+  // 2 * (BEGIN + DML + COMMIT )
+  ASSERT_EQ(get_consistent_changes_resp.records.size(), 6);
+}
+
 }  // namespace cdc
 }  // namespace yb

@@ -8,12 +8,12 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
+    <a href="/preview/tutorials/quick-start-yugabytedb-managed/" class="nav-link">
       Use a cloud cluster
     </a>
   </li>
   <li class="active">
-    <a href="../../quick-start/" class="nav-link">
+    <a href="/preview/tutorials/quick-start/" class="nav-link">
       Use a local cluster
     </a>
   </li>

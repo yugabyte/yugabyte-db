@@ -32,6 +32,7 @@ struct ConnectionStats {
   uint64_t waiting_clients;
   uint64_t active_servers;
   uint64_t idle_servers;
+  uint64_t sticky_connections;
   uint64_t query_rate;
   uint64_t transaction_rate;
   uint64_t avg_wait_time_ns;

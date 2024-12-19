@@ -69,6 +69,7 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
@@ -200,14 +201,8 @@ class LockablePgClientSession : public PgClientSession {
     auto exchange = VERIFY_RESULT(SharedExchange::Make(instance_id, id(), Create::kTrue));
     exchange_.emplace(std::move(exchange), [this](size_t size) {
       Touch();
-      std::shared_ptr<CountDownLatch> latch;
-      {
-        std::unique_lock lock(mutex_);
-        latch = ProcessSharedRequest(size, &exchange_->exchange());
-      }
-      if (latch) {
-        latch->Wait();
-      }
+      std::unique_lock lock(mutex_);
+      ProcessSharedRequest(size, &exchange_->exchange());
     });
     return Status::OK();
   }
@@ -217,6 +212,10 @@ class LockablePgClientSession : public PgClientSession {
       exchange_->StartShutdown();
     }
     PgClientSession::StartShutdown();
+  }
+
+  bool ReadyToShutdown() const {
+    return !exchange_ || exchange_->ReadyToShutdown();
   }
 
   void CompleteShutdown() override {
@@ -308,6 +307,7 @@ class SessionInfo {
   static auto Make(rw_spinlock* txn_assignment_mutex,
                    CoarseDuration lifetime,
                    const TransactionBuilder& builder,
+                   const YsqlAdvisoryLocksTableProvider& advisory_locks_table_provider,
                    Args&&... args) {
     struct ConstructorAccessor : public SessionInfo {
       explicit ConstructorAccessor(rw_spinlock* txn_assignment_mutex)
@@ -320,6 +320,7 @@ class SessionInfo {
         [&builder, txn_assignment = &session_info->txn_assignment_](auto&&... builder_args) {
           return builder(txn_assignment, std::forward<decltype(builder_args)>(builder_args)...);
         },
+        advisory_locks_table_provider,
         accessor,
         std::forward<Args>(args)...);
     return std::shared_ptr<SessionInfo>(std::move(accessor), session_info);
@@ -499,10 +500,11 @@ class PgClientServiceImpl::Impl {
     auto session_id = ++session_serial_no_;
     auto session_info = SessionInfo::Make(
         &txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
-        FLAGS_pg_client_session_expiration_ms * 1ms,
-        transaction_builder_, session_id, &client(), clock_, &table_cache_, xcluster_context_,
-        pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_, shared_mem_pool_,
-        stats_exchange_response_size_, messenger_.scheduler());
+        FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_,
+        GetYsqlAdvisoryLocksTableFunc(),
+        session_id, &client(), clock_, &table_cache_,
+        xcluster_context_, pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_,
+        shared_mem_pool_, stats_exchange_response_size_, messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);
@@ -1647,7 +1649,7 @@ class PgClientServiceImpl::Impl {
 
     return MakeFuture<Result<RemoteTabletServerPtr>>([&](auto callback) {
       client().LookupTabletById(
-          status_tablet_id, /* table =*/ nullptr, master::IncludeInactive::kFalse,
+          status_tablet_id, /* table =*/ nullptr, master::IncludeHidden::kFalse,
           master::IncludeDeleted::kFalse, deadline,
           [&, status_tablet_id, callback] (const auto& lookup_result) {
             if (!lookup_result.ok()) {
@@ -1951,6 +1953,9 @@ class PgClientServiceImpl::Impl {
     auto time = session_expiration_queue_.empty()
         ? CoarseTimePoint(now + FLAGS_pg_client_session_expiration_ms * 1ms)
         : session_expiration_queue_.top().first + 100ms;
+    if (!stopping_sessions_.empty()) {
+      time = std::min(time, now + 1s);
+    }
     if (check_expired_sessions_time_ != CoarseTimePoint() && check_expired_sessions_time_ < time) {
       return;
     }
@@ -1966,6 +1971,7 @@ class PgClientServiceImpl::Impl {
   void CheckExpiredSessions() {
     auto now = CoarseMonoClock::now();
     std::vector<SessionInfoPtr> expired_sessions;
+    std::vector<SessionInfoPtr> ready_sessions;
     {
       std::lock_guard lock(mutex_);
       check_expired_sessions_time_ = CoarseTimePoint();
@@ -1987,16 +1993,40 @@ class PgClientServiceImpl::Impl {
           }
         }
       }
-      ScheduleCheckExpiredSessions(now);
-    }
-    if (expired_sessions.empty()) {
-      return;
+      auto filter = [&ready_sessions](const auto& session) {
+        if (session->session().ReadyToShutdown()) {
+          ready_sessions.push_back(session);
+          return true;
+        }
+        return false;
+      };
+      stopping_sessions_.erase(
+          std::remove_if(stopping_sessions_.begin(), stopping_sessions_.end(), filter),
+          stopping_sessions_.end());
+      if (expired_sessions.empty() && ready_sessions.empty()) {
+        ScheduleCheckExpiredSessions(now);
+        return;
+      }
     }
     for (const auto& session : expired_sessions) {
       session->session().StartShutdown();
     }
-    for (const auto& session : expired_sessions) {
+    std::vector<SessionInfoPtr> not_ready_sessions;
+    for (const auto& session : ready_sessions) {
       session->session().CompleteShutdown();
+    }
+    for (const auto& session : expired_sessions) {
+      if (session->session().ReadyToShutdown()) {
+        session->session().CompleteShutdown();
+      } else {
+        not_ready_sessions.push_back(session);
+      }
+    }
+    {
+      std::lock_guard lock(mutex_);
+      stopping_sessions_.insert(
+          stopping_sessions_.end(), not_ready_sessions.begin(), not_ready_sessions.end());
+      ScheduleCheckExpiredSessions(now);
     }
     auto cdc_service = tablet_server_.GetCDCService();
     // We only want to call this on tablet servers. On master, cdc_service will be null.
@@ -2070,6 +2100,24 @@ class PgClientServiceImpl::Impl {
       std::chrono::seconds(FLAGS_check_pg_object_id_allocators_interval_secs));
   }
 
+  YsqlAdvisoryLocksTableProvider GetYsqlAdvisoryLocksTableFunc() {
+    return [this]() -> YsqlAdvisoryLocksTable& { return *GetYsqlAdvisoryLocksTable(); };
+  }
+
+  YsqlAdvisoryLocksTable* GetYsqlAdvisoryLocksTable() EXCLUDES(advisory_locks_table_mutex_) {
+    {
+      SharedLock lock(advisory_locks_table_mutex_);
+      if (advisory_locks_table_) {
+        return advisory_locks_table_.get();
+      }
+    }
+    UniqueLock lock(advisory_locks_table_mutex_);
+    if (!advisory_locks_table_) {
+      advisory_locks_table_ = std::make_unique<YsqlAdvisoryLocksTable>(client());
+    }
+    return advisory_locks_table_.get();
+  }
+
   const TabletServerIf& tablet_server_;
   std::shared_future<client::YBClient*> client_future_;
   scoped_refptr<ClockBase> clock_;
@@ -2131,6 +2179,12 @@ class PgClientServiceImpl::Impl {
           >
       >
   > sessions_ GUARDED_BY(mutex_);
+
+  std::vector<SessionInfoPtr> stopping_sessions_ GUARDED_BY(mutex_);
+
+  std::shared_mutex advisory_locks_table_mutex_;
+  std::unique_ptr<YsqlAdvisoryLocksTable> advisory_locks_table_
+      GUARDED_BY(advisory_locks_table_mutex_);
 };
 
 PgClientServiceImpl::PgClientServiceImpl(

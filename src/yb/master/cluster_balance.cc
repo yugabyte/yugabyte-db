@@ -1724,7 +1724,7 @@ bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
   // * deleted/deleting tables: as they are no longer in effect. For tables that are being deleted
   // currently as well, load distribution wouldn't matter as eventually they would get deleted.
   auto l = table.LockForRead();
-  if (catalog_manager_->IsSystemTable(table)) {
+  if (table.is_system()) {
     VLOG(3) << "Skipping system table " << table.id() << " for load balancing";
     return true;
   }

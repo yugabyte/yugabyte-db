@@ -78,10 +78,7 @@ char	   *output_files[] = {
 int
 main(int argc, char **argv)
 {
-#ifdef YB_TODO
-	/* Unused variable due to later YB_TODO create_script_for_old_cluster_deletion */
 	char	   *deletion_script_file_name = NULL;
-#endif
 	bool		live_check = false;
 
 	pg_logging_init(argv[0]);
@@ -182,75 +179,84 @@ main(int argc, char **argv)
 
 	/*
 	 * Destructive Changes to New Cluster
+	 * YB: We don't need to start / stop the postmaster, or copy around commit
+	 * logs, as those are handled by the YB master.
 	 */
-#ifdef YB_TODO
-	/* Investigate whether this should be permanently disabled */
-	copy_xact_xlog_xid();
+	if (!is_yugabyte_enabled())
+	{
+		copy_xact_xlog_xid();
 
-	/* New now using xids of the old system */
+		/* New now using xids of the old system */
 
-	/* -- NEW -- */
-	start_postmaster(&new_cluster, true);
-#endif
+		/* -- NEW -- */
+		start_postmaster(&new_cluster, true);
+	}
 
 	prepare_new_globals();
 
 	create_new_objects();
 
+	/*
+	 * YB: The YB major version upgrade flow does not require disabling the old
+	 * cluster, as the upgrade is online and in place. We don't need to delete
+	 * the old cluster data files, because the relevant data lives on DocDB.
+	 */
 	if (!is_yugabyte_enabled())
+	{
 		stop_postmaster(false);
 
-#ifdef YB_TODO
-	/* Investigate these functions being executed after pg_restore is done */
-	/*
-	 * Most failures happen in create_new_objects(), which has completed at
-	 * this point.  We do this here because it is just before linking, which
-	 * will link the old and new cluster data files, preventing the old
-	 * cluster from being safely started once the new cluster is started.
-	 */
-	if (user_opts.transfer_mode == TRANSFER_MODE_LINK)
-		disable_old_cluster();
+		/*
+		 * Most failures happen in create_new_objects(), which has completed at
+		 * this point.  We do this here because it is just before linking, which
+		 * will link the old and new cluster data files, preventing the old
+		 * cluster from being safely started once the new cluster is started.
+		 */
+		if (user_opts.transfer_mode == TRANSFER_MODE_LINK)
+			disable_old_cluster();
 
-	transfer_all_new_tablespaces(&old_cluster.dbarr, &new_cluster.dbarr,
-								 old_cluster.pgdata, new_cluster.pgdata);
+		transfer_all_new_tablespaces(&old_cluster.dbarr, &new_cluster.dbarr,
+									 old_cluster.pgdata, new_cluster.pgdata);
 
-	/*
-	 * Assuming OIDs are only used in system tables, there is no need to
-	 * restore the OID counter because we have not transferred any OIDs from
-	 * the old system, but we do it anyway just in case.  We do it late here
-	 * because there is no need to have the schema load use new oids.
-	 */
-	prep_status("Setting next OID for new cluster");
-	exec_prog(UTILITY_LOG_FILE, NULL, true, true,
-			  "\"%s/pg_resetwal\" -o %u \"%s\"",
-			  new_cluster.bindir, old_cluster.controldata.chkpnt_nxtoid,
-			  new_cluster.pgdata);
-	check_ok();
-
-	if (user_opts.do_sync)
-	{
-		prep_status("Sync data directory to disk");
+		/*
+		 * Assuming OIDs are only used in system tables, there is no need to
+		 * restore the OID counter because we have not transferred any OIDs from
+		 * the old system, but we do it anyway just in case.  We do it late here
+		 * because there is no need to have the schema load use new oids.
+		 */
+		prep_status("Setting next OID for new cluster");
 		exec_prog(UTILITY_LOG_FILE, NULL, true, true,
-				  "\"%s/initdb\" --sync-only \"%s\"", new_cluster.bindir,
+				  "\"%s/pg_resetwal\" -o %u \"%s\"",
+				  new_cluster.bindir, old_cluster.controldata.chkpnt_nxtoid,
 				  new_cluster.pgdata);
 		check_ok();
+
+		if (user_opts.do_sync)
+		{
+			prep_status("Sync data directory to disk");
+			exec_prog(UTILITY_LOG_FILE, NULL, true, true,
+					  "\"%s/initdb\" --sync-only \"%s\"", new_cluster.bindir,
+					  new_cluster.pgdata);
+			check_ok();
+		}
+
+		create_script_for_old_cluster_deletion(&deletion_script_file_name);
+
+		issue_warnings_and_set_wal_level();
 	}
-
-	create_script_for_old_cluster_deletion(&deletion_script_file_name);
-
-	issue_warnings_and_set_wal_level();
 
 	pg_log(PG_REPORT,
 		   "\n"
 		   "Upgrade Complete\n"
 		   "----------------\n");
 
-	output_completion_banner(deletion_script_file_name);
+	if (!is_yugabyte_enabled())
+	{
+		output_completion_banner(deletion_script_file_name);
 
-	pg_free(deletion_script_file_name);
+		pg_free(deletion_script_file_name);
+	}
 
 	cleanup_output_dirs();
-#endif
 	return 0;
 }
 

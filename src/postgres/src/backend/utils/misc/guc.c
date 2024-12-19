@@ -2664,6 +2664,21 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_force_catalog_update_on_next_ddl", PGC_USERSET,
+			DEVELOPER_OPTIONS,
+			gettext_noop("Make the next DDL update the catalog in force mode "
+			"which allows it to operate even during ysql major catalog "
+			"upgrades. WARNING: This is a dangerous option and should be used "
+			"only for DDLs on temp tables, and other transient objects."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_force_catalog_update_on_next_ddl,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"force_global_transaction", PGC_USERSET, UNGROUPED,
 			gettext_noop("Forces use of global transaction table."),
 			NULL
@@ -2982,7 +2997,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_update_optimization_options.is_enabled,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3019,6 +3034,29 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_nop_alter_role_optimization,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_query_diagnostics", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Enables the collection of query diagnostics data "
+						 "for YSQL queries, facilitating the creation of diagnostic bundles."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_query_diagnostics,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Enable advisory lock feature"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_advisory_locks,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -10885,7 +10923,7 @@ void
 ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 {
 	GucAction	action = stmt->is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET;
-	bool 		YbDbAdminCanSet = false;
+	bool YbDbAdminCanSet = false;
 
 	if (IsYbDbAdminUser(GetUserId()))
 	{

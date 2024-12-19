@@ -1,0 +1,1048 @@
+--
+-- INSERT ON CONFLICT read batching with multiple plans involved, typically
+-- through triggers or WITH statements.
+--
+-- Setup
+CREATE TABLE parttrigtab_parent (i int, p bool, PRIMARY KEY (i, p), CHECK ((i % 2)::bool = p)) PARTITION BY LIST (p);
+CREATE TABLE parttrigtab_even PARTITION OF parttrigtab_parent FOR VALUES IN (false);
+CREATE TABLE parttrigtab_odd PARTITION OF parttrigtab_parent FOR VALUES IN (true);
+INSERT INTO parttrigtab_parent SELECT g, (g % 2)::bool FROM generate_series(1, 3) g;
+CREATE TABLE noparttrigtab (i int PRIMARY KEY);
+INSERT INTO noparttrigtab VALUES (1), (2), (3);
+CREATE OR REPLACE FUNCTION parttrigfunc_createdtrig() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM parttrigtab_parent;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+-- Which comes first: CREATE TRIGGER or loading parttrigtab_even?  If
+-- parttrigtab_even is loaded first, then it will be loaded thinking there are
+-- no triggers; otherwise, it will be loaded with knowledge of the newly
+-- created trigger.  When batch size is >= 3, parttrigtab_even will be loaded
+-- before the first flush (flush of the first value triggers the ON CONFLICT DO
+-- UPDATE which causes the WITH statement to execute and cause CREATE TRIGGER),
+-- so parttrigtab_even would not know about the newly created trigger.
+BEGIN;
+CREATE OR REPLACE FUNCTION noparttrigfunc() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM parttrigtab_parent;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+        DROP TRIGGER IF EXISTS parttrigtrig_createdtrig ON parttrigtab_even;
+        CREATE TRIGGER parttrigtrig_createdtrig BEFORE INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_createdtrig();
+        DROP TRIGGER IF EXISTS parttrigtrig_createdtrig ON parttrigtab_odd;
+        CREATE TRIGGER parttrigtrig_createdtrig BEFORE INSERT ON parttrigtab_odd FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_createdtrig();
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER noparttrigtrig BEFORE INSERT ON noparttrigtab FOR EACH ROW EXECUTE PROCEDURE noparttrigfunc();
+-- nopart triggers: BEFORE INSERT
+-- odd triggers: (none)
+-- even triggers: (create_trigger creates AFTER ROW trigger)
+-- insert order:   create_trigger
+--                  ^
+--                value, value
+--                 /
+--               odd, odd, even, even
+WITH w AS (
+    INSERT INTO noparttrigtab SELECT g FROM generate_series(1, 2) g ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{1, 3, 2, 4}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i * (SELECT -min(i) FROM w);
+NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=1 count=3
+NOTICE:  trigger "parttrigtrig_createdtrig" for relation "parttrigtab_even" does not exist, skipping
+NOTICE:  trigger "parttrigtrig_createdtrig" for relation "parttrigtab_odd" does not exist, skipping
+NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=2 count=3
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i  | p
+-----+---
+ -33 | t
+ -22 | f
+ -11 | t
+   4 | f
+(4 rows)
+
+ABORT;
+DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
+DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_odd; -- TODO: transactional DDL
+DROP TRIGGER noparttrigtrig ON noparttrigtab; -- TODO: transactional DDL
+-- How much of a LIMITed WITH statement is processed on demand and in
+-- ExecPostprocessPlan?  The | in the diagram below denotes where processing
+-- should pause and resume, were batching disabled.  With batching enabled,
+-- extra values may be processed:
+-- batch size 2: no issue
+-- batch size 3: one extra value, 2, is consumed.  This causes the 2 to be part
+-- of the batch read from the table, so it is believed that 2 exists in the
+-- table, even though by the time we actually flush this 2 (which is during
+-- ExecPostprocessPlan), the existing 2 was ON CONFLICT DO UPDATEd by the main
+-- statement.  The misinformation causes this 2 to take the ON CONFLICT DO
+-- UPDATE path, so the output shows both 2s as taking the ON CONFLICT DO UPDATE
+-- path.
+-- batch size >=4: the odd value is reached, which causes the parttrigtrig_odd
+-- table to get loaded with knowledge that a trigger named parttrigtrig_odd
+-- exists.  But by the time we get around to executing the insertion of this
+-- odd value (which is during ExecPostprocessPlan), we already ran the ALTER
+-- TRIGGER from the main statement, so that trigger is no longer named
+-- parttrigtrig_odd and therefore runs into an error.  Interestingly, TG_NAME
+-- is still considered 'parttrigtrig_odd' even though the trigger actually is
+-- named 'parttrigtrig_odd2'.
+CREATE OR REPLACE FUNCTION parttrigfunc_altertrigonodd() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM parttrigtab_parent;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+        IF TG_NAME = 'parttrigtrig_odd' THEN
+            ALTER TRIGGER parttrigtrig_odd ON parttrigtab_odd RENAME TO parttrigtrig_odd2;
+        END IF;
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER parttrigtrig_odd BEFORE INSERT ON parttrigtab_odd FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_altertrigonodd();
+BEGIN;
+-- odd triggers: BEFORE INSERT (alter_trigger alters it)
+-- even triggers: (none)
+-- insert order:          even, even | even, odd, even
+--                         /
+--                        /              alter_trigger
+--                       /                ^
+--               even, even, even, even, odd
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{44, 66, 2, 1111, 88}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 66 FROM (SELECT i FROM w LIMIT 2) l) + 1000;
+NOTICE:  parttrigtrig_odd parttrigtab_odd BEFORE INSERT i=1 count=8
+NOTICE:  parttrigtrig_odd2 parttrigtab_odd BEFORE INSERT i=1111 count=9
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i   | p
+------+---
+    0 | f
+    3 | t
+    4 | f
+    6 | f
+   12 | f
+   44 | f
+   66 | f
+   88 | f
+ 1001 | t
+ 1002 | f
+ 1111 | t
+(11 rows)
+
+ABORT;
+DROP TRIGGER IF EXISTS parttrigtrig_odd ON parttrigtab_odd; -- YB: transactional DDL
+NOTICE:  trigger "parttrigtrig_odd" for relation "parttrigtab_odd" does not exist, skipping
+DROP TRIGGER IF EXISTS parttrigtrig_odd2 ON parttrigtab_odd; -- YB: transactional DDL
+-- More LIMITed WITH statement getting processed on demand when reading tuples
+-- from input and in ON CONFLICT DO UPDATE, and in ExecPostprocessPlan.
+-- batch size 2: no issue
+-- batch size 3: one extra value, 2, is consumed.  This causes the 2 to be part
+-- of the batch read from the table, so it is believed that 2 exists in the
+-- table, even though by the time we actually flush this 2 (which is during g=6
+-- input), the existing 2 was ON CONFLICT DO UPDATEd by the main statement.
+-- The misinformation causes this 2 to take the ON CONFLICT DO UPDATE path, so
+-- the output shows both 2s as taking the ON CONFLICT DO UPDATE path.
+-- batch size >=4: g=6 value is reached, which causes the WITH statement's 2 to
+-- take the ON CONFLICT DO UPDATE path and the main statement's 2 to get
+-- inserted normally.
+BEGIN;
+-- odd triggers: (none)
+-- even triggers: (none)
+-- insert order:      odd | even | even, odd | even, odd | odd
+--                      \  /        \           \
+--                       \/          \           \
+--                even, even, even, even, even, even
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{1, 100, 2, 3, 6, 5, 7}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = -EXCLUDED.i RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT n, (n % 2)::bool FROM (SELECT CASE
+    WHEN g = 2 THEN (SELECT i + 3 FROM w LIMIT 1) -- 2
+    WHEN g = 6 THEN (SELECT min(abs(i)) FROM (SELECT i FROM w LIMIT 4) l) -- 1
+    WHEN g = 10 THEN -(SELECT min(i) FROM (SELECT i FROM w LIMIT 6) l) -- 3
+    ELSE g
+    END AS n FROM generate_series(0, 10, 2) g) ns ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM (SELECT i FROM w LIMIT 2) l);
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i  | p
+-----+---
+  -3 | t
+  -2 | f
+  -1 | t
+   0 | f
+   1 | t
+   3 | t
+   4 | f
+   5 | t
+   6 | f
+   7 | t
+   8 | f
+ 100 | f
+ 102 | f
+(13 rows)
+
+ABORT;
+-- This trigger is set for the remaining test cases.
+CREATE OR REPLACE FUNCTION parttrigfunc_insert8() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM parttrigtab_parent;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+        SELECT count(*) INTO count FROM parttrigtab_parent WHERE i = 8;
+        IF count = 0 THEN
+            INSERT INTO parttrigtab_parent VALUES (8, false);
+        ELSE
+            UPDATE parttrigtab_parent SET i = i + 100 WHERE i = 8;
+        END IF;
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER parttrigtrig_insert8 BEFORE INSERT ON parttrigtab_odd FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_insert8();
+-- Once an odd value is encountered, batching should pause at that point and
+-- flush whatever was accumulated up to that point before resuming.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                               even
+--                                              ^
+--               even, even, even, even, even, odd
+INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 8, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10;
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=7
+SELECT * FROM parttrigtab_parent ORDER BY (i % 10);
+  i  | p
+-----+---
+   0 | f
+  11 | t
+  12 | f
+   3 | t
+   4 | f
+   6 | f
+ 108 | f
+(7 rows)
+
+ABORT;
+-- Once an odd value is encountered, batching should pause at that point and
+-- flush whatever was accumulated up to that point before resuming + WITH
+-- statement.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                                   even
+--                                                  ^
+--                         even, even, even, even, odd
+--                         /
+--                        /              even
+--                       /                ^
+--               even, even, even, even, odd
+-- Note: for the following query, upstream PG 15.2 gives 11 rows
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=12
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i   | p
+------+---
+    0 | f
+    3 | t
+    4 | f
+    6 | f
+   12 | f
+   44 | f
+   66 | f
+   88 | f
+  108 | f
+ 1001 | t
+ 1002 | f
+ 1111 | t
+(12 rows)
+
+ABORT;
+-- Once an odd value is encountered, batching should pause at that point and
+-- flush whatever was accumulated up to that point before resuming + LIMITed
+-- WITH statement.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                                    even
+--                                                   ^
+--                         even, even | even, even, odd
+--                         /
+--                        /              even
+--                       /                ^
+--               even, even, even, even, odd
+-- Note: for the following query, upstream PG 15.2 gives 11 rows
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 44 FROM (SELECT i FROM w LIMIT 2) l) + 1000;
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=8
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=11
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i   | p
+------+---
+    0 | f
+    3 | t
+    4 | f
+    6 | f
+   12 | f
+   44 | f
+   66 | f
+   88 | f
+  108 | f
+ 1001 | t
+ 1002 | f
+ 1111 | t
+(12 rows)
+
+ABORT;
+-- Once an odd value is encountered, batching should pause at that point and
+-- flush whatever was accumulated up to that point before resuming +
+-- unreferenced WITH statement.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                                                        even
+--                                                                       ^
+--                                            | even, even, even, even, odd
+--
+--                                       even
+--                                        ^
+--               even, even, even, even, odd
+-- Note: for the following query, upstream PG 15.2 gives 11 rows
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 22, 4, 6, 11}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) / 0 FROM w);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=11 count=7
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=12
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i   | p
+------+---
+    0 | f
+    1 | t
+    3 | t
+    4 | f
+    6 | f
+   11 | t
+   12 | f
+   22 | f
+   44 | f
+   66 | f
+   88 | f
+  108 | f
+ 1111 | t
+(13 rows)
+
+ABORT;
+-- Value that has both BEFORE ROW trigger and triggers WITH statement through
+-- ON CONFLICT DO UPDATE.  If not for global tracking of inserted keys, this
+-- could give a different result with the below.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                                    even
+--                                                   ^
+--                          even, even, even, even, odd
+--                          /
+--                    even /
+--                      ^ /
+--               even, odd, even, even, even
+-- Note: for the following query, upstream PG 15.2 gives ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 8, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 1, 4, 6, 2}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=4
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i   | p
+------+---
+    0 | f
+    2 | f
+    3 | t
+    4 | f
+    6 | f
+    8 | f
+   12 | f
+   18 | f
+   44 | f
+   66 | f
+ 1001 | t
+ 1111 | t
+(12 rows)
+
+ABORT;
+-- Value that has both BEFORE ROW trigger and triggers WITH statement through
+-- ON CONFLICT DO UPDATE.  If not for global tracking of inserted keys, this
+-- could give a different result with the above.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                              even
+--                                             ^
+--                          even, even, even, odd, even
+--                          /
+--                    even /
+--                      ^ /
+--               even, odd, even, even, even
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 1111, 8}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 1, 4, 6, 2}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=4
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i   | p
+------+---
+    0 | f
+    2 | f
+    3 | t
+    4 | f
+    6 | f
+    8 | f
+   12 | f
+   44 | f
+   66 | f
+  108 | f
+ 1001 | t
+ 1111 | t
+(12 rows)
+
+ABORT;
+-- Update the trigger function to use ON CONFLICT, then run the same test cases.
+CREATE OR REPLACE FUNCTION parttrigfunc_insert8() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM parttrigtab_parent;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+        INSERT INTO parttrigtab_parent VALUES (8, false) ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 100;
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+-- Once an odd value is encountered, batching should pause at that point and
+-- flush whatever was accumulated up to that point before resuming.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                               even
+--                                              ^
+--               even, even, even, even, even, odd
+INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 8, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10;
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=7
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+CONTEXT:  SQL statement "INSERT INTO parttrigtab_parent VALUES (8, false) ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 100"
+PL/pgSQL function parttrigfunc_insert8() line 7 at SQL statement
+SELECT * FROM parttrigtab_parent ORDER BY (i % 10);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+-- Once an odd value is encountered, batching should pause at that point and
+-- flush whatever was accumulated up to that point before resuming + WITH
+-- statement.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                                   even
+--                                                  ^
+--                         even, even, even, even, odd
+--                         /
+--                        /              even
+--                       /                ^
+--               even, even, even, even, odd
+-- Note: for the following query, upstream PG 15.2 gives 11 rows
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=12
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+CONTEXT:  SQL statement "INSERT INTO parttrigtab_parent VALUES (8, false) ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 100"
+PL/pgSQL function parttrigfunc_insert8() line 7 at SQL statement
+SELECT * FROM parttrigtab_parent ORDER BY i;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+-- Once an odd value is encountered, batching should pause at that point and
+-- flush whatever was accumulated up to that point before resuming + LIMITed
+-- WITH statement.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                                    even
+--                                                   ^
+--                         even, even | even, even, odd
+--                         /
+--                        /              even
+--                       /                ^
+--               even, even, even, even, odd
+-- Note: for the following query, upstream PG 15.2 gives 11 rows
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 44 FROM (SELECT i FROM w LIMIT 2) l) + 1000;
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=8
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=11
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+CONTEXT:  SQL statement "INSERT INTO parttrigtab_parent VALUES (8, false) ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 100"
+PL/pgSQL function parttrigfunc_insert8() line 7 at SQL statement
+SELECT * FROM parttrigtab_parent ORDER BY i;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+-- Once an odd value is encountered, batching should pause at that point and
+-- flush whatever was accumulated up to that point before resuming +
+-- unreferenced WITH statement.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                                                        even
+--                                                                       ^
+--                                            | even, even, even, even, odd
+--
+--                                       even
+--                                        ^
+--               even, even, even, even, odd
+-- Note: for the following query, upstream PG 15.2 gives 11 rows
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 22, 4, 6, 11}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) / 0 FROM w);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=11 count=7
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=12
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+CONTEXT:  SQL statement "INSERT INTO parttrigtab_parent VALUES (8, false) ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 100"
+PL/pgSQL function parttrigfunc_insert8() line 7 at SQL statement
+SELECT * FROM parttrigtab_parent ORDER BY i;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+-- Value that has both BEFORE ROW trigger and triggers WITH statement through
+-- ON CONFLICT DO UPDATE.  If not for global tracking of inserted keys, this
+-- could give a different result with the below.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                                    even
+--                                                   ^
+--                          even, even, even, even, odd
+--                          /
+--                    even /
+--                      ^ /
+--               even, odd, even, even, even
+-- Note: for the following query, upstream PG 15.2 gives ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 8, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 1, 4, 6, 2}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=4
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+SELECT * FROM parttrigtab_parent ORDER BY i;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+-- Value that has both BEFORE ROW trigger and triggers WITH statement through
+-- ON CONFLICT DO UPDATE.  If not for global tracking of inserted keys, this
+-- could give a different result with the above.
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: (none)
+-- insert order:                              even
+--                                             ^
+--                          even, even, even, odd, even
+--                          /
+--                    even /
+--                      ^ /
+--               even, odd, even, even, even
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 1111, 8}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 1, 4, 6, 2}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=4
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+CONTEXT:  SQL statement "INSERT INTO parttrigtab_parent VALUES (8, false) ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 100"
+PL/pgSQL function parttrigfunc_insert8() line 7 at SQL statement
+SELECT * FROM parttrigtab_parent ORDER BY i;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+-- CREATE TRIGGER is visible to the parttrigtab_even table opened in the
+-- following trigger execution only because that opens the relation fresh.
+CREATE OR REPLACE FUNCTION parttrigfunc_createtrigoneven() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM parttrigtab_parent;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+        DROP TRIGGER IF EXISTS parttrigtrig_createdtrig ON parttrigtab_even;
+        CREATE TRIGGER parttrigtrig_createdtrig BEFORE INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_createdtrig();
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+BEGIN;
+CREATE TRIGGER parttrigtrig_createtrigoneven AFTER INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_createtrigoneven();
+-- odd triggers: BEFORE INSERT
+-- even triggers: AFTER INSERT, (create_trigger creates BEFORE ROW trigger)
+-- insert order:                   even
+--                                  ^ v
+--                                  ^ create_trigger
+--                                  ^
+--                                  ^         notice
+--                                  ^          ^
+--                                  ^         even
+--                                  ^          ^
+--               even, even, even, odd, even, odd
+INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 1, 6, 3}'::int[]) u ON CONFLICT DO NOTHING;
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=5
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=8 count=6
+NOTICE:  trigger "parttrigtrig_createdtrig" for relation "parttrigtab_even" does not exist, skipping
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=3 count=7
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=8 count=7
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=0 count=7
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=4 count=7
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=6 count=7
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i  | p
+-----+---
+   0 | f
+   1 | t
+   2 | f
+   3 | t
+   4 | f
+   6 | f
+ 108 | f
+(7 rows)
+
+ABORT;
+DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
+DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
+-- CREATE TRIGGER is visible to the parttrigtab_even table opened in the
+-- following trigger execution only because that opens the relation fresh.
+BEGIN;
+CREATE TRIGGER parttrigtrig_createtrigoneven AFTER INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_createtrigoneven();
+-- odd triggers: BEFORE INSERT
+-- even triggers: AFTER INSERT, (create_trigger creates BEFORE ROW trigger)
+-- insert order:                               even
+--                                              ^ v
+--                                              ^ create_trigger
+--                                              ^
+--                           even, even, even, odd
+--                           /
+--                          /      notice
+--                         /        ^
+--                        /        even
+--                       /          ^
+--               even, even, even, odd, even, odd
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 1, 6, 3}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=8 count=8
+NOTICE:  trigger "parttrigtrig_createdtrig" for relation "parttrigtab_even" does not exist, skipping
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=10
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=8 count=10
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=3 count=11
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=8 count=11
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=8 count=12
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=0 count=12
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=44 count=12
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=66 count=12
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=88 count=12
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=4 count=12
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=6 count=12
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i   | p
+------+---
+    0 | f
+    4 | f
+    6 | f
+    8 | f
+   44 | f
+   66 | f
+   88 | f
+  108 | f
+ 1001 | t
+ 1002 | f
+ 1003 | t
+ 1111 | t
+(12 rows)
+
+ABORT;
+DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
+DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
+-- CREATE TRIGGER is visible to the parttrigtab_even table opened in the three
+-- places that freshly open that table.
+BEGIN;
+CREATE TRIGGER parttrigtrig_createtrigoneven AFTER INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_createtrigoneven();
+-- odd triggers: BEFORE INSERT
+-- even triggers: AFTER INSERT, (create_trigger creates BEFORE ROW trigger)
+-- insert order:         even
+--                        ^ v
+--                        ^ create_trigger
+--                        ^
+--                        ^   even
+--                        ^    ^
+--                        ^    ^  even, even, even
+--                        ^    ^  /
+--                        ^    ^ /       even
+--                        ^    ^/         ^
+--                       odd, odd, even, odd
+--                       /
+--               even, even, even, even
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{44, 66, -1000}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+), w2 AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{5, 1, 1000, 3}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT min(i) FROM w) RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM w2);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=5 count=4
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=8 count=5
+NOTICE:  trigger "parttrigtrig_createdtrig" for relation "parttrigtab_even" does not exist, skipping
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=6
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=8 count=6
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=44 count=6
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=66 count=7
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=-1000 count=8
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=1000 count=9
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=3 count=10
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=8 count=10
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=8 count=11
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=0 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=44 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=66 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=-1000 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=1000 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=4 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=6 count=13
+SELECT * FROM parttrigtab_parent ORDER BY i;
+   i   | p
+-------+---
+ -1000 | f
+  -999 | t
+  -997 | t
+     0 | f
+     4 | f
+     5 | t
+     6 | f
+     8 | f
+    44 | f
+    66 | f
+   108 | f
+  1000 | f
+  1002 | f
+(13 rows)
+
+ABORT;
+DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
+DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
+-- CREATE TRIGGER is visible to the parttrigtab_even table opened in the three
+-- places that freshly open that table.
+BEGIN;
+CREATE TRIGGER parttrigtrig_createtrigoneven AFTER INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_createtrigoneven();
+-- odd triggers: BEFORE INSERT
+-- even triggers: AFTER INSERT, (create_trigger creates BEFORE ROW trigger)
+--                               even
+--                                ^ v
+--                                ^ create_trigger
+--                                ^
+--                                ^  even, even, even
+--                                ^  /
+--                                ^ /       even
+--                                ^/         ^
+--                         even, odd, even, odd
+--                         /
+--                        /        even
+--                       /          ^
+--               even, even, even, odd
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{44, 66, -1000}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+), w2 AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{6, 1, 1000, 3}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT min(i) FROM w) RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 5}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM w2);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=5
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=8 count=6
+NOTICE:  trigger "parttrigtrig_createdtrig" for relation "parttrigtab_even" does not exist, skipping
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=44 count=6
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=66 count=7
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=-1000 count=8
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=3 count=10
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=8 count=10
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=5 count=11
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=8 count=11
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=8 count=12
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=0 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=6 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=44 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=66 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=-1000 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=1000 count=13
+NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=4 count=13
+SELECT * FROM parttrigtab_parent ORDER BY i;
+   i   | p
+-------+---
+ -1000 | f
+  -999 | t
+  -997 | t
+     0 | f
+     4 | f
+     5 | t
+     6 | f
+     8 | f
+    44 | f
+    66 | f
+   108 | f
+  1000 | f
+  1002 | f
+(13 rows)
+
+ABORT;
+DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
+DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
+-- CREATE TRIGGER is visible to the parttrigtab_even table opened in the two
+-- places that freshly open that table.
+CREATE OR REPLACE FUNCTION parttrigfunc_createtrigonodd() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM parttrigtab_parent;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+        DROP TRIGGER IF EXISTS parttrigtrig_createdtrig ON parttrigtab_odd;
+        CREATE TRIGGER parttrigtrig_createdtrig AFTER INSERT ON parttrigtab_odd FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_createdtrig();
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+BEGIN;
+CREATE TRIGGER parttrigtrig_createtrigonodd AFTER INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_createtrigonodd();
+-- odd triggers: BEFORE INSERT, (create_trigger creates AFTER ROW trigger)
+-- even triggers: AFTER INSERT
+-- insert order:                             even
+--                                            ^ v
+--                                            ^ create_trigger
+--                                            ^
+--                         even, even, even, odd
+--                         /
+--                        /        even       even
+--                       /          ^          ^
+--               even, even, even, odd, even, odd
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{44, 66, 88, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 1, 6, 3}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
+NOTICE:  parttrigtrig_createtrigonodd parttrigtab_even AFTER INSERT i=8 count=8
+NOTICE:  trigger "parttrigtrig_createdtrig" for relation "parttrigtab_odd" does not exist, skipping
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=10
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=3 count=11
+NOTICE:  parttrigtrig_createtrigonodd parttrigtab_even AFTER INSERT i=8 count=12
+NOTICE:  parttrigtrig_createtrigonodd parttrigtab_even AFTER INSERT i=0 count=12
+NOTICE:  parttrigtrig_createtrigonodd parttrigtab_even AFTER INSERT i=44 count=12
+NOTICE:  parttrigtrig_createtrigonodd parttrigtab_even AFTER INSERT i=66 count=12
+NOTICE:  parttrigtrig_createtrigonodd parttrigtab_even AFTER INSERT i=88 count=12
+NOTICE:  parttrigtrig_createtrigonodd parttrigtab_even AFTER INSERT i=4 count=12
+NOTICE:  parttrigtrig_createtrigonodd parttrigtab_even AFTER INSERT i=6 count=12
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i   | p
+------+---
+    0 | f
+    4 | f
+    6 | f
+    8 | f
+   44 | f
+   66 | f
+   88 | f
+  108 | f
+ 1001 | t
+ 1002 | f
+ 1003 | t
+ 1111 | t
+(12 rows)
+
+ABORT;
+-- DROP TRIGGER is visible to the parttrigtab_even table opened in the two
+-- places that freshly open that table.
+DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_odd; -- TODO: transactional DDL
+DROP TRIGGER parttrigtrig_createtrigonodd ON parttrigtab_even; -- TODO: transactional DDL
+CREATE OR REPLACE FUNCTION parttrigfunc_dropself() RETURNS trigger AS $$
+    BEGIN
+        RAISE NOTICE 'placeholder';
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER parttrigtrig_dropself BEFORE INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_dropself();
+CREATE OR REPLACE FUNCTION parttrigfunc_dropself() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM parttrigtab_parent;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+        DROP TRIGGER IF EXISTS parttrigtrig_dropself ON parttrigtab_even;
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: BEFORE INSERT (drop_trigger deletes it)
+-- insert order: drop_trigger      even       even
+--                ^                 ^          ^
+--               even, even, even, odd, even, odd
+INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 4, 1, 2, 6, 3}'::int[]) u ON CONFLICT DO NOTHING;
+NOTICE:  parttrigtrig_dropself parttrigtab_even BEFORE INSERT i=0 count=3
+NOTICE:  parttrigtrig_dropself parttrigtab_even BEFORE INSERT i=4 count=4
+NOTICE:  trigger "parttrigtrig_dropself" for relation "parttrigtab_even" does not exist, skipping
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=5
+NOTICE:  parttrigtrig_dropself parttrigtab_even BEFORE INSERT i=2 count=6
+NOTICE:  trigger "parttrigtrig_dropself" for relation "parttrigtab_even" does not exist, skipping
+NOTICE:  parttrigtrig_dropself parttrigtab_even BEFORE INSERT i=6 count=6
+NOTICE:  trigger "parttrigtrig_dropself" for relation "parttrigtab_even" does not exist, skipping
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=3 count=7
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i  | p
+-----+---
+   0 | f
+   1 | t
+   2 | f
+   3 | t
+   4 | f
+   6 | f
+ 108 | f
+(7 rows)
+
+ABORT;
+DROP TRIGGER IF EXISTS parttrigtrig_dropself ON parttrigtab_even;
+NOTICE:  trigger "parttrigtrig_dropself" for relation "parttrigtab_even" does not exist, skipping
+-- DROP TRIGGER is visible to the parttrigtab_even table opened in the two
+-- places that freshly open that table.
+CREATE TRIGGER parttrigtrig_dropself BEFORE INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_dropself();
+BEGIN;
+-- odd triggers: BEFORE INSERT
+-- even triggers: BEFORE INSERT (drop_trigger deletes it)
+-- insert order: drop_trigger
+--                ^
+--               even                         even
+--                ^                            ^
+--               odd, even, even, even, even, odd
+INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{1, 2, 4, 0, 6, 3}'::int[]) u ON CONFLICT DO NOTHING;
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=3
+NOTICE:  parttrigtrig_dropself parttrigtab_even BEFORE INSERT i=8 count=3
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=3 count=7
+SELECT * FROM parttrigtab_parent ORDER BY i;
+  i  | p
+-----+---
+   0 | f
+   1 | t
+   2 | f
+   3 | t
+   4 | f
+   6 | f
+ 108 | f
+(7 rows)
+
+ABORT;
+DROP TRIGGER IF EXISTS parttrigtrig_dropself ON parttrigtab_even;
+NOTICE:  trigger "parttrigtrig_dropself" for relation "parttrigtab_even" does not exist, skipping
+-- CREATE TRIGGER is visible to the parttrigtab_even table opened in the three
+-- places that freshly open that table.
+BEGIN;
+CREATE OR REPLACE FUNCTION noparttrigfunc() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM parttrigtab_parent;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+        DROP TRIGGER IF EXISTS parttrigtrig_createdtrig ON parttrigtab_even;
+        CREATE TRIGGER parttrigtrig_createdtrig AFTER INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_createdtrig();
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER noparttrigtrig BEFORE INSERT ON noparttrigtab FOR EACH ROW EXECUTE PROCEDURE noparttrigfunc();
+-- nopart triggers: BEFORE INSERT
+-- odd triggers: BEFORE INSERT
+-- even triggers: (create_trigger creates AFTER ROW trigger)
+-- insert order:       create_trigger       even
+--                           ^               ^
+--                           ^  even, even, odd
+--                           ^  /
+--                           ^ /
+--                           ^/
+--                         value, value, value, value
+--                         /
+--                        /        even
+--                       /          ^
+--               even, even, even, odd
+-- Note: for the following query, upstream PG 15.2 gets ERROR:  could not find trigger <oid>,
+--       but upstream PG 17.1 does not.  YB gets a different error, but it
+--       still emits oid.  Rather than fixing the message to hide oid, just
+--       wait till we merge to a newer PG version.
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{44, -1000, 3}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+), w2 AS (
+    INSERT INTO noparttrigtab SELECT g FROM generate_series(1, 4) g ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT min(i) FROM w) RETURNING i
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) + 996 FROM w2);
+NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=1 count=4
+NOTICE:  trigger "parttrigtrig_createdtrig" for relation "parttrigtab_even" does not exist, skipping
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=3 count=6
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even AFTER INSERT i=8 count=7
+NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=2 count=7
+NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=3 count=7
+NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=4 count=7
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=8
+ERROR:  relation 16390 has no triggers
+SELECT * FROM parttrigtab_parent ORDER BY i;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
+DROP TRIGGER noparttrigtrig ON noparttrigtab; -- TODO: transactional DDL
+-- CREATE TRIGGER is visible to the parttrigtab_even table opened in the three
+-- places that freshly open that table.
+BEGIN;
+CREATE OR REPLACE FUNCTION noparttrigfunc() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM parttrigtab_parent;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+        DROP TRIGGER IF EXISTS parttrigtrig_createdtrig ON parttrigtab_even;
+        CREATE TRIGGER parttrigtrig_createdtrig BEFORE INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_createdtrig();
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER noparttrigtrig BEFORE INSERT ON noparttrigtab FOR EACH ROW EXECUTE PROCEDURE noparttrigfunc();
+-- nopart triggers: BEFORE INSERT
+-- odd triggers: BEFORE INSERT
+-- even triggers: (create_trigger creates BEFORE ROW trigger)
+-- insert order:       create_trigger       even
+--                           ^               ^
+--                           ^  even, even, odd
+--                           ^  /
+--                           ^ /
+--                           ^/
+--                         value, value, value, value
+--                         /
+--                        /        even
+--                       /          ^
+--               even, even, even, odd
+-- Note: for the following query, upstream PG 15.2 gets ERROR:  could not find trigger <oid>,
+--       but upstream PG 17.1 does not.
+WITH w AS (
+    INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{44, -1000, 3}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
+), w2 AS (
+    INSERT INTO noparttrigtab SELECT g FROM generate_series(1, 4) g ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT min(i) FROM w) RETURNING i
+) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) + 996 FROM w2);
+NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=1 count=4
+NOTICE:  trigger "parttrigtrig_createdtrig" for relation "parttrigtab_even" does not exist, skipping
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=44 count=4
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=-1000 count=5
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=3 count=6
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=8 count=6
+NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=2 count=7
+NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=3 count=7
+NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=4 count=7
+NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=8
+NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=8 count=8
+SELECT * FROM parttrigtab_parent ORDER BY i;
+   i   | p
+-------+---
+ -1000 | f
+     0 | f
+     4 | f
+    13 | t
+    44 | f
+   108 | f
+  1001 | t
+  1002 | f
+(8 rows)
+
+ABORT;
+DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
+DROP TRIGGER noparttrigtrig ON noparttrigtab; -- TODO: transactional DDL

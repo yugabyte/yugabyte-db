@@ -33,11 +33,11 @@ var createUniverseCmd = &cobra.Command{
 	Example: `yba universe create -n <universe-name> --provider-code <provider-code> \
 	--provider-name <provider-name> --yb-db-version <YugbayteDB-version> \
 	--master-gflags \
-	"{\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\",\
-	\"<gflag-3>\": \"<value-3>\",\"<gflag-4>\": \"<value-4>\"}" \
+	'{"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>",\
+	"<gflag-3>": "<value-3>","<gflag-4>": "<value-4>"}" \
 	--tserver-gflags \
-	"{\"primary\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"},\
-	\"async\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"}}" \
+	"{"primary": {"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>"},\
+	"async": {"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>"}}' \
 	--num-nodes 1 --replication-factor 1 \
 	--user-tags <key-1>=<value-1>,<key-2>=<value-2>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
@@ -161,7 +161,7 @@ var createUniverseCmd = &cobra.Command{
 			Clusters:           clusters,
 			CommunicationPorts: communicationPorts,
 			EnableYbc:          util.GetBoolPointer(enableYbc),
-			Arch:               util.GetStringPointer(cpuArch),
+			Arch:               util.GetStringPointer(strings.ToLower(cpuArch)),
 		}
 
 		if enableVolumeEncryption {
@@ -251,7 +251,7 @@ func init() {
 		"[Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem."+
 			" Defaults to true for kubernetes.")
 	createUniverseCmd.Flags().String("cpu-architecture", "x86_64",
-		"[Optional] CPU architecture for nodes in all clusters.")
+		"[Optional] CPU architecture for nodes in all clusters. Allowed values: x86_64, aarch64.")
 	createUniverseCmd.Flags().Bool("add-read-replica", false,
 		"[Optional] Add a read replica cluster to the universe. (default false)")
 
@@ -285,24 +285,25 @@ func init() {
 	createUniverseCmd.Flags().String("master-gflags", "",
 		"[Optional] Master GFlags in map (JSON or YAML) format. "+
 			"Provide the gflags in the following formats: "+
-			"\"--master-gflags { \\\"master-gflag-key-1\\\":\\\"value-1\\\","+
-			"\\\"master-gflag-key-2\\\":\\\"value-2\\\" }\" or"+
+			"\"--master-gflags {\"master-gflag-key-1\":\"value-1\","+
+			"\"master-gflag-key-2\":\"value-2\" }\" or"+
 			"  \"--master-gflags \"master-gflag-key-1: value-1\nmaster-gflag-key-2"+
 			": value-2\nmaster-gflag-key-3: value-3\".")
 
 	createUniverseCmd.Flags().StringVar(&tserverGflagsString, "tserver-gflags", "",
 		"[Optional] TServer GFlags in map (JSON or YAML) format. "+
 			"Provide gflags for clusters in the following format: "+
-			"\"--tserver-gflags \"{\\\"primary\\\": "+
-			"{\\\"tserver-gflag-key-1\\\": \\\"value-1\\\","+
-			"\\\"tserver-gflag-key-2\\\": \\\"value-2\\\"},"+
-			"\\\"async\\\": {\\\"tserver-gflag-key-1\\\": \\\"value-1\\\","+
-			"\\\"tserver-gflag-key-2\\\": \\\"value-2\\\"}}\"\" OR"+
-			" \"--tserver-gflag \"primary:\n\tlog_min_segments_to_retain: 1"+
-			"\n\tlog_cache_size_limit_mb: 0\n\tglobal_log_cache_size_limit_mb: "+
-			"0\n\tlog_stop_retaining_min_disk_mb: 9223372036854775807\nasync:"+
-			"\n\tlog_min_segments_to_retain: 2\n\tlog_cache_size_limit_mb: 0"+
-			"\n\tglobal_log_cache_size_limit_mb: 0\"\"."+
+			"\"--tserver-gflags '{\"primary\": "+
+			"{\"tserver-gflag-key-1\": \"value-1\","+
+			"\"tserver-gflag-key-2\": \"value-2\"},"+
+			"\"async\": {\"tserver-gflag-key-1\": \"value-1\","+
+			"\"tserver-gflag-key-2\": \"value-2\"}}'\" OR"+
+			" \"--tserver-gflag \"primary:\n\ttserver-gflag-key-1: value-1"+
+			"\n\ttserver-gflag-key-2: value-2\n\ttserver-gflag-key-3: value-3"+
+			"\n\ttserver-gflag-key-4: value-4\n\t"+
+			"tserver-gflag-key-5: value-5\nasync:"+
+			"\n\ttserver-gflag-key-6: value-6\n\ttserver-gflag-key-7: value-7"+
+			"\n\ttserver-gflag-key-8: value-8\"\"."+
 			" If no-of-clusters = 2 "+
 			"and no tserver gflags are provided for the read replica, the primary cluster gflags are "+
 			"by default applied to the read replica cluster.")

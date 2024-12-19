@@ -57,7 +57,7 @@ To create a partition-by-region cluster, on the **Clusters** page, click **Add C
 
 The **Create Cluster** wizard has the following pages:
 
-1. [General Settings](#general-settings)
+1. [General Settings](#general-and-database-settings)
 1. [Cluster Setup](#cluster-setup)
 1. [Network Access](#network-access)
 1. [Security](#security)
@@ -138,5 +138,5 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeo
 
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../../tutorials/build-apps/)
+- [Build an application](/preview/tutorials/build-apps/)
 - [Scale clusters](../../../cloud-clusters/configure-clusters/#partition-by-region-cluster)

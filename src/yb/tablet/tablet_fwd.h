@@ -97,8 +97,9 @@ enum class FlushFlags {
   kRegular = 1,
   kIntents = 2,
   kNoScopedOperation = 4,
+  kVectorIndexes = 8,
 
-  kAllDbs = kRegular | kIntents
+  kAllDbs = kRegular | kIntents | kVectorIndexes
 };
 
 }  // namespace tablet

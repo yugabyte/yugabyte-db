@@ -6,7 +6,8 @@ menu:
   v2.18:
     identifier: all-flags-yb-tserver
     weight: 2440
-type: indexpage
+type: docs
+showRightNav: false
 ---
 
 Use the yb-tserver binary and its flags to configure the [YB-TServer](../../../architecture/concepts/yb-tserver/) server. The yb-tserver executable file is located in the `bin` directory of YugabyteDB home. For more detailed information about flags commonly used for production deployments and instructions on using yb-tserver, refer to the [yb-tserver](../yb-tserver/) documentation.

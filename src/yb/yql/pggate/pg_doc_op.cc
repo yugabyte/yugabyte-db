@@ -572,6 +572,20 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters* exec_params) {
   return Status::OK();
 }
 
+bool CouldBeExecutedInParallel(const LWPgsqlReadRequestPB& req) {
+  if (req.index_request().has_vector_idx_options()) {
+    // Executed in parallel on PgClient
+    return false;
+  }
+  if (req.is_aggregate()) {
+    return true;
+  }
+  if (!req.has_is_forward_scan() && !req.where_clauses().empty()) {
+    return true;
+  }
+  return false;
+}
+
 Result<bool> PgDocReadOp::DoCreateRequests() {
   // All information from the SQL request has been collected and setup. This code populates
   // Protobuf requests before sending them to DocDB. For performance reasons, requests are
@@ -604,10 +618,8 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // scans on range partitioned tables.
   // TODO(GHI 13737): as explained above, explicitly indicate, if operation should return ordered
   // results.
-  } else if (req.is_aggregate() ||
-             (!req.has_is_forward_scan() && !req.where_clauses().empty())) {
+  } else if (CouldBeExecutedInParallel(req)) {
     return PopulateParallelSelectOps();
-
   } else {
     // No optimization.
     if (exec_params_.partition_key != nullptr) {

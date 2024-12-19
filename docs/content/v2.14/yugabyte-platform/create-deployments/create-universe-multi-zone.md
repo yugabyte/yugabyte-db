@@ -32,7 +32,7 @@ You can create a YugabyteDB universe using any cloud provider, except Kubernetes
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/).
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
 
 ## Create a universe
 
@@ -40,7 +40,7 @@ If no universes have been created yet, the **Dashboard** does not display any.
 
 Click **Create Universe** to create a universe and then enter your intent.
 
-The **Provider**, **Regions**, and **Instance Type** fields are initialized based on the [configured cloud providers](../../configure-yugabyte-platform/set-up-cloud-provider/). When you provide the value in the **Nodes** field, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
+The **Provider**, **Regions**, and **Instance Type** fields are initialized based on the configured cloud providers. When you provide the value in the **Nodes** field, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
 
 To create a multi-zone universe using [Google Cloud provider (GCP)](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/), perform the following:
 

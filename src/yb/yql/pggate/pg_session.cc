@@ -403,7 +403,6 @@ PgSession::PgSession(
       pg_txn_manager_(std::move(pg_txn_manager)),
       ybctid_reader_(std::move(ybctid_reader)),
       explicit_row_lock_buffer_(aux_ybctid_container_provider_, ybctid_reader_),
-      insert_on_conflict_buffer_(),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
       buffer_(
@@ -865,6 +864,52 @@ void PgSession::DeleteForeignKeyReference(const LightweightTableYbctid& key) {
   Erase(&fk_reference_cache_, key);
 }
 
+InsertOnConflictBuffer& PgSession::GetInsertOnConflictBuffer(void* plan) {
+  auto iter = std::find_if(
+      insert_on_conflict_buffers_.begin(), insert_on_conflict_buffers_.end(),
+      [&plan](const InsertOnConflictPlanBuffer& buffer) {
+        return buffer.first == plan;
+      });
+
+  if (iter == insert_on_conflict_buffers_.end()) {
+    insert_on_conflict_buffers_.emplace_back(std::make_pair(plan, InsertOnConflictBuffer()));
+    return insert_on_conflict_buffers_.back().second;
+  }
+
+  return iter->second;
+}
+
+InsertOnConflictBuffer& PgSession::GetInsertOnConflictBuffer() {
+  CHECK_EQ(insert_on_conflict_buffers_.empty(), false);
+  return insert_on_conflict_buffers_.front().second;
+}
+
+void PgSession::ClearAllInsertOnConflictBuffers() {
+  for (auto& buffer : insert_on_conflict_buffers_) {
+    // Since we will end up clearing all intents, might as well simply pass true for all the calls.
+    buffer.second.Clear(true /* clear_intents */);
+  }
+
+  insert_on_conflict_buffers_.clear();
+}
+
+void PgSession::ClearInsertOnConflictBuffer(void* plan) {
+  auto iter = std::find_if(
+      insert_on_conflict_buffers_.begin(), insert_on_conflict_buffers_.end(),
+      [&plan](const InsertOnConflictPlanBuffer& buffer) {
+        return buffer.first == plan;
+      });
+
+  DCHECK(iter != insert_on_conflict_buffers_.end());
+  // Only clear the global intents cache if this is the final buffer. */
+  iter->second.Clear(insert_on_conflict_buffers_.size() == 1 /* clear_intents */);
+  insert_on_conflict_buffers_.erase(iter);
+}
+
+bool PgSession::IsInsertOnConflictBufferEmpty() const {
+  return insert_on_conflict_buffers_.empty();
+}
+
 Result<int> PgSession::TabletServerCount(bool primary_only) {
   return pg_client_.TabletServerCount(primary_only);
 }
@@ -1093,5 +1138,65 @@ Status PgSession::SetCronLastMinute(int64_t last_minute) {
 }
 
 Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMinute(); }
+
+Status PgSession::AcquireAdvisoryLock(
+    const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode, bool wait, bool session) {
+  tserver::PgPerformOptionsPB options;
+
+  // No need to populate the txn metadata for session level advisory locks.
+  if (!session) {
+    // If isolation level is READ_COMMITTED, set priority of the transaction to kHighestPriority.
+    RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
+      false /* read_only */,
+      pg_txn_manager_->GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED
+          ? kHighestPriority : kLowerPriorityRange));
+    pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
+    // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
+    // then it should be safe to skip set_force_global_transaction.
+    options.set_force_global_transaction(true);
+  }
+
+  tserver::PgAcquireAdvisoryLockRequestPB req;
+  req.set_session_id(pg_client_.SessionID());
+  req.set_db_oid(lock_id.database_id);
+  auto* lock = req.add_locks();
+  lock->mutable_lock_id()->set_classid(lock_id.classid);
+  lock->mutable_lock_id()->set_objid(lock_id.objid);
+  lock->mutable_lock_id()->set_objsubid(lock_id.objsubid);
+  lock->set_lock_mode(mode == YBAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
+      ? tserver::AdvisoryLockMode::LOCK_EXCLUSIVE
+      : tserver::AdvisoryLockMode::LOCK_SHARE);
+  req.set_wait(wait);
+  req.set_session(session);
+  *req.mutable_options() = std::move(options);
+  return pg_client_.AcquireAdvisoryLock(&req, CoarseTimePoint());
+}
+
+Status PgSession::ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode) {
+  // ReleaseAdvisoryLock is only used for session level advisory locks, hence no need to populate
+  // the req with txn meta.
+  tserver::PgReleaseAdvisoryLockRequestPB req;
+  req.set_session_id(pg_client_.SessionID());
+  req.set_db_oid(lock_id.database_id);
+  auto* lock = req.add_locks();
+  lock->mutable_lock_id()->set_classid(lock_id.classid);
+  lock->mutable_lock_id()->set_objid(lock_id.objid);
+  lock->mutable_lock_id()->set_objsubid(lock_id.objsubid);
+  lock->set_lock_mode(mode == YBAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
+      ? tserver::AdvisoryLockMode::LOCK_EXCLUSIVE
+      : tserver::AdvisoryLockMode::LOCK_SHARE);
+  return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());
+}
+
+Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
+  tserver::PgReleaseAdvisoryLockRequestPB req;
+  req.set_session_id(pg_client_.SessionID());
+  req.set_db_oid(db_oid);
+  return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());
+}
+
+void PgSession::SetForceAllowCatalogModifications(bool allowed) {
+  force_allow_catalog_modifications_ = allowed;
+}
 
 }  // namespace yb::pggate

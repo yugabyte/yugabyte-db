@@ -26,10 +26,112 @@ SELECT * FROM simple WHERE ind_a BETWEEN 2 AND 6 OR ind_b > 25 ORDER BY k;
 SELECT * FROM simple WHERE ind_a BETWEEN 2 AND 6 OR ind_b > 25 ORDER BY k;
 
 --
+-- test cases where we could skip fetching the table rows (TODO: #22044)
+--
+-- this query does not need a recheck, so we don't need to fetch the rows for the COUNT(*)
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR ind_b < 10;
+/*+ BitmapScan(simple) */
+SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR ind_b < 10;
+
+-- when we require the rows, notice that the YB Bitmap Table Scan sends a table read request
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE ind_a = 2 OR ind_b < 10;
+
+-- this query has a recheck condition, so we need to fetch the rows
+/*+ BitmapScan(simple) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+/*+ BitmapScan(test_skip) Set(yb_enable_expression_pushdown false) */
+SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+
+-- when the expression can be pushed down, we don't need a recheck but we do
+-- still need to send the request.
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+/*+ BitmapScan(simple) */
+SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+
+-- other aggregates may require the rows
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT SUM(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+/*+ BitmapScan(simple) */
+SELECT SUM(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT MAX(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+/*+ BitmapScan(simple) */
+SELECT MAX(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+
+-- when we don't need the actual value, we can avoid fetching
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT 1 FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+/*+ BitmapScan(simple) */
+SELECT 1 FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT random() FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
+
+--
+-- test primary key queries
+--
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE k = 1 OR ind_a = 2;
+/*+ BitmapScan(simple) */
+SELECT * FROM simple WHERE k = 1 OR ind_a = 2;
+
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;
+/*+ BitmapScan(simple) */
+SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;
+
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;
+/*+ BitmapScan(simple) */
+SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;
+
+-- test non-existent results
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM simple WHERE k = 2000 OR ind_a < 0;
+/*+ BitmapScan(simple) */
+SELECT COUNT(*) FROM simple WHERE k = 2000 OR ind_a < 0;
+
+--
+-- test unsatisfiable conditions
+--
+
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE (k <= 1 AND k = 2);
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE (k = 1 AND k = 2) OR ind_b = 0;
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE (ind_a <= 1 AND ind_a = 2);
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE (ind_a = 2 AND ind_a = 2) OR ind_b = 0;
+
+--
+-- #21793: test row compare expressions
+--
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE (ind_a, ind_a) <= (4, 1) OR ind_a IS NULL;
+/*+ BitmapScan(simple) */
+SELECT * FROM simple WHERE (ind_a, ind_a) <= (4, 1) OR ind_a IS NULL;
+
+--
+-- #22062: variable not found in subplan target list
+--
+EXPLAIN (COSTS OFF) /*+ BitmapScan(simple) */
+SELECT * FROM simple AS tbl_1 JOIN simple AS tbl_2 ON tbl_1.ind_a = tbl_2.ind_a OR (tbl_1.ind_b = tbl_2.ind_a AND tbl_1.ind_a = 2);
+
+--
+-- #22065: test pushdowns on Subplans
+--
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(simple) */
+SELECT * FROM simple WHERE ind_a = 2 AND ind_a <> (SELECT ind_a FROM simple WHERE ind_b = 1);
+/*+ BitmapScan(simple) */
+SELECT * FROM simple WHERE ind_a = 2 AND ind_a <> (SELECT ind_a FROM simple WHERE ind_b = 1);
+
+--
 -- test UPDATE
 --
 
--- use Bitmap Scan to update some rows
 /*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 UPDATE simple SET ind_a = NULL WHERE ind_a < 10 OR ind_b > 25;
 
@@ -56,80 +158,6 @@ SELECT ind_a, ind_b FROM simple WHERE ind_a IS NULL OR ind_b < 15 ORDER BY k;
 /*+ BitmapScan(simple) */
 SELECT ind_a, ind_b FROM simple WHERE ind_a IS NULL OR ind_b < 15 ORDER BY k;
 
---
--- test cases where we could skip fetching the table rows (TODO: #22044)
---
-CREATE TABLE test_skip (a INT PRIMARY KEY, b INT);
-CREATE INDEX ON test_skip(b ASC);
-INSERT INTO test_skip SELECT i, i FROM generate_series(1, 10) i;
-
--- this query does not need a recheck, so we don't need to fetch the rows for the COUNT(*)
-/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM test_skip WHERE a = 1 OR b < 10;
-/*+ BitmapScan(test_skip) */
-SELECT COUNT(*) FROM test_skip WHERE a = 1 OR b < 10;
-
--- when we require the rows, notice that the YB Bitmap Table Scan sends a table read request
-/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM test_skip WHERE a = 1 OR b < 10;
-
--- this query has a recheck condition, so we need to fetch the rows
-/*+ BitmapScan(test_skip) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
-/*+ BitmapScan(test_skip) Set(yb_enable_expression_pushdown false) */
-SELECT COUNT(*) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
-
--- when the expression can be pushed down, we don't need a recheck but we do
--- still need to send the request.
-/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
-/*+ BitmapScan(test_skip) */
-SELECT COUNT(*) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
-
--- other aggregates may require the rows
-/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT SUM(a) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
-/*+ BitmapScan(test_skip) */
-SELECT SUM(a) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
-/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT MAX(a) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
-/*+ BitmapScan(test_skip) */
-SELECT MAX(a) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
-
--- when we don't need the actual value, we can avoid fetching
-/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT 1 FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
-/*+ BitmapScan(test_skip) */
-SELECT 1 FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
-/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT random() FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
-
---
--- test primary key queries
---
-CREATE TABLE pk (k INT PRIMARY KEY, a INT);
-CREATE INDEX ON pk(a ASC);
-INSERT INTO pk SELECT i, i FROM generate_series(1, 1000) i;
-/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pk WHERE k = 123 OR a = 123;
-/*+ BitmapScan(pk) */
-SELECT * FROM pk WHERE k = 123 OR a = 123;
-
-/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pk WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
-/*+ BitmapScan(pk) */
-SELECT * FROM pk WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
-
-/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pk WHERE k = 123 OR k = 124 OR a = 122 OR a = 123 ORDER BY k;
-/*+ BitmapScan(pk) */
-SELECT * FROM pk WHERE k = 123 OR k = 124 OR a = 122 OR a = 123 ORDER BY k;
-
--- test non-existent results
-/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM pk WHERE k = 2000 OR a < 0;
-/*+ BitmapScan(pk) */
-SELECT COUNT(*) FROM pk WHERE k = 2000 OR a < 0;
 
 --
 -- test indexes on multiple columns / indexes with additional columns
@@ -165,6 +193,24 @@ SELECT * FROM multi WHERE a < 2 OR (b > 1797 AND (c BETWEEN 2709 AND 2712 OR c =
 SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c < 20 OR c > 2500)) ORDER BY a;
 /*+ BitmapScan(multi) */
 SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c < 20 OR c > 2500)) ORDER BY a;
+
+--
+-- test limits
+--
+SET yb_fetch_row_limit = 100;
+SET yb_fetch_size_limit = 0;
+
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM multi WHERE a < 200 LIMIT 10;
+
+SET yb_fetch_row_limit = 0;
+SET yb_fetch_size_limit = '1kB';
+
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM multi WHERE a < 200 LIMIT 10;
+
+RESET yb_fetch_row_limit;
+RESET yb_fetch_size_limit;
 
 --
 -- test exceeding work_mem
@@ -241,27 +287,6 @@ RESET yb_enable_expression_pushdown;
 RESET work_mem;
 
 --
--- test limits
---
-CREATE TABLE test_limit (a INT, b INT, c INT);
-CREATE INDEX ON test_limit (a ASC);
-INSERT INTO test_limit SELECT i, i * 2, i * 3 FROM generate_series(1, 1000) i;
-SET yb_fetch_row_limit = 100;
-SET yb_fetch_size_limit = 0;
-
-/*+ BitmapScan(test_limit) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM test_limit WHERE a < 200 LIMIT 10;
-
-SET yb_fetch_row_limit = 0;
-SET yb_fetch_size_limit = '1kB';
-
-/*+ BitmapScan(test_limit) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM test_limit WHERE a < 200 LIMIT 10;
-
-RESET yb_fetch_row_limit;
-RESET yb_fetch_size_limit;
-
---
 -- test remote pushdown
 --
 
@@ -286,87 +311,77 @@ SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER
 SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
 
 --
--- test unsatisfiable conditions
---
-CREATE TABLE test_false (a INT, b INT);
-CREATE INDEX ON test_false (a ASC);
-CREATE INDEX ON test_false (b ASC);
-INSERT INTO test_false VALUES (1, 1), (2, 2);
-
-/*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT * FROM test_false WHERE (a <= 1 AND a = 2);
-/*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT * FROM test_false WHERE (a = 1 AND a = 2) OR b = 0;
-
---
--- #21930: test recheck conditions on text columns
---
-CREATE TABLE test_recheck_text(a TEXT);
-INSERT INTO test_recheck_text(a) VALUES ('i');
-CREATE INDEX ON test_recheck_text(a ASC);
-
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM test_recheck_text AS t WHERE a = 'i' AND a < 'j';
-/*+ BitmapScan(t) */
-SELECT * FROM test_recheck_text AS t WHERE a = 'i' AND a < 'j';
-
---
 -- test recheck index conditions
 --
-create table recheck_test (col int4);
-create index on recheck_test (col ASC);
+create table recheck_test (int4_col int4, text_col TEXT, bigint_col bigint);
+create index on recheck_test (int4_col ASC);
+create index on recheck_test (text_col ASC);
+create index on recheck_test (bigint_col ASC);
 
-insert into recheck_test select i from generate_series(1, 10) i;
+insert into recheck_test VALUES
+    (1, 'a', 1),
+    (2, 'b', 2),
+    (3, 'c', 3),
+    (4, 'd', 4),
+    (5, 'e', 5),
+    (6, 'f', 6),
+    (7, 'g', 7),
+    (8, 'h', 2147483647),
+    (9, 'i', 2147483648);
 
-explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col IN (5, 6);
-explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT * FROM recheck_test t WHERE t.col IN (5, 6) AND t.col < 3;
+-- #21930: test recheck conditions on text columns
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT text_col FROM recheck_test AS t WHERE text_col = 'i' AND text_col < 'j';
+/*+ BitmapScan(t) */
+SELECT text_col FROM recheck_test AS t WHERE text_col = 'i' AND text_col < 'j';
 
-explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
-explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col < 3 AND int4_col IN (5, 6);
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col IN (5, 6) AND int4_col < 3;
+
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col < 3 AND int4_col = 5;
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col = 5 AND int4_col < 3;
 
 -- also test aggregates
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE t.col < 3 AND t.col IN (2, 5, 6);
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col < 3 AND int4_col IN (2, 5, 6);
  /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE t.col < 3 AND t.col IN (2, 5, 6);
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col < 3 AND int4_col IN (2, 5, 6);
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE t.col IN (2, 5, 6) AND t.col < 3;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col IN (2, 5, 6) AND int4_col < 3;
 /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE t.col IN (2, 5, 6) AND t.col < 3;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col IN (2, 5, 6) AND int4_col < 3;
 
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col < 3 AND int4_col = 5;
 /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col < 3 AND int4_col = 5;
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 5 AND int4_col < 3;
 /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 5 AND int4_col < 3;
 
 --
 -- test where casting may cause us to require recheck
 --
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT * FROM recheck_test t WHERE col = 2147483647;
+SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483647;
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT * FROM recheck_test t WHERE col = 2147483648;
+SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483648;
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483647;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483647;
 /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483647;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483647;
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483648;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
 /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483648;
-
--- create a table with a bigint column to test casting of different column types
-CREATE TABLE recheck_test_bigint (b bigint);
-INSERT INTO recheck_test_bigint VALUES (5), (2147483647), (2147483648);
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF)  /*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */
-SELECT * FROM recheck_test_bigint s JOIN recheck_test t ON s.b = t.col;
+SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.bigint_col = t.int4_col;
 
 --
 -- test where casting may cause us to require recheck (with expression pushdown disabled)
@@ -374,108 +389,65 @@ SELECT * FROM recheck_test_bigint s JOIN recheck_test t ON s.b = t.col;
 SET yb_enable_expression_pushdown = false;
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT * FROM recheck_test t WHERE col = 2147483647;
+SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483647;
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT * FROM recheck_test t WHERE col = 2147483648;
+SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483648;
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483647;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483647;
 /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483647;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483647;
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483648;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
 /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483648;
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF)  /*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */
-SELECT * FROM recheck_test_bigint s JOIN recheck_test t ON s.b = t.col;
+SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.bigint_col = t.int4_col;
 
 RESET yb_enable_expression_pushdown;
 
 --
--- #22065: test pushdowns on Subplans
---
-CREATE TABLE text_pushdown_test (a text, b text);
-CREATE INDEX ON text_pushdown_test (a ASC);
-CREATE INDEX ON text_pushdown_test (b ASC);
-INSERT INTO text_pushdown_test VALUES ('hi', 'hello');
-
-/*+ BitmapScan(text_pushdown_test) */
-SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(text_pushdown_test) */
-SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
-
---
 -- #22622: test local recheck of condition for a column that is not a target
 --
-create table local_recheck_test (k1 character(10), k2 character(10));
-insert into local_recheck_test values ('a', 'a');
-create index on local_recheck_test(k1 ASC);
-create index on local_recheck_test(k2 ASC);
-
 /*+ IndexScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c');
+select int4_col from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
 
 -- the second condition is necessary to force a recheck
 -- the first condition is rechecked locally, so k2 must be fetched.
 /*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c');
+select int4_col from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
 
 -- also check for aggregate pushdowns
-
 /*+ IndexScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM local_recheck_test t WHERE k2 LIKE 'a%' AND k2 IN ('a', 'b', 'c');
+select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
 /*+ IndexScan(t) */
-SELECT COUNT(*) FROM local_recheck_test t WHERE k2 LIKE 'a%' AND k2 IN ('a', 'b', 'c');
+select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
 /*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM local_recheck_test t WHERE k2 LIKE 'a%' AND k2 IN ('a', 'b', 'c');
+select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
 /*+ BitmapScan(t) */
-SELECT COUNT(*) FROM local_recheck_test t WHERE k2 LIKE 'a%' AND k2 IN ('a', 'b', 'c');
+select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
 
 --
 -- test pk of different types
 --
-CREATE TABLE pk_int (k_int INT PRIMARY KEY, v_text varchar);
-CREATE INDEX ON pk_int(v_text ASC);
-INSERT INTO pk_int SELECT i, i::text FROM generate_series(1, 100) i;
-
 CREATE TABLE pk_text (k_text varchar PRIMARY KEY, v_int INT);
 CREATE INDEX ON pk_text(v_int ASC);
 INSERT INTO pk_text SELECT i::text, i FROM generate_series(1, 100) i;
 
-/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pk_int WHERE k_int = 12 OR v_text = '12';
-/*+ BitmapScan(pk_int) */
-SELECT * FROM pk_int WHERE k_int = 12 OR v_text = '12';
-
 /*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM pk_text WHERE v_int = 12 OR k_text = '12';
 /*+ BitmapScan(pk_text) */
 SELECT * FROM pk_text WHERE v_int = 12 OR k_text = '12';
-
-/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pk_int WHERE (k_int < 10 AND k_int % 2 = 1) OR (v_text LIKE '999%' AND v_text LIKE '%5') ORDER BY k_int;
-/*+ BitmapScan(pk_int) */
-SELECT * FROM pk_int WHERE (k_int < 10 AND k_int % 2 = 1) OR (v_text LIKE '999%' AND v_text LIKE '%5') ORDER BY k_int;
 
 /*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
 /*+ BitmapScan(pk_text) */
 SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
 
-/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pk_int WHERE k_int < 5 OR v_text < '11' ORDER BY k_int;
-/*+ BitmapScan(pk_int) */
-SELECT * FROM pk_int WHERE k_int < 5 OR v_text < '11' ORDER BY k_int;
-
 /*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
 /*+ BitmapScan(pk_text) */
 SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
-
-/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pk_int WHERE k_int IN (12, 13) OR v_text IN ('11', '12') ORDER BY k_int;
-/*+ BitmapScan(pk_int) */
-SELECT * FROM pk_int WHERE k_int IN (12, 13) OR v_text IN ('11', '12') ORDER BY k_int;
 
 /*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY v_int;
@@ -483,46 +455,16 @@ SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY
 SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY v_int;
 
 -- test count
-/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM pk_int WHERE k_int IN (12, 13) OR v_text IN ('11', '12');
-/*+ BitmapScan(pk_int) */
-SELECT COUNT(*) FROM pk_int WHERE k_int IN (12, 13) OR v_text IN ('11', '12');
-
 /*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT COUNT(*) FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12');
 /*+ BitmapScan(pk_text) */
 SELECT COUNT(*) FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12');
 
 -- test non-existent results
-/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM pk_int WHERE k_int = 2000 OR v_text = 'nonexistent';
-/*+ BitmapScan(pk_int) */
-SELECT COUNT(*) FROM pk_int WHERE k_int = 2000 OR v_text = 'nonexistent';
-
 /*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
 /*+ BitmapScan(pk_text) */
 SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
-
---
--- #21793: test row compare expressions
---
-CREATE TABLE test_crash_row_comp (a integer);
-INSERT INTO test_crash_row_comp VALUES (1);
-CREATE INDEX on test_crash_row_comp(a ASC);
-
-/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
-/*+ BitmapScan(t) */
-SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
-
---
--- #22062: variable not found in subplan target list
---
-CREATE TABLE t2 (k1 INT, k2 INT);
-CREATE INDEX ON t2 (k1 ASC);
-CREATE INDEX ON t2 (k2 ASC);
-EXPLAIN (COSTS OFF) /*+ BitmapScan(t2) */ SELECT * FROM t2 AS a JOIN t2 AS b ON a.k1 = b.k1 OR (a.k2 = b.k1 AND a.k1 = 1);
 
 --
 -- BitmapAnd

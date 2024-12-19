@@ -13,6 +13,28 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.7 - December 10, 2024
+
+### New Features
+
+- Introduced a framework in the `assess-migration` and `analyze-schema` commands to accept the target database version (`--target-db-version` flag) as input and use it for reporting issues not supported in that target version for the source schema.
+
+### Enhancements
+
+- Improved permission grant script (`yb-voyager-pg-grant-migration-permissions.sql`) by internally detecting table owners, eliminating the need to specify the `original_owner_of_tables` flag.
+- Enhanced reporting of **Unsupported Query Constructs** in the `assess-migration` command by filtering queries to include only those that match user-specified schemas, provided schema information is present in the query.
+- Enhanced the `assess-migration` and `analyze-schema` commands to report issues in Functions or Procedures for variables declared with reference types (%TYPE) in the **Unsupported PL/pgSQL Objects** section.
+- Added support to report DDL issues present in the PL/pgSQL blocks of objects listed in the **Unsupported PL/pgSQL Objects** section of the `assess-migration` and `analyze-schema` commands.
+- Allow yb-voyager upgrades during migration from the recent breaking release (v1.8.5) to later versions.
+- Modified the internal HTTP port to dynamically use an available free port instead of defaulting to 8080, avoiding conflicts with commonly used services.
+- Added a guardrail check to the `assess-migration` command to verify that the `pg_stat_statements` extension is properly loaded in the source database.
+
+### Bug fixes
+
+- Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/1895) where NOT VALID constraints in the schema could cause constraint violation errors during data imports; these constraints are now created during the post-snapshot import phase.
+- Fixed formatting issues in the assessment HTML report, where extra spaces or characters appeared after the **Unsupported PL/pgSQL Objects** heading, depending on the browser used for viewing.
+- Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/1913) of segmentation faults when certain commands are executed before migration initialization.
+
 ## v1.8.6 - November 26, 2024
 
 ### New Features

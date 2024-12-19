@@ -62,6 +62,18 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
     (ReportYsqlDdlTxnStatus)
     (TruncateTable)
   )
+
+  void AcquireObjectLocksGlobal(
+      const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    server_->catalog_manager_impl()->AcquireObjectLocksGlobal(req, resp, std::move(rpc));
+  }
+
+  void ReleaseObjectLocksGlobal(
+      const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    server_->catalog_manager_impl()->ReleaseObjectLocksGlobal(req, resp, std::move(rpc));
+  }
 };
 
 } // namespace

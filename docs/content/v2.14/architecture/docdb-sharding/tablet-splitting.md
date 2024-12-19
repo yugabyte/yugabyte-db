@@ -328,6 +328,6 @@ The following known limitations are planned to be resolved in upcoming releases:
 * In 2.14.0, when tablet splitting is used with Point In Time Recovery (PITR), restoring to arbitrary times in the past when a tablet is in the process of splitting is not supported. This is fixed in 2.14.1.
 * Tablet splitting is currently disabled by default for tables with cross cluster replication. It can be enabled using the [`enable_tablet_split_of_xcluster_replicated_tables`](../../../reference/configuration/yb-master/#enable-tablet-split-of-xcluster-replicated-tables) flag on master on both the producer and consumer clusters (as they will perform splits independently of one another). If using this feature after upgrade, the producer and consumer clusters should both be upgraded to 2.14.0+ before enabling the feature.
 * Tablet splitting is currently disabled during bootstrap for tables with cross cluster replication. For details, see [#13170](https://github.com/yugabyte/yugabyte-db/issues/13170).
-* Tablet splitting is currently disabled for tables that are using the [TTL file expiration](../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
+* Tablet splitting is currently disabled for tables that are using the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
 
 To follow the tablet splitting work-in-progress, see [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004).

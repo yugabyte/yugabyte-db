@@ -53,7 +53,8 @@ public class DeleteNode extends NodeTaskBase {
               updatePlacementInfo(clusterNodes, cluster.placementInfo);
 
               // Update userIntent to reflect new numNodes
-              cluster.userIntent.numNodes = universeDetails.nodeDetailsSet.size();
+              cluster.userIntent.numNodes =
+                  (int) universeDetails.getNodesInCluster(cluster.uuid).size();
               universe.setUniverseDetails(universeDetails);
             }
           };

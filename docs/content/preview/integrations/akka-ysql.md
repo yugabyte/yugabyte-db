@@ -37,7 +37,7 @@ The following section illustrates how to run an Akka Persistence R2DBC based app
 
 To use the [Akka Persistence R2DBC plugin](https://doc.akka.io/docs/akka-persistence-r2dbc/current/overview.html), ensure that you have the following:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/).
 - Java Development Kit (JDK) 8, 11 or 17 installed. JDK installers for Linux and macOS can be downloaded from [Oracle](http://jdk.java.net/), [Adoptium (OpenJDK)](https://adoptium.net/), or [Azul Systems (OpenJDK)](https://www.azul.com/downloads/?package=jdk). Homebrew users on macOS can install using `brew install openjdk`.
 - [sbt](https://www.scala-sbt.org/1.x/docs/) is installed.
 
@@ -287,7 +287,7 @@ To write a sample application and customize its configuration, do the following:
 
 ### Create the tables
 
-Create the tables documented in [Creating the schema](https://doc.akka.io/docs/akka-persistence-r2dbc/current/getting-started.html#creating-the-schema) with `ysqlsh`. Note the Yugabyte tab.
+Create the tables documented in [Creating the schema](https://doc.akka.io/docs/akka-persistence-r2dbc/current/getting-started.html#creating-the-schema) with ysqlsh. Note the Yugabyte tab.
 
 ### Run the application
 

@@ -659,8 +659,8 @@ replication_info {
 
 ### PostgreSQL-compatible YSQL API
 
-Connect to the cluster using the YSQL shell (`ysqlsh`) that is installed in the `bin` directory.
-If you want to use `ysqlsh` from a different node, follow the steps on the [ysqlsh](../../../../api/ysqlsh/) page.
+Connect to the cluster using the YSQL shell (ysqlsh) that is installed in the `bin` directory.
+If you want to use ysqlsh from a different node, follow the steps on the [ysqlsh](../../../../api/ysqlsh/) page.
 
 From any node, execute the following command.
 
@@ -696,7 +696,7 @@ Output should be the following:
 
 ### Cassandra-compatible YCQL API
 
-Connect to the cluster using the YCQL shell (`ycqlsh`) that comes installed in the `bin` directory. If you want to use `ycqlsh` from a different node, follow the steps found on the [ycqlsh](../../../../admin/cqlsh/) page.
+Connect to the cluster using the YCQL shell (ycqlsh) that comes installed in the `bin` directory. If you want to use ycqlsh from a different node, follow the steps found on the [ycqlsh](../../../../api/ycqlsh/) page.
 
 From any node, execute the following command.
 

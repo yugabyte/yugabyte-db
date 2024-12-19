@@ -44,7 +44,8 @@ public class YBAError {
     PLATFORM_RESTARTED,
     INSTALLATION_ERROR,
     SERVICE_START_ERROR,
-    CONNECTION_ERROR;
+    CONNECTION_ERROR,
+    TIMED_OUT;
 
     @JsonValue
     public String serialize() {

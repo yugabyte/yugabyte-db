@@ -20,6 +20,8 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/status_fwd.h"
@@ -28,7 +30,7 @@ namespace yb::tablet {
 
 YB_DEFINE_ENUM(RemoveReason,
                (kApplied)(kLargeApplied)(kProcessCleanup)(kStatusReceived)(kAbortReceived)
-               (kShutdown)(kSetDB)(kCleanupAborts)(kNotFound));
+               (kShutdown)(kSetDB)(kCleanupAborts)(kNotFound)(kUnlock));
 
 // Interface to object that should apply intents in RocksDB when transaction is applying.
 class TransactionIntentApplier {
@@ -42,6 +44,12 @@ class TransactionIntentApplier {
       const TransactionIdSet& transactions) = 0;
   virtual Status WritePostApplyMetadata(
       std::span<const PostApplyTransactionMetadata> metadatas) = 0;
+
+  virtual Status RemoveAdvisoryLocks(
+      const TransactionId& transaction_id, rocksdb::DirectWriteHandler* handler) = 0;
+  virtual Status RemoveAdvisoryLock(
+      const TransactionId& transaction_id, const Slice& key,
+      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler* handler) = 0;
 
   virtual HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
 

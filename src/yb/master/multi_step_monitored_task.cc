@@ -61,7 +61,8 @@ void MultiStepMonitoredTask::Complete() {
   // else Task already finished.
 }
 
-server::MonitoredTaskState MultiStepMonitoredTask::AbortAndReturnPrevState(const Status& status) {
+server::MonitoredTaskState MultiStepMonitoredTask::AbortAndReturnPrevState(
+    const Status& status, bool call_task_finisher) {
   DCHECK(!status.ok());
   auto old_state = state();
   if (TrySetState(server::MonitoredTaskState::kAborted)) {
@@ -73,7 +74,6 @@ server::MonitoredTaskState MultiStepMonitoredTask::AbortAndReturnPrevState(const
           MonoDelta::FromSeconds(1));
       std::lock_guard l(step_execution_mutex_);
     }
-
     EndTask(status);
   } else {
     LOG_WITH_PREFIX(WARNING) << this << ": Task already ended. Unable to abort it: " << status;

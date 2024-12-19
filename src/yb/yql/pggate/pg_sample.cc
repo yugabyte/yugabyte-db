@@ -24,6 +24,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/logging.h"
 
 #include "yb/yql/pggate/pg_select_index.h"
 
@@ -32,7 +33,7 @@ DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
 
 namespace yb::pggate {
 
-// Internal class to work as the secondary_index_query_ to select sample tuples.
+// Internal class to work as the secondary index to select sample tuples.
 // Like index, it produces ybctids of random records and outer PgSample fetches them.
 // Unlike index, it does not use a secondary index, but scans main table instead.
 class PgSamplePicker : public PgSelectIndex {
@@ -56,25 +57,6 @@ class PgSamplePicker : public PgSelectIndex {
       reservoir_ready_ = !reservoir_.front().empty();
       return false;
     }
-  }
-
-  Result<const std::vector<Slice>*> FetchYbctidBatch() override {
-    // Check if all ybctids are already returned
-    if (!reservoir_ready_) {
-      return nullptr;
-    }
-    // Prepare target vector
-    ybctids_.clear();
-    // Create pointers to the items in the reservoir
-    for (const auto& ybctid : reservoir_) {
-      if (ybctid.empty()) {
-        // Algorithm fills up the reservoir first. Empty row means there are no more data
-        break;
-      }
-      ybctids_.push_back(ybctid);
-    }
-    reservoir_ready_ = false;
-    return &ybctids_;
   }
 
   EstimatedRowCount GetEstimatedRowCount() const {
@@ -122,6 +104,25 @@ class PgSamplePicker : public PgSelectIndex {
     return Status::OK();
   }
 
+  Result<const std::vector<Slice>*> DoFetchYbctidBatch() override {
+    // Check if all ybctids are already returned
+    if (!reservoir_ready_) {
+      return nullptr;
+    }
+    // Prepare target vector
+    ybctids_.clear();
+    // Create pointers to the items in the reservoir
+    for (const auto& ybctid : reservoir_) {
+      if (ybctid.empty()) {
+        // Algorithm fills up the reservoir first. Empty row means there are no more data
+        break;
+      }
+      ybctids_.push_back(ybctid);
+    }
+    reservoir_ready_ = false;
+    return &ybctids_;
+  }
+
   // The reservoir to keep ybctids of selected sample rows
   std::vector<std::string> reservoir_;
   // If true sampling is completed and ybctids can be collected from the reservoir
@@ -140,9 +141,8 @@ Status PgSample::Prepare(
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
   bind_ = PgTable(nullptr);
 
-  // Setup sample picker as secondary index query
-  secondary_index_query_ = VERIFY_RESULT(PgSamplePicker::Make(
-      pg_session_, table_id, is_region_local, targrows, rand_state, read_time));
+  SetSecondaryIndex(VERIFY_RESULT(PgSamplePicker::Make(
+      pg_session_, table_id, is_region_local, targrows, rand_state, read_time)));
 
   // Prepare read op to fetch rows
   auto read_op = ArenaMakeShared<PgsqlReadOp>(
@@ -162,7 +162,7 @@ Status PgSample::Prepare(
 }
 
 Result<bool> PgSample::SampleNextBlock() {
-  RETURN_NOT_OK(ExecSecondaryIndexOnce());
+  RETURN_NOT_OK(DCHECK_NOTNULL(SecondaryIndex())->Execute());
   return SamplePicker().ProcessNextBlock();
 }
 
@@ -171,8 +171,7 @@ EstimatedRowCount PgSample::GetEstimatedRowCount() {
 }
 
 PgSamplePicker& PgSample::SamplePicker() {
-  DCHECK(secondary_index_query_);
-  return *down_cast<PgSamplePicker*>(secondary_index_query_.get());
+  return *down_cast<PgSamplePicker*>(DCHECK_NOTNULL(SecondaryIndexQuery()));
 }
 
 Result<std::unique_ptr<PgSample>> PgSample::Make(

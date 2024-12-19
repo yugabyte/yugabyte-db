@@ -70,7 +70,8 @@ class TransactionalWriter : public rocksdb::DirectWriter {
       IsolationLevel isolation_level,
       dockv::PartialRangeKeyIntents partial_range_key_intents,
       const Slice& replicated_batches_state,
-      IntraTxnWriteId intra_txn_write_id);
+      IntraTxnWriteId intra_txn_write_id,
+      tablet::TransactionIntentApplier* applier);
 
   Status Apply(rocksdb::DirectWriteHandler* handler) override;
 
@@ -103,6 +104,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   IntraTxnWriteId intra_txn_write_id_;
   IntraTxnWriteId write_id_ = 0;
   const LWTransactionMetadataPB* metadata_to_store_ = nullptr;
+  tablet::TransactionIntentApplier* applier_;
 
   // TODO(dtxn) weak & strong intent in one batch.
   // TODO(dtxn) extract part of code knowing about intents structure to lower level.
@@ -179,9 +181,12 @@ class IntentsWriter : public rocksdb::DirectWriter {
   IntentsWriter(const Slice& start_key,
                 HybridTime file_filter_ht,
                 rocksdb::DB* intents_db,
-                IntentsWriterContext* context);
+                IntentsWriterContext* context,
+                bool ignore_metadata = false,
+                const Slice& key_to_apply = Slice());
 
   Status Apply(rocksdb::DirectWriteHandler* handler) override;
+  bool key_applied() { return key_applied_; }
 
  private:
   Slice start_key_;
@@ -190,6 +195,14 @@ class IntentsWriter : public rocksdb::DirectWriter {
   dockv::KeyBytes txn_reverse_index_prefix_;
   Slice reverse_index_upperbound_;
   BoundedRocksDbIterator reverse_index_iter_;
+
+  // For removing advisory locks only.
+  // If true, don't remove txn metadata entry, for unlock all operation.
+  bool ignore_metadata_;
+  // If not empty, only remove entry with this key, for unlock a specific lock.
+  Slice key_to_apply_;
+  // If the lock specified by key_to_apply_ has been applied.
+  bool key_applied_ = false;
 };
 
 class FrontierSchemaVersionUpdater {
@@ -295,10 +308,10 @@ class RemoveIntentsContext : public IntentsWriterContext {
 //   But if apply_external_transactions contains transaction for those external intents, then
 //   those intents will be applied directly to regular DB, avoiding unnecessary write to intents DB.
 //   This case is very common for short running transactions.
-class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
-                                   public FrontierSchemaVersionUpdater {
+class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
+                                    public FrontierSchemaVersionUpdater {
  public:
-  ExternalIntentsBatchWriter(
+  NonTransactionalBatchWriter(
       std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
       HybridTime batch_hybrid_time, rocksdb::DB* intents_db,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider* schema_packing_provider);
@@ -314,7 +327,7 @@ class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
 
   // Adds external pair to write batch.
   // Returns true if add was skipped because pair is a regular (non external) record.
-  Result<bool> AddExternalPairToWriteBatch(
+  Result<bool> AddEntryToWriteBatch(
       const yb::docdb::LWKeyValuePairPB& kv_pair,
       ExternalTxnApplyState* apply_external_transactions,
       rocksdb::DirectWriteHandler* regular_write_handler, IntraTxnWriteId* write_id);

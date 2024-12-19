@@ -234,7 +234,7 @@ Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
   auto all_table_names
       = VERIFY_RESULT(client_future_.get()->ListTables("" /* filter */, false /* exclude_ysql */,
                                                        "" /* ysql_db_filter */,
-                                                       true /* skip_hidden */));
+                                                       client::SkipHidden::kTrue));
   for (auto& table_name : all_table_names) {
     if (table_id_to_mutations_maps.contains(table_name.table_id())) {
       table_id_to_name_[table_name.table_id()] = table_name;

@@ -129,9 +129,8 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		rel = table_openrv(stmt->relation, lockmode);
 
 		if (rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP &&
-				IsYugaByteEnabled()) {
+			IsYugaByteEnabled())
 			SetTxnWithPGRel();
-		}
 
 		relid = RelationGetRelid(rel);
 

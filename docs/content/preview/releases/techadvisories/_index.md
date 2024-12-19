@@ -19,6 +19,12 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 24992>}}
+|Partial Streaming Stall After Tablet Split
+| [YugabyteDB gRPC (Debezium) Connector](https://docs.yugabyte.com/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
+| [dz.1.9.5.yb.grpc.2024.1](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2024.1)
+| {{<nobreak "3 December 2024">}}
+|
 | {{<ta 23476>}}
 |YCQL Timestamp Precision (Millis vs Micros)
 | {{<product "ycql">}}

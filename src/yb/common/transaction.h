@@ -49,6 +49,7 @@ YB_STRONGLY_TYPED_UUID_DECL(TransactionId);
 using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 using TransactionIdApplyOpIdMap = std::unordered_map<TransactionId, OpId, TransactionIdHash>;
 using SubTransactionId = uint32_t;
+using TxnReuseVersion = uint64_t;
 
 // By default, postgres SubTransactionId's propagated to DocDB start at 1, so we use this as a
 // minimum value on the DocDB side as well. All intents written without an explicit SubTransactionId

@@ -119,6 +119,7 @@ public enum PlatformMetrics {
   // XCluster
   XCLUSTER_METRIC_PROCESSOR_STATUS("xCluster metrics processor status", Unit.STATUS),
   XCLUSTER_TABLE_STATUS("XCluster table status", Unit.STATUS);
+
   private final String help;
   private final Unit unit;
   private final Set<MetricSourceState> validForSourceStates;

@@ -6,7 +6,7 @@ menu:
   preview:
     identifier: advanced-features-views
     parent: advanced-features
-    weight: 230
+    weight: 800
 aliases:
   - /preview/explore/ysql-language-features/views/
 type: docs

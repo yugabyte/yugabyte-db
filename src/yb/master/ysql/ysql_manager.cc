@@ -29,10 +29,10 @@ DEFINE_RUNTIME_bool(master_auto_run_initdb, false,
 
 DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 1,
                           "Number of advisory lock tablets. Must be set "
-                          "before yb_enable_advisory_lock is set to true");
+                          "before ysql_yb_enable_advisory_locks is set to true");
 DEFINE_validator(num_advisory_locks_tablets, FLAG_GT_VALUE_VALIDATOR(0));
 
-DECLARE_bool(yb_enable_advisory_lock);
+DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb::master {
 
@@ -173,7 +173,7 @@ Status YsqlManager::RollbackYsqlMajorCatalogVersion(
 }
 
 Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch) {
-  if (advisory_locks_table_created_ || !FLAGS_enable_ysql || !FLAGS_yb_enable_advisory_lock) {
+  if (advisory_locks_table_created_ || !FLAGS_enable_ysql || !FLAGS_ysql_yb_enable_advisory_locks) {
     return Status::OK();
   }
 

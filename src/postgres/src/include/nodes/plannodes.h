@@ -367,8 +367,6 @@ typedef struct ModifyTable
 	List	   *ybReturningColumns;	/* columns to fetch from DocDB */
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
-	bool 		ybUseScanTupleInUpdate; /* use old scan tuple in UPDATE to construct the new tuple */
-	bool		ybHasWholeRowAttribute; /* whether subplan tlist contains wholerow junk attribute */
 
 	/*
 	 * A collection of entities that are impacted by the ModifyTable query, and

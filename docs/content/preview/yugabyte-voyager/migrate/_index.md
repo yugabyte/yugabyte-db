@@ -2,7 +2,6 @@
 title: Steps to perform a successful migration to YugabyteDB.
 headerTitle: Migrate
 linkTitle: Migrate
-image: /images/section_icons/index/quick_start.png
 headcontent: Perform offline or live migration with YugabyteDB Voyager
 description: Learn about offline, live, and live migration with fall-foward option to migrate your source database to your target YugabyteDB.
 type: indexpage

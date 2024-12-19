@@ -93,7 +93,7 @@ $body$;
 
 The only goal of this code is pedagogy. Notice these semantic features:
 
-- Blocks are nested. For example, _b2_ is declared within the executable section of _b1_; and _b1_ is declared within the executable section of _b0_; 
+- Blocks are nested. For example, _b2_ is declared within the executable section of _b1_; and _b1_ is declared within the executable section of _b0_;
 
 - All the local variables are decorated with the keywords _not null_ and _constant_ and are given initial values, as they must be, as part of the declaration.
 
@@ -118,15 +118,15 @@ This is the output:
  in <<b0>>
            x:   f.x
            a:   b0.a
- 
+
  in <<b1>>
            x:   b1.x
            a:   b0.a
- 
+
  in <<b2>>
            x:   b2.x
            f.x: f.x
- 
+
  in <<b3>>
            x:   f.x
 ```
@@ -143,15 +143,15 @@ This is the output:
  in <<b0>>
            x:   f.bad
            a:   b0.a
- 
+
  in <<b1>>
            x:   b1.x
            a:   b0.a
- 
+
  in <<b2>>
            x:   b2.x
            f.x: f.bad
- 
+
  in <<b3>>
            x:   f.bad
  -----

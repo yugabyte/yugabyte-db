@@ -123,7 +123,7 @@ class PickLeaderReplica : public TSPicker {
 // A background task which continuously retries sending an RPC to a master or tserver.
 class RetryingRpcTask : public server::RunnableMonitoredTask {
  public:
-  RetryingRpcTask(Master *master,
+  RetryingRpcTask(Master* master,
                   ThreadPool* callback_pool,
                   AsyncTaskThrottlerBase* async_task_throttler);
 
@@ -134,7 +134,8 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
-  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override;
+  server::MonitoredTaskState AbortAndReturnPrevState(
+      const Status& status, bool call_task_finisher = true) override;
 
  protected:
   // Send an RPC request and register a callback.

@@ -982,7 +982,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   RETURN_NOT_OK_PREPEND(create_result, "Couldn't create tablet metadata")
   RaftGroupMetadataPtr meta = std::move(*create_result);
   LOG(INFO) << TabletLogPrefix(tablet_id)
-            << "Created tablet metadata for table: " << table_info->table_id;
+            << "Created tablet metadata for table: " << table_info->table_id << ", key bounds: " <<
+            meta->MakeKeyBounds().ToString();
 
   // We must persist the consensus metadata to disk before starting a new
   // tablet's TabletPeer and Consensus implementation.
@@ -1229,8 +1230,8 @@ Status TSTabletManager::ApplyTabletSplit(
     tcmeta.raft_group_metadata = VERIFY_RESULT(tablet->CreateSubtablet(
         new_tablet_id, tcmeta.partition, tcmeta.key_bounds, split_op_id,
         operation->hybrid_time()));
-    LOG_WITH_PREFIX(INFO) << "Created raft group metadata for table: " << table_id
-                          << " tablet: " << new_tablet_id;
+    LOG(INFO) << TabletLogPrefix(new_tablet_id) << "Created raft group metadata for table: "
+              << table_id << ", key bounds: " << tcmeta.key_bounds.ToString();
 
     // Store consensus metadata.
     // Here we reuse the same cmeta instance for both new tablets. This is safe, because:

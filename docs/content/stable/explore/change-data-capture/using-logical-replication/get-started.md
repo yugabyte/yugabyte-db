@@ -14,7 +14,7 @@ type: docs
 
 To get started streaming data change events from a YugabyteDB database using a replication slot, you can use either of the following client options:
 
-- [pg_recvlogical](#get-started-with-pg_recvlogical)
+- [pg_recvlogical](#get-started-with-pg-recvlogical)
 - [YugabyteDB connector](#get-started-with-yugabytedb-connector)
 
 {{< note title="Note" >}}
@@ -173,7 +173,7 @@ To start the services needed for this tutorial, you must:
 
 - [Start Zookeeper](#start-zookeeper)
 - [Start Kafka](#start-kafka)
-- [Start a YugabyteDB database](#start-yugabytedb)
+- [Start YugabyteDB](#start-yugabytedb)
 - [Start Kafka Connect](#start-kafka-connect)
 
 #### Start Zookeeper
@@ -206,7 +206,7 @@ In this tutorial, you will always connect to Kafka from in a Docker container. A
 
 At this point, you have started Zookeeper and Kafka, but you still need a database server from which Debezium can capture changes. In this procedure, you start a YugabyteDB instance with an example database. The example uses sample data in SQL scripts that are included with your YugabyteDB installation in the `share` directory.
 
-Follow the [Quick Start](../../../../quick-start) to start an instance using yugabyted.
+Follow the [Quick Start](/preview/tutorials/quick-start) to start an instance using yugabyted.
 
 {{< note title="Note" >}}
 
@@ -233,13 +233,13 @@ After starting YugabyteDB, use ysqlsh to create your database:
     You should see output similar to the following:
 
     ```output
-    ysqlsh (11.2-YB-2.21.1.0-b0)
+    ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
     Type "help" for help.
 
     yugabyte=#
     ```
 
-1. Load the schema of the sample tables:
+1. Load the schema of the sample tables.
 
     ```sql
     yugabyte=# \i share/schema.sql
@@ -331,7 +331,7 @@ After starting the Debezium and YugabyteDB service, you are ready to deploy the 
 - [Register the YugabyteDB connector to monitor the `yugabyte` database](#register-a-connector-to-monitor-yugabyte-database)
 - Watch the connector start
 
-#### Register a connector to monitor `yugabyte` database
+#### Register a connector to monitor yugabyte database
 
 By registering the YugabyteDB connector, the connector will start monitoring the YugabyteDB database's table `products`. When a row in the table changes, Debezium generates a change event.
 

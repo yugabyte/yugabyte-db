@@ -12,8 +12,11 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -25,7 +28,10 @@ public class UpdateUniverseIntent extends UniverseTaskBase {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends UniverseDefinitionTaskParams {}
+  public static class Params extends UniverseDefinitionTaskParams {
+    public boolean updatePlacementInfo = false;
+    public List<NodeDetails> clusterNodeDetails;
+  }
 
   protected Params taskParams() {
     return (Params) taskParams;
@@ -53,6 +59,20 @@ public class UpdateUniverseIntent extends UniverseTaskBase {
               throw new RuntimeException(msg);
             }
             UniverseDefinitionTaskParams.Cluster cluster = taskParams().clusters.get(0);
+
+            if (taskParams().updatePlacementInfo) {
+              List<NodeDetails> clusterNodeDetails = taskParams().clusterNodeDetails;
+              PlacementInfoUtil.updatePlacementInfo(clusterNodeDetails, cluster.placementInfo);
+
+              cluster.userIntent.numNodes = clusterNodeDetails.size();
+              log.info(
+                  "Setting taskParams cluster placement info to {} and numNodes to {} for universe"
+                      + " {} cluster {}",
+                  cluster.placementInfo.toString(),
+                  cluster.userIntent.numNodes,
+                  taskParams().getUniverseUUID(),
+                  cluster.uuid);
+            }
             universe
                 .getUniverseDetails()
                 .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);

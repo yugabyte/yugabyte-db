@@ -69,7 +69,7 @@ yb-voyager import schema --export-dir /dir/export-dir \
         --target-db-schema target_schema
 ```
 
-Example of [post-import data](../../../migrate/migrate-steps/#import-indexes-and-triggers) phase is as follows:
+Example of [post-import data](../../../migrate/migrate-steps/#refresh-materialized-views) phase is as follows:
 
 ```sh
 

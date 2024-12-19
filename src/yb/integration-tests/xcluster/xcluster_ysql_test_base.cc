@@ -18,6 +18,7 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
@@ -45,6 +46,7 @@ DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(replication_factor);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
+DECLARE_bool(cdc_enable_implicit_checkpointing);
 
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
 DECLARE_bool(TEST_use_custom_varz);
@@ -94,6 +96,9 @@ void XClusterYsqlTestBase::InitFlags(const MiniClusterOptions& opts) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
+
+  // Init CDC flags.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_implicit_checkpointing) = true;
 }
 
 Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
@@ -352,6 +357,23 @@ Result<master::SysClusterConfigEntryPB> XClusterYsqlTestBase::GetClusterConfig(C
   return resp.cluster_config();
 }
 
+Result<std::pair<NamespaceId, NamespaceId>> XClusterYsqlTestBase::CreateDatabaseOnBothClusters(
+    const NamespaceName& db_name) {
+  RETURN_NOT_OK(RunOnBothClusters([this, &db_name](Cluster* cluster) -> Status {
+    RETURN_NOT_OK(CreateDatabase(cluster, db_name));
+    auto table_name = VERIFY_RESULT(CreateYsqlTable(
+        cluster, db_name, "" /* schema_name */, "initial_table",
+        /*tablegroup_name=*/boost::none, /*num_tablets=*/1));
+    std::shared_ptr<client::YBTable> table;
+    RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
+    cluster->tables_.emplace_back(std::move(table));
+    return Status::OK();
+  }));
+  return std::make_pair(
+      VERIFY_RESULT(GetNamespaceId(producer_client(), db_name)),
+      VERIFY_RESULT(GetNamespaceId(consumer_client(), db_name)));
+}
+
 Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
     Cluster* cluster,
     const std::string& namespace_name,
@@ -403,7 +425,7 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
     }
   }
   return STATUS(
-      IllegalState,
+      NotFound,
       strings::Substitute("Unable to find table $0 in namespace $1", table_name, namespace_name));
 }
 
@@ -1023,6 +1045,43 @@ Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
                     .CreateXClusterReplicationFromCheckpoint(replication_group_id, master_addr));
 
   return WaitForCreateReplicationToFinish(master_addr, namespace_names);
+}
+
+Status XClusterYsqlTestBase::VerifyDDLExtensionTablesCreation(
+    const NamespaceName& db_name, bool only_source) {
+  return RunOnBothClusters([&](Cluster* cluster) -> Status {
+    if (cluster == &consumer_cluster_ && only_source) {
+      return Status::OK();
+    }
+    for (const auto& table_name :
+         {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+      auto yb_table_name = VERIFY_RESULT(
+          GetYsqlTable(cluster, db_name, xcluster::kDDLQueuePgSchemaName, table_name));
+      std::shared_ptr<client::YBTable> table;
+      RETURN_NOT_OK(cluster->client_->OpenTable(yb_table_name, &table));
+      SCHECK_EQ(table->GetPartitionCount(), 1, IllegalState, "Expected 1 tablet");
+    }
+    return Status::OK();
+  });
+}
+
+Status XClusterYsqlTestBase::VerifyDDLExtensionTablesDeletion(
+    const NamespaceName& db_name, bool only_source) {
+  return RunOnBothClusters([&](Cluster* cluster) -> Status {
+    if (cluster == &consumer_cluster_ && only_source) {
+      return Status::OK();
+    }
+    for (const auto& table_name :
+         {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+      auto yb_table_name_result =
+          GetYsqlTable(cluster, db_name, xcluster::kDDLQueuePgSchemaName, table_name);
+      SCHECK(!yb_table_name_result.ok(), IllegalState, "Table $0 should not exist", table_name);
+      SCHECK(
+          yb_table_name_result.status().IsNotFound(), IllegalState, "Table $0 should not exist: $1",
+          table_name, yb_table_name_result.status());
+    }
+    return Status::OK();
+  });
 }
 
 }  // namespace yb

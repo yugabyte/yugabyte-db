@@ -19,7 +19,7 @@ First, enable the extension:
 CREATE EXTENSION "hll";
 ```
 
-To run the helloworld example from the [postgresql-hll](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres/third-party-extensions/postgresql-hll#usage) repository, connect using `ysqlsh` and run the following:
+To run the helloworld example from the [postgresql-hll](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres/third-party-extensions/postgresql-hll#usage) repository, connect using ysqlsh and run the following:
 
 ```sql
 CREATE TABLE helloworld (id integer, set hll);

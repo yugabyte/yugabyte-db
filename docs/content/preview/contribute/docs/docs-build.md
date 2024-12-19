@@ -17,31 +17,36 @@ To run the docs site locally and edit the docs, you'll need:
 
 * **A text editor**, such as [Visual Studio Code](https://code.visualstudio.com).
 
-* **Command-line tools for Xcode** on macOS.
-
-    ```sh
-    $ xcode-select --install
-    ```
-
-    Xcode is many gigabytes. Install the command-line tools unless you actually need the full Xcode.
-
 * [**Node.js**](https://nodejs.org/en/download/) LTS (20) using [NVM](https://github.com/nvm-sh/nvm?tab=readme-ov-file#install--update-script) : `nvm install 20.15.1`
-
-  <!-- * Using Homebrew: `brew install node@16` -->
-
-* [**Homebrew**](https://brew.sh) on macOS or Linux.
-
-* **Hugo**: `brew install hugo` installs the latest version.
-
-* **Go**: `brew install go` installs the latest version.
-
-* **Python** (version 3.10 or earlier): You need `python` to be available somewhere in your shell path.
-
-    Recent versions of macOS have only a `python3` executable, as does the Homebrew install. You can use [pyenv](https://github.com/pyenv/pyenv) to manage multiple versions of python on your system. Make sure to point to Python version 3.10 or earlier.
 
 * **A GitHub account**.
 
-* **Git client**: The system Git binary is out of date, but works. If you like, you can use Homebrew to get a newer version (`brew install git`).
+In addition to the above, there are tools you'll need to install, and the steps vary depending on your machine. 
+
+<ul class="nav nav-tabs nav-tabs-yb">
+    <li >
+    <a href="#macos" class="nav-link active" id="macos-tab" data-bs-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="#ubuntu" class="nav-link" id="ubuntu-tab" data-bs-toggle="tab" role="tab" aria-controls="ubuntu" aria-selected="true">
+      <i class="fa-brands fa-ubuntu" aria-hidden="true"></i>
+      Ubuntu
+    </a>
+  </li>
+
+</ul>
+
+<div class="tab-content">
+  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
+{{% readfile "./macos.md" %}}
+  </div>
+  <div id="ubuntu" class="tab-pane fade" role="tabpanel" aria-labelledby="ubuntu-tab">
+{{% readfile "./ubuntu.md" %}}
+  </div>
+</div>
 
 ## Configure Hugo
 

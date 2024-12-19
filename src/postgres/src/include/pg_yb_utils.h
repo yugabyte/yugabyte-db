@@ -446,16 +446,7 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
 /*
  * Return whether to use wholerow junk attribute for YB relations.
  */
-extern bool YbUseWholeRowJunkAttribute(Relation relation,
-									   Bitmapset *updatedCols,
-									   CmdType operation,
-									   List *returningList);
-
-/*
- * Return whether to use scanned "old" tuple to reconstruct the new tuple during
- * UPDATE operations for YB relations. See function definition for details.
- */
-extern bool YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols, List *returningList);
+extern bool YbWholeRowAttrRequired(Relation relation, CmdType operation);
 
 /*
  * Return whether the returning list for an UPDATE statement is a subset of the columns being
@@ -641,6 +632,12 @@ extern bool yb_test_system_catalogs_creation;
  */
 extern bool yb_test_fail_next_ddl;
 
+/*
+ * If set to true,the next DDL will update the catalog in force mode which
+ * allows it to operate even during ysql major catalog upgrades.
+ */
+extern bool yb_force_catalog_update_on_next_ddl;
+
 /* If set to true, all drop commands will fail. */
 extern bool yb_test_fail_all_drops;
 
@@ -710,6 +707,11 @@ extern bool yb_use_hash_splitting_by_default;
  * when no key columns are modified.
  */
 extern bool yb_enable_inplace_index_update;
+
+/*
+ * Enable the advisory lock feature.
+ */
+extern bool yb_enable_advisory_locks;
 
 typedef struct YBUpdateOptimizationOptions
 {
@@ -999,7 +1001,7 @@ extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
 extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
 												GucSource source);
 extern void assign_yb_xcluster_consistency_level(const char *newval,
-												 void		*extra);
+												 void *extra);
 
 /*
  * Updates the session stats snapshot with the collected stats and copies the
@@ -1117,18 +1119,18 @@ OptSplit *YbGetSplitOptions(Relation rel);
 		YBCStatus _status = (status); \
 		if (_status) \
 		{ \
-			const int 		adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
-			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
-			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
-			const char	   *filename = YBCStatusFilename(_status); \
-			int				lineno = YBCStatusLineNumber(_status); \
-			const char	   *funcname = YBCStatusFuncname(_status); \
-			const char	   *msg_buf = NULL; \
-			const char	   *detail_buf = NULL; \
-			size_t		    msg_nargs = 0; \
-			size_t		    detail_nargs = 0; \
-			const char	  **msg_args = NULL; \
-			const char	  **detail_args = NULL; \
+			const int adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
+			const uint32_t pg_err_code = YBCStatusPgsqlError(_status); \
+			const uint16_t txn_err_code = YBCStatusTransactionError(_status); \
+			const char *filename = YBCStatusFilename(_status); \
+			int lineno = YBCStatusLineNumber(_status); \
+			const char *funcname = YBCStatusFuncname(_status); \
+			const char *msg_buf = NULL; \
+			const char *detail_buf = NULL; \
+			size_t msg_nargs = 0; \
+			size_t detail_nargs = 0; \
+			const char **msg_args = NULL; \
+			const char **detail_args = NULL; \
 			GetStatusMsgAndArgumentsByCode(pg_err_code, txn_err_code, _status, \
 										   &msg_buf, &msg_nargs, &msg_args, \
 										   &detail_buf, &detail_nargs, \

@@ -366,7 +366,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.PauseUniverse,
           TaskType.ResumeUniverse,
           TaskType.PauseXClusterUniverses,
-          TaskType.ResumeXClusterUniverses);
+          TaskType.ResumeXClusterUniverses,
+          TaskType.DecommissionNode);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   // This mapping blocks/allows actions on the UI done by a mapping defined in
@@ -1326,6 +1327,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdaterConfig updaterConfig =
         UniverseUpdaterConfig.builder()
             .expectedUniverseVersion(expectedUniverseVersion)
+            .checkSuccess(true)
             .ignoreAbsence(true)
             .build();
     return lockUniverseForUpdate(universeUuid, getLockingUniverseUpdater(updaterConfig));

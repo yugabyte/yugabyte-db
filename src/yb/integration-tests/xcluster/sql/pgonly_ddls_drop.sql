@@ -24,8 +24,8 @@ DROP OPERATOR IF EXISTS === (INTEGER, INTEGER);
 
 -- Drop OPERATOR CLASS
 -- Drop the comparison function
+DROP OPERATOR CLASS IF EXISTS text_length_ops USING btree;
 DROP FUNCTION IF EXISTS text_length_cmp(text, text);
-DROP OPERATOR CLASS IF EXISTS text_length_ops FOR TYPE text USING btree;
 
 -- Drop OPERATOR FAMILY
 DROP OPERATOR FAMILY IF EXISTS int_fam USING btree;
@@ -61,17 +61,17 @@ DROP TABLE IF EXISTS employees;
 
 -------------- Foreign Objects---------------------------
 
--- DROP Foreign Data Wrapper
-DROP FOREIGN DATA WRAPPER postgres_fdw;
-
--- DROP Foreign Server (The server does not need to exist unless we want to query it)
-DROP SERVER foreign_server;
+-- DROP User Mapping for current user
+DROP USER MAPPING FOR current_user SERVER foreign_server;
 
 -- DROP Foreign table
 DROP FOREIGN TABLE foreign_table_name;
 
--- DROP User Mapping for current user
-DROP USER MAPPING FOR current_user SERVER foreign_server;
+-- DROP Foreign Server
+DROP SERVER foreign_server;
+
+-- DROP Foreign Data Wrapper
+DROP FOREIGN DATA WRAPPER postgres_fdw;
 
 --------------Text Search DDLs --------------------------
 DROP TEXT SEARCH CONFIGURATION simple_config;

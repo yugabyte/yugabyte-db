@@ -139,6 +139,8 @@ class WriteQuery {
   Result<bool> PrepareExecute();
   Status DoExecute();
 
+  Status ExecuteUnlock();
+
   void NonTransactionalConflictsResolved(HybridTime now, HybridTime result);
 
   void TransactionalConflictsResolved();
@@ -154,11 +156,13 @@ class WriteQuery {
   Result<bool> CqlRePrepareExecuteIfNecessary();
   Result<bool> CqlPrepareExecute();
   Result<bool> PgsqlPrepareExecute();
+  Result<bool> PgsqlPrepareLock();
 
   void SimpleExecuteDone(const Status& status);
   void RedisExecuteDone(const Status& status);
   void CqlExecuteDone(const Status& status);
   void PgsqlExecuteDone(const Status& status);
+  void PgsqlLockExecuteDone(const Status& status);
 
   using IndexOps = std::vector<std::pair<
       std::shared_ptr<client::YBqlWriteOp>, docdb::QLWriteOperation*>>;

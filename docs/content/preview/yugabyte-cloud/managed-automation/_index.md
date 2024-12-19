@@ -3,7 +3,6 @@ title: Automation in YugabyteDB Aeon
 headerTitle: Automation
 linkTitle: Automation
 description: Automation tools for YugabyteDB Aeon.
-image: /images/section_icons/explore/administer.png
 headcontent: Manage YugabyteDB Aeon accounts and clusters using automation
 menu:
   preview_yugabyte-cloud:

@@ -63,7 +63,7 @@ The following libraries are officially supported by YugabyteDB.
 | :--------- | :------------ | :----------- |
 | [PostgreSQL](nodejs/postgres-node-driver/) | Full | [CRUD Example](nodejs/postgres-node-driver/) |
 | [Sequelize](nodejs/sequelize/) | Full | [CRUD Example](nodejs/sequelize/) |
-| [Prisma](nodejs/prisma/) | Full | [CRUD Example](nodejs/prisma/)
+| [Prisma](nodejs/prisma/) | Full | [CRUD Example](nodejs/prisma/) |
 <!-- | TypeORM | Full |   | -->
 
 <!-- ### App Framework Support

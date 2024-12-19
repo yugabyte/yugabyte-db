@@ -29,6 +29,8 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/docdb/lock_batch.h"
+#include "yb/docdb/lock_manager_traits.h"
+#include "yb/docdb/lock_util.h"
 
 #include "yb/dockv/intent.h"
 
@@ -55,38 +57,6 @@ const size_t kIntentTypeBits = 16;
 // result in the LockState tracking only the count for intent type represented by the region of bits
 // that is the "first" or "least significant", as in furthest to the right.
 const LockState kFirstIntentTypeMask = (static_cast<LockState>(1) << kIntentTypeBits) - 1;
-
-// Interface exposing necessary methods that are useful when the lock manager needs to track
-// acquired/released/waiting locks. It is used in the following ways:
-// 1. LockedBatchEntry takes an instance of this interface as input for its Lock/Unlock methods
-//    and calls the relevant instrumentation functions wherever necessary.
-// 2. LockManagerImpl implements this interface but doesn't provide method implementations.
-// 3. SharedLockmanager::Impl inherits LockManagerImpl and provides empty method implementations
-//    as it doesn't instrument/store locks.
-// 4. ObjectLockManager::Impl (which instruments locking activity) inherits LockManagerImpl and
-//    provides custom implementations of the interface methods.
-template <typename T>
-class LockTracker {
- public:
-  virtual ~LockTracker() = default;
-
-  virtual void Acquiredlock(const LockBatchEntry<T>& lock_entry,
-                            const SessionIDHostPair* session_id_pair) = 0;
-
-  virtual void ReleasedLock(const LockBatchEntry<T>& lock_entry,
-                            const SessionIDHostPair* session_id_pair) = 0;
-
-  virtual void WaitingOnLock(const LockBatchEntry<T>& lock_entry,
-                             const SessionIDHostPair* session_id_pair) = 0;
-
-  virtual void FinishedWaitingOnLock(const LockBatchEntry<T>& lock_entry,
-                                     const SessionIDHostPair* session_id_pair) = 0;
-
-  virtual LockState GetLockStateForKeyUnlocked(
-      const SessionIDHostPair& session_id_pair, const T& key) = 0;
-
-  virtual void DumpStoredObjectLocksUnlocked(std::ostream& out) = 0;
-};
 
 bool IntentTypesConflict(dockv::IntentType lhs, dockv::IntentType rhs) {
   auto lhs_value = to_underlying(lhs);
@@ -168,13 +138,15 @@ bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs) {
   return false;
 }
 
-template <typename T>
-LockState IntentTypeSetAdd(const LockBatchEntry<T>& lock_entry) {
+namespace {
+
+template <typename LockManager>
+LockState IntentTypeSetAdd(const LockBatchEntry<LockManager>& lock_entry) {
   return kIntentTypeSetAdd[lock_entry.intent_types.ToUIntPtr()];
 }
 
-template <typename T>
-LockState IntentTypeSetConflict(const LockBatchEntry<T>& lock_entry) {
+template <typename LockManager>
+LockState IntentTypeSetConflict(const LockBatchEntry<LockManager>& lock_entry) {
   return kIntentTypeSetConflicts[lock_entry.intent_types.ToUIntPtr()];
 }
 
@@ -194,30 +166,32 @@ std::string LockStateDebugString(const LockState& state) {
 
 void OutLockTableHeader(std::ostream& out) {
   out << "<tr>"
-        << "<th>Session Id</th>"
-        << "<th>Session Host UUID</th>"
+        << "<th>Lock Owner</th>"
         << "<th>Object Id</th>"
         << "<th>Num Holders</th>"
       << "</tr>" << std::endl;
 }
 
-template <typename T>
-void OutLockTableRow(std::ostream& out, const TrackedLockEntry<T>& lock) {
-  out << "<tr>"
-        << "<td>" << lock.key.session_id_pair.first << "</td>"
-        << "<td>" << lock.key.session_id_pair.second << "</td>"
-        << "<td>" << AsString(lock.key.object_id) << "</td>"
-        << "<td>" << LockStateDebugString(lock.state) << "</td>"
-      << "</tr>";
-}
+} // namespace
 
-template <typename T>
+template<>
+struct LockManagerInternalTraits<SharedLockManager> {
+  using LockTracker = SharedLockManager::Impl;
+};
+
+template<>
+struct LockManagerInternalTraits<ObjectLockManager> {
+  using LockTracker = ObjectLockManager::Impl;
+};
+
+template <typename LockManager>
 struct LockedBatchEntry {
-  explicit LockedBatchEntry(LockTracker<T>* tracker_) : tracker(tracker_) {}
+  using LockTracker = LockManagerInternalTraits<LockManager>::LockTracker;
+
+  explicit LockedBatchEntry(LockTracker* tracker_) : tracker(tracker_) {}
 
   // Taken only for short duration, with no blocking wait.
   mutable std::mutex mutex;
-
   std::condition_variable cond_var;
 
   // Refcounting for garbage collection. Can only be used while the global mutex is locked.
@@ -229,16 +203,17 @@ struct LockedBatchEntry {
 
   std::atomic<size_t> num_waiters{0};
 
-  // Pointer pointing back to the caller of Lock/Unlock, LockManagerImpl<T> in this case.
+  // Pointer pointing back to the caller of Lock/Unlock, LockManagerImpl<LockManager> in this case.
   // The tracker instruments the locking activity based on whether tracking is enabled or not. When
   // tracking is disabled, the call is a no-op.
-  LockTracker<T>* tracker;
+  LockTracker* tracker;
 
   MUST_USE_RESULT bool Lock(
-      const LockBatchEntry<T>& lock_entry, CoarseTimePoint deadline,
-      const SessionIDHostPair* session_id_pair);
+      const LockBatchEntry<LockManager>& lock_entry, CoarseTimePoint deadline,
+      const ObjectLockOwner* object_lock_owner);
 
-  void Unlock(const LockBatchEntry<T>& lock_entry, const SessionIDHostPair* session_id_pair);
+  void Unlock(const LockBatchEntry<LockManager>& lock_entry,
+              const ObjectLockOwner* object_lock_owner);
 
   void DoUnlock(
       LockState sub, const dockv::IntentTypeSet* intent_types = nullptr);
@@ -251,10 +226,10 @@ struct LockedBatchEntry {
   }
 };
 
-template <typename T>
-bool LockedBatchEntry<T>::Lock(
-    const LockBatchEntry<T>& lock_entry, CoarseTimePoint deadline,
-    const SessionIDHostPair* session_id_pair) {
+template <typename LockManager>
+bool LockedBatchEntry<LockManager>::Lock(
+    const LockBatchEntry<LockManager>& lock_entry, CoarseTimePoint deadline,
+    const ObjectLockOwner* object_lock_owner) {
   auto& num_holding = this->num_holding;
   auto old_value = num_holding.load(std::memory_order_acquire);
   auto add = IntentTypeSetAdd(lock_entry);
@@ -262,20 +237,20 @@ bool LockedBatchEntry<T>::Lock(
   for (;;) {
     // Note: For a read/write trying to acquire the shared in-memory locks at the source tablet,
     // lock.existing_state is always 0. 'existing_state' is only relevant in the context of
-    // table/object locks, i.e when T == ObjectLockPrefix, where a session ignores conflicts with
-    // itself when requesting locks on an object.
+    // table/object locks, i.e when LockManager == ObjectLockManager, where a transaction ignores
+    // conflicts with itself when requesting locks on an object.
     if (((old_value ^ lock_entry.existing_state) & conflicting_lock_state) == 0) {
       auto new_value = old_value + add;
       if (num_holding.compare_exchange_weak(old_value, new_value, std::memory_order_acq_rel)) {
-        tracker->Acquiredlock(lock_entry, session_id_pair);
+        tracker->Acquiredlock(lock_entry, object_lock_owner);
         return true;
       }
       continue;
     }
-    tracker->WaitingOnLock(lock_entry, session_id_pair);
+    tracker->WaitingOnLock(lock_entry, object_lock_owner);
     num_waiters.fetch_add(1, std::memory_order_release);
-    auto se = ScopeExit([this, &lock_entry, session_id_pair] {
-      tracker->FinishedWaitingOnLock(lock_entry, session_id_pair);
+    auto se = ScopeExit([this, &lock_entry, object_lock_owner] {
+      tracker->FinishedWaitingOnLock(lock_entry, object_lock_owner);
       num_waiters.fetch_sub(1, std::memory_order_release);
     });
     std::unique_lock<std::mutex> lock(mutex);
@@ -306,16 +281,16 @@ bool LockedBatchEntry<T>::Lock(
   }
 }
 
-template <typename T>
-void LockedBatchEntry<T>::Unlock(
-    const LockBatchEntry<T>& lock_entry, const SessionIDHostPair* session_id_pair) {
-  tracker->ReleasedLock(lock_entry, session_id_pair);
+template <typename LockManager>
+void LockedBatchEntry<LockManager>::Unlock(
+    const LockBatchEntry<LockManager>& lock_entry, const ObjectLockOwner* object_lock_owner) {
+  tracker->ReleasedLock(lock_entry, object_lock_owner);
 
   DoUnlock(IntentTypeSetAdd(lock_entry), &lock_entry.intent_types);
 }
 
-template <typename T>
-void LockedBatchEntry<T>::DoUnlock(
+template <typename LockManager>
+void LockedBatchEntry<LockManager>::DoUnlock(
     LockState sub, const dockv::IntentTypeSet* intent_types) {
   // Have to emulate fetch_sub here, because GCC 5.5 don't have it for int128
   auto old_state = num_holding.load(std::memory_order_acquire);
@@ -355,64 +330,122 @@ void LockedBatchEntry<T>::DoUnlock(
   YB_PROFILE(cond_var.notify_all());
 }
 
-template <typename T>
-class LockManagerImpl : public LockTracker<T> {
+// TrackedLockEntry is used to keep track of the LockState of the session for a given key. Note
+// that a session can acquire multiple lock types repeatedly on a key.
+//
+// In context of object/table locks, when handling release requests by ObjectLockOwner
+// (optionally with object id supplied), the LockState value is used to reset the info of the
+// corresponding LockedBatchEntry.
+template <typename LockManager>
+struct TrackedLockEntry {
+  TrackedLockEntry(
+      const ObjectLockOwner& object_lock_owner_,
+      LockManagerTraits<LockManager>::KeyType object_id_,
+      LockState state_,
+      LockedBatchEntry<LockManager>* locked_batch_entry_)
+      : key(object_lock_owner_, object_id_), state(state_),
+        locked_batch_entry(locked_batch_entry_) { }
+
+  ObjectLockOwner object_lock_owner() const {
+    return key.object_lock_owner;
+  }
+
+  VersionedTransaction versioned_txn() const {
+    return key.object_lock_owner.versioned_txn;
+  }
+
+  std::pair<VersionedTransaction, typename LockManagerTraits<LockManager>::KeyType>
+  txn_and_key() const {
+    return {key.object_lock_owner.versioned_txn, key.object_id};
+  }
+
+  LockManagerTraits<LockManager>::KeyType object_id() const {
+    return key.object_id;
+  }
+
+  // Key against which this TrackedLockEntry is tracked/stored.
+  TrackedLockEntryKey<LockManager> key;
+  LockState state;
+  // LockedBatchEntry<LockManager> object's memory is managed by LockManagerImpl<LockManager>.
+  LockedBatchEntry<LockManager>* locked_batch_entry;
+  size_t ref_count = 1;
+};
+
+namespace {
+
+template <typename LockManager>
+void OutLockTableRow(std::ostream& out, const TrackedLockEntry<LockManager>& lock) {
+  out << "<tr>"
+        << "<td>" << AsString(lock.key.object_lock_owner) << "</td>"
+        << "<td>" << AsString(lock.key.object_id) << "</td>"
+        << "<td>" << LockStateDebugString(lock.state) << "</td>"
+      << "</tr>";
+}
+
+template <typename LockManager>
+class LockManagerImpl {
  public:
-  ~LockManagerImpl() = default;
+  using LockTracker = LockManagerInternalTraits<LockManager>::LockTracker;
+  using LockedBatchEntryUniquePtr = std::unique_ptr<LockedBatchEntry<LockManager>>;
+  using LockedBatchEntryPtr = LockedBatchEntry<LockManager>*;
 
   MUST_USE_RESULT bool Lock(
-      LockBatchEntries<T>* key_to_intent_type, CoarseTimePoint deadline,
-      const SessionIDHostPair* session_id_pair = nullptr);
+      LockBatchEntries<LockManager>& key_to_intent_type, CoarseTimePoint deadline,
+      const ObjectLockOwner* object_lock_owner = nullptr);
 
   void DumpStatusHtml(std::ostream& out) EXCLUDES(global_mutex_);
 
  protected:
-  using LockEntryMap = std::unordered_map<T, LockedBatchEntry<T>*, boost::hash<T>>;
+  ~LockManagerImpl() = default;
+
+  using KeyType = LockManagerTraits<LockManager>::KeyType;
+
+  using LockEntryMap = std::unordered_map<KeyType, LockedBatchEntryPtr, boost::hash<KeyType>>;
 
   // Make sure the entries exist in the locks_ map and return pointers so we can access
   // them without holding the global lock. Returns a vector with pointers in the same order
   // as the keys in the batch.
-  void Reserve(LockBatchEntries<T>* batch,
-               const SessionIDHostPair* session_id_pair) EXCLUDES(global_mutex_);
+  void Reserve(LockBatchEntries<LockManager>& batch,
+               const ObjectLockOwner* object_lock_owner) EXCLUDES(global_mutex_);
 
   // Update refcounts and maybe collect garbage.
-  void Cleanup(const LockBatchEntries<T>& key_to_intent_type) EXCLUDES(global_mutex_);
+  void Cleanup(const LockBatchEntries<LockManager>& key_to_intent_type) EXCLUDES(global_mutex_);
 
   // The global mutex should be taken only for very short duration, with no blocking wait.
   mutable std::mutex global_mutex_;
 
   LockEntryMap locks_ GUARDED_BY(global_mutex_);
   // Cache of lock entries, to avoid allocation/deallocation of heavy LockedBatchEntry.
-  std::vector<std::unique_ptr<LockedBatchEntry<T>>> lock_entries_ GUARDED_BY(global_mutex_);
-  std::vector<LockedBatchEntry<T>*> free_lock_entries_ GUARDED_BY(global_mutex_);
+  std::vector<LockedBatchEntryUniquePtr> lock_entries_ GUARDED_BY(global_mutex_);
+  std::vector<LockedBatchEntryPtr> free_lock_entries_ GUARDED_BY(global_mutex_);
 };
 
-template <typename T>
-bool LockManagerImpl<T>::Lock(
-    LockBatchEntries<T>* key_to_intent_type, CoarseTimePoint deadline,
-    const SessionIDHostPair* session_id_pair) {
-  TRACE("Locking a batch of $0 keys", key_to_intent_type->size());
-  Reserve(key_to_intent_type, session_id_pair);
-  for (auto it = key_to_intent_type->begin(); it != key_to_intent_type->end(); ++it) {
+template <typename LockManager>
+bool LockManagerImpl<LockManager>::Lock(
+    LockBatchEntries<LockManager>& key_to_intent_type, CoarseTimePoint deadline,
+    const ObjectLockOwner* object_lock_owner) {
+  TRACE("Locking a batch of $0 keys", key_to_intent_type.size());
+  Reserve(key_to_intent_type, object_lock_owner);
+  for (auto it = key_to_intent_type.begin(); it != key_to_intent_type.end(); ++it) {
     const auto& intent_types = it->intent_types;
     VLOG(4) << "Locking " << AsString(intent_types) << ": "
             << AsString(it->key);
-    if (!it->locked->Lock(*it, deadline, session_id_pair)) {
-      while (it != key_to_intent_type->begin()) {
+    if (!it->locked->Lock(*it, deadline, object_lock_owner)) {
+      while (it != key_to_intent_type.begin()) {
         --it;
-        it->locked->Unlock(*it, session_id_pair);
+        it->locked->Unlock(*it, object_lock_owner);
       }
-      Cleanup(*key_to_intent_type);
+      Cleanup(key_to_intent_type);
       return false;
     }
   }
-  TRACE("Acquired a lock batch of $0 keys", key_to_intent_type->size());
+  TRACE("Acquired a lock batch of $0 keys", key_to_intent_type.size());
 
   return true;
 }
 
-template <typename T>
-void LockManagerImpl<T>::DumpStatusHtml(std::ostream& out) {
+template <typename LockManager>
+void LockManagerImpl<LockManager>::DumpStatusHtml(std::ostream& out) {
   out << "<table class='table table-striped'>\n";
   out << "<tr><th>Prefix</th><th>LockBatchEntry</th></tr>" << std::endl;
   std::lock_guard l(global_mutex_);
@@ -425,38 +458,41 @@ void LockManagerImpl<T>::DumpStatusHtml(std::ostream& out) {
   }
   out << "</table>\n";
 
-  this->DumpStoredObjectLocksUnlocked(out);
+  static_cast<LockTracker*>(this)->DumpStoredObjectLocksUnlocked(out);
 }
 
-template <typename T>
-void LockManagerImpl<T>::Reserve(
-    LockBatchEntries<T>* key_to_intent_type,
-    const SessionIDHostPair* session_id_pair) {
+template <typename LockManager>
+void LockManagerImpl<LockManager>::Reserve(
+    LockBatchEntries<LockManager>& key_to_intent_type,
+    const ObjectLockOwner* object_lock_owner) {
   std::lock_guard lock(global_mutex_);
-  for (auto& key_and_intent_type : *key_to_intent_type) {
+  for (auto& key_and_intent_type : key_to_intent_type) {
     auto& value = locks_[key_and_intent_type.key];
     if (!value) {
       if (!free_lock_entries_.empty()) {
         value = free_lock_entries_.back();
         free_lock_entries_.pop_back();
       } else {
-        lock_entries_.emplace_back(std::make_unique<LockedBatchEntry<T>>(this));
+        lock_entries_.emplace_back(std::make_unique<LockedBatchEntry<LockManager>>(
+            static_cast<LockTracker*>(this)));
         value = lock_entries_.back().get();
       }
     }
     value->ref_count++;
-    key_and_intent_type.locked = value;
+    key_and_intent_type.locked = std::to_address(value);
     // In case of object locking, set the 'existing_state' field of the LockBatchEntry so as to
     // ignore conflicts with self.
-    if (session_id_pair) {
+    if (object_lock_owner) {
       key_and_intent_type.existing_state =
-          this->GetLockStateForKeyUnlocked(*session_id_pair, key_and_intent_type.key);
+          static_cast<LockTracker*>(this)->GetLockStateForKeyUnlocked(
+              *object_lock_owner, key_and_intent_type.key);
     }
   }
 }
 
-template <typename T>
-void LockManagerImpl<T>::Cleanup(const LockBatchEntries<T>& key_to_intent_type) {
+template <typename LockManager>
+void LockManagerImpl<LockManager>::Cleanup(
+    const LockBatchEntries<LockManager>& key_to_intent_type) {
   std::lock_guard lock(global_mutex_);
   for (const auto& item : key_to_intent_type) {
     if (--item.locked->ref_count == 0) {
@@ -466,36 +502,39 @@ void LockManagerImpl<T>::Cleanup(const LockBatchEntries<T>& key_to_intent_type) 
   }
 }
 
-class SharedLockManager::Impl : public LockManagerImpl<RefCntPrefix> {
+} // namespace
+
+class SharedLockManager::Impl : public LockManagerImpl<SharedLockManager> {
  public:
   ~Impl() {
     std::lock_guard lock(global_mutex_);
     LOG_IF(DFATAL, !locks_.empty()) << "Locks not empty in dtor: " << AsString(locks_);
   }
 
-  void Unlock(const LockBatchEntries<RefCntPrefix>& key_to_intent_type);
+  void Unlock(const LockBatchEntries<SharedLockManager>& key_to_intent_type);
 
-  void Acquiredlock(const LockBatchEntry<RefCntPrefix>& lock_entry,
-                    const SessionIDHostPair* session_id_pair) override {}
+  void Acquiredlock(const LockBatchEntry<SharedLockManager>& lock_entry,
+                    const ObjectLockOwner* object_lock_owner) {}
 
-  void ReleasedLock(const LockBatchEntry<RefCntPrefix>& lock_entry,
-                    const SessionIDHostPair* session_id_pair) override {}
+  void ReleasedLock(const LockBatchEntry<SharedLockManager>& lock_entry,
+                    const ObjectLockOwner* object_lock_owner) {}
 
-  void WaitingOnLock(const LockBatchEntry<RefCntPrefix>& lock_entry,
-                     const SessionIDHostPair* session_id_pair) override {}
+  void WaitingOnLock(const LockBatchEntry<SharedLockManager>& lock_entry,
+                     const ObjectLockOwner* object_lock_owner) {}
 
-  void FinishedWaitingOnLock(const LockBatchEntry<RefCntPrefix>&,
-                             const SessionIDHostPair* session_id_pair) override {}
+  void FinishedWaitingOnLock(const LockBatchEntry<SharedLockManager>&,
+                             const ObjectLockOwner* object_lock_owner) {}
 
   LockState GetLockStateForKeyUnlocked(
-      const SessionIDHostPair& session_id_pair, const RefCntPrefix& key) override {
+      const ObjectLockOwner& object_lock_owner, const RefCntPrefix& key) {
     return 0;
   }
 
-  void DumpStoredObjectLocksUnlocked(std::ostream& out) override {}
+  void DumpStoredObjectLocksUnlocked(std::ostream& out) {}
 };
 
-void SharedLockManager::Impl::Unlock(const LockBatchEntries<RefCntPrefix>& key_to_intent_type) {
+void SharedLockManager::Impl::Unlock(
+    const LockBatchEntries<SharedLockManager>& key_to_intent_type) {
   TRACE("Unlocking a batch of $0 keys", key_to_intent_type.size());
 
   for (const auto& key_and_intent_type : boost::adaptors::reverse(key_to_intent_type)) {
@@ -504,92 +543,110 @@ void SharedLockManager::Impl::Unlock(const LockBatchEntries<RefCntPrefix>& key_t
   Cleanup(key_to_intent_type);
 }
 
-class ObjectLockManager::Impl : public LockManagerImpl<ObjectLockPrefix> {
+class ObjectLockManager::Impl : public LockManagerImpl<ObjectLockManager> {
  public:
-  ~Impl() = default;
+  void Unlock(const std::vector<TrackedLockEntryKey<ObjectLockManager>>& lock_entry_keys);
 
-  void Unlock(const std::vector<TrackedLockEntryKey<ObjectLockPrefix>>& lock_entry_keys);
+  void Unlock(const ObjectLockOwner& object_lock_owner);
 
-  void Unlock(const SessionIDHostPair& session_id_pair);
-
-  void Acquiredlock(const LockBatchEntry<ObjectLockPrefix>& lock_entry,
-                    const SessionIDHostPair* session_id_pair) override {
-    Acquiredlock(lock_entry, session_id_pair, &granted_locks_);
+  void Acquiredlock(const LockBatchEntry<ObjectLockManager>& lock_entry,
+                    const ObjectLockOwner* object_lock_owner) {
+    Acquiredlock(lock_entry, object_lock_owner, &granted_locks_);
   }
 
-  void ReleasedLock(const LockBatchEntry<ObjectLockPrefix>& lock_entry,
-                    const SessionIDHostPair* session_id_pair) override {
-    ReleasedLock(lock_entry, session_id_pair, &granted_locks_);
+  void ReleasedLock(const LockBatchEntry<ObjectLockManager>& lock_entry,
+                    const ObjectLockOwner* object_lock_owner) {
+    ReleasedLock(lock_entry, object_lock_owner, &granted_locks_);
   }
 
-  void WaitingOnLock(const LockBatchEntry<ObjectLockPrefix>& lock_entry,
-                     const SessionIDHostPair* session_id_pair) override {
-    Acquiredlock(lock_entry, session_id_pair, &waiting_locks_);
+  void WaitingOnLock(const LockBatchEntry<ObjectLockManager>& lock_entry,
+                     const ObjectLockOwner* object_lock_owner) {
+    Acquiredlock(lock_entry, object_lock_owner, &waiting_locks_);
   }
 
-  void FinishedWaitingOnLock(const LockBatchEntry<ObjectLockPrefix>& lock_entry,
-                             const SessionIDHostPair* session_id_pair) override {
-    ReleasedLock(lock_entry, session_id_pair, &waiting_locks_);
+  void FinishedWaitingOnLock(const LockBatchEntry<ObjectLockManager>& lock_entry,
+                             const ObjectLockOwner* object_lock_owner) {
+    ReleasedLock(lock_entry, object_lock_owner, &waiting_locks_);
   }
 
   LockState GetLockStateForKeyUnlocked(
-      const SessionIDHostPair& session_id_pair, const ObjectLockPrefix& key) REQUIRES(global_mutex_)
-      override;
+      const ObjectLockOwner& object_lock_owner, const ObjectLockPrefix& key)
+      REQUIRES(global_mutex_);
 
-  void DumpStoredObjectLocksUnlocked(std::ostream& out) REQUIRES(global_mutex_) override;
+  void DumpStoredObjectLocksUnlocked(std::ostream& out) REQUIRES(global_mutex_);
 
   size_t TEST_GrantedLocksSize() const;
   size_t TEST_WaitingLocksSize() const;
 
  private:
-  struct SessionIdTag;
+  struct ObjectOwnerTag;
+  struct ObjectOwnerPrefixTag;
   struct ObjectIdTag;
+  struct OwnerPrefixAndKeyTag;
 
   // A container for storing acquired/waiting in memory locks with the following properties
   // - hashed on unique TrackedLockEntry<T>::key
-  // - hashed on non unique session (id, hostname) to allow fast access to all locks of a session
-  // - hashed on non unique key to allow fast access to all sessions holding locks on the given key
-  using ObjectLocksMap = boost::multi_index_container<TrackedLockEntry<ObjectLockPrefix>,
+  // - hashed on non unique ObjectLockOwner (txn, txn version, subtxn id) to allow fast access to
+  //   all locks of a statement
+  // - hashed on non unique VersionedTransaction (txn, txn version) to allow fast access to all
+  //   locks of a docdb transaction
+  // - hashed on non unique key to allow fast access to all txns holding locks on the given key
+  // - hashed on non unique (txn, txn version, key) to get the current LockState of the txn for
+  //   a given key. This is useful when computing the LockState value to ignore conflicts with self.
+  using ObjectLocksMap = boost::multi_index_container<TrackedLockEntry<ObjectLockManager>,
       boost::multi_index::indexed_by <
           boost::multi_index::hashed_unique <
               boost::multi_index::member<
-                  TrackedLockEntry<ObjectLockPrefix>, TrackedLockEntryKey<ObjectLockPrefix>,
-                  &TrackedLockEntry<ObjectLockPrefix>::key
+                  TrackedLockEntry<ObjectLockManager>, TrackedLockEntryKey<ObjectLockManager>,
+                  &TrackedLockEntry<ObjectLockManager>::key
               >
           >,
           boost::multi_index::hashed_non_unique <
-              boost::multi_index::tag<SessionIdTag>,
+              boost::multi_index::tag<ObjectOwnerTag>,
               boost::multi_index::const_mem_fun<
-                  TrackedLockEntry<ObjectLockPrefix>, SessionIDHostPair,
-                  &TrackedLockEntry<ObjectLockPrefix>::session_id_pair>
+                  TrackedLockEntry<ObjectLockManager>, ObjectLockOwner,
+                  &TrackedLockEntry<ObjectLockManager>::object_lock_owner>
+          >,
+          boost::multi_index::hashed_non_unique <
+              boost::multi_index::tag<ObjectOwnerPrefixTag>,
+              boost::multi_index::const_mem_fun<
+                  TrackedLockEntry<ObjectLockManager>, VersionedTransaction,
+                  &TrackedLockEntry<ObjectLockManager>::versioned_txn>
           >,
           boost::multi_index::hashed_non_unique <
               boost::multi_index::tag<ObjectIdTag>,
               boost::multi_index::const_mem_fun<
-                  TrackedLockEntry<ObjectLockPrefix>, ObjectLockPrefix,
-                  &TrackedLockEntry<ObjectLockPrefix>::object_id>
+                  TrackedLockEntry<ObjectLockManager>, ObjectLockPrefix,
+                  &TrackedLockEntry<ObjectLockManager>::object_id>
+          >,
+          boost::multi_index::hashed_non_unique <
+              boost::multi_index::tag<OwnerPrefixAndKeyTag>,
+              boost::multi_index::const_mem_fun<
+                  TrackedLockEntry<ObjectLockManager>,
+                  std::pair<VersionedTransaction, ObjectLockPrefix>,
+                  &TrackedLockEntry<ObjectLockManager>::txn_and_key>
           >
       >
   >;
 
-  void DoReleaseTrackedLock(const TrackedLockEntry<ObjectLockPrefix>& entry)
+  void DoReleaseTrackedLock(const TrackedLockEntry<ObjectLockManager>& entry)
       REQUIRES(global_mutex_);
 
   void Acquiredlock(
-      const LockBatchEntry<ObjectLockPrefix>& lock_entry, const SessionIDHostPair* session_id_pair,
+      const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner* object_lock_owner,
       ObjectLocksMap* container) EXCLUDES(global_mutex_);
 
   void ReleasedLock(
-      const LockBatchEntry<ObjectLockPrefix>& lock_entry, const SessionIDHostPair* session_id_pair,
+      const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner* object_lock_owner,
       ObjectLocksMap* container) EXCLUDES(global_mutex_);
 
-  // Lock activity is tracked only when the requests have SessionIDHostPair set.
+  // Lock activity is tracked only when the requests have ObjectLockOwner set.
   ObjectLocksMap granted_locks_ GUARDED_BY(global_mutex_);
   ObjectLocksMap waiting_locks_ GUARDED_BY(global_mutex_);
 };
 
 void ObjectLockManager::Impl::Unlock(
-    const std::vector<TrackedLockEntryKey<ObjectLockPrefix>>& lock_entry_keys) {
+    const std::vector<TrackedLockEntryKey<ObjectLockManager>>& lock_entry_keys) {
   TRACE("Unlocking a batch of $0 object locks", lock_entry_keys.size());
 
   std::lock_guard lock(global_mutex_);
@@ -607,23 +664,45 @@ void ObjectLockManager::Impl::Unlock(
   }
 }
 
-void ObjectLockManager::Impl::Unlock(const SessionIDHostPair& session_id_pair) {
-  TRACE("Unlocking all keys for session $0", AsString(session_id_pair));
+void ObjectLockManager::Impl::Unlock(const ObjectLockOwner& object_lock_owner) {
+  TRACE("Unlocking all keys for owner $0", AsString(object_lock_owner));
 
   std::lock_guard lock(global_mutex_);
-  auto& session_id_index = granted_locks_.template get<SessionIdTag>();
-  auto tracked_locks = boost::make_iterator_range(session_id_index.equal_range(session_id_pair));
+  if (object_lock_owner.subtxn_id) {
+    // Release locks corresponding to a particular subtxn. Could be invoked when a subtxn is
+    // aborted/rolled back.
+    auto& lock_owner_index = granted_locks_.template get<ObjectOwnerTag>();
+    auto tracked_locks = boost::make_iterator_range(
+        lock_owner_index.equal_range(object_lock_owner));
+    for (auto& entry : tracked_locks) {
+      DoReleaseTrackedLock(entry);
+    }
+    lock_owner_index.erase(tracked_locks.begin(), tracked_locks.end());
+    return;
+  }
+  // Release all locks tagged against <txn_id, txn_version>, may be on commit/abort.
+  auto& owner_prefix_index = granted_locks_.template get<ObjectOwnerPrefixTag>();
+  auto tracked_locks = boost::make_iterator_range(
+      owner_prefix_index.equal_range(object_lock_owner.versioned_txn));
   for (auto& entry : tracked_locks) {
     DoReleaseTrackedLock(entry);
   }
-  session_id_index.erase(tracked_locks.begin(), tracked_locks.end());
+  owner_prefix_index.erase(tracked_locks.begin(), tracked_locks.end());
 }
 
 LockState ObjectLockManager::Impl::GetLockStateForKeyUnlocked(
-    const SessionIDHostPair& session_id_pair, const ObjectLockPrefix& key) {
-  TrackedLockEntryKey<ObjectLockPrefix> lock_key(session_id_pair, key);
-  auto it = granted_locks_.find(lock_key);
-  return it == granted_locks_.end() ? 0 : it->state;
+    const ObjectLockOwner& object_lock_owner, const ObjectLockPrefix& key) {
+  auto& owner_prefix_and_key_index = granted_locks_.template get<OwnerPrefixAndKeyTag>();
+  auto tracked_locks = boost::make_iterator_range(owner_prefix_and_key_index.equal_range(
+      std::pair<VersionedTransaction, ObjectLockPrefix>(
+          object_lock_owner.versioned_txn, key
+      )
+  ));
+  LockState existing_state = 0;
+  for (auto& entry : tracked_locks) {
+    existing_state += entry.state;
+  }
+  return existing_state;
 }
 
 void ObjectLockManager::Impl::DumpStoredObjectLocksUnlocked(std::ostream& out) {
@@ -655,12 +734,12 @@ size_t ObjectLockManager::Impl::TEST_WaitingLocksSize() const {
 }
 
 void ObjectLockManager::Impl::DoReleaseTrackedLock(
-    const TrackedLockEntry<ObjectLockPrefix>& entry) {
+    const TrackedLockEntry<ObjectLockManager>& entry) {
   // We don't pass an intents set to unlock so as to trigger notify on every lock release. It is
-  // necessary as two (or more) sessions could be holding a read lock and one of the sessions
+  // necessary as two (or more) transactions could be holding a read lock and one of the txns
   // could request a conflicting lock mode. And since conflicts with self should be ignored, we
   // need to signal the cond variable on every release, else the lock release call from the other
-  // session wouldn't unblock the waiter.
+  // transaction wouldn't unblock the waiter.
   entry.locked_batch_entry->DoUnlock(entry.state);
   entry.locked_batch_entry->ref_count -= entry.ref_count;
   if (entry.locked_batch_entry->ref_count == 0) {
@@ -670,45 +749,45 @@ void ObjectLockManager::Impl::DoReleaseTrackedLock(
 }
 
 void ObjectLockManager::Impl::Acquiredlock(
-    const LockBatchEntry<ObjectLockPrefix>& lock_entry, const SessionIDHostPair* session_id_pair,
+    const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner* object_lock_owner,
     ObjectLocksMap* container) {
-  if (!session_id_pair) {
-    LOG_WITH_FUNC(DFATAL) << "Unexpected null session_id_pair pointer. "
+  if (!object_lock_owner) {
+    LOG_WITH_FUNC(DFATAL) << "Unexpected null object_lock_owner pointer. "
                           << "Cannot track/store object locks.";
     return;
   }
   VLOG_WITH_FUNC(1) << "lock_entry: " << lock_entry.ToString()
-                    << ", session_id_pair: " << AsString(*session_id_pair);
+                    << ", object_lock_owner: " << AsString(*object_lock_owner);
   auto delta = IntentTypeSetAdd(lock_entry);
-  TrackedLockEntry record(*session_id_pair, lock_entry.key, delta, lock_entry.locked);
+  TrackedLockEntry record(*object_lock_owner, lock_entry.key, delta, lock_entry.locked);
 
   std::lock_guard lock(global_mutex_);
   auto [it, did_insert] = container->emplace(record);
   if (did_insert) {
     return;
   }
-  container->modify(it, [&record](TrackedLockEntry<ObjectLockPrefix>& entry) {
+  container->modify(it, [&record](TrackedLockEntry<ObjectLockManager>& entry) {
     entry.state += record.state;
     ++entry.ref_count;
   });
 }
 
 void ObjectLockManager::Impl::ReleasedLock(
-    const LockBatchEntry<ObjectLockPrefix>& lock_entry, const SessionIDHostPair* session_id_pair,
+    const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner* object_lock_owner,
     ObjectLocksMap* container) {
-  if (!session_id_pair) {
-    LOG_WITH_FUNC(DFATAL) << "Unexpected null session_id_pair pointer. "
+  if (!object_lock_owner) {
+    LOG_WITH_FUNC(DFATAL) << "Unexpected null object_lock_owner pointer. "
                           << "Cannot track/store object locks.";
     return;
   }
   VLOG_WITH_FUNC(1) << "lock_entry: " << lock_entry.ToString()
-                    << ", session_id_pair: " << AsString(*session_id_pair);
+                    << ", object_lock_owner: " << AsString(*object_lock_owner);
   auto delta = IntentTypeSetAdd(lock_entry);
-  TrackedLockEntryKey lock_entry_key {*session_id_pair, lock_entry.key};
+  TrackedLockEntryKey<ObjectLockManager> lock_entry_key {*object_lock_owner, lock_entry.key};
 
   std::lock_guard lock(global_mutex_);
   auto it = container->find(lock_entry_key);
-  container->modify(it, [delta](TrackedLockEntry<ObjectLockPrefix>& entry) {
+  container->modify(it, [delta](TrackedLockEntry<ObjectLockManager>& entry) {
     entry.state -= delta;
     --entry.ref_count;
   });
@@ -727,11 +806,11 @@ SharedLockManager::SharedLockManager()
 SharedLockManager::~SharedLockManager() {}
 
 bool SharedLockManager::Lock(
-    LockBatchEntries<RefCntPrefix>* key_to_intent_type, CoarseTimePoint deadline) {
+    LockBatchEntries<SharedLockManager>& key_to_intent_type, CoarseTimePoint deadline) {
   return impl_->Lock(key_to_intent_type, deadline);
 }
 
-void SharedLockManager::Unlock(const LockBatchEntries<RefCntPrefix>& key_to_intent_type) {
+void SharedLockManager::Unlock(const LockBatchEntries<SharedLockManager>& key_to_intent_type) {
   impl_->Unlock(key_to_intent_type);
 }
 
@@ -739,24 +818,23 @@ void SharedLockManager::DumpStatusHtml(std::ostream& out) {
   impl_->DumpStatusHtml(out);
 }
 
-ObjectLockManager::ObjectLockManager()
-    : impl_(new Impl) {}
+ObjectLockManager::ObjectLockManager(): impl_(std::make_unique<Impl>()) { }
 
 ObjectLockManager::~ObjectLockManager() {}
 
 bool ObjectLockManager::Lock(
-    const SessionIDHostPair& session_id_pair,
-    LockBatchEntries<ObjectLockPrefix>* key_to_intent_type, CoarseTimePoint deadline) {
-  return impl_->Lock(key_to_intent_type, deadline, &session_id_pair);
+    const ObjectLockOwner& object_lock_owner,
+    LockBatchEntries<ObjectLockManager>& key_to_intent_type, CoarseTimePoint deadline) {
+  return impl_->Lock(key_to_intent_type, deadline, &object_lock_owner);
 }
 
 void ObjectLockManager::Unlock(
-    const std::vector<TrackedLockEntryKey<ObjectLockPrefix>>& lock_entry_keys) {
+    const std::vector<TrackedLockEntryKey<ObjectLockManager>>& lock_entry_keys) {
   impl_->Unlock(lock_entry_keys);
 }
 
-void ObjectLockManager::Unlock(const SessionIDHostPair& session_id_pair) {
-  impl_->Unlock(session_id_pair);
+void ObjectLockManager::Unlock(const ObjectLockOwner& object_lock_owner) {
+  impl_->Unlock(object_lock_owner);
 }
 
 void ObjectLockManager::DumpStatusHtml(std::ostream& out) {
@@ -770,12 +848,5 @@ size_t ObjectLockManager::TEST_GrantedLocksSize() const {
 size_t ObjectLockManager::TEST_WaitingLocksSize() const {
   return impl_->TEST_WaitingLocksSize();
 }
-
-template struct TrackedLockEntryKey<ObjectLockPrefix>;
-
-template struct TrackedLockEntry<ObjectLockPrefix>;
-
-template class LockManagerImpl<RefCntPrefix>;
-template class LockManagerImpl<ObjectLockPrefix>;
 
 }  // namespace yb::docdb

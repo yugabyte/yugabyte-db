@@ -93,7 +93,24 @@ extern IndexBuildResult *ybvectorbackfill(Relation heap, Relation index,
 extern bool ybvectormightrecheck(Relation heapRelation, Relation indexRelation,
 							  bool xs_want_itup, ScanKey keys, int nkeys);
 
-IndexAmRoutine *makeBaseYbVectorHandler();
+extern bool ybvectorcopartitionedcanreturn(Relation index, int attno);
+
+extern bool ybvectorcopartitionedinsert(Relation rel, Datum *values,
+	bool *isnull, Datum ybctid, Relation heapRel,
+	IndexUniqueCheck checkUnique, struct IndexInfo *indexInfo, bool shared_insert);
+
+extern void ybvectorcopartitioneddelete(Relation rel, Datum *values,
+	bool *isnull, Datum ybctid, Relation heapRel,
+	struct IndexInfo *indexInfo);
+
+extern IndexBuildResult *ybvectorcopartitionedbuild(Relation heap,
+	Relation index, struct IndexInfo *indexInfo);
+
+extern IndexBuildResult *ybvectorcopartitionedbackfill(Relation heap,
+	Relation index, struct IndexInfo *indexInfo, struct YbBackfillInfo *bfinfo,
+	struct YbPgExecOutParam *bfresult);
+
+IndexAmRoutine *makeBaseYbVectorHandler(bool is_copartitioned);
 
 void
 bindVectorIndexOptions(YBCPgStatement handle,

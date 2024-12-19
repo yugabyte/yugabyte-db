@@ -50,7 +50,7 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/pgsql_operation.h"
+#include "yb/docdb/key_bounds.h"
 
 #include "yb/dockv/reader_projection.h"
 
@@ -126,6 +126,25 @@ Result<Uuid> ParseCotableId(Primary primary, const TableId& table_id) {
 std::string MakeTableInfoLogPrefix(
     const std::string& tablet_log_prefix, Primary primary, const TableId& table_id) {
   return primary ? tablet_log_prefix : Format("TBL $0 $1", table_id, tablet_log_prefix);
+}
+
+std::vector<ColumnId> GetVectorIndexedColumns(const qlexpr::IndexMap& index_map) {
+  std::vector<ColumnId> result;
+  result.reserve(1); // It is expected to have only 1 vector-indexed column.
+  for (const auto& it : index_map) {
+    const auto& index = it.second;
+    if (!index.is_vector_idx()) {
+      continue;
+    }
+    const auto& vector_options = index.vector_idx_options();
+    if (!vector_options.has_column_id()) {
+      DCHECK(vector_options.has_column_id());
+      continue;
+    }
+
+    result.emplace_back(make_signed(vector_options.column_id()));
+  }
+  return result;
 }
 
 } // namespace
@@ -255,6 +274,20 @@ TableInfo::~TableInfo() = default;
 void TableInfo::CompleteInit() {
   if (index_info && index_info->is_vector_idx()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
+
+    // TODO(vector-index) could be removed if PG uses DataType::VECTOR for a column.
+    if (!index_info->vector_idx_options().has_column_id()) {
+      LOG_WITH_PREFIX(DFATAL) << "It is expected to have column id specified for vector index";
+    } else {
+      // NB! Index schema must have the last column be a vector for which vector index created.
+      ColumnId id = doc_read_context->schema().column_ids().back();
+      doc_read_context->mutable_schema()->SetVectorColumns({ id });
+    }
+  }
+
+  // TODO(vector-index) could be removed if PG uses DataType::VECTOR for a column.
+  if (index_map) {
+    doc_read_context->mutable_schema()->SetVectorColumns(GetVectorIndexedColumns(*index_map));
   }
 
   if (!index_info || !index_info->is_unique()) {
@@ -439,6 +472,11 @@ bool TableInfo::TEST_Equals(const TableInfo& lhs, const TableInfo& rhs) {
                            rhs.index_info,
                            IndexInfo::TEST_Equals) &&
          lhs.partition_schema.Equals(rhs.partition_schema);
+}
+
+bool TableInfo::NeedVectorIndex() const {
+  return index_info && index_info->is_vector_idx() &&
+         index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY;
 }
 
 Status KvStoreInfo::LoadTablesFromPB(
@@ -1389,7 +1427,7 @@ void RaftGroupMetadata::SetSchemaAndTableName(
   SetTableNameUnlocked(namespace_name, table_name, op_id, table_id);
 }
 
-Status RaftGroupMetadata::AddTable(
+Result<TableInfoPtr> RaftGroupMetadata::AddTable(
     const std::string& table_id, const std::string& namespace_name, const std::string& table_name,
     const TableType table_type, const Schema& schema, const IndexMap& index_map,
     const dockv::PartitionSchema& partition_schema, const std::optional<IndexInfo>& index_info,
@@ -1425,7 +1463,7 @@ Status RaftGroupMetadata::AddTable(
     VLOG_WITH_PREFIX(1) << "Added table with schema version " << schema_version << "\n"
                         << AsString(new_table_info);
     kv_store_.UpdateColocationMap(new_table_info);
-    return Status::OK();
+    return new_table_info;
   }
 
   const auto& existing_table = *iter->second;
@@ -1437,7 +1475,7 @@ Status RaftGroupMetadata::AddTable(
       schema.table_properties().is_ysql_catalog_table()) {
     // This must be the one-time migration with transactional DDL being turned on for the first
     // time on this cluster.
-    return Status::OK();
+    return iter->second;
   }
 
   // We never expect colocation IDs to mismatch.
@@ -1456,7 +1494,7 @@ Status RaftGroupMetadata::AddTable(
         schema.colocation_id(), kv_store_.colocation_to_table);
   }
 
-  return Status::OK();
+  return iter->second;
 }
 
 void RaftGroupMetadata::RemoveTable(const TableId& table_id, const OpId& op_id) {
@@ -2236,6 +2274,16 @@ RaftGroupMetadata::GetAllColocatedTablesWithColocationId() const {
   return table_colocation_id_map;
 }
 
+std::vector<TableInfoPtr> RaftGroupMetadata::GetAllColocatedTableInfos() const {
+  std::lock_guard lock(data_mutex_);
+  std::vector<TableInfoPtr> result;
+  result.reserve(kv_store_.tables.size());
+  for (const auto& [id, info] : kv_store_.tables) {
+    result.push_back(info);
+  }
+  return result;
+}
+
 Status CheckCanServeTabletData(const RaftGroupMetadata& metadata) {
   auto data_state = metadata.tablet_data_state();
   if (!CanServeTabletData(data_state)) {
@@ -2372,6 +2420,10 @@ bool RaftGroupMetadata::OnPostSplitCompactionDone() {
   }
 
   return updated;
+}
+
+docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {
+  return docdb::KeyBounds(kv_store_.lower_bound_key, kv_store_.upper_bound_key);
 }
 
 } // namespace yb::tablet

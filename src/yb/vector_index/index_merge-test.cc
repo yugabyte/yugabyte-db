@@ -84,7 +84,7 @@ class IndexMergeTest : public YBTest {
     auto data_b = CreateAndFillIndex(index_factory, half_size, half_size);
 
     VectorIndexIfPtr<FloatVector, float> merged_index =
-      ASSERT_RESULT(Merge(index_factory, data_a.index, data_b.index));
+      ASSERT_RESULT(Merge(index_factory, {data_a.index, data_b.index}));
 
     // Check that the merged index contains all entries.
     auto result_a = ASSERT_RESULT(merged_index->Search(input_vectors_[0], 1));
@@ -112,8 +112,8 @@ class IndexMergeTest : public YBTest {
     // Generate indexes for the input set.
     auto data_a = CreateAndFillIndex(index_factory, 0, input_vectors_.size() / 2);
 
-    // Merge empty_index into data_a.
-    auto merged_index = ASSERT_RESULT(Merge(index_factory, data_a.index, empty_index));
+    // Merge empty_index with data_a.
+    auto merged_index = ASSERT_RESULT(Merge(index_factory, {data_a.index, empty_index}));
 
     // Check that the merged index contains only the entries from data_a.
     auto all_results = ASSERT_RESULT(merged_index->Search(

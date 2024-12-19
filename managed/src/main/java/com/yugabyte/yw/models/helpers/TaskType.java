@@ -619,6 +619,11 @@ public enum TaskType {
       CustomerTask.TaskType.EnableNodeAgent,
       CustomerTask.TargetType.Universe),
 
+  DecommissionNode(
+      com.yugabyte.yw.commissioner.tasks.DecommissionNode.class,
+      CustomerTask.TaskType.Decommission,
+      CustomerTask.TargetType.Node),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -1098,6 +1103,9 @@ public enum TaskType {
   ValidateNodeDiskSize(com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize.class),
 
   CheckNodeReachable(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable.class),
+
+  SupportBundleComponentDownload(
+      com.yugabyte.yw.commissioner.tasks.subtasks.SupportBundleComponentDownload.class),
 
   WaitStartingFromTime(WaitStartingFromTime.class),
 

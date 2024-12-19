@@ -213,20 +213,23 @@ typedef struct TransactionStateData
 	bool		topXidLogged;	/* for a subxact: is top-level XID logged? */
 	struct TransactionStateData *parent;	/* back link to parent */
 
-	bool		ybDataSent; /* Whether some tuples have been transmitted to
-				             * frontend as part of this execution */
-	bool		ybDataSentForCurrQuery; /* Whether any data has been sent to frontend
-										 * as part of current query's execution */
-	bool		isYBTxnWithPostgresRel; /* does the current transaction
-				                         * operate on a postgres table? */
-	List		*YBPostponedDdlOps; /* We postpone execution of non-revertable
-				                     * DocDB operations (e.g. drop table/index)
-				                     * until the rest of the txn succeeds */
-	int			ybUncommittedStickyObjectCount;	/* Count of objects that require stickiness
-									 		 * within a certain transaction (e.g. TEMP
-									 		 * TABLES/WITH HOLD CURSORS)*/
-	bool		ybIsInternalRcSubTransaction; /* Whether this sub transaction was started internally for
-																				* READ COMMITTED isolation */
+	bool		ybDataSent;		/* Whether some tuples have been transmitted to
+								 * frontend as part of this execution */
+	bool		ybDataSentForCurrQuery;	/* Whether any data has been sent to
+										 * frontend as part of current query's
+										 * execution */
+	bool		isYBTxnWithPostgresRel;	/* does the current transaction
+										 * operate on a postgres table? */
+	List	   *YBPostponedDdlOps;	/* We postpone execution of non-revertable
+									 * DocDB operations (e.g. drop table/index)
+									 * until the rest of the txn succeeds */
+	int			ybUncommittedStickyObjectCount;	/* Count of objects that require
+												 * stickiness within a certain
+												 * transaction (e.g. TEMP
+												 * TABLES/WITH HOLD CURSORS) */
+	bool		ybIsInternalRcSubTransaction;	/* Whether this sub transaction
+												 * was started internally for
+												 * READ COMMITTED isolation */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -936,7 +939,7 @@ GetCurrentTransactionNestLevel(void)
 	return s->nestingLevel;
 }
 
-const char*
+const char *
 GetCurrentTransactionName(void)
 {
 	TransactionState s = CurrentTransactionState;
@@ -1160,7 +1163,8 @@ ForceSyncCommit(void)
  * Mark current transaction as having sent some data back to the client.
  * This prevents automatic transaction restart.
  */
-void YBMarkDataSent(void)
+void
+YBMarkDataSent(void)
 {
 	TransactionState s = CurrentTransactionState;
 	s->ybDataSent = true;
@@ -1170,13 +1174,15 @@ void YBMarkDataSent(void)
 /*
  * Mark current transaction as having no data sent to the client.
  */
-void YBMarkDataNotSent(void)
+void
+YBMarkDataNotSent(void)
 {
 	TransactionState s = CurrentTransactionState;
 	s->ybDataSent = false;
 }
 
-void YBMarkDataNotSentForCurrQuery(void)
+void
+YBMarkDataNotSentForCurrQuery(void)
 {
 	TransactionState s = CurrentTransactionState;
 	s->ybDataSentForCurrQuery = false;
@@ -1185,19 +1191,22 @@ void YBMarkDataNotSentForCurrQuery(void)
 /*
  * Whether some data has been transmitted to frontend as part of this transaction.
  */
-bool YBIsDataSent(void)
+bool
+YBIsDataSent(void)
 {
-	// Note: we don't support nested transactions (savepoints) yet,
-	// but once we do - we have to make sure this works as intended.
+	/* Note: we don't support nested transactions (savepoints) yet,
+	 * but once we do - we have to make sure this works as intended. */
 	TransactionState s = CurrentTransactionState;
-	// Ignoring "idle" transaction state, a leftover from a previous transaction
+	/* Ignoring "idle" transaction state, a leftover from a previous
+	 * transaction */
 	return s->blockState != TBLOCK_DEFAULT && s->ybDataSent;
 }
 
 /*
  * Whether some data has been transmitted to frontend as part of this query.
  */
-bool YBIsDataSentForCurrQuery(void)
+bool
+YBIsDataSentForCurrQuery(void)
 {
 	TransactionState s = CurrentTransactionState;
 	return s->ybDataSentForCurrQuery;
@@ -2057,7 +2066,8 @@ AtSubCleanup_Memory(void)
  */
 
 static void
-YBUpdateActiveSubTransaction(TransactionState s) {
+YBUpdateActiveSubTransaction(TransactionState s)
+{
 	YBCSetActiveSubTransaction(s->subTransactionId);
 }
 
@@ -2085,16 +2095,22 @@ YBStartTransaction(TransactionState s)
  * isolation level as seen by pggate. This function returns the mapped isolation
  * level that pggate layer is supposed to see.
  */
-int YBGetEffectivePggateIsolationLevel() {
+int
+YBGetEffectivePggateIsolationLevel()
+{
 	int mapped_pg_isolation_level = XactIsoLevel;
 
-	// For the txn manager, logic for XACT_READ_UNCOMMITTED is same as
-	// XACT_READ_COMMITTED.
+	/*
+	 * For the txn manager, logic for XACT_READ_UNCOMMITTED is same as
+	 * XACT_READ_COMMITTED.
+	 */
 	if (mapped_pg_isolation_level == XACT_READ_UNCOMMITTED)
 		mapped_pg_isolation_level = XACT_READ_COMMITTED;
 
-	// If READ COMMITTED mode is not on, XACT_READ_COMMITTED maps to
-	// XACT_REPEATABLE_READ.
+	/*
+	 * If READ COMMITTED mode is not on, XACT_READ_COMMITTED maps to
+	 * XACT_REPEATABLE_READ.
+	 */
 	if ((mapped_pg_isolation_level == XACT_READ_COMMITTED) &&
 			!IsYBReadCommitted())
 		mapped_pg_isolation_level = XACT_REPEATABLE_READ;
@@ -2734,7 +2750,8 @@ PrepareTransaction(void)
 	StartPrepare(gxact);
 
 	AtPrepare_Notify();
-	if (YBIsPgLockingEnabled()) {
+	if (YBIsPgLockingEnabled())
+	{
 		AtPrepare_Locks();
 		AtPrepare_PredicateLocks();
 	}
@@ -2804,9 +2821,8 @@ PrepareTransaction(void)
 
 	PostPrepare_MultiXact(xid);
 
-	if (YBIsPgLockingEnabled()) {
+	if (YBIsPgLockingEnabled())
 		PostPrepare_PredicateLocks(xid);
-	}
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_LOCKS,
@@ -2904,11 +2920,12 @@ AbortTransaction(void)
 	/* Cancel condition variable sleep */
 	ConditionVariableCancelSleep();
 
-	if (YBIsPgLockingEnabled()) {
+	if (YBIsPgLockingEnabled())
+	{
 		/*
-		* Also clean up any open wait for lock, since the lock manager will choke
-		* if we try to wait for another lock before doing this.
-		*/
+		 * Also clean up any open wait for lock, since the lock manager will choke
+		 * if we try to wait for another lock before doing this.
+		 */
 		LockErrorCleanup();
 	}
 
@@ -4926,7 +4943,8 @@ BeginInternalSubTransaction(const char *name)
  *			TBLOCK_SUBINPROGRESS.
  */
 void
-BeginInternalSubTransactionForReadCommittedStatement() {
+BeginInternalSubTransactionForReadCommittedStatement()
+{
 
 	YBFlushBufferedOperations();
 	TransactionState s = CurrentTransactionState;
@@ -5303,7 +5321,7 @@ StartSubTransaction(void)
 	/*
 	 * Update the value of the sticky objects from parent transaction
 	 */
-	if(CurrentTransactionState->parent)
+	if (CurrentTransactionState->parent)
 		CurrentTransactionState->ybUncommittedStickyObjectCount =
 			CurrentTransactionState->parent->ybUncommittedStickyObjectCount;
 }
@@ -6660,22 +6678,26 @@ xact_redo(XLogReaderState *record)
 		elog(PANIC, "xact_redo: unknown op code %u", info);
 }
 
-void YBSaveDdlHandle(YBCPgStatement handle)
+void
+YBSaveDdlHandle(YBCPgStatement handle)
 {
 	CurrentTransactionState->YBPostponedDdlOps = lappend(CurrentTransactionState->YBPostponedDdlOps, handle);
 }
 
-List* YBGetDdlHandles()
+List *
+YBGetDdlHandles()
 {
 	return CurrentTransactionState->YBPostponedDdlOps;
 }
 
-void YBClearDdlHandles()
+void
+YBClearDdlHandles()
 {
 	CurrentTransactionState->YBPostponedDdlOps = NULL;
 }
 
-void YbClearCurrentTransactionId()
+void
+YbClearCurrentTransactionId()
 {
 	CurrentTransactionState->fullTransactionId = InvalidFullTransactionId;
 	MyProc->xid = InvalidTransactionId;
@@ -6701,7 +6723,8 @@ YbClearParallelContexts()
  * ```increment_sticky_object_count()``` is called when any database object which requires
  * stickiness is created.
  */
-void increment_sticky_object_count()
+void
+increment_sticky_object_count()
 {
 	CurrentTransactionState->ybUncommittedStickyObjectCount++;
 }
@@ -6710,7 +6733,8 @@ void increment_sticky_object_count()
  * ```decrement_sticky_object_count()``` is called when any database object which required
  * stickiness is deleted.
  */
-void decrement_sticky_object_count()
+void
+decrement_sticky_object_count()
 {
 	CurrentTransactionState->ybUncommittedStickyObjectCount--;
 }
@@ -6719,7 +6743,8 @@ void decrement_sticky_object_count()
  * Check if all sub transactions are internal ones started before each statement for READ COMMITTED
  * isolation level.
  */
-bool YbHasOnlyInternalRcSubTransactions()
+bool
+YbHasOnlyInternalRcSubTransactions()
 {
 	for (TransactionState s = CurrentTransactionState; s != NULL; s = s->parent)
 	{

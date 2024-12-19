@@ -11,6 +11,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.TaskQueue;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
@@ -49,6 +50,7 @@ import play.libs.Json;
 
 public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Commissioner mockCommissioner = mock(Commissioner.class);
+  public TaskQueue mockTaskQueue = mock(TaskQueue.class);
   public CallHome mockCallHome = mock(CallHome.class);
   public ApiHelper mockApiHelper = mock(ApiHelper.class);
   public ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
@@ -123,6 +125,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .configure(testDatabase())
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
+                .overrides(bind(TaskQueue.class).toInstance(mockTaskQueue))
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))
                 .overrides(bind(Executors.class).toInstance(mockExecutors))
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))

@@ -93,7 +93,6 @@ Result<TransactionMetadata> TransactionMetadata::DoFromPB(const PB& source) {
   } else {
     result.locality = TransactionLocality::GLOBAL;
   }
-
   return result;
 }
 

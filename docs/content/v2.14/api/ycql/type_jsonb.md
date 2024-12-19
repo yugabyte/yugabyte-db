@@ -45,9 +45,7 @@ Due to the inherent imprecision in storing floating-point numbers, one should av
 Users can either use error bounds while querying for these values in order to perform the correct floating-point comparison, or store them as strings (e.g: `{'a': "3.14"}`).
 [#996 issue](https://github.com/yugabyte/yugabyte-db/issues/996)
 
-
 {{< /note >}}
-
 
 ## Operators and functions
 
@@ -94,7 +92,7 @@ INSERT INTO store.books (id, details) VALUES
 ycqlsh> SELECT * FROM store.books;
 ```
 
-```
+```output
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------------------
   5 | {"author":{"first_name":"Stephen","last_name":"Hawking"},"editors":["Melisa","Mark","John"],"genre":"science","name":"A Brief History of Time","year":1988}
@@ -110,7 +108,7 @@ ycqlsh> SELECT * FROM store.books;
 ycqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'William' AND details->'author'->>'last_name' = 'Shakespeare';
 ```
 
-```
+```output
  id | details
 ----+----------------------------------------------------------------------------------------------------------------------------------
   1 | {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["John","Elizabeth","Jeff"],"name":"Macbeth","year":1623}
@@ -123,7 +121,7 @@ ycqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'Will
 ycqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
 ```
 
-```
+```output
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   3 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
@@ -135,7 +133,7 @@ ycqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
 ycqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
 ```
 
-```
+```output
  id | details
 ----+--------------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
@@ -153,7 +151,7 @@ ycqlsh> UPDATE store.books SET details = '{"author":{"first_name":"Carl","last_n
 ycqlsh> SELECT * FROM store.books WHERE id = 1;
 ```
 
-```
+```output
  id | details
 ----+-----------------------------------------------------------------------------------------------------------------------------------
   1 | {"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}
@@ -169,7 +167,7 @@ ycqlsh> UPDATE store.books SET details->'author'->>'first_name' = '"Steve"' WHER
 ycqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
 
-```
+```output
  id | details
 ----+------------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
@@ -185,7 +183,7 @@ ycqlsh> UPDATE store.books SET details->'editors'->>1 = '"Jack"' WHERE id = 4;
 ycqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
 
-```
+```output
  id | details
 ----+------------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
@@ -201,7 +199,7 @@ ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"John", "last_
 ycqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
 
-```
+```output
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"John","last_name":"Doe"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
@@ -219,7 +217,7 @@ ycqlsh> UPDATE store.books SET details->'editors' = '["Adam", "Bryan", "Charles"
 ycqlsh> SELECT * FROM store.books WHERE id = 6;
 ```
 
-```
+```output
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   6 | {"editors":["Adam","Bryan","Charles"]}
@@ -235,7 +233,7 @@ ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"Jack", "last_
 ycqlsh> SELECT * FROM store.books WHERE id = 6;
 ```
 
-```
+```output
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   6 | {"author":{"first_name":"Jack","last_name":"Kerouac"},"editors":["Adam","Bryan","Charles"]}
@@ -245,5 +243,5 @@ Note that JSONB upsert only works for JSON objects and not for other data types 
 
 ## See also
 
-- [`Explore JSON documents`](../../../explore/transactional/json-documents)
+- [Explore JSON documents](../../../explore/json-support/jsonb-ycql/)
 - [Data types](..#data-types)

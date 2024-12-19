@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cstddef>
 #include <mutex>
+#include <queue>
 #include <set>
 
 #include "yb/cdc/cdc_service.h"
@@ -52,6 +53,8 @@
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
@@ -96,6 +99,7 @@ DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
+DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 DECLARE_uint64(rpc_max_message_size);
 
@@ -173,7 +177,7 @@ Status TryAppendTxnConflictOpIndex(
         const auto ops_end = ops.end();
         const auto op_it = std::find_if(
             ops.begin(), ops_end,
-            [failed_op = &error->failed_op()](const auto& op) {return op.get() == failed_op; });
+            [failed_op = &error->failed_op()](const auto& op) {return op.op.get() == failed_op; });
 
         if (PREDICT_FALSE(op_it == ops_end)) {
           LOG(DFATAL) << "Unknown operation failed with conflict";
@@ -301,10 +305,10 @@ Status ProcessUsedReadTime(uint64_t session_id,
   return Status::OK();
 }
 
-Status HandleResponse(uint64_t session_id,
-                      const client::YBPgsqlOp& op,
-                      PgPerformResponsePB* resp,
-                      PgClientSession::ReadTimeData* used_read_time) {
+Status HandleOperationResponse(uint64_t session_id,
+                               const client::YBPgsqlOp& op,
+                               PgPerformResponsePB* resp,
+                               PgClientSession::ReadTimeData* used_read_time) {
   const auto& response = op.response();
   if (response.status() == PgsqlResponsePB::PGSQL_STATUS_OK) {
     return ProcessUsedReadTime(session_id, op, resp, used_read_time);
@@ -348,7 +352,7 @@ Result<PgClientSessionOperations> PrepareOperations(
     PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
     PgTableCache* table_cache) {
   auto write_time = HybridTime::FromPB(req->write_time());
-  std::vector<std::shared_ptr<client::YBPgsqlOp>> ops;
+  PgClientSessionOperations ops;
   ops.reserve(req->ops().size());
   client::YBTablePtr table;
   bool finished = false;
@@ -362,12 +366,40 @@ Result<PgClientSessionOperations> PrepareOperations(
     if (op.has_read()) {
       auto& read = *op.mutable_read();
       RETURN_NOT_OK(GetTable(read.table_id(), table_cache, &table));
-      auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, sidecars, &read);
-      if (read_from_followers) {
-        read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+      if (read.index_request().has_vector_idx_options()) {
+        if (req->ops_size() != 1) {
+          auto status = STATUS_FORMAT(
+              NotSupported, "Only single vector index query is supported, while $0 provided",
+              req->ops_size());
+          LOG(DFATAL) << status << ": " << req->ShortDebugString();
+          return status;
+        }
+        auto partitions = table->GetPartitionsShared();
+        auto vector_index_sidecars = std::make_unique<rpc::Sidecars>();
+        size_t first_idx = ops.size();
+        for (const auto& key : *partitions) {
+          auto new_read = std::make_unique<PgsqlReadRequestPB>(read);
+          new_read->set_partition_key(key);
+          auto read_op = std::make_shared<client::YBPgsqlReadOp>(
+              table, vector_index_sidecars.get(), new_read.get());
+          ops.push_back(PgClientSessionOperation {
+            .op = std::move(read_op),
+            .vector_index_sidecars = nullptr,
+            .vector_index_read_request = std::move(new_read),
+          });
+        }
+        ops[first_idx].vector_index_sidecars = std::move(vector_index_sidecars);
+      } else {
+        auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, sidecars, &read);
+        if (read_from_followers) {
+          read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+        }
+        ops.push_back(PgClientSessionOperation {
+          .op = std::move(read_op),
+          .vector_index_sidecars = nullptr,
+          .vector_index_read_request = nullptr,
+        });
       }
-      ops.push_back(read_op);
-      session->Apply(std::move(read_op));
     } else {
       auto& write = *op.mutable_write();
       RETURN_NOT_OK(GetTable(write.table_id(), table_cache, &table));
@@ -376,10 +408,18 @@ Result<PgClientSessionOperations> PrepareOperations(
         write_op->SetWriteTime(write_time);
         write_time = HybridTime::kInvalid;
       }
-      ops.push_back(write_op);
-      session->Apply(std::move(write_op));
+      ops.push_back(PgClientSessionOperation {
+        .op = std::move(write_op),
+        .vector_index_sidecars = nullptr,
+        .vector_index_read_request = nullptr,
+      });
     }
   }
+
+  for (const auto& pg_client_session_operation : ops) {
+    session->Apply(pg_client_session_operation.op);
+  }
+
   finished = true;
   return ops;
 }
@@ -405,6 +445,42 @@ std::byte* SerializeWithCachedSizesToArray(
     const google::protobuf::MessageLite& msg, std::byte* out) {
   return pointer_cast<std::byte*>(msg.SerializeWithCachedSizesToArray(pointer_cast<uint8_t*>(out)));
 }
+
+class VectorIndexPartitionResult {
+ public:
+  VectorIndexPartitionResult(
+      std::reference_wrapper<const PgsqlResponsePB> response, const RefCntSlice& sidecars)
+      : response_(response), sidecars_(sidecars) {}
+
+  uint64_t Distance() const {
+    return response_.vector_index_distances()[index_];
+  }
+
+  bool Finished() const {
+    return index_ >= response_.vector_index_distances().size();
+  }
+
+  bool Consume(PgsqlResponsePB& out, WriteBuffer& sidecars) {
+    out.mutable_vector_index_distances()->Add(response_.vector_index_distances()[index_]);
+    auto new_offset = response_.vector_index_ends()[index_];
+    sidecars.Append(Slice(sidecars_.data() + sidecar_offset_, new_offset - sidecar_offset_));
+    sidecar_offset_ = new_offset;
+    ++index_;
+    return !Finished();
+  }
+
+ private:
+  int index_ = 0;
+  const PgsqlResponsePB& response_;
+  RefCntSlice sidecars_;
+  size_t sidecar_offset_ = 8;
+};
+
+struct CompareVectorIndexPartitionResult {
+  bool operator()(VectorIndexPartitionResult* lhs, VectorIndexPartitionResult* rhs) const {
+    return lhs->Distance() > rhs->Distance();
+  }
+};
 
 struct PerformData {
   uint64_t session_id;
@@ -472,52 +548,20 @@ struct PerformData {
   }
 
   Status ProcessResponse(PgClientSession::ReadTimeData* used_read_time) {
-    int idx = 0;
-    for (const auto& op : ops) {
-      const auto status = HandleResponse(session_id, *op, &resp, used_read_time);
-      if (!status.ok()) {
-        if (PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH) {
-          table_cache.Invalidate(op->table()->id());
-        }
-        VLOG_WITH_PREFIX_AND_FUNC(2)
-            << "status: " << status << ", failed op[" << idx << "]: " << AsString(op);
-        return status.CloneAndAddErrorCode(OpIndex(idx));
-      }
-      // In case of write operations, increase mutation counters for non-index relations.
-      if (!op->read_only() &&
-          !op->table()->IsIndex() &&
-          GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
-          pg_node_level_mutation_counter) {
-        const auto& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op).table()->id();
-
-        VLOG_WITH_PREFIX(4)
-            << "Increasing "
-            << (transaction ? "transaction's mutation counters" : "pg_node_level_mutation_counter")
-            << " by 1 for table_id: " << table_id;
-
-        // If there is no distributed transaction, it means we can directly update the TServer
-        // level aggregate. Otherwise increase the transaction level aggregate.
-        if (!transaction) {
-          pg_node_level_mutation_counter->Increase(table_id, 1);
-        } else {
-          transaction->IncreaseMutationCounts(subtxn_id, table_id, 1);
-        }
-      }
-      if (op->response().is_backfill_batch_done() &&
-          op->type() == client::YBOperation::Type::PGSQL_READ &&
-          down_cast<const client::YBPgsqlReadOp&>(*op).request().is_for_backfill()) {
-        // After backfill table schema version is updated, so we reset cache in advance.
-        table_cache.Invalidate(op->table()->id());
-      }
-      ++idx;
+    RETURN_NOT_OK(HandleResponse(used_read_time));
+    if (used_in_txn_limit) {
+      resp.set_used_in_txn_limit_ht(used_in_txn_limit.ToUint64());
+    }
+    if (!ops.empty() && ops.front().vector_index_read_request) {
+      return ProcessVectorIndexResponse(used_read_time);
     }
     auto& responses = *resp.mutable_responses();
     responses.Reserve(narrow_cast<int>(ops.size()));
     for (const auto& op : ops) {
       auto& op_resp = *responses.Add();
-      op_resp.Swap(op->mutable_response());
-      if (op->has_sidecar()) {
-        op_resp.set_rows_data_sidecar(narrow_cast<int>(op->sidecar_index()));
+      op_resp.Swap(op.op->mutable_response());
+      if (op.op->has_sidecar()) {
+        op_resp.set_rows_data_sidecar(narrow_cast<int>(op.op->sidecar_index()));
       }
       if (op_resp.has_paging_state()) {
         if (resp.has_catalog_read_time()) {
@@ -548,11 +592,104 @@ struct PerformData {
           op_resp.mutable_paging_state()->clear_read_time();
         }
       }
-      op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
+      op_resp.set_partition_list_version(op.op->table()->GetPartitionListVersion());
     }
-    if (used_in_txn_limit) {
-      resp.set_used_in_txn_limit_ht(used_in_txn_limit.ToUint64());
+
+    return Status::OK();
+  }
+
+ private:
+  Status HandleResponse(PgClientSession::ReadTimeData* used_read_time) {
+    int idx = -1;
+    for (const auto& op : ops) {
+      ++idx;
+      const auto status = HandleOperationResponse(session_id, *op.op, &resp, used_read_time);
+      if (!status.ok()) {
+        if (PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH) {
+          table_cache.Invalidate(op.op->table()->id());
+        }
+        VLOG_WITH_PREFIX_AND_FUNC(2)
+            << "status: " << status << ", failed op[" << idx << "]: " << AsString(op.op);
+        return status.CloneAndAddErrorCode(OpIndex(idx));
+      }
+      // In case of write operations, increase mutation counters for non-index relations.
+      if (!op.op->read_only() &&
+          !op.op->table()->IsIndex() &&
+          GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
+          pg_node_level_mutation_counter) {
+        const auto& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op.op).table()->id();
+
+        VLOG_WITH_PREFIX(4)
+            << "Increasing "
+            << (transaction ? "transaction's mutation counters" : "pg_node_level_mutation_counter")
+            << " by 1 for table_id: " << table_id;
+
+        // If there is no distributed transaction, it means we can directly update the TServer
+        // level aggregate. Otherwise increase the transaction level aggregate.
+        if (!transaction) {
+          pg_node_level_mutation_counter->Increase(table_id, 1);
+        } else {
+          transaction->IncreaseMutationCounts(subtxn_id, table_id, 1);
+        }
+      }
+      if (op.op->response().is_backfill_batch_done() &&
+          op.op->type() == client::YBOperation::Type::PGSQL_READ &&
+          down_cast<const client::YBPgsqlReadOp&>(*op.op).request().is_for_backfill()) {
+        // After backfill table schema version is updated, so we reset cache in advance.
+        table_cache.Invalidate(op.op->table()->id());
+      }
     }
+
+    return Status::OK();
+  }
+
+  Status ProcessVectorIndexResponse(PgClientSession::ReadTimeData* used_read_time) {
+    auto& front = ops.front();
+    const auto& read = *front.vector_index_read_request;
+    auto& responses = *resp.mutable_responses();
+
+    std::vector<VectorIndexPartitionResult> results;
+    results.reserve(ops.size());
+
+    for (const auto& op : ops) {
+      // TODO(vector_index) Implement paging.
+      results.emplace_back(
+          op.op->response(), front.vector_index_sidecars->Extract(op.op->sidecar_index()));
+    }
+
+    // TODO(vector_index) Use heap with sift up functionality.
+    std::priority_queue<
+        VectorIndexPartitionResult*, std::vector<VectorIndexPartitionResult*>,
+        CompareVectorIndexPartitionResult> queue;
+    for (auto& part : results) {
+      if (!part.Finished()) {
+        queue.push(&part);
+      }
+    }
+
+    auto& out_resp = *responses.Add();
+    auto& write_buffer = sidecars.Start();
+    auto num_rows_pos = write_buffer.Position();
+    pggate::PgWire::WriteInt64(0, &write_buffer);
+    auto prefetch_size = read.index_request().vector_idx_options().prefetch_size();
+    if (prefetch_size == -1) {
+      prefetch_size = std::numeric_limits<decltype(prefetch_size)>::max();
+    }
+
+    while (!queue.empty() && out_resp.vector_index_distances().size() < prefetch_size) {
+      auto& top = *queue.top();
+      queue.pop();
+      if (top.Consume(out_resp, write_buffer)) {
+        queue.push(&top);
+      }
+    }
+
+    RETURN_NOT_OK(pggate::PgWire::WriteInt64(
+        out_resp.vector_index_distances().size(), &write_buffer, num_rows_pos));
+
+    out_resp.set_status(front.op->response().status());
+    out_resp.set_rows_data_sidecar(narrow_cast<int32_t>(sidecars.Complete()));
+    out_resp.set_partition_list_version(front.op->table()->GetPartitionListVersion());
 
     return Status::OK();
   }
@@ -573,7 +710,7 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
 
   CoarseTimePoint deadline;
 
-  CountDownLatch latch{1};
+  std::atomic<bool> responded_{false};
 
   SharedExchangeQuery(
       std::shared_ptr<PgClientSession> session_, PgTableCache* table_cache_,
@@ -582,6 +719,10 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
             session_->id(), table_cache_, &exchange_req, &exchange_resp, &exchange_sidecars),
         session(std::move(session_)), exchange(exchange_),
         stats_exchange_response_size(stats_exchange_response_size_) {
+  }
+
+  ~SharedExchangeQuery() {
+    LOG_IF(DFATAL, !responded_.load()) << "Response did not send";
   }
 
   // Initialize query from data stored in exchange with specified size.
@@ -596,11 +737,13 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
     return pb_util::ParseFromArray(&req, input, end - input);
   }
 
-  void Wait() {
-    latch.Wait();
-  }
-
   void SendResponse() override {
+    auto locked_session = session.lock();
+    if (!locked_session) {
+      responded_ = true;
+      return;
+    }
+
     using google::protobuf::io::CodedOutputStream;
     rpc::ResponseHeader header;
     header.set_call_id(42);
@@ -619,14 +762,10 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
     auto* start = exchange->Obtain(full_size);
     std::pair<uint64_t, std::byte*> shared_memory_segment(0, nullptr);
     RefCntBuffer buffer;
-    std::shared_ptr<PgClientSession> locked_session;
     if (!start) {
-      locked_session = session.lock();
-      if (locked_session) {
-        shared_memory_segment = locked_session->ObtainBigSharedMemorySegment(full_size);
-        if (shared_memory_segment.second) {
-          start = shared_memory_segment.second;
-        }
+      shared_memory_segment = locked_session->ObtainBigSharedMemorySegment(full_size);
+      if (shared_memory_segment.second) {
+        start = shared_memory_segment.second;
       }
 
       if (!start) {
@@ -650,13 +789,10 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
                           (shared_memory_segment.first << kBigSharedMemoryIdShift));
       }
     } else {
-      if (!locked_session) {
-        locked_session = session.lock();
-      }
-      auto id = locked_session ? locked_session->SaveData(buffer, std::move(sidecars.buffer())) : 0;
+      auto id = locked_session->SaveData(buffer, std::move(sidecars.buffer()));
       exchange->Respond(kTooBigResponseMask | id);
     }
-    latch.CountDown();
+    responded_ = true;
   }
 };
 
@@ -763,7 +899,9 @@ void PgClientSession::ReadPointHistory::Clear() {
 }
 
 PgClientSession::PgClientSession(
-    TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source, uint64_t id,
+    TransactionBuilder&& transaction_builder,
+    const YsqlAdvisoryLocksTableProvider& advisory_locks_table_provider,
+    SharedThisSource shared_this_source, uint64_t id,
     client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
     const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
@@ -774,6 +912,7 @@ PgClientSession::PgClientSession(
       client_(*client),
       clock_(clock),
       transaction_builder_(std::move(transaction_builder)),
+      advisory_locks_table_provider_(advisory_locks_table_provider),
       table_cache_(*table_cache),
       xcluster_context_(xcluster_context),
       pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
@@ -1347,7 +1486,8 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
 
   const auto in_txn_limit = GetInTxnLimit(options, clock_.get());
   VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
-  auto setup_session_result = VERIFY_RESULT(SetupSession(data->req, deadline, in_txn_limit));
+  auto setup_session_result = VERIFY_RESULT(SetupSession(
+      data->req.options(), deadline, in_txn_limit));
   auto* session = setup_session_result.session_data.session.get();
   auto& transaction = setup_session_result.session_data.transaction;
 
@@ -1473,8 +1613,7 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
 }
 
 Result<PgClientSession::SetupSessionResult> PgClientSession::SetupSession(
-    const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit) {
-  const auto& options = req.options();
+    const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit) {
   const auto txn_serial_no = options.txn_serial_no();
   const auto read_time_serial_no = options.read_time_serial_no();
   auto kind = PgClientSessionKind::kPlain;
@@ -1700,6 +1839,7 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
     saved_priority_ = std::nullopt;
   }
   txn->SetPriority(priority);
+  txn->SetCurrentReuseVersion(options.txn_serial_no());
   session->SetTransaction(txn);
   return Status::OK();
 }
@@ -2241,12 +2381,11 @@ Status PgClientSession::CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial
   return Status::OK();
 }
 
-std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
-    size_t size, SharedExchange* exchange) {
+void PgClientSession::ProcessSharedRequest(size_t size, SharedExchange* exchange) {
   auto shared_this = shared_this_.lock();
   if (!shared_this) {
     LOG_WITH_FUNC(DFATAL) << "Shared this is null in ProcessSharedRequest";
-    return nullptr;
+    return;
   }
   auto data = std::make_shared<SharedExchangeQuery>(
       shared_this, &table_cache_, exchange, stats_exchange_response_size_);
@@ -2270,9 +2409,7 @@ std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
   if (!status.ok()) {
     StatusToPB(status, data->resp.mutable_status());
     data->SendResponse();
-    return nullptr;
   }
-  return rpc::SharedField(data, &data->latch);
 }
 
 void PgClientSession::ScheduleBigSharedMemExpirationCheck(
@@ -2330,6 +2467,42 @@ std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(si
         FLAGS_big_shared_memory_segment_session_expiration_time_ms * 1ms);
   }
   return result;
+}
+
+Status PgClientSession::AcquireAdvisoryLock(
+    const PgAcquireAdvisoryLockRequestPB& req, PgAcquireAdvisoryLockResponsePB* resp,
+    rpc::RpcContext* context) {
+  VLOG(2) << "Servicing AcquireAdvisoryLock: " << req.ShortDebugString();
+  SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
+  SCHECK(!req.session(), NotSupported, "session-level advisory locks are not yet implemented");
+  auto& advisory_locks_table = advisory_locks_table_provider_();
+  auto setup_session_result = VERIFY_RESULT(SetupSession(
+      req.options(), context->GetClientDeadline(), HybridTime()));
+  auto* session = setup_session_result.session_data.session.get();
+  for (const auto& lock : req.locks()) {
+    auto lock_op = VERIFY_RESULT(advisory_locks_table.CreateLockOp(
+      req.db_oid(), lock.lock_id().classid(), lock.lock_id().objid(), lock.lock_id().objsubid(),
+      lock.lock_mode() == AdvisoryLockMode::LOCK_SHARE
+          ? PgsqlLockRequestPB::PG_LOCK_SHARE : PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
+      req.wait(), &context->sidecars()));
+    VLOG(4) << "Applying lock op: " << lock_op->ToString();
+    session->Apply(lock_op);
+  }
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  auto flush_status = session->FlushFuture().get();
+  return CombineErrorsToStatus(flush_status.errors, flush_status.status);
+}
+
+Status PgClientSession::ReleaseAdvisoryLock(
+    const PgReleaseAdvisoryLockRequestPB& req, PgReleaseAdvisoryLockResponsePB* resp,
+    rpc::RpcContext* context) {
+  VLOG(2) << "Servicing ReleaseAdvisoryLock: " << req.ShortDebugString();
+  // TODO(advisory-lock #24709): integrate with docdb unlock op.
+  // if req.locks_size() == 0, it's an unlock-all operation, should call
+  // advisory_locks_table_provider_().CreateUnlockAllOp().
+  // otherwise, it's releasing specific locks, should call
+  // advisory_locks_table_provider_().CreateUnlockOp().
+  return STATUS(NotSupported, "session-level advisory locks are not yet implemented");
 }
 
 void PgClientSession::StartShutdown() {

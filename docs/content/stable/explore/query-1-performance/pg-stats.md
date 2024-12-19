@@ -22,6 +22,8 @@ pg_stats contains information such as the following:
 - **n_distinct**: Estimated number of distinct values in a column. Positive values are direct counts, while negative values indicate that the distinct count is a fraction of the total row count.
 - **most_common_vals**: Most frequently occurring values in a column.
 - **most_common_freqs**: Frequencies of the most common values.
+- **most_common_elems**: Most frequently occurring elements in an array column.
+- **most_common_elem_freqs**: Frequencies of the most elements in an array column.
 
 Run the following examples to understand how you can use these statistics to improve queries and the data model.
 

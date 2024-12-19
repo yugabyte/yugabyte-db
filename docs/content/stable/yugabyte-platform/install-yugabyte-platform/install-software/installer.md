@@ -15,7 +15,7 @@ rightNav:
 type: docs
 ---
 
-For higher availability, you can install additional YugabyteDB Anywhere instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+For higher availability, you can install additional YugabyteDB Anywhere (YBA) instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -45,6 +45,10 @@ You can also use YBA Installer to migrate an existing Replicated installation. N
 
 After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 
+{{< note title="Root permissions" >}}
+YBA Installer also supports non-root installation. Refer to [Non-sudo installation](#non-sudo-installation).
+{{< /note >}}
+
 ## Before you begin
 
 Make sure your machine satisfies the [minimum prerequisites](../../../prepare/server-yba/).
@@ -72,7 +76,7 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
     sudo ./yba-ctl preflight
     ```
 
-1. If there are no issues (aside from the lack of a license), using sudo, install the software, providing your license.
+1. If there are no issues (aside from the lack of a license), install the software, providing your license.
 
     ```sh
     sudo ./yba-ctl install -l /path/to/license
@@ -80,7 +84,7 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
 
 After the installation succeeds, you can immediately start using YBA.
 
-If the installation fails due to permissions or lack of sudo privileges, you can retry after running `yba-ctl clean all` to remove all traces of the previous attempt.
+If the installation fails due to permissions or other issues, you can retry after running `yba-ctl clean all` to remove all traces of the previous attempt.
 
 For more detailed installation instructions and information on how to use YBA Installer to manage your installation, refer to the following sections.
 
@@ -348,9 +352,9 @@ FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 
 ## Non-sudo installation
 
-YBA Installer also supports a non-sudo installation, where sudo access is not required for any step of the installation. Note that this is not recommended for production use cases.
+{{<tags/feature/ea>}}YBA Installer supports non-sudo installation, where sudo access is not required for any step of the installation.
 
-To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
+To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The target location for the installation defaults to the current user's home directory, instead of `/opt`, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
 
 To perform a non-sudo installation, run any of the preceding commands without sudo access. You can't switch between a sudo and non-sudo access installation, and `yba-ctl` will return an error if sudo is not used when operating in an installation where sudo access was used.
 
@@ -367,6 +371,7 @@ You can set the following YBA Installer configuration options.
 | `support_origin_url` | Specify an alternate hostname or IP address for CORS. For example, for a load balancer. Optional | |
 | `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. | |
 | `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. | {{<icon/partial>}} |
+| `as_root` | If you ran yba-ctl as root during installation, this is automatically set to true. Otherwise it is set to false. Note that you can't switch between running yba-ctl as root and non-root. | {{<icon/partial>}} |
 
 {{<icon/partial>}} You can't change these settings after installation.
 

@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: explore-ysql-language-features-queries-joins
     parent: explore-ysql-language-features
-    weight: 400
+    weight: 300
 type: docs
 ---
 

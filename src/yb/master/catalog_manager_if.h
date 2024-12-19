@@ -140,11 +140,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual void AssertLeaderLockAcquiredForReading() const = 0;
 
-  virtual bool IsUserTable(const TableInfo& table) const = 0;
-
   virtual NamespaceName GetNamespaceName(const NamespaceId& id) const = 0;
-
-  virtual bool IsUserIndex(const TableInfo& table) const = 0;
 
   virtual TableInfoPtr GetTableInfo(const TableId& table_id) const = 0;
 
@@ -157,8 +153,6 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   virtual Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const = 0;
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentJobs() = 0;
-
-  virtual bool IsSystemTable(const TableInfo& table) const = 0;
 
   virtual Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(const NamespaceId& id) const = 0;
 
@@ -180,8 +174,6 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   virtual Status IsLoadBalanced(
       const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp) = 0;
 
-  virtual bool IsUserCreatedTable(const TableInfo& table) const = 0;
-
   virtual Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) = 0;
 
   virtual Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const = 0;
@@ -191,12 +183,12 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   virtual Status GetTabletLocations(
       const TabletId& tablet_id,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
+      IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
   virtual Status GetTabletLocations(
       const TabletInfoPtr& tablet_info,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
+      IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
   virtual TSDescriptorVector GetAllLiveNotBlacklistedTServers() const = 0;
 
@@ -262,7 +254,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
     const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;
 
   virtual Result<scoped_refptr<TableInfo>> FindTable(
-      const TableIdentifierPB& table_identifier) const = 0;
+      const TableIdentifierPB& table_identifier, bool include_deleted = true) const = 0;
 
   virtual Status IsInitDbDone(
       const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp) = 0;

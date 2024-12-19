@@ -44,6 +44,8 @@ DECLARE_uint32(ysql_conn_mgr_min_conns_per_db);
 DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_log_settings);
 DECLARE_uint32(ysql_conn_mgr_server_lifetime);
+DECLARE_uint64(ysql_conn_mgr_log_max_size);
+DECLARE_uint64(ysql_conn_mgr_log_rotate_interval);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -170,7 +172,9 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
 
   // Config map
   std::map<std::string, std::string> ysql_conn_mgr_configs = {
-    {"{%log_file%}", log_file_},
+    {"{%log_dir%}", FLAGS_log_dir},
+    {"{%log_max_size%}", std::to_string(FLAGS_ysql_conn_mgr_log_max_size)},
+    {"{%log_rotate_interval%}", std::to_string(FLAGS_ysql_conn_mgr_log_rotate_interval)},
     {"{%pid_file%}", pid_file_},
     {"{%quantiles%}", quantiles_},
     {"{%control_conn_db%}", FLAGS_ysql_conn_mgr_internal_conn_db},
@@ -266,13 +270,6 @@ YsqlConnMgrConf::YsqlConnMgrConf(const std::string& data_path) {
   data_dir_ = JoinPathSegments(data_path, "yb-data", "tserver");
   pid_file_ = JoinPathSegments(data_path, "yb-data", "tserver", "ysql-conn-mgr.pid");
   ysql_pgconf_file_ = JoinPathSegments(data_path, "pg_data", "ysql_pg.conf");
-
-  // Generate the log file name based on the current time.
-  auto now = std::time(/* arg= */ nullptr);
-  auto* tm = std::localtime(&now);
-  char buffer[64];
-  buffer[strftime(buffer, sizeof(buffer), "ysqlconnmgr-%Y-%m-%d_%H%M%S.log", tm)] = 0;
-  log_file_ = JoinPathSegments(FLAGS_log_dir, buffer);
 
   UpdateConfigFromGFlags();
 

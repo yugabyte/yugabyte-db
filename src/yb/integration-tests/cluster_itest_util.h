@@ -575,5 +575,7 @@ Status GetLastOpIdForMasterReplica(
 Status WaitForTabletIsDeletedOrHidden(
     master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout);
 
+void SetupQuickSplit(int64_t forced_split_threshold);
+
 } // namespace itest
 } // namespace yb

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
@@ -48,13 +49,13 @@ var upgradeSoftwareCmd = &cobra.Command{
 				))
 		}
 
-		// Validations before software upgrade operation
+		// universeutil.Validations before software upgrade operation
 		skipValidations, err := cmd.Flags().GetBool("skip-validations")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
-			_, universe, err := Validations(cmd, util.UpgradeOperation)
+			_, universe, err := universeutil.Validations(cmd, util.UpgradeOperation)
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
@@ -99,7 +100,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, universe, err := Validations(cmd, util.UpgradeOperation)
+		authAPI, universe, err := universeutil.Validations(cmd, util.UpgradeOperation)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -165,7 +166,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 				universeUUID,
 				oldYBDBVersion, ybdbVersion))
 
-		WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
+		universeutil.WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
 	},
 }
 

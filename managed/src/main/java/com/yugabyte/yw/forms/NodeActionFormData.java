@@ -8,7 +8,9 @@ import lombok.Data;
 @Data
 public class NodeActionFormData {
 
-  @NotNull public NodeActionType nodeAction;
+  @ApiModelProperty(value = "Action to perform on the node.")
+  @NotNull
+  public NodeActionType nodeAction;
 
   @ApiModelProperty(value = "Should a master auto-restart on a stop node action")
   public static Boolean startMasterOnStopNode = true;
@@ -16,6 +18,6 @@ public class NodeActionFormData {
   @ApiModelProperty(value = "Should a master auto-restart on a remove node action")
   public static Boolean startMasterOnRemoveNode = true;
 
-  @ApiModelProperty(value = "Should ignore errors and proceed with the node action")
+  @ApiModelProperty(value = "Should ignore master unavailability and proceed with the node action")
   private boolean force = false;
 }
