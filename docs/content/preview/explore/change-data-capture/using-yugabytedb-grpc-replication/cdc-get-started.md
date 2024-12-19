@@ -433,6 +433,10 @@ For record type `MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES`, the update and delete rec
 
 </td> </tr> </table>
 
+### Updating or deleting a row which was inserted in the same transaction
+
+If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the before image record type is not `CHANGE` then CDC will throw an error while processing such events. To handle such updates/deletes with a non-CHANGE before image record type, set the tserver flag [cdc_send_null_before_image_if_not_exists](../../../reference/configuration/yb-tserver/#cdc_send_null_before_image_if_not_exists) to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
+
 ## Schema evolution
 
 Table schema is needed for decoding and processing the changes and populating CDC records. Thus, older schemas are retained if CDC streams are lagging. Also, older schemas that are not needed for any of the existing active CDC streams are garbage collected. In addition, if before image is enabled, the schema needed for populating before image is also retained. The YugabyteDB source connector caches schema at the tablet level. This means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, the CDC service emits a record with the new schema for all the tablets. The YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
