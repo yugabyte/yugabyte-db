@@ -2002,7 +2002,8 @@ void
 YBCCreateReplicationSlot(const char *slot_name,
 						 const char *plugin_name,
 						 CRSSnapshotAction snapshot_action,
-						 uint64_t *consistent_snapshot_time)
+						 uint64_t *consistent_snapshot_time,
+						 CRSLsnType lsn_type)
 {
 	YBCPgStatement handle;
 
@@ -2020,10 +2021,18 @@ YBCCreateReplicationSlot(const char *slot_name,
 			pg_unreachable();
 	}
 
+	// If lsn_type is specified as HYBRID_TIME, it would be handled
+	// in the if block, otherwise for the default case when nothing is
+	// specified or when SEQUENCE is specified, the value will stay the same.
+	YBCLsnType repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE;
+	if (lsn_type == CRS_HYBRID_TIME)
+		repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME;
+
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,
 												 MyDatabaseId,
 												 repl_slot_snapshot_action,
+												 repl_slot_lsn_type,
 												 &handle));
 
 	YBCStatus status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);

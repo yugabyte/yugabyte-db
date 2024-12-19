@@ -149,6 +149,11 @@ extern bool yb_enable_alter_table_rewrite;
 extern bool yb_enable_replica_identity;
 
 /*
+ * Guc variable that allows lsn types to be specified while creating replication slot
+ */
+extern bool yb_allow_replication_slot_lsn_types;
+
+/*
  * GUC variable that specifies default replica identity for tables at the time of creation.
  */
 extern char* yb_default_replica_identity;

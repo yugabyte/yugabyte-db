@@ -258,12 +258,20 @@ enum PgReplicationSlotSnapshotActionPB {
   REPLICATION_SLOT_USE_SNAPSHOT = 2;
 }
 
+// proto2 version of the ReplicationSlotLsnType enum from yb/common/common_types.proto
+enum PGReplicationSlotLsnType {
+  ReplicationSlotLsnTypePg_UNDEFINED = 0;
+  ReplicationSlotLsnTypePg_SEQUENCE = 1;
+  ReplicationSlotLsnTypePg_HYBRID_TIME = 2;
+}
+
 message PgCreateReplicationSlotRequestPB {
   uint64 session_id = 1;
   uint32 database_oid = 2;
   string replication_slot_name = 3;
   PgReplicationSlotSnapshotActionPB snapshot_action = 4;
   string output_plugin_name = 5;
+  PGReplicationSlotLsnType lsn_type = 6;
 }
 
 message PgCreateReplicationSlotResponsePB {

@@ -706,10 +706,18 @@ message WaitStateInfoPB {
   optional string wait_state_code_as_string = 4;
 }
 
+// The type of LSN type which will be used with the replication slot and stream metadata.
+enum ReplicationSlotLsnType {
+  ReplicationSlotLsnType_UNSPECIFIED = 0;
+  ReplicationSlotLsnType_SEQUENCE = 1;
+  ReplicationSlotLsnType_HYBRID_TIME = 2;
+}
+
 // This message should be used for specifying stream creation options for CDCSDK streams.
 message CDCSDKStreamCreateOptionsPB {
   optional
       CDCSDKDynamicTablesOption cdcsdk_dynamic_tables_option = 1 [default = DYNAMIC_TABLES_ENABLED];
+  optional ReplicationSlotLsnType lsn_type = 12 [default = ReplicationSlotLsnType_SEQUENCE];
 }
 
 message TserverMetricsInfoPB {

@@ -130,6 +130,11 @@ extern bool yb_enable_alter_table_rewrite;
 extern bool yb_enable_replica_identity;
 
 /*
+ * Guc variable that allows lsn types to be specified while creating replication slot
+ */
+extern bool yb_allow_replication_slot_lsn_types;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0

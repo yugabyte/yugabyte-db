@@ -767,6 +767,11 @@ typedef enum PgReplicationSlotSnapshotAction {
   YB_REPLICATION_SLOT_USE_SNAPSHOT
 } YBCPgReplicationSlotSnapshotAction;
 
+typedef enum LsnType {
+  YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE,
+  YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME
+} YBCLsnType;
+
 typedef struct PgTabletsDescriptor {
   const char* tablet_id;
   const char* table_name;

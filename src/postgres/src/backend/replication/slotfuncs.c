@@ -74,7 +74,7 @@ pg_create_physical_replication_slot(PG_FUNCTION_ARGS)
 	ReplicationSlotCreate(NameStr(*name), false,
 						  temporary ? RS_TEMPORARY : RS_PERSISTENT,
 						  NULL /* yb_plugin_name */, CRS_NOEXPORT_SNAPSHOT,
-						  NULL);
+						  NULL, CRS_SEQUENCE);
 
 	values[0] = NameGetDatum(&MyReplicationSlot->data.name);
 	nulls[0] = false;
@@ -123,6 +123,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	Name		name = PG_GETARG_NAME(0);
 	Name		plugin = PG_GETARG_NAME(1);
 	bool		temporary = PG_GETARG_BOOL(2);
+	char		*yb_lsn_type = "SEQUENCE";
 
 	LogicalDecodingContext *ctx = NULL;
 
@@ -158,6 +159,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 			elog(ERROR, "cannot initialize logical decoding without a specified plugin");
 
 		YBValidateOutputPlugin(NameStr(*plugin));
+		YBValidateLsnType(yb_lsn_type);
 	}
 
 	check_permissions();
@@ -179,7 +181,8 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	 */
 	ReplicationSlotCreate(NameStr(*name), true,
 						  temporary ? RS_TEMPORARY : RS_EPHEMERAL,
-						  NameStr(*plugin), CRS_NOEXPORT_SNAPSHOT, NULL);
+						  NameStr(*plugin), CRS_NOEXPORT_SNAPSHOT, NULL,
+						  YBParseLsnType(yb_lsn_type));
 
 	memset(nulls, 0, sizeof(nulls));
 
