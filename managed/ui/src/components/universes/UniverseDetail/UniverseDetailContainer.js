@@ -152,6 +152,9 @@ const mapDispatchToProps = (dispatch) => {
     showConnectionPoolModal: () => {
       dispatch(openDialog('enableConnectionPooling'));
     },
+    showInstallNodeAgentModal: () => {
+      dispatch(openDialog('installNodeAgentModal'));
+    },
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {
         if (response.error) {

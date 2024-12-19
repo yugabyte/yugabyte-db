@@ -29,7 +29,7 @@ import CustomerMetricsPanel from '../CustomerMetricsPanel/CustomerMetricsPanel';
 import { YBModal, YBProgress } from '../../../redesign/components';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
-import { isDedicatedNodePlacement, isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { isDedicatedNodePlacement, getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { MetricsComparisonModal } from '../MetricsComparisonModal/MetricsComparisonModal';
 import { NodeSelector } from '../MetricsComparisonModal/NodeSelector';
 import { RegionSelector } from '../MetricsComparisonModal/RegionSelector';
@@ -650,7 +650,7 @@ class GraphPanelHeader extends Component {
       this.state.nodeName !== MetricConsts.TOP &&
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
     const isDedicatedNodes = isDedicatedNodePlacement(this.state.currentSelectedUniverse);
-    const isK8Universe = isKubernetesUniverse(this.state.currentSelectedUniverse);
+    const isK8Universe = getIsKubernetesUniverse(this.state.currentSelectedUniverse);
     return (
       <div className="graph-panel-header">
         <YBPanelItem

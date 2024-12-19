@@ -436,9 +436,9 @@ export default class NodeAction extends Component {
             </>
           )}
           subMenus={{
-            advanced: (backToMainMenu) => (
+            advanced: (setActiveSubmenu) => (
               <>
-                <MenuItem onClick={backToMainMenu}>
+                <MenuItem onSelect={() => setActiveSubmenu(null)}>
                   <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">Back</YBLabelWithIcon>
                 </MenuItem>
                 <MenuItem divider />

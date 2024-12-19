@@ -107,7 +107,7 @@ const autoLogin = (params) => {
 };
 
 export const setCookiesFromLocalStorage = () => {
-  const storageItems = ['authToken', 'apiToken', 'customerId', 'userId', 'asdfasd'];
+  const storageItems = ['authToken', 'apiToken', 'customerId', 'userId'];
   storageItems.forEach((item) => {
     if (localStorage.getItem(item)) {
       Cookies.set(item, localStorage.getItem(item));

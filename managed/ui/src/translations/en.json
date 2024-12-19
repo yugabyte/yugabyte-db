@@ -43,6 +43,8 @@
       "clear": "Clear",
       "reminder": "Reminder",
       "reset": "Reset",
+      "expand": "Expand",
+      "collapse": "Collapse",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -66,6 +68,7 @@
       "failedToFetchCustomerRuntimeConfig": "Failed to fetch runtime configurations for the current customer.",
       "failedToFetchUniverseRuntimeConfig": "Failed to fetch runtime configurations for the current universe.",
       "failedToFetchCurrentUniverse": "Unable to fetch universe details for the current universe.",
+      "failedToFetchSpecificUniverse": "Unable to fetch universe details for universe UUID: {{universeUuid}}",
       "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
       "failedToFetchTargetUniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
       "failedToFetchDrPrimaryUniverse": "Unable to fetch universe details for DR primary universe UUID: {{universeUuid}}",
@@ -88,6 +91,13 @@
       "consumer_safe_time_skew": "Consumer Safe Time Skew",
       "yba_ha_last_backup_seconds": "HA Backup Lag (Seconds)",
       "yba_ha_last_backup_size_mb": "HA Last Backup Size (mb)"
+    },
+    "dashboard": {
+      "nodeAgentReminderBanner": {
+        "primaryText": "Automatic installation of node agent failed on some nodes.",
+        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can to upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>To proceed, verify the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph>",
+        "reinstallNodeAgentButton": "Reinstall Node Agents"
+      }
     },
     "universeActions": {
       "lbState": {
@@ -1648,14 +1658,46 @@
     },
     "nodeAgent": {
       "title": "Node Agents",
-      "assignedNodesTitle": "Assigned Nodes",
-      "unassignedNodesTitle": "Unassigned Nodes",
+      "assignedNodesTitle": "In-Use Nodes",
+      "unassignedNodesTitle": "Not-In-Use Nodes",
       "viewDetailsButton": "View Details",
       "unreachableInstanceAgents": "Instance agents are unreachable",
       "contactSupport": "Contact Support",
+      "install": "Reinstall node agent",
       "delete": "Delete",
       "deleteNodeAgent": "Delete Node Agent",
-      "confirmDeletionMessage": "Are you sure you want to delete the Node Agent associated with the provider {{provider_name}} ?"
+      "confirmDeletionMessage": "Are you sure you want to delete the Node Agent associated with the provider {{provider_name}} ?",
+      "errorStatusFilterCheckbox": "Show only agents with error statues",
+      "runtimeConfig": {
+        "nodeAgentClientEnabledWarning": "Disabling this runtime configuration will prevent you from upgrading YugabyteDB Anywhere to future major versions."
+      },
+      "installNodeAgentModal": {
+        "title": {
+          "install": "Install Node Agent",
+          "reinstall": "Reinstall Node Agent"
+        },
+        "prerequisitesInfo": "Ensure that the selected nodes in {{universeName}} satisfy the <nodeAgentPrereqDocsLink>prerequisites</nodeAgentPrereqDocsLink>.",
+        "beforeYouStart": "Before you start",
+        "installNodeAgentFor": {
+          "install": "Install node agent for:",
+          "reinstall": "Reinstall node agent for:"
+        },
+        "allNodeInUniverse": "All nodes in this Universe",
+        "selectedNode": "Selected node",
+        "specificSelectedNode": "Selected node ({{nodeName}})",
+        "confirmButton": {
+          "install": "Install Node Agent",
+          "reinstall": "Reinstall Node Agent"
+        },
+        "error": {
+          "requestFailureLabel": "Install node agent request failed",
+          "taskFailure": "Failed to install node agent."
+        },
+        "success": {
+          "requestSuccess": "Node agent installation started.",
+          "taskSuccess": "Installed node agent."
+        }
+      }
     },
     "OIDCJWT": {
       "emailId": "Email ID",

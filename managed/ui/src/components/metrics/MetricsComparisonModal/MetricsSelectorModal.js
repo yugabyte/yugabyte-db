@@ -5,7 +5,7 @@ import { Col, Panel, Row } from 'react-bootstrap';
 import { MetricTypesWithOperations } from '../../metrics/constants';
 import { FilterContext } from './ComparisonFilterContextProvider';
 import { Input } from '../../../redesign/uikit/Input/Input';
-import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
 
 export const MetricsSelectorModal = ({ visible, onHide, selectedUniverse }) => {
   const [state, dispatch] = useContext(FilterContext);
@@ -45,7 +45,7 @@ export const MetricsSelectorModal = ({ visible, onHide, selectedUniverse }) => {
     const newMetricsToDisplay = {};
     Object.keys(MetricTypesWithOperations).forEach((key) => {
       const invalidPanelType =
-        selectedUniverse && isKubernetesUniverse(selectedUniverse)
+        selectedUniverse && getIsKubernetesUniverse(selectedUniverse)
           ? MetricTypesWithOperations[key].title === 'Node'
           : MetricTypesWithOperations[key].title === 'Container';
       if (!invalidPanelType) {

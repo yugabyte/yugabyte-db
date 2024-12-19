@@ -4,11 +4,15 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { Box, makeStyles } from '@material-ui/core';
+
 import { DeleteNodeAgent } from './DeleteNodeAgent';
 import { NodeAgentStatus } from './NodeAgentStatus';
 import { YBPanelItem } from '../../../components/panels';
 import { calculateDuration } from '../../../components/backupv2/common/BackupUtils';
-import { OnPremProvider } from '../../../components/configRedesign/providerRedesign/types';
+import { ProviderCode } from '../../../components/configRedesign/providerRedesign/constants';
+import { InstallNodeAgentModal } from '../universe/universe-actions/install-node-agent/InstallNodeAgentModal';
+
+import { YBProvider } from '../../../components/configRedesign/providerRedesign/types';
 import { NodeAgentEntities } from '../../utils/dtos';
 import VersionMisatch from '../../assets/version-mismatch.svg';
 
@@ -73,6 +77,8 @@ const useStyles = makeStyles((theme) => ({
 interface NodeAgentDataProps {
   isAssignedNodes: boolean;
   nodeAgentData: NodeAgentEntities[];
+  isErrorFilterChecked: boolean;
+
   isNodeAgentDebugPage?: boolean;
   onNodeAgentDeleted?: () => void;
 }
@@ -80,15 +86,16 @@ interface NodeAgentDataProps {
 export const NodeAgentData: FC<NodeAgentDataProps> = ({
   isAssignedNodes,
   nodeAgentData,
+  isErrorFilterChecked,
   isNodeAgentDebugPage = true,
   onNodeAgentDeleted
 }) => {
   const helperClasses = useStyles();
   const { t } = useTranslation();
   const providers = useSelector((state: any) => state.cloud.providers.data);
-  const [openNodeAgentDialog, setOpenNodeAgentDialog] = useState<boolean>(false);
-  const [nodeAgentUuid, setNodeAgentUuid] = useState<string>('');
-  const [providerName, setProviderName] = useState<string>('');
+  const [isDeleteNodeAgentModalOpen, setIsDeleteNodeAgentModalOpen] = useState<boolean>(false);
+  const [isInstallNodeAgentModalOpen, setIsInstallNodeAgentModalOpen] = useState<boolean>(false);
+  const [selectedNodeAgent, setSelectedNodeAgent] = useState<any>(undefined);
   const ybaVersionResponse = useSelector((state: any) => state.customer.yugawareVersion);
   const ybaVersion = ybaVersionResponse.data.version;
 
@@ -118,7 +125,7 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
     );
   };
 
-  const formatUpdatedAt = (cell: any, row: any) => {
+  const formatUpdatedAt = (_: any, row: any) => {
     const rowDate = row.updatedAt;
     const currentUTCTime = new Date().toISOString();
     const nodeAgentUpdatedUTCTime = new Date(rowDate).toISOString();
@@ -126,25 +133,34 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
     return <span>{diffTime}</span>;
   };
 
-  const formatActionButtons = (cell: any, row: any) => {
+  const formatNodeAgentActions = (_: any, row: any) => {
     const providerUuid = row.providerUuid;
-    const matchingProvider = providers?.find(
-      (provider: OnPremProvider) => provider.uuid === providerUuid
-    );
-    const skipProvisioning = !!matchingProvider?.details.skipProvisioning;
+    const provider = providers?.find(
+      (provider: YBProvider) => provider.uuid === providerUuid
+    ) as YBProvider;
+    const skipProvisioning = !!provider?.details.skipProvisioning;
 
     return (
       <DropdownButton
         className={helperClasses.actionsDropdown}
         title="Actions"
-        disabled={!skipProvisioning}
         id="runtime-config-nested-dropdown middle-aligned-table"
         pullRight
       >
+        {row.universeUuid && (
+          <MenuItem
+            onSelect={() => {
+              openInstallNodeAgentModal(row);
+            }}
+          >
+            {t('nodeAgent.install')}
+          </MenuItem>
+        )}
         <MenuItem
-          onClick={() => {
+          onSelect={() => {
             openDeleteDialog(row);
           }}
+          disabled={!skipProvisioning && provider?.code === ProviderCode.ON_PREM}
         >
           {t('nodeAgent.delete')}
         </MenuItem>
@@ -152,24 +168,34 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
     );
   };
 
+  const openInstallNodeAgentModal = (row: any) => {
+    setIsInstallNodeAgentModalOpen(true);
+    setSelectedNodeAgent(row);
+  };
+  const closeInstallNodeAgentModal = () => {
+    setIsInstallNodeAgentModalOpen(false);
+  };
+
   const openDeleteDialog = (row: any) => {
-    setProviderName(row.providerName);
-    setNodeAgentUuid(row.uuid);
-    setOpenNodeAgentDialog(true);
+    setSelectedNodeAgent(row);
+    setIsDeleteNodeAgentModalOpen(true);
   };
 
   const formatError = (cell: any, row: any) => {
     const rowError = row.lastError;
-    const rowErrorCode =  rowError?.code
+    const rowErrorCode = rowError?.code;
     return <span>{rowErrorCode}</span>;
   };
+  const filteredNodeAgents = isErrorFilterChecked
+    ? nodeAgentData.filter((nodeAgent) => nodeAgent.lastError?.code)
+    : nodeAgentData;
 
   return (
     <Box>
       <YBPanelItem
         body={
           <BootstrapTable
-            data={nodeAgentData}
+            data={filteredNodeAgents}
             pagination={nodeAgentData.length > 10}
             containerClass={helperClasses.nodeAgentStatusTable}
           >
@@ -214,7 +240,7 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
               columnClassName={'yb-table-cell yb-table-cell-align'}
               dataSort
             >
-              <span className={helperClasses.columnName}>{'Agent Address'}</span>
+              <span className={helperClasses.columnName}>{'Node Address'}</span>
             </TableHeaderColumn>
             <TableHeaderColumn
               width="15%"
@@ -244,27 +270,34 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
             >
               <span className={helperClasses.columnName}>{'Version'}</span>
             </TableHeaderColumn>
-            {!isAssignedNodes && (
-              <TableHeaderColumn
-                dataField={'actions'}
-                columnClassName={'yb-actions-cell'}
-                width="10%"
-                dataFormat={formatActionButtons}
-              >
-                <span className={helperClasses.columnName}>{'Actions'}</span>
-              </TableHeaderColumn>
-            )}
+            <TableHeaderColumn
+              dataField={'actions'}
+              columnClassName={'yb-actions-cell'}
+              width="10%"
+              dataFormat={formatNodeAgentActions}
+            >
+              <span className={helperClasses.columnName}>{'Actions'}</span>
+            </TableHeaderColumn>
           </BootstrapTable>
         }
         noBackground
       />
-      {openNodeAgentDialog && (
+      {isDeleteNodeAgentModalOpen && (
         <DeleteNodeAgent
-          openNodeAgentDialog={openNodeAgentDialog}
-          providerName={providerName}
-          nodeAgentUUID={nodeAgentUuid}
+          openNodeAgentDialog={isDeleteNodeAgentModalOpen}
+          providerName={selectedNodeAgent.providerName}
+          nodeAgentUUID={selectedNodeAgent.uuid}
           onNodeAgentDeleted={onNodeAgentDeleted}
-          onClose={() => setOpenNodeAgentDialog(false)}
+          onClose={() => setIsDeleteNodeAgentModalOpen(false)}
+        />
+      )}
+      {isInstallNodeAgentModalOpen && (
+        <InstallNodeAgentModal
+          universeUuid={selectedNodeAgent.universeUuid}
+          isUniverseAction={false}
+          isReinstall={true}
+          nodeName={selectedNodeAgent.name}
+          modalProps={{ open: isInstallNodeAgentModalOpen, onClose: closeInstallNodeAgentModal }}
         />
       )}
     </Box>

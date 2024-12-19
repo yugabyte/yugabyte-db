@@ -1,14 +1,17 @@
-import { FC } from 'react';
+import { FC, useRef } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
-import { Field, FieldProps } from 'formik';
+import { Field, FieldProps, FormikProps } from 'formik';
+import { Typography } from '@material-ui/core';
+
 import { YBModalForm } from '../common/forms';
 import { YBFormInput, YBToggle } from '../common/forms/fields';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
 import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/utils/dtos';
 import { isEmptyObject } from '../../utils/ObjectUtils';
 import { RuntimeConfigKey } from '../../redesign/helpers/constants';
+import { YBBanner, YBBannerVariant } from '../common/descriptors';
 
 const CONFIG_DATA_TYPE_TO_TOOLTIP_MESSAGE = {
   Bytes: 'BytesTooltipMessage',
@@ -32,6 +35,11 @@ interface EditConfigData {
   customerUUID?: string;
 }
 
+interface EditConfigDataValues {
+  config_value: boolean | string;
+  config_key: string;
+}
+
 export const EditConfig: FC<EditConfigData> = ({
   configData,
   onHide,
@@ -43,13 +51,15 @@ export const EditConfig: FC<EditConfigData> = ({
   customerUUID
 }) => {
   const { t } = useTranslation();
+  const formik = useRef({} as FormikProps<EditConfigDataValues>);
+
   const initialValues = {
     config_value:
       configData.type === 'Boolean' ? configData.configValue === 'true' : configData.configValue
   };
 
   const handleSubmit = async (
-    values: any,
+    values: EditConfigDataValues,
     { setSubmitting }: { setSubmitting: any; setFieldError: any }
   ) => {
     setSubmitting(false);
@@ -67,7 +77,7 @@ export const EditConfig: FC<EditConfigData> = ({
 
       const configValue = STRING_CONVERSION_NEEDED.includes(configData.type)
         ? values.config_value.toString()
-        : values.config_value;
+        : (values.config_value as string);
       await setRuntimeConfig(configData.configKey, configValue, configScope);
       // Refetch the conf tags to filter runtime config flags accordingly
       if (configData.configKey === RuntimeConfigKey.UI_TAG_FILTER) {
@@ -87,52 +97,65 @@ export const EditConfig: FC<EditConfigData> = ({
       initialValues={initialValues}
       submitLabel="Save"
       showCancelButton
-      render={() => {
+      render={(formikProps: FormikProps<any>) => {
+        // workaround for outdated version of Formik to access form methods outside of <Formik>
+        formik.current = formikProps;
+        const configValue = formik.current.values.config_value;
         return (
-          <Row>
-            <Col lg={8}>
-              <Field
-                name="config_key"
-                label={t('admin.advanced.globalConfig.ModalKeyField')}
-                component={YBFormInput}
-                defaultValue={configData.configKey}
-                disabled={true}
-              />
-            </Col>
-            {configData.type === 'Boolean' ? (
-              <Col lg={8}>
-                <Field name="config_value">
-                  {({ field }: FieldProps) => (
-                    <YBToggle
-                      name="config_value"
-                      label={t('admin.advanced.globalConfig.ModalKeyValue')}
-                      input={{
-                        value: field.value,
-                        onChange: field.onChange
-                      }}
-                      defaultChecked={configData.configValue === 'true'}
-                    />
-                  )}
-                </Field>
-              </Col>
-            ) : (
+          <div>
+            <Row>
               <Col lg={8}>
                 <Field
-                  name="config_value"
-                  label={t('admin.advanced.globalConfig.ModalKeyValue')}
-                  defaultValue={configData.configValue}
+                  name="config_key"
+                  label={t('admin.advanced.globalConfig.ModalKeyField')}
                   component={YBFormInput}
-                  disabled={false}
-                  infoTitle={`Type: ${configData.type}`}
-                  infoContent={t(
-                    `admin.advanced.globalConfig.${
-                      CONFIG_DATA_TYPE_TO_TOOLTIP_MESSAGE[configData.type]
-                    }`
-                  )}
+                  defaultValue={configData.configKey}
+                  disabled={true}
                 />
               </Col>
-            )}
-          </Row>
+              {configData.type === 'Boolean' ? (
+                <Col lg={8}>
+                  <Field name="config_value">
+                    {({ field }: FieldProps) => (
+                      <YBToggle
+                        name="config_value"
+                        label={t('admin.advanced.globalConfig.ModalKeyValue')}
+                        input={{
+                          value: field.value,
+                          onChange: field.onChange
+                        }}
+                        defaultChecked={configData.configValue === 'true'}
+                      />
+                    )}
+                  </Field>
+                </Col>
+              ) : (
+                <Col lg={8}>
+                  <Field
+                    name="config_value"
+                    label={t('admin.advanced.globalConfig.ModalKeyValue')}
+                    defaultValue={configData.configValue}
+                    component={YBFormInput}
+                    disabled={false}
+                    infoTitle={`Type: ${configData.type}`}
+                    infoContent={t(
+                      `admin.advanced.globalConfig.${
+                        CONFIG_DATA_TYPE_TO_TOOLTIP_MESSAGE[configData.type]
+                      }`
+                    )}
+                  />
+                </Col>
+              )}
+            </Row>
+            {configData.configKey === RuntimeConfigKey.NODE_AGENT_CLIENT_ENABLE &&
+              configValue === false && (
+                <YBBanner variant={YBBannerVariant.WARNING}>
+                  <Typography variant="body2">
+                    {t('nodeAgent.runtimeConfig.nodeAgentClientEnabledWarning')}
+                  </Typography>
+                </YBBanner>
+              )}
+          </div>
         );
       }}
     />
