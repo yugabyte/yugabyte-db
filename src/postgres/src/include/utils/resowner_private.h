@@ -113,8 +113,8 @@ extern void ResourceOwnerForgetHMAC(ResourceOwner owner,
 
 extern void ResourceOwnerEnlargeYbPgInheritsRefs(ResourceOwner owner);
 extern void ResourceOwnerRememberYbPgInheritsRef(ResourceOwner owner,
-		YbPgInheritsCacheEntry entry);
+												 YbPgInheritsCacheEntry entry);
 extern void ResourceOwnerForgetYbPgInheritsRef(ResourceOwner owner,
-        YbPgInheritsCacheEntry entry);
+											   YbPgInheritsCacheEntry entry);
 
 #endif							/* RESOWNER_PRIVATE_H */

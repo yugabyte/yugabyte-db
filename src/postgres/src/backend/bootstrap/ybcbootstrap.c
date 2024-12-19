@@ -105,11 +105,12 @@ static void YBCAddSysCatalogColumns(YBCPgStatement yb_stmt,
 	}
 }
 
-void YBCCreateSysCatalogTable(const char *table_name,
-                              Oid table_oid,
-                              TupleDesc tupdesc,
-                              bool is_shared_relation,
-                              IndexStmt *pkey_idx)
+void
+YBCCreateSysCatalogTable(const char *table_name,
+						 Oid table_oid,
+						 TupleDesc tupdesc,
+						 bool is_shared_relation,
+						 IndexStmt *pkey_idx)
 {
 	/* Database and schema are fixed when running inidb. */
 	Assert(IsBootstrapProcessingMode());
@@ -121,23 +122,23 @@ void YBCCreateSysCatalogTable(const char *table_name,
 									 : PG_YBROWID_MODE_NONE);
 
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
-	                                   schema_name,
-	                                   table_name,
-	                                   Template1DbOid,
-	                                   table_oid,
-	                                   is_shared_relation,
-	                                   true /* is_sys_catalog_table */,
-	                                   false, /* if_not_exists */
-	                                   ybrowid_mode,
-	                                   true, /* is_colocated_via_database */
-	                                   InvalidOid /* tablegroup_oid */,
-	                                   InvalidOid /* colocation_id */,
-	                                   InvalidOid /* tablespace_oid */,
-	                                   false /* is_matview */,
-	                                   InvalidOid /* pg_table_oid */,
-	                                   InvalidOid /* old_relfilenode_oid */,
-	                                   false /* is_truncate */,
-	                                   &yb_stmt));
+									   schema_name,
+									   table_name,
+									   Template1DbOid,
+									   table_oid,
+									   is_shared_relation,
+									   true /* is_sys_catalog_table */,
+									   false, /* if_not_exists */
+									   ybrowid_mode,
+									   true, /* is_colocated_via_database */
+									   InvalidOid /* tablegroup_oid */,
+									   InvalidOid /* colocation_id */,
+									   InvalidOid /* tablespace_oid */,
+									   false /* is_matview */,
+									   InvalidOid /* pg_table_oid */,
+									   InvalidOid /* old_relfilenode_oid */,
+									   false /* is_truncate */,
+									   &yb_stmt));
 
 	/* Add all key columns first, then the regular columns */
 	if (pkey_idx != NULL)

@@ -414,14 +414,12 @@ systable_beginscan(Relation heapRelation,
 	Relation	irel;
 
 	if (IsYugaByteEnabled())
-	{
 		return ybc_systable_beginscan(heapRelation,
-		                              indexId,
-		                              indexOK,
-		                              snapshot,
-		                              nkeys,
-		                              key);
-	}
+									  indexId,
+									  indexOK,
+									  snapshot,
+									  nkeys,
+									  key);
 
 	if (indexOK &&
 		!IgnoreSystemIndexes &&

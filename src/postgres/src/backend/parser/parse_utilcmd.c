@@ -1104,10 +1104,10 @@ YBCheckDeferrableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 	}
 
 	ereport(ERROR,
-			 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("%s", message),
 			 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1129. "
-			         "React with thumbs up to raise its priority"),
+					 "React with thumbs up to raise its priority"),
 			 parser_errposition(cxt->pstate, constraint->location)));
 }
 
@@ -3932,10 +3932,12 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 								 * values, they may still error out if referenced column has no
 								 * unique constraint so we disallow them too).
 								 */
-								if (!YbDdlRollbackEnabled() && (def->is_not_null || def->raw_default
-								    || cxt.ckconstraints || cxt.fkconstraints))
-									ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-												errmsg("This ALTER TABLE command is not yet supported.")));
+								if (!YbDdlRollbackEnabled() &&
+									(def->is_not_null || def->raw_default ||
+									 cxt.ckconstraints || cxt.fkconstraints))
+									ereport(ERROR,
+											(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+											 errmsg("This ALTER TABLE command is not yet supported.")));
 								break;
 
 							default:

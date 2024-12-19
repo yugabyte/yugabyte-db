@@ -810,7 +810,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 			list_member_oid(estate->yb_skip_entities.index_list,
 							RelationGetRelid(indexRelation)))
 			continue;
-		
+
 		Form_pg_index indexData = indexRelation->rd_index;
 		/*
 		 * Primary key is a part of the base relation in Yugabyte and does not

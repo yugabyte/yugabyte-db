@@ -1102,7 +1102,7 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("unrecognized lsn_type value for CREATE_REPLICATION_SLOT "
-						 		"option \"%s\": \"%s\"",
+								"option \"%s\": \"%s\"",
 								defel->defname, action)));
 		}
 		else
@@ -1122,7 +1122,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("CreateReplicationSlot is unavailable"),
 				 errdetail("Creation of replication slot is only allowed with "
-				 		   "ysql_yb_enable_replication_commands and "
+						   "ysql_yb_enable_replication_commands and "
 						   "ysql_yb_enable_replica_identity set to true.")));
 
 	const char *snapshot_name = NULL;
@@ -1252,10 +1252,10 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			if (cmd->temporary)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 	 errmsg("Temporary replication slot is not yet"
-						 		" supported"),
-					 	 errhint("See https://github.com/yugabyte/yugabyte-db/"
-							 	 "issues/19263. React with thumbs up to raise"
+						 errmsg("Temporary replication slot is not yet"
+								" supported"),
+						 errhint("See https://github.com/yugabyte/yugabyte-db/"
+								 "issues/19263. React with thumbs up to raise"
 								 " its priority")));
 
 			/*
@@ -1341,7 +1341,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 			/* don't need the decoding context anymore */
 			FreeDecodingContext(ctx);
-		
+
 			if (!cmd->temporary)
 				ReplicationSlotPersist();
 		}
@@ -1401,7 +1401,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		slot_name = cmd->slotname;
 	else
 		slot_name = NameStr(MyReplicationSlot->data.name);
-	
+
 	values[0] = CStringGetTextDatum(slot_name);
 
 	/* consistent wal location */
@@ -1438,7 +1438,7 @@ DropReplicationSlot(DropReplicationSlotCmd *cmd)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("DropReplicationSlot is unavailable"),
 				 errdetail("yb_enable_replication_commands is false or a "
-				 		   "system upgrade is in progress")));
+						   "system upgrade is in progress")));
 
 	if (IsYugaByteEnabled() && cmd->wait)
 		ereport(ERROR, 

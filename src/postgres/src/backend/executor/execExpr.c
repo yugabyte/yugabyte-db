@@ -2019,16 +2019,19 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				off = 0;
 				for (off = 0,
 					 l_left_expr = list_head(rcexpr->largs),
-					 l_right_expr = yb_is_for_row_in ? NULL :
-					 	list_head(castNode(List, rcexpr->rargs)),
+					 l_right_expr = (yb_is_for_row_in ?
+									 NULL :
+									 list_head(castNode(List, rcexpr->rargs))),
 					 l_opno = list_head(rcexpr->opnos),
 					 l_opfamily = list_head(rcexpr->opfamilies),
 					 l_inputcollid = list_head(rcexpr->inputcollids);
 					 off < nopers;
 					 off++,
 					 l_left_expr = lnext(rcexpr->largs, l_left_expr),
-					 l_right_expr = yb_is_for_row_in ? NULL :
-					 	lnext(castNode(List, rcexpr->rargs), l_right_expr),
+					 l_right_expr = (yb_is_for_row_in ?
+									 NULL :
+									 lnext(castNode(List, rcexpr->rargs),
+										   l_right_expr)),
 					 l_opno = lnext(rcexpr->opnos, l_opno),
 					 l_opfamily = lnext(rcexpr->opfamilies, l_opfamily),
 					 l_inputcollid = lnext(rcexpr->inputcollids, l_inputcollid))

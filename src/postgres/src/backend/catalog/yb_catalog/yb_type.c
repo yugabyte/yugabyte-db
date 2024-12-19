@@ -420,11 +420,11 @@ Datum YbInt64ToDatum(const int64 *data, int64 bytes, const YBCPgTypeAttrs *type_
 }
 
 void YbDatumToUInt64(Datum datum, uint64 *data, uint64 *bytes) {
-        *data = DatumGetUInt64(datum);
+	*data = DatumGetUInt64(datum);
 }
 
 Datum YbUInt64ToDatum(const uint64 *data, uint64 bytes, const YBCPgTypeAttrs *type_attrs) {
-        return UInt64GetDatum(*data);
+	return UInt64GetDatum(*data);
 }
 
 /*
