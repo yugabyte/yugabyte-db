@@ -4,6 +4,8 @@ headerTitle: Change data capture
 linkTitle: Change data capture
 description: Stream data change events from a YugabyteDB Aeon cluster.
 headcontent: Stream data change events from a YugabyteDB Aeon cluster
+tags:
+  feature: tech-preview
 menu:
   preview_yugabyte-cloud:
     identifier: aeon-cdc
