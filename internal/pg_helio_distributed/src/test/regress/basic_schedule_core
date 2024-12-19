@@ -45,7 +45,6 @@ test: bson_query_operator_geospatial_tests_explain_index
 test: bson_query_operator_geospatial_tests_explain_runtime
 test: bson_query_operator_near_nearsphere
 
-
 test: bson_dollar_ops_text_search_tests bson_dollar_ops_expr_tests
 test: bson_dollar_ops_json_schema_build_tree_tests bson_dollar_ops_json_schema_query_tests
 
@@ -106,6 +105,9 @@ test: bson_aggregation_stage_index_stats
 test: commands_validate
 test: commands_db_stats
 test: commands_create_view_tests
+
+# Needs to be separated out since it creates a new colo group that's fixed
+test: command_shard_commands
 
 # TODO join content with previous pfe tests
 test: bson_query_operator_pfe_index_pushdown

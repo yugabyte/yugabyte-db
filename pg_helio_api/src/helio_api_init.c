@@ -51,6 +51,9 @@ bool UseLocalExecutionShardQueries = DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES;
 #define DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY false
 bool EnableNewOperatorSelectivityMode = DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY;
 
+#define DEFAULT_SHARDING_MAX_CHUNKS 128
+int ShardingMaxChunks = DEFAULT_SHARDING_MAX_CHUNKS;
+
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -725,6 +728,13 @@ InitApiConfigurations(char *prefix)
 			"Determines whether to turn on colocation of tables in a given mongo database (and disabled outside the database)"),
 		NULL, &EnableNativeColocation, DEFAULT_ENABLE_NATIVE_COLOCATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.sharding_max_chunks", prefix),
+		gettext_noop(
+			"Gets the maximum allowed number of chunks for a shard collection operation"),
+		NULL, &ShardingMaxChunks, DEFAULT_SHARDING_MAX_CHUNKS, 1, 8192, PGC_USERSET, 0,
+		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		psprintf("%s.enableNativeTableColocation", prefix),

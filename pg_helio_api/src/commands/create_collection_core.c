@@ -90,33 +90,7 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 
 	const char *colocateWith = NULL;
 	const char *shardingColumn = "shard_key_value";
-	if (EnableNativeColocation)
-	{
-		/* For backwards compatibility, check if we can colocate with
-		 * the database level colocation
-		 */
-		if (CanColocateAtDatabaseLevel(databaseDatum))
-		{
-			/* Not a legacy table, set the sharding column to null to create
-			 * an unsharded collection.
-			 */
-			shardingColumn = NULL;
-
-			/* To ensure colocation across tables, we get or create
-			 * a special config table per database so that all tables
-			 * can be colocated with this table.
-			 */
-			colocateWith = GetOrCreateDatabaseConfigCollection(databaseDatum);
-
-			/* If table level colocation is desired - ignore the colocate with
-			 * on the sentinel.
-			 */
-			if (EnableNativeTableColocation)
-			{
-				colocateWith = "none";
-			}
-		}
-	}
+	SetUnshardedColocationData(databaseDatum, &shardingColumn, &colocateWith);
 
 	bool collectionExists = false;
 	uint64_t collectionId = InsertMetadataIntoCollections(databaseDatum, collectionDatum,
@@ -130,6 +104,42 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 	ereport(NOTICE, (errmsg("creating collection")));
 	CreatePostgresDataTable(collectionId, colocateWith, shardingColumn);
 	PG_RETURN_BOOL(true);
+}
+
+
+void
+SetUnshardedColocationData(text *databaseDatum, const char **shardingColumn, const
+						   char **colocateWith)
+{
+	*colocateWith = NULL;
+	*shardingColumn = "shard_key_value";
+	if (EnableNativeColocation)
+	{
+		/* For backwards compatibility, check if we can colocate with
+		 * the database level colocation
+		 */
+		if (CanColocateAtDatabaseLevel(databaseDatum))
+		{
+			/* Not a legacy table, set the sharding column to null to create
+			 * an unsharded collection.
+			 */
+			*shardingColumn = NULL;
+
+			/* To ensure colocation across tables, we get or create
+			 * a special config table per database so that all tables
+			 * can be colocated with this table.
+			 */
+			*colocateWith = GetOrCreateDatabaseConfigCollection(databaseDatum);
+
+			/* If table level colocation is desired - ignore the colocate with
+			 * on the sentinel.
+			 */
+			if (EnableNativeTableColocation)
+			{
+				*colocateWith = "none";
+			}
+		}
+	}
 }
 
 
@@ -225,7 +235,7 @@ CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith, const
 
 	bool readOnly = false;
 	bool isNull = false;
-	bool isUnsharded = true;
+	int shardCount = 0;
 
 	/* Assuming it didn't throw, it's a success */
 	ExtensionExecuteQueryViaSPI(createTableStringInfo->data, readOnly, SPI_OK_UTILITY,
@@ -251,7 +261,7 @@ CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith, const
 	const char *distributionColumnUsed = DistributePostgresTable(dataTableNameInfo->data,
 																 shardingColumn,
 																 colocateWith,
-																 isUnsharded);
+																 shardCount);
 
 	resetStringInfo(createTableStringInfo);
 	appendStringInfo(createTableStringInfo,
@@ -309,7 +319,7 @@ CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith, const
 	colocateWith = dataTableNameInfo->data;
 	DistributePostgresTable(retryTableNameInfo->data, distributionColumnUsed,
 							colocateWith,
-							isUnsharded);
+							shardCount);
 	return dataTableNameInfo->data;
 }
 

@@ -23,9 +23,13 @@
 #include "sharding/sharding.h"
 #include "metadata/metadata_cache.h"
 #include "utils/query_utils.h"
+#include "commands/parse_error.h"
+#include "commands/commands_common.h"
+#include "metadata/collection.h"
 
 extern bool EnableNativeColocation;
 extern bool EnableShardingOrFilters;
+extern int ShardingMaxChunks;
 
 /*
  * ShardKeyFieldValues is used to keep track of shard key values in a query.
@@ -48,9 +52,51 @@ typedef struct ShardKeyFieldValues
 	bson_value_t *values;
 } ShardKeyFieldValues;
 
+
+/*
+ * Mode tracking sharding options
+ */
+typedef enum ShardCollectionMode
+{
+	/* It's a shard operation (unsharded -> sharded) */
+	ShardCollectionMode_Shard = 1,
+
+	/* It's a reshard operation (sharded -> sharded) */
+	ShardCollectionMode_Reshard = 2,
+
+	/* It's an unshard operation (sharded -> unsharded) */
+	ShardCollectionMode_Unshard = 3,
+} ShardCollectionMode;
+
+/* Arguments to the shard collection and reshard collection functions
+ * This is post-parsing and processing
+ */
+typedef struct ShardCollectionArgs
+{
+	/* The mongo database to act on*/
+	char *databaseName;
+
+	/* The mongo collection to act on*/
+	char *collectionName;
+
+	/* The shardkey if mode is != Unshard */
+	pgbson *shardKeyDefinition;
+
+	/* The number of chunks to create (0 means unset) */
+	int numChunks;
+
+	/* The command's sharding mode */
+	ShardCollectionMode shardingMode;
+
+	/* Whether or not to force redistribution on reshard */
+	bool forceRedistribution;
+} ShardCollectionArgs;
+
 PG_FUNCTION_INFO_V1(command_get_shard_key_value);
 PG_FUNCTION_INFO_V1(command_validate_shard_key);
 PG_FUNCTION_INFO_V1(command_shard_collection);
+PG_FUNCTION_INFO_V1(command_reshard_collection);
+PG_FUNCTION_INFO_V1(command_unshard_collection);
 
 static bson_value_t FindShardKeyFieldValue(bson_iter_t *docIter, const char *path);
 static void InitShardKeyFieldValues(pgbson *shardKey,
@@ -68,31 +114,34 @@ static bool ComputeShardKeyHashForQueryValue(pgbson *shardKey, uint64_t collecti
 static Expr * FindShardKeyValuesExpr(bson_iter_t *queryDocIter, pgbson *shardKey, int
 									 collectionVarno, ShardKeyFieldValues *fieldValues);
 
+static void ShardCollectionCore(ShardCollectionArgs *args);
+static void ShardCollectionLegacy(PG_FUNCTION_ARGS);
+static void ParseShardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs);
+static void ParseReshardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs);
+static void ParseUnshardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs);
+
+
+/*
+ * Top level command to shard a collection.
+ */
 Datum
 command_shard_collection(PG_FUNCTION_ARGS)
 {
-	pgbson *shardKey = PG_GETARG_PGBSON(2);
+	if (PG_NARGS() > 1)
+	{
+		ShardCollectionLegacy(fcinfo);
+		PG_RETURN_VOID();
+	}
 
-	ValidateShardKey(shardKey);
-
-	Datum databaseDatum = PG_GETARG_DATUM(0);
-	Datum collectionDatum = PG_GETARG_DATUM(1);
-
-	char *databaseName = TextDatumGetCString(databaseDatum);
-	char *collectionName = TextDatumGetCString(collectionDatum);
-	bool isReshard = PG_GETARG_BOOL(3);
+	/* New function with 1 arg. */
+	pgbson *shardArg = PG_GETARG_PGBSON_PACKED(0);
 
 	if (!IsMetadataCoordinator())
 	{
 		StringInfo shardCollectionQuery = makeStringInfo();
 		appendStringInfo(shardCollectionQuery,
-						 "SELECT %s.shard_collection(%s,%s,%s::%s,%s)",
-						 ApiSchemaName,
-						 quote_literal_cstr(databaseName),
-						 quote_literal_cstr(collectionName),
-						 quote_literal_cstr(PgbsonToHexadecimalString(shardKey)),
-						 FullBsonTypeName,
-						 isReshard ? "true" : "false");
+						 "SELECT helio_api.shard_collection(%s::helio_core.bson)",
+						 quote_literal_cstr(PgbsonToHexadecimalString(shardArg)));
 		DistributedRunCommandResult result = RunCommandOnMetadataCoordinator(
 			shardCollectionQuery->data);
 
@@ -109,203 +158,83 @@ command_shard_collection(PG_FUNCTION_ARGS)
 		PG_RETURN_VOID();
 	}
 
-	/* Allow for checking if reference metadata tables are correctly handled */
-	EnsureMetadataTableReplicated("collections");
+	ShardCollectionArgs args = { 0 };
+	ParseShardCollectionRequest(shardArg, &args);
+	ShardCollectionCore(&args);
+	PG_RETURN_VOID();
+}
 
-	MongoCollection *collection = GetMongoCollectionByNameDatum(
-		databaseDatum, collectionDatum, AccessShareLock);
 
-	if (collection == NULL)
+/*
+ * Top level command to reshard a collection.
+ */
+Datum
+command_reshard_collection(PG_FUNCTION_ARGS)
+{
+	pgbson *shardArg = PG_GETARG_PGBSON_PACKED(0);
+
+	if (!IsMetadataCoordinator())
 	{
-		if (isReshard)
+		StringInfo shardCollectionQuery = makeStringInfo();
+		appendStringInfo(shardCollectionQuery,
+						 "SELECT helio_api.reshard_collection(%s::helio_core.bson)",
+						 quote_literal_cstr(PgbsonToHexadecimalString(shardArg)));
+		DistributedRunCommandResult result = RunCommandOnMetadataCoordinator(
+			shardCollectionQuery->data);
+
+		if (!result.success)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTSHARDED),
-							errmsg("Collection %s.%s is not sharded",
-								   databaseName, collectionName),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+							errmsg(
+								"Internal error resharding collection in metadata coordinator"),
 							errdetail_log(
-								"Can not reshard collection that doesn't exist: %s.%s",
-								databaseName, collectionName)));
+								"Internal error resharding collection in metadata coordinator via distributed call %s",
+								text_to_cstring(result.response))));
 		}
 
-		CreateCollection(databaseDatum, collectionDatum);
-		collection = GetMongoCollectionByNameDatum(
-			databaseDatum, collectionDatum, AccessShareLock);
-
-		Assert(collection != NULL);
-	}
-
-	if (collection->shardKey == NULL && isReshard)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTSHARDED),
-						errmsg("Collection %s.%s is not sharded",
-							   databaseName, collectionName),
-						errdetail_log(
-							"Can not reshard collection that is not sharded: %s.%s",
-							databaseName, collectionName)));
-	}
-
-	if (collection->shardKey != NULL && PgbsonEquals(collection->shardKey, shardKey))
-	{
-		ereport(NOTICE, (errmsg(
-							 "Skipping Sharding for collection %s.%s as the same options were passed in.",
-							 databaseName, collectionName)));
 		PG_RETURN_VOID();
 	}
 
-	if (collection->shardKey != NULL && !isReshard)
+	ShardCollectionArgs args = { 0 };
+	ParseReshardCollectionRequest(shardArg, &args);
+	ShardCollectionCore(&args);
+	PG_RETURN_VOID();
+}
+
+
+/*
+ * Top level command to unshard a collection.
+ */
+Datum
+command_unshard_collection(PG_FUNCTION_ARGS)
+{
+	pgbson *shardArg = PG_GETARG_PGBSON_PACKED(0);
+
+	if (!IsMetadataCoordinator())
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_ALREADYINITIALIZED),
-						errmsg(
-							"Sharding already enabled for collection %s.%s with options { \"_id\": \"%s.%s\", \"dropped\" : false, \"key\" : %s, \"unique\": false }.",
-							databaseName, collectionName, databaseName, collectionName,
-							PgbsonToJsonForLogging(shardKey))));
+		StringInfo shardCollectionQuery = makeStringInfo();
+		appendStringInfo(shardCollectionQuery,
+						 "SELECT helio_api.unshard_collection(%s::helio_core.bson)",
+						 quote_literal_cstr(PgbsonToHexadecimalString(shardArg)));
+		DistributedRunCommandResult result = RunCommandOnMetadataCoordinator(
+			shardCollectionQuery->data);
+
+		if (!result.success)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+							errmsg(
+								"Internal error unsharding collection in metadata coordinator"),
+							errdetail_log(
+								"Internal error unsharding collection in metadata coordinator via distributed call %s",
+								text_to_cstring(result.response))));
+		}
+
+		PG_RETURN_VOID();
 	}
 
-	int nargs = 3;
-	Oid argTypes[3] = { BsonTypeId(), TEXTOID, TEXTOID };
-	char *argNulls = NULL;
-	bool isNull = true;
-
-	Datum values[3] = { 0 };
-	values[0] = PointerGetDatum(shardKey);
-	values[1] = databaseDatum;
-	values[2] = collectionDatum;
-
-	RunQueryWithCommutativeWrites(
-		FormatSqlQuery("UPDATE %s.collections SET shard_key = $1"
-					   " WHERE database_name = $2 AND collection_name = $3",
-					   ApiCatalogSchemaName),
-		nargs, argTypes, values, argNulls, SPI_OK_UPDATE, &isNull);
-
-	/* Add 20 to the max table name length to account for the schema. */
-	char qualifiedDataTableName[NAMEDATALEN + 20];
-	sprintf(qualifiedDataTableName, "%s.%s", ApiDataSchemaName, collection->tableName);
-	char tmpDataTableName[NAMEDATALEN + 20];
-	sprintf(tmpDataTableName, "%s.%s_reshard", ApiDataSchemaName, collection->tableName);
-
-	/* create a new table to reinsert the data into */
-	StringInfo queryInfo = makeStringInfo();
-	bool readOnly = false;
-	appendStringInfo(queryInfo,
-					 "CREATE TABLE %s (LIKE %s INCLUDING ALL EXCLUDING INDEXES)",
-					 tmpDataTableName, qualifiedDataTableName);
-	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
-
-	/* change the shard_key_value constraint */
-	resetStringInfo(queryInfo);
-	appendStringInfo(queryInfo,
-					 "ALTER TABLE %s DROP CONSTRAINT shard_key_value_check",
-					 tmpDataTableName);
-	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
-
-	resetStringInfo(queryInfo);
-	appendStringInfo(queryInfo,
-					 "ALTER TABLE %s ADD CONSTRAINT shard_key_value_check"
-					 " CHECK (shard_key_value = %s.get_shard_key_value(%s::%s, %lu, document))",
-					 tmpDataTableName, ApiInternalSchemaName,
-					 quote_literal_cstr(PgbsonToHexadecimalString(shardKey)),
-					 FullBsonTypeName,
-					 collection->collectionId);
-	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
-
-	const char *colocateWith = EnableNativeColocation ? "none" : NULL;
-	bool isUnsharded = false;
-
-	DistributePostgresTable(tmpDataTableName, "shard_key_value", colocateWith,
-							isUnsharded);
-
-	/* apply the new shard key by re-inserting all data */
-	resetStringInfo(queryInfo);
-	appendStringInfo(queryInfo,
-					 "INSERT INTO %s (shard_key_value, object_id, document, creation_time)"
-					 " SELECT %s.get_shard_key_value($1, $2, document), object_id, document, creation_time"
-					 " FROM %s",
-					 tmpDataTableName, ApiInternalSchemaName, qualifiedDataTableName);
-
-	nargs = 2;
-	Oid insertArgTypes[2] = { BsonTypeId(), INT8OID };
-	Datum insertArgValues[2] = { 0 };
-	insertArgValues[0] = PointerGetDatum(shardKey);
-	insertArgValues[1] = UInt64GetDatum(collection->collectionId);
-
-	ExtensionExecuteQueryWithArgsViaSPI(queryInfo->data, nargs, insertArgTypes,
-										insertArgValues, argNulls, readOnly,
-										SPI_OK_INSERT, &isNull);
-
-	/*
-	 * Replace the old table with the new table.
-	 */
-	resetStringInfo(queryInfo);
-	appendStringInfo(queryInfo,
-					 "DROP TABLE %s", qualifiedDataTableName);
-
-	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
-
-	resetStringInfo(queryInfo);
-	appendStringInfo(queryInfo,
-					 "ALTER TABLE %s RENAME TO %s",
-					 tmpDataTableName, collection->tableName);
-	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
-
-	/* Update new table owner to admin role */
-	resetStringInfo(queryInfo);
-	appendStringInfo(queryInfo,
-					 "ALTER TABLE %s OWNER TO %s",
-					 qualifiedDataTableName, ApiAdminRole);
-	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
-
-	/* Get all valid or in progress indexes and delete them from metadata entries related to the collection.
-	 * TODO(MX): This really should not be CommutativeWrites for the entire query. Ideally only hte DELETE itself
-	 * is commutative and is separate out from the other queries. This only really becomes a concern wiht MX
-	 * and so for now this is left as-is.
-	 */
-	resetStringInfo(queryInfo);
-	appendStringInfo(queryInfo,
-					 " WITH cte AS ("
-					 " DELETE FROM %s.collection_indexes WHERE collection_id = %lu RETURNING *)"
-					 " SELECT array_agg(%s.index_spec_as_bson(index_spec) ORDER BY index_id, '{}') FROM cte"
-					 " WHERE index_is_valid OR %s.index_build_is_in_progress(index_id)",
-					 ApiCatalogSchemaName, collection->collectionId,
-					 ApiInternalSchemaName, ApiInternalSchemaName);
-
-	bool isNullIndexSpecArray = true;
-	Datum indexSpecArray = RunQueryWithCommutativeWrites(queryInfo->data, 0, NULL, NULL,
-														 NULL, SPI_OK_SELECT,
-														 &isNullIndexSpecArray);
-
-	/* Create a vanilla RUM _id index but don't register it yet since we need to build it. */
-	resetStringInfo(queryInfo);
-	appendStringInfo(queryInfo,
-					 "SELECT %s.create_builtin_id_index(collection_id => %lu, register_id_index => false)",
-					 ApiInternalSchemaName, collection->collectionId);
-	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_SELECT, &isNull);
-
-	if (!isNullIndexSpecArray)
-	{
-		pgbson_writer createIndexesArgWriter;
-		PgbsonWriterInit(&createIndexesArgWriter);
-
-		PgbsonWriterAppendUtf8(&createIndexesArgWriter, "createIndexes", 13,
-							   collectionName);
-
-		pgbson_element_writer elementWriter;
-		PgbsonInitObjectElementWriter(&createIndexesArgWriter, &elementWriter,
-									  "indexes", 7);
-		PgbsonElementWriterWriteSQLValue(&elementWriter, isNullIndexSpecArray,
-										 indexSpecArray, RECORDARRAYOID);
-
-		/* Re-create valid indexes. */
-		pgbson *createIndexesMsg = PgbsonWriterGetPgbson(&createIndexesArgWriter);
-		CreateIndexesArg createIndexesArg = ParseCreateIndexesArg(databaseDatum,
-																  createIndexesMsg);
-		bool skipCheckCollectionCreate = createIndexesArg.blocking;
-		bool uniqueIndexOnly = false;
-
-		/* We call it good if it doesn't throw. */
-		create_indexes_non_concurrently(databaseDatum, createIndexesArg,
-										skipCheckCollectionCreate, uniqueIndexOnly);
-	}
-
+	ShardCollectionArgs args = { 0 };
+	ParseUnshardCollectionRequest(shardArg, &args);
+	ShardCollectionCore(&args);
 	PG_RETURN_VOID();
 }
 
@@ -939,4 +868,582 @@ FindShardKeyValuesExpr(bson_iter_t *queryDocIter, pgbson *shardKey, int collecti
 	}
 
 	return NULL;
+}
+
+
+static void
+ShardCollectionLegacy(PG_FUNCTION_ARGS)
+{
+	pgbson *shardKey = PG_GETARG_PGBSON(2);
+
+	ValidateShardKey(shardKey);
+
+	Datum databaseDatum = PG_GETARG_DATUM(0);
+	Datum collectionDatum = PG_GETARG_DATUM(1);
+
+	char *databaseName = TextDatumGetCString(databaseDatum);
+	char *collectionName = TextDatumGetCString(collectionDatum);
+	bool isReshard = PG_GETARG_BOOL(3);
+
+	if (!IsMetadataCoordinator())
+	{
+		StringInfo shardCollectionQuery = makeStringInfo();
+		appendStringInfo(shardCollectionQuery,
+						 "SELECT %s.shard_collection(%s,%s,%s::%s,%s)",
+						 ApiSchemaName,
+						 quote_literal_cstr(databaseName),
+						 quote_literal_cstr(collectionName),
+						 quote_literal_cstr(PgbsonToHexadecimalString(shardKey)),
+						 FullBsonTypeName,
+						 isReshard ? "true" : "false");
+		DistributedRunCommandResult result = RunCommandOnMetadataCoordinator(
+			shardCollectionQuery->data);
+
+		if (!result.success)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+							errmsg(
+								"Internal error sharding collection in metadata coordinator"),
+							errdetail_log(
+								"Internal error sharding collection in metadata coordinator via distributed call %s",
+								text_to_cstring(result.response))));
+		}
+
+		return;
+	}
+
+	ShardCollectionArgs args = { 0 };
+	args.databaseName = databaseName;
+	args.collectionName = collectionName;
+	args.shardingMode = isReshard ? ShardCollectionMode_Reshard :
+						ShardCollectionMode_Shard;
+	args.shardKeyDefinition = shardKey;
+
+	ShardCollectionCore(&args);
+}
+
+
+static void
+ShardCollectionCore(ShardCollectionArgs *args)
+{
+	Datum databaseDatum = CStringGetTextDatum(args->databaseName);
+	Datum collectionDatum = CStringGetTextDatum(args->collectionName);
+
+	/* Allow for checking if reference metadata tables are correctly handled */
+	EnsureMetadataTableReplicated("collections");
+
+	MongoCollection *collection = GetMongoCollectionByNameDatum(
+		databaseDatum, collectionDatum, AccessShareLock);
+
+	if (collection == NULL)
+	{
+		if (args->shardingMode != ShardCollectionMode_Shard)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTSHARDED),
+							errmsg("Collection %s.%s is not sharded",
+								   args->databaseName, args->collectionName),
+							errdetail_log(
+								"Can not re/unshard collection that doesn't exist: %s.%s",
+								args->databaseName, args->collectionName)));
+		}
+
+		CreateCollection(databaseDatum, collectionDatum);
+		collection = GetMongoCollectionByNameDatum(
+			databaseDatum, collectionDatum, AccessShareLock);
+
+		Assert(collection != NULL);
+	}
+
+	if (collection->shardKey == NULL &&
+		args->shardingMode != ShardCollectionMode_Shard)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTSHARDED),
+						errmsg("Collection %s.%s is not sharded",
+							   args->databaseName, args->collectionName),
+						errdetail_log(
+							"Can not re/unshard collection that is not sharded: %s.%s",
+							args->databaseName, args->collectionName)));
+	}
+
+	if (!args->forceRedistribution &&
+		collection->shardKey != NULL && PgbsonEquals(collection->shardKey,
+													 args->shardKeyDefinition))
+	{
+		ereport(NOTICE, (errmsg(
+							 "Skipping Sharding for collection %s.%s as the same options were passed in.",
+							 args->databaseName, args->collectionName)));
+		return;
+	}
+
+	if (collection->shardKey != NULL && args->shardingMode == ShardCollectionMode_Shard)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_ALREADYINITIALIZED),
+						errmsg(
+							"Sharding already enabled for collection %s.%s with options { \"_id\": \"%s.%s\", \"dropped\" : false, \"key\" : %s, \"unique\": false }.",
+							args->databaseName, args->collectionName, args->databaseName,
+							args->collectionName,
+							PgbsonToJsonForLogging(args->shardKeyDefinition))));
+	}
+
+	int nargs = 3;
+	Oid argTypes[3] = { BsonTypeId(), TEXTOID, TEXTOID };
+	bool isNull = true;
+
+	char argNulls[3] = { ' ', ' ', ' ' };
+	Datum values[3] = { 0 };
+
+	if (args->shardKeyDefinition == NULL)
+	{
+		argNulls[0] = 'n';
+		values[0] = (Datum) 0;
+	}
+	else
+	{
+		values[0] = PointerGetDatum(args->shardKeyDefinition);
+	}
+
+	values[1] = databaseDatum;
+	values[2] = collectionDatum;
+
+	RunQueryWithCommutativeWrites(
+		FormatSqlQuery("UPDATE %s.collections SET shard_key = $1"
+					   " WHERE database_name = $2 AND collection_name = $3",
+					   ApiCatalogSchemaName),
+		nargs, argTypes, values, argNulls, SPI_OK_UPDATE, &isNull);
+
+	/* Add 20 to the max table name length to account for the schema. */
+	char qualifiedDataTableName[NAMEDATALEN + 20];
+	sprintf(qualifiedDataTableName, "%s.%s", ApiDataSchemaName, collection->tableName);
+	char tmpDataTableName[NAMEDATALEN + 20];
+	sprintf(tmpDataTableName, "%s.%s_reshard", ApiDataSchemaName, collection->tableName);
+
+	/* create a new table to reinsert the data into */
+	StringInfo queryInfo = makeStringInfo();
+	bool readOnly = false;
+	appendStringInfo(queryInfo,
+					 "CREATE TABLE %s (LIKE %s INCLUDING ALL EXCLUDING INDEXES)",
+					 tmpDataTableName, qualifiedDataTableName);
+	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
+
+	/* change the shard_key_value constraint */
+	resetStringInfo(queryInfo);
+	appendStringInfo(queryInfo,
+					 "ALTER TABLE %s DROP CONSTRAINT shard_key_value_check",
+					 tmpDataTableName);
+	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
+
+	resetStringInfo(queryInfo);
+	if (args->shardingMode == ShardCollectionMode_Unshard)
+	{
+		appendStringInfo(queryInfo,
+						 "ALTER TABLE %s ADD CONSTRAINT shard_key_value_check CHECK (shard_key_value = '%lu'::bigint)",
+						 tmpDataTableName, collection->collectionId);
+	}
+	else
+	{
+		appendStringInfo(queryInfo,
+						 "ALTER TABLE %s ADD CONSTRAINT shard_key_value_check"
+						 " CHECK (shard_key_value = %s.get_shard_key_value(%s::%s, %lu, document))",
+						 tmpDataTableName, ApiInternalSchemaName,
+						 quote_literal_cstr(PgbsonToHexadecimalString(
+												args->shardKeyDefinition)),
+						 FullBsonTypeName,
+						 collection->collectionId);
+	}
+
+	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
+
+	const char *colocateWith = EnableNativeColocation ? "none" : NULL;
+	int shardCount = 0;
+	if (args->numChunks > 0)
+	{
+		shardCount = args->numChunks;
+	}
+
+	const char *distributionColumn = "shard_key_value";
+	if (args->shardingMode == ShardCollectionMode_Unshard)
+	{
+		shardCount = 0;
+		SetUnshardedColocationData(cstring_to_text(args->databaseName),
+								   &distributionColumn, &colocateWith);
+	}
+	else if (shardCount == 1)
+	{
+		/*
+		 * If we request 1 single shard, we can simply create a single shard distributed table
+		 * which simplifies joins and pushdowns
+		 */
+		distributionColumn = NULL;
+		shardCount = 0;
+	}
+
+	DistributePostgresTable(tmpDataTableName, distributionColumn, colocateWith,
+							shardCount);
+
+	/* apply the new shard key by re-inserting all data */
+	resetStringInfo(queryInfo);
+
+	nargs = 2;
+	Oid insertArgTypes[2] = { BsonTypeId(), INT8OID };
+	Datum insertArgValues[2] = { 0 };
+	char insertArgNulls[2] = { ' ', ' ' };
+
+	if (args->shardKeyDefinition == NULL)
+	{
+		insertArgValues[0] = (Datum) 0;
+		insertArgNulls[0] = 'n';
+	}
+	else
+	{
+		insertArgValues[0] = PointerGetDatum(args->shardKeyDefinition);
+	}
+
+	insertArgValues[1] = UInt64GetDatum(collection->collectionId);
+
+	appendStringInfo(queryInfo,
+					 "INSERT INTO %s (shard_key_value, object_id, document, creation_time)"
+					 " SELECT %s.get_shard_key_value($1, $2, document), object_id, document, creation_time"
+					 " FROM %s",
+					 tmpDataTableName, ApiInternalSchemaName, qualifiedDataTableName);
+
+	ExtensionExecuteQueryWithArgsViaSPI(queryInfo->data, nargs, insertArgTypes,
+										insertArgValues, insertArgNulls, readOnly,
+										SPI_OK_INSERT, &isNull);
+
+	/*
+	 * Replace the old table with the new table.
+	 */
+	resetStringInfo(queryInfo);
+	appendStringInfo(queryInfo,
+					 "DROP TABLE %s", qualifiedDataTableName);
+
+	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
+
+	resetStringInfo(queryInfo);
+	appendStringInfo(queryInfo,
+					 "ALTER TABLE %s RENAME TO %s",
+					 tmpDataTableName, collection->tableName);
+	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
+
+	/* Update new table owner to admin role */
+	resetStringInfo(queryInfo);
+	appendStringInfo(queryInfo,
+					 "ALTER TABLE %s OWNER TO %s",
+					 qualifiedDataTableName, ApiAdminRole);
+	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
+
+	/* Get all valid or in progress indexes and delete them from metadata entries related to the collection.
+	 * TODO(MX): This really should not be CommutativeWrites for the entire query. Ideally only hte DELETE itself
+	 * is commutative and is separate out from the other queries. This only really becomes a concern wiht MX
+	 * and so for now this is left as-is.
+	 */
+	resetStringInfo(queryInfo);
+	appendStringInfo(queryInfo,
+					 " WITH cte AS ("
+					 " DELETE FROM %s.collection_indexes WHERE collection_id = %lu RETURNING *)"
+					 " SELECT array_agg(%s.index_spec_as_bson(index_spec) ORDER BY index_id, '{}') FROM cte"
+					 " WHERE index_is_valid OR %s.index_build_is_in_progress(index_id)",
+					 ApiCatalogSchemaName, collection->collectionId,
+					 ApiInternalSchemaName, ApiInternalSchemaName);
+
+	bool isNullIndexSpecArray = true;
+	Datum indexSpecArray = RunQueryWithCommutativeWrites(queryInfo->data, 0, NULL, NULL,
+														 NULL, SPI_OK_SELECT,
+														 &isNullIndexSpecArray);
+
+	/* Create a vanilla RUM _id index but don't register it yet since we need to build it. */
+	resetStringInfo(queryInfo);
+	appendStringInfo(queryInfo,
+					 "SELECT %s.create_builtin_id_index(collection_id => %lu, register_id_index => false)",
+					 ApiInternalSchemaName, collection->collectionId);
+	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_SELECT, &isNull);
+
+	if (!isNullIndexSpecArray)
+	{
+		pgbson_writer createIndexesArgWriter;
+		PgbsonWriterInit(&createIndexesArgWriter);
+
+		PgbsonWriterAppendUtf8(&createIndexesArgWriter, "createIndexes", 13,
+							   args->collectionName);
+
+		pgbson_element_writer elementWriter;
+		PgbsonInitObjectElementWriter(&createIndexesArgWriter, &elementWriter,
+									  "indexes", 7);
+		PgbsonElementWriterWriteSQLValue(&elementWriter, isNullIndexSpecArray,
+										 indexSpecArray, RECORDARRAYOID);
+
+		/* Re-create valid indexes. */
+		pgbson *createIndexesMsg = PgbsonWriterGetPgbson(&createIndexesArgWriter);
+		CreateIndexesArg createIndexesArg = ParseCreateIndexesArg(databaseDatum,
+																  createIndexesMsg);
+		bool skipCheckCollectionCreate = createIndexesArg.blocking;
+		bool uniqueIndexOnly = false;
+
+		/* We call it good if it doesn't throw. */
+		create_indexes_non_concurrently(databaseDatum, createIndexesArg,
+										skipCheckCollectionCreate, uniqueIndexOnly);
+	}
+}
+
+
+static void
+ParseNamespaceName(const char *namespacePath, char **databaseName, char **collectionName)
+{
+	StringView strView = CreateStringViewFromString(namespacePath);
+	StringView databaseView = StringViewFindPrefix(&strView, '.');
+	if (databaseView.length == 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+						errmsg("name needs to be fully qualified <db>.<collection>")));
+	}
+
+	if (strView.length < databaseView.length + 2)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+						errmsg("name needs to be fully qualified <db>.<collection>")));
+	}
+
+	StringView collectionView = StringViewSubstring(&strView, databaseView.length + 1);
+
+	ValidateDatabaseCollection(
+		PointerGetDatum(cstring_to_text_with_len(databaseView.string,
+												 databaseView.length)),
+		PointerGetDatum(cstring_to_text_with_len(collectionView.string,
+												 collectionView.length)));
+
+	*databaseName = pnstrdup(databaseView.string, databaseView.length);
+	*collectionName = pnstrdup(collectionView.string, collectionView.length);
+}
+
+
+static void
+ParseShardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
+{
+	bson_iter_t argIter;
+	PgbsonInitIterator(args, &argIter);
+	while (bson_iter_next(&argIter))
+	{
+		const char *key = bson_iter_key(&argIter);
+		if (strcmp(key, "shardCollection") == 0)
+		{
+			EnsureTopLevelFieldType("shardCollection", &argIter, BSON_TYPE_UTF8);
+			ParseNamespaceName(bson_iter_utf8(&argIter, NULL), &shardArgs->databaseName,
+							   &shardArgs->collectionName);
+		}
+		else if (strcmp(key, "key") == 0)
+		{
+			EnsureTopLevelFieldType("key", &argIter, BSON_TYPE_DOCUMENT);
+			shardArgs->shardKeyDefinition = PgbsonInitFromDocumentBsonValue(
+				bson_iter_value(&argIter));
+		}
+		else if (strcmp(key, "unique") == 0)
+		{
+			EnsureTopLevelFieldIsBooleanLike("unique", &argIter);
+			if (bson_iter_as_bool(&argIter))
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+								errmsg("hashed shard keys cannot be declared unique.")));
+			}
+		}
+		else if (strcmp(key, "numInitialChunks") == 0)
+		{
+			EnsureTopLevelFieldIsNumberLike("numInitialChunks", bson_iter_value(
+												&argIter));
+			shardArgs->numChunks = BsonValueAsInt32(bson_iter_value(&argIter));
+
+			if (shardArgs->numChunks <= 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+								errmsg("numInitialChunks must be a positive number")));
+			}
+
+			if (shardArgs->numChunks > ShardingMaxChunks)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+								errmsg("numInitialChunks must be less than %d.",
+									   ShardingMaxChunks)));
+			}
+		}
+		else if (strcmp(key, "collation") == 0)
+		{
+			EnsureTopLevelFieldType("collation", &argIter, BSON_TYPE_DOCUMENT);
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg(
+								"Collation on shard collection is not supported yet")));
+		}
+		else if (strcmp(key, "timeseries") == 0)
+		{
+			EnsureTopLevelFieldType("timeseries", &argIter, BSON_TYPE_DOCUMENT);
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg(
+								"timeseries on shard collection is not supported yet")));
+		}
+		else if (strcmp(key, "presplitHashedZones") == 0)
+		{
+			/* Ignored */
+		}
+		else if (IsCommonSpecIgnoredField(key))
+		{
+			/* ignore */
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+							errmsg("Unknown key %s", key)));
+		}
+	}
+
+	/* Validate required fields */
+	if (shardArgs->collectionName == NULL ||
+		shardArgs->databaseName == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("shardCollection is a required field.")));
+	}
+
+	if (shardArgs->shardKeyDefinition == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("key is a required field.")));
+	}
+
+	ValidateShardKey(shardArgs->shardKeyDefinition);
+	shardArgs->shardingMode = ShardCollectionMode_Shard;
+}
+
+
+static void
+ParseReshardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
+{
+	bson_iter_t argIter;
+	PgbsonInitIterator(args, &argIter);
+	while (bson_iter_next(&argIter))
+	{
+		const char *key = bson_iter_key(&argIter);
+		if (strcmp(key, "reshardCollection") == 0)
+		{
+			EnsureTopLevelFieldType("reshardCollection", &argIter, BSON_TYPE_UTF8);
+			ParseNamespaceName(bson_iter_utf8(&argIter, NULL), &shardArgs->databaseName,
+							   &shardArgs->collectionName);
+		}
+		else if (strcmp(key, "key") == 0)
+		{
+			EnsureTopLevelFieldType("key", &argIter, BSON_TYPE_DOCUMENT);
+			shardArgs->shardKeyDefinition = PgbsonInitFromDocumentBsonValue(
+				bson_iter_value(&argIter));
+		}
+		else if (strcmp(key, "unique") == 0)
+		{
+			EnsureTopLevelFieldIsBooleanLike("unique", &argIter);
+			if (bson_iter_as_bool(&argIter))
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+								errmsg("hashed shard keys cannot be declared unique.")));
+			}
+		}
+		else if (strcmp(key, "numInitialChunks") == 0)
+		{
+			EnsureTopLevelFieldIsNumberLike("numInitialChunks", bson_iter_value(
+												&argIter));
+			shardArgs->numChunks = BsonValueAsInt32(bson_iter_value(&argIter));
+
+			if (shardArgs->numChunks <= 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+								errmsg("numInitialChunks must be a positive number")));
+			}
+
+			if (shardArgs->numChunks > ShardingMaxChunks)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+								errmsg("numInitialChunks must be less than %d.",
+									   ShardingMaxChunks)));
+			}
+		}
+		else if (strcmp(key, "collation") == 0)
+		{
+			EnsureTopLevelFieldType("collation", &argIter, BSON_TYPE_DOCUMENT);
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg(
+								"Collation on shard collection is not supported yet")));
+		}
+		else if (strcmp(key, "zones") == 0)
+		{
+			/* Ignored */
+		}
+		else if (strcmp(key, "forceRedistribution") == 0)
+		{
+			EnsureTopLevelFieldIsBooleanLike("forceRedistribution", &argIter);
+			shardArgs->forceRedistribution = BsonValueAsBool(bson_iter_value(&argIter));
+		}
+		else if (IsCommonSpecIgnoredField(key))
+		{
+			/* ignore */
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+							errmsg("Unknown key %s", key)));
+		}
+	}
+
+	/* Validate required fields */
+	if (shardArgs->collectionName == NULL ||
+		shardArgs->databaseName == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("reshardCollection is a required field.")));
+	}
+
+	if (shardArgs->shardKeyDefinition == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("key is a required field.")));
+	}
+
+	ValidateShardKey(shardArgs->shardKeyDefinition);
+	shardArgs->shardingMode = ShardCollectionMode_Reshard;
+}
+
+
+static void
+ParseUnshardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
+{
+	bson_iter_t argIter;
+	PgbsonInitIterator(args, &argIter);
+	while (bson_iter_next(&argIter))
+	{
+		const char *key = bson_iter_key(&argIter);
+		if (strcmp(key, "unshardCollection") == 0)
+		{
+			EnsureTopLevelFieldType("unshardCollection", &argIter, BSON_TYPE_UTF8);
+			ParseNamespaceName(bson_iter_utf8(&argIter, NULL), &shardArgs->databaseName,
+							   &shardArgs->collectionName);
+		}
+		else if (strcmp(key, "toShard") == 0)
+		{
+			EnsureTopLevelFieldType("toShard", &argIter, BSON_TYPE_UTF8);
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+							errmsg("unshardCollection with toShard not supported yet")));
+		}
+		else if (IsCommonSpecIgnoredField(key))
+		{
+			/* ignore */
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+							errmsg("Unknown key %s", key)));
+		}
+	}
+
+	/* Validate required fields */
+	if (shardArgs->collectionName == NULL ||
+		shardArgs->databaseName == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("unshardCollection is a required field.")));
+	}
+
+	shardArgs->shardingMode = ShardCollectionMode_Unshard;
 }

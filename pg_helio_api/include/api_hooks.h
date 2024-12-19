@@ -80,10 +80,12 @@ bool IsShardTableForMongoTable(const char *relName, const char *numEndPointer);
  * Distributes a given postgres table with the provided distribution column.
  * Optionally supports colocating the distributed table with another distributed table.
  * Returns the distribution column used (may be equal to the one passed on or NULL).
+ * shardCount: the number of shards or 0 if unspecified and sharded.
+ * For unsharded, specify 0.
  */
 const char * DistributePostgresTable(const char *postgresTable, const
 									 char *distributionColumn,
-									 const char *colocateWith, bool isUnsharded);
+									 const char *colocateWith, int shardCount);
 
 
 /*

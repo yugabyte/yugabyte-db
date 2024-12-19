@@ -250,4 +250,7 @@ char * ParseAndGetValidationActionOption(bson_iter_t *iter, const
 										 char *validationActionName, bool *hasValue);
 void UpdateMongoCollectionUsingIds(MongoCollection *mongoCollection, uint64 collectionId,
 								   Oid shardOid);
+
+void SetUnshardedColocationData(text *databaseDatum, const char **shardingColumn, const
+								char **colocateWith);
 #endif

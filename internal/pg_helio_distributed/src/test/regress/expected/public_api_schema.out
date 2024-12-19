@@ -1,11 +1,14 @@
 -- show all functions exported in helio_api_distributed
 \df helio_api_distributed.*
-                                     List of functions
-        Schema         |        Name        | Result data type | Argument data types | Type 
+                                       List of functions
+        Schema         |        Name        | Result data type |  Argument data types   | Type 
 ---------------------------------------------------------------------
- helio_api_distributed | complete_upgrade   | boolean          |                     | func
- helio_api_distributed | initialize_cluster | void             |                     | func
-(2 rows)
+ helio_api_distributed | complete_upgrade   | boolean          |                        | func
+ helio_api_distributed | initialize_cluster | void             |                        | func
+ helio_api_distributed | rebalancer_start   | helio_core.bson  | p_spec helio_core.bson | func
+ helio_api_distributed | rebalancer_status  | helio_core.bson  | p_spec helio_core.bson | func
+ helio_api_distributed | rebalancer_stop    | helio_core.bson  | p_spec helio_core.bson | func
+(5 rows)
 
 -- show all aggregates exported
 \da+ helio_api_distributed.*

@@ -174,14 +174,14 @@ IsShardTableForMongoTable(const char *relName, const char *numEndPointer)
  */
 const char *
 DistributePostgresTable(const char *postgresTable, const char *distributionColumn,
-						const char *colocateWith, bool isUnsharded)
+						const char *colocateWith, int shardCount)
 {
 	/* Noop for single node scenarios: Don't do anything unless overriden */
 	if (distribute_postgres_table_hook != NULL)
 	{
 		return distribute_postgres_table_hook(postgresTable, distributionColumn,
 											  colocateWith,
-											  isUnsharded);
+											  shardCount);
 	}
 
 	return distributionColumn;

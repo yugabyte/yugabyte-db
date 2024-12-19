@@ -214,6 +214,9 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_COMMAND_DELETE] = "command_delete",
 	[FEATURE_COMMAND_FINDANDMODIFY] = "command_findAndModify",
 	[FEATURE_COMMAND_INSERT] = "command_insert",
+	[FEATURE_COMMAND_SHARD_COLLECTION] = "command_shard_collection",
+	[FEATURE_COMMAND_RESHARD_COLLECTION] = "command_reshard_collection",
+	[FEATURE_COMMAND_UNSHARD_COLLECTION] = "command_unshard_collection",
 	[FEATURE_COMMAND_UPDATE] = "command_update",
 	[FEATURE_COMMAND_VALIDATE_REPAIR] = "validate_repair",
 

@@ -75,7 +75,7 @@ extern RunQueryWithSequentialModification_HookType
 typedef const char *(*DistributePostgresTable_HookType)(const char *postgresTable, const
 														char *distributionColumn,
 														const char *colocateWith,
-														bool isUnsharded);
+														int shardCount);
 extern DistributePostgresTable_HookType distribute_postgres_table_hook;
 
 

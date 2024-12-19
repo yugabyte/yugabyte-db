@@ -180,7 +180,7 @@ IsShardTableForMongoTableCore(const char *relName, const char *numEndPointer)
  */
 static const char *
 DistributePostgresTableCore(const char *postgresTable, const char *distributionColumn,
-							const char *colocateWith, bool isUnsharded)
+							const char *colocateWith, int shardCount)
 {
 	const char *distributionColumnUsed = distributionColumn;
 
@@ -208,16 +208,28 @@ DistributePostgresTableCore(const char *postgresTable, const char *distributionC
 	 * We need to skip checking cluster version there so do other checks first.
 	 */
 	const char *createQuery =
-		"SELECT create_distributed_table($1::regclass, $2, colocate_with => $3)";
-	int nargs = 3;
-	Oid argTypes[3] = { TEXTOID, TEXTOID, TEXTOID };
-	Datum argValues[3] = {
+		"SELECT create_distributed_table($1::regclass, $2, colocate_with => $3, shard_count => $4)";
+	int nargs = 4;
+	Oid argTypes[4] = { TEXTOID, TEXTOID, TEXTOID, INT4OID };
+	Datum argValues[4] = {
 		CStringGetTextDatum(postgresTable),
 		(Datum) 0,
-		(Datum) 0
+		(Datum) 0,
+		(Datum) 0,
 	};
 
-	char argNulls[3] = { ' ', 'n', 'n' };
+	if (distributionColumnUsed == NULL && shardCount != 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+						errmsg(
+							"Unexpected - distribution column is null but shardCount is %d",
+							shardCount),
+						errdetail_log(
+							"Unexpected - distribution column is null but shardCount is %d",
+							shardCount)));
+	}
+
+	char argNulls[4] = { ' ', 'n', 'n', 'n' };
 
 	if (distributionColumnUsed != NULL)
 	{
@@ -235,8 +247,9 @@ DistributePostgresTableCore(const char *postgresTable, const char *distributionC
 		bool innerReadOnly = true;
 		bool isNull = true;
 		ExtensionExecuteQueryViaSPI(
-			FormatSqlQuery("SELECT 1 FROM pg_catalog.pg_dist_partition "
-						   " WHERE logicalrelid = '%s.changes'::regclass",
+			FormatSqlQuery("SELECT 1 FROM pg_catalog.pg_dist_partition pdp "
+						   " JOIN pg_class pc on pdp.logicalrelid = pc.oid "
+						   " WHERE relname = 'changes' AND relnamespace = '%s'::regnamespace",
 						   ApiDataSchemaName),
 			innerReadOnly, SPI_OK_SELECT, &isNull);
 		if (!isNull)
@@ -252,6 +265,12 @@ DistributePostgresTableCore(const char *postgresTable, const char *distributionC
 			argValues[2] = CStringGetTextDatum("none");
 			argNulls[2] = ' ';
 		}
+	}
+
+	if (shardCount > 0)
+	{
+		argValues[3] = Int32GetDatum(shardCount);
+		argNulls[3] = ' ';
 	}
 
 	bool readOnly = false;

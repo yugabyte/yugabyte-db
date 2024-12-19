@@ -20,6 +20,9 @@
 #define DEFAULT_ENABLE_METADATA_REFERENCE_SYNC true
 bool EnableMetadataReferenceTableSync = DEFAULT_ENABLE_METADATA_REFERENCE_SYNC;
 
+#define DEFAULT_ENABLE_SHARD_REBALANCER false
+bool EnableShardRebalancer = DEFAULT_ENABLE_SHARD_REBALANCER;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -35,5 +38,12 @@ InitHelioDistributedConfigurations(void)
 		gettext_noop(
 			"Determines whether or not to enable metadata reference table syncs."),
 		NULL, &EnableMetadataReferenceTableSync, DEFAULT_ENABLE_METADATA_REFERENCE_SYNC,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api_distributed.enable_shard_rebalancer_apis",
+		gettext_noop(
+			"Determines whether or not to enable shard rebalancer APIs."),
+		NULL, &EnableShardRebalancer, DEFAULT_ENABLE_SHARD_REBALANCER,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }
