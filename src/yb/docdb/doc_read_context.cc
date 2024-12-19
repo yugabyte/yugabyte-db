@@ -22,18 +22,17 @@
 namespace yb::docdb {
 
 DocReadContext::DocReadContext(
-    const std::string& log_prefix, TableType table_type, Index is_index,
-    SkipTableTombstoneCheck skip_table_tombstone_check)
+    const std::string& log_prefix, TableType table_type, Index is_index)
     : schema_packing_storage(table_type), is_index_(is_index),
-      log_prefix_(log_prefix), skip_table_tombstone_check_(skip_table_tombstone_check) {
+      log_prefix_(log_prefix) {
   UpdateKeyPrefix();
 }
 
 DocReadContext::DocReadContext(
     const std::string& log_prefix, TableType table_type, Index is_index, const Schema& schema,
-    SchemaVersion schema_version, SkipTableTombstoneCheck skip_table_tombstone_check)
+    SchemaVersion schema_version)
     : schema_packing_storage(table_type), is_index_(is_index), schema_(schema),
-      log_prefix_(log_prefix), skip_table_tombstone_check_(skip_table_tombstone_check) {
+      log_prefix_(log_prefix) {
   schema_packing_storage.AddSchema(schema_version, schema_);
   UpdateKeyPrefix();
   LOG_IF_WITH_PREFIX(INFO, schema_version != 0)
@@ -43,7 +42,7 @@ DocReadContext::DocReadContext(
 DocReadContext::DocReadContext(
     const DocReadContext& rhs, const Schema& schema, SchemaVersion schema_version)
     : schema_packing_storage(rhs.schema_packing_storage), is_index_(rhs.is_index_), schema_(schema),
-      log_prefix_(rhs.log_prefix_), skip_table_tombstone_check_(rhs.skip_table_tombstone_check()) {
+      log_prefix_(rhs.log_prefix_) {
   schema_packing_storage.AddSchema(schema_version, schema_);
   UpdateKeyPrefix();
   LOG_WITH_PREFIX(INFO)
@@ -51,19 +50,16 @@ DocReadContext::DocReadContext(
       << ", added: " << schema_version;
 }
 
-DocReadContext::DocReadContext(
-    const DocReadContext& rhs, const Schema& schema)
+DocReadContext::DocReadContext(const DocReadContext& rhs, const Schema& schema)
     : schema_packing_storage(rhs.schema_packing_storage), is_index_(rhs.is_index_), schema_(schema),
-      log_prefix_(rhs.log_prefix_), skip_table_tombstone_check_(rhs.skip_table_tombstone_check()) {
+      log_prefix_(rhs.log_prefix_) {
   UpdateKeyPrefix();
   LOG_WITH_PREFIX(INFO) << "DocReadContext, copy and replace schema";
 }
 
-DocReadContext::DocReadContext(
-    const DocReadContext& rhs, SchemaVersion min_schema_version)
+DocReadContext::DocReadContext(const DocReadContext& rhs, SchemaVersion min_schema_version)
     : schema_packing_storage(rhs.schema_packing_storage, min_schema_version),
-      is_index_(rhs.is_index_), schema_(rhs.schema_), log_prefix_(rhs.log_prefix_),
-      skip_table_tombstone_check_(rhs.skip_table_tombstone_check()) {
+      is_index_(rhs.is_index_), schema_(rhs.schema_), log_prefix_(rhs.log_prefix_) {
   UpdateKeyPrefix();
   LOG_WITH_PREFIX(INFO)
       << "DocReadContext, copy and filter: " << rhs.schema_packing_storage.VersionsToString()
@@ -87,10 +83,6 @@ void DocReadContext::LogAfterMerge(dockv::OverwriteSchemaPacking overwrite) {
 void DocReadContext::SetCotableId(const Uuid& cotable_id) {
   schema_.set_cotable_id(cotable_id);
   UpdateKeyPrefix();
-}
-void DocReadContext::set_skip_table_tombstone_check(
-    SkipTableTombstoneCheck skip_table_tombstone_check) {
-  skip_table_tombstone_check_ = skip_table_tombstone_check;
 }
 
 void DocReadContext::UpdateKeyPrefix() {
