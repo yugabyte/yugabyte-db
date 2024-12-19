@@ -101,6 +101,10 @@ public class TlsToggle extends UpgradeTaskBase {
 
   private void createRound1GFlagUpdateTasks(MastersAndTservers nodes) {
     if (getNodeToNodeChange() < 0) {
+      // Skip running round1 if Node2Node certs have expired
+      if (CertificateHelper.checkNode2NodeCertsExpiry(getUniverse())) {
+        return;
+      }
       // Setting allow_insecure to true can be done in non-restart way
       createNonRestartUpgradeTaskFlow(
           (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
@@ -313,6 +317,12 @@ public class TlsToggle extends UpgradeTaskBase {
     return task;
   }
 
+  /*
+   * Returns:
+   * 1: If task is to enable node-to-node encryption
+   * -1: If task is to disable node-to-node encryption
+   * 0: If there is no change in node-to-node encryption
+   */
   private int getNodeToNodeChange() {
     return getUserIntent().enableNodeToNodeEncrypt != taskParams().enableNodeToNodeEncrypt
         ? (taskParams().enableNodeToNodeEncrypt ? 1 : -1)
