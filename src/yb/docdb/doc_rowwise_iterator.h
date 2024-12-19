@@ -103,6 +103,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
     return use_fast_backward_scan_;
   }
 
+  Result<Slice> FetchDirect(Slice key) override;
+
  private:
   void InitIterator(
       BloomFilterMode bloom_filter_mode = BloomFilterMode::DONT_USE_BLOOM_FILTER,

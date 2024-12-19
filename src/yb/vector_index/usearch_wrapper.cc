@@ -195,9 +195,10 @@ class UsearchIndex :
   }
 
   Result<std::vector<VertexWithDistance<DistanceResult>>> DoSearch(
-      const Vector& query_vector, size_t max_num_results) const {
+      const Vector& query_vector, const SearchOptions& options) const {
     SemaphoreLock lock(*search_semaphore_);
-    auto usearch_results = index_.search(query_vector.data(), max_num_results);
+    auto usearch_results = index_.filtered_search(
+        query_vector.data(), options.max_num_results, options.filter);
     RSTATUS_DCHECK(
         usearch_results, RuntimeError, "Failed to search a vector: $0",
         usearch_results.error.release());

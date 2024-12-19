@@ -882,6 +882,65 @@ class VectorIndexKeyProvider {
   size_t index_ = 0;
 };
 
+class PgsqlVectorFilter {
+ public:
+  explicit PgsqlVectorFilter(YQLRowwiseIteratorIf::UniPtr* table_iter)
+      : iter_(table_iter) {
+  }
+
+  Status Init(const PgsqlReadOperationData& data) {
+    std::vector<ColumnId> columns;
+    ColumnId index_column = data.vector_index->column_id();
+    for (const auto& col_ref : data.request.col_refs()) {
+      if (col_ref.column_id() == index_column) {
+        index_column_index_ = columns.size();
+      }
+      columns.push_back(ColumnId(col_ref.column_id()));
+    }
+    if (index_column_index_ == std::numeric_limits<size_t>::max()) {
+      index_column_index_ = columns.size();
+      columns.push_back(index_column);
+    }
+    dockv::ReaderProjection projection;
+    projection_.Init(data.doc_read_context.schema(), columns);
+    row_.emplace(projection_);
+    return iter_.InitForYbctid(data, projection_, data.doc_read_context, {});
+  }
+
+  bool operator()(const vector_index::VectorId& vector_id) {
+    auto key = VectorIdKey(vector_id);
+    // TODO(vector_index) handle failure
+    auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key.AsSlice()));
+    if (ybctid.empty()) {
+      return false;
+    }
+    if (need_refresh_) {
+      iter_.Refresh();
+    }
+    auto fetch_result = CHECK_RESULT(iter_.FetchTuple(ybctid, &*row_));
+    // TODO(vector_index) Actually we already have all necessary info to generate response,
+    // but we don't know whether this row will be in top or not.
+    // So need to extend usearch interface to also provide us ability to store fetched row.
+
+    need_refresh_ = fetch_result == FetchResult::NotFound;
+    if (fetch_result != FetchResult::Found) {
+      return false;
+    }
+    auto vector_value = row_->GetValueByIndex(index_column_index_);
+    if (!vector_value) {
+      return false;
+    }
+    auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
+    return vector_id.AsSlice() == encoded_value.id;
+  }
+ private:
+  FilteringIterator iter_;
+  dockv::ReaderProjection projection_;
+  size_t index_column_index_ = std::numeric_limits<size_t>::max();
+  std::optional<dockv::PgTableRow> row_;
+  bool need_refresh_ = false;
+};
+
 } // namespace
 
 class PgsqlWriteOperation::RowPackContext {
@@ -1318,20 +1377,31 @@ Status PgsqlWriteOperation::UpdateColumn(
     RETURN_NOT_OK(returning_table_row->SetValue(column_id, result->Value()));
   }
 
-  if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, result->Value()))) {
-    // Inserting into specified column.
-    DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
-    // If the column has a missing value, we don't want any null values that are inserted to be
-    // compacted away. So we store kNullLow instead of kTombstone.
-    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-        sub_path,
-        IsNull(result->Value()) && !IsNull(column.missing_value()) ?
-            ValueRef(dockv::ValueEntryType::kNullLow) :
-            ValueRef(result->Value(), column.sorting_type()),
-        data.read_operation_data, request_.stmt_id()));
+  if (!column.is_vector()) {
+    return DoUpdateColumn(data, column_id, column, result->Value(), pack_context);
   }
 
-  return Status::OK();
+  dockv::DocVectorValue vector_value(result->Value(), vector_index::VectorId::GenerateRandom());
+  return DoUpdateColumn(data, column_id, column, vector_value, pack_context);
+}
+
+template <class Value>
+Status PgsqlWriteOperation::DoUpdateColumn(
+    const DocOperationApplyData& data, ColumnId column_id, const ColumnSchema& column,
+    Value&& value, RowPackContext* pack_context) {
+  if (pack_context && VERIFY_RESULT(pack_context->Add(column_id, value))) {
+    return Status::OK();
+  }
+  // Inserting into specified column.
+  DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
+  // If the column has a missing value, we don't want any null values that are inserted to be
+  // compacted away. So we store kNullLow instead of kTombstone.
+  return data.doc_write_batch->InsertSubDocument(
+      sub_path,
+      IsNull(value) && !IsNull(column.missing_value()) ?
+          ValueRef(dockv::ValueEntryType::kNullLow) :
+          ValueRef(value, column.sorting_type()),
+      data.read_operation_data, request_.stmt_id());
 }
 
 Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
@@ -1889,10 +1959,10 @@ Result<size_t> PgsqlReadOperation::Execute() {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSample());
   } else if (request_.has_vector_idx_options()) {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
-      data_.doc_read_context, request_.vector_idx_options()));
+        data_.doc_read_context, request_.vector_idx_options()));
   } else if (request_.index_request().has_vector_idx_options()) {
     fetched_rows = VERIFY_RESULT(ExecuteVectorLSMSearch(
-        *data_.index_doc_read_context, request_.index_request().vector_idx_options()));
+        request_.index_request().vector_idx_options()));
     has_paging_state = false;
   } else {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteScalar());
@@ -2127,8 +2197,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
   return std::tuple<size_t, bool>{fetched_rows, has_paging_state};
 }
 
-Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(
-    const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options) {
+Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOptionsPB& options) {
   RSTATUS_DCHECK(
       data_.vector_index, IllegalState, "Search vector when vector index is null: $0", request_);
 
@@ -2137,7 +2206,17 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(
   // when paging is supported.
   size_t max_results = std::min(options.prefetch_size(), 1000);
 
-  auto result = VERIFY_RESULT(data_.vector_index->Search(vector_slice, max_results));
+  table_iter_.reset();
+  PgsqlVectorFilter filter(&table_iter_);
+  RETURN_NOT_OK(filter.Init(data_));
+  auto result = VERIFY_RESULT(data_.vector_index->Search(
+      vector_slice,
+      vector_index::SearchOptions {
+        .max_num_results = max_results,
+        .filter = std::ref(filter),
+      }
+  ));
+
   // TODO(vector_index) Order keys by ybctid for fetching.
   VectorIndexKeyProvider key_provider(
       result, response_, *data_.vector_index, vector_slice, max_results, *result_buffer_);

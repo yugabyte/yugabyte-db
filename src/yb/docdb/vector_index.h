@@ -25,6 +25,8 @@
 
 #include "yb/util/kv_util.h"
 
+#include "yb/vector_index/vector_index_fwd.h"
+
 namespace yb::docdb {
 
 using EncodedDistance = size_t;
@@ -54,7 +56,8 @@ class VectorIndex {
       const rocksdb::UserFrontiers* frontiers,
       rocksdb::DirectWriteHandler* handler,
       DocHybridTime write_time) = 0;
-  virtual Result<VectorIndexSearchResult> Search(Slice vector, size_t max_num_results) = 0;
+  virtual Result<VectorIndexSearchResult> Search(
+      Slice vector, const vector_index::SearchOptions& options) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
@@ -68,5 +71,7 @@ Result<VectorIndexPtr> CreateVectorIndex(
     Slice indexed_table_key_prefix,
     const qlexpr::IndexInfo& index_info,
     const DocDB& doc_db);
+
+KeyBuffer VectorIdKey(vector_index::VectorId vector_id);
 
 }  // namespace yb::docdb

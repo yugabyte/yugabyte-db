@@ -41,5 +41,9 @@ Result<bool> YQLRowwiseIteratorIf::FetchTuple(Slice tuple_id, qlexpr::QLTableRow
   return STATUS(NotSupported, "This iterator cannot fetch tuple id");
 }
 
+Result<Slice> YQLRowwiseIteratorIf::FetchDirect(Slice key) {
+  return STATUS(NotSupported, "FetchDirect not supported");
+}
+
 }  // namespace docdb
 }  // namespace yb

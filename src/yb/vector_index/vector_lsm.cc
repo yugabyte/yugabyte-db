@@ -117,12 +117,16 @@ class VectorLSMInsertTask :
     }
   }
 
-  void Search(SearchHeap& heap, const Vector& query_vector, size_t max_num_results) const {
+  void Search(
+      SearchHeap& heap, const Vector& query_vector, const SearchOptions& options) const {
     SharedLock lock(mutex_);
     for (const auto& [id, vector] : vectors_) {
+      if (!options.filter(id)) {
+        continue;
+      }
       auto distance = chunk_->index->Distance(query_vector, vector);
       VertexWithDistance vertex(id, distance);
-      if (heap.size() < max_num_results) {
+      if (heap.size() < options.max_num_results) {
         heap.push(vertex);
       } else if (heap.top() > vertex) {
         heap.pop();
@@ -214,12 +218,13 @@ class VectorLSMInsertRegistry {
     }
   }
 
-  typename VectorIndex::SearchResult Search(const Vector& query_vector, size_t max_num_results) {
+  typename VectorIndex::SearchResult Search(
+      const Vector& query_vector, const SearchOptions& options) {
     typename InsertTask::SearchHeap heap;
     {
       SharedLock lock(mutex_);
       for (const auto& task : active_tasks_) {
-        task.Search(heap, query_vector, max_num_results);
+        task.Search(heap, query_vector, options);
       }
     }
     return ReverseHeapToVector(heap);
@@ -563,10 +568,10 @@ auto VectorLSM<Vector, DistanceResult>::Search(
     }
   }
 
-  auto intermediate_results = insert_registry_->Search(query_vector, options.max_num_results);
+  auto intermediate_results = insert_registry_->Search(query_vector, options);
 
   for (const auto& index : indexes) {
-    auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options.max_num_results));
+    auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options));
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
 

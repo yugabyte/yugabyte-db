@@ -163,10 +163,8 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     return lsm_.Insert(lsm_entries, context);
   }
 
-  Result<VectorIndexSearchResult> Search(Slice vector, size_t max_num_results) override {
-    typename LSM::SearchOptions options = {
-      .max_num_results = max_num_results,
-    };
+  Result<VectorIndexSearchResult> Search(
+      Slice vector, const vector_index::SearchOptions& options) override {
     auto entries = VERIFY_RESULT(lsm_.Search(
         VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
     VectorIndexSearchResult result;
@@ -209,10 +207,7 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     const auto& context = static_cast<const VectorIndexInsertContext&>(insert_context);
     for (const auto& [vector_id, base_table_key] : batch) {
       DocHybridTimeBuffer ht_buf;
-      KeyBuffer kb;
-      kb.PushBack(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata);
-      kb.PushBack(dockv::KeyEntryTypeAsChar::kVectorId);
-      kb.Append(vector_id.AsSlice());
+      auto kb = VectorIdKey(vector_id);
       kb.Append(ht_buf.EncodeWithValueType(context.write_time));
       auto kbs = kb.AsSlice();
 
@@ -229,10 +224,7 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     // TODO(vector-index) check if ReadOptions are required.
     docdb::BoundedRocksDbIterator iter(doc_db_.regular, {}, doc_db_.key_bounds);
 
-    KeyBuffer key;
-    key.PushBack(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata);
-    key.PushBack(dockv::KeyEntryTypeAsChar::kVectorId);
-    key.Append(vector_id.AsSlice());
+    auto key = VectorIdKey(vector_id);
     const auto& entry = iter.Seek(key.AsSlice());
     if (!entry.Valid()) {
       return STATUS_FORMAT(NotFound, "Vector not found: $0", vector_id);
@@ -264,6 +256,14 @@ Result<VectorIndexPtr> CreateVectorIndex(
       indexed_table_key_prefix, ColumnId(options.column_id()), doc_db);
   RETURN_NOT_OK(result->Open(path, thread_pool, options));
   return result;
+}
+
+KeyBuffer VectorIdKey(vector_index::VectorId vector_id) {
+  KeyBuffer key;
+  key.PushBack(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata);
+  key.PushBack(dockv::KeyEntryTypeAsChar::kVectorId);
+  key.Append(vector_id.AsSlice());
+  return key;
 }
 
 }  // namespace yb::docdb

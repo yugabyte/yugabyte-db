@@ -441,4 +441,10 @@ bool DocRowwiseIterator::LivenessColumnExists() const {
   return subdoc != nullptr && subdoc->value_type() != dockv::ValueEntryType::kInvalid;
 }
 
+Result<Slice> DocRowwiseIterator::FetchDirect(Slice key) {
+  db_iter_->Seek(key, SeekFilter::kAll, Full::kTrue);
+  auto fetch_result = VERIFY_RESULT_REF(db_iter_->Fetch());
+  return fetch_result.key == key ? fetch_result.value : Slice();
+}
+
 }  // namespace yb::docdb

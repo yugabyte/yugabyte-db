@@ -15,7 +15,7 @@
 
 #include "yb/dockv/dockv_fwd.h"
 
-#include "yb/vector_index/vector_id.h"
+#include "yb/vector_index/vector_index_fwd.h"
 
 #include "yb/util/kv_util.h"
 #include "yb/util/uuid.h"

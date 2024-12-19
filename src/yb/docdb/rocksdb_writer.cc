@@ -730,6 +730,9 @@ Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
           << "Unexpected entry type: " << entry_type << " in " << key.ToDebugHexString();
     }
   } else {
+    if (value.starts_with(ValueEntryTypeAsChar::kTombstone)) {
+      return Status::OK();
+    }
     auto packed_row_version = dockv::GetPackedRowVersion(value);
     RSTATUS_DCHECK(packed_row_version.has_value(), Corruption,
                    "Full row with non packed value: $0 -> $1",

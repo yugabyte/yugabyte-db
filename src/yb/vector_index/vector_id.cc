@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/vector_index/vector_id.h"
+#include "yb/vector_index/vector_index_fwd.h"
 
 #include "yb/util/result.h"
 
