@@ -85,7 +85,7 @@ You can upgrade your airgapped installation of YugabyteDB Anywhere to a newer ve
    For example, if you are upgrading to the latest YugabyteDB Anywhere stable version, you would start by executing the following command to obtain the package:
 
    ```sh
-   wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2024.1">}}/yugaware-{{<yb-version version="v2024.1" format="build">}}-linux-x86_64.airgap
+   wget https://software.yugabyte.com/releases/{{<yb-version version="v2024.1">}}/yugaware-{{<yb-version version="v2024.1" format="build">}}-linux-x86_64.airgap
    ```
 
    Then you would create the `/opt/yugabyte/releases/yugaware-{{<yb-version version="v2024.1" format="build">}}/` directory and move (or SCP) the `yugaware-{{<yb-version version="v2024.1" format="build">}}-linux-x86_64.airgap` file into that directory.

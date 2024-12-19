@@ -104,7 +104,7 @@ To run a shell from a universe node, do the following:
     You can download using the following command on Linux or macOS:
 
     ```sh
-    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+    curl -sSL https://software.yugabyte.com/get_clients.sh | bash
     ```
 
     Windows client shells require Docker. For example:

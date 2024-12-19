@@ -57,7 +57,7 @@ You can perform an airgapped installation on RHEL 8 and CentOS 8.
 1. Download the airgapped bundle:
 
     ```sh
-    https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
+    https://software.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
     ```
 
 1. Extract the bundle.
@@ -163,7 +163,7 @@ You can perform an airgapped installation on Ubuntu 22 and later.
 1. Download the airgapped bundle:
 
     ```sh
-    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-latest_debian.tar.gz
+    wget https://software.yugabyte.com/repos/airgapped/yb-voyager-latest_debian.tar.gz
     ```
 
 1. Extract the bundle.
@@ -249,15 +249,15 @@ The options are as follows.
 
 You can download the oracle instant client RPM packages from the following links:
 
-- [oracle-instantclient-tools](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-tools_21.5.0.0.0-1_amd64.debrpm)
+- [oracle-instantclient-tools](https://software.yugabyte.com/repos/apt/pool/main/oracle-instantclient-tools_21.5.0.0.0-1_amd64.debrpm)
 
-- [oracle-instantclient-basic](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-basic_21.5.0.0.0-1_amd64.deb)
+- [oracle-instantclient-basic](https://software.yugabyte.com/repos/apt/pool/main/oracle-instantclient-basic_21.5.0.0.0-1_amd64.deb)
 
-- [oracle-instantclient-devel](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-devel_21.5.0.0.0-1_amd64.deb)
+- [oracle-instantclient-devel](https://software.yugabyte.com/repos/apt/pool/main/oracle-instantclient-devel_21.5.0.0.0-1_amd64.deb)
 
-- [oracle-instantclient-jdbc](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-jdbc_21.5.0.0.0-1_amd64.deb)
+- [oracle-instantclient-jdbc](https://software.yugabyte.com/repos/apt/pool/main/oracle-instantclient-jdbc_21.5.0.0.0-1_amd64.deb)
 
-- [oracle-instantclient-sqlplus](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-sqlplus_21.5.0.0.0-1_amd64.deb)
+- [oracle-instantclient-sqlplus](https://software.yugabyte.com/repos/apt/pool/main/oracle-instantclient-sqlplus_21.5.0.0.0-1_amd64.deb)
 
 {{% /tab %}}
 

@@ -25,7 +25,7 @@ Alternately, you can migrate the [Replicated installation to YBA Installer on a 
 - If you haven't already, [download and extract](../install-software/installer/#download-yba-installer) YBA Installer. It is recommended that you migrate using the same version of YBA Installer as the version of YBA you are running in Replicated. For example, if you have v.{{<yb-version version="v2.20" format="long">}} installed, use the following commands:
 
     ```sh
-    wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.20" format="long">}}/yba_installer_full-{{<yb-version version="v2.20" format="build">}}-linux-x86_64.tar.gz
+    wget https://software.yugabyte.com/releases/{{<yb-version version="v2.20" format="long">}}/yba_installer_full-{{<yb-version version="v2.20" format="build">}}-linux-x86_64.tar.gz
     tar -xf yba_installer_full-{{<yb-version version="v2.20" format="build">}}-linux-x86_64.tar.gz
     cd yba_installer_full-{{<yb-version version="v2.20" format="build">}}/
     ```

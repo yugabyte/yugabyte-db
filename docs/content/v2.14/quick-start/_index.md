@@ -172,7 +172,7 @@ You download YugabyteDB as follows:
 1. Download the YugabyteDB `tar.gz` file by executing the following `wget` command:
 
     ```sh
-    wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
+    wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home, as follows:

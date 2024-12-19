@@ -316,8 +316,8 @@ for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip \
       "cd ~/yb-software; \
-       curl -k -o yugabyte-${YB_VERSION}-linux.tar.gz \
-         https://downloads.yugabyte.com/yugabyte-${YB_VERSION}-linux.tar.gz"; \
+       curl -k -o -L yugabyte-${YB_VERSION}-linux.tar.gz \
+         https://software.yugabyte.com/yugabyte-${YB_VERSION}-linux.tar.gz"; \
    ssh -i $PEM $ADMIN_USER@$ip \
       "cd ~/yb-software; \
        tar xvfz yugabyte-${YB_VERSION}-linux.tar.gz"; \
