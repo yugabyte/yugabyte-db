@@ -377,7 +377,7 @@ export const unformatConf = (formValues, GFlagInput) => {
     }
 
     const content = isNonEmptyString(GFlagRowConfSubset) ? GFlagRowConfSubset : GFlagRowConf;
-    const isDisabled = isRowDisabled(formValues, flagName, GFlagRowConfSubset);
+    const isDisabled = isRowDisabled(formValues, flagName, content);
 
     return {
       id: `item-${index}`,
