@@ -84,7 +84,7 @@ Enable database query logging for a cluster and export the logs to the integrati
 | --log-error-verbosity | Optional. Controls the amount of detail written in the server log for each message that is logged.<br>Arguments:<br><ul><li>`DEFAULT` - Standard verbosity level.</li><li>`TERSE` - Minimal detail.</li><li>`VERBOSE` - Maximum detail.</li></ul>Default is `DEFAULT`. |
 | --log-statement | Optional. Log all statements or specific types of statements.<br>Arguments:<br><ul><li>`NONE` - Do not log any statements.</li><li>`DDL` - Log data definition language statements.</li><li>`MOD` - Log data modification statements.</li><li>`ALL` - Log all statements.</li></ul>Default is `NONE`. |
 | --log-min-error-statement | Optional. Minimum error severity for logging the statement that caused it.<br>Arguments:<br><ul><li>`ERROR` - Log statements causing errors.</li></ul>Default is `ERROR`. |
-| --log-line-prefix | Optional. A printf-style format string for [log line prefixes](../../../cloud-monitor/logging-export.md/#include-in-the-log-prefix-log-line-prefix). Default is `%m :%r :%u @ %d :[%p] :`. |
+| --log-line-prefix | Optional. A printf-style format string for [log line prefixes](../../../../cloud-monitor/logging-export/#include-in-the-log-prefix-log-line-prefix). Default is `%m :%r :%u @ %d :[%p] :`. |
 
 ### disable
 
