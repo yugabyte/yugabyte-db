@@ -35,6 +35,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "yb/ash/wait_state_fwd.h"
+
 #include "yb/client/async_rpc.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/error_collector.h"
@@ -329,7 +331,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   void LookupTabletFor(InFlightOp* op);
   void TabletLookupFinished(InFlightOp* op, Result<internal::RemoteTabletPtr> result);
 
-  void TransactionReady(const Status& status);
+  void TransactionReady(ash::WaitStateInfoPtr wait_state, const Status& status);
 
   // initial - whether this method is called first time for this batch.
   void ExecuteOperations(Initial initial);
