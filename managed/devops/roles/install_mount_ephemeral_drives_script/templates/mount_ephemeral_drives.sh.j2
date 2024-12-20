@@ -116,15 +116,18 @@ get_ephemeral_drives() {
 
   # Take into account xvdb or sdb
   root_drive=$(lsblk | awk '$7 == "/" {print $1}' | tr -cd '[:alnum:]/')
-
-  if [[ "$root_drive" =~ .*xvd.* ]]; then
-    echo "Detected 'xvd' drive naming scheme (root: $root_drive)"
+  root_parent=$(lsblk -ndo pkname "/dev/${root_drive}")
+  if [[ -z "${root_parent}" ]]; then
+    root_parent=root_drive
+  fi
+  if [[ "$root_parent" =~ .*xvd.* ]]; then
+    echo "Detected 'xvd' drive naming scheme (root: $root_parent)"
     DRIVE_SCHEME='xvd'
-  elif [[ "$root_drive" =~ .*nvme.* ]]; then
-    echo "Detected 'nvme' drive naming scheme (root: $root_drive)"
+  elif [[ "$root_parent" =~ .*nvme.* ]]; then
+    echo "Detected 'nvme' drive naming scheme (root: $root_parent)"
     DRIVE_SCHEME='nvme'
   else
-    echo "Detected 'sd' drive naming scheme (root: $root_drive)"
+    echo "Detected 'sd' drive naming scheme (root: $root_parent)"
     DRIVE_SCHEME='sd'
   fi
 
