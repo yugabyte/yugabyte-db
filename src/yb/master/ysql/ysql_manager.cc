@@ -190,7 +190,7 @@ Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch)
 
   CreateTableRequestPB req;
   CreateTableResponsePB resp;
-  req.set_name(kPgAdvisoryLocksTableName);
+  req.set_name(std::string(tserver::kPgAdvisoryLocksTableName));
   req.mutable_namespace_()->set_name(kSystemNamespaceName);
   req.set_table_type(TableType::YQL_TABLE_TYPE);
   req.set_num_tablets(FLAGS_num_advisory_locks_tablets);

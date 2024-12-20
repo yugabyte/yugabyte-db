@@ -57,15 +57,11 @@
 
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
-namespace yb {
-
-class YsqlAdvisoryLocksTable;
-using YsqlAdvisoryLocksTableProvider = std::function<YsqlAdvisoryLocksTable&()>;
-
-namespace tserver {
+namespace yb::tserver {
 
 class PgMutationCounter;
 class TserverXClusterContextIf;
+class YsqlAdvisoryLocksTable;
 
 #define PG_CLIENT_SESSION_METHODS \
     (AlterDatabase) \
@@ -157,13 +153,13 @@ class PgClientSession {
 
   PgClientSession(
       TransactionBuilder&& transaction_builder,
-      const YsqlAdvisoryLocksTableProvider& advisory_locks_table,
       SharedThisSource shared_this_source, uint64_t id,
       client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
       const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
       PgSequenceCache* sequence_cache, PgSharedMemoryPool& shared_mem_pool,
-      const EventStatsPtr& stats_exchange_response_size, rpc::Scheduler& scheduler);
+      const EventStatsPtr& stats_exchange_response_size, rpc::Scheduler& scheduler,
+      YsqlAdvisoryLocksTable& advisory_locks_table);
 
   virtual ~PgClientSession() = default;
 
@@ -332,7 +328,6 @@ class PgClientSession {
   client::YBClient& client_;
   scoped_refptr<ClockBase> clock_;
   const TransactionBuilder transaction_builder_;
-  YsqlAdvisoryLocksTableProvider advisory_locks_table_provider_;
   PgTableCache& table_cache_;
   const TserverXClusterContextIf* xcluster_context_;
   PgMutationCounter* pg_node_level_mutation_counter_;
@@ -356,6 +351,7 @@ class PgClientSession {
 
   simple_spinlock pending_data_mutex_;
   std::vector<WriteBuffer> pending_data_ GUARDED_BY(pending_data_mutex_);
+  YsqlAdvisoryLocksTable& advisory_locks_table_;
 };
 
 template <class Pb>
@@ -386,5 +382,4 @@ inline void TryUpdateAshWaitState(const PgGetDatabaseInfoRequestPB&) {}
 inline void TryUpdateAshWaitState(const PgIsInitDbDoneRequestPB&) {}
 inline void TryUpdateAshWaitState(const PgCreateSequencesDataTableRequestPB&) {}
 
-} // namespace tserver
-} // namespace yb
+} // namespace yb::tserver

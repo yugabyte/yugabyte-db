@@ -1561,7 +1561,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
-  cdc::CDCStateTable cdc_state_table(producer_client());
+  auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
   Status s;
   auto table_range = ASSERT_RESULT(
       cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
@@ -3074,7 +3074,7 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   }
   auto& tablet_id = tablet_ids.front();
 
-  cdc::CDCStateTable cdc_state_table(producer_client());
+  auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
   auto key = cdc::CDCStateTableKey(tablet_id, stream_id);
   auto cdc_row = ASSERT_RESULT(
       cdc_state_table.TryFetchEntry(key, cdc::CDCStateTableEntrySelector().IncludeAll()));

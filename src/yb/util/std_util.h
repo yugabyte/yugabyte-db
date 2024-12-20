@@ -13,6 +13,10 @@
 
 #pragma once
 
+#include <algorithm>
+#include <future>
+#include <type_traits>
+
 // Implementation of std functions we want to use, but cannot until we switch to newer C++.
 
 namespace yb {
@@ -114,6 +118,14 @@ auto binary_search_iterator(
     return cmp(transform(lhs), rhs);
   });
   return it == end || !cmp(value, transform(*it)) ? it : end;
+}
+
+template<class T>
+auto ValueAsFuture(T&& value) {
+  using Tp = std::remove_cvref_t<T>;
+  std::promise<Tp> promise;
+  promise.set_value(std::forward<T>(value));
+  return promise.get_future();
 }
 
 } // namespace yb

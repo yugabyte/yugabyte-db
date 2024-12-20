@@ -12,15 +12,21 @@
 
 #pragma once
 
+#include <future>
+#include <memory>
+#include <optional>
 #include <shared_mutex>
+#include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "yb/client/table_handle.h"
 
 #include "yb/common/opid.h"
 
-#include "yb/util/status.h"
 #include "yb/gutil/thread_annotations.h"
+
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -120,7 +126,6 @@ class CDCStateTableRange;
 class CDCStateTable {
  public:
   explicit CDCStateTable(std::shared_future<client::YBClient*> client_future);
-  explicit CDCStateTable(client::YBClient* client);
 
   static const std::string& GetNamespaceName();
   static const std::string& GetTableName();
@@ -148,12 +153,12 @@ class CDCStateTable {
       const CDCStateTableKey& key, CDCStateTableEntrySelector&& field_filter = {}) EXCLUDES(mutex_);
 
  private:
-  Result<client::YBClient*> GetClient();
-  Result<std::shared_ptr<client::YBSession>> GetSession();
+  client::YBClient& client() { return *client_future_.get(); }
+  std::shared_ptr<client::YBSession> MakeSession();
   Status WaitForCreateTableToFinishWithCache() REQUIRES(mutex_);
   Status WaitForCreateTableToFinishWithoutCache();
   Result<std::shared_ptr<client::TableHandle>> GetTable() EXCLUDES(mutex_);
-  Status OpenTable(client::TableHandle* cdc_table);
+  Result<std::shared_ptr<client::TableHandle>> OpenTable();
   template <class CDCEntry>
   Status WriteEntriesAsync(
       const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
@@ -169,7 +174,6 @@ class CDCStateTable {
 
   std::shared_mutex mutex_;
   std::shared_future<client::YBClient*> client_future_;
-  client::YBClient* client_ = nullptr;
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);
   bool created_ GUARDED_BY(mutex_) = false;
