@@ -152,18 +152,6 @@ typedef struct YbQueryDiagnosticsEntry
 
 	/* Holds the schema oids until flushed to disc */
 	Oid			schema_oids[YB_QD_MAX_SCHEMA_OIDS];
-
-	/*
-	 * Identifies the starting position of the query within the source text,
-	 * equivalent to Query->stmt_location
-	 */
-	int			query_location;
-
-	/* Number of constants in the query */
-	int			constants_count;
-
-	/* Holds the locations of constants in the query */
-	LocationLen	constant_locations[YB_QD_MAX_CONSTANTS];
 } YbQueryDiagnosticsEntry;
 
 extern TimestampTz *yb_pgss_last_reset_time;

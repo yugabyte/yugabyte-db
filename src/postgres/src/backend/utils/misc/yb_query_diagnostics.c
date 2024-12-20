@@ -88,6 +88,21 @@ typedef struct YbQueryDiagnosticsBundles
 	YbBundleInfo	bundles[FLEXIBLE_ARRAY_MEMBER]; /* circular buffer to store info about bundles */
 } YbQueryDiagnosticsBundles;
 
+typedef struct QueryConstantsMetadata
+{
+	/*
+	 * Identifies the starting position of the query within the source text,
+	 * equivalent to Query->stmt_location
+	 */
+	int			stmt_location;
+
+	/* Number of constants in the query */
+	int			count;
+
+	/* Holds the locations of constants in the query */
+	LocationLen	locations[YB_QD_MAX_CONSTANTS];
+} QueryConstantsMetadata;
+
 /* GUC variables */
 bool yb_enable_query_diagnostics;
 int yb_query_diagnostics_bg_worker_interval_ms;
@@ -102,10 +117,15 @@ static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
 
+/* Function pointers */
 YbGetNormalizedQueryFuncPtr yb_get_normalized_query = NULL;
 TimestampTz *yb_pgss_last_reset_time;
 YbPgssFillInConstantLengths yb_qd_fill_in_constant_lengths = NULL;
 
+/* session variables */
+static QueryConstantsMetadata query_constants = {0, 0, {0}};
+
+/* shared variables */
 static HTAB *bundles_in_progress = NULL;
 static LWLock *bundles_in_progress_lock; /* protects bundles_in_progress hash table */
 static YbQueryDiagnosticsBundles *bundles_completed = NULL;
@@ -672,14 +692,10 @@ YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query, JumbleSt
 			 */
 			yb_qd_fill_in_constant_lengths(jstate, pstate->p_sourcetext, query_location);
 
-			SpinLockAcquire(&entry->mutex);
-
-			entry->query_location = query_location;
-			entry->constants_count = Min(jstate->clocations_count, YB_QD_MAX_CONSTANTS);
-			memcpy(entry->constant_locations, jstate->clocations,
-				   sizeof(LocationLen) * entry->constants_count);
-
-			SpinLockRelease(&entry->mutex);
+			query_constants.stmt_location = query_location;
+			query_constants.count = Min(jstate->clocations_count, YB_QD_MAX_CONSTANTS);
+			memcpy(query_constants.locations, jstate->clocations,
+				sizeof(LocationLen) * query_constants.count);
 		}
 	}
 
@@ -742,7 +758,8 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 
 		totaltime_ms = INSTR_TIME_GET_MILLISEC(queryDesc->totaltime->counter);
 
-		if (entry->metadata.params.bind_var_query_min_duration_ms <= totaltime_ms)
+		if (entry->metadata.params.bind_var_query_min_duration_ms <= totaltime_ms &&
+			(queryDesc->params || query_constants.count > 0))
 		{
 			StringInfoData buf;
 			initStringInfo(&buf);
@@ -752,14 +769,24 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 				FormatBindVariables(&buf, queryDesc->params);
 
 			/* For non-prepared statements, format constants in a CSV format. */
-			if (entry->constants_count > 0)
+			else if (query_constants.count > 0)
+			{
 				FormatConstants(&buf, queryDesc->sourceText,
-								entry->constants_count,
-								entry->query_location,
-								entry->constant_locations);
+								query_constants.count,
+								query_constants.stmt_location,
+								query_constants.locations);
 
-			appendStringInfo(&buf, ",%lf ms\n", totaltime_ms);
-			AccumulateBindVariablesOrConstants(entry, &buf);
+				/* Reset the constants metadata */
+				query_constants.stmt_location = 0;
+				query_constants.count = 0;
+				MemSet(query_constants.locations, 0, sizeof(LocationLen) * YB_QD_MAX_CONSTANTS);
+			}
+
+			if (buf.len > 0)
+			{
+				appendStringInfo(&buf, ",%lf ms\n", totaltime_ms);
+				AccumulateBindVariablesOrConstants(entry, &buf);
+			}
 
 			pfree(buf.data);
 		}
@@ -947,9 +974,6 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 		MemSet(entry->bind_vars, 0, YB_QD_MAX_BIND_VARS_LEN);
 		MemSet(entry->explain_plan, 0, YB_QD_MAX_EXPLAIN_PLAN_LEN);
 		MemSet(entry->schema_oids, 0, sizeof(Oid) * YB_QD_MAX_SCHEMA_OIDS);
-		entry->query_location = 0;
-		entry->constants_count = 0;
-		MemSet(entry->constant_locations, 0, sizeof(LocationLen) * YB_QD_MAX_CONSTANTS);
 		SpinLockInit(&entry->mutex);
 		entry->pgss = (YbQueryDiagnosticsPgss) {.counters = {0}, .query_offset = 0, .query_len = 0};
 	}
