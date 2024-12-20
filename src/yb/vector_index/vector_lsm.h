@@ -123,6 +123,7 @@ class VectorLSM {
   ~VectorLSM();
 
   Status Open(Options options);
+  Status CreateCheckpoint(const std::string& out);
 
   rocksdb::UserFrontierPtr GetFlushedFrontier();
   rocksdb::FlushAbility GetFlushAbility();
@@ -142,6 +143,8 @@ class VectorLSM {
   bool TEST_HasBackgroundInserts() const;
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const;
+
+  const Options& options() const;
 
   struct MutableChunk;
   struct ImmutableChunk;

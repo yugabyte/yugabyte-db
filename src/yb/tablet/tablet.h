@@ -874,7 +874,7 @@ class Tablet : public AbstractTablet,
 
   // Should only be used in code that could be executed from Raft operations apply or other
   // callsites that doesn't handle RocksDB shutdown start (without destroy, see
-  // Tablet::StartShutdownRocksDBs, rocksdb::DB::StartShutdown) during operation, so tablet shutdown
+  // Tablet::StartShutdownStorages, rocksdb::DB::StartShutdown) during operation, so tablet shutdown
   // will wait till their completion and don't fail Raft operation apply.
   ScopedRWOperation CreateScopedRWOperationBlockingRocksDbShutdownStart(
       const CoarseTimePoint deadline = CoarseTimePoint()) const;
@@ -918,13 +918,13 @@ class Tablet : public AbstractTablet,
   // 4. Pauses new read/write operations and wait for all of those that are pending to complete.
   // Returns TabletScopedRWOperationPauses that are preventing new read/write operations from being
   // started.
-  TabletScopedRWOperationPauses StartShutdownRocksDBs(
+  TabletScopedRWOperationPauses StartShutdownStorages(
       DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops,
       Stop stop = Stop::kFalse);
 
   // Returns DB paths for destructed in-memory RocksDBs objects, so caller can delete on-disk
   // directories if needed.
-  std::vector<std::string> CompleteShutdownRocksDBs(
+  std::vector<std::string> CompleteShutdownStorages(
       const TabletScopedRWOperationPauses& ops_pauses);
 
   Status OpenKeyValueTablet();
@@ -1025,7 +1025,7 @@ class Tablet : public AbstractTablet,
 
   // Attempt to delete on-disk RocksDBs from all provided db_paths, even if errors are encountered.
   // Return the first error encountered.
-  Status DeleteRocksDBs(const std::vector<std::string>& db_paths);
+  Status DeleteStorages(const std::vector<std::string>& db_paths);
 
   Status DoEnableCompactions();
 

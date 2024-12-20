@@ -298,10 +298,19 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   VectorIndexPtr index;
   rocksdb::UserFrontiersPtr user_frontiers;
   std::promise<Status>* flush_promise = nullptr;
+
+  void AddToUpdate(VectorLSMUpdatePB& update) {
+    auto& added_chunk = *update.mutable_add_chunks()->Add();
+    added_chunk.set_serial_no(serial_no);
+    added_chunk.set_order_no(order_no);
+    user_frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
+    user_frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+  }
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VectorLSM<Vector, DistanceResult>::VectorLSM()
+    // TODO(vector_index) Use correct env for encryption
     : env_(rocksdb::Env::Default()) {
 }
 
@@ -422,6 +431,31 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   });
 
   return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& out) {
+  decltype(immutable_chunks_) chunks;
+  {
+    std::lock_guard lock(mutex_);
+    // TODO(vector_index) Prevent chunk from being deleted from the filesystem.
+    chunks.reserve(immutable_chunks_.size());
+    for (const auto& chunk : immutable_chunks_) {
+      if (chunk->state == ImmutableChunkState::kInManifest) {
+        chunks.push_back(chunk);
+      }
+    }
+  }
+  RETURN_NOT_OK(env_->CreateDirs(out));
+  VectorLSMUpdatePB update;
+  for (const auto& chunk : chunks) {
+    RETURN_NOT_OK(env_->LinkFile(
+        GetChunkPath(options_.storage_dir, chunk->serial_no),
+        GetChunkPath(out, chunk->serial_no)));
+    chunk->AddToUpdate(update);
+  }
+  auto metadata_file = VERIFY_RESULT(VectorLSMMetadataOpenFile(env_, out, 0));
+  return VectorLSMMetadataAppendUpdate(*metadata_file, update);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -647,12 +681,7 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
     rocksdb::WritableFile* metadata_file, ImmutableChunkPtr chunk) {
   for (;;) {
     VectorLSMUpdatePB update;
-    auto& added_chunk = *update.mutable_add_chunks()->Add();
-    added_chunk.set_serial_no(chunk->serial_no);
-    added_chunk.set_order_no(chunk->order_no);
-    auto& user_frontiers = *chunk->user_frontiers;
-    user_frontiers.Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
-    user_frontiers.Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+    chunk->AddToUpdate(update);
     RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*metadata_file, update));
 
     std::lock_guard lock(mutex_);
@@ -780,6 +809,12 @@ rocksdb::FlushAbility VectorLSM<Vector, DistanceResult>::GetFlushAbility() {
     }
   }
   return rocksdb::FlushAbility::kNoNewData;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+auto VectorLSM<Vector, DistanceResult>::options() const ->
+    const typename VectorLSM<Vector, DistanceResult>::Options& {
+  return options_;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

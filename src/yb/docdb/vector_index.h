@@ -51,6 +51,8 @@ class VectorIndex {
 
   virtual Slice indexed_table_key_prefix() const = 0;
   virtual ColumnId column_id() const = 0;
+  virtual const std::string& path() const = 0;
+
   virtual Status Insert(
       const VectorIndexInsertEntries& entries,
       const rocksdb::UserFrontiers* frontiers,
@@ -63,6 +65,7 @@ class VectorIndex {
   virtual Status WaitForFlush() = 0;
   virtual rocksdb::UserFrontierPtr GetFlushedFrontier() = 0;
   virtual rocksdb::FlushAbility GetFlushAbility() = 0;
+  virtual Status CreateCheckpoint(const std::string& out) = 0;
 };
 
 Result<VectorIndexPtr> CreateVectorIndex(
@@ -73,5 +76,7 @@ Result<VectorIndexPtr> CreateVectorIndex(
     const DocDB& doc_db);
 
 KeyBuffer VectorIdKey(vector_index::VectorId vector_id);
+
+extern const std::string kVectorIndexDirPrefix;
 
 }  // namespace yb::docdb

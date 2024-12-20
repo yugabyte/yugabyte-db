@@ -22,7 +22,9 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/vector_index.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/file_util.h"
@@ -92,7 +94,7 @@ struct TabletSnapshots::ColocatedTableMetadata {
 TabletSnapshots::TabletSnapshots(Tablet* tablet) : TabletComponent(tablet) {}
 
 std::string TabletSnapshots::SnapshotsDirName(const std::string& rocksdb_dir) {
-  return rocksdb_dir + kSnapshotsDirSuffix;
+  return docdb::GetStorageDir(rocksdb_dir, kSnapshotsDirName);
 }
 
 bool TabletSnapshots::IsTempSnapshotDir(const std::string& dir) {
@@ -406,7 +408,7 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
-  auto op_pauses = StartShutdownRocksDBs(
+  auto op_pauses = StartShutdownStorages(
       DisableFlushOnShutdown(!snapshot_dir.empty()), AbortOps::kTrue);
 
   std::lock_guard lock(create_checkpoint_lock());
@@ -417,11 +419,11 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (snapshot_dir.empty()) {
     // Just change rocksdb hybrid time limit, because it should be in retention interval.
     // TODO(pitr) apply transactions and reset intents.
-    CompleteShutdownRocksDBs(op_pauses);
+    CompleteShutdownStorages(op_pauses);
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
-    RETURN_NOT_OK(DeleteRocksDBs(CompleteShutdownRocksDBs(op_pauses)));
+    RETURN_NOT_OK(DeleteStorages(CompleteShutdownStorages(op_pauses)));
 
     auto s = CopyDirectory(
         &rocksdb_env(), snapshot_dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
@@ -495,7 +497,7 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   // Reopen database from copied checkpoint.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
-  auto s = OpenRocksDBs();
+  auto s = OpenStorages();
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed tablet db opening from checkpoint: " << s;
     return s;
@@ -575,34 +577,23 @@ Status TabletSnapshots::CreateCheckpoint(
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
-  auto temp_intents_dir = dir + kIntentsDBSuffix;
-  auto final_intents_dir = JoinPathSegments(dir, kIntentsSubdir);
-
-  std::lock_guard lock(create_checkpoint_lock());
-
-  if (!has_regular_db()) {
-    LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
-    return STATUS(NotSupported,
-                  "Tablet does not have a RocksDB (could be a transaction status tablet)");
-  }
-
-  auto parent_dir = DirName(dir);
-  RETURN_NOT_OK_PREPEND(metadata().fs_manager()->CreateDirIfMissing(parent_dir),
-                        Format("Unable to create checkpoints directory $0", parent_dir));
-
-  // Order does not matter because we flush both DBs and does not have parallel writes.
   Status status;
-  if (has_intents_db()) {
-    status = rocksdb::checkpoint::CreateCheckpoint(&intents_db(), temp_intents_dir);
-  }
-  if (status.ok()) {
-    status = rocksdb::checkpoint::CreateCheckpoint(&regular_db(), dir);
-  }
-  if (status.ok() && has_intents_db() &&
-      create_intents_checkpoint_in == CreateIntentsCheckpointIn::kUseIntentsDbSuffix) {
-    status = Env::Default()->RenameFile(temp_intents_dir, final_intents_dir);
-  }
+  {
+    std::lock_guard lock(create_checkpoint_lock());
 
+    if (!has_regular_db()) {
+      LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
+      return STATUS(NotSupported,
+                    "Tablet does not have a RocksDB (could be a transaction status tablet)");
+    }
+
+    auto parent_dir = DirName(dir);
+    RETURN_NOT_OK_PREPEND(metadata().fs_manager()->CreateDirIfMissing(parent_dir),
+                          Format("Unable to create checkpoints directory $0", parent_dir));
+
+    // Order does not matter because we flush both DBs and does not have parallel writes.
+    status = DoCreateCheckpoint(dir, create_intents_checkpoint_in);
+  }
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Create checkpoint status: " << status;
     return STATUS_FORMAT(IllegalState, "Unable to create checkpoint: $0", status);
@@ -611,6 +602,28 @@ Status TabletSnapshots::CreateCheckpoint(
 
   TEST_last_rocksdb_checkpoint_dir_ = dir;
 
+  return Status::OK();
+}
+
+Status TabletSnapshots::DoCreateCheckpoint(
+    const std::string& dir, CreateIntentsCheckpointIn create_intents_checkpoint_in) {
+  auto temp_intents_dir = docdb::GetStorageDir(dir, kIntentsDirName);
+  auto final_intents_dir = docdb::GetStorageCheckpointDir(dir, kIntentsDirName);
+
+  if (has_intents_db()) {
+    RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&intents_db(), temp_intents_dir));
+  }
+  RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&regular_db(), dir));
+  auto vector_indexes = VectorIndexesList();
+  if (vector_indexes) {
+    for (const auto& vector_index : *vector_indexes) {
+      RETURN_NOT_OK(vector_index->CreateCheckpoint(dir));
+    }
+  }
+  if (has_intents_db() &&
+      create_intents_checkpoint_in == CreateIntentsCheckpointIn::kUseIntentsDbSuffix) {
+    RETURN_NOT_OK(Env::Default()->RenameFile(temp_intents_dir, final_intents_dir));
+  }
   return Status::OK();
 }
 

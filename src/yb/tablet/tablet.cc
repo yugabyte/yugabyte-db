@@ -72,6 +72,7 @@
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_statistics.h"
+#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
@@ -790,8 +791,9 @@ Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
   RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(db_dir),
                         Format("Failed to create RocksDB tablet directory $0", db_dir));
 
-  RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(db_dir + kIntentsDBSuffix),
-                        Format("Failed to create RocksDB tablet intents directory $0", db_dir));
+  RETURN_NOT_OK_PREPEND(
+      fs->CreateDirIfMissingAndSync(docdb::GetStorageDir(db_dir, kIntentsDirName)),
+      Format("Failed to create RocksDB tablet intents directory $0", db_dir));
 
   RETURN_NOT_OK(snapshots_->CreateDirectories(db_dir, fs));
 
@@ -1090,7 +1092,8 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
 
   const auto& db_dir = metadata()->rocksdb_dir();
 
-  LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << db_dir + kIntentsDBSuffix;
+  auto intents_dir = docdb::GetStorageDir(db_dir, kIntentsDirName);
+  LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << intents_dir;
   rocksdb::Options intents_rocksdb_options(common_options);
   intents_rocksdb_options.compaction_context_factory = {};
   docdb::SetLogPrefix(&intents_rocksdb_options, LogPrefix(docdb::StorageDbType::kIntents));
@@ -1122,8 +1125,7 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
       std::make_shared<RocksDbListener>(*this, intents_rocksdb_options.log_prefix));
 
   rocksdb::DB* intents_db = nullptr;
-  RETURN_NOT_OK(
-      rocksdb::DB::Open(intents_rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
+  RETURN_NOT_OK(rocksdb::DB::Open(intents_rocksdb_options, intents_dir, &intents_db));
   intents_db_.reset(intents_db);
   intents_db_->ListenFilesChanged(std::bind(&Tablet::CleanupIntentFiles, this));
 
@@ -1460,7 +1462,7 @@ void Tablet::CompleteShutdown(
 
   StartShutdown();
 
-  auto op_pauses = StartShutdownRocksDBs(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
+  auto op_pauses = StartShutdownStorages(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
 
   cleanup_intent_files_token_.reset();
 
@@ -1494,7 +1496,7 @@ void Tablet::CompleteShutdown(
   // Shutdown the RocksDB instance for this tablet, if present.
   // Destruct intents DB and regular DB in-memory objects in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
-  CompleteShutdownRocksDBs(op_pauses);
+  CompleteShutdownStorages(op_pauses);
 
   {
     std::lock_guard compaction_lock(full_compaction_token_mutex_);
@@ -1516,7 +1518,7 @@ void Tablet::CompleteShutdown(
   }
 }
 
-TabletScopedRWOperationPauses Tablet::StartShutdownRocksDBs(
+TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops, Stop stop) {
   TabletScopedRWOperationPauses op_pauses;
 
@@ -1560,7 +1562,7 @@ TabletScopedRWOperationPauses Tablet::StartShutdownRocksDBs(
   return op_pauses;
 }
 
-std::vector<std::string> Tablet::CompleteShutdownRocksDBs(
+std::vector<std::string> Tablet::CompleteShutdownStorages(
     const TabletScopedRWOperationPauses& ops_pauses) {
   // We need ops_pauses just to guarantee that PauseReadWriteOperations has been called.
 
@@ -1577,6 +1579,21 @@ std::vector<std::string> Tablet::CompleteShutdownRocksDBs(
       db_uniq_ptr->reset();
     }
   }
+  if (has_vector_indexes_) {
+    decltype(vector_indexes_list_) vector_indexes_list;
+    {
+      std::lock_guard lock(vector_indexes_mutex_);
+      vector_indexes_list.swap(vector_indexes_list_);
+      vector_indexes_map_.clear();
+    }
+    if (vector_indexes_list) {
+      for (const auto& index : *vector_indexes_list) {
+        db_paths.push_back(index->path());
+      }
+    }
+    // TODO(vector_index) It could happen that there are external references to vector index.
+    // Wait actual shutdown.
+  }
 
   key_bounds_ = docdb::KeyBounds();
   // Reset rocksdb_shutdown_requested_ to the initial state like RocksDBs were never opened,
@@ -1588,7 +1605,7 @@ std::vector<std::string> Tablet::CompleteShutdownRocksDBs(
   return db_paths;
 }
 
-Status Tablet::DeleteRocksDBs(const std::vector<std::string>& db_paths) {
+Status Tablet::DeleteStorages(const std::vector<std::string>& db_paths) {
   rocksdb::Options rocksdb_options;
   InitRocksDBOptions(&rocksdb_options, LogPrefix());
 
@@ -3766,7 +3783,7 @@ Status Tablet::Truncate(TruncateOperation* operation) {
     return Status::OK();
   }
 
-  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown::kTrue, AbortOps::kTrue);
+  auto op_pauses = StartShutdownStorages(DisableFlushOnShutdown::kTrue, AbortOps::kTrue);
 
   // Check if tablet is in shutdown mode.
   if (IsShutdownRequested()) {
@@ -3776,7 +3793,7 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
   const string db_dir = regular_db_->GetName();
 
-  auto s = DeleteRocksDBs(CompleteShutdownRocksDBs(op_pauses));
+  auto s = DeleteStorages(CompleteShutdownStorages(op_pauses));
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
     return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());

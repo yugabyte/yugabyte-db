@@ -51,6 +51,7 @@
 
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/key_bounds.h"
 
 #include "yb/dockv/reader_projection.h"
@@ -150,9 +151,8 @@ std::vector<ColumnId> GetVectorIndexedColumns(const qlexpr::IndexMap& index_map)
 } // namespace
 
 const int64 kNoDurableMemStore = -1;
-const std::string kIntentsSubdir = "intents";
-const std::string kIntentsDBSuffix = ".intents";
-const std::string kSnapshotsDirSuffix = ".snapshots";
+const std::string kIntentsDirName = "intents";
+const std::string kSnapshotsDirName = "snapshots";
 
 // ============================================================================
 //  Raft group metadata
@@ -921,7 +921,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 bool RaftGroupMetadata::IsTombstonedWithNoRocksDBData() const {
   std::lock_guard lock(data_mutex_);
   const auto& rocksdb_dir = kv_store_.rocksdb_dir;
-  const auto intents_dir = rocksdb_dir + kIntentsDBSuffix;
+  const auto intents_dir = docdb::GetStorageDir(rocksdb_dir, kIntentsDirName);
   return tablet_data_state_ == TABLET_DATA_TOMBSTONED &&
       !fs_manager_->env()->FileExists(rocksdb_dir) &&
       !fs_manager_->env()->FileExists(intents_dir);
@@ -2415,6 +2415,14 @@ bool RaftGroupMetadata::OnPostSplitCompactionDone() {
   }
 
   return updated;
+}
+
+std::string RaftGroupMetadata::intents_rocksdb_dir() const {
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kIntentsDirName);
+}
+
+std::string RaftGroupMetadata::snapshots_dir() const {
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kSnapshotsDirName);
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

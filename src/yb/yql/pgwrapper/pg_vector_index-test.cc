@@ -11,7 +11,8 @@
 // under the License.
 //
 
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/log.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 
@@ -20,8 +21,12 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_thread_holder.h"
+
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(ysql_enable_packed_row);
@@ -46,7 +51,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
     return IsColocated() ? ConnectToDB("colocated_db") : PgMiniTestBase::Connect();
   }
 
-  Result<PGConn> MakeIndex() {
+  Result<PGConn> MakeIndex(int num_tablets = 0) {
     auto colocated = IsColocated();
     auto conn = VERIFY_RESULT(PgMiniTestBase::Connect());
     std::string create_suffix;
@@ -54,6 +59,8 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
       create_suffix = " WITH (COLOCATED = 1)";
       RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE colocated_db COLOCATION = true"));
       conn = VERIFY_RESULT(Connect());
+    } else if (num_tablets) {
+      create_suffix = Format(" SPLIT INTO $0 TABLETS", num_tablets);
     }
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
     RETURN_NOT_OK(conn.Execute(
@@ -64,7 +71,15 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
     return conn;
   }
 
-  Result<PGConn> MakeIndexAndFill(int num_rows);
+  Status WaitForLoadBalance(int num_tablet_servers) {
+    return WaitFor(
+      [&]() -> Result<bool> { return client_->IsLoadBalanced(num_tablet_servers); },
+      60s * kTimeMultiplier,
+      Format("Wait for load balancer to balance to $0 tservers.", num_tablet_servers));
+  }
+
+  Result<PGConn> MakeIndexAndFill(int num_rows, int num_tablets = 0);
+  Status InsertRows(PGConn& conn, int start_row, int end_row);
 
   Status VerifyRead(PGConn& conn, int limit, bool add_filter);
   void VerifyRows(PGConn& conn, bool add_filter, const std::vector<std::string>& expected);
@@ -145,15 +160,18 @@ std::string ExpectedRow(int64_t id) {
   return BuildRow(id, VectorAsString(id));
 }
 
-Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(int num_rows) {
-  auto conn = VERIFY_RESULT(MakeIndex());
-
+Status PgVectorIndexTest::InsertRows(PGConn& conn, int start_row, int end_row) {
   RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  for (int i = 1; i <= num_rows; ++i) {
+  for (int i = start_row; i <= end_row; ++i) {
     RETURN_NOT_OK(conn.ExecuteFormat(
        "INSERT INTO test VALUES ($0, '$1')", i, VectorAsString(i)));
   }
-  RETURN_NOT_OK(conn.CommitTransaction());
+  return conn.CommitTransaction();
+}
+
+Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(int num_rows, int num_tablets) {
+  auto conn = VERIFY_RESULT(MakeIndex(num_tablets));
+  RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
   return conn;
 }
 
@@ -286,6 +304,51 @@ TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
     BuildRow(2, kDistantVector),
   };
   ASSERT_NO_FATALS(VerifyRows(conn, true, expected_filtered));
+}
+
+TEST_P(PgVectorIndexTest, RemoteBootstrap) {
+  constexpr int kNumRows = 64;
+  constexpr int kQueryLimit = 5;
+
+  auto* mts = cluster_->mini_tablet_server(2);
+  mts->Shutdown();
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows, 3));
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  ASSERT_OK(cluster_->FlushTablets());
+  for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_id)) {
+    ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
+  }
+
+  // Need at least one committed entry after segment to GC this segment.
+  ASSERT_OK(InsertRows(conn, kNumRows + 1, kNumRows * 2));
+
+  ASSERT_OK(cluster_->CleanTabletLogs());
+
+  ASSERT_OK(mts->Start());
+  ASSERT_OK(WaitFor([this, table_id, mts]() -> Result<bool> {
+    auto peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
+    tablet::TabletPeerPtr leader;
+    for (const auto& peer : peers) {
+      bool is_leader =
+          VERIFY_RESULT(peer->GetConsensus())->GetLeaderStatus() ==
+              consensus::LeaderStatus::LEADER_AND_READY;
+      if (peer->permanent_uuid() != mts->fs_manager().uuid()) {
+        if (is_leader) {
+          leader = peer;
+        }
+        continue;
+      }
+      if (is_leader) {
+        return true;
+      }
+    }
+    if (leader) {
+      LOG(INFO) << "Step down: " << leader->permanent_uuid();
+      RETURN_NOT_OK(StepDown(leader, mts->fs_manager().uuid(), ForceStepDown::kTrue));
+    }
+    return false;
+  }, 60s * kTimeMultiplier, "Wait desired leader"));
+  ASSERT_OK(VerifyRead(conn, kQueryLimit, false));
 }
 
 std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {
