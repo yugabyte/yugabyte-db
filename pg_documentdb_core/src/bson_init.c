@@ -64,17 +64,17 @@ InstallBsonMemVTables(void)
  * Initializes core configurations pertaining to helio core.
  */
 void
-InitHelioCoreConfigurations(void)
+InitDocumentDbCoreConfigurations(const char *prefix)
 {
 	DefineCustomBoolVariable(
-		"helio_core.bsonUseEJson",
+		psprintf("%s.bsonUseEJson", prefix),
 		gettext_noop(
 			"Determines whether the bson text is printed as extended Json. Used mainly for test."),
 		NULL, &BsonTextUseJsonRepresentation, DEFAULT_BSON_TEXT_USE_JSON_REPRESENTATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableCollation",
+		psprintf("%s.enableCollation", prefix),
 		gettext_noop(
 			"Determines whether collation is supported."),
 		NULL, &EnableCollation,

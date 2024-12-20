@@ -12,6 +12,6 @@
 
 void InstallBsonMemVTables(void);
 
-void InitHelioCoreConfigurations(void);
+void InitDocumentDbCoreConfigurations(const char *prefix);
 
 #endif

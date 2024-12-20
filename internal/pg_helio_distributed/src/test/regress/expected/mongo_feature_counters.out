@@ -188,7 +188,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feat
 (0 rows)
 
 -- collation
-SET helio_api.enableCollation TO on;
+SET helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "mongo_feature_counter2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "a": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
  document 
 ---------------------------------------------------------------------
@@ -199,7 +199,7 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "mongo_feature_count
 ---------------------------------------------------------------------
 (0 rows)
 
-RESET helio_api.enableCollation;
+RESET helio_core.enablecollation;
 -- Create TTL index
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "mongo_feature_counter2", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index", "v" : 1, "expireAfterSeconds": 5}]}', true);
 NOTICE:  creating collection

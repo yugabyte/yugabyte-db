@@ -28,6 +28,7 @@ MODULE_big = $(EXTENSION)
 # TODO: Need to remove this with PG16 and expose only valid exports
 ALLOW_DEFAULT_VISIBILITY=yes
 
+USE_DOCUMENTDB_CORE = 1
 include $(OSS_SRC_DIR)/Makefile.cflags
 
 PG_CPPFLAGS += -I$(OSS_SRC_DIR)/pg_helio_core/include/
@@ -96,3 +97,5 @@ $(generated_sql_files): build/%: %
 include $(OSS_SRC_DIR)/Makefile.versions
 
 src/helio_api_extension_version.o : build/include/metadata/extension_version.h
+
+include $(OSS_SRC_DIR)/Makefile.docdb

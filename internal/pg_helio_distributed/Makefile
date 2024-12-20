@@ -25,6 +25,7 @@ EXTENSION_OBJECT_PREFIX=helio
 # compilation configuration
 MODULE_big = $(EXTENSION)
 
+USE_DOCUMENTDB_CORE = 1
 include $(OSS_SRC_DIR)/Makefile.cflags
 
 PG_CPPFLAGS += -I$(OSS_SRC_DIR)/pg_helio_core/include/ -I$(OSS_SRC_DIR)/pg_helio_api/include/
@@ -90,3 +91,4 @@ $(generated_sql_files): build/%: %
 	@# `man cpp` for further information
 	cpp -undef -w $(SQL_DEFINES) -imacros $(OSS_COMMON_SQL_HEADER) -P -MMD -MP -MF$(SQL_DEPDIR)/$(*F).Po -MT$@ $< > $@
 
+include $(OSS_SRC_DIR)/Makefile.docdb

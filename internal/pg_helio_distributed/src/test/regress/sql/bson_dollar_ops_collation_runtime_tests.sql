@@ -3,7 +3,7 @@ SET citus.next_shard_id TO 7990000;
 SET helio_api.next_collection_id TO 7990;
 SET helio_api.next_collection_index_id TO 7990;
 
-SET helio_api.enableCollation TO on;
+SET helio_core.enablecollation TO on;
 
 -- (1) insert some docs
 SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 1, "a": "Cat" }');
@@ -59,26 +59,26 @@ SELECT helio_api.shard_collection('db', 'ci_search', '{ "_id": "hashed" }', fals
 
 -- (4) Find query sharded collection
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
 END; 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 EXPLAIN(VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
 END;
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "b": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
 END;
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 EXPLAIN(VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "b": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
 END;
 
 -- elemMatch with collation
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$elemMatch": {"$eq": "cAt"} } }, "skip": 0, "limit": 7, "collation": { "locale": "en", "strength" : 1} }');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$elemMatch": {"$gt": "cAt"} } }, "skip": 0, "limit": 7, "collation": { "locale": "en", "strength" : 1} }');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$elemMatch": {"$lt": "cAt"} } }, "skip": 0, "limit": 7, "collation": { "locale": "en", "strength" : 1} }');
@@ -87,7 +87,7 @@ END;
 
 -- (5) Aggregation queries sharded collection
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$sort": { "_id": 1 } }, { "$match": { "a": { "$eq": "cat" } } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$match": { "a": { "$gt": "DOG" } } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$match": { "a": { "$eq": "RABBIT" } } }, { "$project": { "b": 1 } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
@@ -102,7 +102,7 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter
 END;
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a" : {"$in" : [[{ "b" : "caT"}], [{ "c" : "caT"}]] }}, "sort": { "_id": 1 }, "skip": 0, "limit": 100, "collation": { "locale": "en", "strength" : 1} }');
 END;
 
@@ -110,17 +110,17 @@ END;
 -- (6) currently unsupported scenarions: 
 -- (6.A) $in with nested objects
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a" : {"$in" : [{ "B" : "caT"}, { "c" : "caT"}] }}, "sort": { "_id": 1 }, "skip": 0, "limit": 100, "collation": { "locale": "en", "strength" : 1} }');
 END;
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a" : {"$in" : [[{ "B" : "caT"}], [{ "c" : "caT"}]] }}, "sort": { "_id": 1 }, "skip": 0, "limit": 100, "collation": { "locale": "en", "strength" : 1} }');
 END;
 -- (6.B) $cond needs collationString to be plumbed
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$sort": { "_id": 1 } }, { "$addFields": { "e": {  "f": "$a" } } }, { "$replaceRoot": { "newRoot": "$e" } }, { "$match" : { "f": { "$elemMatch": {"$eq": "cAt"} } } }, {"$project": { "items" : { "$filter" : { "input" : "$f", "as" : "animal", "cond" : { "$eq" : ["$$animal", "CAT"] } }} }} ],
  "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
 END;
@@ -193,13 +193,13 @@ EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '
 
 SELECT helio_api.shard_collection('db', 'ci_search', '{ "_id": "hashed" }', false);
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id": { "$eq": "cat" } }, { "_id": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
 EXPLAIN (VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id": { "$eq": "cat" } }, { "_id": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
 END;
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id.a": { "$eq": "cat" } }, { "_id.a": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
 END;
 
@@ -261,7 +261,7 @@ ROLLBACK;
 
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SET LOCAL seq_page_cost TO 100;
 SET LOCAL helio_api.forceUseIndexIfAvailable to true;
 -- query not pushed to the index when collattion is specified
@@ -272,7 +272,7 @@ END;
 SELECT helio_api.shard_collection('db', 'ci_search4', '{ "_id": "hashed" }', false);
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search4", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search4", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
 END;
@@ -324,7 +324,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
 ROLLBACK;
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SET LOCAL seq_page_cost TO 100;
 SET LOCAL helio_api.forceUseIndexIfAvailable to true;
 -- query not pushed to the index when collation is specified
@@ -335,14 +335,14 @@ END;
 -- range query with index on path "a.b"
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "a.b": { "$gt": "CAT" }, "a.b" : {"$lte" : "DOG"} }, "collation": { "locale": "en", "strength" : 1.93 } }');
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "a.b": { "$gt": "CAT" }, "a.b" : {"$lte" : "DOG"} }, "collation": { "locale": "en", "strength" : 1.93 } }');
 END;
 
 SELECT helio_api.shard_collection('db', 'ci_search5', '{ "_id": "hashed" }', false);
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SET LOCAL seq_page_cost TO 100;
 SET LOCAL helio_api.forceUseIndexIfAvailable to true;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
@@ -364,7 +364,7 @@ SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
 END;
@@ -372,7 +372,7 @@ END;
 -- lookup with id join optimized (explicitly asked to make _id join collation agnostic)
 BEGIN;
 SET LOCAL helio_api.enableLookupIdJoinOptimizationOnCollation to true;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', 
@@ -385,7 +385,7 @@ SELECT document FROM bson_aggregation_pipeline('db',
 
 -- lookup with non-id join (collation aware - explain)
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "a.b", "foreignField": "a.b", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
 END;
@@ -404,7 +404,7 @@ SELECT helio_api.insert_one('db','ci_search8', '{"_id": "CAT", "name" : "CAT" }'
 SELECT helio_api.insert_one('db','ci_search8', '{"_id": "cAT", "name" : "cAT" }', NULL);
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "ci_search7", "pipeline": [ { "$graphLookup": { "from": "ci_search8", "startWith": "$pet", "connectFromField": "name", "connectToField": "_id", "as": "destinations", "depthField": "depth" } } ],  "collation": { "locale": "en", "strength" : 3} }');
 SELECT document FROM bson_aggregation_pipeline('db',
@@ -441,7 +441,7 @@ SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
 END;
@@ -451,7 +451,7 @@ SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "a.b", "foreignField": "a.b", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
 
 BEGIN;
-SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL helio_core.enablecollation TO on;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "a.b", "foreignField": "a.b", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
 END;
@@ -463,4 +463,4 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6
 -- unsupported $merge
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6", "pipeline": [{"$merge" : { "into": "ci_search7", "whenMatched" : "replace" }} ], "collation": { "locale": "en", "strength" : 1} }');
 
-RESET helio_api.enableCollation;
+RESET helio_core.enablecollation;

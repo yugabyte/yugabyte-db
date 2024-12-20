@@ -71,10 +71,10 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feat
 -- $group with firstN/lastN w N>10
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$group": { "_id": { "$mod": [ { "$toInt": "$_id" }, 2 ] }, "d": { "$firstN": { "input":"$_id", "n":15 } }, "e": { "$lastN": { "input":"$_id", "n":15 } } } }], "cursor": {} }');
 -- collation
-SET helio_api.enableCollation TO on;
+SET helio_core.enablecollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "mongo_feature_counter2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "a": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "mongo_feature_counter2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 10, "collation": { "locale": "fr_CA", "strength" : 3 } }');
-RESET helio_api.enableCollation;
+RESET helio_core.enablecollation;
 
 
 -- Create TTL index

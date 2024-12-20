@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/pg_helio_core.c
+ * src/pg_documentdb_core.c
  *
  * Initialization of the shared library.
  *-------------------------------------------------------------------------
@@ -18,8 +18,7 @@ PG_MODULE_MAGIC;
 void _PG_init(void);
 void _PG_fini(void);
 
-bool SkipHelioCoreLoad = false;
-extern bool SkipDocumentDBCoreLoad;
+bool SkipDocumentDBCoreLoad = false;
 
 /*
  * _PG_init gets called when the extension is loaded.
@@ -27,27 +26,25 @@ extern bool SkipDocumentDBCoreLoad;
 void
 _PG_init(void)
 {
-	if (SkipHelioCoreLoad)
+	if (SkipDocumentDBCoreLoad)
 	{
 		return;
 	}
 
-	SkipDocumentDBCoreLoad = true;
-
 	if (!process_shared_preload_libraries_in_progress)
 	{
 		ereport(ERROR, (errmsg(
-							"pg_helio_core can only be loaded via shared_preload_libraries"
-							"Add pg_helio_core to shared_preload_libraries configuration "
-							"variable in postgresql.conf. ")));
+							"pg_documentdb_core can only be loaded via shared_preload_libraries"
+							"Add pg_documentdb_core to shared_preload_libraries configuration "
+							"variable in postgresql.conf.")));
 	}
 
 	InstallBsonMemVTables();
 
-	InitDocumentDbCoreConfigurations("helio_core");
+	InitDocumentDbCoreConfigurations("documentdb_core");
 
-	MarkGUCPrefixReserved("helio_core");
-	ereport(LOG, (errmsg("Initialized pg_helio_core extension")));
+	MarkGUCPrefixReserved("documentdb_core");
+	ereport(LOG, (errmsg("Initialized documentdb_core extension")));
 }
 
 

@@ -23,6 +23,8 @@ ALLOW_DEFAULT_VISIBILITY=yes
 
 # compilation configuration
 MODULE_big = $(EXTENSION)
+
+USE_DOCUMENTDB_CORE = 1
 include $(OSS_SRC_DIR)/Makefile.cflags
 SOURCES = $(wildcard src/*.c) $(wildcard src/**/*.c)
 
@@ -72,16 +74,6 @@ trim_installed_data_files:
 
 build-sql: $(generated_sql_files)
 
-generate_errors_file: $(HELIO_CORE_DIR)include/utils/helio_errors.h $(OSS_SRC_DIR)/documentdb_errors.csv
-
-all: generate_errors_file
-
-$(HELIO_CORE_DIR)include/utils/helio_errors.h: $(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/documentdb_errors.csv
-	mkdir -p $(HELIO_CORE_DIR)/build
-	mkdir -p $(HELIO_CORE_DIR)/generated/src/utils
-	mkdir -p $(HELIO_CORE_DIR)/generated/include/utils
-	$(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/documentdb_errors.csv $(HELIO_CORE_DIR)include/utils/helio_errors.h $(HELIO_CORE_DIR)include/utils/helio_codes.txt helio
-
 $(generated_sql_files): build/%: %
 	@mkdir -p $(SQL_DEPDIR) $(SQL_BUILDDIR)
 	@# -MF is used to store dependency files(.Po) in another directory for separation
@@ -91,3 +83,5 @@ $(generated_sql_files): build/%: %
 	@# -imacros is used to specify a file that defines macros for the global context but its output is thrown away.
 	@# `man cpp` for further information
 	cpp -undef -w $(SQL_DEFINES) -imacros $(OSS_COMMON_SQL_HEADER) -P -MMD -MP -MF$(SQL_DEPDIR)/$(*F).Po -MT$@ $< > $@
+
+include $(OSS_SRC_DIR)/Makefile.docdb
