@@ -12,10 +12,9 @@ menu:
 type: docs
 ---
 
-To get started streaming data change events from a YugabyteDB database using a replication slot, you can use either of the following client options:
+Use the following steps to get started streaming data change events from a YugabyteDB database using a replication slot and the YugabyteDB connector.
 
-- [pg_recvlogical](#get-started-with-pg-recvlogical)
-- [YugabyteDB connector](#get-started-with-yugabytedb-connector)
+For an example of logical replication using the pg_recvlogical utility, see [Change data capture](../../../../explore/change-data-capture/).
 
 {{< note title="Note" >}}
 
