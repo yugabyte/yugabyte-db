@@ -18,8 +18,10 @@
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
 #include "yb/util/compare_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 
+DECLARE_uint64(rocksdb_iterator_sequential_disk_reads_factor);
 DECLARE_uint64(rocksdb_iterator_sequential_disk_reads_for_auto_readahead);
 DECLARE_uint64(rocksdb_iterator_init_readahead_size);
 DECLARE_uint64(rocksdb_iterator_max_readahead_size);
@@ -100,6 +102,14 @@ class TestRandomAccessFile : public yb::RandomAccessFileWrapper {
     env_->OnRandomAccessFileDestroy(this);
   }
 
+  void ResetInfo() {
+    read_count = 0;
+    last_read_offset = 0;
+    last_read_length = 0;
+    last_readahead_offset = 0;
+    last_readahead_length = 0;
+  }
+
   Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
     auto s = target()->Read(offset, n, result, scratch);
     last_read_offset.store(offset);
@@ -110,6 +120,8 @@ class TestRandomAccessFile : public yb::RandomAccessFileWrapper {
   }
 
   void Readahead(size_t offset, size_t length) override {
+    LOG(INFO) << "Readahead call at: " << offset << " length: " << length
+              << " filename: " << target()->filename();
     target()->Readahead(offset, length);
     last_readahead_offset.store(offset);
     last_readahead_length.store(length);
@@ -146,6 +158,8 @@ void TestEnv::OnRandomAccessFileDestroy(TestRandomAccessFile* file) {
   std::lock_guard<std::mutex> l(mutex_);
   random_access_files_.erase(file->filename());
 }
+
+constexpr auto kMaxSequentialDiskReadsFactorForTests = 3;
 
 class ReadaheadTest : public DBTestBase {
  public:
@@ -201,10 +215,13 @@ class ReadaheadTest : public DBTestBase {
     SCHECK_EQ(props.size(), 1, InternalError, "Expected single SST file");
     sst_props_ = *props.begin()->second;
 
-    avg_compressed_data_block_size_ =  sst_props_.data_size / sst_props_.num_data_blocks;
-    LOG(INFO) << "avg_compressed_data_block_size: " << avg_compressed_data_block_size_;
-    avg_keys_per_block_ = num_keys_ / sst_props_.num_data_blocks;
-
+    avg_compressed_data_block_size_ = sst_props_.data_size / sst_props_.num_data_blocks;
+    avg_compressed_row_size_ = sst_props_.data_size / num_keys_;
+    avg_rows_per_block_ = num_keys_ / sst_props_.num_data_blocks;
+    LOG(INFO) << "num_keys: " << num_keys_ << " num_data_blocks: " << sst_props_.num_data_blocks
+              << " avg_compressed_row_size: " << avg_compressed_row_size_
+              << " avg_compressed_data_block_size: " << avg_compressed_data_block_size_
+              << " avg_rows_per_block: " << avg_rows_per_block_;
     return Status::OK();
   }
 
@@ -249,7 +266,7 @@ class ReadaheadTest : public DBTestBase {
         break;
       }
       RETURN_NOT_OK(ExpectReadaheadStats(stats));
-      *current_key_idx += avg_keys_per_block_;
+      *current_key_idx += avg_rows_per_block_;
       if (*current_key_idx >= num_keys_) {
         return false;
       }
@@ -270,7 +287,8 @@ class ReadaheadTest : public DBTestBase {
   std::optional<LiveFileMetaData> sst_metadata_;
   TableProperties sst_props_;
   size_t avg_compressed_data_block_size_;
-  int avg_keys_per_block_;
+  size_t avg_compressed_row_size_;
+  int avg_rows_per_block_;
 };
 
 namespace {
@@ -297,63 +315,105 @@ TEST_F(ReadaheadTest, SequentialScan) {
 
   ASSERT_OK(WriteData());
 
-  for (auto seq_disk_reads_for_readahead : {0, 1, 2, 3, 4, 5, 8, 16}) {
-    LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead = "
-              << seq_disk_reads_for_readahead;
-    FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead = seq_disk_reads_for_readahead;
-    for (bool purge_block_cache : {true, false}) {
-      if (purge_block_cache) {
-        PurgeBlockCache();
+  TestRandomAccessFile* data_file = test_env_->GetRandomAccessFile(sst_metadata_->DataFilePath());
+
+  for (auto seq_disk_reads_factor = 0;
+       seq_disk_reads_factor < kMaxSequentialDiskReadsFactorForTests; ++seq_disk_reads_factor) {
+    LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_factor = "
+              << seq_disk_reads_factor;
+    FLAGS_rocksdb_iterator_sequential_disk_reads_factor = seq_disk_reads_factor;
+    for (auto seq_disk_reads_for_readahead : {0, 1, 2, 3, 4, 5, 8, 16}) {
+      LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead = "
+                << seq_disk_reads_for_readahead;
+      FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead =
+          seq_disk_reads_for_readahead;
+      std::vector<bool> purge_block_cache_options = {true};
+      if (seq_disk_reads_factor == 0) {
+        // Scan is loading the whole file into block cache - test reading from block cache.
+        purge_block_cache_options.push_back(false);
       }
-
-      auto* stats = options.statistics.get();
-      stats->resetTickersForTest();
-
-      auto iter = std::unique_ptr<Iterator>(db_->NewIterator(ReadOptions()));
-      size_t num_keys_read = 0;
-      for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid());
-           iter->Next(), ++num_keys_read) {
-        if ((seq_disk_reads_for_readahead > 1) &&
-            (num_keys_read ==
-             (seq_disk_reads_for_readahead - 1) * num_keys_ / sst_props_.num_data_blocks)) {
-          LOG(INFO) << "num_keys: " << num_keys_
-                    << " num_data_blocks: " << sst_props_.num_data_blocks
-                    << " num_keys_read: " << num_keys_read;
-          // We are about to reach seq_disk_reads_for_readahead disk reads. Should be no readaheads
-          // till now.
-          ASSERT_OK(ExpectReadaheadStats(ReadaheadStats()));
+      for (bool purge_block_cache : purge_block_cache_options) {
+        if (purge_block_cache) {
+          PurgeBlockCache();
         }
-      }
 
-      size_t expected_num_readaheads = 0;
-      size_t expected_readahead_bytes_read = 0;
-      if (seq_disk_reads_for_readahead > 0 && purge_block_cache) {
-        const auto bytes_should_read_before_readahead =
-            (seq_disk_reads_for_readahead - 1) * avg_compressed_data_block_size_;
-        const auto data_size = sst_props_.data_size;
-        if (data_size > bytes_should_read_before_readahead) {
-          AddWholeFileReadaheads(
-              data_size - bytes_should_read_before_readahead, &expected_num_readaheads,
-              &expected_readahead_bytes_read);
+        auto* stats = options.statistics.get();
+        stats->resetTickersForTest();
+        data_file->ResetInfo();
+
+        auto iter = std::unique_ptr<Iterator>(db_->NewIterator(ReadOptions()));
+        int row_index = 0;
+        for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid());
+             iter->Next(), ++row_index) {
+          if ((seq_disk_reads_for_readahead > 1) &&
+              std::cmp_equal(
+                  row_index,
+                  (seq_disk_reads_for_readahead - 1) * num_keys_ / sst_props_.num_data_blocks)) {
+            LOG(INFO) << "num_keys: " << num_keys_
+                      << " num_data_blocks: " << sst_props_.num_data_blocks
+                      << " row_index: " << row_index;
+            // We are about to reach seq_disk_reads_for_readahead disk reads. Should be no
+            // readaheads till now.
+            ASSERT_OK(ExpectReadaheadStats(ReadaheadStats()));
+          }
+          if (seq_disk_reads_factor > 0 && data_file->last_readahead_length > 0) {
+            // Skipping data within readahead window shouldn't reset readahead.
+            const auto jump_to_row_idx = std::min(
+                num_keys_ - 1,
+                yb::RandomUniformInt<int>(
+                    row_index, static_cast<int>(
+                                   (data_file->last_readahead_offset +
+                                    data_file->last_readahead_length * seq_disk_reads_factor) /
+                                   avg_compressed_row_size_) -
+                                   1));
+            if (jump_to_row_idx > row_index) {
+              ASSERT_OK(SeekToKey(iter, row_index));
+              row_index = jump_to_row_idx;
+            }
+          }
         }
-        LOG(INFO) << " data_size: " << data_size
-                  << " bytes_should_read_before_readahead: " << bytes_should_read_before_readahead;
+
+        size_t expected_num_readaheads = 0;
+        size_t expected_readahead_bytes_read = 0;
+        if (seq_disk_reads_for_readahead > 0 && purge_block_cache) {
+          const auto bytes_should_read_before_readahead =
+              (seq_disk_reads_for_readahead - 1) * avg_compressed_data_block_size_;
+          const auto data_size = sst_props_.data_size;
+          if (data_size > bytes_should_read_before_readahead) {
+            AddWholeFileReadaheads(
+                data_size - bytes_should_read_before_readahead, &expected_num_readaheads,
+                &expected_readahead_bytes_read);
+          }
+          LOG(INFO) << "data_size: " << data_size
+                    << " bytes_should_read_before_readahead: " << bytes_should_read_before_readahead
+                    << " expected_num_readaheads: " << expected_num_readaheads
+                    << " expected_readahead_bytes_read: " << expected_readahead_bytes_read;
+        } else {
+          LOG(INFO) << "seq_disk_reads_for_readahead: " << seq_disk_reads_for_readahead
+                    << " purge_block_cache: " << purge_block_cache
+                    << " expected_num_readaheads: " << expected_num_readaheads
+                    << " expected_readahead_bytes_read: " << expected_readahead_bytes_read;
+        }
+
+        const auto num_readaheads = stats->getTickerCount(Tickers::READAHEAD_CALLS);
+        const auto readahead_bytes_read = stats->getTickerCount(Tickers::READAHEAD_BYTES_READ);
+
+        if (seq_disk_reads_factor <= 1) {
+          // If seq_disk_reads_factor > 1, we can have less readahead calls because of skipping
+          // more data than was read ahead.
+          ASSERT_GE(num_readaheads, expected_num_readaheads);
+          ASSERT_GE(readahead_bytes_read, expected_readahead_bytes_read);
+        }
+
+        // We can readahead more in reality due to blocks located on readahead window boundary.
+        ASSERT_LE(num_readaheads, expected_num_readaheads * 1.1);
+        ASSERT_LE(
+            readahead_bytes_read,
+            expected_readahead_bytes_read + (num_readaheads - expected_num_readaheads) *
+                                                FLAGS_rocksdb_iterator_max_readahead_size);
+
+        ASSERT_EQ(stats->getTickerCount(Tickers::READAHEAD_RESET), 0);
       }
-
-      const auto num_readaheads = stats->getTickerCount(Tickers::READAHEAD_CALLS);
-      const auto readahead_bytes_read = stats->getTickerCount(Tickers::READAHEAD_BYTES_READ);
-
-      ASSERT_GE(num_readaheads, expected_num_readaheads);
-      ASSERT_GE(readahead_bytes_read, expected_readahead_bytes_read);
-
-      // We can readahead more in reality due to blocks located on readahead window boundary.
-      ASSERT_LE(num_readaheads, expected_num_readaheads * 1.1);
-      ASSERT_LE(
-          readahead_bytes_read,
-          expected_readahead_bytes_read + (num_readaheads - expected_num_readaheads) *
-                                              FLAGS_rocksdb_iterator_max_readahead_size);
-
-      ASSERT_EQ(stats->getTickerCount(Tickers::READAHEAD_RESET), 0);
     }
   }
 }
@@ -366,69 +426,83 @@ TEST_F(ReadaheadTest, MixedReadsWith1SeqDiskReadsForReadahead) {
 
   ASSERT_OK(WriteData());
 
-  TestRandomAccessFile* data_file = test_env_->GetRandomAccessFile(sst_metadata_->DataFilePath());
+  for (auto seq_disk_reads_factor = 0;
+       seq_disk_reads_factor < kMaxSequentialDiskReadsFactorForTests; ++seq_disk_reads_factor) {
+    LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_factor = "
+              << seq_disk_reads_factor;
+    FLAGS_rocksdb_iterator_sequential_disk_reads_factor = seq_disk_reads_factor;
 
-  auto iter = std::unique_ptr<Iterator>(db_->NewIterator(ReadOptions()));
+    PurgeBlockCache();
 
-  size_t expected_readahead_size = FLAGS_rocksdb_iterator_init_readahead_size;
-  ReadaheadStats expected_stats;
+    auto* stats = options.statistics.get();
+    stats->resetTickersForTest();
 
-  int current_key_idx = 0;
-  ASSERT_OK(SeekToKey(iter, current_key_idx));
+    TestRandomAccessFile* data_file = test_env_->GetRandomAccessFile(sst_metadata_->DataFilePath());
 
-  expected_stats.AddReadaheadCall(expected_readahead_size);
-  ASSERT_OK(ExpectReadaheadStats(expected_stats));
+    auto iter = std::unique_ptr<Iterator>(db_->NewIterator(ReadOptions()));
 
-  ASSERT_OK(ReadOneKeyPerBlockUntilOutOfReadaheadWindow(iter, data_file, &current_key_idx));
+    size_t expected_readahead_size = FLAGS_rocksdb_iterator_init_readahead_size;
+    ReadaheadStats expected_stats;
 
-  expected_stats.IncreaseWindowAndAddReadaheadCall(&expected_readahead_size);
-  ASSERT_OK(ExpectReadaheadStats(expected_stats));
-
-  ASSERT_OK(ReadOneKeyPerBlockUntilOutOfReadaheadWindow(iter, data_file, &current_key_idx));
-
-  expected_stats.IncreaseWindowAndAddReadaheadCall(&expected_readahead_size);
-  ASSERT_OK(ExpectReadaheadStats(expected_stats));
-
-  constexpr auto kBlocksToJump = 4;
-
-  // Jump forward.
-  current_key_idx += kBlocksToJump * avg_keys_per_block_;
-  ASSERT_OK(SeekToKey(iter, current_key_idx));
-
-  expected_stats.AddReadaheadReset(&expected_readahead_size);
-  expected_stats.AddReadaheadCall(expected_readahead_size);
-  ASSERT_OK(ExpectReadaheadStats(expected_stats));
-
-  ASSERT_OK(ReadOneKeyPerBlockUntilOutOfReadaheadWindow(iter, data_file, &current_key_idx));
-  expected_stats.IncreaseWindowAndAddReadaheadCall(&expected_readahead_size);
-  ASSERT_OK(ExpectReadaheadStats(expected_stats));
-
-  // Jump backward.
-  current_key_idx -= kBlocksToJump * avg_keys_per_block_;
-  ASSERT_OK(SeekToKey(iter, current_key_idx));
-
-  // No disk reads, served from block cache but still should reset readahead.
-  expected_stats.AddReadaheadReset(&expected_readahead_size);
-  ASSERT_OK(ExpectReadaheadStats(expected_stats));
-
-  // Read next blocks, served from block cache, no disk reads => no readahead.
-  for (int i = 0; i < kBlocksToJump; ++i) {
-    current_key_idx += avg_keys_per_block_;
+    int current_key_idx = 0;
     ASSERT_OK(SeekToKey(iter, current_key_idx));
+
+    expected_stats.AddReadaheadCall(expected_readahead_size);
+    ASSERT_OK(ExpectReadaheadStats(expected_stats));
+
+    ASSERT_OK(ReadOneKeyPerBlockUntilOutOfReadaheadWindow(iter, data_file, &current_key_idx));
+
+    expected_stats.IncreaseWindowAndAddReadaheadCall(&expected_readahead_size);
+    ASSERT_OK(ExpectReadaheadStats(expected_stats));
+
+    ASSERT_OK(ReadOneKeyPerBlockUntilOutOfReadaheadWindow(iter, data_file, &current_key_idx));
+
+    expected_stats.IncreaseWindowAndAddReadaheadCall(&expected_readahead_size);
+    ASSERT_OK(ExpectReadaheadStats(expected_stats));
+
+    constexpr auto kBlocksToJump = 4;
+
+    // Jump forward.
+    current_key_idx += kBlocksToJump * avg_rows_per_block_ + data_file->last_readahead_length * 2 *
+                                                                 seq_disk_reads_factor /
+                                                                 avg_compressed_row_size_;
+    ASSERT_OK(SeekToKey(iter, current_key_idx));
+
+    expected_stats.AddReadaheadReset(&expected_readahead_size);
+    expected_stats.AddReadaheadCall(expected_readahead_size);
+    ASSERT_OK(ExpectReadaheadStats(expected_stats));
+
+    ASSERT_OK(ReadOneKeyPerBlockUntilOutOfReadaheadWindow(iter, data_file, &current_key_idx));
+    expected_stats.IncreaseWindowAndAddReadaheadCall(&expected_readahead_size);
+    ASSERT_OK(ExpectReadaheadStats(expected_stats));
+
+    // Jump backward.
+    current_key_idx -= kBlocksToJump * avg_rows_per_block_;
+    ASSERT_OK(SeekToKey(iter, current_key_idx));
+
+    // No disk reads, served from block cache but still should reset readahead.
+    expected_stats.AddReadaheadReset(&expected_readahead_size);
+    ASSERT_OK(ExpectReadaheadStats(expected_stats));
+
+    // Read next blocks, served from block cache, no disk reads => no readahead.
+    for (int i = 0; i < kBlocksToJump; ++i) {
+      current_key_idx += avg_rows_per_block_;
+      ASSERT_OK(SeekToKey(iter, current_key_idx));
+      ASSERT_OK(ExpectReadaheadStats(expected_stats));
+    }
+
+    PurgeBlockCache();
+
+    // Read next block after purging block cache, should do readahead.
+    current_key_idx += avg_rows_per_block_ + 1;
+    ASSERT_OK(SeekToKey(iter, current_key_idx));
+    expected_stats.AddReadaheadCall(expected_readahead_size);
+    ASSERT_OK(ExpectReadaheadStats(expected_stats));
+
+    ASSERT_OK(ReadOneKeyPerBlockUntilOutOfReadaheadWindow(iter, data_file, &current_key_idx));
+    expected_stats.IncreaseWindowAndAddReadaheadCall(&expected_readahead_size);
     ASSERT_OK(ExpectReadaheadStats(expected_stats));
   }
-
-  PurgeBlockCache();
-
-  // Read next block after purging block cache, should do readahead.
-  current_key_idx += avg_keys_per_block_;
-  ASSERT_OK(SeekToKey(iter, current_key_idx));
-  expected_stats.AddReadaheadCall(expected_readahead_size);
-  ASSERT_OK(ExpectReadaheadStats(expected_stats));
-
-  ASSERT_OK(ReadOneKeyPerBlockUntilOutOfReadaheadWindow(iter, data_file, &current_key_idx));
-  expected_stats.IncreaseWindowAndAddReadaheadCall(&expected_readahead_size);
-  ASSERT_OK(ExpectReadaheadStats(expected_stats));
 }
 
 TEST_F(ReadaheadTest, MixedReads) {
@@ -441,62 +515,72 @@ TEST_F(ReadaheadTest, MixedReads) {
 
   TestRandomAccessFile* data_file = test_env_->GetRandomAccessFile(sst_metadata_->DataFilePath());
 
-  for (auto seq_disk_reads_for_readahead : {2, 3, 4, 5, 8, 16}) {
-    LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead = "
-              << seq_disk_reads_for_readahead;
-    FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead = seq_disk_reads_for_readahead;
-    PurgeBlockCache();
+  for (auto seq_disk_reads_factor = 0;
+       seq_disk_reads_factor < kMaxSequentialDiskReadsFactorForTests; ++seq_disk_reads_factor) {
+    LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_factor = "
+              << seq_disk_reads_factor;
+    FLAGS_rocksdb_iterator_sequential_disk_reads_factor = seq_disk_reads_factor;
+    for (auto seq_disk_reads_for_readahead : {2, 3, 4, 5, 8, 16}) {
+      LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead = "
+                << seq_disk_reads_for_readahead;
+      FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead =
+          seq_disk_reads_for_readahead;
+      PurgeBlockCache();
 
-    auto* stats = options.statistics.get();
-    stats->resetTickersForTest();
+      auto* stats = options.statistics.get();
+      stats->resetTickersForTest();
 
-    auto iter = std::unique_ptr<Iterator>(db_->NewIterator(ReadOptions()));
+      auto iter = std::unique_ptr<Iterator>(db_->NewIterator(ReadOptions()));
 
-    size_t expected_readahead_size = FLAGS_rocksdb_iterator_init_readahead_size;
-    ReadaheadStats expected_stats;
+      size_t expected_readahead_size = FLAGS_rocksdb_iterator_init_readahead_size;
+      ReadaheadStats expected_stats;
 
-    int current_key_idx = -1;
-    auto prev_num_disk_reads = data_file->read_count.load();
-    for (int random_seek_iter = 0; random_seek_iter < kNumRandomSeeks; ++random_seek_iter) {
-      // Seek to another random block (and not the next one).
-      const auto prev_key_idx = current_key_idx;
-      do {
-        current_key_idx = rnd_.Uniform(num_keys_);
-      } while (prev_key_idx >= 0 && current_key_idx >= prev_key_idx - avg_keys_per_block_ &&
-               current_key_idx <= prev_key_idx + 2 * avg_keys_per_block_);
+      int current_key_idx = -1;
+      auto prev_num_disk_reads = data_file->read_count.load();
+      for (int random_seek_iter = 0; random_seek_iter < kNumRandomSeeks; ++random_seek_iter) {
+        // Seek to another random block (and not the next one, also make sure to skip
+        // seq_disk_reads_factor * readahead window size).
+        const auto prev_key_idx = current_key_idx;
+        do {
+          current_key_idx = rnd_.Uniform(num_keys_);
+        } while (prev_key_idx >= 0 && current_key_idx >= prev_key_idx - avg_rows_per_block_ &&
+                 std::cmp_less_equal(
+                     current_key_idx, prev_key_idx + 2 * avg_rows_per_block_ +
+                                          data_file->last_readahead_length * 2 *
+                                              seq_disk_reads_factor / avg_compressed_row_size_));
 
-      auto num_disk_reads = data_file->read_count.load();
-      if (num_disk_reads > prev_num_disk_reads) {
-        expected_stats.AddReadaheadReset(&expected_readahead_size);
-        prev_num_disk_reads = num_disk_reads;
-      }
-      LOG(INFO) << "Disk read count: " << num_disk_reads
-                << ". Moving to random key: " << current_key_idx;
+        auto num_disk_reads = data_file->read_count.load();
+        LOG(INFO) << "Disk read count: " << num_disk_reads
+                  << ". Moving to random key: " << current_key_idx;
+        if (num_disk_reads > prev_num_disk_reads) {
+          expected_stats.AddReadaheadReset(&expected_readahead_size);
+          prev_num_disk_reads = num_disk_reads;
+        }
 
-      for (; current_key_idx < num_keys_;
-           current_key_idx += avg_keys_per_block_) {
-        ASSERT_OK(SeekToKey(iter, current_key_idx));
-        LOG(INFO) << "Disk read count: " << data_file->read_count;
+        for (; current_key_idx < num_keys_; current_key_idx += avg_rows_per_block_) {
+          ASSERT_OK(SeekToKey(iter, current_key_idx));
+          LOG(INFO) << "Disk read count: " << data_file->read_count;
 
-        // No readahead until Nth seq disk reads.
-        if (data_file->read_count == num_disk_reads + seq_disk_reads_for_readahead) {
-          expected_stats.AddReadaheadCall(expected_readahead_size);
+          // No readahead until Nth seq disk reads.
+          if (data_file->read_count == num_disk_reads + seq_disk_reads_for_readahead) {
+            expected_stats.AddReadaheadCall(expected_readahead_size);
+            ASSERT_OK(ExpectReadaheadStats(expected_stats));
+            break;
+          }
           ASSERT_OK(ExpectReadaheadStats(expected_stats));
-          break;
         }
-        ASSERT_OK(ExpectReadaheadStats(expected_stats));
-      }
 
-      for (int readahead_window_iter = 0; readahead_window_iter < 2; ++readahead_window_iter) {
-        num_disk_reads = data_file->read_count.load();
-        if (!ASSERT_RESULT(
-                ReadOneKeyPerBlockUntilOutOfReadaheadWindow(iter, data_file, &current_key_idx))) {
-          continue;
+        for (int readahead_window_iter = 0; readahead_window_iter < 2; ++readahead_window_iter) {
+          num_disk_reads = data_file->read_count.load();
+          if (!ASSERT_RESULT(
+                  ReadOneKeyPerBlockUntilOutOfReadaheadWindow(iter, data_file, &current_key_idx))) {
+            continue;
+          }
+          if (data_file->read_count > num_disk_reads) {
+            expected_stats.IncreaseWindowAndAddReadaheadCall(&expected_readahead_size);
+          }
+          ASSERT_OK(ExpectReadaheadStats(expected_stats));
         }
-        if (data_file->read_count > num_disk_reads) {
-          expected_stats.IncreaseWindowAndAddReadaheadCall(&expected_readahead_size);
-        }
-        ASSERT_OK(ExpectReadaheadStats(expected_stats));
       }
     }
   }
