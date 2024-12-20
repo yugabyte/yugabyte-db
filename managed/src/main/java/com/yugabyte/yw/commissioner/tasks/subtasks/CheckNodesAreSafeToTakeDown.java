@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.google.common.base.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,6 +41,7 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
   private static final int MAX_DELAY_MS = 16000;
 
   private static final int MAX_ERRORS_TO_IGNORE = 5;
+  private static final long MAX_WAIT_FOR_VALIDATION = TimeUnit.SECONDS.toMillis(40);
 
   @Inject
   protected CheckNodesAreSafeToTakeDown(BaseTaskDependencies baseTaskDependencies) {
@@ -143,6 +146,7 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
         }
       }
     } catch (Exception e) {
+      Throwables.throwIfUnchecked(e);
       throw new RuntimeException(e);
     } finally {
       executor.shutdownNow();
@@ -167,11 +171,15 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
     long maxAcceptableFollowerLagMs =
         confGetter.getConfForScope(universe, UniverseConfKeys.followerLagMaxThreshold).toMillis();
 
-    long maxTimeoutMs =
-        confGetter
-            .getConfForScope(universe, UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout)
-            .toMillis();
-
+    long maxTimeoutMs;
+    if (taskParams().isRunOnlyPrechecks()) {
+      maxTimeoutMs = MAX_WAIT_FOR_VALIDATION;
+    } else {
+      maxTimeoutMs =
+          confGetter
+              .getConfForScope(universe, UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout)
+              .toMillis();
+    }
     List<CheckBatch> checkBatches =
         nodesToCheck.stream()
             .map(mnt -> new CheckBatch(universe, mnt, cloudEnabled))
@@ -217,6 +225,7 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
               }
               if (!reschedule) {
                 log.debug("countdown for {}, error {}", checkBatch.nodesStr, checkBatch.errorStr);
+                checkBatch.finished = true;
                 countDownLatch.countDown();
               }
               log.debug("{}/{} checks remaining", countDownLatch.getCount(), checkBatches.size());
@@ -225,12 +234,21 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
         executor.schedule(
             runnable, (long) (Math.random() * INITIAL_DELAY_MS), TimeUnit.MILLISECONDS);
       }
-      countDownLatch.await(maxTimeoutMs + TimeUnit.MINUTES.toMillis(1), TimeUnit.MILLISECONDS);
+      countDownLatch.await(maxTimeoutMs, TimeUnit.MILLISECONDS);
     } catch (InterruptedException e) {
       log.error("Interrupted", e);
     }
-    if (countDownLatch.getCount() > 0) {
-      throw new RuntimeException("Timeouted while waiting for checks to complete");
+    Set<String> pendingIps = new HashSet<>();
+    checkBatches.stream()
+        .filter(cb -> !cb.finished && cb.errorStr == null)
+        .forEach(
+            cb -> {
+              pendingIps.addAll(cb.masterIps);
+              pendingIps.addAll(cb.tserverIps);
+            });
+    if (countDownLatch.getCount() > 0 && pendingIps.size() > 0) {
+      throw new RuntimeException(
+          "Timed out while waiting for all checks to complete. Pending ips: " + pendingIps);
     }
     for (CheckBatch checkBatch : checkBatches) {
       if (checkBatch.errorStr != null) {
@@ -267,8 +285,9 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
     final Set<String> masterIps;
     final Set<String> tserverIps;
     final String nodesStr;
-    AtomicInteger iterationNumber = new AtomicInteger();
+    final AtomicInteger iterationNumber = new AtomicInteger();
     volatile String errorStr;
+    volatile boolean finished;
 
     private CheckBatch(
         Universe universe, UpgradeTaskBase.MastersAndTservers target, boolean cloudEnabled) {

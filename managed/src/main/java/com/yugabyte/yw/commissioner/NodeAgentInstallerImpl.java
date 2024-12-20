@@ -130,7 +130,7 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
                   CustomerTask.TargetType.Universe,
                   CustomerTask.TaskType.EnableNodeAgent,
                   universeOpt.get().getName());
-          commissioner.waitForTask(customerTask.getTaskUUID());
+          commissioner.waitForTask(customerTask.getTaskUUID(), null);
           TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
           return taskInfo.getTaskState() == TaskInfo.State.Success;
         });

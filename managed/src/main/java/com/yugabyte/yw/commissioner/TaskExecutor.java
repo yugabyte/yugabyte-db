@@ -1112,7 +1112,7 @@ public class TaskExecutor {
                 "Failed to execute task %s, hit error:\n\n %s.",
                 StringUtils.abbreviate(redactedTaskParams, 500),
                 StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
-        taskError = new YBAError(Code.INTERNAL_ERROR, errorString);
+        taskError = new YBAError(Code.INTERNAL_ERROR, errorString, cause.getMessage());
       }
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",

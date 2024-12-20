@@ -32,6 +32,7 @@ import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.annotation.Transactional;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -401,8 +402,8 @@ public class Commissioner {
     return taskExecutor.isTaskRunning(taskUuid);
   }
 
-  public void waitForTask(UUID taskUuid) {
-    taskExecutor.waitForTask(taskUuid);
+  public void waitForTask(UUID taskUuid, @Nullable Duration timeout) {
+    taskExecutor.waitForTask(taskUuid, timeout);
   }
 
   public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {

@@ -48,6 +48,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Reboot,
     ThirdPartyPackages,
     YbcGFlags,
+    UpgradeDB
   }
 
   public enum UpgradeTaskSubType {

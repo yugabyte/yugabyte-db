@@ -488,7 +488,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
   public void testNodesAreSafeToTakeDownFails() throws InterruptedException, IOException {
     // So that we will do only one check.
     RuntimeConfigEntry.upsertGlobal(
-        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "5s");
+        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "65s");
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = getGFlags("TEST_set_tablet_follower_lag_ms", "20000");
     Universe universe = createUniverse(userIntent);
@@ -566,7 +566,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
   public void testUpgradeFailsDuringExecution() throws InterruptedException, IOException {
     // So that we will do only one check.
     RuntimeConfigEntry.upsertGlobal(
-        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "5s");
+        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "65s");
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(new HashMap<>(), new HashMap<>());
     Universe universe = createUniverse(userIntent);
@@ -682,8 +682,8 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     upgadeParams.upgradeOption = upgradeOption;
     upgadeParams.expectedUniverseVersion = universe.getVersion();
     upgadeParams.clusters = universe.getUniverseDetails().clusters;
-    upgadeParams.sleepAfterMasterRestartMillis = 10000;
     upgadeParams.sleepAfterTServerRestartMillis = 10000;
+    upgadeParams.sleepAfterMasterRestartMillis = 10000;
     return upgadeParams;
   }
 

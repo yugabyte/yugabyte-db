@@ -170,7 +170,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
       log.info(
           "Waiting for master failover task to complete for universe {}",
           universe.getUniverseUUID());
-      getCommissioner().waitForTask(customerTask.getTaskUUID());
+      getCommissioner().waitForTask(customerTask.getTaskUUID(), null);
       return TaskInfo.maybeGet(customerTask.getTaskUUID());
     } finally {
       log.info("Master failover check completed for universe {}", universe.getUniverseUUID());

@@ -1147,7 +1147,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.runOnlyPrechecks = true;
 
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =

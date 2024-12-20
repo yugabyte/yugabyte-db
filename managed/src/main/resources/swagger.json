@@ -9609,6 +9609,25 @@
       "required" : [ "level", "maxHistory", "rolloverPattern" ],
       "type" : "object"
     },
+    "PreUpgradeValidationResponse" : {
+      "description" : "Upgrade Validation Response",
+      "properties" : {
+        "errors" : {
+          "description" : "WARNING: This is a preview API that could change. List of errors that occurred during validation",
+          "items" : {
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "success" : {
+          "description" : "WARNING: This is a preview API that could change. Indicates whether all the checks passed",
+          "readOnly" : true,
+          "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
     "PresetThrottleValues" : {
       "properties" : {
         "defaultValue" : {
@@ -16708,6 +16727,11 @@
         },
         "message" : {
           "description" : "Error message",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "originMessage" : {
+          "description" : "Origin error message",
           "readOnly" : true,
           "type" : "string"
         }
@@ -29148,6 +29172,63 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Upgrade KubernetesOverrides",
+        "tags" : [ "Universe Upgrades Management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/pre_upgrade_validation" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change. Runs all the prechecks and validations for specific upgrade",
+        "operationId" : "preUpgradeValidation",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "upgradeType",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Upgrade Params",
+          "in" : "body",
+          "name" : "upgrade params",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UpgradeTaskParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PreUpgradeValidationResponse"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PreUpgradeValidationResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Run validation for upgrade",
         "tags" : [ "Universe Upgrades Management" ]
       }
     },
