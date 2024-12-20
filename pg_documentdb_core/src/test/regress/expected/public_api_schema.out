@@ -1,0 +1,41 @@
+-- show all functions exported in documentdb_core.
+\df documentdb_core.*
+                       List of functions
+ Schema | Name | Result data type | Argument data types | Type 
+--------+------+------------------+---------------------+------
+(0 rows)
+
+-- show all aggregates exported
+\da+ documentdb_core.*
+                     List of aggregate functions
+ Schema | Name | Result data type | Argument data types | Description 
+--------+------+------------------+---------------------+-------------
+(0 rows)
+
+-- Access methods + Operator families
+\dA *documentdb*
+List of access methods
+ Name | Type 
+------+------
+(0 rows)
+
+\dAc *documentdb*
+                  List of operator classes
+ AM | Input type | Storage type | Operator class | Default? 
+----+------------+--------------+----------------+----------
+(0 rows)
+
+\dAf *documentdb*
+        List of operator families
+ AM | Operator family | Applicable types 
+----+-----------------+------------------
+(0 rows)
+
+\dX *documentdb*
+                 List of extended statistics
+ Schema | Name | Definition | Ndistinct | Dependencies | MCV 
+--------+------+------------+-----------+--------------+-----
+(0 rows)
+
+-- This is last (Tables/indexes)
+\d documentdb_core.*

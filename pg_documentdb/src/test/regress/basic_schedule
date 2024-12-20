@@ -1,0 +1,3 @@
+# test: documentdb_test_helpers
+# Leave this running first since this validates global config database state.
+test: public_api_schema

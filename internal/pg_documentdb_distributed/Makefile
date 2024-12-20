@@ -59,7 +59,7 @@ clean-sql:
 	rm -rf .deps/ build/
 
 check:
-#	$(MAKE) -C src/test all
+	$(MAKE) -C src/test all
 
 check-dist-minimal:
 	$(MAKE) -C src/test $@
