@@ -67,6 +67,8 @@ class Pg15UpgradeTestBase : public UpgradeTestBase {
 
   Result<std::string> DumpYsqlCatalogConfig();
 
+  Status WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::State state);
+
   constexpr static auto kSimpleTableName = "simple_tbl";
   uint32 simple_tbl_row_count_ = 0;
 };
