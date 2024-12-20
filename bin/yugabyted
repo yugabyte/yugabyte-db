@@ -479,28 +479,27 @@ def check_files_in_path(path, files):
 
     return not has_error
 
-def get_ysqlsh_test_env_path():
+def find_binary_path_in_test_env(binary_name):
 
-    # Find directories inside YUGABYTE_DIR containing ysqlsh
-    directories_with_ysqlsh = find_directories_with_ysqlsh(YUGABYTE_DIR)
-    if directories_with_ysqlsh:
-        for directory in directories_with_ysqlsh:
+    # Find directories inside YUGABYTE_DIR containing the specific binary.
+    directories_with_binary = find_test_directories_with_binary(YUGABYTE_DIR, binary_name)
+    if directories_with_binary:
+        for directory in directories_with_binary:
             if 'postgres/bin' in directory:
-                ysqlsh_path = os.path.join(directory, 'ysqlsh')
-                Output.log("Using directory for running ysqlsh: {}".format(
+                binary_path = os.path.join(directory, binary_name)
+                Output.log("Using directory for running {}: {}".format(binary_name,
                                                                 directory))
-                return ysqlsh_path
+                return binary_path
     else:
         Output.log_error_and_exit(
-            "No directories containing ysqlsh were found.")
+            "No directories containing {} were found.".format(binary_name))
 
-
-def find_directories_with_ysqlsh(root_dir):
-    directories_with_ysqlsh = []
+def find_test_directories_with_binary(root_dir, binary_name):
+    directories_with_binary = []
     for dirpath, _, filenames in os.walk(root_dir):
-        if 'ysqlsh' in filenames:
-            directories_with_ysqlsh.append(dirpath)
-    return directories_with_ysqlsh
+        if binary_name in filenames:
+            directories_with_binary.append(dirpath)
+    return directories_with_binary
 
 # Finds the path of a particular YB binary
 def find_binary_location(binary_name):
@@ -508,7 +507,10 @@ def find_binary_location(binary_name):
     # Specific path for ysqlsh in test environment
     is_test_env = os.getenv('USER') == 'jenkins'
     if binary_name == "ysqlsh" and is_test_env:
-        return get_ysqlsh_test_env_path()
+        return find_binary_path_in_test_env(binary_name)
+
+    if binary_name == "pg_isready" and is_test_env:
+        return find_binary_path_in_test_env(binary_name)
 
     # Default if tar is downloaded
     dir_candidates = [
@@ -5835,8 +5837,9 @@ class ControlScript(object):
 
     def check_pg_isready(self, timeout = 5, retries = 10):
         advertise_ip = self.advertise_ip()
+        ysql_port = self.configs.saved_data.get("ysql_port")
         path = find_binary_location("pg_isready")
-        cmd = [path, "-h", str(advertise_ip)]
+        cmd = [path, "-h", str(advertise_ip), "-p", str(ysql_port)]
 
         (out, err, retcode) = run_process_with_retries(cmd=cmd, log_cmd=True, retries=retries,
                                                        timeout=timeout)
