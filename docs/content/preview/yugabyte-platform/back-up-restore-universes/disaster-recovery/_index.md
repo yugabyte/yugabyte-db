@@ -2,7 +2,7 @@
 title: Configure disaster recovery for a YugabyteDB Anywhere universe
 headerTitle: xCluster Disaster Recovery
 linkTitle: Disaster recovery
-description: Enable deployment using transactional (active-standby) replication between universes
+description: Enable Disaster recovery for universes
 headContent: Fail over to a replica universe in case of unplanned outages
 tags:
   feature: early-access

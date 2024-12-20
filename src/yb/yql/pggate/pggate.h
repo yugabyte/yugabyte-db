@@ -826,6 +826,15 @@ class PgApiImpl {
 
   void ForceAllowCatalogModifications(bool allowed);
 
+  //----------------------------------------------------------------------------------------------
+  // Advisory Locks.
+  //----------------------------------------------------------------------------------------------
+
+  Status AcquireAdvisoryLock(
+      const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode, bool wait, bool session);
+  Status ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode);
+  Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
+
  private:
   void ClearSessionState();
 

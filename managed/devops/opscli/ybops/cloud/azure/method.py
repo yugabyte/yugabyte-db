@@ -375,3 +375,23 @@ class AzureQueryCurrentHostMethod(AbstractMethod):
             print(json.dumps(self.cloud.get_current_host_info(args)))
         except YBOpsRuntimeError as ye:
             print(json.dumps(get_exception_message(ye)))
+
+
+class AzureQueryDeviceNames(AbstractMethod):
+    def __init__(self, base_command):
+        super(AzureQueryDeviceNames, self).__init__(base_command, "device_names")
+
+    def add_extra_args(self):
+        super(AzureQueryDeviceNames, self).add_extra_args()
+        self.parser.add_argument("--volume_type",
+                            choices=["premium_lrs", "standardssd_lrs", "ultrassd_lrs",
+                                    "premiumv2_lrs"],
+                            default="premium_lrs", help="Volume type for Azure instances.")
+        self.parser.add_argument("--instance_type",
+                                 required=False,
+                                 help="The instance type to act on")
+        self.parser.add_argument("--num_volumes", type=int, default=0,
+                                 help="number of volumes to mount at the default path (/mnt/d#)")
+
+    def callback(self, args):
+        print(json.dumps(self.cloud.get_device_names(args)))

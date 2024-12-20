@@ -133,10 +133,10 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	 * Check that there is no other tablegroup by this name.
 	 */
 	if (OidIsValid(get_tablegroup_oid(stmt->tablegroupname, true)))
-			ereport(ERROR,
-					(errcode(ERRCODE_DUPLICATE_OBJECT),
-					 errmsg("tablegroup \"%s\" already exists",
-					 		stmt->tablegroupname)));
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("tablegroup \"%s\" already exists",
+						stmt->tablegroupname)));
 
 	if (stmt->owner)
 		owneroid = get_rolespec_oid(stmt->owner, false);
@@ -300,7 +300,7 @@ get_tablegroup_oid(const char *tablegroupname, bool missing_ok)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup \"%s\" does not exist",
-				 		tablegroupname)));
+						tablegroupname)));
 
 	return result;
 }
@@ -391,12 +391,10 @@ RemoveTablegroupById(Oid grp_oid, bool remove_implicit)
 
 	/* If the tablegroup exists, then remove it, otherwise raise an error. */
 	if (!HeapTupleIsValid(tuple))
-	{
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup with oid %u does not exist",
-				 		grp_oid)));
-	}
+						grp_oid)));
 
 	/* DROP hook for the tablegroup being removed */
 	InvokeObjectDropHook(YbTablegroupRelationId, grp_oid, 0);

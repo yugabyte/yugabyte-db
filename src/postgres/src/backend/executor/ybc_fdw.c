@@ -269,9 +269,9 @@ ybcGetForeignPlan(PlannerInfo *root,
 				case MaxTransactionIdAttributeNumber:
 				case MaxCommandIdAttributeNumber:
 					ereport(ERROR,
-					        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-							        "System column with id %d is not supported yet",
-							        attnum)));
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("System column with id %d is not supported yet",
+									attnum)));
 					break;
 				case TableOidAttributeNumber:
 					/* Nothing to do in YugaByte: Postgres will handle this. */

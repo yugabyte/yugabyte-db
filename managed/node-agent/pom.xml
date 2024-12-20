@@ -83,6 +83,7 @@
 							<skip>${skipLocalRelease}</skip>
 							<arguments>
 								<argument>--local</argument>
+								<argument>--include_pex</argument>
 							</arguments>
 						</configuration>
 					</execution>

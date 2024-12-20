@@ -51,4 +51,6 @@ class YsqlAdvisoryLocksTable {
   client::YBClient& client_;
 };
 
+using YsqlAdvisoryLocksTableProvider = std::function<YsqlAdvisoryLocksTable&()>;
+
 } // namespace yb

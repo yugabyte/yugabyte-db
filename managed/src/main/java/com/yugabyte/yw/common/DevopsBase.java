@@ -123,6 +123,7 @@ public abstract class DevopsBase {
     commandList.add(getCommandType().toLowerCase());
     commandList.add(devopsCommand.command);
     commandList.addAll(commandArgs);
+
     return shellProcessHandler.run(
         commandList,
         ShellProcessContext.builder()

@@ -1388,11 +1388,11 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	TupleDesc tupdesc       = RelationGetDescr(relation);
 
 	SysScanDesc scandesc = systable_beginscan(relation,
-	                                          cache->cc_indexoid,
-	                                          false /* indexOK */,
-	                                          NULL /* snapshot */,
-	                                          0  /* nkeys */,
-	                                          NULL /* key */);
+											  cache->cc_indexoid,
+											  false /* indexOK */,
+											  NULL /* snapshot */,
+											  0  /* nkeys */,
+											  NULL /* key */);
 
 	while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
 	{

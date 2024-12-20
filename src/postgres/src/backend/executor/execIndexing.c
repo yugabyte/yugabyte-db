@@ -810,7 +810,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 			list_member_oid(estate->yb_skip_entities.index_list,
 							RelationGetRelid(indexRelation)))
 			continue;
-		
+
 		Form_pg_index indexData = indexRelation->rd_index;
 		/*
 		 * Primary key is a part of the base relation in Yugabyte and does not
@@ -1759,19 +1759,20 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 					   values,
 					   isnull);
 
-		Assert(!indexInfo->ii_NullsNotDistinct);
-
-		bool found_null = false;
-		for (int j = 0; j < indnkeyatts; j++)
+		if (!indexInfo->ii_NullsNotDistinct)
 		{
-			if (isnull[j])
+			bool found_null = false;
+			for (int j = 0; j < indnkeyatts; j++)
 			{
-				found_null = true;
-				break;
+				if (isnull[j])
+				{
+					found_null = true;
+					break;
+				}
 			}
+			if (found_null)
+				continue;
 		}
-		if (found_null)
-			continue;
 
 		if (indnkeyatts == 1)
 		{
@@ -1853,10 +1854,12 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 	/* Fill the scan key used for the batch read RPC. */
 	ScanKeyData this_scan_key_data;
 	ScanKey this_scan_key = &this_scan_key_data;
+	int sk_retain_nulls_flag =
+		indexInfo->ii_NullsNotDistinct ? YB_SK_SEARCHARRAY_RETAIN_NULLS : 0;
 	if (indnkeyatts == 1)
 	{
 		ScanKeyEntryInitialize(this_scan_key,
-							   SK_SEARCHARRAY,
+							   SK_SEARCHARRAY | sk_retain_nulls_flag,
 							   1,
 							   constr_strats[0],
 							   elmtype,
@@ -1887,7 +1890,8 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 		 *   else if (IsA(clause, RowCompareExpr))
 		 */
 		MemSet(this_scan_key, 0, sizeof(ScanKeyData));
-		this_scan_key->sk_flags = SK_ROW_HEADER | SK_SEARCHARRAY;
+		this_scan_key->sk_flags = (SK_ROW_HEADER | SK_SEARCHARRAY |
+								   sk_retain_nulls_flag);
 		this_scan_key->sk_attno = scankeys[0].sk_attno;
 		this_scan_key->sk_strategy = BTEqualStrategyNumber;
 		/* sk_subtype, sk_collation, sk_func not used in a header */
@@ -1925,16 +1929,17 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 					   existing_values, existing_isnull);
 
 		/*
-		 * Irrespective of how distinctness of NULLs are treated by the index,
-		 * the index keys having NULL values are filtered out above, and will
-		 * not be a part of the index scan result.
+		 * In nulls-are-distinct mode, the index keys having NULL values are
+		 * filtered out above, and will not be a part of the index scan result.
 		 */
-		Assert(!YbIsAnyIndexKeyColumnNull(indexInfo, existing_isnull));
+		Assert(indexInfo->ii_NullsNotDistinct ||
+			   !YbIsAnyIndexKeyColumnNull(indexInfo,
+										  existing_isnull));
 
 		oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 		YBCPgInsertOnConflictKeyInfo info = {existing_slot};
 		YBCPgYBTupleIdDescriptor *descr =
-			YBCBuildNonNullUniqueIndexYBTupleId(index, existing_values);
+			YBCBuildUniqueIndexYBTupleId(index, existing_values, existing_isnull);
 		HandleYBStatus(YBCPgAddInsertOnConflictKey(descr, yb_ioc_state, &info));
 		MemoryContextSwitchTo(oldcontext);
 

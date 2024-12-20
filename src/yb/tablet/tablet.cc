@@ -72,6 +72,7 @@
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_statistics.h"
+#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
@@ -790,8 +791,9 @@ Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
   RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(db_dir),
                         Format("Failed to create RocksDB tablet directory $0", db_dir));
 
-  RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(db_dir + kIntentsDBSuffix),
-                        Format("Failed to create RocksDB tablet intents directory $0", db_dir));
+  RETURN_NOT_OK_PREPEND(
+      fs->CreateDirIfMissingAndSync(docdb::GetStorageDir(db_dir, kIntentsDirName)),
+      Format("Failed to create RocksDB tablet intents directory $0", db_dir));
 
   RETURN_NOT_OK(snapshots_->CreateDirectories(db_dir, fs));
 
@@ -827,8 +829,40 @@ auto MakeMaxFileSizeWithTableTTLFunction(const F& f) {
 }
 
 struct Tablet::IntentsDbFlushFilterState {
-  std::optional<int64_t> largest_flushed_index;
-  std::optional<rocksdb::FlushAbility> flush_ability;
+  docdb::VectorIndexesPtr vector_indexes;
+  boost::container::small_vector<int64_t, 4> largest_flushed_index;
+  boost::container::small_vector<rocksdb::FlushAbility, 4> flush_ability;
+
+  void AddLargestFlushedIndex(const rocksdb::UserFrontierPtr& flushed_frontier) {
+    if (!flushed_frontier) {
+      largest_flushed_index.push_back(std::numeric_limits<int64_t>::min());
+      return;
+    }
+    const auto& consensus_frontier =
+        static_cast<const docdb::ConsensusFrontier&>(*flushed_frontier);
+    largest_flushed_index.push_back(consensus_frontier.op_id().index);
+  }
+
+  bool HasNewData(int64_t memtable_op_index) const {
+    for (size_t idx = 0; idx != flush_ability.size(); ++idx) {
+      if (flush_ability[idx] != rocksdb::FlushAbility::kNoNewData &&
+          !Flushed(idx, memtable_op_index)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool Flushed(size_t idx, int64_t memtable_op_index) const {
+    return !largest_flushed_index.empty() && largest_flushed_index[idx] >= memtable_op_index;
+  }
+
+  bool NeedFlush(size_t idx, int64_t memtable_op_index) {
+    if (flush_ability[idx] != rocksdb::FlushAbility::kHasNewData) {
+      return false;
+    }
+    return !Flushed(idx, memtable_op_index);
+  }
 };
 
 Result<bool> Tablet::IntentsDbFlushFilter(
@@ -836,55 +870,76 @@ Result<bool> Tablet::IntentsDbFlushFilter(
     std::shared_ptr<Tablet::IntentsDbFlushFilterState> state) {
   VLOG_WITH_PREFIX(4) << __func__;
 
-  auto frontiers = memtable.Frontiers();
-  if (frontiers) {
-    const auto& intents_largest =
-        down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest());
+  if (state->flush_ability.empty() && state->largest_flushed_index.empty()) {
+    state->vector_indexes = VectorIndexesList();
+  }
 
-    if (!state->largest_flushed_index) {
+  auto frontiers = memtable.Frontiers();
+  int64_t memtable_index = std::numeric_limits<int64_t>::max();
+  if (frontiers) {
+    memtable_index = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id().index;
+
+    if (state->largest_flushed_index.empty()) {
       // We allow to flush intents DB only after regular DB.
       // Otherwise we could lose applied intents when corresponding regular records were not
       // flushed.
-      auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
-      if (regular_flushed_frontier) {
-        const auto& regular_flushed_largest =
-            static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier);
-        state->largest_flushed_index = regular_flushed_largest.op_id().index;
-      } else {
-        state->largest_flushed_index = std::numeric_limits<int64_t>::min();
+      state->AddLargestFlushedIndex(regular_db_->GetFlushedFrontier());
+      if (state->vector_indexes) {
+        for (const auto& vector_index : *state->vector_indexes) {
+          state->AddLargestFlushedIndex(vector_index->GetFlushedFrontier());
+        }
       }
     }
 
-    if (*state->largest_flushed_index >= intents_largest.op_id().index) {
-      VLOG_WITH_PREFIX(4) << __func__ << ", regular already flushed";
+    bool all_flushed = true;
+    for (auto flushed_index : state->largest_flushed_index) {
+      if (flushed_index < memtable_index) {
+        all_flushed = false;
+        break;
+      }
+    }
+    if (all_flushed) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Already flushed";
       return true;
     }
   } else {
     VLOG_WITH_PREFIX(4) << __func__ << ", no frontiers";
   }
 
-  bool initial = !state->flush_ability;
+  bool initial = state->flush_ability.empty();
   if (initial) {
-    state->flush_ability = regular_db_->GetFlushAbility();
+    state->flush_ability.push_back(regular_db_->GetFlushAbility());
+    if (state->vector_indexes) {
+      for (const auto& index : *state->vector_indexes) {
+        state->flush_ability.push_back(index->GetFlushAbility());
+      }
+    }
   }
+
   // If regular db does not have anything to flush, it means that we have just added intents,
   // without apply, so it is OK to flush the intents RocksDB.
-  if (*state->flush_ability == rocksdb::FlushAbility::kNoNewData) {
-    VLOG_WITH_PREFIX(4) << __func__ << ", no new data";
+  if (!state->HasNewData(memtable_index)) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "No new data";
     return true;
   }
 
   // Force flush of regular DB if we were not able to flush for too long.
   auto timeout = std::chrono::milliseconds(FLAGS_intents_flush_max_delay_ms);
   if (initial &&
-      *state->flush_ability != rocksdb::FlushAbility::kAlreadyFlushing &&
       (shutdown_requested_.load(std::memory_order_acquire) || write_blocked ||
        std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout)) {
-    VLOG_WITH_PREFIX(2) << __func__ << ", force flush";
-
-    rocksdb::FlushOptions options;
-    options.wait = false;
-    RETURN_NOT_OK(regular_db_->Flush(options));
+    for (size_t idx = 0; idx != state->flush_ability.size(); ++idx) {
+      if (state->NeedFlush(idx, memtable_index)) {
+        VLOG_WITH_PREFIX(2) << __func__ << ", force flush";
+        if (idx == 0) {
+          rocksdb::FlushOptions options;
+          options.wait = false;
+          RETURN_NOT_OK(regular_db_->Flush(options));
+        } else {
+          RETURN_NOT_OK((*state->vector_indexes)[idx - 1]->Flush());
+        }
+      }
+    }
   }
 
   return false;
@@ -1037,7 +1092,8 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
 
   const auto& db_dir = metadata()->rocksdb_dir();
 
-  LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << db_dir + kIntentsDBSuffix;
+  auto intents_dir = docdb::GetStorageDir(db_dir, kIntentsDirName);
+  LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << intents_dir;
   rocksdb::Options intents_rocksdb_options(common_options);
   intents_rocksdb_options.compaction_context_factory = {};
   docdb::SetLogPrefix(&intents_rocksdb_options, LogPrefix(docdb::StorageDbType::kIntents));
@@ -1069,8 +1125,7 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
       std::make_shared<RocksDbListener>(*this, intents_rocksdb_options.log_prefix));
 
   rocksdb::DB* intents_db = nullptr;
-  RETURN_NOT_OK(
-      rocksdb::DB::Open(intents_rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
+  RETURN_NOT_OK(rocksdb::DB::Open(intents_rocksdb_options, intents_dir, &intents_db));
   intents_db_.reset(intents_db);
   intents_db_->ListenFilesChanged(std::bind(&Tablet::CleanupIntentFiles, this));
 
@@ -1100,6 +1155,7 @@ Status Tablet::OpenVectorIndexes() NO_THREAD_SAFETY_ANALYSIS {
     if (!table_info->NeedVectorIndex()) {
       continue;
     }
+    VLOG_WITH_PREFIX_AND_FUNC(3) << table_info->ToString();
     if (!lock.owns_lock()) {
       lock.lock();
     }
@@ -1406,7 +1462,7 @@ void Tablet::CompleteShutdown(
 
   StartShutdown();
 
-  auto op_pauses = StartShutdownRocksDBs(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
+  auto op_pauses = StartShutdownStorages(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
 
   cleanup_intent_files_token_.reset();
 
@@ -1440,7 +1496,7 @@ void Tablet::CompleteShutdown(
   // Shutdown the RocksDB instance for this tablet, if present.
   // Destruct intents DB and regular DB in-memory objects in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
-  CompleteShutdownRocksDBs(op_pauses);
+  CompleteShutdownStorages(op_pauses);
 
   {
     std::lock_guard compaction_lock(full_compaction_token_mutex_);
@@ -1462,7 +1518,7 @@ void Tablet::CompleteShutdown(
   }
 }
 
-TabletScopedRWOperationPauses Tablet::StartShutdownRocksDBs(
+TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops, Stop stop) {
   TabletScopedRWOperationPauses op_pauses;
 
@@ -1506,7 +1562,7 @@ TabletScopedRWOperationPauses Tablet::StartShutdownRocksDBs(
   return op_pauses;
 }
 
-std::vector<std::string> Tablet::CompleteShutdownRocksDBs(
+std::vector<std::string> Tablet::CompleteShutdownStorages(
     const TabletScopedRWOperationPauses& ops_pauses) {
   // We need ops_pauses just to guarantee that PauseReadWriteOperations has been called.
 
@@ -1523,6 +1579,21 @@ std::vector<std::string> Tablet::CompleteShutdownRocksDBs(
       db_uniq_ptr->reset();
     }
   }
+  if (has_vector_indexes_) {
+    decltype(vector_indexes_list_) vector_indexes_list;
+    {
+      std::lock_guard lock(vector_indexes_mutex_);
+      vector_indexes_list.swap(vector_indexes_list_);
+      vector_indexes_map_.clear();
+    }
+    if (vector_indexes_list) {
+      for (const auto& index : *vector_indexes_list) {
+        db_paths.push_back(index->path());
+      }
+    }
+    // TODO(vector_index) It could happen that there are external references to vector index.
+    // Wait actual shutdown.
+  }
 
   key_bounds_ = docdb::KeyBounds();
   // Reset rocksdb_shutdown_requested_ to the initial state like RocksDBs were never opened,
@@ -1534,7 +1605,7 @@ std::vector<std::string> Tablet::CompleteShutdownRocksDBs(
   return db_paths;
 }
 
-Status Tablet::DeleteRocksDBs(const std::vector<std::string>& db_paths) {
+Status Tablet::DeleteStorages(const std::vector<std::string>& db_paths) {
   rocksdb::Options rocksdb_options;
   InitRocksDBOptions(&rocksdb_options, LogPrefix());
 
@@ -1607,7 +1678,7 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 }
 
 Status Tablet::ApplyRowOperations(
-    WriteOperation* operation, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+    WriteOperation* operation, const docdb::StorageSet& apply_to_storages) {
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_write_batch_ms);
   const auto& write_request =
       operation->consensus_round() && operation->consensus_round()->replicate_msg()
@@ -1623,13 +1694,13 @@ Status Tablet::ApplyRowOperations(
   }
 
   return ApplyOperation(
-      *operation, write_request.batch_idx(), put_batch, already_applied_to_regular_db);
+      *operation, write_request.batch_idx(), put_batch, apply_to_storages);
 }
 
 Status Tablet::ApplyOperation(
     const Operation& operation, int64_t batch_idx,
     const docdb::LWKeyValueWriteBatchPB& write_batch,
-    AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+    const docdb::StorageSet& apply_to_storages) {
   // The write_hybrid_time is MVCC timestamp to be applied to the records in the batch. This will be
   // different from batch_hybrid_time in cases like xcluster and index backfill.
   auto write_hybrid_time = operation.WriteHybridTime();
@@ -1656,8 +1727,7 @@ Status Tablet::ApplyOperation(
     }
   }
   return ApplyKeyValueRowOperations(
-      batch_idx, write_batch, frontiers_ptr, write_hybrid_time, batch_hybrid_time,
-      already_applied_to_regular_db);
+      batch_idx, write_batch, frontiers_ptr, write_hybrid_time, batch_hybrid_time);
 }
 
 Status Tablet::WriteTransactionalBatch(
@@ -1717,7 +1787,7 @@ Status Tablet::WriteTransactionalBatch(
 Status Tablet::ApplyKeyValueRowOperations(
     int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& put_batch,
     docdb::ConsensusFrontiers* frontiers, HybridTime write_hybrid_time,
-    HybridTime batch_hybrid_time, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+    HybridTime batch_hybrid_time) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
       put_batch.lock_pairs().empty() && put_batch.apply_external_transactions().empty()) {
     return Status::OK();
@@ -1731,10 +1801,6 @@ Status Tablet::ApplyKeyValueRowOperations(
     RETURN_NOT_OK(WriteTransactionalBatch(batch_idx, put_batch, write_hybrid_time, frontiers));
   } else {
     // See comments for PrepareExternalWriteBatch.
-
-    // This should be only set when we are replicating the transaction status table (since this is
-    // only used for UPDATE_TRANSACTION_OP).
-    DCHECK(!already_applied_to_regular_db);
 
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
@@ -2272,7 +2338,7 @@ Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed
   return Status::OK();
 }
 
-docdb::VectorIndexesPtr Tablet::VectorIndexesList() {
+docdb::VectorIndexesPtr Tablet::VectorIndexesList() const {
   if (!has_vector_indexes_.load(std::memory_order_acquire)) {
     return nullptr;
   }
@@ -2324,7 +2390,8 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   auto vector_indexes = VectorIndexesList();
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
-      min_running_ht, &key_bounds_, metadata_.get(), intents_db_.get(), vector_indexes);
+      min_running_ht, &key_bounds_, metadata_.get(), intents_db_.get(), vector_indexes,
+      data.apply_to_storages);
   docdb::IntentsWriter intents_writer(
       data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
       intents_db_.get(), &context);
@@ -2686,6 +2753,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   if (table_info_ptr->NeedVectorIndex()) {
     auto indexed_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
         index_info->indexed_table_id()));
+    VLOG_WITH_PREFIX_AND_FUNC(3) << table_info_ptr->ToString();
     std::lock_guard lock(vector_indexes_mutex_);
     RETURN_NOT_OK(CreateVectorIndex(
         *table_info_ptr, *indexed_table_info, /* allow_inplace_insert = */ false));
@@ -3715,7 +3783,7 @@ Status Tablet::Truncate(TruncateOperation* operation) {
     return Status::OK();
   }
 
-  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown::kTrue, AbortOps::kTrue);
+  auto op_pauses = StartShutdownStorages(DisableFlushOnShutdown::kTrue, AbortOps::kTrue);
 
   // Check if tablet is in shutdown mode.
   if (IsShutdownRequested()) {
@@ -3725,7 +3793,7 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
   const string db_dir = regular_db_->GetName();
 
-  auto s = DeleteRocksDBs(CompleteShutdownRocksDBs(op_pauses));
+  auto s = DeleteStorages(CompleteShutdownStorages(op_pauses));
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
     return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());
@@ -3789,7 +3857,8 @@ Result<bool> Tablet::HasSSTables() const {
   return !live_files_metadata.empty();
 }
 
-yb::OpId MaxPersistentOpIdForDb(rocksdb::DB* db, bool invalid_if_no_new_data) {
+template <class DB>
+OpId MaxPersistentOpIdForDb(DB* db, bool invalid_if_no_new_data) {
   // A possible race condition could happen, when data is written between this query and
   // actual log gc. But it is not a problem as long as we are reading committed op id
   // before MaxPersistentOpId, since we always keep last committed entry in the log during garbage
@@ -3798,12 +3867,12 @@ yb::OpId MaxPersistentOpIdForDb(rocksdb::DB* db, bool invalid_if_no_new_data) {
   if (db == nullptr ||
       (invalid_if_no_new_data &&
        db->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData)) {
-    return yb::OpId::Invalid();
+    return OpId::Invalid();
   }
 
   rocksdb::UserFrontierPtr frontier = db->GetFlushedFrontier();
   if (!frontier) {
-    return yb::OpId();
+    return OpId();
   }
 
   return down_cast<docdb::ConsensusFrontier*>(frontier.get())->op_id();
@@ -3813,10 +3882,17 @@ Result<DocDbOpIds> Tablet::MaxPersistentOpId(bool invalid_if_no_new_data) const 
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
-  return DocDbOpIds{
-      MaxPersistentOpIdForDb(regular_db_.get(), invalid_if_no_new_data),
-      MaxPersistentOpIdForDb(intents_db_.get(), invalid_if_no_new_data)
-  };
+  DocDbOpIds result;
+  result.regular = MaxPersistentOpIdForDb(regular_db_.get(), invalid_if_no_new_data);
+  result.intents = MaxPersistentOpIdForDb(intents_db_.get(), invalid_if_no_new_data);
+  auto vector_indexes = VectorIndexesList();
+  if (vector_indexes) {
+    for (const auto& vector_index : *vector_indexes) {
+      result.vector_indexes.push_back(
+          MaxPersistentOpIdForDb(vector_index.get(), invalid_if_no_new_data));
+    }
+  }
+  return result;
 }
 
 void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) {

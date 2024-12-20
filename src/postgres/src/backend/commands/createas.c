@@ -132,10 +132,10 @@ create_ctas_internal(List *attrList, IntoClause *into)
 
 		/* parse and validate reloptions for the toast table */
 		toast_options = transformRelOptions((Datum) 0,
-		                                    create->options,
-		                                    "toast",
-		                                    validnsps,
-		                                    true, false);
+											create->options,
+											"toast",
+											validnsps,
+											true, false);
 
 		(void) heap_reloptions(RELKIND_TOASTVALUE, toast_options, true);
 

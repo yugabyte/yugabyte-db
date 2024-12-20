@@ -201,8 +201,8 @@ get_tablespace(Oid spcid)
 GeolocationDistance get_tablespace_distance(Oid spcid)
 {
 	Assert(IsYugaByteEnabled());
-    if (spcid == InvalidOid)
-       return UNKNOWN_DISTANCE;
+	if (spcid == InvalidOid)
+		return UNKNOWN_DISTANCE;
 
 	TableSpaceCacheEntry *spc = get_tablespace(spcid);
 	if (spc->opts.yb_opts == NULL)

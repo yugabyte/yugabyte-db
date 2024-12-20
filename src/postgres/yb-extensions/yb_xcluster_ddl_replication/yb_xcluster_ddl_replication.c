@@ -375,6 +375,47 @@ HandleSourceSQLDrop(EventTriggerData *trig_data)
 	CLOSE_MEM_CONTEXT_AND_SPI;
 }
 
+void
+HandleSourceTableRewrite(EventTriggerData *trig_data)
+{
+	if (EnableManualDDLReplication)
+		return;
+
+	// Create memory context for handling query execution.
+	MemoryContext context_new, context_old;
+	Oid save_userid;
+	int save_sec_context;
+	INIT_MEM_CONTEXT_AND_SPI_CONNECT(
+		"yb_xcluster_ddl_replication.HandleSourceTableRewrite context");
+
+	ProcessSourceEventTriggerTableRewrite();
+
+	CLOSE_MEM_CONTEXT_AND_SPI;
+}
+
+void
+HandleSourceDDLStart(EventTriggerData *trig_data)
+{
+	/*
+	 * Do some initial checks here before the source query runs.
+	 * Also reset should_replicate_ddl for this new DDL.
+	 */
+	if (EnableManualDDLReplication)
+	{
+		/*
+		 * Always replicate manual DDLs regardless of what they are.
+		 * Will show up on the target with a manual_replication field set.
+		 */
+		should_replicate_ddl = true;
+		return;
+	}
+
+	DisallowMultiStatementQueries(trig_data->tag);
+	should_replicate_ddl = false;
+
+	ClearRewrittenTableOidList();
+}
+
 PG_FUNCTION_INFO_V1(handle_ddl_start);
 Datum
 handle_ddl_start(PG_FUNCTION_ARGS)
@@ -391,23 +432,7 @@ handle_ddl_start(PG_FUNCTION_ARGS)
 
 	if (IsReplicationSource())
 	{
-		/*
-		 * Do some initial checks here before the source query runs.
-		 * Also reset should_replicate_ddl for this new DDL.
-		 */
-		if (EnableManualDDLReplication)
-		{
-			/*
-			 * Always replicate manual DDLs regardless of what they are.
-			 * Will show up on the target with a manual_replication field set.
-			 */
-			should_replicate_ddl = true;
-		}
-		else
-		{
-			DisallowMultiStatementQueries(trig_data->tag);
-			should_replicate_ddl = false;
-		}
+		HandleSourceDDLStart(trig_data);
 	}
 
 	PG_RETURN_NULL();
@@ -465,6 +490,29 @@ handle_sql_drop(PG_FUNCTION_ARGS)
 	}
 
 	/* HandleTargetDDLEnd will be handled in handle_ddl_end. */
+
+	PG_RETURN_NULL();
+}
+
+PG_FUNCTION_INFO_V1(handle_table_rewrite);
+Datum
+handle_table_rewrite(PG_FUNCTION_ARGS)
+{
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo)) /* internal error */
+		elog(ERROR, "not fired by event trigger manager");
+
+	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
+		PG_RETURN_NULL();
+
+	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
+
+	if (IsInIgnoreList(trig_data))
+		PG_RETURN_NULL();
+
+	if (IsReplicationSource())
+	{
+		HandleSourceTableRewrite(trig_data);
+	}
 
 	PG_RETURN_NULL();
 }

@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 export { default as HighlightedStatsPanel } from './HighlightedStatsPanel/HighlightedStatsPanel';
-export { default as UniverseDisplayPanel } from './UniverseDisplayPanel/UniverseDisplayPanel';
+export { UniverseDisplayPanel } from './UniverseDisplayPanel/UniverseDisplayPanel';
 export { default as UniverseRegionLocationPanel } from './UniverseRegionLocationPanel/UniverseRegionLocationPanel';
 export { default as YBPanelItem } from './YBPanelItem/YBPanelItem';
 export { default as YBWidget } from './YBWidget/YBWidget';

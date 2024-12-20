@@ -3723,7 +3723,7 @@ ybReadFromUrl(const char *url)
 	char *url_contents = NULL;
 	int len;
 	YBCStatus status;
-	
+
 	status = YBCFetchFromUrl(url, &url_contents);
 	if (status) /* !ok */
 	{

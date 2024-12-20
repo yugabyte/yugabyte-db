@@ -195,7 +195,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("CreateReplicationSlot is unavailable"),
 				 errdetail("Creation of replication slot is only allowed with "
-				 		   "ysql_yb_enable_replication_commands and "
+						   "ysql_yb_enable_replication_commands and "
 						   "ysql_yb_enable_replica_identity set to true.")));
 
 	Name		name = PG_GETARG_NAME(0);
@@ -230,7 +230,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 					 errhint("See https://github.com/yugabyte/yugabyte-db/"
 							 "issues/19263. React with thumbs up to raise its "
 							 "priority")));
-	
+
 		/*
 		 * Validate output plugin requirement early so that we can avoid the
 		 * expensive call to yb-master.
@@ -307,7 +307,7 @@ pg_drop_replication_slot(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("pg_drop_replication_slot is unavailable"),
 				 errdetail("yb_enable_replication_commands is false or a "
-				 		   "system upgrade is in progress")));
+						   "system upgrade is in progress")));
 
 	Name		name = PG_GETARG_NAME(0);
 

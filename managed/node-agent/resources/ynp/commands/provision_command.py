@@ -8,7 +8,6 @@ import sys
 import pwd
 import grp
 import semver
-import stat
 
 from enum import Enum
 import modules.base_module as mbm
@@ -28,7 +27,8 @@ class OSFamily(Enum):
 
 class ProvisionCommand(Command):
 
-    cloud_only_modules = ['Preprovision']
+    cloud_only_modules = ['Preprovision', 'MountEpemeralDrive', 'InstallPackages', 'BackupUtils']
+    onprem_only_modules = ['ConfigureSystemd', 'RebootNode']
 
     def __init__(self, config):
         super().__init__(config)
@@ -144,9 +144,11 @@ class ProvisionCommand(Command):
             module = self._module_registry.get(key)
             if module is None:
                 continue
-            if module in self.cloud_only_modules:
+            if key in self.cloud_only_modules and self.config[key].get('is_cloud', 'False') == 'False':
+                print(f"Skipping {key} because is_cloud is {self.config[key].get('is_cloud')}")
                 continue
-            if module == 'InstallNodeAgent' and not self.config[key].is_install_node_agent:
+            if key == 'InstallNodeAgent' and self.config[key].get('is_install_node_agent', 'True') == 'False':
+                print(f"Skipping {key} because is_install_node_agent is {self.config[key].get('is_install_node_agent')}")
                 continue
             context = self.config[key]
 
@@ -213,7 +215,7 @@ class ProvisionCommand(Command):
             logger.info(f"{package_name} is not installed.")
             sys.exit()
 
-    def _validate_required_packages(self):
+    def _get_package_manager(self):
         package_manager = None
         try:
             subprocess.run(['rpm', '--version'], check=True,
@@ -234,11 +236,57 @@ class ProvisionCommand(Command):
                 "Unsupported package manager. Cannot determine package installation status.")
             sys.exit(1)
 
+        return package_manager
+
+    def _validate_required_packages(self):
+        package_manager = self._get_package_manager()
         packages = ['openssl', 'policycoreutils']
+        cloud_only_packages = ['gzip']
         for package in packages:
             self._check_package(package_manager, package)
+        key = next(iter(self.config), None)
+        context = self.config[key]
+        is_cloud = context.get('is_cloud')
+        if is_cloud:
+            for package in cloud_only_packages:
+                self._check_package(package_manager, package)
+
+    def _install_python(self):
+        package_manager = self._get_package_manager()
+        try:
+            # Check if Python 3.11 is already installed
+            subprocess.run(['python3.11', '--version'], check=True,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            logger.info("Python 3.11 is already installed.")
+        except FileNotFoundError:
+            logger.info("Python 3.11 not found. Installing...")
+            if package_manager == 'rpm':
+                # Install Python 3.11 on RPM-based systems
+                subprocess.run(['sudo', 'dnf', 'install', '-y', 'python3.11'], check=True)
+            elif package_manager == 'deb':
+                # Update repositories and install Python 3.11 on DEB-based systems
+                subprocess.run(['sudo', 'apt-get', 'update'], check=True)
+                subprocess.run(['sudo', 'apt-get', 'install', '-y', 'python3.11'], check=True)
+            else:
+                logger.error("Unsupported package manager. Cannot install Python 3.11.")
+                sys.exit(1)
+
+            # Verify installation
+            try:
+                subprocess.run(['python3.11', '--version'], check=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                logger.info("Python 3.11 installed successfully.")
+            except FileNotFoundError:
+                logger.error("Failed to install Python 3.11.")
+                sys.exit(1)
+
+
 
     def execute(self):
+        for key in self.config:
+            if self.config[key].get('is_cloud') == 'True':
+                # Install the desired python version in case of CSP's
+                self._install_python()
         run_combined_script, precheck_combined_script = self._generate_template()
         self._run_script(run_combined_script)
         self._run_script(precheck_combined_script)

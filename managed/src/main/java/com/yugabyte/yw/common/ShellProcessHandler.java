@@ -19,6 +19,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -82,10 +83,25 @@ public class ShellProcessHandler {
       String description) {
     return run(
         command,
+        extraEnvVars,
+        logCmdOutput,
+        description,
+        RedactionTarget.QUERY_PARAMS /*shellOutputRedactionTarget*/);
+  }
+
+  public ShellResponse run(
+      List<String> command,
+      Map<String, String> extraEnvVars,
+      boolean logCmdOutput,
+      String description,
+      RedactionTarget shellOutputRedactionTarget) {
+    return run(
+        command,
         ShellProcessContext.builder()
             .extraEnvVars(extraEnvVars)
             .logCmdOutput(logCmdOutput)
             .description(description)
+            .shellOutputRedactionTarget(shellOutputRedactionTarget)
             .build());
   }
 
@@ -166,8 +182,10 @@ public class ShellProcessHandler {
         if (logCmdOutput) {
           log.debug("Proc stdout for '{}' :", response.description);
         }
-        String processOutput = getOutputLines(outputStream, logCmdOutput);
-        String processError = getOutputLines(errorStream, logCmdOutput);
+        String processOutput =
+            getOutputLines(outputStream, logCmdOutput, context.getShellOutputRedactionTarget());
+        String processError =
+            getOutputLines(errorStream, logCmdOutput, context.getShellOutputRedactionTarget());
         try {
           response.code = process.exitValue();
         } catch (IllegalThreadStateException itse) {
@@ -231,7 +249,7 @@ public class ShellProcessHandler {
     return response;
   }
 
-  private String getOutputLines(BufferedReader reader, boolean logOutput) {
+  private String getOutputLines(BufferedReader reader, boolean logOutput, RedactionTarget target) {
     Marker fileMarker = MarkerFactory.getMarker("fileOnly");
     Marker consoleMarker = MarkerFactory.getMarker("consoleOnly");
     String lines =
@@ -240,13 +258,13 @@ public class ShellProcessHandler {
             .peek(
                 line -> {
                   if (logOutput) {
-                    log.debug(fileMarker, RedactingService.redactQueryParams(line));
+                    log.debug(fileMarker, RedactingService.redactShellProcessOutput(line, target));
                   }
                 })
             .collect(Collectors.joining("\n"))
             .trim();
     if (logOutput && cloudLoggingEnabled && lines.length() > 0) {
-      log.debug(consoleMarker, RedactingService.redactQueryParams(lines));
+      log.debug(consoleMarker, RedactingService.redactShellProcessOutput(lines, target));
     }
     return lines;
   }

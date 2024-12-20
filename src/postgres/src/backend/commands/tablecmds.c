@@ -592,9 +592,9 @@ static void ATPrepAlterColumnType(List **wqueue,
 								  AlterTableUtilityContext *context);
 static bool ATColumnChangeRequiresRewrite(Node *expr, AttrNumber varattno);
 static ObjectAddress ATExecAlterColumnType(AlteredTableInfo *tab,
-										   Relation			*yb_mutable_rel,
-										   AlterTableCmd	*cmd,
-										   LOCKMODE			 lockmode);
+										   Relation *yb_mutable_rel,
+										   AlterTableCmd *cmd,
+										   LOCKMODE lockmode);
 static void RememberConstraintForRebuilding(Oid conoid, AlteredTableInfo *tab);
 static void RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab);
 static void RememberStatisticsForRebuilding(Oid indoid, AlteredTableInfo *tab);
@@ -998,7 +998,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 */
 	if (OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
 	{
-		AclResult  aclresult;
+		AclResult aclresult;
 
 		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
@@ -1155,7 +1155,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		accessMethodId = get_table_am_oid(accessMethod, false);
 
 	/* Handles WITH (table_oid = x). */
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		relationId = GetTableOidFromRelOptions(
 			stmt->options, tablespaceId, stmt->relation->relpersistence);
 
@@ -1736,13 +1737,8 @@ RemoveRelations(DropStmt *drop)
 									   state.heap_lockmode,
 									   NULL);
 
-		if (only_temp_tables)
-		{
-			Relation relation = table_open(relOid, NoLock);
-			only_temp_tables = relation->rd_rel->relpersistence ==
-							   RELPERSISTENCE_TEMP;
-			table_close(relation, NoLock);
-		}
+		only_temp_tables = only_temp_tables &&
+						   get_rel_persistence(relOid) == RELPERSISTENCE_TEMP;
 
 		/* OK, we're ready to delete this one */
 		obj.classId = RelationRelationId;
@@ -4090,8 +4086,8 @@ RenameRelation(RenameStmt *stmt, bool yb_is_internal_clone_rename)
 	bool		is_index_stmt = stmt->renameType == OBJECT_INDEX;
 	Oid			relid;
 	ObjectAddress address;
-	Relation      rel;
-	bool          needs_yb_rename;
+	Relation	rel;
+	bool		needs_yb_rename;
 
 	/*
 	 * Grab an exclusive lock on the target table, index, sequence, view,
@@ -4407,8 +4403,8 @@ AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
 
 	CheckTableNotInUse(rel, "ALTER TABLE");
 
-	if (IsYugaByteEnabled() && stmt->relation->relpersistence ==
-										  RELPERSISTENCE_TEMP)
+	if (IsYugaByteEnabled() &&
+		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 		YBCForceAllowCatalogModifications(true);
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode, context);
@@ -5233,8 +5229,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 	 *
 	 * In future we might want to process all relations.
 	 */
-	AlteredTableInfo* info       = (AlteredTableInfo *) linitial(*wqueue);
-	Oid               main_relid = info->relid;
+	AlteredTableInfo *info = (AlteredTableInfo *) linitial(*wqueue);
+	Oid main_relid = info->relid;
 	YBCPgStatement rollbackHandle = NULL;
 	List *handles = YBCPrepareAlterTable(info->subcmds,
 										 AT_NUM_PASSES,
@@ -5265,7 +5261,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 												   AT_NUM_PASSES,
 												   childrelid,
 												   &childRollbackHandle,
-												   true /*isPartitionOfAlteredTable */,
+												   true /* isPartitionOfAlteredTable */,
 												   ybAlteredTableIds);
 		ListCell *listcell = NULL;
 		foreach(listcell, child_handles)
@@ -5422,7 +5418,7 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 {
 	ObjectAddress address = InvalidObjectAddress;
 	Relation	rel = tab->rel;
-	Relation	*mutable_rel = &tab->rel;
+	Relation   *mutable_rel = &tab->rel;
 
 	switch (cmd->subtype)
 	{
@@ -6026,7 +6022,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("Rewriting of YB table is not yet implemented"),
 						 errhint("See https://github.com/yugabyte/yugabyte-db/issues/13278. "
-						         "React with thumbs up to raise its priority")));
+								 "React with thumbs up to raise its priority")));
 
 			if (IsYBRelation(OldHeap) && !YBSuppressUnsafeAlterNotice())
 				ereport(NOTICE,
@@ -6623,11 +6619,11 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			}
 
 			/* Write the tuple out to the new relation */
-			if (newrel)
+			if (newrel && !yb_skip_data_insert_for_table_rewrite)
 			{
 				if (IsYBRelation(newrel))
 					YBCExecuteInsert(newrel,
-					                 newslot,
+									 newslot,
 									 ONCONFLICT_NONE);
 				else
 					table_tuple_insert(newrel, insertslot, mycid,
@@ -9239,9 +9235,9 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 		bool isnull; \
 		Form_pg_constraint con_form = (Form_pg_constraint) GETSTRUCT(tuple); \
 		Datum result = SysCacheGetAttr(CONSTROID, \
-		                               tuple, \
-		                               Anum_pg_constraint_##attname, \
-		                               &isnull); \
+									   tuple, \
+									   Anum_pg_constraint_##attname, \
+									   &isnull); \
 		if (isnull) \
 			elog(ERROR, "null " #attname " for constraint %u", con_form->oid); \
 		result; \
@@ -12292,15 +12288,15 @@ typedef struct YbFKTriggerScanDescData
 	TableScanDesc scan;
 	ScanDirection scan_direction;
 	MemoryContext per_batch_cxt;
-	YbFKTriggerVTable* vptr;
-	Trigger* trigger;
+	YbFKTriggerVTable *vptr;
+	Trigger *trigger;
 	Relation fk_rel;
 	int buffered_tuples_capacity;
 	int buffered_tuples_size;
 	int current_tuple_idx;
 	bool all_tuples_processed;
 	EState *estate;
-	TupleTableSlot* buffered_tuples[];
+	TupleTableSlot *buffered_tuples[];
 } YbFKTriggerScanDescData;
 
 typedef struct YbFKTriggerScanDescData *YbFKTriggerScanDesc;
@@ -15168,9 +15164,9 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 				 errmsg("cannot set tablespaces for temporary tables")));
 	}
 
-	if (IsYugaByteEnabled() && tablespacename && 
+	if (IsYugaByteEnabled() && tablespacename &&
 		rel->rd_index &&
-		rel->rd_index->indisprimary) {
+		rel->rd_index->indisprimary)
 		/*
 		 * Disable setting tablespaces for primary key indexes in Yugabyte
 		 * clusters.
@@ -15178,7 +15174,6 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot set tablespace for primary key index")));
-	}
 
 	if (IsYugaByteEnabled() && !yb_cascade && MyDatabaseColocated &&
 		YbGetTableProperties(rel)->is_colocated)
@@ -15540,7 +15535,8 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 		return;
 	}
 
-	if (IsYBRelation(rel)) {
+	if (IsYBRelation(rel))
+	{
 		Datum *options;
 		int num_options;
 		yb_get_tablespace_options(&options, &num_options, newTableSpace);
@@ -15548,7 +15544,8 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 		 * Validation should only happen on tablespaces that have a defined
 		 * replica placement
 		 */
-		for (int i = 0; i < num_options; i++) {
+		for (int i = 0; i < num_options; i++)
+		{
 			char *option = text_to_cstring(DatumGetTextP(options[i]));
 			YBCValidatePlacement(option);
 			pfree(option);
@@ -20576,10 +20573,10 @@ static void
 YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
 			  const AttrMap *attmap, int altered_old_attnum)
 {
-	Relation		pg_statistic, pg_statistic_ext;
-	HeapTuple		tuple;
-	ScanKeyData		key;
-	SysScanDesc		scan;
+	Relation	pg_statistic, pg_statistic_ext;
+	HeapTuple	tuple;
+	ScanKeyData	key;
+	SysScanDesc	scan;
 
 	/* Copy extended statistics objects. */
 	pg_statistic_ext = table_open(StatisticExtRelationId, RowExclusiveLock);
@@ -20595,7 +20592,7 @@ YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
 		CreateStatsStmt *stmt;
-		HeapTuple		stat_ext_tuple;
+		HeapTuple	stat_ext_tuple;
 
 		/*
 		 * We need to rename the ext. stats object so that we can create
@@ -20682,10 +20679,10 @@ YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
 static void
 YbATCopyPolicyObjects(Relation old_rel, Relation new_rel, const AttrMap *attmap)
 {
-	Relation		pg_policy;
-	ScanKeyData		key;
-	HeapTuple		old_policy_tuple;
-	SysScanDesc		scan;
+	Relation	pg_policy;
+	ScanKeyData	key;
+	HeapTuple	old_policy_tuple;
+	SysScanDesc	scan;
 
 	pg_policy = table_open(PolicyRelationId, RowExclusiveLock);
 	ScanKeyInit(&key, Anum_pg_policy_polrelid, BTEqualStrategyNumber, F_OIDEQ,
@@ -20703,7 +20700,7 @@ YbATCopyPolicyObjects(Relation old_rel, Relation new_rel, const AttrMap *attmap)
 		Oid			new_policy_oid;
 		HeapTuple	new_policy_tuple;
 		ObjectAddress myself, target;
-		Node		*qual = NULL, *with_check = NULL;
+		Node	   *qual = NULL, *with_check = NULL;
 		Form_pg_policy pol_form = (Form_pg_policy) GETSTRUCT(old_policy_tuple);
 
 		memset(values, 0, sizeof(values));
@@ -20811,8 +20808,8 @@ YbATCopyPolicyObjects(Relation old_rel, Relation new_rel, const AttrMap *attmap)
 		if (!is_null)
 		{
 			/* Record role dependencies. */
-			ArrayType *arr = DatumGetArrayTypeP(role_datum);
-			Oid 	  *roles = (Oid *) ARR_DATA_PTR(arr);
+			ArrayType  *arr = DatumGetArrayTypeP(role_datum);
+			Oid		   *roles = (Oid *) ARR_DATA_PTR(arr);
 
 			if (arr)
 			{
@@ -20866,14 +20863,14 @@ YbATCopyMiscMetadata(Relation old_rel, Relation new_rel, const AttrMap *attmap)
 	 * Copy relacl, relrowsecurity and reltuples values from the old relation's
 	 * pg_class tuple.
 	 */
-	Datum		  values[Natts_pg_class];
-	bool		  nulls[Natts_pg_class];
-	bool		  replaces[Natts_pg_class];
-	bool		  is_null;
-	Datum		  acl_datum;
-	HeapTuple	  old_rel_tuple, new_rel_old_tuple, new_rel_new_tuple;
+	Datum		values[Natts_pg_class];
+	bool		nulls[Natts_pg_class];
+	bool		replaces[Natts_pg_class];
+	bool		is_null;
+	Datum		acl_datum;
+	HeapTuple	old_rel_tuple, new_rel_old_tuple, new_rel_new_tuple;
 	Form_pg_class old_rel_form;
-	Relation	  pg_class =
+	Relation	pg_class =
 		table_open(RelationRelationId, RowExclusiveLock);
 
 	memset(values, 0, sizeof(values));
@@ -20935,13 +20932,12 @@ YbATCopyMiscMetadata(Relation old_rel, Relation new_rel, const AttrMap *attmap)
 		table_open(AttributeRelationId, RowExclusiveLock);
 	for (int attno = 1; attno <= RelationGetDescr(new_rel)->natts; attno++)
 	{
-		Datum			  values[Natts_pg_attribute];
-		bool			  nulls[Natts_pg_attribute];
-		bool			  replaces[Natts_pg_attribute];
-		bool			  is_null;
-		Datum			  acl_datum;
-		HeapTuple		  old_rel_att_tuple, new_rel_att_tuple,
-							new_rel_new_att_tuple;
+		Datum		values[Natts_pg_attribute];
+		bool		nulls[Natts_pg_attribute];
+		bool		replaces[Natts_pg_attribute];
+		bool		is_null;
+		Datum		acl_datum;
+		HeapTuple	old_rel_att_tuple, new_rel_att_tuple, new_rel_new_att_tuple;
 		Form_pg_attribute old_rel_attform;
 
 		memset(values, 0, sizeof(values));
@@ -21092,8 +21088,8 @@ YbATGetCloneTableStmt(const char *namespace_name, const char *table_name,
 					  const Relation rel, bool clone_split_options)
 {
 	TupleConstr *constr;
-	HeapTuple	 tuple;
-	bool		 is_null;
+	HeapTuple	tuple;
+	bool		is_null;
 
 	constr = RelationGetDescr(rel)->constr;
 
@@ -21328,9 +21324,9 @@ YbATCreateSimilarForeignKey(HeapTuple tuple, const char *fk_name,
 
 	int16 conkey[numkeys];
 	int16 confkey[numkeys];
-	Oid   pfeqop[numkeys];
-	Oid   ppeqop[numkeys];
-	Oid   ffeqop[numkeys];
+	Oid pfeqop[numkeys];
+	Oid ppeqop[numkeys];
+	Oid ffeqop[numkeys];
 
 	Oid index_oid;
 	Oid index_opclasses[numkeys];
@@ -21387,7 +21383,7 @@ YbATCreateSimilarForeignKey(HeapTuple tuple, const char *fk_name,
 		false /* is_internal */);
 
 	/* Postgres no longer has this function. Need to use new Postgres's implementation. */
-	Constraint* entity = makeNode(Constraint);
+	Constraint *entity = makeNode(Constraint);
 	entity->deferrable      = con_form->condeferrable;
 	entity->initdeferred    = con_form->condeferred;
 	entity->location        = -1;
@@ -21453,7 +21449,7 @@ YbATValidateChangeForeignKeyType(HeapTuple constraint_tuple, Relation base_rel,
 								 bool base_rel_altered)
 {
 	Datum conkey_val = YBGetNotNullConstraintAttr(constraint_tuple, conkey);
-	int	  numkeys = ARR_DIMS(DatumGetArrayTypeP(conkey_val))[0];
+	int numkeys = ARR_DIMS(DatumGetArrayTypeP(conkey_val))[0];
 	int16 conkey[numkeys];
 	memcpy(conkey, ARR_DATA_PTR(DatumGetArrayTypeP(conkey_val)),
 		   numkeys * sizeof(int16));
@@ -21565,12 +21561,12 @@ YbATCopyFkAndCheckConstraints(const Relation old_rel, Relation new_rel,
 						get_relation_constraint_oid(RelationGetRelid(old_rel),
 													NameStr(con_form->conname),
 													false));
-					List	*raw_parsetree_list = raw_parser(defstring, RAW_PARSE_DEFAULT);
-					RawStmt *rs =
-						lfirst_node(RawStmt, list_head(raw_parsetree_list));
+					List *raw_parsetree_list = raw_parser(defstring, RAW_PARSE_DEFAULT);
+					RawStmt *rs = lfirst_node(RawStmt,
+											  list_head(raw_parsetree_list));
 					AlterTableStmt *stmt = (AlterTableStmt *) rs->stmt;
-					AlterTableCmd  *cmd =
-						castNode(AlterTableCmd, lfirst(list_head(stmt->cmds)));
+					AlterTableCmd *cmd = castNode(AlterTableCmd,
+												  lfirst(list_head(stmt->cmds)));
 					entity = castNode(Constraint, cmd->def);
 
 					/*
@@ -21591,9 +21587,9 @@ YbATCopyFkAndCheckConstraints(const Relation old_rel, Relation new_rel,
 				else
 				{
 					Node *expr;
-					bool  found_whole_row;
-					Datum conbin_val =
-						YBGetNotNullConstraintAttr(tuple, conbin);
+					bool found_whole_row;
+					Datum conbin_val = YBGetNotNullConstraintAttr(tuple,
+																  conbin);
 
 					// NOTE: Expression diverges, locations are -1
 					char *conbin = TextDatumGetCString(conbin_val);
@@ -21739,21 +21735,21 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 						   List *new_check_constraints,
 						   List *new_fk_constraint_oids)
 {
-	TupleDesc		oldTupDesc, newTupDesc;
-	Datum		   *old_values;
-	bool		   *old_isnull;
-	Datum		   *new_values;
-	bool		   *new_isnull;
+	TupleDesc	oldTupDesc, newTupDesc;
+	Datum	   *old_values;
+	bool	   *old_isnull;
+	Datum	   *new_values;
+	bool	   *new_isnull;
 	TupleTableSlot *oldslot;
 	TupleTableSlot *newslot;
-	TableScanDesc	scan;
-	HeapTuple		tuple;
-	MemoryContext	oldcxt;
-	Snapshot		snapshot;
-	EState		   *estate;
-	ExprContext	   *econtext;
-	ListCell	   *cell;
-	List		   *notnull_attrs = NIL;
+	TableScanDesc scan;
+	HeapTuple	tuple;
+	MemoryContext oldcxt;
+	Snapshot	snapshot;
+	EState	   *estate;
+	ExprContext *econtext;
+	ListCell   *cell;
+	List	   *notnull_attrs = NIL;
 
 	Assert(IsYBRelation(new_rel));
 
@@ -21948,8 +21944,8 @@ YbATCopyIndexes(Relation old_rel, Oid new_relid, const AttrMap *new2old_attmap,
 				RenameStmt *rename_stmt, const char *namespace_name,
 				ObjectAddress *new_index_addr, const char *altered_column_name)
 {
-	ListCell *cell;
-	List	 *idx_list = RelationGetIndexList(old_rel);
+	ListCell   *cell;
+	List	   *idx_list = RelationGetIndexList(old_rel);
 	foreach(cell, idx_list)
 	{
 		ObjectAddress idx_addr;
@@ -22133,10 +22129,10 @@ static void
 YbATCopyTriggers(const Relation old_rel, const Relation new_rel,
 				 Relation pg_trigger, const AttrMap *new2old_attmap)
 {
-	ScanKeyData	  key;
-	SysScanDesc	  scan;
+	ScanKeyData	key;
+	SysScanDesc	scan;
 	MemoryContext oldcxt, per_tup_cxt;
-	HeapTuple	  tuple;
+	HeapTuple	tuple;
 
 	ScanKeyInit(&key, Anum_pg_trigger_tgrelid, BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(RelationGetRelid(old_rel)));
@@ -22152,10 +22148,10 @@ YbATCopyTriggers(const Relation old_rel, const Relation new_rel,
 	{
 		Form_pg_trigger trig_form = (Form_pg_trigger) GETSTRUCT(tuple);
 		CreateTrigStmt *trig_stmt;
-		Node		   *qual = NULL;
-		Datum           value;
-		bool            isnull;
-		List		   *cols = NIL;
+		Node	   *qual = NULL;
+		Datum		value;
+		bool		isnull;
+		List	   *cols = NIL;
 
 		/*
 		 * Don't copy internal triggers as they are constraint-related
@@ -22258,14 +22254,14 @@ YbATCopyMetadataAndData(Relation old_rel, Relation new_rel,
 						const char *altered_column_name,
 						const char *temp_suffix, const Oid namespace_oid,
 						RenameStmt *rename_stmt, const char *namespace_name,
-						ObjectAddress	*new_index_addr, bool dropping_pk,
+						ObjectAddress *new_index_addr, bool dropping_pk,
 						const IndexStmt *index_stmt, const char *old_table_name,
 						const List *view_oids, const List *view_queries)
 {
 	Relation pg_trigger, pg_depend;
-	List	*new_check_constraints = NIL;
-	List	*new_fk_constraint_oids = NIL;
-	int		altered_old_attnum = 0;
+	List	   *new_check_constraints = NIL;
+	List	   *new_fk_constraint_oids = NIL;
+	int			altered_old_attnum = 0;
 
 	YbATCopyFkAndCheckConstraints(old_rel, new_rel, pg_constraint,
 								  &new_check_constraints,
@@ -22597,12 +22593,12 @@ YbATCloneRelationSetColumnType(Relation old_rel,
 							   TypeName *altered_type_name,
 							   List *new_column_values)
 {
-	CreateStmt	*create_stmt;
-	RenameStmt	*rename_stmt;
-	Relation	 new_rel = NULL;
-	AttrMap 	*old2new_attmap;
-	AttrMap 	*new2old_attmap;
-	Oid			 old_relid;
+	CreateStmt *create_stmt;
+	RenameStmt *rename_stmt;
+	Relation	new_rel = NULL;
+	AttrMap	   *old2new_attmap;
+	AttrMap	   *new2old_attmap;
+	Oid			old_relid;
 
 	List *view_oids = NIL, *view_queries = NIL;
 
@@ -22713,9 +22709,9 @@ YbATCloneRelationSetColumnType(Relation old_rel,
  * a partitioned table to the ALTER TABLE work queue.
  * The children will be rewritten in Phase 3 (ATRewriteTables).
  */
-static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
-											AlteredTableInfo *tab,
-											bool skip_copy_split_options)
+static void
+YbATSetPKRewriteChildPartitions(List **yb_wqueue, AlteredTableInfo *tab,
+								bool skip_copy_split_options)
 {
 	Assert(yb_wqueue);
 	List *children = find_all_inheritors(tab->relid, NoLock, NULL);
@@ -22739,8 +22735,8 @@ static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
  * Used in YB during the ALTER TYPE operation to copy split options for
  * affected indexes.
  */
-static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
-									  AlteredTableInfo *tab)
+static void
+YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt, AlteredTableInfo *tab)
 {
 	Relation idx_rel = RelationIdGetRelation(oldId);
 	if (IsYBRelation(idx_rel) && !idx_rel->rd_index->indisprimary)
@@ -22774,7 +22770,8 @@ static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
  * Used in YB to re-invalidate table cache entries at the end of an ALTER TABLE
  * operation.
  */
-static void YbATInvalidateTableCacheAfterAlter(List *ybAlteredTableIds)
+static void
+YbATInvalidateTableCacheAfterAlter(List *ybAlteredTableIds)
 {
 	if (YbDdlRollbackEnabled() && ybAlteredTableIds)
 	{

@@ -23,19 +23,17 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
-
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import org.yb.YBTestRunner;
+import org.yb.util.YBTestRunnerNonMac;
 
 /**
  * Test pushdown behaviour of different expression from PG to YB layer.
  */
-@RunWith(value = YBTestRunner.class)
+@RunWith(value = YBTestRunnerNonMac.class)
 public class TestPgPushdown extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgPushdown.class);
 

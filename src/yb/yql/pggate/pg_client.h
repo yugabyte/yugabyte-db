@@ -59,7 +59,8 @@ struct DdlMode {
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable) \
     (CreateDatabase)(CreateTable)(CreateTablegroup) \
-    (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable)
+    (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable) \
+    (AcquireAdvisoryLock)(ReleaseAdvisoryLock)
 
 struct PerformResult {
   Status status;

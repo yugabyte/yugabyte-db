@@ -143,7 +143,7 @@ To create a private endpoint to connect to your cluster PSE, do the following:
 
     - **Connection method** - select **Connect to an Azure resource by resource ID or alias**.
 
-    - **Resource ID or alias** - enter the Service Name (noted when you [created the PSE](#create-a-pse-in-yugabytedb-managed)) of the PSE you created for your cluster.
+    - **Resource ID or alias** - enter the Service Name (noted when you [created the PSE](#create-a-pse-in-yugabytedb-aeon)) of the PSE you created for your cluster.
 
 1. Click **Next: Virtual Network** and set the following values:
 
@@ -217,7 +217,7 @@ The link is listed in the Virtual network links list.
 
 1. Under **Add record set**, set the following values:
 
-    - **Name** - enter the _first part_ only of the **Host** name of the cluster PSE (noted when you [created the PSE](#create-a-pse-in-yugabytedb-managed)). This consists of the text _before_ .azure.yugabyte.cloud.
+    - **Name** - enter the _first part_ only of the **Host** name of the cluster PSE (noted when you [created the PSE](#create-a-pse-in-yugabytedb-aeon)). This consists of the text _before_ .azure.yugabyte.cloud.
 
         For example, for the host
 

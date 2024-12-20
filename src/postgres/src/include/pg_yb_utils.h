@@ -446,16 +446,7 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
 /*
  * Return whether to use wholerow junk attribute for YB relations.
  */
-extern bool YbUseWholeRowJunkAttribute(Relation relation,
-									   Bitmapset *updatedCols,
-									   CmdType operation,
-									   List *returningList);
-
-/*
- * Return whether to use scanned "old" tuple to reconstruct the new tuple during
- * UPDATE operations for YB relations. See function definition for details.
- */
-extern bool YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols, List *returningList);
+extern bool YbWholeRowAttrRequired(Relation relation, CmdType operation);
 
 /*
  * Return whether the returning list for an UPDATE statement is a subset of the columns being
@@ -604,6 +595,11 @@ extern bool yb_enable_fkey_catcache;
  */
 extern bool yb_enable_nop_alter_role_optimization;
 
+/*
+ * Compatibility option to ignore FREEZE with COPY FROM.
+ */
+extern bool yb_ignore_freeze_with_copy;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -717,6 +713,11 @@ extern bool yb_use_hash_splitting_by_default;
  */
 extern bool yb_enable_inplace_index_update;
 
+/*
+ * Enable the advisory lock feature.
+ */
+extern bool yb_enable_advisory_locks;
+
 typedef struct YBUpdateOptimizationOptions
 {
 	bool has_infra;
@@ -733,6 +734,8 @@ extern YBUpdateOptimizationOptions yb_update_optimization_options;
  * supported.
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
+
+extern bool yb_skip_data_insert_for_table_rewrite;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -1005,7 +1008,7 @@ extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
 extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
 												GucSource source);
 extern void assign_yb_xcluster_consistency_level(const char *newval,
-												 void		*extra);
+												 void *extra);
 
 /*
  * Updates the session stats snapshot with the collected stats and copies the
@@ -1123,18 +1126,18 @@ OptSplit *YbGetSplitOptions(Relation rel);
 		YBCStatus _status = (status); \
 		if (_status) \
 		{ \
-			const int 		adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
-			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
-			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
-			const char	   *filename = YBCStatusFilename(_status); \
-			int				lineno = YBCStatusLineNumber(_status); \
-			const char	   *funcname = YBCStatusFuncname(_status); \
-			const char	   *msg_buf = NULL; \
-			const char	   *detail_buf = NULL; \
-			size_t		    msg_nargs = 0; \
-			size_t		    detail_nargs = 0; \
-			const char	  **msg_args = NULL; \
-			const char	  **detail_args = NULL; \
+			const int adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
+			const uint32_t pg_err_code = YBCStatusPgsqlError(_status); \
+			const uint16_t txn_err_code = YBCStatusTransactionError(_status); \
+			const char *filename = YBCStatusFilename(_status); \
+			int lineno = YBCStatusLineNumber(_status); \
+			const char *funcname = YBCStatusFuncname(_status); \
+			const char *msg_buf = NULL; \
+			const char *detail_buf = NULL; \
+			size_t msg_nargs = 0; \
+			size_t detail_nargs = 0; \
+			const char **msg_args = NULL; \
+			const char **detail_args = NULL; \
 			GetStatusMsgAndArgumentsByCode(pg_err_code, txn_err_code, _status, \
 										   &msg_buf, &msg_nargs, &msg_args, \
 										   &detail_buf, &detail_nargs, \

@@ -421,11 +421,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                      rpc::RpcContext* rpc,
                                      const LeaderEpoch& epoch);
 
-  void AcquireObjectLocks(
-      const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+  void AcquireObjectLocksGlobal(
+      const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
-  void ReleaseObjectLocks(
-      const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+  void ReleaseObjectLocksGlobal(
+      const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
   void ExportObjectLockInfo(const std::string& tserver_uuid, tserver::DdlLockEntriesPB* resp);
   ObjectLockInfoManager* object_lock_info_manager() { return object_lock_info_manager_.get(); }

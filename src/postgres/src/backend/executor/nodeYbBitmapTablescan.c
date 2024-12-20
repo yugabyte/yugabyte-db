@@ -145,7 +145,7 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 
 			/* Fetch the next yb_fetch_row_limit ybctids */
 			HandleYBStatus(YBCPgFetchRequestedYbctids(ybScan->handle,
-										   			  ybScan->exec_params,
+													  ybScan->exec_params,
 													  ybtbmres->ybctid_vector));
 		}
 

@@ -45,6 +45,10 @@ class PackedValueV1 {
 
   bool IsNull() const;
 
+  std::string ToString() const {
+    return Format("{ value: $0 }", value_.ToDebugHexString());
+  }
+
   static PackedValueV1 Null();
 
  private:
@@ -77,6 +81,10 @@ class PackedValueV2 {
 
   bool IsNull() const {
     return !value_.data();
+  }
+
+  std::string ToString() const {
+    return Format("{ value: $0 }", value_.ToDebugHexString());
   }
 
   static PackedValueV2 Null();

@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -258,18 +259,25 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       node.ybPrebuiltAmi =
           taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       List<NodeDetails> nodeList = Collections.singletonList(node);
+      boolean useYNPProvisioning = confGetter.getGlobalConf(GlobalConfKeys.enableYNPProvisioning);
       // TODO This can be improved to skip already provisioned nodes as there are long running
       // subtasks.
+      if (useYNPProvisioning) {
+        createSetupYNPTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+        createYNPProvisioningTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      }
       createInstallNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
-      createSetupServerTasks(
-              nodeList,
-              p -> {
-                p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType;
-                p.rebootNodeAllowed = true;
-              })
-          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+      if (!useYNPProvisioning) {
+        createSetupServerTasks(
+                nodeList,
+                p -> {
+                  p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType;
+                  p.rebootNodeAllowed = true;
+                })
+            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+      }
       createHookProvisionTask(nodeList, TriggerType.PostNodeProvision);
       createLocaleCheckTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createCheckGlibcTask(

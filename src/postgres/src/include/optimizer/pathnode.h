@@ -348,9 +348,9 @@ extern RelOptInfo *build_child_join_rel(PlannerInfo *root,
 										RelOptInfo *parent_joinrel, List *restrictlist,
 										SpecialJoinInfo *sjinfo, JoinType jointype);
 extern Path *yb_create_distinct_index_path(PlannerInfo *root,
-									 	   IndexOptInfo *index,
-									 	   IndexPath *basepath,
-									 	   int yb_distinct_prefixlen,
-									 	   int yb_distinct_nkeys);
+										   IndexOptInfo *index,
+										   IndexPath *basepath,
+										   int yb_distinct_prefixlen,
+										   int yb_distinct_nkeys);
 
 #endif							/* PATHNODE_H */

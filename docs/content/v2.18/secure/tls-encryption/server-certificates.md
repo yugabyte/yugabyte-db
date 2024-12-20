@@ -259,7 +259,7 @@ Repeat the following steps for each node, replacing `<node-ip-address>` with the
    # Multiple subject alternative names (SANs) such as IP Address,
    # DNS Name, Email, URI, and so on, can be specified under this section
    [ req_ext]
-   SubjectAltName = @alt_names
+   subjectAltName = @alt_names
    [alt_names]
    IP.1 = <IP Address>
    IP.2 = <IP Address>
@@ -304,7 +304,9 @@ openssl ca -config secure-data/ca.conf \
            -outdir <node-ip-address>/ \
            -in <node-ip-address>/node.csr \
            -days 3650 \
-           -batch
+           -batch \
+           -extfile <node-ip-address>/node.conf \
+           -extensions req_ext
 ```
 
 For the `127.0.0.1` node, you should see an output similar to the following:

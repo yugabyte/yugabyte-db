@@ -383,8 +383,8 @@ struct PlannerInfo
 	 * These are used to transfer information about batching in createplan.c
 	 * and indxpath.c
 	 */
-	Relids		yb_cur_batched_relids; /* valid if we are processing a batched
-								  	    * NL join */
+	Relids		yb_cur_batched_relids;	/* valid if we are processing a batched
+										 * NL join */
 	Relids		yb_cur_unbatched_relids;
 
 	/*

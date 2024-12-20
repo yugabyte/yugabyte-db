@@ -1665,6 +1665,9 @@ class ControlInstanceMethod(AbstractInstancesMethod):
         self.parser.add_argument("--deconfigure", required=False,
                                  action="store_true", default=False,
                                  help="Deconfigure the server")
+        self.parser.add_argument("--skip_stop_for_paused_vm", required=False,
+                                 action="store_true", default=False,
+                                 help="Skip stopping process if VM is paused")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -1678,10 +1681,11 @@ class ControlInstanceMethod(AbstractInstancesMethod):
                 self.YB_SERVER_TYPE))
 
         # Skip if instance is not running and command is stopping process.
-        if not host_info.get("is_running", True) and self.name == "stop":
-            logging.info(
-                "Skipping ctl command %s for process: %s due to node not in running state",
-                self.name, self.base_command.name)
+        if not host_info.get("is_running", True) and args.skip_stop_for_paused_vm \
+                and self.name == "stop":
+            logging.info("Skipping ctl command %s for process: %s due to node not in " +
+                         "running state for instance: %s",
+                         self.name, self.base_command.name, args.search_pattern)
             return
 
         logging.info("Running ctl command {} for process: {} in instance: {}".format(

@@ -126,9 +126,9 @@ struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
     return flushed_retryable_requests_id;
   }
 
-  void Replayed(OpId op_id, AlreadyAppliedToRegularDB already_applied_to_regular_db) override {
+  void Replayed(OpId op_id, const docdb::StorageSet& apply_to_storages) override {
     actual_report.replayed.push_back(op_id);
-    if (already_applied_to_regular_db) {
+    if (!apply_to_storages.TestRegularDB()) {
       actual_report.replayed_to_intents_only.push_back(op_id);
     }
   }
@@ -437,7 +437,7 @@ TEST_F(BootstrapTest, TestOperationOverwriting) {
 TEST_F(BootstrapTest, OverwriteTailWithFlushedIndex) {
   BuildLog();
 
-  test_hooks_->flushed_op_ids = DocDbOpIds{{3, 2}, {3, 2}};
+  test_hooks_->flushed_op_ids = DocDbOpIds{{3, 2}, {3, 2}, {}};
 
   const std::string kTestStr("this is a test insert");
   const auto get_test_tuple = [kTestStr](int i) {
@@ -746,7 +746,8 @@ void GenerateRandomInput(size_t num_entries, std::mt19937_64* rng, BootstrapInpu
 
   res_input->flushed_op_ids = {
     .regular = regular_flushed_op_id,
-    .intents = intents_flushed_op_id
+    .intents = intents_flushed_op_id,
+    .vector_indexes = {},
   };
   const int64_t intents_flushed_index = intents_flushed_op_id.index;
   const int64_t regular_flushed_index = regular_flushed_op_id.index;
@@ -1028,7 +1029,7 @@ TEST_F(BootstrapTest, ReplayOpsFromLastOpId) {
     SleepFor(10ms);
   }
 
-  test_hooks_->flushed_op_ids = DocDbOpIds{{1, 3}, {1, 3}};
+  test_hooks_->flushed_op_ids = DocDbOpIds{{1, 3}, {1, 3}, {}};
   test_hooks_->flushed_retryable_requests_id = OpId{1, 3};
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
@@ -1064,7 +1065,7 @@ TEST_F(BootstrapTest, ReplayOpsFromFirstOpForUnflushedTablet) {
     SleepFor(10ms);
   }
 
-  test_hooks_->flushed_op_ids = DocDbOpIds{OpId::Invalid(), OpId::Invalid()};
+  test_hooks_->flushed_op_ids = DocDbOpIds{OpId::Invalid(), OpId::Invalid(), {}};
   test_hooks_->flushed_retryable_requests_id = OpId{1, 3};
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
@@ -1099,7 +1100,7 @@ TEST_F(BootstrapTest, ReplayOpsFromFirstOpIfSegmentUnclosed) {
     AppendReplicateBatchToLog(1);
   }
 
-  test_hooks_->flushed_op_ids = DocDbOpIds{{1, 2}, {1, 2}};
+  test_hooks_->flushed_op_ids = DocDbOpIds{{1, 2}, {1, 2}, {}};
   test_hooks_->flushed_retryable_requests_id = OpId{1, 2};
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;

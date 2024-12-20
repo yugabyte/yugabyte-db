@@ -549,6 +549,20 @@ select * from main_table order by a;
  5 | 5
 (5 rows)
 
+-- FREEZE
+truncate copy_options;
+copy copy_options from stdin with (format csv, freeze);
+NOTICE:  cannot perform COPY FREEZE on a YugaByte table
+select * from copy_options order by a;
+ a | b
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+ 4 | 4
+ 5 | 5
+(5 rows)
+
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE x;

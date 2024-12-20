@@ -1136,7 +1136,7 @@ YbSetInitdbPermissions(Oid relid, char relkind, bool relisshared)
 		ACL_MODECHG_EQL, BOOTSTRAP_SUPERUSERID, DROP_RESTRICT);
 
 	Acl *superuser_default =
-	    acldefault(relkind == RELKIND_SEQUENCE ? OBJECT_SEQUENCE
+		acldefault(relkind == RELKIND_SEQUENCE ? OBJECT_SEQUENCE
 											   : OBJECT_TABLE,
 				   BOOTSTRAP_SUPERUSERID);
 
@@ -1401,7 +1401,7 @@ heap_create_with_catalog(const char *relname,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("unsuppored reloptions were used for a system table "
-				        "during YSQL upgrade"),
+						"during YSQL upgrade"),
 				 errhint("Only a small subset is allowed due to BKI restrictions.")));
 	}
 
@@ -1866,7 +1866,7 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 	}
 	else
 	{
-	    /* Dropping user attributes is lots harder */
+		/* Dropping user attributes is lots harder */
 
 		/* Mark the attribute as dropped */
 		attStruct->attisdropped = true;

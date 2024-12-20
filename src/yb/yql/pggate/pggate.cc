@@ -2264,4 +2264,21 @@ void PgApiImpl::ForceAllowCatalogModifications(bool allowed) {
   pg_session_->SetForceAllowCatalogModifications(allowed);
 }
 
+//------------------------------------------------------------------------------------------------
+// Advisory Locks.
+//------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::AcquireAdvisoryLock(
+      const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode, bool wait, bool session) {
+  return pg_session_->AcquireAdvisoryLock(lock_id, mode, wait, session);
+}
+
+Status PgApiImpl::ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode) {
+  return pg_session_->ReleaseAdvisoryLock(lock_id, mode);
+}
+
+Status PgApiImpl::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
+  return pg_session_->ReleaseAllAdvisoryLocks(db_oid);
+}
+
 } // namespace yb::pggate

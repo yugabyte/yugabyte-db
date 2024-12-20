@@ -777,32 +777,34 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 				 errmsg("cannot access temporary tables of other sessions")));
 
 	/* Special handling for sequences */
-  if (IsYugaByteEnabled() && RelationGetForm(reln)->relkind == RELKIND_SEQUENCE)
-  {
-    /* Get a sequence tuple */
-    HeapTuple seqtuple = YBReadSequenceTuple(reln);
+	if (IsYugaByteEnabled() && RelationGetForm(reln)->relkind == RELKIND_SEQUENCE)
+	{
+		/* Get a sequence tuple */
+		HeapTuple seqtuple = YBReadSequenceTuple(reln);
 
-    /* Create an empty buffer to initialize with the sequence data */
-    buf = ReadBuffer_common(RelationGetSmgr(reln), reln->rd_rel->relpersistence,
-                            forkNum, blockNum, RBM_ZERO_AND_LOCK, strategy, &hit);
+		/* Create an empty buffer to initialize with the sequence data */
+		buf = ReadBuffer_common(RelationGetSmgr(reln),
+								reln->rd_rel->relpersistence, forkNum,
+								blockNum, RBM_ZERO_AND_LOCK, strategy, &hit);
 
-    /* Insert onto the page */
-    Page dp = BufferGetPage(buf);
-    PageInit(dp, BLCKSZ, sizeof(*seqtuple));
-    PageSetAllVisible(dp);
-    OffsetNumber off = PageAddItemExtended(dp, (Item)(seqtuple->t_data), seqtuple->t_len,
-                                           InvalidOffsetNumber, PAI_IS_HEAP);
-    if (off == InvalidOffsetNumber) {
-      ereport(ERROR,
-              (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                  errmsg("Failed to add sequence tuple to page")));
-    }
+		/* Insert onto the page */
+		Page dp = BufferGetPage(buf);
+		PageInit(dp, BLCKSZ, sizeof(*seqtuple));
+		PageSetAllVisible(dp);
+		OffsetNumber off = PageAddItemExtended(dp, (Item)(seqtuple->t_data),
+											   seqtuple->t_len,
+											   InvalidOffsetNumber,
+											   PAI_IS_HEAP);
+		if (off == InvalidOffsetNumber)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("Failed to add sequence tuple to page")));
 
-    /* Unlock the buffer */
-    LockBuffer(buf, BUFFER_LOCK_UNLOCK);
+		/* Unlock the buffer */
+		LockBuffer(buf, BUFFER_LOCK_UNLOCK);
 
-    return buf;
-  }
+		return buf;
+	}
 
 	/*
 	 * Read the buffer, and update pgstat counters to reflect a cache hit or

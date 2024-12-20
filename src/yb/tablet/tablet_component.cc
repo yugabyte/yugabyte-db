@@ -18,24 +18,23 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
-TabletScopedRWOperationPauses TabletComponent::StartShutdownRocksDBs(
+TabletScopedRWOperationPauses TabletComponent::StartShutdownStorages(
     const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
-  return tablet_.StartShutdownRocksDBs(disable_flush_on_shutdown, abort_ops);
+  return tablet_.StartShutdownStorages(disable_flush_on_shutdown, abort_ops);
 }
 
-std::vector<std::string> TabletComponent::CompleteShutdownRocksDBs(
+std::vector<std::string> TabletComponent::CompleteShutdownStorages(
     const TabletScopedRWOperationPauses& ops_pauses) {
-  return tablet_.CompleteShutdownRocksDBs(ops_pauses);
+  return tablet_.CompleteShutdownStorages(ops_pauses);
 }
 
-Status TabletComponent::DeleteRocksDBs(const std::vector<std::string>& db_paths) {
-  return tablet_.DeleteRocksDBs(db_paths);
+Status TabletComponent::DeleteStorages(const std::vector<std::string>& db_paths) {
+  return tablet_.DeleteStorages(db_paths);
 }
 
-Status TabletComponent::OpenRocksDBs() {
+Status TabletComponent::OpenStorages() {
   return tablet_.OpenKeyValueTablet();
 }
 
@@ -81,5 +80,8 @@ void TabletComponent::RefreshYBMetaDataCache() {
   tablet_.ResetYBMetaDataCache();
 }
 
-} // namespace tablet
-} // namespace yb
+docdb::VectorIndexesPtr TabletComponent::VectorIndexesList() const {
+  return tablet_.VectorIndexesList();
+}
+
+} // namespace yb::tablet

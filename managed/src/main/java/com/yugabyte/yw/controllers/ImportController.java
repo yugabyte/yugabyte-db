@@ -18,12 +18,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.TaskExecutor;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreatePrometheusSwamperConfig;
-import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMasterLeader;
-import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMasters;
-import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckTServers;
+import com.yugabyte.yw.commissioner.TaskExecutor.TaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.WaitForTServerHBs;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
@@ -35,6 +31,7 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.ImportUniverseFormData;
 import com.yugabyte.yw.forms.ImportUniverseFormData.State;
 import com.yugabyte.yw.forms.ImportUniverseResponseData;
@@ -60,6 +57,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -223,20 +221,17 @@ public class ImportController extends AuthenticatedController {
   // Returns true if there are no errors.
   private boolean verifyMastersRunning(
       UniverseDefinitionTaskParams taskParams, ImportUniverseResponseData results) {
-    CheckMasters checkMasters = AbstractTaskBase.createTask(CheckMasters.class);
-    checkMasters.initialize(taskParams);
     // Execute the task. If it fails, sets the error in the results.
-    return executeITask(checkMasters, "check_masters_are_running", results);
+    return executeITask(TaskType.CheckMasters, taskParams, "check_masters_are_running", results);
   }
 
   // Helper function to check that a master leader exists.
   // Returns true if there are no errors.
   private boolean verifyMasterLeaderExists(
       UniverseDefinitionTaskParams taskParams, ImportUniverseResponseData results) {
-    CheckMasterLeader checkMasterLeader = AbstractTaskBase.createTask(CheckMasterLeader.class);
-    checkMasterLeader.initialize(taskParams);
     // Execute the task. If it fails, return an error.
-    return executeITask(checkMasterLeader, "check_master_leader_election", results);
+    return executeITask(
+        TaskType.CheckMasterLeader, taskParams, "check_master_leader_election", results);
   }
 
   /** Given the master addresses, create a basic universe object. */
@@ -419,10 +414,8 @@ public class ImportController extends AuthenticatedController {
     // ---------------------------------------------------------------------------------------------
     // Verify that the tservers processes are running.
     // ---------------------------------------------------------------------------------------------
-    CheckTServers checkTservers = AbstractTaskBase.createTask(CheckTServers.class);
-    checkTservers.initialize(taskParams);
     // Execute the task. If it fails, return an error.
-    if (!executeITask(checkTservers, "check_tservers_are_running", results)) {
+    if (!executeITask(TaskType.CheckTServers, taskParams, "check_tservers_are_running", results)) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, results.error);
     }
 
@@ -432,7 +425,8 @@ public class ImportController extends AuthenticatedController {
     WaitForTServerHBs waitForTserverHBs = AbstractTaskBase.createTask(WaitForTServerHBs.class);
     waitForTserverHBs.initialize(taskParams);
     // Execute the task. If it fails, return an error.
-    if (!executeITask(waitForTserverHBs, "check_tserver_heartbeats", results)) {
+    if (!executeITask(
+        TaskType.WaitForTServerHBs, taskParams, "check_tserver_heartbeats", results)) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
@@ -481,11 +475,9 @@ public class ImportController extends AuthenticatedController {
 
     // TODO: verify we can reach the various YB ports.
 
-    CreatePrometheusSwamperConfig createPrometheusSwamperConfig =
-        AbstractTaskBase.createTask(CreatePrometheusSwamperConfig.class);
-    createPrometheusSwamperConfig.initialize(taskParams);
     // Execute the task. If it fails, return an error.
-    if (!executeITask(createPrometheusSwamperConfig, "create_prometheus_config", results)) {
+    if (!executeITask(
+        TaskType.CreatePrometheusSwamperConfig, taskParams, "create_prometheus_config", results)) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
@@ -633,10 +625,17 @@ public class ImportController extends AuthenticatedController {
    * results object. Upon a failure, it returns false and adds the appropriate error message into
    * the results object.
    */
-  private boolean executeITask(ITask task, String taskName, ImportUniverseResponseData results) {
+  private boolean executeITask(
+      TaskType taskType,
+      ITaskParams taskParams,
+      String taskName,
+      ImportUniverseResponseData results) {
     // Submit the task, and get a future object.
     try {
-      UUID taskUUID = taskExecutor.submit(taskExecutor.createRunnableTask(task, null), executor);
+      TaskParams creationParams =
+          TaskParams.builder().taskType(taskType).taskParams(taskParams).build();
+      UUID taskUUID =
+          taskExecutor.submit(taskExecutor.createRunnableTask(creationParams), executor);
       // Wait for the task to complete.
       taskExecutor.waitForTask(taskUUID);
       // Indicate that this task executed successfully.

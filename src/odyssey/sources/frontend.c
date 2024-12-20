@@ -2837,7 +2837,7 @@ int yb_auth_via_auth_backend(od_client_t *client)
 	rc = od_backend_connect(server, "auth backend", NULL,
 							control_conn_client);
 	/*Store the client's logical_client_version as auth backend's logical_client_version*/
-	od_debug(&instance->logger, "auth backend", control_conn_client, server,
+	od_debug(&instance->logger, "auth backend", client, server,
 		 "auth's backend logical client version = %d", server->logical_client_version);
 	client->logical_client_version = server->logical_client_version;
 

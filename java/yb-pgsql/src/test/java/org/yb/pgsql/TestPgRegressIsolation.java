@@ -27,6 +27,16 @@ public class TestPgRegressIsolation extends BasePgRegressTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_advisory_locks");
+    flagMap.put("ysql_yb_enable_advisory_locks", "true");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_advisory_locks");
+    flagMap.put("ysql_yb_enable_advisory_locks", "true");
     return flagMap;
   }
 

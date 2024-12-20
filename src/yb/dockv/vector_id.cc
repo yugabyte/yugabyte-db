@@ -52,6 +52,8 @@ EncodedDocVectorValue EncodedDocVectorValue::FromSlice(Slice encoded) {
     return {};
   }
 
+  Slice original_encoded = encoded;
+
   // The last byte in the encoded value is mandatory. It contains the size of the encoded vector id
   // chunk. Having 0 in encoded vector id size means vector id is not specified.
   const size_t vector_id_value_size = encoded.consume_byte_back();
@@ -59,11 +61,14 @@ EncodedDocVectorValue EncodedDocVectorValue::FromSlice(Slice encoded) {
     return { .data = encoded, .id = {} };
   }
 
-  CHECK_EQ(vector_id_value_size, kEncodedVectorIdValueSize);
-  CHECK_LT(vector_id_value_size, encoded.size());
+  CHECK_EQ(vector_id_value_size, kEncodedVectorIdValueSize)
+      << "Source: " << original_encoded.ToDebugHexString();
+  CHECK_LT(vector_id_value_size, encoded.size())
+      << "Source: " << original_encoded.ToDebugHexString();
   auto id = encoded.Suffix(vector_id_value_size);
 
-  CHECK_EQ(dockv::ConsumeValueEntryType(&id), dockv::ValueEntryType::kVectorId);
+  CHECK_EQ(dockv::ConsumeValueEntryType(&id), dockv::ValueEntryType::kVectorId)
+      << "Source: " << original_encoded.ToDebugHexString();
   return { .data = encoded.WithoutSuffix(vector_id_value_size), .id = id };
 }
 

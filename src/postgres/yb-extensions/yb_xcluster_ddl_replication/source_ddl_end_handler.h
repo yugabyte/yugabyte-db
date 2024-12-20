@@ -40,4 +40,11 @@ bool ProcessSourceEventTriggerDDLCommands(JsonbParseState *state);
  */
 bool ProcessSourceEventTriggerDroppedObjects();
 
+/*
+ * Retrieve and store the OID of the table that is about to be rewritten.
+ */
+void ProcessSourceEventTriggerTableRewrite();
+
+void ClearRewrittenTableOidList();
+
 #endif

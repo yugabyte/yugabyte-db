@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
@@ -44,6 +45,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
+import com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -80,6 +82,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -94,6 +97,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
+import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collection;
@@ -2343,6 +2347,105 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Creates a task to copy the node-agent package on the DB node.
+   *
+   * @param nodes a collection of nodes to be processed.
+   */
+  public SubTaskGroup createSetupYNPTask(Collection<NodeDetails> nodes) {
+    Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
+    SubTaskGroup subTaskGroup = createSubTaskGroup(SetupYNP.class.getSimpleName());
+    String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
+    if (!new File(installPath).isAbsolute()) {
+      String errMsg = String.format("Node agent installation path %s is invalid", installPath);
+      log.error(errMsg);
+      throw new IllegalArgumentException(errMsg);
+    }
+    int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
+    Universe universe = getUniverse();
+    Customer customer = Customer.get(universe.getCustomerId());
+    filterNodesForInstallNodeAgent(universe, nodes)
+        .forEach(
+            n -> {
+              SetupYNP.Params params = new SetupYNP.Params();
+              Provider provider =
+                  nodeUuidProviderMap.computeIfAbsent(
+                      n.placementUuid,
+                      k -> {
+                        Cluster cluster = universe.getCluster(n.placementUuid);
+                        System.out.println(cluster.userIntent.provider);
+                        return Provider.getOrBadRequest(
+                            UUID.fromString(cluster.userIntent.provider));
+                      });
+              params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
+              params.nodeName = n.nodeName;
+              params.customerUuid = customer.getUuid();
+              params.setUniverseUUID(universe.getUniverseUUID());
+              params.nodeAgentInstallDir = installPath;
+              params.nodeAgentPort = serverPort;
+              if (StringUtils.isNotEmpty(n.sshUserOverride)) {
+                params.sshUser = n.sshUserOverride;
+              }
+              SetupYNP task = createTask(SetupYNP.class);
+              task.initialize(params);
+              subTaskGroup.addSubTask(task);
+            });
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates a task to do the provisioning via YNP.
+   *
+   * @param nodes a collection of nodes to be processed.
+   */
+  public SubTaskGroup createYNPProvisioningTask(Collection<NodeDetails> nodes) {
+    Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
+    SubTaskGroup subTaskGroup = createSubTaskGroup(YNPProvisioning.class.getSimpleName());
+    String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
+    if (!new File(installPath).isAbsolute()) {
+      String errMsg = String.format("Node agent installation path %s is invalid", installPath);
+      log.error(errMsg);
+      throw new IllegalArgumentException(errMsg);
+    }
+    int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
+    Universe universe = getUniverse();
+    Customer customer = Customer.get(universe.getCustomerId());
+    filterNodesForInstallNodeAgent(universe, nodes)
+        .forEach(
+            n -> {
+              UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
+              YNPProvisioning.Params params = new YNPProvisioning.Params();
+              params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+              Provider provider =
+                  nodeUuidProviderMap.computeIfAbsent(
+                      n.placementUuid,
+                      k -> {
+                        Cluster cluster = universe.getCluster(n.placementUuid);
+                        return Provider.getOrBadRequest(
+                            UUID.fromString(cluster.userIntent.provider));
+                      });
+              params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
+              params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+              params.nodeName = n.nodeName;
+              params.customerUuid = customer.getUuid();
+              params.setUniverseUUID(universe.getUniverseUUID());
+              params.remotePackagePath = taskParams().remotePackagePath;
+              if (StringUtils.isNotEmpty(n.sshUserOverride)) {
+                params.sshUser = n.sshUserOverride;
+              }
+              YNPProvisioning task = createTask(YNPProvisioning.class);
+              task.initialize(params);
+              subTaskGroup.addSubTask(task);
+            });
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  /**
    * Creates subtasks to create a set of server nodes. As the tasks are not idempotent, node states
    * are checked to determine if some tasks must be run or skipped. This state checking is ignored
    * if ignoreNodeStatus is true.
@@ -2359,6 +2462,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean ignoreNodeStatus,
       @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
 
+    boolean useYNPProvisioning = confGetter.getGlobalConf(GlobalConfKeys.enableYNPProvisioning);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
     boolean isNextFallThrough =
@@ -2406,13 +2510,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
             filteredNodes -> {
+              if (useYNPProvisioning) {
+                createSetupYNPTask(filteredNodes)
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                createYNPProvisioningTask(filteredNodes)
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              }
               createInstallNodeAgentTasks(filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createWaitForNodeAgentTasks(nodesToBeCreated)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createHookProvisionTask(filteredNodes, TriggerType.PreNodeProvision);
-              createSetupServerTasks(filteredNodes, setupParamsCustomizer)
-                  .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              if (!useYNPProvisioning) {
+                createSetupServerTasks(filteredNodes, setupParamsCustomizer)
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              }
             });
 
     isNextFallThrough =

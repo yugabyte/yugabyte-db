@@ -884,7 +884,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 					(errcode(ERRCODE_CARDINALITY_VIOLATION),
 					 errmsg("new data for materialized view \"%s\" contains rows with all null values",
 							RelationGetRelationName(matviewRel)),
-				 	 errdetail("Row: %s",
+					 errdetail("Row: %s",
 							   SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1))));
 		}
 	}

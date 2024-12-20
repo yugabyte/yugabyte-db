@@ -454,6 +454,12 @@ typedef struct ResultRelInfo
 	 */
 	AttrNumber	ri_RowIdAttNo;
 
+	/*
+	 * YB note: For non-fast path UPDATE, the attribute number of the wholerow junk attribute
+	 * in the source plan's output tuples. This stores the old tuple.
+	 */
+	AttrNumber	ri_YbWholeRowAttNo;
+
 	/* Projection to generate new tuple in an INSERT/UPDATE */
 	ProjectionInfo *ri_projectNew;
 	/* Slot to hold that tuple */
@@ -2998,6 +3004,9 @@ typedef struct LockRowsState
 	PlanState	ps;				/* its first field is NodeTag */
 	List	   *lr_arowMarks;	/* List of ExecAuxRowMarks */
 	EPQState	lr_epqstate;	/* for evaluating EvalPlanQual rechecks */
+
+	bool 		yb_are_row_marks_for_yb_rels; /* lr_arowMarks relates to YB
+											   * relations */
 } LockRowsState;
 
 /* ----------------

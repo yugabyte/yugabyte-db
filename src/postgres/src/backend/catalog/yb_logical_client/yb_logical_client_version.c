@@ -80,17 +80,17 @@ bool YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 	YBCPgStatement ybc_stmt;
 
 	HandleYBStatus(YBCPgNewSelect(Template1DbOid,
-	                              YBLogicalClientVersionRelationId,
-	                              NULL /* prepare_params */,
-	                              false /* is_region_local */,
-	                              &ybc_stmt));
+								  YBLogicalClientVersionRelationId,
+								  NULL /* prepare_params */,
+								  false /* is_region_local */,
+								  &ybc_stmt));
 
 	Datum oid_datum = Int32GetDatum(db_oid);
 	YBCPgExpr pkey_expr = YBCNewConstant(ybc_stmt,
-	                                     oid_attrdesc->atttypid,
-	                                     oid_attrdesc->attcollation,
-	                                     oid_datum,
-	                                     false /* is_null */);
+										 oid_attrdesc->atttypid,
+										 oid_attrdesc->attcollation,
+										 oid_datum,
+										 false /* is_null */);
 
 	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, 1, pkey_expr));
 

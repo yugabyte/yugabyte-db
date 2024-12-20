@@ -161,7 +161,7 @@ var createUniverseCmd = &cobra.Command{
 			Clusters:           clusters,
 			CommunicationPorts: communicationPorts,
 			EnableYbc:          util.GetBoolPointer(enableYbc),
-			Arch:               util.GetStringPointer(cpuArch),
+			Arch:               util.GetStringPointer(strings.ToLower(cpuArch)),
 		}
 
 		if enableVolumeEncryption {
@@ -251,7 +251,7 @@ func init() {
 		"[Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem."+
 			" Defaults to true for kubernetes.")
 	createUniverseCmd.Flags().String("cpu-architecture", "x86_64",
-		"[Optional] CPU architecture for nodes in all clusters.")
+		"[Optional] CPU architecture for nodes in all clusters. Allowed values: x86_64, aarch64.")
 	createUniverseCmd.Flags().Bool("add-read-replica", false,
 		"[Optional] Add a read replica cluster to the universe. (default false)")
 

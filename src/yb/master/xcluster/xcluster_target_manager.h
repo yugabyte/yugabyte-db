@@ -72,6 +72,8 @@ class XClusterTargetManager {
       const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled,
       const LeaderEpoch& epoch, CoarseTimePoint deadline);
 
+  bool IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const;
+
  protected:
   explicit XClusterTargetManager(
       Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);

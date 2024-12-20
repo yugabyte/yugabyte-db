@@ -604,9 +604,9 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
                   )}
                   subMenus={{
                     // eslint-disable-next-line react/display-name
-                    [ActionMenu.ADVANCED]: (navigateToMainMenu) => (
+                    [ActionMenu.ADVANCED]: (setActiveSubmenu) => (
                       <>
-                        <MenuItem eventKey="back" onSelect={navigateToMainMenu}>
+                        <MenuItem eventKey="back" onSelect={() => setActiveSubmenu(null)}>
                           <YBMenuItemLabel
                             label={t('back', { keyPrefix: 'common' })}
                             preLabelElement={<i className="fa fa-chevron-left fa-fw" />}

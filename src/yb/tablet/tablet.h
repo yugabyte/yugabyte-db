@@ -50,6 +50,7 @@
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/shared_lock_manager.h"
+#include "yb/docdb/storage_set.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -330,20 +331,19 @@ class Tablet : public AbstractTablet,
   // Apply all of the row operations associated with this transaction.
   Status ApplyRowOperations(
       WriteOperation* operation,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
+      const docdb::StorageSet& apply_to_storages = {});
 
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
+      const docdb::StorageSet& apply_to_storages = {});
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers* frontiers,
-      HybridTime write_hybrid_time, HybridTime local_hybrid_time,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
+      HybridTime write_hybrid_time, HybridTime local_hybrid_time);
 
   void WriteToRocksDB(
       const rocksdb::UserFrontiers* frontiers,
@@ -874,7 +874,7 @@ class Tablet : public AbstractTablet,
 
   // Should only be used in code that could be executed from Raft operations apply or other
   // callsites that doesn't handle RocksDB shutdown start (without destroy, see
-  // Tablet::StartShutdownRocksDBs, rocksdb::DB::StartShutdown) during operation, so tablet shutdown
+  // Tablet::StartShutdownStorages, rocksdb::DB::StartShutdown) during operation, so tablet shutdown
   // will wait till their completion and don't fail Raft operation apply.
   ScopedRWOperation CreateScopedRWOperationBlockingRocksDbShutdownStart(
       const CoarseTimePoint deadline = CoarseTimePoint()) const;
@@ -918,13 +918,13 @@ class Tablet : public AbstractTablet,
   // 4. Pauses new read/write operations and wait for all of those that are pending to complete.
   // Returns TabletScopedRWOperationPauses that are preventing new read/write operations from being
   // started.
-  TabletScopedRWOperationPauses StartShutdownRocksDBs(
+  TabletScopedRWOperationPauses StartShutdownStorages(
       DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops,
       Stop stop = Stop::kFalse);
 
   // Returns DB paths for destructed in-memory RocksDBs objects, so caller can delete on-disk
   // directories if needed.
-  std::vector<std::string> CompleteShutdownRocksDBs(
+  std::vector<std::string> CompleteShutdownStorages(
       const TabletScopedRWOperationPauses& ops_pauses);
 
   Status OpenKeyValueTablet();
@@ -1025,7 +1025,7 @@ class Tablet : public AbstractTablet,
 
   // Attempt to delete on-disk RocksDBs from all provided db_paths, even if errors are encountered.
   // Return the first error encountered.
-  Status DeleteRocksDBs(const std::vector<std::string>& db_paths);
+  Status DeleteStorages(const std::vector<std::string>& db_paths);
 
   Status DoEnableCompactions();
 
@@ -1242,7 +1242,7 @@ class Tablet : public AbstractTablet,
   Status CreateVectorIndex(
       const TableInfo& index_table, const TableInfo& indexed_table, bool allow_inplace_insert)
       REQUIRES(vector_indexes_mutex_);
-  docdb::VectorIndexesPtr VectorIndexesList() EXCLUDES(vector_indexes_mutex_);
+  docdb::VectorIndexesPtr VectorIndexesList() const EXCLUDES(vector_indexes_mutex_);
 
   mutable std::mutex flush_filter_mutex_;
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_
@@ -1313,7 +1313,7 @@ class Tablet : public AbstractTablet,
   std::unique_ptr<OperationFilter> restoring_operation_filter_ GUARDED_BY(operation_filters_mutex_);
 
   std::atomic<bool> has_vector_indexes_{false};
-  std::shared_mutex vector_indexes_mutex_;
+  mutable std::shared_mutex vector_indexes_mutex_;
   std::unordered_map<TableId, docdb::VectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
   docdb::VectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);

@@ -49,7 +49,9 @@
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/key_bounds.h"
 
 #include "yb/dockv/reader_projection.h"
@@ -115,7 +117,6 @@ using util::DereferencedEqual;
 using util::MapsEqual;
 using qlexpr::IndexInfo;
 using qlexpr::IndexMap;
-using docdb::SkipTableTombstoneCheck;
 
 namespace {
 
@@ -150,9 +151,8 @@ std::vector<ColumnId> GetVectorIndexedColumns(const qlexpr::IndexMap& index_map)
 } // namespace
 
 const int64 kNoDurableMemStore = -1;
-const std::string kIntentsSubdir = "intents";
-const std::string kIntentsDBSuffix = ".intents";
-const std::string kSnapshotsDirSuffix = ".snapshots";
+const std::string kIntentsDirName = "intents";
+const std::string kSnapshotsDirName = "snapshots";
 
 // ============================================================================
 //  Raft group metadata
@@ -163,8 +163,7 @@ TableInfo::TableInfo(const std::string& log_prefix_,
                      SkipTableTombstoneCheck skip_table_tombstone_check,
                      PrivateTag)
     : log_prefix(log_prefix_),
-      doc_read_context(new docdb::DocReadContext(
-          log_prefix, table_type, docdb::Index::kFalse, skip_table_tombstone_check)),
+      doc_read_context(new docdb::DocReadContext(log_prefix, table_type, docdb::Index::kFalse)),
       index_map(std::make_shared<IndexMap>()),
       skip_table_tombstone_check(skip_table_tombstone_check) {
   CompleteInit();
@@ -191,7 +190,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
       doc_read_context(std::make_shared<docdb::DocReadContext>(
           log_prefix, table_type, docdb::Index(index_info.has_value()), schema,
-          schema_version, skip_table_tombstone_check_)),
+          schema_version)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
@@ -215,8 +214,7 @@ TableInfo::TableInfo(const TableInfo& other,
       doc_read_context(schema_version != other.schema_version
           ? std::make_shared<docdb::DocReadContext>(
               *other.doc_read_context, schema, schema_version)
-          : std::make_shared<docdb::DocReadContext>(
-              *other.doc_read_context)),
+          : std::make_shared<docdb::DocReadContext>(*other.doc_read_context)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
@@ -238,8 +236,7 @@ TableInfo::TableInfo(const TableInfo& other,
       table_type(other.table_type),
       cotable_id(other.cotable_id),
       log_prefix(other.log_prefix),
-      doc_read_context(std::make_shared<docdb::DocReadContext>(
-          *other.doc_read_context, schema)),
+      doc_read_context(std::make_shared<docdb::DocReadContext>(*other.doc_read_context, schema)),
       index_map(std::make_shared<IndexMap>(*other.index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
@@ -319,8 +316,6 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   skip_table_tombstone_check = SkipTableTombstoneCheck(pb.skip_table_tombstone_check());
 
   RETURN_NOT_OK(doc_read_context->LoadFromPB(pb));
-  doc_read_context->set_skip_table_tombstone_check(skip_table_tombstone_check);
-
   if (pb.has_index_info()) {
     index_info.reset(new IndexInfo(pb.index_info()));
   }
@@ -926,7 +921,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 bool RaftGroupMetadata::IsTombstonedWithNoRocksDBData() const {
   std::lock_guard lock(data_mutex_);
   const auto& rocksdb_dir = kv_store_.rocksdb_dir;
-  const auto intents_dir = rocksdb_dir + kIntentsDBSuffix;
+  const auto intents_dir = docdb::GetStorageDir(rocksdb_dir, kIntentsDirName);
   return tablet_data_state_ == TABLET_DATA_TOMBSTONED &&
       !fs_manager_->env()->FileExists(rocksdb_dir) &&
       !fs_manager_->env()->FileExists(intents_dir);
@@ -2420,6 +2415,14 @@ bool RaftGroupMetadata::OnPostSplitCompactionDone() {
   }
 
   return updated;
+}
+
+std::string RaftGroupMetadata::intents_rocksdb_dir() const {
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kIntentsDirName);
+}
+
+std::string RaftGroupMetadata::snapshots_dir() const {
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kSnapshotsDirName);
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

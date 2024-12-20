@@ -19,6 +19,7 @@ option java_package = "org.yb.master";
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/docdb/docdb.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
@@ -750,6 +751,36 @@ message IsYsqlDdlVerificationDoneResponsePB {
   optional bool done = 2;
 }
 
+// ============================================================================
+// Table/Object Locks
+// ============================================================================
+
+message AcquireObjectLocksGlobalRequestPB {
+  optional bytes txn_id = 1;
+  optional uint64 txn_reuse_version = 2;
+  optional uint32 subtxn_id = 3;
+  optional bytes session_host_uuid = 4;
+  repeated docdb.ObjectLockPB object_locks = 5;
+}
+
+message AcquireObjectLocksGlobalResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message ReleaseObjectLocksGlobalRequestPB {
+  optional bytes txn_id = 1;
+  optional uint64 txn_reuse_version = 2;
+  optional uint32 subtxn_id = 3;
+  optional bytes session_host_uuid = 4;
+  repeated docdb.ObjectLockPB object_locks = 5;
+  // When set, releases locks on all objects held against the given session id.
+  optional bool release_all_locks = 6;
+}
+
+message ReleaseObjectLocksGlobalResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterDdl {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -804,4 +835,9 @@ service MasterDdl {
       (ReportYsqlDdlTxnStatusResponsePB);
   rpc IsYsqlDdlVerificationDone(IsYsqlDdlVerificationDoneRequestPB) returns
       (IsYsqlDdlVerificationDoneResponsePB);
+
+  rpc AcquireObjectLocksGlobal(AcquireObjectLocksGlobalRequestPB)
+      returns (AcquireObjectLocksGlobalResponsePB);
+  rpc ReleaseObjectLocksGlobal(ReleaseObjectLocksGlobalRequestPB)
+      returns (ReleaseObjectLocksGlobalResponsePB);
 }

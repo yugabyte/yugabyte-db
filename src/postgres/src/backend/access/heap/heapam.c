@@ -459,9 +459,9 @@ heapgetpage(TableScanDesc sscan, BlockNumber page)
 		 lineoff <= lines;
 		 lineoff++, lpp++)
 	{
-    if (ItemIdIsNormal(lpp))
+		if (ItemIdIsNormal(lpp))
 		{
-      HeapTupleData loctup;
+			HeapTupleData loctup;
 			bool		valid;
 
 			loctup.t_tableOid = RelationGetRelid(scan->rs_base.rs_rd);
@@ -2071,12 +2071,10 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	bool		all_visible_cleared = false;
 
 	if (IsYBRelation(relation))
-	{
 		ereport(ERROR,
-		        (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-				        "Operation not allowed in YugaByte mode %s",
-				        __func__)));
-	}
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Operation not allowed in YugaByte mode %s",
+						__func__)));
 
 	/* Cheap, simplistic check that the tuple matches the rel's rowtype. */
 	Assert(HeapTupleHeaderGetNatts(tup->t_data) <=
@@ -2327,11 +2325,9 @@ heap_multi_insert(Relation relation, TupleTableSlot **slots, int ntuples,
 	bool		need_cids = RelationIsAccessibleInLogicalDecoding(relation);
 
 	if (IsYBRelation(relation))
-	{
 		ereport(ERROR,
-		        (errcode(ERRCODE_INTERNAL_ERROR),
-				        errmsg("Operation not allowed in YugaByte mode")));
-	}
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Operation not allowed in YugaByte mode")));
 
 	/* currently not needed (thus unsupported) for heap_multi_insert() */
 	AssertArg(!(options & HEAP_INSERT_NO_LOGICAL));
@@ -2740,7 +2736,7 @@ heap_delete(Relation relation, ItemPointer tid,
 	if (IsYBRelation(relation))
 	{
 		YBC_LOG_WARNING("Ignoring unsupported tuple delete for rel %s",
-		                RelationGetRelationName(relation));
+						RelationGetRelationName(relation));
 		return TM_Ok; /* HeapTupleMayBeUpdated; */
 	}
 

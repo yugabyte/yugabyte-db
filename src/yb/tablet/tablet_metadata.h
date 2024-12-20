@@ -45,7 +45,6 @@
 #include "yb/common/opid.pb.h"
 #include "yb/common/snapshot.h"
 
-#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/dockv/partition.h"
@@ -64,22 +63,20 @@
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
-using docdb::SkipTableTombstoneCheck;
 
 extern const int64 kNoDurableMemStore;
-extern const std::string kIntentsSubdir;
-extern const std::string kIntentsDBSuffix;
-extern const std::string kSnapshotsDirSuffix;
+extern const std::string kIntentsDirName;
+extern const std::string kSnapshotsDirName;
 
 const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 
 YB_STRONGLY_TYPED_BOOL(Primary);
 YB_STRONGLY_TYPED_BOOL(OnlyIfDirty);
 YB_STRONGLY_TYPED_BOOL(LazySuperblockFlushEnabled);
+YB_STRONGLY_TYPED_BOOL(SkipTableTombstoneCheck);
 
 struct TableInfo {
  private:
@@ -383,8 +380,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const TableId& table_id = "") const;
 
   const std::string& rocksdb_dir() const { return kv_store_.rocksdb_dir; }
-  std::string intents_rocksdb_dir() const { return kv_store_.rocksdb_dir + kIntentsDBSuffix; }
-  std::string snapshots_dir() const { return kv_store_.rocksdb_dir + kSnapshotsDirSuffix; }
+  std::string intents_rocksdb_dir() const;
+  std::string snapshots_dir() const;
 
   const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
@@ -900,5 +897,4 @@ inline bool CanServeTabletData(TabletDataState state) {
 
 Status CheckCanServeTabletData(const RaftGroupMetadata& metadata);
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet

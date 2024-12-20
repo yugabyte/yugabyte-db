@@ -19,13 +19,47 @@
 # Whitespace
 grep -nE '\s+$' "$1" \
   | sed 's/^/error:trailing_whitespace:/'
-grep -nvE '^(	* {0,3}\S|$)' "$1" \
-  | sed 's/^/error:leading_whitespace:/'
+if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
+        "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ||
+        "$1" == src/postgres/src/include/snowball/libstemmer/* ||
+        "$1" == src/postgres/src/pl/plperl/ppport.h ]]; then
+  grep -nvE '^(	* {0,3}\S|$)' "$1" \
+    | sed 's/^/error:leading_whitespace:/'
+fi
 grep -nE '/\*(\w+|\s\w+|\w+\s)\*/' "$1" \
   | sed 's/^/error:bad_parameter_comment_spacing:/'
 grep -nE '\s(if|else if|for|while)\(' "$1" \
   | grep -vE 'while\((0|1)\)' \
   | sed 's/^/error:bad_spacing_after_if_else_for_while:/'
+
+# Comments
+grep -nE '//\s' "$1" \
+  | sed 's/^/error:bad_comment_style:/'
+# /* this is a bad
+#  * multiline comment */
+# TupleTableSlot slot /* this is a good
+#                      * inline comment */
+# /**************
+#  * this is fine
+#  */
+# /*-------------
+#  * this is fine
+#  */
+# /* TypeCategory()
+#  * this is fine
+#  */
+# /*		box_same
+#  * this is fine
+#  */
+grep -nE '^\s*/\*[^/]*[^)*-/]$' "$1" \
+  | grep -vE '/\*		\w' \
+  | sed 's/^/warning:likely_bad_multiline_comment_start:/'
+# /*
+# * this is a bad
+# * multiline comment
+# */
+grep -nE '(^|^\s*	)\*/' "$1" \
+  | sed 's/^/warning:likely_bad_multiline_comment_end:/'
 
 # Pointers
 #

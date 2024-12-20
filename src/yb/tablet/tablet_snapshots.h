@@ -118,6 +118,9 @@ class TabletSnapshots : public TabletComponent {
 
   Result<docdb::CotableIdsMap> GetCotableIdsMap(const std::string& snapshot_dir);
 
+  Status DoCreateCheckpoint(
+      const std::string& dir, CreateIntentsCheckpointIn create_intents_checkpoint_in);
+
   std::string TEST_last_rocksdb_checkpoint_dir_;
 };
 

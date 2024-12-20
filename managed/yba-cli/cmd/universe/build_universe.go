@@ -155,6 +155,11 @@ func buildClusters(
 		}
 	}
 
+	imageBundleLen = len(imageBundleUUIDs)
+	for i := 0; i < noOfClusters-imageBundleLen; i++ {
+		imageBundleUUIDs = append(imageBundleUUIDs, "")
+	}
+
 	logrus.Info("Using image bundles: ", imageBundleUUIDs, "\n")
 
 	dedicatedNodes := v1.GetBool("dedicated-nodes")
@@ -512,9 +517,13 @@ func buildClusters(
 			InheritFromPrimary: util.GetBoolPointer(false),
 			PerProcessFlags: &ybaclient.PerProcessFlags{
 				Value: map[string]map[string]string{
-					util.MasterServerType: masterGFlags,
+					util.MasterServerType:  {},
+					util.TserverServerType: {},
 				},
 			},
+		}
+		if len(masterGFlags) != 0 {
+			specificGFlags.PerProcessFlags.Value[util.MasterServerType] = masterGFlags
 		}
 		specificGFlagsList[i] = specificGFlags
 	}
@@ -539,7 +548,9 @@ func buildClusters(
 			tserverGFlagsList[0] = v
 			perProcessFlags := specificGFlagsList[0].GetPerProcessFlags()
 			value := perProcessFlags.GetValue()
-			value[util.TserverServerType] = v
+			if len(v) != 0 {
+				value[util.TserverServerType] = v
+			}
 			perProcessFlags.SetValue(value)
 			specificGFlagsList[0].SetPerProcessFlags(perProcessFlags)
 		} else if strings.Compare(
@@ -548,7 +559,9 @@ func buildClusters(
 				tserverGFlagsList[1] = v
 				perProcessFlags := specificGFlagsList[1].GetPerProcessFlags()
 				value := perProcessFlags.GetValue()
-				value[util.TserverServerType] = v
+				if len(v) != 0 {
+					value[util.TserverServerType] = v
+				}
 				perProcessFlags.SetValue(value)
 				specificGFlagsList[1].SetPerProcessFlags(perProcessFlags)
 				specificGFlagsList[1].SetInheritFromPrimary(false)

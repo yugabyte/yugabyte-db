@@ -13,13 +13,19 @@
 
 #pragma once
 
+#include <functional>
+
 #include "yb/util/strongly_typed_uuid.h"
 
 namespace yb::vector_index {
+
+struct SearchOptions;
 
 // Vector Id is a unique identifier of a vector (unique inside a particular vector index table).
 // A value of a vector id never gets reused, even if the same vector is deleted and re-inserted
 // later.
 YB_STRONGLY_TYPED_UUID_DECL(VectorId);
+
+using VectorFilter = std::function<bool(const VectorId&)>;
 
 } // namespace yb::vector_index

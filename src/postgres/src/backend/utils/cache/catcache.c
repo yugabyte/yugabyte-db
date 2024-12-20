@@ -1084,8 +1084,8 @@ CatalogCacheInitializeCache(CatCache *cache)
  */
 void
 SetCatCacheList(CatCache *cache,
-                int nkeys,
-                List *current_list)
+				int nkeys,
+				List *current_list)
 {
 	ScanKeyData cur_skey[CATCACHE_MAXKEYS];
 	Datum		arguments[CATCACHE_MAXKEYS];
@@ -1115,9 +1115,9 @@ SetCatCacheList(CatCache *cache,
 			break;
 		bool is_null = false; /* Not needed as this is checked before */
 		cur_skey[i].sk_argument = heap_getattr(tup,
-		                                       cur_skey[i].sk_attno,
-		                                       cache->cc_tupdesc,
-		                                       &is_null);
+											   cur_skey[i].sk_attno,
+											   cache->cc_tupdesc,
+											   &is_null);
 	}
 	lHashValue = CatalogCacheComputeHashValue(cache,
 											  nkeys,
@@ -1452,10 +1452,10 @@ SetCatCacheTuple(CatCache *cache, HeapTuple tup, TupleDesc desc)
 			continue;
 		}
 		bool is_null;
-		key[i].sk_argument     = heap_getattr(tup,
-		                                      key[i].sk_attno,
-		                                      desc,
-		                                      &is_null);
+		key[i].sk_argument = heap_getattr(tup,
+										  key[i].sk_attno,
+										  desc,
+										  &is_null);
 		if (is_null)
 			key[i].sk_argument = (Datum) 0;
 	}

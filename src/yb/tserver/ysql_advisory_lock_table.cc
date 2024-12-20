@@ -19,7 +19,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/master/master_defaults.h"
 
-DECLARE_bool(yb_enable_advisory_lock);
+DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb {
 
@@ -42,7 +42,7 @@ YsqlAdvisoryLocksTable::~YsqlAdvisoryLocksTable() {
 }
 
 Result<client::YBTablePtr> YsqlAdvisoryLocksTable::GetTable() {
-  SCHECK(FLAGS_yb_enable_advisory_lock, NotSupported, "Advisory locks are not enabled");
+  SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "Advisory locks are not enabled");
   std::lock_guard<std::mutex> l(mutex_);
   if (!table_) {
     static const client::YBTableName table_name(

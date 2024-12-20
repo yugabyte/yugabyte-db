@@ -179,6 +179,8 @@ class XClusterSourceManager {
 
   Status ValidateSplitCandidateTable(const TableId& table_id) const;
 
+  bool IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const;
+
  private:
   friend class XClusterOutboundReplicationGroup;
 

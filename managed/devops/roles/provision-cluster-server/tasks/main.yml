@@ -331,6 +331,7 @@
       state: present
       validate: "/usr/sbin/visudo -cf %s"
 
+  # YBM use case will revisit at later stage for YNP
   - name: setup-postgres-cgroups
     include_role:
       name: setup-cgroup

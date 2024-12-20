@@ -741,7 +741,7 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("CreatePublication is unavailable"),
 				 errdetail("yb_enable_replication_commands is false or a "
-				 		   "system upgrade is in progress")));
+						   "system upgrade is in progress")));
 
 	Relation	rel;
 	ObjectAddress myself;

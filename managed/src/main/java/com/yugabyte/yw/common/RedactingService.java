@@ -8,9 +8,12 @@ import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.PathNotFoundException;
 import com.yugabyte.yw.common.audit.AuditService;
+import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -115,6 +118,11 @@ public class RedactingService {
       new CopyOnWriteArraySet<>(
           SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList()));
 
+  // Used to redact root CA keys in the helm values
+  // Regex pattern to match "<Any_String>key: <Base64_encoded_string>"
+  private static final String KEY_REGEX = "(.*key):\\s+(\\S+)";
+  private static final Pattern KEY_SEARCH_PATTERN = Pattern.compile(KEY_REGEX);
+
   public static JsonNode filterSecretFields(JsonNode input, RedactionTarget target) {
     if (input == null) {
       return null;
@@ -167,8 +175,53 @@ public class RedactingService {
     return output;
   }
 
+  public static String redactrootCAKeys(String input) {
+    String output = input;
+    Matcher matcher = KEY_SEARCH_PATTERN.matcher(input);
+    if (matcher.find()) {
+      String base64String = matcher.group(2);
+      if (isBase64Encoded(base64String)) {
+        String redactedString = "$1: " + SECRET_REPLACEMENT;
+        output = output.replaceAll(KEY_REGEX, redactedString);
+      }
+    }
+    return output;
+  }
+
+  public static String redactShellProcessOutput(String input, RedactionTarget target) {
+    String output = input;
+    try {
+      // Redact based on target
+      switch (target) {
+        case QUERY_PARAMS:
+          output = redactQueryParams(output);
+          break;
+        case HELM_VALUES:
+          output = redactrootCAKeys(output);
+          break;
+        default:
+          break;
+      }
+      return output;
+    } catch (Exception e) {
+      log.error("Error redacting shell process output", e);
+      return input;
+    }
+  }
+
+  private static boolean isBase64Encoded(String str) {
+    try {
+      Base64.getDecoder().decode(str);
+      return true;
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
+  }
+
   public enum RedactionTarget {
     LOGS,
-    APIS;
+    APIS,
+    QUERY_PARAMS,
+    HELM_VALUES;
   }
 }

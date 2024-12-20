@@ -354,7 +354,8 @@ void Batcher::TabletLookupFinished(
   }
 }
 
-void Batcher::TransactionReady(const Status& status) {
+void Batcher::TransactionReady(ash::WaitStateInfoPtr wait_state, const Status& status) {
+  ADOPT_WAIT_STATE(wait_state);
   if (status.ok()) {
     ExecuteOperations(Initial::kFalse);
   } else {
@@ -532,7 +533,8 @@ void Batcher::ExecuteOperations(Initial initial) {
     // it could be done.
     if (!transaction->batcher_if().Prepare(
         &ops_info_, force_consistent_read_, deadline_, initial,
-        std::bind(&Batcher::TransactionReady, shared_from_this(), _1))) {
+        std::bind(&Batcher::TransactionReady, shared_from_this(),
+        ash::WaitStateInfo::CurrentWaitState(), _1))) {
       return;
     }
   } else if (force_consistent_read_ &&

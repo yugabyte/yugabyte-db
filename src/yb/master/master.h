@@ -224,6 +224,8 @@ class Master : public tserver::DbServerBase {
 
   void WriteServerMetaCacheAsJson(JsonWriter* writer) override;
 
+  const std::string& permanent_uuid() const override;
+
  protected:
   Status RegisterServices();
 
@@ -254,8 +256,6 @@ class Master : public tserver::DbServerBase {
   };
 
   MonoDelta default_client_timeout() override;
-
-  const std::string& permanent_uuid() const override;
 
   void SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) override;
 

@@ -3823,15 +3823,17 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   if (!orig_req->old_rewrite_table_id().empty()) {
     auto table_id = orig_req->old_rewrite_table_id();
+    auto namespace_id = VERIFY_RESULT(GetTableById(table_id))->LockForRead()->namespace_id();
+    auto automatic_ddl_mode = xcluster_manager_->IsNamespaceInAutomaticDDLMode(namespace_id);
     SharedLock lock(mutex_);
-    // Fail rewrites on tables that are part of CDC or XCluster replication, except for
-    // TRUNCATEs on CDC tables when FLAGS_enable_truncate_cdcsdk_table is enabled.
-    if (xcluster_manager_->IsTableReplicated(table_id) ||
+    // Fail rewrites on tables that are part of CDC or non-automatic mode XCluster replication,
+    // except for TRUNCATEs on CDC tables when FLAGS_enable_truncate_cdcsdk_table is enabled.
+    if ((xcluster_manager_->IsTableReplicated(table_id) && !automatic_ddl_mode)  ||
         (IsTablePartOfCDCSDK(table_id) &&
          (!orig_req->is_truncate() || !FLAGS_enable_truncate_cdcsdk_table))) {
       return STATUS(
           NotSupported,
-          "cannot rewrite a table that is a part of CDC or XCluster replication."
+          "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication"
           " See https://github.com/yugabyte/yugabyte-db/issues/16625.");
     }
   }
@@ -6231,8 +6233,8 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   return Status::OK();
 }
 
-void CatalogManager::AcquireObjectLocks(
-    const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+void CatalogManager::AcquireObjectLocksGlobal(
+    const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
   VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
@@ -6244,8 +6246,8 @@ void CatalogManager::AcquireObjectLocks(
   object_lock_info_manager_->LockObject(*req, resp, std::move(rpc));
 }
 
-void CatalogManager::ReleaseObjectLocks(
-    const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+void CatalogManager::ReleaseObjectLocksGlobal(
+    const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
   VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {

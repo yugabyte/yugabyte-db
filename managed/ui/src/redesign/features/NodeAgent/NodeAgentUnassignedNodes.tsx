@@ -10,6 +10,7 @@ import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 interface NodeAgentUnassignedNodesProps {
   isNodeAgentDebugPage: boolean;
   nodeIPs: string[];
+  isErrorFilterChecked: boolean;
   // In case universe selected is 'All Providers', we use string data type
   selectedProvider?: Provider | typeof MetricConsts.ALL | ProviderNode[];
 }
@@ -17,6 +18,7 @@ interface NodeAgentUnassignedNodesProps {
 export const NodeAgentUnassignedNodes: FC<NodeAgentUnassignedNodesProps> = ({
   isNodeAgentDebugPage,
   nodeIPs,
+  isErrorFilterChecked,
   selectedProvider
 }) => {
   const [isNodeAgentDeleted, setNodeAgentDeleted] = useState<boolean>(false);
@@ -66,6 +68,7 @@ export const NodeAgentUnassignedNodes: FC<NodeAgentUnassignedNodesProps> = ({
     <NodeAgentData
       isAssignedNodes={false}
       nodeAgentData={nodeAgentData}
+      isErrorFilterChecked={isErrorFilterChecked}
       isNodeAgentDebugPage={isNodeAgentDebugPage}
       onNodeAgentDeleted={onNodeAgentDeleted}
     />

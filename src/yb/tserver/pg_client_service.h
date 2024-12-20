@@ -95,6 +95,8 @@ class TserverXClusterContextIf;
     (YCQLStatementStats) \
     (CronSetLastMinute) \
     (CronGetLastMinute) \
+    (AcquireAdvisoryLock) \
+    (ReleaseAdvisoryLock) \
     /**/
 
 // Forwards call to corresponding PgClientSession async method (see

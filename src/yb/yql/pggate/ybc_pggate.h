@@ -940,6 +940,11 @@ YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);
 
 void YBCForceAllowCatalogModifications(bool allowed);
 
+YBCStatus YBCAcquireAdvisoryLock(
+    YBAdvisoryLockId lock_id, YBAdvisoryLockMode mode, bool wait, bool session);
+YBCStatus YBCReleaseAdvisoryLock(YBAdvisoryLockId lock_id, YBAdvisoryLockMode mode);
+YBCStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

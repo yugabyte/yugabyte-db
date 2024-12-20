@@ -59,26 +59,9 @@ ExecLockRows(PlanState *pstate)
 lnext:
 	slot = ExecProcNode(outerPlan);
 
-	int n_yb_relations = 0;
-	int n_relations = 0;
-	foreach(lc, node->lr_arowMarks)
+	if (node->yb_are_row_marks_for_yb_rels &&
+		XactIsoLevel == XACT_SERIALIZABLE)
 	{
-		ExecAuxRowMark *aerm = (ExecAuxRowMark *) lfirst(lc);
-		ExecRowMark *erm = aerm->rowmark;
-		if (IsYBBackedRelation(erm->relation))
-		{
-			n_yb_relations++;
-		}
-		n_relations++;
-	}
-
-	if (n_yb_relations > 0 && n_yb_relations != n_relations)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Mixing Yugabyte relations and not Yugabyte relations with "
-						"row locks is not supported")));
-
-	if (n_yb_relations > 0 && XactIsoLevel == XACT_SERIALIZABLE) {
 		/*
 		 * For YB relations, we don't lock tuples using this node in SERIALIZABLE level. Instead we take
 		 * predicate locks by setting the row mark in read requests sent to txn participants.
@@ -211,7 +194,9 @@ lnext:
 		if (!IsolationUsesXactSnapshot())
 			lockflags |= TUPLE_LOCK_FLAG_FIND_LAST_VERSION;
 
-		if (IsYBBackedRelation(erm->relation))
+		Assert(
+			IsYBBackedRelation(erm->relation) == node->yb_are_row_marks_for_yb_rels);
+		if (node->yb_are_row_marks_for_yb_rels)
 		{
 			test = YBCLockTuple(
 				erm->relation, datum, erm->markType, erm->waitPolicy, estate);
@@ -398,6 +383,8 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	 */
 	lrstate->lr_arowMarks = NIL;
 	epq_arowmarks = NIL;
+	bool row_lock_for_yb_rel_found = false;
+	bool row_lock_for_non_yb_rel_found = false;
 	foreach(lc, node->rowMarks)
 	{
 		PlanRowMark *rc = lfirst_node(PlanRowMark, lc);
@@ -419,10 +406,25 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 		 * do an EPQ recheck.
 		 */
 		if (RowMarkRequiresRowShareLock(erm->markType))
+		{
+			if (IsYBBackedRelation(erm->relation))
+				row_lock_for_yb_rel_found = true;
+			else
+				row_lock_for_non_yb_rel_found = true;
+
 			lrstate->lr_arowMarks = lappend(lrstate->lr_arowMarks, aerm);
+		}
 		else
 			epq_arowmarks = lappend(epq_arowmarks, aerm);
 	}
+
+	if (row_lock_for_yb_rel_found && row_lock_for_non_yb_rel_found)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Mixing Yugabyte relations and not Yugabyte "
+						"relations with row locks is not supported")));
+
+	lrstate->yb_are_row_marks_for_yb_rels = row_lock_for_yb_rel_found;
 
 	/* Now we have the info needed to set up EPQ state */
 	EvalPlanQualInit(&lrstate->lr_epqstate, estate,

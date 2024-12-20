@@ -8412,14 +8412,6 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 		if (!tbinfo->interesting)
 			continue;
 
-#ifdef YB_TODO
-		/*
-		 * - Postgres now initialize tbinfo later in this function and not in this loop.
-		 * - Move this code further down where appropriate.
-		 */
-		tbinfo->primaryKeyIndex = NULL;
-#endif
-
 		/* OK, we need info for this table */
 		if (tbloids->len > 1)	/* do we have more than the '{'? */
 			appendPQExpBufferChar(tbloids, ',');
@@ -8595,6 +8587,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 		tbinfo->notnull = (bool *) pg_malloc(numatts * sizeof(bool));
 		tbinfo->inhNotNull = (bool *) pg_malloc(numatts * sizeof(bool));
 		tbinfo->attrdefs = (AttrDefInfo **) pg_malloc(numatts * sizeof(AttrDefInfo *));
+		tbinfo->primaryKeyIndex = NULL;
 		hasdefaults = false;
 
 		for (int j = 0; j < numatts; j++, r++)
