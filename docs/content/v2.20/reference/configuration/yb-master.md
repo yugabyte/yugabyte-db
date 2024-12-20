@@ -774,7 +774,7 @@ To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set
 --ssl_protocols = tls12,tls13
 ```
 
-In addition, as this setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag as follows:
+In addition, as this setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag as follows:
 
 ```sh
 --ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
