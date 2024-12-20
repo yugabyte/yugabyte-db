@@ -24,121 +24,156 @@ In databases, change data capture (CDC) is a set of software design patterns use
 
 - **Compliance and auditing**: Auditing and compliance requirements can require you to use CDC to maintain records of data changes.
 
-YugabyteDB's CDC implementation uses [PostgreSQL Logical Replication](https://www.postgresql.org/docs/11/logical-replication.html), ensuring compatibility with PostgreSQL CDC systems.
+YugabyteDB's CDC implementation uses [PostgreSQL Logical Replication](https://www.postgresql.org/docs/11/logical-replication.html), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model, where publications (source tables) send changes to subscribers (target systems).
 
-Logical replication operates through a publish-subscribe model, where publications (source tables) send changes to subscribers (target systems).
+{{< note title="Note" >}}
 
-### How it works
+CDC via logical replication is supported in YugabyteDB starting from version 2024.1.1.
 
-1. Set up publications in the YugabyteDB cluster using the same syntax as PostgreSQL.
+{{< /note >}}
 
-    A publication is a set of changes generated from a table or a group of tables, and might also be described as a change set or replication slot. Each publication exists in only one database.
+## How it works
 
-    You configure a replication slot to use an output plugin. YugabyteDB bundles output plugins with the standard distribution so there is always one present and no additional libraries need to be installed.
+YugabyteDB's logical replication can be used in conjunction with Apache Kafka to create a scalable, fault-tolerant, and highly available data pipeline.
 
-1. Deploy the YugabyteDB Connector in your preferred Kafka Connect environment.
+1. Logical Replication: YugabyteDB publishes changes to a logical replication slot, which captures the changes in a format that can be consumed by Kafka.
+1. [YugabyteDB connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/): The logical replication slot is connected to the YugabyteDB connector, a Kafka Connect worker based on Debezium, which converts the PostgreSQL change stream into Kafka messages.
+1. Kafka Topics: YugabyteDB Connector publishes the messages to one or more Kafka topics.
+1. Kafka Consumers: Kafka consumers subscribe to the topics and process the messages, which can be used for further processing, storage, or analysis.
 
-    The YugabyteDB connector interprets the raw replication event stream directly into change events and publishes them directly to a Kafka topic.
+Using Kafka with PostgreSQL logical replication provides several benefits:
 
-    When the connector first connects to a YugabyteDB database, it starts by taking a consistent snapshot of all schemas. After the initial snapshot, the connector continuously captures row-level changes (inserts, updates, and deletes) committed to the YugabyteDB database.
-
-A replication slot emits each change just once in normal operation. The current position of each slot is persisted only at checkpoint, so if a replication process is interrupted and restarts, even if the checkpoint or the starting LSN falls in the middle of a transaction, _the entire transaction is retransmitted_. This behavior guarantees that clients receive complete transactions without missing any intermediate changes, maintaining data integrity across the replication stream​. Logical decoding clients are responsible for avoiding ill effects from handling the same message more than once. Clients may wish to record the last LSN they saw when decoding and skip over any repeated data or (when using the replication protocol) request that decoding start from that LSN rather than letting the server determine the start point.
+- Scalability: Kafka can handle high volumes of messages, making it an ideal choice for large-scale data pipelines.
+- Fault tolerance: Kafka provides built-in fault tolerance, ensuring that messages are not lost in case of failures.
+- High availability: Kafka can handle high availability use cases, such as streaming data from multiple PostgreSQL instances.
 
 ## Try it out
 
-The following example uses a PostgreSQL database as the sink database, which will be populated using a JDBC Sink Connector.
+The following example uses pg_recvlogical, a command-line tool provided by PostgreSQL for interacting with the logical replication feature. It is specifically used to receive changes from the database using logical replication slots.
 
-### Prerequisites**
+YugabyteDB provides the pg_recvlogical binary in the `<yugabyte-db-dir>/postgres/bin/` directory, which is inherited and based on PostgreSQL 11.2. Although PostgreSQL also offers a pg_recvlogical binary, you should use the YugabyteDB version to avoid compatibility issues.
 
-- [Docker](https://www.docker.com) 20 or later.
-- [Docker Compose](https://docs.docker.com/compose/install/) 1.29 or later.
+### Set up pg_recvlogical
 
-### YugabyteDB cluster
-
-<!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere" active="local"/>}}
-
-{{<nav/panels>}}
-{{<nav/panel name="local" active="true">}}
-<!-- local cluster setup instructions -->
-{{<setup/local numnodes="1" rf="1" >}}
-
-{{</nav/panel>}}
-
-{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{</nav/panels>}}
-<!-- end: nav tabs -->
-
-You will need the IP addresses of the nodes in your cluster.
+To set up pg_recvlogical, create and start the local cluster by running the following command from your YugabyteDB home directory:
 
 ```sh
-export NODE=<IP-OF-YOUR-NODE>
-export MASTERS=<MASTER-ADDRESSES>
+./bin/yugabyted start \
+  --advertise_address=127.0.0.1 \
+  --base_dir="${HOME}/var/node1" \
+  --tserver_flags="allowed_preview_flags_csv={cdcsdk_enable_dynamic_table_support},cdcsdk_enable_dynamic_table_support=true,cdcsdk_publication_list_refresh_interval_secs=2"
 ```
 
-### Set up change data capture
+### Create tables
 
-1. Create a table.
+1. Use ysqlsh to connect to the default `yugabyte` database with the default superuser `yugabyte`, as follows:
 
-    This example uses the [Retail Analytics](../../sample-data/retail-analytics/) sample dataset. All the SQL scripts are also copied in this repository for the ease of use, to create the tables in the dataset, use the following command:
+    ```sh
+    bin/ysqlsh -h 127.0.0.1 -U yugabyte -d yugabyte
+    ```
+
+1. In the `yugabyte` database, create a table `employees`.
 
     ```sql
-    \i scripts/schema.sql
+    CREATE TABLE employees (
+        employee_id SERIAL PRIMARY KEY,
+        name VARCHAR(255),
+        email VARCHAR(255),
+        department_id INTEGER
+    );
     ```
 
-1. Create a stream ID using yb-admin:
+### Create a Replication slot
 
-    ```sh
-    ./yb-admin --master_addresses $MASTERS create_change_data_stream ysql.<namespace>
-    ```
+Create a logical replication slot named `test_logical_replication_slot` using the `test_decoding` output plugin via the following function:
 
-1. Start the docker containers:
+```sql
+SELECT *
+FROM pg_create_logical_replication_slot('test_logical_replication_slot', 'test_decoding');
+```
 
-    ```sh
-    docker-compose up -d
-    ```
+```output
+           slot_name           | lsn
+-------------------------------+-----
+ test_logical_replication_slot | 0/2
+```
 
-1. Deploy the source connector:
+### Configure and start pg_recvlogical
 
-    ```sh
-    ./deploy-sources.sh <stream-id-created-in-step-3>
-    ```
+The pg_recvlogical binary can be found under `<yugabyte-db-dir>/postgres/bin/`.
 
-1. Deploy the sink connector:
+Open a new shell and start pg_recvlogical to connect to the `yugabyte` database with the superuser `yugabyte` and replicate changes using the replication slot you created as follows:
 
-    ```sh
-    ./deploy-sinks.sh
-    ```
+```sh
+./pg_recvlogical -d yugabyte \
+  -U yugabyte \
+  -h 127.0.0.1 \
+  --slot test_logical_replication_slot \
+  --start \
+  -f -
+```
 
-1. To sign in to the PostgreSQL terminal, run the following command:
+Any changes that get replicated are printed to stdout.
 
-    ```sh
-    docker run --network=cdc-quickstart-kafka-connect_default -it --rm --name postgresqlterm --link pg:postgresql --rm postgres:11.2 sh -c 'PGPASSWORD=postgres exec psql -h pg -p "$POSTGRES_PORT_5432_TCP_PORT" -U postgres'
-    ```
+For more information about pg_recvlogical configuration, refer to the PostgreSQL [pg_recvlogical](https://www.postgresql.org/docs/11/app-pgrecvlogical.html) documentation.
 
-1. To perform operations and insert data to the created tables, you can use the other scripts bundled under `scripts`.
+### Verify replication
+
+Return to the shell where ysqlsh is running. Perform DMLs on the `employees` table.
+
+```sql
+BEGIN;
+
+INSERT INTO employees (name, email, department_id)
+VALUES ('Alice Johnson', 'alice@example.com', 1);
+
+INSERT INTO employees (name, email, department_id)
+VALUES ('Bob Smith', 'bob@example.com', 2);
+
+COMMIT;
+```
+
+Expected output observed on stdout where pg_recvlogical is running:
+
+```output
+BEGIN 2
+table public.employees: INSERT: employee_id[integer]:1 name[character varying]:'Alice Johnson' email[character varying]:'alice@example.com' department_id[integer]:1
+table public.employees: INSERT: employee_id[integer]:2 name[character varying]:'Bob Smith' email[character varying]:'bob@example.com' department_id[integer]:2
+COMMIT 2
+```
+
+### Add tables
+
+You can add a new table to the `yugabyte` database and any DMLs performed on the new table would also be replicated to pg_recvlogical.
+
+1. In the `yugabyte` database, create a new table `projects`:
 
     ```sql
-    \i scripts/products.sql;
-    \i scripts/users.sql;
-    \i scripts/orders.sql;
-    \i scripts/reviews.sql;
+    CREATE TABLE projects (
+      project_id SERIAL PRIMARY KEY,
+      name VARCHAR(255),
+      description TEXT
+    );
     ```
 
-### Monitor
+2. Perform DMLs on the `projects` table:
 
-#### Confluent Control Center
+    ```sql
+    INSERT INTO projects (name, description)
+    VALUES ('Project A', 'Description of Project A');
+    ```
 
-The Confluent Control Center UI is bundled with this example. After everything is running, use it to monitor the topics and the connect clusters, and so on. Access the controle center at <http://localhost:9021>.
+Expected output observed on stdout where pg_recvlogical is running:
 
-#### Grafana
+```output
+BEGIN 3
+table public.projects: INSERT: project_id[integer]:1 name[character varying]:'Project A' description[text]:'Description of Project A'
+COMMIT 3
+```
 
-You can also access Grafana to view the metrics related to CDC and connectors. The dashboard is available at <http://localhost:3000>.
-
-Use the user name `admin` and password `admin` to sign in to the console.
-
-Use the Kafka Connect Metrics Dashboard to view the basic consolidated metrics in one place. You can start navigating around other dashboards if you need any particular metric.
+{{% explore-cleanup-local %}}
 
 ## Learn more
 
-[Change data capture](../../develop/change-data-capture/)
+- [Change data capture](../../develop/change-data-capture/)
+- [Get started with YugabyteDB connector](../../develop/change-data-capture/using-logical-replication/get-started/)

@@ -19,7 +19,7 @@ This section explores a range of topics designed to provide deeper insights and 
 
 A change in the schema of the tables (ALTER TABLE) being streamed is transparently handled by the database without manual intervention.
 
-This is illustrated in the following example. The client used for the example is [pg_recvlogical](../get-started/#get-started-with-pg-recvlogical).
+This is illustrated in the following example. The client used for the example is [pg_recvlogical](../../../explore/change-data-capture/#try-it-out).
 
 1. Create a table and create the replication slot. pg_recvlogical uses the test_decoding output plugin by default.
 
