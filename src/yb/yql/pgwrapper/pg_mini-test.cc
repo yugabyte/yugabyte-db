@@ -1732,7 +1732,7 @@ class PgMiniTabletSplitTest : public PgMiniTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 30_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 10_KB;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) =
         FLAGS_tablet_force_split_threshold_bytes / 4;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 2_KB;
@@ -1774,11 +1774,13 @@ void PgMiniTest::StartReadWriteThreads(const std::string table_name,
     TestThreadHolder *thread_holder) {
   // Writer thread that does parallel writes into table
   thread_holder->AddThread([this, table_name] {
+    LOG(INFO) << "Starting writes to " << table_name;
     auto conn = ASSERT_RESULT(Connect());
     for (int i = 501; i < 2000; i++) {
       ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2, $3, $4)",
                                    table_name, i, i, i, 1));
     }
+    LOG(INFO) << "Completed writes to " << table_name;
   });
 
   // Index read from the table
