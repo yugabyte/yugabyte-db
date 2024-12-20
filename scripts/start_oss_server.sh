@@ -10,9 +10,12 @@ postgresDirectory=""
 initSetup="false"
 help="false"
 stop="false"
-while getopts "d:hcs" opt; do
+serverType="helio"
+while getopts "dt:hcs" opt; do
   case $opt in
     d) postgresDirectory="$OPTARG"
+    ;;
+    t) serverType="$OPTARG"
     ;;
     c) initSetup="true"
     ;;
@@ -37,12 +40,26 @@ reset=`tput sgr0`
 
 if [ "$help" == "true" ]; then
     echo "${green}sets up and launches a postgres server with extension installed on port $coordinatorPort."
-    echo "${green}start_helio_server -d <postgresDir> [-c] [-s]"
+    echo "${green}start_oss_server -d <postgresDir> [-t <serverType>] [-c] [-s]"
     echo "${green}<postgresDir> is the data directory for your postgres instance with extension"
+    echo "${green}[-t] - optional argument. serverType is the type of server to start. Supported values are helio and documentdb, default is helio"
     echo "${green}[-c] - optional argument. removes all existing data if it exists"
     echo "${green}[-s] - optional argument. Stops all servers and exits"
-    echo "${green}if postgresDir not specified assumed to be ~/helio_test"
+    echo "${green}if postgresDir not specified assumed to be ~/${serverType}_test"
     exit 1;
+fi
+
+extensionName=""
+preloadExtensions=""
+if [ "$serverType" == "helio" ]; then
+  extensionName="pg_helio_api"
+  preloadExtensions="pg_helio_core, pg_helio_api"
+elif [ "$serverType" == "documentdb" ]; then
+  extensionName="pg_documentdb"
+  preloadExtensions="pg_documentdb_core, pg_documentdb"
+else
+  echo "${red}Unknown server type ${serverType}"
+  exit 1
 fi
 
 source="${BASH_SOURCE[0]}"
@@ -60,7 +77,7 @@ scriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
 . $scriptDir/utils.sh
 
 if [ -z $postgresDirectory ]; then
-    postgresDirectory="$HOME/helio_test"
+    postgresDirectory="$HOME/${serverType}_test"
 fi
 
 if ! [ -d "$postgresDirectory" ]; then
@@ -78,7 +95,7 @@ if [ "$stop" == "true" ]; then
 fi
 
 if [ "$initSetup" == "true" ]; then
-    InitDatabaseExtended $postgresDirectory
+    InitDatabaseExtended $postgresDirectory "$preloadExtensions"
 fi
 
 userName=$(whoami)
@@ -88,7 +105,7 @@ sudo chown -R $userName:$userName /var/run/postgresql
 StartServer $postgresDirectory $coordinatorPort
 
 if [ "$initSetup" == "true" ]; then
-  SetupPostgresServerExtensions "$userName" $coordinatorPort 'pg_helio_api'
+  SetupPostgresServerExtensions "$userName" $coordinatorPort $extensionName
 fi
 
 . $scriptDir/setup_psqlrc.sh
