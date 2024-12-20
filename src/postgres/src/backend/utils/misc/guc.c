@@ -5130,8 +5130,9 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"yb_test_block_index_phase", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("Block the given index creation phase."),
-			gettext_noop("Valid values are \"indisready\", \"backfill\", "
-						 " and \"postbackfill\". Any other value is ignored."),
+			gettext_noop("Valid values are \"indislive\", \"indisready\", "
+						 "\"backfill\", and \"postbackfill\". "
+						 "Any other value is ignored."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_block_index_phase,
