@@ -75,7 +75,7 @@ static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table
 class CreateTableITestBase : public ExternalMiniClusterITestBase {
  public:
   Status CreateTableWithPlacement(
-      const master::ReplicationInfoPB& replication_info, const std::string& table_suffix,
+      const ReplicationInfoPB& replication_info, const std::string& table_suffix,
       const YBTableType table_type = YBTableType::YQL_TABLE_TYPE);
 
   Result<bool> VerifyTServerTablets(
@@ -84,7 +84,7 @@ class CreateTableITestBase : public ExternalMiniClusterITestBase {
 
   void PreparePlacementInfo(
       const std::unordered_map<std::string, int>& zone_to_replica_count, int num_replicas,
-      master::PlacementInfoPB* placement_info);
+      PlacementInfoPB* placement_info);
 
   void AddTServerInZone(const std::string& zone);
 };

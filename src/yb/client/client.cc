@@ -216,14 +216,12 @@ using yb::master::ListTabletServersResponsePB_Entry;
 using yb::master::MasterBackupProxy;
 using yb::master::MasterDdlProxy;
 using yb::master::MasterReplicationProxy;
-using yb::master::PlacementInfoPB;
 using yb::master::RedisConfigGetRequestPB;
 using yb::master::RedisConfigGetResponsePB;
 using yb::master::RedisConfigSetRequestPB;
 using yb::master::RedisConfigSetResponsePB;
 using yb::master::ReleaseObjectLocksGlobalRequestPB;
 using yb::master::ReleaseObjectLocksGlobalResponsePB;
-using yb::master::ReplicationInfoPB;
 using yb::master::ReservePgsqlOidsRequestPB;
 using yb::master::ReservePgsqlOidsResponsePB;
 using yb::master::TableIdentifierPB;
@@ -1980,7 +1978,7 @@ void YBClient::GetTableLocations(
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only,
                                    bool use_cache,
                                    const std::string* tablespace_id,
-                                   const master::ReplicationInfoPB* replication_info) {
+                                   const ReplicationInfoPB* replication_info) {
   // Must make an RPC call if replication info must be fetched
   // (ie. cannot use the tserver count cache)
   bool is_replication_info_required = tablespace_id || replication_info;
@@ -2109,8 +2107,8 @@ Result<bool> YBClient::IsLoadBalancerIdle() {
 }
 
 Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
-                                          master::PlacementInfoPB&& live_replicas) {
-  master::ReplicationInfoPB replication_info;
+                                          PlacementInfoPB&& live_replicas) {
+  ReplicationInfoPB replication_info;
   // Merge the obtained info with the existing table replication info.
   std::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK_PREPEND(OpenTable(table_name, &table), "Fetching table schema failed!");
@@ -2139,7 +2137,7 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
 }
 
 Status YBClient::CreateTransactionsStatusTable(
-    const string& table_name, const master::ReplicationInfoPB* replication_info) {
+    const string& table_name, const ReplicationInfoPB* replication_info) {
   if (table_name.rfind(kTransactionTablePrefix, 0) != 0) {
     return STATUS_FORMAT(
         InvalidArgument, "Name '$0' for transaction table does not start with '$1'", table_name,
@@ -2847,7 +2845,7 @@ bool YBClient::IsMultiMaster() const {
 Result<int> YBClient::NumTabletsForUserTable(
     TableType table_type,
     const std::string* tablespace_id,
-    const master::ReplicationInfoPB* replication_info) {
+    const ReplicationInfoPB* replication_info) {
   if (table_type == TableType::PGSQL_TABLE_TYPE &&
         FLAGS_ysql_num_tablets > 0) {
     VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ysql_num_tablets

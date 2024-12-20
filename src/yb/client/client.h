@@ -98,7 +98,6 @@ class MemTracker;
 class MetricEntity;
 
 namespace master {
-class ReplicationInfoPB;
 class TabletLocationsPB;
 class GetAutoFlagsConfigResponsePB;
 }
@@ -730,7 +729,7 @@ class YBClient {
   // If use_cache is set to true, we return old value.
   Status TabletServerCount(int *tserver_count, bool primary_only = false,
       bool use_cache = false, const std::string* tablespace_id = nullptr,
-      const master::ReplicationInfoPB* replication_info = nullptr);
+      const ReplicationInfoPB* replication_info = nullptr);
 
   Result<std::vector<YBTabletServer>> ListTabletServers();
 
@@ -845,13 +844,13 @@ class YBClient {
   Result<bool> IsLoadBalancerIdle();
 
   Status ModifyTablePlacementInfo(
-      const YBTableName& table_name, master::PlacementInfoPB&& live_replicas);
+      const YBTableName& table_name, PlacementInfoPB&& live_replicas);
 
   // Creates a transaction status table. 'table_name' is required to start with
   // kTransactionTablePrefix.
   Status CreateTransactionsStatusTable(
       const std::string& table_name,
-      const master::ReplicationInfoPB* replication_info = nullptr);
+      const ReplicationInfoPB* replication_info = nullptr);
 
   // Add a tablet to a transaction table.
   Status AddTransactionStatusTablet(const TableId& table_id);
@@ -919,7 +918,7 @@ class YBClient {
   // and number of tservers.
   Result<int> NumTabletsForUserTable(
       TableType table_type, const std::string* tablespace_id = nullptr,
-      const master::ReplicationInfoPB* replication_info = nullptr);
+      const ReplicationInfoPB* replication_info = nullptr);
 
   void TEST_set_admin_operation_timeout(const MonoDelta& timeout);
 
@@ -947,10 +946,10 @@ class YBClient {
   // Given a host and port for a master, get the uuid of that process.
   Status GetMasterUUID(const std::string& host, uint16_t port, std::string* uuid);
 
-  Status SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
+  Status SetReplicationInfo(const ReplicationInfoPB& replication_info);
 
   // Check if placement information is satisfiable.
-  Status ValidateReplicationInfo(const master::ReplicationInfoPB& replication_info);
+  Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info);
 
   // Get the disk size of a table (calculated as SST file size + WAL file size)
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);

@@ -151,7 +151,7 @@ void MasterPartitionedTest::CreateTable(const YBTableName& table_name, int num_t
   ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
                                                 table_name.namespace_type()));
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(3);
   ASSERT_OK(table_creator->table_name(table_name)
                 .table_type(client::YBTableType::REDIS_TABLE_TYPE)
