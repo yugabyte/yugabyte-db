@@ -1,3 +1,5 @@
+is_cloud={{ is_cloud | default(false) }}
+
 # Set system limits
 # Append limits to /etc/security/limits.conf if they don't already exist
 #
@@ -20,7 +22,7 @@ sed -i 's/*          soft    nproc     4096/*          soft    nproc     \
 
 
 # Determine the PLATFORM_ID
-platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
 
 if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
   # Check and set DefaultLimitNOFILE in /etc/systemd/system.conf
@@ -54,20 +56,114 @@ if ! grep -q "^vm.swappiness=" /etc/sysctl.conf; then
 fi
 sysctl -w vm.swappiness={{ vm_swappiness }}
 
-# Set and persist kernel.core_pattern
-if ! grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
-  echo "kernel.core_pattern={{ kernel_core_pattern }}" >> /etc/sysctl.conf
-fi
-sysctl -w kernel.core_pattern={{ kernel_core_pattern }}
+if [[ "$is_cloud" == "False" ]]; then
+  # Set and persist kernel.core_pattern
+  if ! grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
+    echo "kernel.core_pattern={{ kernel_core_pattern }}" >> /etc/sysctl.conf
+  fi
+  sysctl -w kernel.core_pattern={{ kernel_core_pattern }}
 
-# Set and persist vm.max_map_count
-if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf; then
-  echo "vm.max_map_count={{ vm_max_map_count }}" >> /etc/sysctl.conf
+  # Set and persist vm.max_map_count
+  if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf; then
+    echo "vm.max_map_count={{ vm_max_map_count }}" >> /etc/sysctl.conf
+  fi
+  sysctl -w vm.max_map_count={{ vm_max_map_count }}
 fi
-sysctl -w vm.max_map_count={{ vm_max_map_count }}
+
+if [[ "$is_cloud" == true ]]; then
+  # Define paths and directories
+  DUMP_DIR="{{ yb_home_dir }}/cores/"
+
+  # Ensure the cores directory exists with proper permissions
+  mkdir -p "$DUMP_DIR"
+  chmod 0755 "$DUMP_DIR"
+  chown "{{ user_name }}:{{ user_name }}" "$DUMP_DIR"
+
+  # Create core dump compression script
+  cat << 'EOF' > "{{ bin_path }}/compress_core.sh"
+#!/bin/bash
+DUMP_DIR="/home/yugabyte/cores/"
+CORE_FILE="$DUMP_DIR/$(basename $1).$$.gz"
+GZIP_PATH=$(PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" which gzip)
+if [[ -z "$GZIP_PATH" ]]; then
+  echo "gzip not found, aborting." >> /home/yugabyte/cores/custom_core_dump.log
+  exit 1
+fi
+/usr/bin/gzip >> "$CORE_FILE"
+chmod 644 "$CORE_FILE"
+EOF
+
+  # Create core dump kernel pattern
+  sysctl -w kernel.core_pattern="|{{ bin_path }}/compress_core.sh {{ yb_home_dir }}/cores/core_%%p_%%t_%%E"
+
+  # Persist the kernel core dump pattern
+  grep -q "^kernel.core_pattern=" /etc/sysctl.conf && \
+  sed -i "s|^kernel.core_pattern=.*|kernel.core_pattern=|$CORE_SCRIPT {{ yb_home_dir }}/cores/core_%%p_%%t_%%E|" /etc/sysctl.conf || \
+  echo "kernel.core_pattern=|$CORE_SCRIPT {{ yb_home_dir }}/cores/core_%%p_%%t_%%E" >> /etc/sysctl.conf
+
+  # Set max map count
+  sysctl -w vm.max_map_count="{{ vm_max_map_count }}"
+
+  # Ensure mount paths exist
+  mount_points="{{ mount_points | default('') | trim }}"
+  IFS=' ' read -ra mount_points_array <<< "$mount_points"
+  # Verify each mount point
+  for mount_point in "${mount_points_array[@]}"; do
+    mkdir -p "{{ mount_path }}"
+    chown -R "{{ user_name }}:{{ user_name }}" "${mount_path}"
+    chmod -R 755 "{{ mount_path }}"
+  done
+
+  # Ensure metrics directory exists
+  mkdir -p "{{ yb_metrics_dir }}"
+  chown -R "{{ user_name }}:{{ user_name }}" "{{ yb_metrics_dir }}"
+  chmod -R 755 "{{ yb_metrics_dir }}"
+
+  install_node_exporter="{{ install_node_exporter | default('false') }}"
+  if [[ "$install_node_exporter" == "true" ]] || \
+   [[ ("{{ os_family }}" == "RedHat" && "{{ os_version }}" == "7") || \
+      ("{{ os_distribution }}" == "Amazon" && "{{ os_version }}" == "2") ]]; then
+    chmod 0750 {{ yb_home_dir }}
+  fi
+
+  sudoers_file="/etc/sudoers.d/yugabyte-metrics"
+  sudo_entry="yugabyte ALL=(ALL:ALL) NOPASSWD: /usr/bin/journalctl -k --since 10min\\ ago"
+
+  # Add the sudo entry for yugabyte
+  if [[ ! -f "$sudoers_file" ]] || ! grep -Fxq "$sudo_entry" "$sudoers_file"; then
+    echo "$sudo_entry" | sudo tee "$sudoers_file" > /dev/null
+    sudo chmod 0440 "$sudoers_file"
+    
+    # Validate the sudoers file
+    if ! sudo visudo -cf "$sudoers_file"; then
+      echo "Error: Invalid sudoers file syntax in $sudoers_file" >&2
+      exit 1
+    fi
+  fi
+
+  # Check if the distribution is Ubuntu
+  if [[ "{{ os_distribution }}" == "Ubuntu" ]]; then
+    # Check if /etc/apt/apt.conf.d/20auto-upgrades exists
+    if [[ -f /etc/apt/apt.conf.d/20auto-upgrades ]]; then
+      echo "Reenabling unattended upgrades in /etc/apt/apt.conf.d/20auto-upgrades..."
+      sed -i '/Unattended-Upgrade/s/"0"/"1"/' /etc/apt/apt.conf.d/20auto-upgrades
+    else
+      echo "/etc/apt/apt.conf.d/20auto-upgrades not found. Skipping reenable of unattended upgrades."
+    fi
+
+    # Check if /etc/apt/apt.conf.d/50unattended-upgrades exists
+    if [[ -f /etc/apt/apt.conf.d/50unattended-upgrades ]]; then
+      echo "Disabling automatic reboot in /etc/apt/apt.conf.d/50unattended-upgrades..."
+      if ! grep -q 'Unattended-Upgrade::Automatic-Reboot "false";' /etc/apt/apt.conf.d/50unattended-upgrades; then
+        echo 'Unattended-Upgrade::Automatic-Reboot "false";' >> /etc/apt/apt.conf.d/50unattended-upgrades
+      fi
+    else
+      echo "/etc/apt/apt.conf.d/50unattended-upgrades not found. Skipping disable of automatic reboot."
+    fi
+  fi
+fi
 
 echo "Kernel settings configured."
-
 echo "OS Configuration applied successfully."
 
 cat <<EOF >> /etc/systemd/journald.conf

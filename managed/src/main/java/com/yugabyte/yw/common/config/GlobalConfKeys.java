@@ -1560,4 +1560,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait for GFlag Sync in K8s universe",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableYNPProvisioning =
+      new ConfKeyInfo<>(
+          "yb.node_agent.use_ynp_provisioning",
+          ScopeType.GLOBAL,
+          "Use YNP for provisioning",
+          "If enabled use YNP for provisioning",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

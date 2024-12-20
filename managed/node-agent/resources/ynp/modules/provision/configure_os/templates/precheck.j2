@@ -1,3 +1,5 @@
+is_cloud={{ is_cloud | default(false) }}
+
 check_ulimit() {
     local resource=$1
     local expected_value=$2
@@ -64,7 +66,7 @@ for key in "${!limits[@]}"; do
 done
 
 # Determine the PLATFORM_ID
-platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
 
 if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
     # Verify DefaultLimitNOFILE in systemd configuration files
@@ -76,18 +78,20 @@ fi
 verify_sysctl "vm.swappiness" "{{ vm_swappiness }}"
 verify_sysctl "vm.max_map_count" "{{ vm_max_map_count }}"
 
-# Verify kernel core pattern
-kernel_core_pattern_value=$(sysctl -n kernel.core_pattern)
-if [ "$kernel_core_pattern_value" == "{{ kernel_core_pattern }}" ]; then
-    echo "[PASS] kernel.core_pattern is set to $kernel_core_pattern_value"
-    add_result "kernel.core_pattern" "PASS" "kernel.core_pattern is set to $kernel_core_pattern_value"
-else
-    echo "[FAIL] kernel.core_pattern is set to $kernel_core_pattern_value \
-          (expected: {{ kernel_core_pattern }})"
-    add_result "kernel.core_pattern" "FAIL" "kernel.core_pattern is set to $kernel_core_pattern_value (expected: {{ kernel_core_pattern }})"
+if [[ "$is_cloud" == "False" ]]; then
+    # Verify kernel core pattern
+    kernel_core_pattern_value=$(sysctl -n kernel.core_pattern)
+    if [ "$kernel_core_pattern_value" == "{{ kernel_core_pattern }}" ]; then
+        echo "[PASS] kernel.core_pattern is set to $kernel_core_pattern_value"
+        add_result "kernel.core_pattern" "PASS" "kernel.core_pattern is set to $kernel_core_pattern_value"
+    else
+        echo "[FAIL] kernel.core_pattern is set to $kernel_core_pattern_value \
+            (expected: {{ kernel_core_pattern }})"
+        add_result "kernel.core_pattern" "FAIL" "kernel.core_pattern is set to $kernel_core_pattern_value (expected: {{ kernel_core_pattern }})"
+    fi
 fi
 
-platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
 if [[ "$platform_id" == "platform:el8" ]]; then
     # Check if selinux module can be imported
     /usr/bin/python3 -c "import selinux" 2>/dev/null

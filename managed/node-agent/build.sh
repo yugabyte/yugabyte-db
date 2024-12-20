@@ -210,6 +210,7 @@ package_for_platform() {
     cp -rf node-agent-provision.yaml "${script_dir}"/node-agent-provision.yaml
     pushd "$project_dir"
     cp -rf ../devops/roles/configure-cluster-server/templates/* "${script_dir}"/ynp/modules/provision/systemd/templates/
+    cp -rf ../devops/roles/install_mount_ephemeral_drives_script/templates/mount_ephemeral_drives.sh.j2 "${script_dir}"/ynp/modules/provision/mount_ephemeral_drives/templates/run.j2
     popd
     chmod 755 "${script_dir}"/*.sh
     chmod 755 "${bin_dir}"/*.sh
