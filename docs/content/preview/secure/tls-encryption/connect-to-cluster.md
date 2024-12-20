@@ -18,20 +18,15 @@ You can connect CLIs, tools, and APIs to a remote YugabyteDB cluster when client
 
 ## Prerequisites
 
-In order to connect to your YugabyteDB clusters using encryption in transit, you have to enable client-to-server encryption and might need to enable server-to-server encryption (see [Connecting to a YugabyteDB Cluster](#connecting-to-a-yugabytedb-cluster)).
-
-Each client that connects to a YugabyteDB cluster needs the following file to be accessible on the client computer:
+Each client that connects to a YugabyteDB cluster that has encryption in transit enabled needs the following file to be accessible on the client computer:
 
 - `ca.crt` — root certificate file (for YSQL and YCQL). See [Generate the root certificate file](../server-certificates/#generate-the-root-certificate-file) for instructions on how to generate this file.
 
-  This file should be available in the `~/.yugabytedb`, the default location for TLS certificates when running the YSQL shell (ysqlsh) locally.
+  This file should be available in `~/.yugabytedb`, the default location for TLS certificates when running the YSQL shell (ysqlsh) locally.
 
-## Connecting to a YugabyteDB Cluster
+## Connect to a YugabyteDB cluster
 
-For each client, the steps assume that you have performed the following:
-
-- [Enabled client-to-server encryption](../client-to-server/) on the YB-TServer nodes of your YugabyteDB cluster.
-- [Enabled server-to-server encryption](../server-to-server/) on the YugabyteDB cluster.
+For each client, the steps assume that you have [Enabled encryption in transit](../server-to-server/) on the YugabyteDB cluster.
 
 ## ysqlsh
 
@@ -94,7 +89,7 @@ $ export SSL_CERTFILE=<path to file>/ca.crt
 
 The next step is to connect using the `--ssl` flag.
 
-### Local Cluster
+### Local cluster
 
 ```sh
 $ ./bin/ycqlsh --ssl
@@ -111,7 +106,7 @@ ycqlsh> DESCRIBE KEYSPACES;
 system_schema  system_auth  system
 ```
 
-### Remote Cluster
+### Remote cluster
 
 To connect to a remote YugabyteDB cluster, you need to have a local copy of ycqlsh available. You can use the ycqlsh CLI available on a locally-installed YugabyteDB.
 

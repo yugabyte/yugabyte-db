@@ -3,7 +3,7 @@ title: Encryption in transit in YugabyteDB Anywhere
 headerTitle: Encryption in transit
 linkTitle: Encryption in transit
 description: Use encryption in transit (TLS) to secure data traffic.
-headcontent: Secure intra-node and application traffic
+headcontent: Secure inter-node and application traffic
 menu:
   v2024.1_yugabyte-platform:
     parent: security
@@ -15,7 +15,7 @@ showRightNav: true
 
 YugabyteDB Anywhere allows you to protect data in transit by using the following:
 
-- Node-to-Node TLS to encrypt intra-node communication between YB-Master and YB-TServer nodes.
+- Node-to-Node TLS to encrypt inter-node communication between YB-Master and YB-TServer nodes.
 - Client-to-Node TLS to encrypt communication between a universe and clients. This includes applications, shells (ysqlsh, ycqlsh, psql, and so on), and other tools, using the YSQL and YCQL APIs.
 
 ## Manage certificates
