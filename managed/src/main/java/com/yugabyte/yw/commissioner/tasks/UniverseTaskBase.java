@@ -1011,10 +1011,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (updaterConfig.isFreezeUniverse()) {
       universeDetails.updatingTask = owner;
       universeDetails.updatingTaskUUID = getUserTaskUUID();
-      if (PLACEMENT_MODIFICATION_TASKS.contains(owner)) {
-        universeDetails.placementModificationTaskUuid = getUserTaskUUID();
-      }
       if (updaterConfig.isCheckSuccess()) {
+        if (PLACEMENT_MODIFICATION_TASKS.contains(owner)) {
+          universeDetails.placementModificationTaskUuid = getUserTaskUUID();
+        }
         universeDetails.updateSucceeded = false;
       }
       Consumer<Universe> callback = updaterConfig.getCallback();
@@ -1327,7 +1327,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdaterConfig updaterConfig =
         UniverseUpdaterConfig.builder()
             .expectedUniverseVersion(expectedUniverseVersion)
-            .checkSuccess(true)
             .ignoreAbsence(true)
             .build();
     return lockUniverseForUpdate(universeUuid, getLockingUniverseUpdater(updaterConfig));
