@@ -700,6 +700,7 @@ extern ResultRelInfo *ExecLookupResultRelByOid(ModifyTableState *node,
 											   bool update_cache);
 
 extern void YbBatchFetchConflictingRows(ResultRelInfo *resultRelInfo,
+										YbInsertOnConflictBatchState *yb_ioc_state,
 										EState *estate,
 										List *arbiterIndexes);
 extern bool YbShouldCheckUniqueOrExclusionIndex(IndexInfo *indexInfo,
