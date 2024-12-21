@@ -2088,7 +2088,7 @@ void CDCServiceImpl::ProcessMetricsForEmptyChildrenTablets(
 
       // Need to work our way up the hierarchy until we find a tablet with a valid value.
       auto parent_tablet = child_tablet_meta.parent_tablet_info;
-      std::unordered_set<TabletStreamInfo, TabletStreamInfo::Hash> tablet_hierarchy;
+      std::unordered_set<TabletStreamInfo> tablet_hierarchy;
       tablet_hierarchy.insert(child_tablet);
 
       while (!parent_tablet.tablet_id.empty()) {
@@ -2137,7 +2137,7 @@ void CDCServiceImpl::ProcessMetricsForEmptyChildrenTablets(
 void CDCServiceImpl::UpdateMetrics() {
   auto tablet_checkpoints = impl_->TabletCheckpointsCopy();
   TabletInfoToLastReplicationTimeMap cdc_state_tablets_to_last_replication_time;
-  std::unordered_set<TabletStreamInfo, TabletStreamInfo::Hash> expired_entries;
+  std::unordered_set<TabletStreamInfo> expired_entries;
   EmptyChildrenTabletMap empty_children_tablets;
 
   Status iteration_status;

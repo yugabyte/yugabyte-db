@@ -413,9 +413,9 @@ class CDCServiceImpl : public CDCServiceIf {
     std::shared_ptr<yb::xrepl::XClusterTabletMetrics> tablet_metric;
   };
   using EmptyChildrenTabletMap =
-      std::unordered_map<TabletStreamInfo, ChildrenTabletMeta, TabletStreamInfo::Hash>;
+      std::unordered_map<TabletStreamInfo, ChildrenTabletMeta>;
   using TabletInfoToLastReplicationTimeMap =
-      std::unordered_map<TabletStreamInfo, std::optional<uint64_t>, TabletStreamInfo::Hash>;
+      std::unordered_map<TabletStreamInfo, std::optional<uint64_t>>;
   // Helper function for processing metrics of children tablets. We need to find an ancestor tablet
   // that has a last replicated time and use that with our latest op's time to find the full lag.
   void ProcessMetricsForEmptyChildrenTablets(

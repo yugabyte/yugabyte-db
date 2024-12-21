@@ -13,10 +13,10 @@
 
 #pragma once
 
-#include <boost/functional/hash/hash.hpp>
-
 #include "yb/common/entity_ids.h"
 #include "yb/common/schema.h"
+
+#include "yb/util/hash_util.h"
 
 namespace yb {
 
@@ -83,6 +83,10 @@ struct PgObjectId {
   static NamespaceId GetYbNamespaceIdFromPB(const PB& pb) {
     return FromPB(pb).GetYbNamespaceId();
   }
+
+  constexpr std::strong_ordering operator<=>(const PgObjectId&) const = default;
+
+  YB_STRUCT_DEFINE_HASH(PgObjectId, database_oid, object_oid);
 };
 
 using PgObjectIdHash = boost::hash<PgObjectId>;
@@ -91,49 +95,19 @@ inline std::ostream& operator<<(std::ostream& out, const PgObjectId& id) {
   return out << id.ToString();
 }
 
-inline bool operator==(const PgObjectId& lhs, const PgObjectId& rhs) {
-  return lhs.database_oid == rhs.database_oid && lhs.object_oid == rhs.object_oid;
-}
-
-inline bool operator<(const PgObjectId& lhs, const PgObjectId& rhs) {
-  return lhs.database_oid == rhs.database_oid
-      ? (lhs.object_oid < rhs.object_oid)
-      : (lhs.database_oid < rhs.database_oid);
-}
-
-inline size_t hash_value(const PgObjectId& id) {
-  size_t value = 0;
-  boost::hash_combine(value, id.database_oid);
-  boost::hash_combine(value, id.object_oid);
-  return value;
-}
-
 // A struct for complete PG table names.
 struct YsqlFullTableName {
   NamespaceName namespace_name;
   PgSchemaName schema_name;
   TableName table_name;
 
-  bool operator==(const YsqlFullTableName& other) const {
-    return namespace_name == other.namespace_name && schema_name == other.schema_name &&
-           table_name == other.table_name;
-  }
+  bool operator==(const YsqlFullTableName& other) const = default;
+
+  YB_STRUCT_DEFINE_HASH(YsqlFullTableName, namespace_name, schema_name, table_name);
 
   std::string ToString() const;
-
-  struct Hash {
-    std::size_t operator()(const YsqlFullTableName& p) const noexcept;
-  };
 };
 
 using YsqlFullTableNameHash = boost::hash<YsqlFullTableName>;
-
-inline size_t hash_value(const YsqlFullTableName& table) {
-  size_t value = 0;
-  boost::hash_combine(value, table.namespace_name);
-  boost::hash_combine(value, table.schema_name);
-  boost::hash_combine(value, table.table_name);
-  return value;
-}
 
 }  // namespace yb
