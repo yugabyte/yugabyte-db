@@ -454,7 +454,7 @@ EnsureMetadataTableReplicatedCore(const char *tableName)
 	{
 		/* There was an add node but the metadata table needed wasn't replicated: Call replicate_reference_tables first */
 		ExtensionExecuteQueryOnLocalhostViaLibPQ(
-			"SELECT pg_catalog.replicate_reference_tables()");
+			"SELECT pg_catalog.replicate_reference_tables('block_writes')");
 	}
 }
 

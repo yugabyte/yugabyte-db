@@ -54,6 +54,9 @@ bool EnableNewOperatorSelectivityMode = DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY;
 #define DEFAULT_SHARDING_MAX_CHUNKS 128
 int ShardingMaxChunks = DEFAULT_SHARDING_MAX_CHUNKS;
 
+#define DEFAULT_RECREATE_RETRY_TABLE_ON_SHARDING false
+bool RecreateRetryTableOnSharding = DEFAULT_RECREATE_RETRY_TABLE_ON_SHARDING;
+
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -735,6 +738,13 @@ InitApiConfigurations(char *prefix)
 			"Gets the maximum allowed number of chunks for a shard collection operation"),
 		NULL, &ShardingMaxChunks, DEFAULT_SHARDING_MAX_CHUNKS, 1, 8192, PGC_USERSET, 0,
 		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.recreate_retry_table_on_shard", prefix),
+		gettext_noop(
+			"Gets whether or not to recreate a retry table to match the main table"),
+		NULL, &RecreateRetryTableOnSharding, DEFAULT_RECREATE_RETRY_TABLE_ON_SHARDING,
+		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		psprintf("%s.enableNativeTableColocation", prefix),

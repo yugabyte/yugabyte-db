@@ -253,4 +253,7 @@ void UpdateMongoCollectionUsingIds(MongoCollection *mongoCollection, uint64 coll
 
 void SetUnshardedColocationData(text *databaseDatum, const char **shardingColumn, const
 								char **colocateWith);
+
+void CreateRetryTable(char *retryTableName, char *colocateWith, const
+					  char *distributionColumnUsed, int shardCount);
 #endif

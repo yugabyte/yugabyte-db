@@ -30,6 +30,7 @@
 extern bool EnableNativeColocation;
 extern bool EnableShardingOrFilters;
 extern int ShardingMaxChunks;
+extern bool RecreateRetryTableOnSharding;
 
 /*
  * ShardKeyFieldValues is used to keep track of shard key values in a query.
@@ -1131,6 +1132,24 @@ ShardCollectionCore(ShardCollectionArgs *args)
 					 "ALTER TABLE %s OWNER TO %s",
 					 qualifiedDataTableName, ApiAdminRole);
 	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
+
+	/* Make GUC default eventually: Recreate retry_table here with new shards */
+	if (RecreateRetryTableOnSharding)
+	{
+		StringInfo retryTableNameInfo = makeStringInfo();
+		appendStringInfo(retryTableNameInfo, "%s.retry_%lu", ApiDataSchemaName,
+						 collection->collectionId);
+
+		/* Recreate the retry table */
+		resetStringInfo(queryInfo);
+		appendStringInfo(queryInfo, "DROP TABLE %s", retryTableNameInfo->data);
+		ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
+
+		/* Since we're colocating with, shardCount should be 0 */
+		int shardCountForRetry = 0;
+		CreateRetryTable(retryTableNameInfo->data, qualifiedDataTableName,
+						 distributionColumn, shardCountForRetry);
+	}
 
 	/* Get all valid or in progress indexes and delete them from metadata entries related to the collection.
 	 * TODO(MX): This really should not be CommutativeWrites for the entire query. Ideally only hte DELETE itself

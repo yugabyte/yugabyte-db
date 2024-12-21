@@ -3,6 +3,7 @@ SET citus.next_shard_id TO 756000;
 SET helio_api.next_collection_id TO 7560;
 SET helio_api.next_collection_index_id TO 7560;
 ALTER SEQUENCE pg_dist_colocationid_seq RESTART WITH 7560;
+set helio_api.recreate_retry_table_on_shard to on;
 
 
 CREATE FUNCTION command_sharding_get_collectionInfo(dbname text DEFAULT 'comm_sh_coll', filterValue text DEFAULT '')
@@ -43,6 +44,11 @@ SELECT helio_api.shard_collection('{ "shardCollection": "comm_sh_coll.new_coll",
 
 -- call listCollections and validate state.
 SELECT command_sharding_get_collectionInfo();
+SELECT * FROM public.citus_tables tbls JOIN
+    (SELECT 'helio_data.documents_' || collection_id AS mongo_table_name FROM helio_api_catalog.collections WHERE database_name = 'comm_sh_coll'
+    UNION ALL SELECT 'helio_data.retry_' || collection_id AS mongo_table_name FROM helio_api_catalog.collections WHERE database_name = 'comm_sh_coll') colls ON tbls.table_name::text = colls.mongo_table_name
+    ORDER BY colocation_id ASC;
+
 
 -- shard with different shard count
 SELECT helio_api.shard_collection('{ "shardCollection": "comm_sh_coll.comp_shard", "key": { "_id": "hashed" }, "unique": false, "numInitialChunks": 3 }');

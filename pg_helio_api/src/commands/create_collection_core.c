@@ -270,10 +270,26 @@ CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith, const
 	ExtensionExecuteQueryViaSPI(createTableStringInfo->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
+	/* Create a retry table colocated with the data table. */
+	CreateRetryTable(retryTableNameInfo->data, dataTableNameInfo->data,
+					 distributionColumnUsed, shardCount);
+
+	return dataTableNameInfo->data;
+}
+
+
+void
+CreateRetryTable(char *retryTableName, char *colocateWith, const
+				 char *distributionColumnUsed, int shardCount)
+{
+	bool readOnly = false;
+	bool isNull = false;
+	StringInfo queryStringInfo = makeStringInfo();
+
 	/* Create the retry record table */
 	/* table that records committed writes and their logical transaction IDs */
-	resetStringInfo(createTableStringInfo);
-	appendStringInfo(createTableStringInfo,
+	resetStringInfo(queryStringInfo);
+	appendStringInfo(queryStringInfo,
 					 "CREATE TABLE %s ("
 
 	                 /* derived shard key field generated from the real shard key */
@@ -298,29 +314,27 @@ CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith, const
 	                  */
 					 "result_document %s.bson null,"
 					 "PRIMARY KEY (shard_key_value, transaction_id)"
-					 ")", retryTableNameInfo->data, CoreSchemaName, CoreSchemaName);
-	ExtensionExecuteQueryViaSPI(createTableStringInfo->data, readOnly, SPI_OK_UTILITY,
+					 ")", retryTableName, CoreSchemaName, CoreSchemaName);
+	ExtensionExecuteQueryViaSPI(queryStringInfo->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
 	/* Change the owner to the extension admin */
-	resetStringInfo(createTableStringInfo);
-	appendStringInfo(createTableStringInfo,
+	resetStringInfo(queryStringInfo);
+	appendStringInfo(queryStringInfo,
 					 "ALTER TABLE %s OWNER TO %s",
-					 retryTableNameInfo->data, ApiAdminRole);
-	ExtensionExecuteQueryViaSPI(createTableStringInfo->data, readOnly, SPI_OK_UTILITY,
+					 retryTableName, ApiAdminRole);
+	ExtensionExecuteQueryViaSPI(queryStringInfo->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
-	resetStringInfo(createTableStringInfo);
-	appendStringInfo(createTableStringInfo,
-					 "CREATE INDEX ON %s (object_id)", retryTableNameInfo->data);
-	ExtensionExecuteQueryViaSPI(createTableStringInfo->data, readOnly, SPI_OK_UTILITY,
+	resetStringInfo(queryStringInfo);
+	appendStringInfo(queryStringInfo,
+					 "CREATE INDEX ON %s (object_id)", retryTableName);
+	ExtensionExecuteQueryViaSPI(queryStringInfo->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
-	colocateWith = dataTableNameInfo->data;
-	DistributePostgresTable(retryTableNameInfo->data, distributionColumnUsed,
+	DistributePostgresTable(retryTableName, distributionColumnUsed,
 							colocateWith,
 							shardCount);
-	return dataTableNameInfo->data;
 }
 
 
