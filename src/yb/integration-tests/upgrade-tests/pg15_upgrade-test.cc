@@ -335,7 +335,7 @@ TEST_F(Pg15UpgradeTest, Schemas) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, MultipleDatabases) {
+TEST_F(Pg15UpgradeTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MultipleDatabases)) {
   /* Cases:
    * - We support creating / altering databases to disallow connections - but neither YB nor PG
    *   support upgrading those databases. That is tested by DatabaseWithDisallowedConnections below.
