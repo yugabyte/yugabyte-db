@@ -2560,7 +2560,7 @@ class CompactionClientTest : public ClientTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
     ClientTest::SetUp();
     time_before_compaction_ =
-        ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->clock()->Now();
+        ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Now();
   }
 
  protected:

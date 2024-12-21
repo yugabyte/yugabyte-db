@@ -12255,7 +12255,12 @@ Status CatalogManager::CollectTable(
     return Status::OK();
   }
   if (flags.Test(CollectFlag::kIncludeParentColocatedTable) && lock->pb.colocated()) {
-    if (!IsColocationParentTableId(table_description.table_info->id())) {
+    bool add_parent = !IsColocationParentTableId(table_description.table_info->id());
+    if (add_parent && lock->is_vector_index()) {
+      auto indexed_table = VERIFY_RESULT(FindTableById(lock->indexed_table_id()));
+      add_parent = indexed_table->LockForRead()->pb.colocated();
+    }
+    if (add_parent) {
       // If a table is colocated, add its parent colocated table as well.
       TableId parent_table_id = VERIFY_RESULT(
           GetParentTableIdForColocatedTable(table_description.table_info));
@@ -12665,31 +12670,28 @@ Result<TableId> CatalogManager::GetParentTableIdForColocatedTable(
 }
 
 Result<TableId> CatalogManager::GetParentTableIdForColocatedTableUnlocked(
-    const scoped_refptr<TableInfo>& table) {
+    const TableInfoPtr& table) {
   DCHECK(table->colocated());
   DCHECK(!IsColocationParentTableId(table->id()));
 
-  auto ns_info = VERIFY_RESULT(FindNamespaceByIdUnlocked(table->namespace_id()));
-  TableId parent_table_id;
+  auto table_lock = table->LockForRead();
+  auto ns_info = VERIFY_RESULT(FindNamespaceByIdUnlocked(table_lock->namespace_id()));
 
   auto tablegroup = tablegroup_manager_->FindByTable(table->id());
   if (ns_info->colocated()) {
     // Two types of colocated database: (1) pre-Colocation GA (2) Colocation GA
     // Colocated databases created before Colocation GA don't use tablegroup
     // to manage its colocated tables.
-    if (tablegroup)
-      parent_table_id = GetColocationParentTableId(tablegroup->id());
-    else
-      parent_table_id = GetColocatedDbParentTableId(table->namespace_id());
-  } else {
-    RSTATUS_DCHECK(tablegroup != nullptr,
-                   Corruption,
-                   Format("Not able to find the tablegroup for a colocated table $0 whose database "
-                          "is not colocated.", table->id()));
-    parent_table_id = GetTablegroupParentTableId(tablegroup->id());
+    if (tablegroup) {
+      return GetColocationParentTableId(tablegroup->id());
+    }
+    return GetColocatedDbParentTableId(table_lock->namespace_id());
   }
-
-  return parent_table_id;
+  RSTATUS_DCHECK(tablegroup != nullptr,
+                 Corruption,
+                 Format("Not able to find the tablegroup for a colocated table $0 whose database "
+                        "is not colocated.", table->id()));
+  return GetTablegroupParentTableId(tablegroup->id());
 }
 
 Result<std::optional<cdc::ConsumerRegistryPB>> CatalogManager::GetConsumerRegistry() {

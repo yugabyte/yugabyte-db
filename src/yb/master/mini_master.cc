@@ -306,5 +306,9 @@ FsManager& MiniMaster::fs_manager() const {
   return *master_->fs_manager();
 }
 
+HybridTime MiniMaster::Now() const {
+  return master_->clock()->Now();
+}
+
 } // namespace master
 } // namespace yb

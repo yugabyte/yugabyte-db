@@ -134,7 +134,7 @@ std::vector<ColumnId> GetVectorIndexedColumns(const qlexpr::IndexMap& index_map)
   result.reserve(1); // It is expected to have only 1 vector-indexed column.
   for (const auto& it : index_map) {
     const auto& index = it.second;
-    if (!index.is_vector_idx()) {
+    if (!index.is_vector_index()) {
       continue;
     }
     const auto& vector_options = index.vector_idx_options();
@@ -269,7 +269,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
-  if (index_info && index_info->is_vector_idx()) {
+  if (index_info && index_info->is_vector_index()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
 
     // TODO(vector-index) could be removed if PG uses DataType::VECTOR for a column.
@@ -470,7 +470,7 @@ bool TableInfo::TEST_Equals(const TableInfo& lhs, const TableInfo& rhs) {
 }
 
 bool TableInfo::NeedVectorIndex() const {
-  return index_info && index_info->is_vector_idx() &&
+  return index_info && index_info->is_vector_index() &&
          index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY;
 }
 
@@ -546,18 +546,34 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
     dockv::OverwriteSchemaPacking overwrite) {
   if (!colocated) {
-    SCHECK(
-        snapshot_kvstoreinfo.tables_size() == 1 && tables.size() == 1, Corruption,
-        Format(
-            "Unexpected table counts during schema merge. Snapshot tables and restored tables "
-            "should both be non-colocated (singular). Snapshot table count: $0, restored table "
-            "count: $1",
-            snapshot_kvstoreinfo.tables_size(), tables.size()));
-    auto schema = tables.begin()->second->doc_read_context->mutable_schema();
-    if (overwrite) {
-      schema->UpdateMissingValuesFrom(snapshot_kvstoreinfo.tables(0).schema().columns());
+    RSTATUS_DCHECK_GE(
+        snapshot_kvstoreinfo.tables_size(), 1, Corruption, "Unexpected snapshot tables count");
+    const TableInfoPB* primary_table_info = nullptr;
+    for (const auto& table_info : snapshot_kvstoreinfo.tables()) {
+      if (table_info.index_info().has_vector_idx_options()) {
+        continue;
+      }
+      RSTATUS_DCHECK(
+          !primary_table_info, Corruption,
+          "Only vector indexes could be colocated to the non colocated table");
+      primary_table_info = &table_info;
     }
-    return tables.begin()->second->MergeSchemaPackings(snapshot_kvstoreinfo.tables(0), overwrite);
+    RSTATUS_DCHECK(primary_table_info != nullptr, Corruption, "Primary table info is missing");
+    RSTATUS_DCHECK_GE(tables.size(), 1ULL, Corruption, "Unexpected restored tables count");
+    for (const auto& [table_id, table_info] : tables) {
+      if (table_id == primary_table_id) {
+        RETURN_NOT_OK(table_info->MergeSchemaPackings(*primary_table_info, overwrite));
+        continue;
+      }
+      RSTATUS_DCHECK(
+          table_info->index_info && table_info->index_info->is_vector_index(), Corruption,
+          "Only vector indexes could be colocated to the non colocated table");
+    }
+    if (overwrite) {
+      auto schema = tables.begin()->second->doc_read_context->mutable_schema();
+      schema->UpdateMissingValuesFrom(primary_table_info->schema().columns());
+    }
+    return Status::OK();
   }
 
   for (const auto& snapshot_table_pb : snapshot_kvstoreinfo.tables()) {

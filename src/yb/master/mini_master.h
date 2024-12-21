@@ -34,6 +34,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
@@ -118,6 +120,8 @@ class MiniMaster {
   FsManager& fs_manager() const;
 
   std::string ToString() const;
+
+  HybridTime Now() const;
 
  private:
   Status StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,
