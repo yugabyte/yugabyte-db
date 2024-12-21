@@ -909,9 +909,9 @@ YBCStatus YBCPgExecDropIndex(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropIndex(handle));
 }
 
-YBCStatus YBCPgWaitForBackendsCatalogVersion(YBCPgOid dboid, uint64_t version,
+YBCStatus YBCPgWaitForBackendsCatalogVersion(YBCPgOid dboid, uint64_t version, pid_t pid,
                                              int* num_lagging_backends) {
-  return ExtractValueFromResult(pgapi->WaitForBackendsCatalogVersion(dboid, version),
+  return ExtractValueFromResult(pgapi->WaitForBackendsCatalogVersion(dboid, version, pid),
                                 num_lagging_backends);
 }
 
