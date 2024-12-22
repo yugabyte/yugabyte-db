@@ -101,7 +101,7 @@ DEFINE_test_flag(int32, delay_removing_peer_with_failed_tablet_secs, 0,
                  "indicating that a tablet is in the FAILED state, and before marking this peer "
                  "as failed.");
 
-DEFINE_RUNTIME_int32(consensus_stuck_peer_call_threshold_ms, 10000,
+DEFINE_RUNTIME_int32(consensus_stuck_peer_call_threshold_ms, 10000 * yb::kTimeMultiplier,
     "Time to wait after timeout before considering an RPC call as stuck.");
 TAG_FLAG(consensus_stuck_peer_call_threshold_ms, advanced);
 
@@ -185,7 +185,7 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
       auto last_rpc_start_time = last_rpc_start_time_.load(std::memory_order_acquire);
       if (last_rpc_start_time != CoarseTimePoint::min() &&
           now > last_rpc_start_time + stuck_threshold + timeout && !controller_.finished()) {
-        LOG_WITH_PREFIX(INFO) << Format(
+        LOG_WITH_PREFIX(DFATAL) << Format(
             "Found an RPC call in stuck state - timeout: $0, last_rpc_start_time: $1, "
             "stuck threshold: $2, force recover: $3, call state: $4",
             timeout, last_rpc_start_time, stuck_threshold,
