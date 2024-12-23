@@ -26,9 +26,9 @@ EXTENSION_OBJECT_PREFIX=helio
 MODULE_big = $(EXTENSION)
 
 USE_DOCUMENTDB_CORE = 1
+USE_DOCUMENTDB = 1
+USE_DOCUMENTDB_DISTRIBUTED = 1
 include $(OSS_SRC_DIR)/Makefile.cflags
-
-PG_CPPFLAGS += -I$(OSS_SRC_DIR)/pg_helio_core/include/ -I$(OSS_SRC_DIR)/pg_helio_api/include/
 
 SOURCES = $(wildcard src/*.c) $(wildcard src/**/*.c)
 

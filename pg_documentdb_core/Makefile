@@ -1,5 +1,5 @@
 EXTENSION = documentdb_core
-MODULE_big = pg_documentdb_core
+MODULE_big = pg_$(EXTENSION)
 
 SQL_DEPDIR=.deps/sql
 SQL_BUILDDIR=build/sql

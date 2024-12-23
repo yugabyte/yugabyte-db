@@ -22,8 +22,7 @@ void _PG_init(void);
 void _PG_fini(void);
 
 
-extern bool SkipDocumentDbLoad;
-bool SkipHelioApiLoad = false;
+bool SkipDocumentDbLoad = false;
 
 
 /*
@@ -32,7 +31,7 @@ bool SkipHelioApiLoad = false;
 void
 _PG_init(void)
 {
-	if (SkipHelioApiLoad)
+	if (SkipDocumentDbLoad)
 	{
 		return;
 	}
@@ -40,23 +39,21 @@ _PG_init(void)
 	if (!process_shared_preload_libraries_in_progress)
 	{
 		ereport(ERROR, (errmsg(
-							"pg_helio_api can only be loaded via shared_preload_libraries"),
+							"pg_documentdb can only be loaded via shared_preload_libraries"),
 						errdetail_log(
-							"Add pg_helio_api to shared_preload_libraries configuration "
+							"Add pg_documentdb to shared_preload_libraries configuration "
 							"variable in postgresql.conf. ")));
 	}
 
-	SkipDocumentDbLoad = true;
 	InstallBsonMemVTables();
-	InitApiConfigurations("helio_api");
-	InitializeExtensionExternalConfigs("helio_api");
+	InitApiConfigurations("documentdb");
+	InitializeExtensionExternalConfigs("documentdb");
 	InitializeSharedMemoryHooks();
-	MarkGUCPrefixReserved("helio_api");
-	InitializeHelioBackgroundWorker("pg_helio_api");
+	MarkGUCPrefixReserved("documentdb");
 
 	InstallHelioApiPostgresHooks();
 
-	ereport(LOG, (errmsg("Initialized pg_helio_api extension")));
+	ereport(LOG, (errmsg("Initialized pg_documentdb extension")));
 }
 
 
@@ -66,7 +63,7 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
-	if (SkipHelioApiLoad)
+	if (SkipDocumentDbLoad)
 	{
 		return;
 	}

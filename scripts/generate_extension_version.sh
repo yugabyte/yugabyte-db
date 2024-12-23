@@ -6,6 +6,7 @@ set -e
 
 outputFile=$1
 extensionName=${2:-""}
+extensionDir=${3:-$extensionName}
 
 source="${BASH_SOURCE[0]}"
 while [[ -h $source ]]; do
@@ -39,7 +40,7 @@ BUILD_VER=" buildId:${BUILD_BUILDID:-"0"}"
 
 GIT_SHA=" sha:${GIT_SHA}"
 
-controlFile="$repoScriptDir/../$extensionName/$extensionName.control"
+controlFile="$repoScriptDir/../$extensionDir/$extensionName.control"
 
 versionStringOutput=$(sed -n "s/^default_version = '\(.*\)'$/\1/p" $controlFile)
 EXTENSION_VERSION_STR=${versionStringOutput/-/.}

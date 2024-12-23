@@ -1,6 +1,4 @@
 EXTENSION = documentdb
-
-# compilation configuration
 MODULE_big = pg_$(EXTENSION)
 
 SQL_DEPDIR=.deps/sql
@@ -25,14 +23,11 @@ API_ADMIN_ROLE=documentdb_admin_role
 POSTGIS_SCHEMA_NAME=public
 EXTENSION_OBJECT_PREFIX=documentdb
 
-
 # TODO: Need to remove this with PG16 and expose only valid exports
 ALLOW_DEFAULT_VISIBILITY=yes
 
+USE_DOCUMENTDB_CORE = 1
 include $(OSS_SRC_DIR)/Makefile.cflags
-
-PG_CPPFLAGS += -I$(OSS_SRC_DIR)/pg_documentdb_core/include/
-
 SOURCES = $(wildcard src/*.c) $(wildcard src/**/*.c)
 
 OBJS = $(patsubst %.c,%.o,$(SOURCES))

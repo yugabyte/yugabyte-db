@@ -4,5 +4,5 @@ GIT_INDEX_DIR=$(shell git rev-parse --git-dir)/index
 
 build/include/metadata/extension_version.h: $(version_file_inputs) $(GIT_INDEX_DIR)
 	mkdir -p build/include/metadata
-	$(BUILD_SCRIPT_DIR)scripts/generate_extension_version.sh build/include/metadata/extension_version.h $(EXTENSION) || exit 1
+	$(BUILD_SCRIPT_DIR)scripts/generate_extension_version.sh build/include/metadata/extension_version.h $(EXTENSION) $(MODULE_big) || exit 1
 

@@ -25,6 +25,9 @@ API_DATA_SCHEMA_NAME=documentdb_data
 API_ADMIN_ROLE=documentdb_admin_role
 EXTENSION_OBJECT_PREFIX=documentdb
 
+# TODO: Need to remove this with PG16 and expose only valid exports
+ALLOW_DEFAULT_VISIBILITY=yes
+
 include $(OSS_SRC_DIR)/Makefile.cflags
 
 PG_CPPFLAGS += -I$(OSS_SRC_DIR)/pg_documentdb_core/include/ -I$(OSS_SRC_DIR)/pg_documentdb/include/

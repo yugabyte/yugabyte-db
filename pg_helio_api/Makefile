@@ -29,6 +29,7 @@ MODULE_big = $(EXTENSION)
 ALLOW_DEFAULT_VISIBILITY=yes
 
 USE_DOCUMENTDB_CORE = 1
+USE_DOCUMENTDB = 1
 include $(OSS_SRC_DIR)/Makefile.cflags
 
 PG_CPPFLAGS += -I$(OSS_SRC_DIR)/pg_helio_core/include/
@@ -95,7 +96,5 @@ $(generated_sql_files): build/%: %
 	cpp -undef -w $(SQL_DEFINES) -imacros $(OSS_COMMON_SQL_HEADER) -P -MMD -MP -MF$(SQL_DEPDIR)/$(*F).Po -MT$@ $< > $@
 
 include $(OSS_SRC_DIR)/Makefile.versions
-
-src/helio_api_extension_version.o : build/include/metadata/extension_version.h
 
 include $(OSS_SRC_DIR)/Makefile.docdb
