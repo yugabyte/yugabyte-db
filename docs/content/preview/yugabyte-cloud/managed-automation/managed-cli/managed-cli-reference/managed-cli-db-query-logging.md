@@ -19,7 +19,7 @@ Use the `cluster db-query-logging` resource to perform operations on a YugabyteD
 
 ## Prerequisite
 
-Before using these commands, you must have an [integration configuration](../../../cloud-monitor/logging-export.md/#prerequisites) already set up. This configuration defines the authentication and connection details for the third-party tool where logs will be exported.
+Before using these commands, you must have an [integration configuration](../../../../cloud-monitor/logging-export#prerequisites) already set up. This configuration defines the authentication and connection details for the third-party tool where logs will be exported.
 
 ## Syntax
 
