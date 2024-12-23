@@ -1382,7 +1382,7 @@ Default: `false`
 
 ##### --cdcsdk_tablet_not_of_interest_timeout_secs
 
-Timeout after which it is inferred that a particular tablet is not of interest for CDC. Inorder to indicate that a particular tablet is of interest for CDC, it should be polled atleast once within this interval of stream / slot creation.
+Timeout after which it is inferred that a particular tablet is not of interest for CDC. In order to indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
 
 Default: `14400 (4 hours)`
 
