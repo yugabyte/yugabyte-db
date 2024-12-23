@@ -20,6 +20,12 @@ sysbench is a popular tool for benchmarking databases like PostgreSQL and MySQL,
 
 To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/).
 
+Make sure you have the [YSQL shell](../../api/ysqlsh/) `ysqlsh` exported to the `PATH` variable.
+
+```sh
+$ export PATH=$PATH:/path/to/ysqlsh
+```
+
 ### Install sysbench
 
 Install sysbench on a machine which satisfies the Prerequisites using one of 
@@ -61,12 +67,6 @@ $ ./autogen.sh && ./configure --with-pgsql && make -j && sudo make install
 
 This installs the sysbench utility in `/usr/local/bin`.
 
-Make sure you have the [YSQL shell](../../api/ysqlsh/) `ysqlsh` exported to the `PATH` variable.
-
-```sh
-$ export PATH=$PATH:/path/to/ysqlsh
-```
-
   </div>
 
   <div id="rhel" class="tab-pane fade" role="tabpanel" aria-labelledby="rhel-tab">
@@ -92,6 +92,8 @@ sudo  installer -pkg Sysbench.pkg -target /
 
 </div>
 
+This installs the sysbench utility in `/usr/local/bin`.
+
 ### Start YugabyteDB
 
 Start your YugabyteDB cluster by following the steps in [Manual deployment](../../deploy/manual-deployment/).
@@ -110,7 +112,6 @@ You can choose to run the following workloads individually:
 * oltp_update_index
 * oltp_update_non_index
 * oltp_delete
-
 
 Before starting the workload, load the data as follows:
 
