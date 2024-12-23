@@ -300,7 +300,7 @@ typedef struct YbUpdateAffectedEntities
 		AttrNumber attnum;
 
 		/*
-		 * A list of entities that reference the column. 
+		 * A list of entities that reference the column.
 		 * Entities are identified by their index in the entity_list.
 		 */
 		List *entity_refs;

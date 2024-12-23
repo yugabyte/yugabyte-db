@@ -1214,7 +1214,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			need_full_snapshot = true;
 		}
 
-		/* 
+		/*
 		 * YB has its own snapshot mechanism that does not require the command
 		 * to be created within a transaction, so we disable these checks here.
 		 */
@@ -1441,7 +1441,7 @@ DropReplicationSlot(DropReplicationSlotCmd *cmd)
 						   "system upgrade is in progress")));
 
 	if (IsYugaByteEnabled() && cmd->wait)
-		ereport(ERROR, 
+		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("Waiting for a replication slot is not yet"
 						" supported")));

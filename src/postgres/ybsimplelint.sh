@@ -17,8 +17,11 @@
 # Simple linter for postgres code.
 
 # Whitespace
-grep -nE '\s+$' "$1" \
-  | sed 's/^/error:trailing_whitespace:/'
+if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
+        "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ]]; then
+  grep -nE '\s+$' "$1" \
+    | sed 's/^/error:trailing_whitespace:/'
+fi
 if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
         "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ||
         "$1" == src/postgres/src/include/snowball/libstemmer/* ||

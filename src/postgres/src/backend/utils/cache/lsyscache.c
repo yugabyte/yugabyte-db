@@ -384,7 +384,7 @@ get_mergejoin_opfamilies(Oid opno)
 		Form_pg_amop aform = (Form_pg_amop) GETSTRUCT(tuple);
 
 		/* must be btree equality */
-		if ((aform->amopmethod == BTREE_AM_OID || aform->amopmethod == LSM_AM_OID) && 
+		if ((aform->amopmethod == BTREE_AM_OID || aform->amopmethod == LSM_AM_OID) &&
 			aform->amopstrategy == BTEqualStrategyNumber)
 			result = lappend_oid(result, aform->amopfamily);
 	}
@@ -3185,7 +3185,7 @@ get_attavgwidth(Oid relid, AttrNumber attnum)
 	/*
 	 * This functionality was left disabled even after ANALYZE was implemented.
 	 * This oversight was detected during cost model project. We protect it
-	 * under this feature toggle to prevent regressions. 
+	 * under this feature toggle to prevent regressions.
 	 */
 	if (!yb_enable_base_scans_cost_model)
 		return 0;

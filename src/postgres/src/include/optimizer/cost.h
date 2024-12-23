@@ -50,7 +50,7 @@
 #define YB_DEFAULT_SEEK_COST_FACTOR 50
 #define YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR 10
 
-/* 
+/*
  * The value for the fast backward scan seek cost factor has been selected based on the smallest
  * improvement (2.8 times) for the backward scan related Order By workloads of Featurebench. It
  * might be good to use a different factor for colocated case, where the smallest improvement

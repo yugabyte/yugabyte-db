@@ -3732,7 +3732,7 @@ ybReadFromUrl(const char *url)
 						YBCStatusMessageBegin(status))));
 		YBCFreeStatus(status);
 		return NULL;
-	} 
+	}
 	if(!url_contents)
 		return NULL;
 

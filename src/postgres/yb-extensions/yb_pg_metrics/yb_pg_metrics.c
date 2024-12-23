@@ -343,10 +343,10 @@ set_metric_names(void)
 	// Deprecated. Names with "_"s may cause confusion to metric conumsers.
 	strcpy(ybpgm_table[Single_Shard_Transaction].name,
 		   YSQL_METRIC_PREFIX "Single_Shard_Transactions");
-	strcpy(ybpgm_table[SingleShardTransaction].name, 
+	strcpy(ybpgm_table[SingleShardTransaction].name,
 		   YSQL_METRIC_PREFIX "SingleShardTransactions");
 	strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
-	strcpy(ybpgm_table[AggregatePushdown].name, 
+	strcpy(ybpgm_table[AggregatePushdown].name,
 		   YSQL_METRIC_PREFIX "AggregatePushdowns");
 	strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
 	for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
@@ -369,67 +369,67 @@ set_metric_names(void)
 				 table_name);
 	}
 
-	strcpy(ybpgm_table[Select].count_help, 
+	strcpy(ybpgm_table[Select].count_help,
 		   "Number of SELECT statements that have been executed");
-	strcpy(ybpgm_table[Select].sum_help, 
+	strcpy(ybpgm_table[Select].sum_help,
 		   "Total time spent executing SELECT statements");
 
-	strcpy(ybpgm_table[Insert].count_help, 
+	strcpy(ybpgm_table[Insert].count_help,
 		   "Number of INSERT statements that have been executed");
-	strcpy(ybpgm_table[Insert].sum_help, 
+	strcpy(ybpgm_table[Insert].sum_help,
 		   "Total time spent executing INSERT statements");
 
-	strcpy(ybpgm_table[Delete].count_help, 
+	strcpy(ybpgm_table[Delete].count_help,
 		   "Number of DELETE statements that have been executed");
-	strcpy(ybpgm_table[Delete].sum_help, 
+	strcpy(ybpgm_table[Delete].sum_help,
 		   "Total time spent executing DELETE statements");
 
-	strcpy(ybpgm_table[Update].count_help, 
+	strcpy(ybpgm_table[Update].count_help,
 		   "Number of UPDATE statements that have been executed");
-	strcpy(ybpgm_table[Update].sum_help, 
+	strcpy(ybpgm_table[Update].sum_help,
 		   "Total time spent executing UPDATE statements");
 
-	strcpy(ybpgm_table[Begin].count_help, 
+	strcpy(ybpgm_table[Begin].count_help,
 		   "Number of BEGIN statements that have been executed");
-	strcpy(ybpgm_table[Begin].sum_help, 
+	strcpy(ybpgm_table[Begin].sum_help,
 		   "Total time spent executing BEGIN statements");
 
-	strcpy(ybpgm_table[Commit].count_help, 
+	strcpy(ybpgm_table[Commit].count_help,
 		   "Number of COMMIT statements that have been executed");
-	strcpy(ybpgm_table[Commit].sum_help, 
+	strcpy(ybpgm_table[Commit].sum_help,
 		   "Total time spent executing COMMIT statements");
 
-	strcpy(ybpgm_table[Rollback].count_help, 
+	strcpy(ybpgm_table[Rollback].count_help,
 		   "Number of ROLLBACK statements that have been executed");
-	strcpy(ybpgm_table[Rollback].sum_help, 
+	strcpy(ybpgm_table[Rollback].sum_help,
 		   "Total time spent executing ROLLBACK statements");
 
-	strcpy(ybpgm_table[Other].count_help, 
+	strcpy(ybpgm_table[Other].count_help,
 		   "Number of other statements that have been executed");
-	strcpy(ybpgm_table[Other].sum_help, 
+	strcpy(ybpgm_table[Other].sum_help,
 		   "Total time spent executing other statements");
 
-	strcpy(ybpgm_table[Single_Shard_Transaction].count_help, 
+	strcpy(ybpgm_table[Single_Shard_Transaction].count_help,
 		   "Number of single shard transactions that have been executed (deprecated)");
-	strcpy(ybpgm_table[Single_Shard_Transaction].sum_help, 
+	strcpy(ybpgm_table[Single_Shard_Transaction].sum_help,
 		   "Total time spent executing single shard transactions (deprecated)");
 
-	strcpy(ybpgm_table[SingleShardTransaction].count_help, 
+	strcpy(ybpgm_table[SingleShardTransaction].count_help,
 		   "Number of single shard transactions that have been executed");
-	strcpy(ybpgm_table[SingleShardTransaction].sum_help, 
+	strcpy(ybpgm_table[SingleShardTransaction].sum_help,
 		   "Total time spent executing single shard transactions");
 
-	strcpy(ybpgm_table[Transaction].count_help, 
+	strcpy(ybpgm_table[Transaction].count_help,
 		   "Number of transactions that have been executed");
-	strcpy(ybpgm_table[Transaction].sum_help, 
+	strcpy(ybpgm_table[Transaction].sum_help,
 		   "Total time spent executing transactions");
 
-	strcpy(ybpgm_table[AggregatePushdown].count_help, 
+	strcpy(ybpgm_table[AggregatePushdown].count_help,
 		   "Number of aggregate pushdowns");
-	strcpy(ybpgm_table[AggregatePushdown].sum_help, 
+	strcpy(ybpgm_table[AggregatePushdown].sum_help,
 		   "Total time spent executing aggregate pushdowns");
 
-	strcpy(ybpgm_table[CatCacheMisses].count_help, 
+	strcpy(ybpgm_table[CatCacheMisses].count_help,
 		   "Total number of catalog cache misses");
 	strcpy(ybpgm_table[CatCacheMisses].sum_help, "Not applicable");
 

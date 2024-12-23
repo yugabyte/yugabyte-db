@@ -346,7 +346,7 @@ shdepChangeDep(Relation sdepRel,
 }
 
 void
-shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId) 
+shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId)
 {
 	Oid databaseId;
 	ScanKeyData key[2];
@@ -359,10 +359,10 @@ shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId)
 	sdepRel = table_open(SharedDependRelationId, RowExclusiveLock);
 
 
-	ScanKeyInit(&key[0], Anum_pg_shdepend_dbid, 
+	ScanKeyInit(&key[0], Anum_pg_shdepend_dbid,
 	BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(databaseId));
 
-	ScanKeyInit(&key[1], Anum_pg_shdepend_classid, 
+	ScanKeyInit(&key[1], Anum_pg_shdepend_classid,
 	BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(YbTablegroupRelationId));
 
 	scan = systable_beginscan(sdepRel, SharedDependDependerIndexId, true, NULL, 2, key);
@@ -1377,7 +1377,7 @@ storeObjectDescription(StringInfo descs,
 				appendStringInfo(descs, _("privileges for %s"), objdesc);
 			else if (deptype == SHARED_DEPENDENCY_POLICY)
 				appendStringInfo(descs, _("target of %s"), objdesc);
-			else if (deptype == SHARED_DEPENDENCY_TABLESPACE) 
+			else if (deptype == SHARED_DEPENDENCY_TABLESPACE)
 			{
 				char implicit_tablegroup_name[33];
 				sprintf(implicit_tablegroup_name, "tablegroup colocation_%u", refobjid);

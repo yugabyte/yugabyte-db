@@ -51,7 +51,7 @@ YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name);
 static void
 YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
 
-static void 
+static void
 YBLogTupleDescIfRequested(const YBCPgVirtualWalRecord *yb_record,
 						  TupleDesc tupdesc);
 
@@ -594,7 +594,7 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 	}
 }
 
-static void 
+static void
 YBLogTupleDescIfRequested(const YBCPgVirtualWalRecord *yb_record,
 						  TupleDesc tupdesc)
 {

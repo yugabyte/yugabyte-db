@@ -1870,7 +1870,7 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	{
 		pfree(constr);
 		relation->rd_att->constr = NULL;
-	}	
+	}
 
 	/* Fetch rules and triggers that affect this relation */
 	if (relation->rd_rel->relhasrules)

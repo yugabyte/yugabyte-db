@@ -224,7 +224,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	if (IsYugaByteEnabled())
 	{
 		if (temporary)
-			ereport(ERROR, 
+			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("Temporary replication slot is not yet supported"),
 					 errhint("See https://github.com/yugabyte/yugabyte-db/"

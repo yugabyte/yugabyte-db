@@ -4249,7 +4249,7 @@ ReorderBufferRestoreChanges(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 	XLByteToSeg(txn->final_lsn, last_segno, wal_segment_size);
 
-	while ((restored < 
+	while ((restored <
 			(IsYugaByteEnabled() ? yb_reorderbuffer_max_changes_in_memory : max_changes_in_memory))
 		  && (*segno <= last_segno))
 	{

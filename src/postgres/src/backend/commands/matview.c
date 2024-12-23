@@ -508,10 +508,10 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 						   myState->ti_options,
 						   myState->bistate);
 
-		/* 
+		/*
 		 * In this case when the transient relation is a temporary relation, heap_insert
 		 * will set a transaction id. However, we must clear this transaction id, since
-		 * REFRESH matview should not invoke any TxnWithPGRel code paths 
+		 * REFRESH matview should not invoke any TxnWithPGRel code paths
 		 * (that are used for temp tables).
 		 */
 		YbClearCurrentTransactionId();
@@ -896,7 +896,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 		/* Can't use TID in YB mode */
 		appendStringInfo(&querybuf,
 						 "DELETE FROM %s mv WHERE mv.*::%s OPERATOR(pg_catalog.=) ANY "
-						 "(SELECT mv FROM %s diff WHERE (", 
+						 "(SELECT mv FROM %s diff WHERE (",
 						 matviewname, matviewname, diffname);
 		TupleDesc tuple_desc = RelationGetDescr(matviewRel);
 
@@ -908,7 +908,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 				appendStringInfo(&querybuf, "OR ");
 		}
 
-		appendStringInfo(&querybuf, ") AND diff.newdata IS NULL)");		
+		appendStringInfo(&querybuf, ") AND diff.newdata IS NULL)");
 	}
 	else
 	{
@@ -930,7 +930,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 		appendStringInfo(&querybuf,
 						 "INSERT INTO %s SELECT (diff.newdata).* "
 						 "FROM %s diff WHERE mv IS NULL",
-						 matviewname, diffname);		
+						 matviewname, diffname);
 	}
 	else
 	{

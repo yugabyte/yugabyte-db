@@ -4706,13 +4706,13 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 						st->state = CSTATE_ABORTED;
 						break;
 					}
-					else                                                             
-					{                                                                
-						// Connection init sql                                   
-						if (yb_connection_init_sql != NULL) {                       
+					else
+					{
+						// Connection init sql
+						if (yb_connection_init_sql != NULL) {
 							executeStatement(st->con,
-									 yb_connection_init_sql);  
-						}                                                        
+									 yb_connection_init_sql);
+						}
 					}
 
 					/* reset now after connection */
@@ -8359,8 +8359,8 @@ main(int argc, char **argv)
 				}
 				yb_metrics_arg_set = true;
 				break;
-			case 18:                                /* yb-connection-init-sql */                
-				yb_connection_init_sql = pg_strdup(optarg);                                 
+			case 18:                                /* yb-connection-init-sql */
+				yb_connection_init_sql = pg_strdup(optarg);
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -8866,11 +8866,11 @@ threadRun(void *arg)
 				pg_fatal("could not create connection for client %d",
 						 state[i].id);
 			}
-			else                                                                             
-			{                                                                                
-				if (yb_connection_init_sql != NULL) {                                       
-					executeStatement(state[i].con, yb_connection_init_sql);             
-				}                                                                        
+			else
+			{
+				if (yb_connection_init_sql != NULL) {
+					executeStatement(state[i].con, yb_connection_init_sql);
+				}
 			}
 		}
 	}

@@ -1127,7 +1127,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	}
 	else
 	{
-		/* 
+		/*
 		 * If untrusted language, must be superuser, or someone with the
 		 * yb_extension role in the midst of creating an extension.
 		 */
