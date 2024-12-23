@@ -288,6 +288,14 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
+{{< note title="`NOT VALID` Constraints in yb-voyager" >}}
+
+Currently, **yb-voyager** does not import the `NOT VALID` constraints exported from the source in the `import schema` phase. This is because doing so could lead to `constraint violation` errors during the data import phase, as the source may contain data that violates these constraints.
+
+**yb-voyager** creates these constraints during the `post-snapshot-import` phase.
+
+{{< /note >}}
+
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
 ### Import data
@@ -334,7 +342,20 @@ Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get
 
 Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
 
-### Refresh materialized views
+### Post snapshot import
+
+If there are any `NOT VALID` constraints on the source, create them after the `import data` command is completed by using the `import schema` command with the `post-snapshot-import` flag:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+       --target-db-host <TARGET_DB_HOST> \
+       --target-db-user <TARGET_DB_USER> \
+       --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+       --target-db-name <TARGET_DB_NAME> \
+       --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+       --post-snapshot-import true
+```
 
 If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them using the following command:
 

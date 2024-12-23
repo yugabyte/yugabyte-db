@@ -603,6 +603,13 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
+{{< note title="`NOT VALID` Constraints in yb-voyager" >}}
+
+Currently yb-voyager does not import the `NOT VALID` constraints exported from source in `import schema` as it may lead to `constraint violation` errors during the import data as source may contain the data that is violating the constraint.  
+Yb-voyager created these type of constraint during the `post-snapshot-import` phase.
+
+{{< /note >}}
+
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
 ### Export data from source
@@ -775,6 +782,19 @@ Perform the following steps as part of the cutover process:
     ```
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
+
+1. If there are any `NOT VALID` constraints on the source, create them after the `import data` command is completed by using the `import schema` command with the `post-snapshot-import` flag:
+
+    ```sh
+    # Replace the argument values with those applicable for your migration.
+    yb-voyager import schema --export-dir <EXPORT_DIR> \
+            --target-db-host <TARGET_DB_HOST> \
+            --target-db-user <TARGET_DB_USER> \
+            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+            --target-db-name <TARGET_DB_NAME> \
+            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+            --post-snapshot-import true
+    ```
 
 1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them using the following command:
 
