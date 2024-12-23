@@ -32,6 +32,7 @@
 #include "utils/ruleutils.h"
 
 /* YB includes. */
+#include "executor/ybcModifyTable.h"
 #include "pg_yb_utils.h"
 
 
@@ -765,6 +766,10 @@ ExecInitRoutingInfo(ModifyTableState *mtstate,
 	if (partRelInfo->ri_FdwRoutine != NULL &&
 		partRelInfo->ri_FdwRoutine->BeginForeignInsert != NULL)
 		partRelInfo->ri_FdwRoutine->BeginForeignInsert(mtstate, partRelInfo);
+
+	/* YB: also handle YB insert on conflict read batching. */
+	if (YbIsInsertOnConflictReadBatchingPossible(partRelInfo))
+		partRelInfo->ri_ybIocBatchingPossible = true;
 
 	MemoryContextSwitchTo(oldContext);
 

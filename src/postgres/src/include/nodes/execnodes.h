@@ -480,6 +480,14 @@ typedef struct ResultRelInfo
 
 	/* true if ready for tuple routing */
 	bool		ri_PartitionReadyForRouting;
+
+	/*
+	 * YB: is INSERT ON CONFLICT read batching possible for this table?
+	 * Possible does not mean enabled.  It is enabled when a yb_ioc_state is
+	 * created in the ModifyTableContext, and this only happens when an ON
+	 * CONFLICT clause is found and YbAddSlotToBatch is called.
+	 */
+	bool		ri_ybIocBatchingPossible;
 } ResultRelInfo;
 
 /* ----------------
@@ -2564,7 +2572,7 @@ typedef struct LimitState
  *	 YbInsertOnConflictBatchState information
  *
  *		INSERT ... ON CONFLICT read batching state for Yugabyte relations.  The
- *		batch size is taken from ResultRelInfo.ri_BatchSize.
+ *		batch size is taken from GUC yb_insert_on_conflict_read_batch_size.
  * ----------------
  */
 typedef struct YbInsertOnConflictBatchState
