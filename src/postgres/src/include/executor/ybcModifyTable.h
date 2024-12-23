@@ -73,9 +73,11 @@ extern void YBCHeapInsert(ResultRelInfo *resultRelInfo,
 						  EState *estate);
 
 /*
- * Whether INSERT ON CONFLICT read batching is enabled.
+ * Whether INSERT ON CONFLICT read batching is possible for the given
+ * resultRelInfo.  Should be called only when the inspected fields of
+ * resultRelInfo are populated.
  */
-extern bool YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo);
+extern bool YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo);
 
 /*
  * Insert a tuple into a YugaByte table. Will execute within a distributed

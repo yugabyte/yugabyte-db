@@ -539,14 +539,14 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 }
 
 bool
-YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo)
+YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
 {
 	/*
 	 * TODO(jason): figure out how to enable triggers.
 	 */
-	return (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+	return (yb_insert_on_conflict_read_batch_size > 1 &&
+			IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 			!IsCatalogRelation(resultRelInfo->ri_RelationDesc) &&
-			resultRelInfo->ri_BatchSize > 1 &&
 			!(resultRelInfo->ri_TrigDesc &&
 			  (resultRelInfo->ri_TrigDesc->trig_delete_after_row ||
 			   resultRelInfo->ri_TrigDesc->trig_delete_before_row ||
