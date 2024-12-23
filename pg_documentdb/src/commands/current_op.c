@@ -19,7 +19,7 @@
 #include "io/helio_bson_core.h"
 #include "metadata/index.h"
 #include "metadata/metadata_cache.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "utils/feature_counter.h"
 #include "utils/hashset_utils.h"
 #include "utils/version_utils.h"
@@ -318,7 +318,7 @@ MergeWorkerBsons(List *workerBsons, TupleDesc descriptor, Tuplestorestate *tuple
 
 		if (errorMessage != NULL)
 		{
-			errorCode = errorCode == 0 ? ERRCODE_HELIO_INTERNALERROR : errorCode;
+			errorCode = errorCode == 0 ? ERRCODE_DOCUMENTDB_INTERNALERROR : errorCode;
 			ereport(ERROR, (errcode(errorCode), errmsg("Error running currentOp: %s",
 													   errorMessage)));
 		}

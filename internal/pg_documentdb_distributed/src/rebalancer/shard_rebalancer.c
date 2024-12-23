@@ -19,7 +19,7 @@
 #include "nodes/makefuncs.h"
 
 #include "io/helio_bson_core.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "utils/query_utils.h"
 #include "commands/parse_error.h"
 #include "metadata/metadata_cache.h"
@@ -42,7 +42,7 @@ command_rebalancer_status(PG_FUNCTION_ARGS)
 {
 	if (!EnableShardRebalancer)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("rebalancer_status is not supported yet")));
 	}
 
@@ -90,14 +90,15 @@ command_rebalancer_start(PG_FUNCTION_ARGS)
 {
 	if (!EnableShardRebalancer)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("starting the shard rebalancer is not supported yet")));
 	}
 
 	pgbson *startArgs = PG_GETARG_PGBSON(0);
 	if (HasActiveRebalancing())
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BACKGROUNDOPERATIONINPROGRESSFORNAMESPACE),
+		ereport(ERROR, (errcode(
+							ERRCODE_DOCUMENTDB_BACKGROUNDOPERATIONINPROGRESSFORNAMESPACE),
 						errmsg(
 							"Cannot start rebalancing when another rebalancing is in progress")));
 	}
@@ -131,7 +132,7 @@ command_rebalancer_stop(PG_FUNCTION_ARGS)
 {
 	if (!EnableShardRebalancer)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("stopping the rebalancer is not supported yet")));
 	}
 
@@ -176,7 +177,7 @@ PopulateRebalancerRowsFromResponse(pgbson_writer *responseWriter, pgbson *result
 
 	if (element.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("shard rebalancer response should be an array, not %s",
 							   BsonTypeName(element.bsonValue.value_type)),
 						errdetail_log(
@@ -195,7 +196,7 @@ PopulateRebalancerRowsFromResponse(pgbson_writer *responseWriter, pgbson *result
 		const bson_value_t *arrayValue = bson_iter_value(&rowsIter);
 		if (arrayValue->value_type != BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"shard rebalancer array element should be a document, not %s",
 								BsonTypeName(

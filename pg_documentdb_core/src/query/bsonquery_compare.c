@@ -18,7 +18,7 @@
 
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -150,7 +150,7 @@ inline static void
 pg_attribute_noreturn()
 ThrowUnexpectedFieldError(bool leftNext, bool rightNext)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR), errmsg(
 						"Unexpected bsonquery %s value had more than one field.",
 						leftNext ? "left" :
 						"right")));
@@ -161,7 +161,7 @@ CheckCollationType(const bson_value_t *bsonValue)
 {
 	if (bsonValue->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Collation is of wrong type: '%s', expected: 'String'",
 							   BsonTypeName(bsonValue->value_type)),
 						errdetail_log(

@@ -15,7 +15,7 @@
 #include "io/helio_bson_core.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "metadata/metadata_cache.h"
 #include "opclass/helio_bson_text_gin.h"
 #include "vector/vector_utilities.h"
@@ -35,7 +35,7 @@ ParseDollarRand(const bson_value_t *argument, AggregationExpressionData *data,
 	if (argument->value_type != BSON_TYPE_DOCUMENT &&
 		argument->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION10065),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION10065),
 						errmsg("invalid parameter: expected an object ($rand)")));
 	}
 	else if ((argument->value_type == BSON_TYPE_DOCUMENT &&
@@ -43,7 +43,7 @@ ParseDollarRand(const bson_value_t *argument, AggregationExpressionData *data,
 			 (argument->value_type == BSON_TYPE_ARRAY &&
 			  !IsBsonValueEmptyArray(argument)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARRANDNONEMPTYARGUMENT),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARRANDNONEMPTYARGUMENT),
 						errmsg("$rand does not currently accept arguments")));
 	}
 
@@ -82,7 +82,7 @@ ParseDollarMeta(const bson_value_t *argument, AggregationExpressionData *data,
 {
 	if (argument->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("$meta expected value of type text, found %s",
 							   BsonTypeName(argument->value_type))));
 	}
@@ -145,7 +145,7 @@ HandlePreParsedDollarMeta(pgbson *doc, void *arguments,
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17308),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17308),
 						errmsg("Unsupported argument to $meta: %.*s",
 							   valueView.length, valueView.string)));
 	}

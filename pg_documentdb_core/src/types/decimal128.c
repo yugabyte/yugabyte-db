@@ -22,7 +22,7 @@
 #include <math.h>
 #include <lib/stringinfo.h>
 
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 
 #if BID_BIG_ENDIAN
@@ -273,7 +273,7 @@ GetBsonDecimal128AsDouble(const bson_value_t *value)
 	{
 		if (IsOperationOverflow(exceptionFlags) || IsOperationUnderflow(exceptionFlags))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
 							errmsg("Conversion would overflow target type")));
 		}
 		else
@@ -336,7 +336,7 @@ GetBsonDecimal128AsLongDouble(const bson_value_t *value)
 	{
 		if (IsOperationOverflow(exceptionFlags) || IsOperationUnderflow(exceptionFlags))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
 							errmsg("Conversion would overflow target type")));
 		}
 		else
@@ -1519,12 +1519,12 @@ ThrowConversionFailureError(const BID_UINT128 value)
 	 */
 	if (bid128_isInf(value))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
 						errmsg("Attempt to convert Infinity to integer")));
 	}
 	else if (bid128_isNaN(value))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
 						errmsg("Attempt to convert NaN value to integer")));
 	}
 	else
@@ -1532,7 +1532,7 @@ ThrowConversionFailureError(const BID_UINT128 value)
 		/* Native mongo shows overflow in both overflow / underflow cases,
 		 * also intel math lib doesn't indicate overflow / underflow in exception flag
 		 */
-		ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
 						errmsg("Conversion would overflow target type")));
 	}
 }
@@ -1745,7 +1745,7 @@ GetBsonValueAsDecimal128Core(const bson_value_t *value, bool shouldQuantizeDoubl
 
 		default:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Unexpected type")));
 		}
 	}

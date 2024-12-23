@@ -15,7 +15,7 @@
 #include "lib/stringinfo.h"
 #include "access/xact.h"
 
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "utils/error_utils.h"
@@ -63,7 +63,7 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 
 		if (!result.success)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Internal error creating collection in metadata coordinator %s",
 								text_to_cstring(result.response)),
@@ -366,7 +366,7 @@ InsertIntoCollectionTable(text *databaseDatum, text *collectionDatum)
 
 	if (isNull)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"CollectionId was null on inserted row. This is an unexpected bug"),
 						errdetail_log(
@@ -464,7 +464,7 @@ GetOrCreateDatabaseConfigCollection(text *databaseDatum)
 		if (collection == NULL)
 		{
 			/* Weird case, insert failed, but cannot read it? */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Unable to create metadata database sentinel collection.")));
 		}

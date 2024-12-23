@@ -358,7 +358,7 @@ HandlePreParsedDollarToHashedIndexKey(pgbson *doc, void *arguments,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$toHashedIndexkey is not supported yet")));
 	}
 	AggregationExpressionData *toHashArguments = arguments;
@@ -385,7 +385,7 @@ ParseDollarConvert(const bson_value_t *argument, AggregationExpressionData *data
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 							"$convert expects an object of named arguments but found: %s",
 							BsonTypeName(argument->value_type))));
 	}
@@ -419,7 +419,7 @@ ParseDollarConvert(const bson_value_t *argument, AggregationExpressionData *data
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 								"$convert found an unknown argument: %s",
 								key)));
 		}
@@ -427,13 +427,13 @@ ParseDollarConvert(const bson_value_t *argument, AggregationExpressionData *data
 
 	if (inputExpression.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 							"Missing 'input' parameter to $convert")));
 	}
 
 	if (toExpression.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 							"Missing 'to' parameter to $convert")));
 	}
 
@@ -904,7 +904,7 @@ ProcessDollarToObjectId(const bson_value_t *currentValue, bson_value_t *result)
 	uint32_t length = currentValue->value.v_utf8.len;
 	if (length != 24)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
 							"Failed to parse objectId '%s' in $convert with no onError value: Invalid string length for parsing to OID, expected 24 but found %d",
 							str, length)));
 	}
@@ -915,7 +915,7 @@ ProcessDollarToObjectId(const bson_value_t *currentValue, bson_value_t *result)
 	{
 		if (!isxdigit(str[i]))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
 								"Failed to parse objectId '%s' in $convert with no onError value: Invalid character found in hex string: '%c'",
 								str, str[i])));
 		}
@@ -1299,7 +1299,7 @@ ValidateAndGetConvertToType(const bson_value_t *toValue, bson_type_t *toType)
 	{
 		if (!IsBsonValueFixedInteger(toValue))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 								"In $convert, numeric 'to' argument is not an integer")));
 		}
 
@@ -1307,7 +1307,7 @@ ValidateAndGetConvertToType(const bson_value_t *toValue, bson_type_t *toType)
 
 		if (!TryGetTypeFromInt64(typeCode, toType))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 								"In $convert, numeric value for 'to' does not correspond to a BSON type: %lld",
 								(long long int) typeCode)));
 		}
@@ -1317,7 +1317,7 @@ ValidateAndGetConvertToType(const bson_value_t *toValue, bson_type_t *toType)
 		/* If the 'to' evaluated value is null or undefined, we should return null, not an error.
 		 * however, we can't do it here yet, as if the 'input' expression evaluates to null and onNull is specified,
 		 * we must return that instead. */
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 							"$convert's 'to' argument must be a string or number, but is %s",
 							BsonTypeName(toValue->value_type))));
 	}
@@ -1469,7 +1469,7 @@ ValidateStringIsNotHexBase(const bson_value_t *value)
 		value->value.v_utf8.str[0] == '0' &&
 		value->value.v_utf8.str[1] == 'x')
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
 							"Illegal hexadecimal input in $convert with no onError value: %s",
 							value->value.v_utf8.str)));
 	}
@@ -1483,7 +1483,7 @@ ValidateValueIsNotNaNOrInfinity(const bson_value_t *value)
 	if (IsBsonValueNaN(value) || IsBsonValueInfinity(value) != 0)
 	{
 		const char *sourceValue = IsBsonValueNaN(value) ? "NaN" : "infinity";
-		ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
 							"Attempt to convert %s value to integer type in $convert with no onError value",
 							sourceValue)));
 	}
@@ -1499,7 +1499,7 @@ ThrowInvalidConversionError(bson_type_t sourceType, bson_type_t targetType)
 	const char *targetTypeName = targetType == BSON_TYPE_EOD ?
 								 MISSING_TYPE_NAME : BsonTypeName(targetType);
 
-	ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
 						"Unsupported conversion from %s to %s in $convert with no onError value",
 						BsonTypeName(sourceType), targetTypeName)));
 }
@@ -1510,7 +1510,7 @@ static inline void
 pg_attribute_noreturn()
 ThrowOverflowTargetError(const bson_value_t * value)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
 					errmsg(
 						"Conversion would overflow target type in $convert with no onError value: %s",
 						BsonValueToJsonForLogging(value)),
@@ -1525,7 +1525,7 @@ static inline void
 pg_attribute_noreturn()
 ThrowFailedToParseNumber(const char * value, const char * reason)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
 						"Failed to parse number '%s' in $convert with no onError value: %s",
 						value, reason)));
 }

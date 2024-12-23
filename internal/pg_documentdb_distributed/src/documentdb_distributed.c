@@ -16,7 +16,7 @@
 #include "distributed_hooks.h"
 #include "helio_distributed_init.h"
 
-extern bool SkipDocumentDbLoad;
+extern bool SkipDocumentDBLoad;
 
 PG_MODULE_MAGIC;
 
@@ -30,7 +30,7 @@ void _PG_fini(void);
 void
 _PG_init(void)
 {
-	if (SkipDocumentDbLoad)
+	if (SkipDocumentDBLoad)
 	{
 		return;
 	}

@@ -13,7 +13,7 @@
 #include "postgres.h"
 
 #include "geospatial/bson_geospatial_private.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 typedef struct WKBBufferIterator
 {
@@ -118,7 +118,7 @@ IncrementWKBBufferIteratorByNBytes(WKBBufferIterator *iter, size_t bytes)
 	{
 		size_t overflow = bytes - remainingLength;
 		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_INTERNALERROR),
+					errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 					errmsg(
 						"Requested to increment WKB buffer %ld bytes beyond limit.",
 						overflow),

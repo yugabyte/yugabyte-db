@@ -20,7 +20,7 @@
 #include <utils/builtins.h>
 #include <lib/stringinfo.h>
 #include "io/helio_bson_core.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "types/pcre_regex.h"
 
 /* Data needed during the PCRE2 lib usage for regex compile and match */
@@ -96,7 +96,8 @@ RegexCompileDuringPlanning(char *regexPatternStr, char *options)
 	if (!RegexCompileCore(regexPatternStr, options, &pcreData, &pcreErrorCode,
 						  REGEX_MAX_PATTERN_LENGTH, PCRE2_NO_AUTO_CAPTURE))
 	{
-		InvalidRegexError(ERRCODE_HELIO_LOCATION51091, "Regular expression is invalid",
+		InvalidRegexError(ERRCODE_DOCUMENTDB_LOCATION51091,
+						  "Regular expression is invalid",
 						  pcreErrorCode, pcreData);
 	}
 	pcre2_compile_context_free(pcreData->compileContext);
@@ -114,7 +115,8 @@ RegexCompile(char *regexPatternStr, char *options)
 	if (!RegexCompileCore(regexPatternStr, options, &pcreData, &pcreErrorCode,
 						  REGEX_MAX_PATTERN_LENGTH, PCRE2_NO_AUTO_CAPTURE))
 	{
-		InvalidRegexError(ERRCODE_HELIO_LOCATION51091, "Regular expression is invalid",
+		InvalidRegexError(ERRCODE_DOCUMENTDB_LOCATION51091,
+						  "Regular expression is invalid",
 						  pcreErrorCode, pcreData);
 	}
 
@@ -138,7 +140,7 @@ RegexCompileForAggregation(char *regexPatternStr, char *options, bool enableNoAu
 	if (!RegexCompileCore(regexPatternStr, options, &pcreData, &pcreErrorCode,
 						  REGEX_MAX_PATTERN_LENGTH_AGGREGATION, compileOptions))
 	{
-		InvalidRegexError(ERRCODE_HELIO_LOCATION51111, regexInvalidErrorMessage,
+		InvalidRegexError(ERRCODE_DOCUMENTDB_LOCATION51111, regexInvalidErrorMessage,
 						  pcreErrorCode,
 						  pcreData);
 	}
@@ -152,7 +154,7 @@ RegexCompileForAggregation(char *regexPatternStr, char *options, bool enableNoAu
 												pcreData->generalContext);
 	if (pcreData->jitStack == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_EXCEEDEDMEMORYLIMIT), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_EXCEEDEDMEMORYLIMIT), errmsg(
 							"PCRE2 stack creation failure.")));
 	}
 
@@ -202,7 +204,7 @@ RegexCompileCore(char *regexPatternStr, char *options, PcreData **pcreData,
 		if (pcre2_jit_compile((*pcreData)->compiledRegex, PCRE2_JIT_COMPLETE) ==
 			PCRE2_ERROR_NOMEMORY)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_EXCEEDEDMEMORYLIMIT),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_EXCEEDEDMEMORYLIMIT),
 							errmsg(
 								"There isn't enough available memory to perform the evaluation of the regular expression.")));
 		}
@@ -234,7 +236,7 @@ PcreRegexExecute(char *regexPatternStr, char *options,
 
 	if (returnCode == PCRE2_ERROR_RECURSIONLIMIT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51156), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51156), errmsg(
 							"Error occurred while executing the regular expression. Result code: -21")));
 	}
 
@@ -401,14 +403,14 @@ CreatePcreCompileContext(PcreData *pcreData)
 															NULL);
 	if (pcreData->generalContext == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_EXCEEDEDMEMORYLIMIT), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_EXCEEDEDMEMORYLIMIT), errmsg(
 							"PCRE2 general context creation failure.")));
 	}
 
 	pcreData->compileContext = pcre2_compile_context_create(pcreData->generalContext);
 	if (pcreData->compileContext == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_EXCEEDEDMEMORYLIMIT), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_EXCEEDEDMEMORYLIMIT), errmsg(
 							"PCRE2 compile context creation failure.")));
 	}
 }

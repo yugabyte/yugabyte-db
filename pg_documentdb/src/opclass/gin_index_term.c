@@ -14,7 +14,7 @@
 #include <miscadmin.h>
 #include "opclass/helio_gin_index_term.h"
 #include "query/helio_bson_compare.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "types/decimal128.h"
 #include "io/bsonvalue_utils.h"
 
@@ -195,7 +195,7 @@ TruncateStringOrBinaryTerm(int32_t dataSize, int32_t indexTermSizeLimit,
 		int32_t excess = requiredLength - indexTermSizeLimit;
 		if (excess >= stringLen)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Cannot create index key required length %d for type %s exceeds max size %d.",
 								stringLen, BsonTypeName(bsonValueType),
@@ -610,7 +610,7 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 	{
 		if (!StringViewEquals(&indexPath, &termMetadata->pathPrefix))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Wildcard Prefix path encountered with non-wildcard index - path %s, prefix %s",
 								indexPath.string, termMetadata->pathPrefix.string)));
@@ -651,7 +651,7 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 
 		if (indexPath.length > termMetadata->wildcardIndexTruncatedPathLimit)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"Wildcard index key exceeded the maximum allowed size of %d.",
 								termMetadata->wildcardIndexTruncatedPathLimit)));
@@ -670,7 +670,7 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 
 	if (dataSize >= termMetadata->indexTermSizeLimit)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Cannot create index key because the path length %d exceeds truncation limit %d.",
 							dataSize, termMetadata->indexTermSizeLimit),
@@ -894,7 +894,7 @@ SerializeBsonIndexTermCore(pgbsonelement *indexElement,
 	if (createMetadata->indexTermSizeLimit > 0 &&
 		dataSize > (uint32_t) createMetadata->indexTermSizeLimit)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Truncation size limit specified %d, but index term with type %s was larger %d - isTruncated %d",
 							createMetadata->indexTermSizeLimit, BsonTypeName(

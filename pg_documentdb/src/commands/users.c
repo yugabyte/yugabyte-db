@@ -9,9 +9,9 @@
  */
 #include "postgres.h"
 #include "fmgr.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "utils/query_utils.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "commands/commands_common.h"
 #include "commands/parse_error.h"
 #include "utils/feature_counter.h"
@@ -84,7 +84,7 @@ helio_extension_create_user(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("CreateUser command is not supported"),
 						errdetail_log("CreateUser command is not supported")));
 	}
@@ -93,7 +93,7 @@ helio_extension_create_user(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("User spec must be specified")));
 	}
 
@@ -115,13 +115,13 @@ helio_extension_create_user(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("Failed to get current user count.")));
 	}
 
 	if (userCount >= MaxUserLimit)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_USERCOUNTLIMITEXCEEDED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_USERCOUNTLIMITEXCEEDED),
 						errmsg(
 							"Exceeded the limit of %d secondary users. " \
 							"For more options, visit https://aka.ms/mongodbvcore-rbac",
@@ -187,7 +187,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 			spec->createUser = bson_iter_utf8(&createIter, &strLength);
 			if (strLength == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"createUser cannot be empty")));
 			}
@@ -197,7 +197,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 				strncmp(spec->createUser, "pg", 2) == 0 ||
 				strncmp(spec->createUser, "helio", 5) == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Invalid user name")));
 			}
 
@@ -210,7 +210,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 			spec->pwd = bson_iter_utf8(&createIter, &strLength);
 			if (strLength == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"pwd cannot be empty")));
 			}
@@ -223,7 +223,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 
 			if (IsBsonValueEmptyDocument(&spec->roles))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"Field roles cannot be an empty document")));
 			}
@@ -234,7 +234,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 		}
 		else if (!IsCommonSpecIgnoredField(key))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Unsupported field specified : %s", key)));
 		}
 	}
@@ -244,7 +244,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 		return spec;
 	}
 
-	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 					errmsg("createUser, pwd and roles are required fields")));
 }
 
@@ -301,7 +301,7 @@ ValidateAndObtainHelioRole(const bson_value_t *rolesDocument)
 				}
 				else
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_ROLENOTFOUND),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_ROLENOTFOUND),
 									errmsg("Invalid value specified for role: %s", role),
 									errdetail_log("Invalid value specified for role: %s",
 												  role)));
@@ -313,13 +313,13 @@ ValidateAndObtainHelioRole(const bson_value_t *rolesDocument)
 				const char *db = bson_iter_utf8(&roleIterator, &strLength);
 				if (strcmp(db, "admin") != 0)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 										"Unsupported value specified for db ")));
 				}
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Unexpected parameter specified in roles : %s",
 									   key),
 								errdetail_log(
@@ -340,7 +340,7 @@ ValidateAndObtainHelioRole(const bson_value_t *rolesDocument)
 		return "helio_readonly_role";
 	}
 
-	ereport(ERROR, (errcode(ERRCODE_HELIO_ROLENOTFOUND),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_ROLENOTFOUND),
 					errmsg(
 						"Roles specified are invalid. Only [{role: \"readAnyDatabase\", db: \"admin\"}] or [{role: \"clusterAdmin\", db: \"admin\"}, {role: \"readWriteAnyDatabase\", db: \"admin\"}] are allowed"),
 					errdetail_log(
@@ -357,7 +357,7 @@ helio_extension_drop_user(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("DropUser command is not supported"),
 						errdetail_log("DropUser command is not supported")));
 	}
@@ -366,7 +366,7 @@ helio_extension_drop_user(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("User spec must be specified")));
 	}
 
@@ -409,7 +409,7 @@ ParseDropUserSpec(pgbson *dropSpec)
 			dropUser = (char *) bson_iter_utf8(&dropIter, &strLength);
 			if (strLength == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"dropUser cannot be empty")));
 			}
@@ -419,7 +419,7 @@ ParseDropUserSpec(pgbson *dropSpec)
 				strncmp(dropUser, "pg", 2) == 0 ||
 				strncmp(dropUser, "helio", 5) == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Invalid user name")));
 			}
 		}
@@ -429,14 +429,14 @@ ParseDropUserSpec(pgbson *dropSpec)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Unsupported field specified : %s", key)));
 		}
 	}
 
 	if (dropUser == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("dropUser is a required field")));
 	}
 
@@ -457,7 +457,7 @@ helio_extension_update_user(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("UpdateUser command is not supported"),
 						errdetail_log("UpdateUser command is not supported")));
 	}
@@ -465,7 +465,7 @@ helio_extension_update_user(PG_FUNCTION_ARGS)
 	ReportFeatureUsage(FEATURE_USER_UPDATE);
 	if (PG_ARGISNULL(0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("User spec must be specified")));
 	}
 
@@ -514,7 +514,7 @@ ParseUpdateUserSpec(pgbson *updateSpec)
 			spec->updateUser = bson_iter_utf8(&updateIter, &strLength);
 			if (strLength == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"updateUser cannot be empty")));
 			}
@@ -528,7 +528,7 @@ ParseUpdateUserSpec(pgbson *updateSpec)
 			spec->pwd = bson_iter_utf8(&updateIter, &strLength);
 			if (strLength == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"pwd cannot be empty")));
 			}
@@ -541,7 +541,7 @@ ParseUpdateUserSpec(pgbson *updateSpec)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Unsupported field specified : %s", key)));
 		}
 	}
@@ -551,7 +551,7 @@ ParseUpdateUserSpec(pgbson *updateSpec)
 		return spec;
 	}
 
-	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 					errmsg("updateUser and pwd are required fields")));
 }
 
@@ -565,7 +565,7 @@ helio_extension_get_users(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("UsersInfo command is not supported"),
 						errdetail_log("UsersInfo command is not supported")));
 	}
@@ -573,7 +573,7 @@ helio_extension_get_users(PG_FUNCTION_ARGS)
 	ReportFeatureUsage(FEATURE_USER_GET);
 	if (PG_ARGISNULL(0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("User spec must be specified")));
 	}
 
@@ -745,7 +745,7 @@ ParseGetUserSpec(pgbson *getSpec)
 				}
 				else
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg("Unsupported value for usersInfo")));
 				}
 			}
@@ -769,7 +769,7 @@ ParseGetUserSpec(pgbson *getSpec)
 						const char *db = bson_iter_utf8(&iter, &strLength);
 						if (strcmp(db, "admin") != 0)
 						{
-							ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+							ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 											errmsg(
 												"Unsupported value specified for db : %s",
 												db),
@@ -788,7 +788,7 @@ ParseGetUserSpec(pgbson *getSpec)
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Unusupported value for usersInfo")));
 			}
 		}
@@ -798,13 +798,13 @@ ParseGetUserSpec(pgbson *getSpec)
 			{
 				if (bson_iter_as_bool(&getIter) != true)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg("Unusupported value for forAllDBs")));
 				}
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Unusupported value for forAllDBs")));
 			}
 
@@ -822,12 +822,12 @@ ParseGetUserSpec(pgbson *getSpec)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Unusupported field")));
 		}
 	}
 
-	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 						"Please provide usersInfo or forAllDBs")));
 }
 
@@ -851,7 +851,7 @@ PrehashPassword(const char *password)
 	 */
 	if (ScramDefaultSaltLen > SCRAM_MAX_SALT_LEN)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Invalid value for salt length")));
 	}
 

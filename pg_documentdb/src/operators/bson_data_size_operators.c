@@ -157,7 +157,7 @@ SetResultValueForDollarBinarySize(bson_value_t *inputArgument, bson_value_t *res
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51276), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51276), errmsg(
 							"$binarySize requires a string or BinData argument, found: %s",
 							BsonTypeName(inputArgument->value_type)),
 						errdetail_log(
@@ -181,7 +181,7 @@ SetResultValueForDollarBsonSize(bson_value_t *inputArgument, bson_value_t *resul
 
 	if (inputArgument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31393), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31393), errmsg(
 							"$bsonSize requires a document input, found: %s",
 							BsonTypeName(inputArgument->value_type)),
 						errdetail_log("$bsonSize requires a document input, found: %s",

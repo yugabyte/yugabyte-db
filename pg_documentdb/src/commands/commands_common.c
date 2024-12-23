@@ -19,7 +19,7 @@
 #include "io/helio_bson_core.h"
 #include "commands/commands_common.h"
 #include "utils/error_utils.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "aggregation/bson_query.h"
 #include "metadata/metadata_cache.h"
 #include "planner/helio_planner.h"
@@ -254,7 +254,7 @@ TryGetErrorMessageAndCode(ErrorData *errorData, int *code, char **errmessage)
 	if (errorData->sqlerrcode == ERRCODE_CHECK_VIOLATION)
 	{
 		ereport(LOG, (errmsg("Check constraint error %s", errorData->message)));
-		*code = ERRCODE_HELIO_DUPLICATEKEY;
+		*code = ERRCODE_DOCUMENTDB_DUPLICATEKEY;
 		*errmessage =
 			"Invalid write detected. Please validate the collection and/or shard key being written to";
 		return true;
@@ -314,7 +314,7 @@ TryGetErrorMessageAndCode(ErrorData *errorData, int *code, char **errmessage)
 		char *errorMessage = psprintf(
 			"Duplicate key violation on the requested collection: Index '%s'",
 			mongoIndexName);
-		*code = ERRCODE_HELIO_DUPLICATEKEY;
+		*code = ERRCODE_DOCUMENTDB_DUPLICATEKEY;
 		*errmessage = errorMessage;
 		return true;
 	}
@@ -334,7 +334,7 @@ ValidateIdField(const bson_value_t *idValue)
 		(idValue->value_type == BSON_TYPE_UNDEFINED) ||
 		(idValue->value_type == BSON_TYPE_REGEX))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"The '_id' value cannot be of type %s",
 							BsonTypeName(idValue->value_type))));
 	}
@@ -348,7 +348,7 @@ ValidateIdField(const bson_value_t *idValue)
 			const char *key = bson_iter_key(&docIterator);
 			if (key[0] == '$')
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARPREFIXEDFIELDNAME),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARPREFIXEDFIELDNAME),
 								errmsg("_id fields may not contain '$'-prefixed fields:"
 									   " %s is not valid for storage.", key)));
 			}

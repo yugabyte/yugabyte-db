@@ -719,14 +719,14 @@ bson_expression_partition_get(PG_FUNCTION_ARGS)
 	pgbsonelement result;
 	if (!TryGetSinglePgbsonElementFromPgbson(returnedBson, &result))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"PlanExecutor error during aggregation :: cause by :: An expression evaluated in a multi field document")));
 	}
 
 	if (result.bsonValue.value_type == BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg(
 							"PlanExecutor error during aggregation :: caused by :: An expression used to partition "
 							"cannot evaluate to value of type array")));
@@ -1177,7 +1177,7 @@ ValidateVariableNameCore(StringView name, bool allowStartWithUpper)
 {
 	if (name.length <= 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 							"empty variable names are not allowed")));
 	}
 
@@ -1189,14 +1189,14 @@ ValidateVariableNameCore(StringView name, bool allowStartWithUpper)
 			!IsOverridableSystemVariable(&name) &&
 			(!isupper(current) || !allowStartWithUpper))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 								"'%s' starts with an invalid character for a user variable name",
 								name.string)));
 		}
 		else if (isascii(current) && !isdigit(current) && !islower(current) &&
 				 !isupper(current) && current != '_')
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 								"'%s' contains an invalid character for a variable name: '%c'",
 								name.string, current)));
 		}
@@ -1282,7 +1282,7 @@ ReportOperatorExpressonSyntaxError(const char *fieldA, bson_iter_t *fieldBIter, 
 {
 	if (bson_iter_key_len(fieldBIter) == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 							"FieldPath cannot be constructed with empty string.")));
 	}
 
@@ -1291,7 +1291,7 @@ ReportOperatorExpressonSyntaxError(const char *fieldA, bson_iter_t *fieldBIter, 
 	if (!performOperatorCheck || (bson_iter_key_len(fieldBIter) > 1 && bson_iter_key(
 									  fieldBIter)[0] == '$'))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40181), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40181), errmsg(
 							"an expression operator specification must contain exactly one field, found 2 fields '%s' and '%s'.",
 							fieldA,
 							bson_iter_key(fieldBIter))));
@@ -1738,7 +1738,7 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 				else if (StringViewEndsWith(&expressionView, '.'))
 				{
 					/* We got a $$var. expression which is invalid. */
-					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 									errmsg("FieldPath must not end with a '.'.")));
 				}
 
@@ -1830,7 +1830,7 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 
 				if (strlen(value->value.v_utf8.str) != value->value.v_utf8.len)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16411),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16411),
 									errmsg(
 										"FieldPath field names may not contain embedded nulls")));
 				}
@@ -2185,7 +2185,7 @@ EvaluateAggregationExpressionVariable(const AggregationExpressionData *data,
 	bson_value_t variableValue;
 	if (!ExpressionResultGetVariable(varName, expressionResult, document, &variableValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17276),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17276),
 						errmsg("Use of undefined variable: %s",
 							   CreateStringFromStringView(&varName))));
 	}
@@ -2234,13 +2234,13 @@ EvaluateAggregationExpressionSystemVariable(const AggregationExpressionData *dat
 
 		case AggregationExpressionSystemVariableKind_Now:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$NOW not supported yet")));
 		}
 
 		case AggregationExpressionSystemVariableKind_ClusterTime:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$CLUSTER_TIME not supported yet")));
 		}
 
@@ -2263,37 +2263,37 @@ EvaluateAggregationExpressionSystemVariable(const AggregationExpressionData *dat
 
 		case AggregationExpressionSystemVariableKind_Descend:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$DESCEND not supported yet")));
 		}
 
 		case AggregationExpressionSystemVariableKind_Prune:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$PRUNE not supported yet")));
 		}
 
 		case AggregationExpressionSystemVariableKind_Keep:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$KEEP not supported yet")));
 		}
 
 		case AggregationExpressionSystemVariableKind_SearchMeta:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$SEARCH_META not supported yet")));
 		}
 
 		case AggregationExpressionSystemVariableKind_UserRoles:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$USER_ROLES not supported yet")));
 		}
 
 		default:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Unknown system variable encountered. This is a bug")));
 		}
@@ -2384,7 +2384,7 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 
 		if (bson_iter_next(&docIter))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40181), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40181), errmsg(
 								"an expression operator specification must contain exactly one field, found 2 fields '%s' and '%s'.",
 								operatorKey,
 								bson_iter_key(&docIter))));
@@ -2406,7 +2406,7 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 
 		if (pItem == NULL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31325),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31325),
 							errmsg("Unknown expression %s", searchKey.operatorName),
 							errdetail_log("Unknown expression %s",
 										  searchKey.operatorName)));
@@ -2425,7 +2425,7 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 			{
 				if (pItem->handlePreParsedOperatorFunc == NULL)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 									errmsg(
 										"Operator %s doesn't specify a runtime handler function and doesn't resolve the operator evaluation at the parsing layer.",
 										searchKey.operatorName),
@@ -2445,7 +2445,7 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("Operator %s not implemented yet",
 								   searchKey.operatorName),
 							errdetail_log("Operator %s not implemented yet",
@@ -2704,7 +2704,7 @@ ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data,
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16874), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16874), errmsg(
 							"$let only supports an object as its argument")));
 	}
 
@@ -2726,7 +2726,7 @@ ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16875), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16875), errmsg(
 								"Unrecognized parameter to $let: %s", key),
 							errdetail_log(
 								"Unrecognized parameter to $let, unexpected key")));
@@ -2735,19 +2735,19 @@ ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data,
 
 	if (vars.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16876), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16876), errmsg(
 							"Missing 'vars' parameter to $let")));
 	}
 
 	if (in.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16876), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16876), errmsg(
 							"Missing 'in' parameter to $let")));
 	}
 
 	if (vars.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION10065), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION10065), errmsg(
 							"invalid parameter: expected an object (vars)")));
 	}
 

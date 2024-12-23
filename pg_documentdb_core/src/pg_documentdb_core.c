@@ -41,7 +41,7 @@ _PG_init(void)
 
 	InstallBsonMemVTables();
 
-	InitDocumentDbCoreConfigurations("documentdb_core");
+	InitDocumentDBCoreConfigurations("documentdb_core");
 
 	MarkGUCPrefixReserved("documentdb_core");
 	ereport(LOG, (errmsg("Initialized documentdb_core extension")));

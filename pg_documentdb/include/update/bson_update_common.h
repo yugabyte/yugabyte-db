@@ -15,7 +15,7 @@
 #include <utils/hsearch.h>
 
 #include "io/helio_bson_core.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "aggregation/bson_positional_query.h"
 
 struct AggregationPipelineUpdateState;
@@ -131,7 +131,7 @@ inline static void
 pg_attribute_noreturn()
 ThrowIdPathModifiedErrorForOperatorUpdate()
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_IMMUTABLEFIELD),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_IMMUTABLEFIELD),
 					errmsg(
 						"Performing an update on the path '_id' would modify the immutable field '_id'")));
 }
@@ -145,7 +145,7 @@ inline static void
 pg_attribute_noreturn()
 ThrowPathConflictError(const char * requestedPath, const char * existingPath)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_CONFLICTINGUPDATEOPERATORS),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONFLICTINGUPDATEOPERATORS),
 					errmsg("Updating the path '%s' would create a conflict at '%s'",
 						   requestedPath, existingPath)));
 }

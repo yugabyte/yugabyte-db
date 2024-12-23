@@ -19,7 +19,7 @@
 #include "nodes/makefuncs.h"
 #include "catalog/namespace.h"
 
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "metadata/index.h"
@@ -87,7 +87,7 @@ command_drop_collection(PG_FUNCTION_ARGS)
 
 		if (!result.success)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Internal error dropping collection in metadata coordinator"),
 							errdetail_log(
@@ -125,7 +125,7 @@ command_drop_collection(PG_FUNCTION_ARGS)
 		if (isNull || memcmp(DatumGetPointer(collectionUuid), DatumGetPointer(targetUuid),
 							 sizeof(pg_uuid_t)) != 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COLLECTIONUUIDMISMATCH),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COLLECTIONUUIDMISMATCH),
 							errmsg("drop collection %s.%s UUID mismatch", databaseName,
 								   collectionName)));
 		}

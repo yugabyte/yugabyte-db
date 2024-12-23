@@ -16,7 +16,7 @@
 #include "fmgr.h"
 #include "math.h"
 
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
 #include "geospatial/bson_geospatial_shape_operators.h"
@@ -223,7 +223,7 @@ bson_gist_geometry_2d_compress(PG_FUNCTION_ARGS)
 		bsonBoundingBox->xMin < minBound || bsonBoundingBox->yMin < minBound)
 	{
 		/* Out of bounds, throw error */
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION13027),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION13027),
 						errmsg("point not in interval of [ %g, %g ]",
 							   minBound, maxBound)));
 	}
@@ -337,7 +337,7 @@ bson_gist_geometry_consistent_2d(PG_FUNCTION_ARGS)
 		default:
 		{
 			/* We will never reach here but just in case. */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg("unknown geospatial query operator with strategy %d",
 								   strategy)));
 		}
@@ -465,7 +465,7 @@ PopulateGeospatialQueryState(IndexBsonGeospatialState *state,
 
 		default:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg("unknown geospatial query operator with strategy %d",
 								   strategy)));
 		}
@@ -660,7 +660,7 @@ bson_gist_geography_consistent(PG_FUNCTION_ARGS)
 		default:
 		{
 			/* We will never reach here but just in case. */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg("unknown geospatial query operator with strategy %d",
 								   strategy)));
 		}

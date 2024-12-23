@@ -556,7 +556,7 @@ BuildUpdates(BatchUpdateSpec *spec)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414),
 						errmsg("BSON field 'update.updates' is missing but is "
 							   "a required field")));
 	}
@@ -564,7 +564,7 @@ BuildUpdates(BatchUpdateSpec *spec)
 	int updateCount = list_length(updates);
 	if (updateCount == 0 || updateCount > MaxWriteBatchSize)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDLENGTH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDLENGTH),
 						errmsg("Write batch sizes must be between 1 and %d. "
 							   "Got %d operations.", MaxWriteBatchSize, updateCount),
 						errdetail_log("Write batch sizes must be between 1 and %d. "
@@ -596,7 +596,7 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 		{
 			if (!BSON_ITER_HOLDS_UTF8(updateCommandIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("collection name has invalid type %s",
 									   BsonIterTypeName(updateCommandIter))));
 			}
@@ -610,7 +610,7 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 			/* if both docs and spec are provided, fail */
 			if (updateDocs != NULL)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg("Unexpected additional updates")));
 			}
 
@@ -648,7 +648,7 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
 							errmsg("BSON field 'update.%s' is an unknown field",
 								   field)));
 		}
@@ -656,7 +656,7 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 
 	if (collectionName == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414),
 						errmsg("BSON field 'update.update' is missing but "
 							   "a required field")));
 	}
@@ -765,7 +765,7 @@ BuildUpdateSpec(bson_iter_t *updateIter)
 			if (!BSON_ITER_HOLDS_DOCUMENT(updateIter) &&
 				!BSON_ITER_HOLDS_ARRAY(updateIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 								errmsg("BSON field 'update.updates.u' is the wrong type "
 									   "'%s', expected type 'object' or 'array'",
 									   BsonIterTypeName(updateIter))));
@@ -800,25 +800,25 @@ BuildUpdateSpec(bson_iter_t *updateIter)
 		else if (strcmp(field, "collation") == 0)
 		{
 			/* We error on collation by default unlike FindAndModify. So we don't need to condition on EnableCollation GUC here. */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("BSON field 'update.updates.collation' is not yet "
 								   "supported")));
 		}
 		else if (strcmp(field, "hint") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("BSON field 'update.updates.hint' is not yet "
 								   "supported")));
 		}
 		else if (strcmp(field, "comment") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("BSON field 'update.updates.comment' is not yet "
 								   "supported")));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
 							errmsg("BSON field 'update.updates.%s' is an unknown field",
 								   field)));
 		}
@@ -826,14 +826,14 @@ BuildUpdateSpec(bson_iter_t *updateIter)
 
 	if (query == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414),
 						errmsg("BSON field 'update.updates.q' is missing but "
 							   "a required field")));
 	}
 
 	if (update == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414),
 						errmsg("BSON field 'update.updates.u' is missing but "
 							   "a required field")));
 	}
@@ -1192,7 +1192,7 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 		if (DetermineUpdateType(update) == UpdateType_ReplaceDocument)
 		{
 			/* Mongo does not support this case */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("multi update is not supported for "
 								   "replacement-style update")));
 		}
@@ -1721,7 +1721,7 @@ CallUpdateWorker(MongoCollection *collection, pgbson *serializedSpec,
 
 	if (isNulls[0])
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("update_worker should not return null")));
 	}
 
@@ -1830,7 +1830,7 @@ command_update_worker(PG_FUNCTION_ARGS)
 	if (shardOid == InvalidOid)
 	{
 		/* The planner is expected to replace this */
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("Explicit shardOid must be set - this is a server bug"),
 						errdetail_log(
 							"Explicit shardOid must be set - this is a server bug")));
@@ -1838,7 +1838,7 @@ command_update_worker(PG_FUNCTION_ARGS)
 
 	if (updateSequence == NULL && updateInternalSpec == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"update spec or update documents argument must be not null.")));
 	}
@@ -1938,7 +1938,7 @@ ProcessUnshardedUpdateBatchWorker(MongoCollection *collection, List *updates, bo
 	int updateCount = list_length(updates);
 	if (updateCount == 0 || updateCount > MaxWriteBatchSize)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDLENGTH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDLENGTH),
 						errmsg("Write batch sizes must be between 1 and %d. "
 							   "Got %d operations.", MaxWriteBatchSize, updateCount),
 						errdetail_log("Write batch sizes must be between 1 and %d. "
@@ -1965,7 +1965,7 @@ SerializeUnshardedUpdateParams(const bson_value_t *updateSpec, bool isOrdered, b
 {
 	if (updateSpec != NULL && updateSpec->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414),
 						errmsg("BSON field 'update.updates' is missing but is "
 							   "a required field")));
 	}
@@ -2054,8 +2054,8 @@ DeserializeUpdateUnshardedWorkerSpec(const bson_value_t *value, WorkerUpdatePara
 		{
 			if (!BSON_ITER_HOLDS_ARRAY(&iter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
-																		   "Update worker expects updateUnsharded.specs to be an array."))));
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR), (errmsg(
+																				"Update worker expects updateUnsharded.specs to be an array."))));
 			}
 
 			params->param.updateBatch = *bson_iter_value(&iter);
@@ -2064,8 +2064,8 @@ DeserializeUpdateUnshardedWorkerSpec(const bson_value_t *value, WorkerUpdatePara
 		{
 			if (!BSON_ITER_HOLDS_BOOL(&iter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
-																		   "Update worker expects updateUnsharded.isOrdered to be a bool."))));
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR), (errmsg(
+																				"Update worker expects updateUnsharded.isOrdered to be a bool."))));
 			}
 
 			params->isOrdered = BsonValueAsBool(bson_iter_value(&iter));
@@ -2079,20 +2079,20 @@ DeserializeUpdateUnshardedWorkerSpec(const bson_value_t *value, WorkerUpdatePara
 
 			if (!BSON_ITER_HOLDS_BOOL(&iter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
-																		   "Update worker expects updateUnsharded.bypassDocumentValidation to be a bool."))));
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR), (errmsg(
+																				"Update worker expects updateUnsharded.bypassDocumentValidation to be a bool."))));
 			}
 
 			params->bypassDocumentValidation = BsonValueAsBool(bson_iter_value(&iter));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
-																	   "Unknown field to update worker for updateUnsharded document, '%s'.",
-																	   key),
-																   errdetail_log(
-																	   "Unknown field to update worker for updateUnsharded document, '%s'.",
-																	   key))));
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR), (errmsg(
+																			"Unknown field to update worker for updateUnsharded document, '%s'.",
+																			key),
+																		errdetail_log(
+																			"Unknown field to update worker for updateUnsharded document, '%s'.",
+																			key))));
 		}
 	}
 }
@@ -2129,8 +2129,8 @@ DeserializeUpdateWorkerSpec(pgbson *updateInternalSpec,
 	else if (strcmp(singleElement.path, "updateOne") != 0 ||
 			 singleElement.bsonValue.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
-																   "Update worker only supports updateOne or updateUnsharded as a document"))));
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR), (errmsg(
+																		"Update worker only supports updateOne or updateUnsharded as a document"))));
 	}
 
 	params->isUpdateOne = true;

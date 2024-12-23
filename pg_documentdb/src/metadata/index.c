@@ -32,7 +32,7 @@
 #include "metadata/relation_utils.h"
 #include "utils/guc_utils.h"
 #include "utils/query_utils.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "metadata/metadata_guc.h"
 #include "utils/version_utils.h"
 
@@ -1728,7 +1728,7 @@ MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights, bool *isWi
 		bool isWeightWildCard = false;
 		if (!BsonValueIsNumber(currentValue))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDINDEXSPECIFICATIONOPTION),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDINDEXSPECIFICATIONOPTION),
 							errmsg("weight for text index needs numeric type")));
 		}
 

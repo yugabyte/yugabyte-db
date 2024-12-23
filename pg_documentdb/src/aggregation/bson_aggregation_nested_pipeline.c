@@ -276,7 +276,7 @@ GetPipelineStage(bson_iter_t *pipelineIter, const char *parentStage, const
 	const bson_value_t *pipelineStage = bson_iter_value(pipelineIter);
 	if (!BSON_ITER_HOLDS_DOCUMENT(pipelineIter))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"Pipeline stage for %s %s must be a document",
 							parentStage, pipelineKey)));
@@ -285,7 +285,7 @@ GetPipelineStage(bson_iter_t *pipelineIter, const char *parentStage, const
 	pgbsonelement stageElement;
 	if (!TryGetBsonValueToPgbsonElement(pipelineStage, &stageElement))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40323),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40323),
 						errmsg(
 							"A pipeline stage specification object must contain exactly one field.")));
 	}
@@ -372,7 +372,7 @@ HandleLookup(const bson_value_t *existingValue, Query *query,
 
 	if (context->nestedPipelineLevel >= MaximumLookupPipelineDepth)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_MAXSUBPIPELINEDEPTHEXCEEDED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_MAXSUBPIPELINEDEPTHEXCEEDED),
 						errmsg(
 							"Maximum number of nested sub-pipelines exceeded. Limit is %d",
 							MaximumLookupPipelineDepth)));
@@ -420,7 +420,7 @@ HandleDocumentsStage(const bson_value_t *existingValue, Query *query,
 
 	if (list_length(query->rtable) != 0 || context->stageNum != 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"$documents is only valid as the first stage in a pipeline")));
 	}
@@ -453,7 +453,7 @@ HandleDocumentsStage(const bson_value_t *existingValue, Query *query,
 	if (!TryGetSinglePgbsonElementFromPgbson(targetBson, &fetchedElement) ||
 		fetchedElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5858203),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5858203),
 						errmsg(
 							"error during aggregation :: caused by :: an array is expected")));
 	}
@@ -517,7 +517,7 @@ HandleInverseMatch(const bson_value_t *existingValue, Query *query,
 
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"$inverseMatch requires a document as an input instead got: %s",
 							BsonTypeName(
@@ -587,7 +587,7 @@ HandleInverseMatch(const bson_value_t *existingValue, Query *query,
 		 */
 		if (StringViewEquals(&context->collectionNameView, &arguments.fromCollection))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"'from' collection should be a different collection than the base collection the inverseMatch is running against.")));
 		}
@@ -652,7 +652,7 @@ CreateInverseMatchFromCollectionQuery(InverseMatchArgs *inverseMatchArgs,
 
 	if (subPipelineContext.mongoCollection == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTFOUND),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACENOTFOUND),
 						errmsg(
 							"'from' collection: '%s.%s' doesn't exist.",
 							TextDatumGetCString(context->databaseNameDatum),
@@ -764,7 +764,7 @@ ParseInverseMatchSpec(const bson_value_t *spec, InverseMatchArgs *args)
 					strcmp(nestedPipelineStage, "$project") != 0 &&
 					strcmp(nestedPipelineStage, "$limit") != 0)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg(
 										"%s is not allowed to be used within an $inverseMatch stage, only $match, $project or $limit are allowed",
 										nestedPipelineStage)));
@@ -773,14 +773,14 @@ ParseInverseMatchSpec(const bson_value_t *spec, InverseMatchArgs *args)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("unrecognized argument to $inverseMatch: '%s'", key)));
 		}
 	}
 
 	if (args->path.length == 0 || args->path.string == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 							"Missing 'path' parameter to $inverseMatch")));
 	}
 
@@ -789,14 +789,14 @@ ParseInverseMatchSpec(const bson_value_t *spec, InverseMatchArgs *args)
 	{
 		if (args->input.value_type != BSON_TYPE_EOD)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"'input' and 'from' can't be used together in an $inverseMatch stage.")));
 		}
 
 		if (args->pipeline.value_type == BSON_TYPE_EOD)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"'pipeline' argument is required when 'from' is specified in an $inverseMatch stage.")));
 		}
@@ -805,7 +805,7 @@ ParseInverseMatchSpec(const bson_value_t *spec, InverseMatchArgs *args)
 	}
 	else if (args->input.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 							"Missing 'input' and 'from' parameter to $inverseMatch, one should be provided.")));
 	}
 
@@ -857,7 +857,7 @@ ParseUnionWith(const bson_value_t *existingValue, StringView *collectionFrom,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
 								errmsg("BSON field '$unionWith.%s' is an unknown field.",
 									   key),
 								errdetail_log(
@@ -868,14 +868,14 @@ ParseUnionWith(const bson_value_t *existingValue, StringView *collectionFrom,
 
 		if (collectionFrom->length == 0 && pipeline->value_type == BSON_TYPE_EOD)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"$unionWith stage without explicit collection must have a pipeline with $documents as first stage")));
 		}
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"the $unionWith stage specification must be an object or string, but found %s",
 							BsonTypeName(existingValue->value_type)),
@@ -898,7 +898,7 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 	/* This is as per the jstest max_subpipeline_depth.*/
 	if (context->nestedPipelineLevel >= MaximumLookupPipelineDepth)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_MAXSUBPIPELINEDEPTHEXCEEDED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_MAXSUBPIPELINEDEPTHEXCEEDED),
 						errmsg(
 							"Maximum number of nested sub-pipelines exceeded. Limit is %d",
 							MaximumLookupPipelineDepth)));
@@ -1176,7 +1176,7 @@ ValidateFacet(const bson_value_t *facetValue)
 {
 	if (facetValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15947),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION15947),
 						errmsg("a facet's fields must be specified in an object")));
 	}
 
@@ -1210,7 +1210,7 @@ ValidateFacet(const bson_value_t *facetValue)
 				strcmp(nestedPipelineStage, "$search") == 0 ||
 				strcmp(nestedPipelineStage, "$changeStream") == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40600),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40600),
 								errmsg(
 									"%s is not allowed to be used within a $facet stage",
 									nestedPipelineStage),
@@ -1223,7 +1223,7 @@ ValidateFacet(const bson_value_t *facetValue)
 
 	if (numStages == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40169),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40169),
 						errmsg("the $facet specification must be a non-empty object")));
 	}
 
@@ -1678,7 +1678,7 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 {
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40319),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40319),
 						errmsg(
 							"the $lookup stage specification must be an object, but found %s",
 							BsonTypeName(existingValue->value_type))));
@@ -1695,7 +1695,7 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"lookup argument 'as' must be a string, is type %s",
 									BsonTypeName(value->value_type))));
@@ -1710,7 +1710,7 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"lookup argument 'foreignField' must be a string, is type %s",
 									BsonTypeName(value->value_type))));
@@ -1725,7 +1725,7 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40321),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40321),
 								errmsg(
 									"lookup argument 'from' must be a string, is type %s",
 									BsonTypeName(value->value_type))));
@@ -1740,7 +1740,7 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_DOCUMENT)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"lookup argument 'let' must be a document, is type %s",
 									BsonTypeName(value->value_type))));
@@ -1756,7 +1756,7 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"lookup argument 'localField' must be a string, is type %s",
 									BsonTypeName(value->value_type))));
@@ -1785,7 +1785,7 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 					strcmp(nestedPipelineStage, "$merge") == 0 ||
 					strcmp(nestedPipelineStage, "$changeStream") == 0)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51047),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51047),
 									errmsg(
 										"%s is not allowed to be used within a $lookup stage",
 										nestedPipelineStage)));
@@ -1794,35 +1794,35 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("unknown argument to $lookup: %s", key)));
 		}
 	}
 
 	if (args->lookupAs.length == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("must specify 'as' field for a $lookup")));
 	}
 
 	bool isPipelineLookup = args->pipeline.value_type != BSON_TYPE_EOD;
 	if (args->from.length == 0 && !isPipelineLookup)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("must specify 'from' field for a $lookup")));
 	}
 
 	if (!isPipelineLookup &&
 		(args->foreignField.length == 0 || args->localField.length == 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"$lookup requires either 'pipeline' or both 'localField' and 'foreignField' to be specified")));
 	}
 
 	if ((args->foreignField.length == 0) ^ (args->localField.length == 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"$lookup requires both or neither of 'localField' and 'foreignField' to be specified")));
 	}
@@ -1907,7 +1907,7 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 {
 	if (!EnableLookupLetSupport && lookupArgs->let)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("let not supported")));
 	}
 	if (list_length(query->targetList) > 1)
@@ -1963,7 +1963,7 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 
 	if (lookupArgs->let)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Lookup with let not supported yet")));
 	}
 
@@ -2366,7 +2366,7 @@ OptimizeLookup(LookupArgs *lookupArgs,
 		if (optimizationArgs->isLookupAgnostic)
 		{
 			/* TODO Support agnostic queries with lookup with let */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"$lookup with let with agnostic queries not supported yet")));
 		}
@@ -3084,14 +3084,14 @@ ValidatePipelineForShardedLookupWithLet(const bson_value_t *pipeline)
 
 		if (strcmp(element.path, "$lookup") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"Nested lookup with let on sharded collections not supported yet")));
 		}
 
 		if (strcmp(element.path, "$facet") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"Nested facet with let on sharded collections not supported yet")));
 		}
@@ -3188,7 +3188,7 @@ ValidateUnionWithPipeline(const bson_value_t *pipeline, bool hasCollection)
 
 	if (IsBsonValueEmptyArray(pipeline) && !hasCollection)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"$unionWith stage without explicit collection must have a pipeline with $documents as first stage")));
 	}
@@ -3202,7 +3202,7 @@ ValidateUnionWithPipeline(const bson_value_t *pipeline, bool hasCollection)
 		{
 			if (strcmp(stageElement.path, "$documents") != 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"$unionWith stage without explicit collection must have a pipeline with $documents as first stage")));
 			}
@@ -3211,19 +3211,19 @@ ValidateUnionWithPipeline(const bson_value_t *pipeline, bool hasCollection)
 		isFirstStage = false;
 		if (strcmp(stageElement.path, "$out") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31441),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31441),
 							errmsg(
 								"$out is not allowed within a $unionWith's sub-pipeline")));
 		}
 		else if (strcmp(stageElement.path, "$merge") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31441),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31441),
 							errmsg(
 								"$merge is not allowed within a $unionWith's sub-pipeline")));
 		}
 		else if (strcmp(stageElement.path, "$changeStream") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31441),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31441),
 							errmsg(
 								"$changeStream is not allowed within a $unionWith's sub-pipeline")));
 		}
@@ -3240,7 +3240,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 {
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"the $graphLookup stage specification must be an object, but found %s",
 							BsonTypeName(existingValue->value_type)),
@@ -3262,7 +3262,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40103),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40103),
 								errmsg(
 									"graphlookup argument 'as' must be a string, is type %s",
 									BsonTypeName(value->value_type)),
@@ -3278,7 +3278,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 
 			if (args->asField.length > 0 && args->asField.string[0] == '$')
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16410),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16410),
 								errmsg(
 									"as: FieldPath field names may not start with '$'"),
 								errdetail_log(
@@ -3293,7 +3293,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40103),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40103),
 								errmsg(
 									"graphlookup argument 'connectFromField' must be a string, is type %s",
 									BsonTypeName(value->value_type)),
@@ -3309,7 +3309,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 			if (args->connectFromField.length > 0 && args->connectFromField.string[0] ==
 				'$')
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16410),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16410),
 								errmsg(
 									"connectFromField: FieldPath field names may not start with '$'"),
 								errdetail_log(
@@ -3320,7 +3320,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40103),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40103),
 								errmsg(
 									"graphlookup argument 'connectToField' must be a string, is type %s",
 									BsonTypeName(value->value_type)),
@@ -3335,7 +3335,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 			};
 			if (args->connectToField.length > 0 && args->connectToField.string[0] == '$')
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16410),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16410),
 								errmsg(
 									"connectToField: FieldPath field names may not start with '$'"),
 								errdetail_log(
@@ -3346,7 +3346,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"graphlookup argument 'from' must be a string, is type %s",
 									BsonTypeName(value->value_type)),
@@ -3365,7 +3365,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 		{
 			if (!BsonValueIsNumber(value))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40100),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40100),
 								errmsg(
 									"graphlookup argument 'maxDepth' must be a number, is type %s",
 									BsonTypeName(value->value_type)),
@@ -3376,7 +3376,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 
 			if (!IsBsonValueFixedInteger(value))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40102),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40102),
 								errmsg(
 									"graphlookup.maxDepth must be a non-negative integer."),
 								errdetail_log(
@@ -3387,7 +3387,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 
 			if (args->maxDepth < 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40101),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40101),
 								errmsg(
 									"graphlookup.maxDepth must be a non-negative integer."),
 								errdetail_log(
@@ -3398,7 +3398,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40103),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40103),
 								errmsg(
 									"graphlookup argument 'depthField' must be a string, is type %s",
 									BsonTypeName(value->value_type)),
@@ -3413,7 +3413,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 			};
 			if (args->depthField.length > 0 && args->depthField.string[0] == '$')
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16410),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16410),
 								errmsg(
 									"depthField: FieldPath field names may not start with '$'"),
 								errdetail_log(
@@ -3424,7 +3424,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 		{
 			if (value->value_type != BSON_TYPE_DOCUMENT)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40185),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40185),
 								errmsg(
 									"graphlookup argument 'restrictSearchWithMatch' must be a document, is type %s",
 									BsonTypeName(value->value_type))));
@@ -3434,7 +3434,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40104),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40104),
 							errmsg("unknown argument to $graphlookup: %s", key),
 							errdetail_log("unknown argument to $graphlookup: %s", key)));
 		}
@@ -3442,30 +3442,30 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 
 	if (args->asField.length == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40105),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40105),
 						errmsg("must specify 'as' field for a $graphLookup")));
 	}
 
 	if (!fromSpecified)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("must specify 'from' field for a $graphLookup")));
 	}
 	if (args->fromCollection.length == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 						errmsg("must specify 'from' field for a $graphLookup")));
 	}
 
 	if (args->inputExpression.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40105),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40105),
 						errmsg("must specify 'startWith' for a $graphLookup")));
 	}
 
 	if (args->connectFromField.length == 0 || args->connectToField.length == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40105),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40105),
 						errmsg(
 							"must specify both 'connectFrom' and 'connectTo' for a $graphLookup")));
 	}
@@ -3780,7 +3780,7 @@ GenerateBaseCaseQuery(AggregationPipelineBuildContext *parentContext,
 	if (subPipelineContext.mongoCollection != NULL &&
 		subPipelineContext.mongoCollection->shardKey != NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
 							"$graphLookup with 'from' on a sharded collection is not supported"),
 						errdetail_log(
@@ -3793,7 +3793,7 @@ GenerateBaseCaseQuery(AggregationPipelineBuildContext *parentContext,
 									&subPipelineContext);
 		if (baseCaseQuery->sortClause != NIL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5626500),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5626500),
 							errmsg(
 								"$geoNear, $near, and $nearSphere are not allowed in this context, "
 								"as these operators require sorting geospatial data. If you do not need sort, "
@@ -3878,7 +3878,7 @@ GenerateRecursiveCaseQuery(AggregationPipelineBuildContext *parentContext,
 									 &subPipelineContext);
 		if (recursiveQuery->sortClause != NIL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5626500),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5626500),
 							errmsg(
 								"$geoNear, $near, and $nearSphere are not allowed in this context, "
 								"as these operators require sorting geospatial data. If you do not need sort, "
@@ -4353,7 +4353,7 @@ ValidateLetHasNoVariables(AggregationExpressionData *parsedExpression)
 	if (parsedExpression->kind == AggregationExpressionKind_Variable)
 	{
 		const char *nameWithoutPrefix = parsedExpression->value.value.v_utf8.str + 2;
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17276),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17276),
 						errmsg("Use of undefined variable: %s",
 							   nameWithoutPrefix)));
 	}

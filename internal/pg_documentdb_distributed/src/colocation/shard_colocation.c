@@ -21,7 +21,7 @@
 #include <parser/parse_func.h>
 
 #include "io/helio_bson_core.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "utils/query_utils.h"
 
 #include "metadata/metadata_cache.h"
@@ -173,13 +173,13 @@ HandleDistributedColocation(MongoCollection *collection, const
 {
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("unexpected - collection for colocation was null")));
 	}
 
 	if (colocationValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("colocation options must be a document.")));
 	}
 
@@ -207,7 +207,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"colocation.collection must be a string or null. not %s",
 									BsonTypeName(bson_iter_type(&colocationIter))),
@@ -218,7 +218,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Unknown field colocation.%s", key),
 							errdetail_log("Unknown field colocation.%s", key)));
 		}
@@ -226,7 +226,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 
 	if (collectionName.length == 0 && !colocateWithNull)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
 						errmsg("Must specify collection for colocation")));
 	}
 
@@ -234,7 +234,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 	bool isSharded = collection->shardKey != NULL;
 	if (isSharded && !colocateWithNull)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
 						errmsg("Cannot colocate a collection that is already sharded.")));
 	}
 
@@ -256,7 +256,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 		const char *targetCollectionName = CreateStringFromStringView(&collectionName);
 		if (strcmp(collection->name.collectionName, targetCollectionName) == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 							errmsg(
 								"Source and target cannot be the same for colocation")));
 		}
@@ -267,7 +267,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 			AccessShareLock);
 		if (targetCollection == NULL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 							errmsg("ns %s.%s does not exist",
 								   collection->name.databaseName,
 								   targetCollectionName),
@@ -295,7 +295,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 															   mongoDataWithNamespace);
 		if (colocationId == colocationIdOfChangesTable)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"Colocation for this collection in the current configuration is not supported. "
 								"Please first colocate %s with colocation: null",
@@ -306,7 +306,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 
 		if (targetCollection->shardKey != NULL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"Cannot colocate current collection with a sharded collection.")));
 		}
@@ -315,7 +315,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 		int shardCount = GetShardCountForDistributedTable(targetCollection->relationId);
 		if (shardCount != 1)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"Colocation for this collection in the current configuration is not supported. "
 								"Please first colocate %s with colocation: null",
@@ -1012,7 +1012,7 @@ ColocateUnshardedCitusTables(const char *tableToColocate, const
 						  sourceShardCount)));
 	if (sourceShardCount != 1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
 							"Cannot colocate collection to source in current state. Please colocate the source collection with colocation: none")));
 	}
@@ -1159,7 +1159,7 @@ GetColocationForTable(Oid tableOid, const char *collectionName, const char *tabl
 													   &isNull);
 	if (isNull)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Could not find collection in internal colocation metadata: %s",
 							collectionName),
@@ -1203,7 +1203,7 @@ GetNodeNamePortForPostgresTable(const char *postgresTable, char **nodeName, int 
 
 	if (isNull)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("Could not extract shard_id for newly created table"),
 						errdetail_log("Could not get shardId value for postgres table %s",
 									  postgresTable)));
@@ -1228,7 +1228,7 @@ GetNodeNamePortForPostgresTable(const char *postgresTable, char **nodeName, int 
 
 	if (currentNodeIsNulls[0] || currentNodeIsNulls[1])
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Could not find shard placement for newly created table shard"),
 						errdetail_log(
@@ -1448,7 +1448,7 @@ GetShardMapNodes(void)
 	PgbsonToSinglePgbsonElement(queryResult, &singleElement);
 	if (singleElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Unexpected - getShardMap path %s should have an array not %s",
 							singleElement.path,
@@ -1467,7 +1467,7 @@ GetShardMapNodes(void)
 	{
 		if (!BSON_ITER_HOLDS_DOCUMENT(&arrayIter))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Unexpected - getShardMap inner groupId %d should have a document not %s",
 								currentGroup,
@@ -1516,7 +1516,7 @@ GetShardMapNodes(void)
 
 			if (numFields != 5)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 								errmsg(
 									"Found missing fields in querying shard table: Found %d fields",
 									numFields),

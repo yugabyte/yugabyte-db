@@ -19,7 +19,7 @@
 
 #include "io/helio_bson_core.h"
 #include "lib/stringinfo.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "collation/collation.h"
 
 #define ALPHABET_SIZE 26
@@ -302,12 +302,12 @@ ParseAndGetCollationString(const bson_value_t *collationValue, const char *colat
 
 			if (strength == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"unable to parse collation :: caused by :: Enumeration value '0' for field 'collation.strength' is not a valid value")));
 			}
 			else if (strength < 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51024), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51024), errmsg(
 									"unable to parse collation :: caused by :: BSON field 'strength' value must be >= 0, actual value '%d'",
 									strength),
 								errdetail_log(
@@ -316,7 +316,7 @@ ParseAndGetCollationString(const bson_value_t *collationValue, const char *colat
 			}
 			else if (strength > 5)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51024), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51024), errmsg(
 									"unable to parse collation :: caused by :: BSON field 'strength' value must be <= 5, actual value '%d'",
 									strength),
 								errdetail_log(
@@ -342,7 +342,7 @@ ParseAndGetCollationString(const bson_value_t *collationValue, const char *colat
 			}
 			else if (strcmp(caseFirst, "upper") != 0 && strcmp(caseFirst, "lower") != 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"unable to parse collation :: caused by :: Enumeration value '%s' for field 'collation.caseFirst' is not a valid value.",
 									caseFirst)));
 			}
@@ -377,7 +377,7 @@ ParseAndGetCollationString(const bson_value_t *collationValue, const char *colat
 			}
 			else if (strcmp(alternate, "shifted") != 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"unable to parse collation :: caused by :: Enumeration value '%s' for field 'collation.alternate' is not a valid value.",
 									alternate)));
 			}
@@ -394,14 +394,14 @@ ParseAndGetCollationString(const bson_value_t *collationValue, const char *colat
 			}
 			else if (strcmp(maxVariable, "space") != 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"unable to parse collation :: caused by :: Enumeration value '%s' for field 'collation.maxVariable' is not a valid value.",
 									maxVariable)));
 			}
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD), errmsg(
 								"unable to parse collation :: caused by :: BSON field 'collation.%s' is an unknown field.",
 								key)));
 		}
@@ -483,7 +483,7 @@ StringCompareWithCollation(const char *left, uint32_t leftLength,
 
 	if (U_FAILURE(status))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Collation aware string comparison failed for collation language tag: %s",
 							collationStr),
@@ -805,7 +805,7 @@ inline static void
 pg_attribute_noreturn()
 ThrowInvalidLocaleError(const char * locale)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 						"unable to parse collation :: caused by :: Field 'locale' is invalid in: { locale: \"%s\", strength: 1 }.",
 						locale)));
 }
@@ -822,7 +822,7 @@ CheckCollationInputParamType(bson_type_t expectedType, bson_type_t foundType, co
 		return;
 	}
 
-	ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH), errmsg(
 						"unable to parse collation :: caused by :: BSON field 'collation.%s' is the wrong type '%s', expected type '%s'",
 						paramName, BsonTypeName(foundType), BsonTypeName(expectedType)),
 					errdetail_log(
@@ -892,7 +892,7 @@ LookupUCollatorCache(const char *collationString)
 
 		if (U_FAILURE(status))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Collation is not supported by ICU for collation language tag: %s",
 								collationString),

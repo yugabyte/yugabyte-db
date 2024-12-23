@@ -12,6 +12,6 @@
 
 void InstallBsonMemVTables(void);
 
-void InitDocumentDbCoreConfigurations(const char *prefix);
+void InitDocumentDBCoreConfigurations(const char *prefix);
 
 #endif

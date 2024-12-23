@@ -25,7 +25,7 @@
 
 #include "utils/type_cache.h"
 #include "io/helio_bson_core.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 
 extern bool BsonTextUseJsonRepresentation;
@@ -411,7 +411,7 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 	if (nargs % 2 != 0)
 	{
 		ereport(ERROR,
-				(errcode(ERRCODE_HELIO_BADVALUE),
+				(errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 				 errmsg("argument list must have an even number of elements"),
 				 errdetail(
 					 "The arguments of bson_repath_and_build() must consist of alternating keys and values.")));
@@ -424,7 +424,7 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		if (nulls[i])
 		{
 			ereport(ERROR,
-					(errcode(ERRCODE_HELIO_BADVALUE),
+					(errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 					 errmsg("argument %d cannot be null", i + 1),
 					 errdetail("Object keys should be text.")));
 		}
@@ -432,7 +432,7 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		if (types[i] != TEXTOID)
 		{
 			ereport(ERROR,
-					(errcode(ERRCODE_HELIO_BADVALUE),
+					(errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 					 errmsg("argument %d must be a text", i)));
 		}
 
@@ -444,7 +444,7 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		if (pathView.length == 0 || StringViewStartsWith(&pathView, '$'))
 		{
 			/* We don't support dollar prefixed-paths here */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARPREFIXEDFIELDNAME),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARPREFIXEDFIELDNAME),
 							errmsg("The field name %.*s cannot be an operator name",
 								   len, path)));
 		}
@@ -470,7 +470,7 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								(errmsg("Expecting a single element value"))));
 			}
 		}

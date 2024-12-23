@@ -13,7 +13,7 @@
 #include "operators/bson_expr_eval.h"
 #include "schema_validation/schema_validation.h"
 #include "metadata/collection.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 extern bool EnableSchemaValidation;
 PG_FUNCTION_INFO_V1(command_schema_validation_against_update);
@@ -104,7 +104,7 @@ ValidateSchemaOnDocumentInsert(ExprEvalState *evalState, const bson_value_t *doc
 	if (!matched)
 	{
 		/* native mongo return additional information about the cause of the failure */
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOCUMENTFAILEDVALIDATION),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOCUMENTFAILEDVALIDATION),
 						errmsg("Document failed validation")));
 	}
 }
@@ -130,7 +130,7 @@ ValidateSchemaOnDocumentUpdate(ValidationLevels validationLevel,
 	{
 		if (validationLevel == ValidationLevel_Strict)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOCUMENTFAILEDVALIDATION),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOCUMENTFAILEDVALIDATION),
 							errmsg("Document failed validation")));
 		}
 		else if (sourceDocument != NULL && validationLevel == ValidationLevel_Moderate)
@@ -141,7 +141,7 @@ ValidateSchemaOnDocumentUpdate(ValidationLevels validationLevel,
 
 			if (matched)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_DOCUMENTFAILEDVALIDATION),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOCUMENTFAILEDVALIDATION),
 								errmsg("Document failed validation")));
 			}
 		}

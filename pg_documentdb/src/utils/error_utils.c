@@ -11,7 +11,7 @@
 #include <postgres.h>
 #include <fmgr.h>
 #include <utils/builtins.h>
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "utils/version_utils.h"
 
 
@@ -52,7 +52,7 @@ command_throw_mongo_error(PG_FUNCTION_ARGS)
  * This method prints the 5 character Postgres error code for the given mongo error code.
  *
  * [Deprecated] : starting 1.22
- * Update: now the 5 character for an error can be easily found from helio_errors.h
+ * Update: now the 5 character for an error can be easily found from documentdb_errors.h
  */
 Datum
 command_convert_mongo_error_to_postgres(PG_FUNCTION_ARGS)

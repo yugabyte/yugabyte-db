@@ -38,7 +38,7 @@
 #include "query/helio_bson_compare.h"
 #include "aggregation/bson_query.h"
 #include "types/decimal128.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "commands/defrem.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
@@ -208,7 +208,7 @@ static inline void
 pg_attribute_noreturn()
 ThrowInvalidRegexOptions(char c)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51108), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51108), errmsg(
 						"invalid flag in regex options %c", c),
 					errdetail_log("invalid flag in regex options %c", c)));
 }
@@ -413,7 +413,7 @@ CreateQualForBsonValueExpression(const bson_value_t *expression, const
 {
 	if (expression->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"expression should be a document")));
 	}
 
@@ -446,7 +446,7 @@ CreateQualForBsonValueArrayExpression(const bson_value_t *expression)
 {
 	if (expression->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"expression should be an array")));
 	}
 
@@ -532,7 +532,7 @@ CreateQualForBsonExpression(const bson_value_t *expression, const
 {
 	if (expression->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"expression should be a document")));
 	}
 
@@ -1153,7 +1153,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 	{
 		/* invalid query operator such as $eq at top level of query document */
 		/* We throw feature not supported since $where and such might be specified here */
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"unknown top level operator: %s. If you have a field "
 							"name that starts with a '$' symbol, consider using "
@@ -1172,7 +1172,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		const bson_value_t *value = bson_iter_value(queryDocIterator);
 		if (!BsonValueIsNumberOrBool(value) || BsonValueAsInt32(value) != 1)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("%s must be an integer value of 1",
 								   operatorType == QUERY_OPERATOR_ALWAYS_TRUE ?
 								   "$alwaysTrue" : "$alwaysFalse")));
@@ -1189,7 +1189,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		const bson_value_t *sampleRate = bson_iter_value(queryDocIterator);
 		if (!BsonValueIsNumber(sampleRate))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"argument to $sampleRate must be a numeric type"),
 							errdetail_log("argument to $sampleRate is: %s",
@@ -1202,7 +1202,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		 * ref: https://standards.ieee.org/ieee/754/6210, boolean sameQuantum(source, source) */
 		if (!(sampleRateValue >= 0 && sampleRateValue <= 1))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"numeric argument to $sampleRate must be in [0, 1]"),
 							errdetail_log(
@@ -1232,7 +1232,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 	{
 		if (context->inputType != MongoQueryOperatorInputType_Bson)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"$expr can only be applied to the top-level document")));
 		}
@@ -1261,7 +1261,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 	{
 		if (context->inputType != MongoQueryOperatorInputType_Bson)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"$text can only be applied to the top-level document")));
 		}
@@ -1280,7 +1280,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 	/* type safety checks */
 	if (bson_iter_type(queryDocIterator) != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"%s must be an array",
 							mongoOperatorName)));
 	}
@@ -1381,7 +1381,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		context->targetEntries != NULL &&
 		TargetListContainsGeonearOp(context->targetEntries))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"geo $near must be top-level expr")));
 	}
 
@@ -1404,7 +1404,7 @@ CreateQualsFromLogicalExpressionArrayIterator(bson_iter_t *expressionsArrayItera
 	{
 		if (bson_iter_type(expressionsArrayIterator) != BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"$or/$and/$nor entries need to be full objects")));
 		}
 
@@ -1426,7 +1426,7 @@ CreateQualsFromLogicalExpressionArrayIterator(bson_iter_t *expressionsArrayItera
 
 	if (quals == NIL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"$or/$and/$nor arrays must have at least one entry")));
 	}
 
@@ -1446,10 +1446,10 @@ ValidateIfIteratorValueUndefined(bson_iter_t *iter, bool isInMatchExpression)
 	{
 		if (isInMatchExpression)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"InMatchExpression equality cannot be undefined")));
 		}
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"cannot compare to undefined")));
 	}
 }
@@ -1583,7 +1583,7 @@ CreateOpExprFromOperatorDocIterator(const char *path,
 	 * $options present as an orphan without a $regex. Hence throw error */
 	if (options != NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"$options needs a $regex")));
 	}
 
@@ -1620,7 +1620,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 		{
 			if (!BSON_ITER_HOLDS_ARRAY(operatorDocIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("%s needs an array", mongoOperatorName)));
 			}
 
@@ -1636,7 +1636,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 					if (!IsValidBsonDocumentForDollarInOrNinOp(
 							&currentValue))
 					{
-						ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 											"cannot nest $ under %s",
 											operator->mongoOperatorName)));
 					}
@@ -1676,7 +1676,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 		{
 			if (!BSON_ITER_HOLDS_ARRAY(operatorDocIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("%s needs an array", mongoOperatorName)));
 			}
 
@@ -1705,7 +1705,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 			 * */
 			if (!BsonValueIsNumberOrBool(value))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"Failed to parse $size. Expected a number in: $size: %s",
 									BsonValueToJsonForLogging(value)),
@@ -1718,7 +1718,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 				double doubleValue = BsonValueAsDouble(value);
 				if (!IsDoubleAFixedInteger(doubleValue))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg(
 										"Failed to parse $size. Expected an integer in: $size: %s",
 										BsonValueToJsonForLogging(value)),
@@ -1728,7 +1728,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 				}
 				else if (doubleValue < 0)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 										"Failed to parse $size. Expected a non-negative number in: $size: %s",
 										BsonValueToJsonForLogging(value))));
 				}
@@ -1743,7 +1743,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 		{
 			if (bson_iter_type(operatorDocIterator) != BSON_TYPE_DOCUMENT)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"$elemMatch needs an Object")));
 			}
 
@@ -1765,7 +1765,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 				double doubleValue = BsonValueAsDouble(typeIdValue);
 				if (!IsDoubleAFixedInteger(doubleValue))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg("Invalid numerical type code %s",
 										   BsonValueToJsonForLogging(typeIdValue))));
 				}
@@ -1795,7 +1795,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 						double doubleValue = BsonValueAsDouble(typeIdArrayValue);
 						if (!IsDoubleAFixedInteger(doubleValue))
 						{
-							ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+							ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 											errmsg("Invalid numerical type code %s",
 												   BsonValueToJsonForLogging(
 													   typeIdArrayValue))));
@@ -1807,7 +1807,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 					}
 					else
 					{
-						ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 										errmsg(
 											"type must be represented as a number or a string")));
 					}
@@ -1815,13 +1815,13 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 
 				if (!typeArrayHasElements)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 									errmsg("%s must match at least one type", path)));
 				}
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"type must be represented as a number or a string")));
 			}
@@ -1884,11 +1884,11 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 			{
 				if (operator->operatorType == QUERY_OPERATOR_NE)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg("Can't have regex as arg to $ne.")));
 				}
 
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"Can't have RegEx as arg to predicate over field '%s'.",
 									path)));
@@ -1930,7 +1930,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 				bson_iter_t checkIterator = notIterator;
 				if (!bson_iter_next(&checkIterator))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 										"$not cannot be empty")));
 				}
 
@@ -1956,7 +1956,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"$not needs a regex or a document")));
 			}
 
@@ -2006,7 +2006,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 		{
 			if (!BSON_ITER_HOLDS_DOCUMENT(operatorDocIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("geometry must be an object")));
 			}
 
@@ -2032,7 +2032,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 		{
 			if (!BSON_ITER_HOLDS_DOCUMENT(operatorDocIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("geometry must be an object")));
 			}
 
@@ -2048,7 +2048,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 				 */
 
 				ereport(ERROR, (
-							errcode(ERRCODE_HELIO_BADVALUE),
+							errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"$geoIntersect not supported with provided geometry: %s",
 								BsonValueToJsonForLogging(value)),
@@ -2076,7 +2076,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 			if (!BSON_ITER_HOLDS_DOCUMENT(operatorDocIterator) &&
 				!BSON_ITER_HOLDS_ARRAY(operatorDocIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("near must be first in: { $near: %s }",
 									   BsonValueToJsonForLogging(
 										   bson_iter_value(operatorDocIterator)))));
@@ -2119,7 +2119,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 
 				if (!bson_iter_next(&refIterator))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 										"unknown operator: %s",
 										mongoOperatorName),
 									errdetail_log("unknown operator: %s",
@@ -2136,14 +2136,14 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 				}
 				else
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 										"unknown operator: %s", mongoOperatorName),
 									errdetail_log("unknown operator: %s",
 												  mongoOperatorName)));
 				}
 			}
 
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"unknown operator: %s",
 								mongoOperatorName),
 							errdetail_log("unknown operator: %s",
@@ -2180,7 +2180,7 @@ EnsureValidTypeCodeForDollarType(int64_t typeCode)
 	bson_type_t ignoreType;
 	if (!TryGetTypeFromInt64(typeCode, &ignoreType))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Invalid numerical type code: %lld",
 							(long long int) typeCode)));
 	}
@@ -2217,7 +2217,7 @@ CreateExprForBitwiseQueryOperators(bson_iter_t *operatorDocIterator,
 
 			if (int32Val != int64Val)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"Cannot represent as a 32-bit integer: %s: %s.0",
 									operator->mongoOperatorName,
@@ -2239,7 +2239,7 @@ CreateExprForBitwiseQueryOperators(bson_iter_t *operatorDocIterator,
 			if (!IsDecimal128InInt32Range(operatorDocValue) ||
 				!IsDecimal128AFixedInteger(operatorDocValue))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"Cannot represent as a 32-bit integer: %s: %s.0",
 									operator->mongoOperatorName,
@@ -2254,7 +2254,7 @@ CreateExprForBitwiseQueryOperators(bson_iter_t *operatorDocIterator,
 			int intVal = BsonValueAsInt32(operatorDocValue);
 			if (intVal < 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"Expected a positive number in: %s: %d.0",
 									operator->mongoOperatorName,
@@ -2276,7 +2276,7 @@ CreateExprForBitwiseQueryOperators(bson_iter_t *operatorDocIterator,
 
 			if (!IsDoubleAFixedInteger(doubleVal))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"Expected an integer: %s: %s",
 									operator->mongoOperatorName,
@@ -2292,7 +2292,7 @@ CreateExprForBitwiseQueryOperators(bson_iter_t *operatorDocIterator,
 
 			if (intVal < 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 									"Expected a positive number in: %s: %d.0",
 									operator->mongoOperatorName,
 									intVal)));
@@ -2310,7 +2310,7 @@ CreateExprForBitwiseQueryOperators(bson_iter_t *operatorDocIterator,
 			/* Negative integer is an incorrect input */
 			if (intVal < 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 									"Expected a positive number in: %s: %d.0",
 									operator->mongoOperatorName,
 									intVal)));
@@ -2345,7 +2345,7 @@ CreateExprForBitwiseQueryOperators(bson_iter_t *operatorDocIterator,
 
 		default:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
 								"%s takes an Array, a number, or a BinData but received: %s: \\%s\\",
 								path,
@@ -2399,7 +2399,7 @@ CreateFuncExprForQueryOperator(BsonQueryOperatorContext *context, const char *pa
 
 		if (!found)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"The index for filter path '%s' was not found, please check whether the index is created.",
 								path)));
@@ -2504,7 +2504,7 @@ CreateExprForDollarAll(const char *path,
 		{
 			if (foundObject)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"$all/$elemMatch has to be consistent")));
 			}
 
@@ -2520,7 +2520,7 @@ CreateExprForDollarAll(const char *path,
 		{
 			if (foundObject)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"$all/$elemMatch has to be consistent")));
 			}
 			foundElement = true;
@@ -2534,7 +2534,7 @@ CreateExprForDollarAll(const char *path,
 		{
 			if (foundObject)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"$all/$elemMatch has to be consistent")));
 			}
 			foundElement = true;
@@ -2551,7 +2551,7 @@ CreateExprForDollarAll(const char *path,
 		{
 			if (foundObject)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"$all/$elemMatch has to be consistent")));
 			}
 			foundElement = true;
@@ -2560,17 +2560,17 @@ CreateExprForDollarAll(const char *path,
 
 		if (foundElement)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"no $ expressions in $all")));
 		}
 		else if (foundElemMatch && keyOp->operatorType != QUERY_OPERATOR_ELEMMATCH)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"$all/$elemMatch has to be consistent")));
 		}
 		else if (keyOp->operatorType != QUERY_OPERATOR_ELEMMATCH)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"no $ expressions in $all")));
 		}
 		else if (keyOp->operatorType == QUERY_OPERATOR_ELEMMATCH)
@@ -3008,7 +3008,7 @@ ValidateOrderbyExpressionAndGetIsAscending(pgbson *orderby)
 		orderingElement.path[orderingElement.pathLength - 1] == '.' ||
 		strstr(orderingElement.path, "..") != NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Bad sort specification")));
 	}
 
@@ -3024,7 +3024,7 @@ ValidateOrderbyExpressionAndGetIsAscending(pgbson *orderby)
 
 	if (!BsonValueIsNumber(&orderingElement.bsonValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Invalid sort direction %s",
 							   BsonValueToJsonForLogging(
 								   &orderingElement.bsonValue))));
@@ -3033,7 +3033,7 @@ ValidateOrderbyExpressionAndGetIsAscending(pgbson *orderby)
 	int64_t sortOrder = BsonValueAsInt64(&orderingElement.bsonValue);
 	if (sortOrder != 1 && sortOrder != -1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Invalid sort direction %s",
 							   BsonValueToJsonForLogging(
 								   &orderingElement.bsonValue))));
@@ -3101,7 +3101,7 @@ CreateExprForDollarRegex(bson_iter_t *currIter, bson_value_t **options,
 		if (regexBsonValue->value_type == BSON_TYPE_REGEX &&
 			strlen(regexBsonValue->value.v_regex.options) != 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51074), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51074), errmsg(
 								"options set in both $regex and $options")));
 		}
 
@@ -3128,7 +3128,7 @@ CreateExprForDollarRegex(bson_iter_t *currIter, bson_value_t **options,
 			if (regexBsonValue->value_type == BSON_TYPE_REGEX &&
 				strlen(regexBsonValue->value.v_regex.options) != 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51075), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51075), errmsg(
 									"options set in both $regex and $options")));
 			}
 
@@ -3156,7 +3156,7 @@ CreateExprForDollarMod(bson_iter_t *operatorDocIterator,
 {
 	if (!BSON_ITER_HOLDS_ARRAY(operatorDocIterator))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"malformed mod, needs to be an array")));
 	}
 
@@ -3170,7 +3170,7 @@ CreateExprForDollarMod(bson_iter_t *operatorDocIterator,
 		numElements++;
 		if (numElements == 3)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"malformed mod, too many elements")));
 		}
 		if (!BSON_ITER_HOLDS_NUMBER(&arrayIter) &&
@@ -3178,12 +3178,12 @@ CreateExprForDollarMod(bson_iter_t *operatorDocIterator,
 		{
 			if (numElements == 1)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"malformed mod, divisor not a number")));
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"malformed mod, remainder not a number")));
 			}
 		}
@@ -3197,7 +3197,7 @@ CreateExprForDollarMod(bson_iter_t *operatorDocIterator,
 
 			if (!IsDecimal128Finite(&dec128Val))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(numElements == 1 ?
 									   "malformed mod, divisor value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type"
 									   :
@@ -3205,7 +3205,7 @@ CreateExprForDollarMod(bson_iter_t *operatorDocIterator,
 			}
 			if (!IsDecimal128InInt64Range(&dec128Val))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(numElements == 1 ?
 									   "malformed mod, divisor value is invalid :: caused by :: Out of bounds coercing to integral value"
 									   :
@@ -3218,7 +3218,7 @@ CreateExprForDollarMod(bson_iter_t *operatorDocIterator,
 			int64_t divisor = BsonValueAsInt64(arrayVal);
 			if (divisor == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"divisor cannot be 0")));
 			}
 		}
@@ -3226,7 +3226,7 @@ CreateExprForDollarMod(bson_iter_t *operatorDocIterator,
 
 	if (numElements < 2)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"malformed mod, not enough elements")));
 	}
 
@@ -3307,7 +3307,7 @@ SortAndWriteInt32BsonTypeArray(const bson_value_t *bsonArray, pgbson_writer *wri
 			{
 				case BSON_TYPE_DOUBLE:
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 									errmsg(
 										"Expected an integer: %s: %s", opName,
 										BsonValueToJsonForLogging(element)),
@@ -3321,7 +3321,7 @@ SortAndWriteInt32BsonTypeArray(const bson_value_t *bsonArray, pgbson_writer *wri
 				case BSON_TYPE_DECIMAL128:
 				case BSON_TYPE_INT64:
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 									errmsg(
 										"bit positions cannot be represented as a 32-bit signed integer: %s.0",
 										BsonValueToJsonForLogging(element)),
@@ -3333,7 +3333,7 @@ SortAndWriteInt32BsonTypeArray(const bson_value_t *bsonArray, pgbson_writer *wri
 
 				default:
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 									errmsg(
 										"bit positions must be an integer but got: %d: \\%s\\",
 										arrayLength, BsonValueToJsonForLogging(element)),
@@ -3353,7 +3353,7 @@ SortAndWriteInt32BsonTypeArray(const bson_value_t *bsonArray, pgbson_writer *wri
 
 		if (elementValue < 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
 								"bit positions must be >= 0 but got: %d: \\%s\\",
 								arrayLength, BsonValueToJsonForLogging(element))));
 		}
@@ -3404,7 +3404,7 @@ ValidateOptionsArgument(const bson_value_t *argBsonValue)
 {
 	if (argBsonValue->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"$options has to be a string")));
 	}
 
@@ -3435,7 +3435,7 @@ ValidateRegexArgument(const bson_value_t *argBsonValue)
 	if (argBsonValue->value_type != BSON_TYPE_UTF8 &&
 		argBsonValue->value_type != BSON_TYPE_REGEX)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"$regex has to be a string")));
 	}
 
@@ -3462,7 +3462,7 @@ ValidateRegexArgument(const bson_value_t *argBsonValue)
 	if (argBsonValue->value_type == BSON_TYPE_UTF8 &&
 		strlen(argBsonValue->value.v_utf8.str) < argBsonValue->value.v_utf8.len)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Regular expression cannot contain an embedded null byte")));
 	}
 }
@@ -3943,7 +3943,7 @@ ParseBsonValueForNearAndCreateOpExpr(bson_iter_t *operatorDocIterator,
 
 		if (isGeonear)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Too many geoNear expressions")));
 		}
 	}
@@ -3956,7 +3956,7 @@ ParseBsonValueForNearAndCreateOpExpr(bson_iter_t *operatorDocIterator,
 	if (context->inputType == MongoQueryOperatorInputType_BsonValue)
 	{
 		ereport(ERROR,
-				(errcode(ERRCODE_HELIO_LOCATION5626500),
+				(errcode(ERRCODE_DOCUMENTDB_LOCATION5626500),
 				 errmsg(
 					 "$geoNear, $near, and $nearSphere are not allowed in this context, "
 					 "as these operators require sorting geospatial data. If you do not need sort, "

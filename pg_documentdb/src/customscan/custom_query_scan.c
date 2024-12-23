@@ -35,7 +35,7 @@
 #include "vector/vector_planner.h"
 #include "vector/vector_common.h"
 #include "vector/vector_spec.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "customscan/helio_custom_scan_private.h"
 
 
@@ -352,7 +352,7 @@ AddCustomPathForVectorCore(PlannerInfo *planner, List *pathList, RelOptInfo *rel
 			return NIL;
 		}
 
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"Similarity index was not found for a vector similarity search query during planning.")));
 	}

@@ -19,7 +19,7 @@
 #undef PRIVATE_PGBSON_H
 
 #include "io/bsonvalue_utils.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "utils/string_view.h"
 
 /* --------------------------------------------------------- */
@@ -74,7 +74,7 @@ PgbsonCountKeys(const pgbson *bsonDocument)
 	if (!bson_init_static(&bson, (const uint8_t *) VARDATA_ANY(bsonDocument),
 						  VARSIZE_ANY_EXHDR(bsonDocument)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("invalid input syntax for BSON")));
 	}
 
@@ -91,14 +91,14 @@ BsonDocumentValueCountKeys(const bson_value_t *value)
 {
 	if (value->value_type != BSON_TYPE_ARRAY && value->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Expected value of type array or document")));
 	}
 	bson_t bson;
 	if (!bson_init_static(&bson, value->value.v_doc.data,
 						  value->value.v_doc.data_len))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("invalid input syntax for BSON")));
 	}
 
@@ -138,13 +138,13 @@ PgbsonInitFromHexadecimalString(const char *hexadecimalString)
 	uint32_t hexStringLength = (strLength - BsonHexPrefixLength);
 	if (hexStringLength <= 0 || (hexStringLength % 2 != 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Invalid Hex string for pgbson input")));
 	}
 
 	if (strncmp(hexadecimalString, BsonHexPrefix, BsonHexPrefixLength) != 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Bson Hex string does not have valid prefix %s",
 							   BsonHexPrefix)));
 	}
@@ -198,7 +198,7 @@ PgbsonInitFromJson(const char *jsonString)
 	bool parseResult = bson_init_from_json(&bson, jsonString, -1, &error);
 	if (!parseResult)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"invalid input syntax JSON for BSON: Code: '%d', Message '%s'",
 							error.code, error.message)));
 	}
@@ -218,7 +218,7 @@ PgbsonToJsonForLogging(const pgbson *bsonDocument)
 	if (!bson_init_static(&bson, (uint8_t *) VARDATA_ANY(bsonDocument),
 						  (uint32_t) VARSIZE_ANY_EXHDR(bsonDocument)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("invalid input syntax for BSON")));
 	}
 
@@ -250,7 +250,7 @@ BsonValueToJsonForLogging(const bson_value_t *value)
 
 			if (!bson_init_static(&bson, documentData, documentLength))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("invalid input syntax for BSON")));
 			}
 
@@ -314,7 +314,7 @@ BsonValueToJsonForLogging(const bson_value_t *value)
 			documentLength = VARSIZE_ANY_EXHDR(bsonDocument);
 			if (!bson_init_static(&bson, documentData, documentLength))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("invalid input syntax for BSON")));
 			}
 
@@ -405,7 +405,7 @@ FormatBsonValueForShellLogging(const bson_value_t *bson)
 
 		default:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"Expected Numeric, document or UTF8 bson value type")));
 		}
@@ -425,7 +425,7 @@ PgbsonToCanonicalExtendedJson(const pgbson *bsonDocument)
 	if (!bson_init_static(&bson, (const uint8_t *) VARDATA_ANY(bsonDocument),
 						  VARSIZE_ANY_EXHDR(bsonDocument)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("invalid input syntax for BSON")));
 	}
 
@@ -444,7 +444,7 @@ PgbsonToLegacyJson(const pgbson *bsonDocument)
 	if (!bson_init_static(&bson, (const uint8_t *) VARDATA_ANY(bsonDocument),
 						  VARSIZE_ANY_EXHDR(bsonDocument)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("invalid input syntax for BSON")));
 	}
 
@@ -476,7 +476,7 @@ ValidateInputBsonBytes(const uint8_t *documentBytes,
 	bson_t bson;
 	if (!bson_init_static(&bson, documentBytes, documentBytesLength))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"invalid input syntax for BSON: Unable to initialize for validate")));
 	}
@@ -484,7 +484,7 @@ ValidateInputBsonBytes(const uint8_t *documentBytes,
 	bson_error_t error;
 	if (!bson_validate_with_error(&bson, validateFlag, &error))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("invalid input syntax for BSON. Code: %u, Message %s",
 							   error.code, error.message)));
 	}
@@ -500,7 +500,7 @@ PgbsonInitFromBuffer(const char *buffer, uint32_t bufferLength)
 	bson_iter_t bson;
 	if (!bson_iter_init_from_data(&bson, (const uint8_t *) buffer, bufferLength))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("invalid input syntax for BSON")));
 	}
 
@@ -588,7 +588,7 @@ PgbsonIterDocumentToJsonForLogging(const bson_iter_t *iter)
 	if (!bson_init_static(&bson, (const uint8_t *) value->value.v_doc.data,
 						  value->value.v_doc.data_len))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("invalid input syntax for BSON")));
 	}
 
@@ -686,7 +686,7 @@ PgbsonInitIterator(const pgbson *bson, bson_iter_t *iterator)
 	if (!bson_iter_init_from_data(iterator, (const uint8_t *) VARDATA_ANY(bson),
 								  VARSIZE_ANY_EXHDR(bson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("invalid input syntax for BSON")));
 	}
 }
@@ -707,7 +707,7 @@ BsonValueInitIterator(const bson_value_t *value, bson_iter_t *iterator)
 	if (!bson_iter_init_from_data(iterator, value->value.v_doc.data,
 								  value->value.v_doc.data_len))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("invalid input syntax for BSON")));
 	}
 }
@@ -797,7 +797,7 @@ PgbsonWriterAppendValue(pgbson_writer *writer, const char *path, uint32_t pathLe
 {
 	if (!bson_append_value(&(writer->innerBson), path, pathLength, value))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding %s value: failed due to value being too large",
 							BsonTypeName(value->value_type)))
 				);
@@ -814,7 +814,7 @@ PgbsonWriterAppendInt64(pgbson_writer *writer, const char *path, uint32_t pathLe
 {
 	if (!bson_append_int64(&(writer->innerBson), path, pathLength, value))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"adding Int64 value: failed due to value being too large")));
 	}
@@ -830,7 +830,7 @@ PgbsonWriterAppendInt32(pgbson_writer *writer, const char *path, uint32_t pathLe
 {
 	if (!bson_append_int32(&(writer->innerBson), path, pathLength, value))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"adding Int32 value: failed due to value being too large")));
 	}
@@ -846,7 +846,7 @@ PgbsonWriterAppendDouble(pgbson_writer *writer, const char *path, uint32_t pathL
 {
 	if (!bson_append_double(&(writer->innerBson), path, pathLength, value))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"adding Double value: failed due to value being too large")));
 	}
@@ -880,7 +880,7 @@ PgbsonWriterAppendUtf8(pgbson_writer *writer, const char *path, uint32_t pathLen
 {
 	if (!bson_append_utf8(&(writer->innerBson), path, pathLength, string, strlen(string)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"adding UTF8 value: failed due to value being too large")));
 	}
@@ -901,7 +901,7 @@ PgbsonWriterAppendDateTime(pgbson_writer *writer, const char *path, uint32_t
 	if (!bson_append_date_time(&(writer->innerBson), path, pathLength,
 							   milliSecondsSinceEpoch))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"adding TimeStamp value: failed due to value being too large")));
 	}
@@ -917,7 +917,7 @@ PgbsonWriterAppendBool(pgbson_writer *writer, const char *path, uint32_t pathLen
 {
 	if (!bson_append_bool(&(writer->innerBson), path, pathLength, value))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"adding Bool value: failed due to value being too large")));
 	}
@@ -936,7 +936,7 @@ PgbsonWriterAppendDocument(pgbson_writer *writer, const char *path, uint32_t pat
 					 (uint32_t) VARSIZE_ANY_EXHDR(bson));
 	if (!bson_append_document(&(writer->innerBson), path, pathLength, &rightBson))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("adding document: failed due to document "
 							   "being too large")));
 	}
@@ -968,7 +968,7 @@ PgbsonWriterStartArray(pgbson_writer *writer, const char *path, uint32_t pathLen
 	if (!bson_append_array_begin(&(writer->innerBson), path, pathLength,
 								 &(childWriter->innerBson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding StartArray value: failed due to value being too large"))
 				);
 	}
@@ -988,7 +988,7 @@ PgbsonHeapWriterStartArray(pgbson_heap_writer *writer, const char *path, uint32_
 	if (!bson_append_array_begin(writer->innerBsonRef, path, pathLength,
 								 &(childWriter->innerBson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding HeapWriterStartArray value: failed due to value being too large"))
 				);
 	}
@@ -1005,7 +1005,7 @@ PgbsonWriterEndArray(pgbson_writer *writer, pgbson_array_writer *childWriter)
 {
 	if (!bson_append_array_end(&(writer->innerBson), &(childWriter->innerBson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding EndArray value: failed due to value being too large"))
 				);
 	}
@@ -1020,7 +1020,7 @@ PgbsonHeapWriterEndArray(pgbson_heap_writer *writer, pgbson_array_writer *childW
 {
 	if (!bson_append_array_end(writer->innerBsonRef, &(childWriter->innerBson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding End Array value: failed due to value being too large"))
 				);
 	}
@@ -1040,7 +1040,7 @@ PgbsonArrayWriterStartArray(pgbson_array_writer *writer, pgbson_array_writer *ch
 	if (!bson_append_array_begin(&(writer->innerBson), key, keyLength,
 								 &(childWriter->innerBson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding ArrayWriterStartArray value: failed due to value being too large"))
 				);
 	}
@@ -1057,7 +1057,7 @@ PgbsonArrayWriterEndArray(pgbson_array_writer *writer, pgbson_array_writer *chil
 {
 	if (!bson_append_array_end(&(writer->innerBson), &(childWriter->innerBson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding ArrayWriterEndArray value: failed due to value being too large"))
 				);
 	}
@@ -1113,7 +1113,7 @@ PgbsonWriterStartDocument(pgbson_writer *writer, const char *path, uint32_t path
 	if (!bson_append_document_begin(&(writer->innerBson), path, pathLength,
 									&(childWriter->innerBson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding StartDocument( value: failed due to value being too large"))
 				);
 	}
@@ -1128,7 +1128,7 @@ PgbsonWriterEndDocument(pgbson_writer *writer, pgbson_writer *childWriter)
 {
 	if (!bson_append_document_end(&(writer->innerBson), &(childWriter->innerBson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding EndDocument value: failed due to value being too large"))
 				);
 	}
@@ -1148,7 +1148,7 @@ PgbsonArrayWriterStartDocument(pgbson_array_writer *writer, pgbson_writer *child
 	if (!bson_append_document_begin(&(writer->innerBson), key, keyLength,
 									&(childWriter->innerBson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding ArrayWriterStartDocument value: failed due to value being too large"))
 				);
 	}
@@ -1163,7 +1163,7 @@ PgbsonArrayWriterEndDocument(pgbson_array_writer *writer, pgbson_writer *childWr
 {
 	if (!bson_append_document_end(&(writer->innerBson), &(childWriter->innerBson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding ArrayWriterEndDocument value: failed due to value being too large"))
 				);
 	}
@@ -1231,7 +1231,7 @@ PgbsonArrayWriterWriteValue(pgbson_array_writer *writer,
 											   sizeof buffer);
 	if (!bson_append_value(&(writer->innerBson), key, keyLength, value))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding ArrayWriterWriteValue %s value: failed due to value being too large",
 							BsonTypeName(value->value_type)))
 				);
@@ -1271,7 +1271,7 @@ PgbsonArrayWriterWriteDocument(pgbson_array_writer *writer,
 											   sizeof buffer);
 	if (!bson_append_document(&(writer->innerBson), key, keyLength, &rightBson))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("adding document: failed due to document "
 							   "being too large")));
 	}
@@ -1289,7 +1289,7 @@ PgbsonWriterAppendEmptyArray(pgbson_writer *writer, const char *path, uint32_t p
 	bson_init(&emptyArray);
 	if (!bson_append_array(&(writer->innerBson), path, pathLength, &emptyArray))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding AppendEmptyArray value: failed due to value being too large"))
 				);
 	}
@@ -1333,7 +1333,7 @@ PgbsonWriterAppendNull(pgbson_writer *writer, const char *path, uint32_t pathLen
 {
 	if (!bson_append_null(&(writer->innerBson), path, pathLength))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding AppendEmptyArray value: failed due to value being too large"))
 				);
 	}
@@ -1349,7 +1349,7 @@ PgbsonWriterAppendIter(pgbson_writer *writer, const bson_iter_t *iter)
 	/* No key is necessary as it picks the key from the iterator */
 	if (!bson_append_iter(&(writer->innerBson), NULL, -1, iter))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"adding iter: failed due to value being too large"))
 				);
 	}
@@ -1439,7 +1439,7 @@ PgbsonWriterConcatWriter(pgbson_writer *writer, pgbson_writer *writerToConcat)
 {
 	if (!bson_concat(&(writer->innerBson), &(writerToConcat->innerBson)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"ConcatWriter concatenating bson: failed due to value being too large"))
 				);
 	}
@@ -1455,7 +1455,7 @@ PgbsonWriterConcatHeapWriter(pgbson_writer *writer, pgbson_heap_writer *writerTo
 {
 	if (!bson_concat(&(writer->innerBson), writerToConcat->innerBsonRef))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"ConcatHeapWriter concatenating bson: failed due to value being too large"))
 				);
 	}
@@ -1470,7 +1470,7 @@ PgbsonWriterConcatBytes(pgbson_writer *writer, const uint8_t *bsonBytes, uint32_
 	bson_init_static(&rightBson, bsonBytes, bsonBytesLength);
 	if (!bson_concat(&(writer->innerBson), &rightBson))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"ConcatBytesWriter concatenating bson: failed due to value being too large"))
 				);
 	}

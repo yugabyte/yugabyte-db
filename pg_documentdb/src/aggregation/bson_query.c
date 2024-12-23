@@ -15,7 +15,7 @@
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
 #include "aggregation/bson_query.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 
 typedef struct
@@ -108,7 +108,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 			if (!BSON_ITER_HOLDS_ARRAY(queryDocument) ||
 				!bson_iter_recurse(queryDocument, &andIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"Could not iterate through query document $and.")));
 			}
 
@@ -118,7 +118,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 				if (!BSON_ITER_HOLDS_DOCUMENT(&andIterator) ||
 					!bson_iter_recurse(&andIterator, &andElementIterator))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 										"Could not iterate through elements within $and query.")));
 				}
 
@@ -134,7 +134,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 			if (!BSON_ITER_HOLDS_ARRAY(queryDocument) ||
 				!bson_iter_recurse(queryDocument, &orIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"Could not iterate through query document $or.")));
 			}
 
@@ -158,7 +158,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 					 BsonIterSearchKeyRecursive(&orIterator, "$expr"))
 			{
 				/* to match native mongo 5.0 behaviour throw an error in case of upsert if querySpec holds $expr */
-				ereport(ERROR, (errcode(ERRCODE_HELIO_QUERYFEATURENOTALLOWED),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_QUERYFEATURENOTALLOWED),
 								errmsg(
 									"$expr is not allowed in the query predicate for an upsert")));
 			}
@@ -173,7 +173,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 			if (isUpsert)
 			{
 				/* to match native mongo 5.0 behaviour throw an error in case of upsert if querySpec holds $expr */
-				ereport(ERROR, (errcode(ERRCODE_HELIO_QUERYFEATURENOTALLOWED),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_QUERYFEATURENOTALLOWED),
 								errmsg(
 									"$expr is not allowed in the query predicate for an upsert")));
 			}
@@ -211,7 +211,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 					{
 						if (opValue->value_type != BSON_TYPE_ARRAY)
 						{
-							ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+							ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 											errmsg("$all needs an array")));
 						}
 
@@ -228,7 +228,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 						bson_iter_t inIterator;
 						if (opValue->value_type != BSON_TYPE_ARRAY)
 						{
-							ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+							ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 											errmsg("$in needs an array")));
 						}
 
@@ -316,7 +316,7 @@ ProcessIdInQuery(void *context, const char *path, const bson_value_t *value)
 	{
 		if (idContext->errorOnConflict)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_NOTSINGLEVALUEFIELD),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NOTSINGLEVALUEFIELD),
 							errmsg(
 								"cannot infer query fields to set, path '_id' is matched twice")));
 		}

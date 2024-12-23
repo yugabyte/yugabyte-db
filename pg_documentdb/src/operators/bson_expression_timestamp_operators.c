@@ -94,7 +94,7 @@ SetResultValueForDollarTsSecond(bson_value_t *inputArgument, bson_value_t *resul
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5687301), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5687301), errmsg(
 							"$tsSecond requires a timestamp argument, found: %s",
 							BsonTypeName(inputArgument->value_type)),
 						errdetail_log(
@@ -168,7 +168,7 @@ SetResultValueForDollarTsIncrement(bson_value_t *inputArgument, bson_value_t *re
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5687302), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5687302), errmsg(
 							"Argument to $tsIncrement must be a timestamp, but is %s",
 							BsonTypeName(inputArgument->value_type)),
 						errdetail_log(

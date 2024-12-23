@@ -83,8 +83,6 @@ $(DOCDB_CORE_DIR)include/utils/documentdb_errors.h: $(OSS_SRC_DIR)/scripts/gener
 	mkdir -p $(DOCDB_CORE_DIR)/build
 	mkdir -p $(DOCDB_CORE_DIR)/include/utils
 	$(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/documentdb_errors.csv $(DOCDB_CORE_DIR)include/utils/documentdb_errors.h $(DOCDB_CORE_DIR)include/utils/documentdb_codes.txt documentdb
-# TODO(OSSRename): Remove this next line
-	$(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/documentdb_errors.csv $(DOCDB_CORE_DIR)include/utils/helio_errors.h $(DOCDB_CORE_DIR)include/utils/helio_codes.txt helio
 
 $(generated_sql_files): build/%: %
 	@mkdir -p $(SQL_DEPDIR) $(SQL_BUILDDIR)

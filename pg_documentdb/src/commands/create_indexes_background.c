@@ -42,7 +42,7 @@
 #include "commands/diagnostic_commands_common.h"
 #include "commands/drop_indexes.h"
 #include "commands/lock_tags.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "commands/parse_error.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "metadata/collection.h"
@@ -95,13 +95,14 @@ extern bool EnableIndexBuildBackground;
 /* Do not retry the index build if error code belongs to following list. */
 static const SkippableError SkippableErrors[] = {
 	{ 16908482 /* Postgres ERRCODE_EXCLUSION_VIOLATION */, NULL },
-	{ ERRCODE_HELIO_DUPLICATEKEY /* Postgres ERRCODE_HELIO_DUPLICATEKEY */, NULL },
+	{ ERRCODE_DOCUMENTDB_DUPLICATEKEY /* Postgres ERRCODE_DOCUMENTDB_DUPLICATEKEY */,
+	  NULL },
 	{ 2600, "column cannot have more than 2000 dimensions for ivfflat index" },
 	{ 2600, "column cannot have more than 2000 dimensions for hnsw index" },
 	{ 2600, "vector dimension cannot be larger than 2000 dimensions for diskann index" },
 	{ 261 /* Postgres ERRCODE_PROGRAM_LIMIT_EXCEEDED */, "index row size " },
 	{ 261 /* ERRCODE_PROGRAM_LIMIT_EXCEEDED */, "memory required is " },
-	{ ERRCODE_HELIO_CANNOTCREATEINDEX, "unsupported language: " },
+	{ ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX, "unsupported language: " },
 	{ 687882611, "Can't extract geo keys" }
 };
 static const int NumberOfSkippableErrors = sizeof(SkippableErrors) /
@@ -884,7 +885,7 @@ SubmitCreateIndexesRequest(Datum dbNameDatum,
 		int reportIndexDefIdx = MaxIndexesPerCollection - result.numIndexesBefore;
 		const IndexDef *reportIndexDef = list_nth(createIndexesArg.indexDefList,
 												  reportIndexDefIdx);
-		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 						errmsg("add index fails, too many indexes for %s.%s key:%s",
 							   collection->name.databaseName,
 							   collection->name.collectionName,
@@ -1014,9 +1015,9 @@ IsSkippableError(int targetErrorCode, char *errMsg)
 {
 	if (targetErrorCode != -1)
 	{
-		if (EreportCodeIsHelioError(targetErrorCode) &&
-			targetErrorCode != ERRCODE_HELIO_INTERNALERROR &&
-			targetErrorCode != ERRCODE_HELIO_INTERNALERROR)
+		if (EreportCodeIsDocumentDBError(targetErrorCode) &&
+			targetErrorCode != ERRCODE_DOCUMENTDB_INTERNALERROR &&
+			targetErrorCode != ERRCODE_DOCUMENTDB_INTERNALERROR)
 		{
 			/* Mongo errors that are not internal errors are skippable */
 			return true;
@@ -1204,7 +1205,7 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 			else
 			{
 				result->errmsg = "Index creation attempt failed";
-				result->errcode = ERRCODE_HELIO_INTERNALERROR;
+				result->errcode = ERRCODE_DOCUMENTDB_INTERNALERROR;
 			}
 			isAnyIndexFailed = true;
 		}
@@ -1228,7 +1229,7 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 		{
 			/* index failed but empty comment in queue. */
 			result->errmsg = "Index Creation failed";
-			result->errcode = ERRCODE_HELIO_INTERNALERROR;
+			result->errcode = ERRCODE_DOCUMENTDB_INTERNALERROR;
 		}
 
 		return result;
@@ -1245,7 +1246,7 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Build Index failed because there are not enough valid indexes in metadata table. Requested %d, found %d",
 								list_length(indexIdList), validIndexCount),
@@ -1362,7 +1363,7 @@ MakeBuildIndexesMsg(BuildIndexesResult *result)
 		}
 		else if (result->errcode == ERRCODE_UNDEFINED_TABLE)
 		{
-			result->errcode = ERRCODE_HELIO_INDEXBUILDABORTED;
+			result->errcode = ERRCODE_DOCUMENTDB_INDEXBUILDABORTED;
 			result->errmsg = COLLIDX_CONCURRENTLY_DROPPED_RECREATED_ERRMSG;
 		}
 
@@ -1479,7 +1480,7 @@ RunIndexCommandOnMetadataCoordinator(const char *query, int expectedSpiOk)
 												   &isNull);
 		if (isNull)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"No response"),
 							errdetail_log(
@@ -1493,7 +1494,7 @@ RunIndexCommandOnMetadataCoordinator(const char *query, int expectedSpiOk)
 		DistributedRunCommandResult result = RunCommandOnMetadataCoordinator(query);
 		if (!result.success)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Error submitting background index %s",
 								text_to_cstring(result.response)),

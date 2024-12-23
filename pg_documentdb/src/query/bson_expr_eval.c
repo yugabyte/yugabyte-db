@@ -18,7 +18,7 @@
 
 #include "operators/bson_expr_eval.h"
 #include "query/query_operator.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 
 /* --------------------------------------------------------- */
@@ -126,7 +126,7 @@ EvalBooleanExpressionAgainstArray(ExprEvalState *evalState, const
 		!bson_iter_init_from_data(&arrayIterator, queryValue->value.v_doc.data,
 								  queryValue->value.v_doc.data_len))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Input value should be an array. found type %s",
 							BsonTypeName(
 								queryValue->value_type))));
@@ -193,7 +193,7 @@ EvalExpressionAgainstArrayGetFirstMatch(ExprEvalState *evalState,
 		!bson_iter_init_from_data(&arrayIterator, queryValue->value.v_doc.data,
 								  queryValue->value.v_doc.data_len))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Input value should be an array. found type %s",
 							BsonTypeName(
 								queryValue->value_type))));
@@ -229,7 +229,7 @@ EvalExpressionAgainstArrayGetAllMatchingIndices(ExprEvalState *evalState,
 {
 	if (arrayValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Input value should be an array. found type %s",
 							BsonTypeName(
 								arrayValue->value_type))));

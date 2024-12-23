@@ -23,7 +23,7 @@
 #include <utils/timestamp.h>
 #include <common/hashfn.h>
 #include <commands/portalcmds.h>
-#include <utils/helio_errors.h>
+#include <utils/documentdb_errors.h>
 #include <commands/cursor_common.h>
 #include <commands/cursor_private.h>
 #include <utils/hashset_utils.h>
@@ -562,7 +562,7 @@ DrainPersistedCursor(const char *cursorName, int batchSize,
 
 	if (portal == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_CURSORNOTFOUND),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CURSORNOTFOUND),
 						errmsg("Cursor not found in the store.")));
 	}
 
@@ -661,7 +661,7 @@ FetchCursorAndWriteUntilPageOrSize(Portal portal, int32_t batchSize,
 				/* if the new total size is > Max Bson Size */
 				if (datumSize > BSON_MAX_ALLOWED_SIZE)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BSONOBJECTTOOLARGE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BSONOBJECTTOOLARGE),
 									errmsg("Size %u is larger than MaxDocumentSize %u",
 										   datumSize, BSON_MAX_ALLOWED_SIZE)));
 				}

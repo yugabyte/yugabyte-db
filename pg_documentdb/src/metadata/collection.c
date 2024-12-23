@@ -32,7 +32,7 @@
 
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "metadata/relation_utils.h"
 #include "utils/query_utils.h"
 #include "utils/guc_utils.h"
@@ -433,7 +433,7 @@ GetMongoCollectionByNameDatum(Datum databaseNameDatum, Datum collectionNameDatum
 
 	if (collection != NULL && collection->viewDefinition != NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTEDONVIEW),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTEDONVIEW),
 						errmsg("Namespace %s.%s is a view, not a collection",
 							   collection->name.databaseName,
 							   collection->name.collectionName)));
@@ -527,14 +527,14 @@ GetMongoCollectionByNameDatumCore(Datum databaseNameDatum, Datum collectionNameD
 	int databaseNameLength = VARSIZE_ANY_EXHDR(databaseNameDatum);
 	if (databaseNameLength >= MAX_DATABASE_NAME_LENGTH)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE), errmsg(
 							"database name is too long")));
 	}
 
 	int collectionNameLength = VARSIZE_ANY_EXHDR(collectionNameDatum);
 	if (collectionNameLength >= MAX_COLLECTION_NAME_LENGTH)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE), errmsg(
 							"collection name is too long")));
 	}
 
@@ -708,14 +708,14 @@ GetTempMongoCollectionByNameDatum(Datum databaseNameDatum, Datum collectionNameD
 	int databaseNameLength = VARSIZE_ANY_EXHDR(databaseNameDatum);
 	if (databaseNameLength >= MAX_DATABASE_NAME_LENGTH)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"database name is too long")));
 	}
 
 	int collectionNameLength = VARSIZE_ANY_EXHDR(collectionNameDatum);
 	if (collectionNameLength >= MAX_COLLECTION_NAME_LENGTH)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"collection name is too long")));
 	}
 
@@ -1169,7 +1169,7 @@ ValidateCollectionNameForUnauthorizedSystemNs(const char *collectionName,
 	/* Empty collection name*/
 	if (strlen(collectionName) == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 						errmsg("Invalid empty namespace specified")));
 	}
 	for (int i = 0; i < NonWritableSystemCollectionNamesLength; i++)
@@ -1182,7 +1182,7 @@ ValidateCollectionNameForUnauthorizedSystemNs(const char *collectionName,
 			};
 
 			/* Need to disallow user writes on NonWritableSystemCollectionNames */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 							errmsg("cannot write to %.*s.%s",
 								   databaseView.length, databaseView.string,
 								   NonWritableSystemCollectionNames[i])));
@@ -1219,7 +1219,7 @@ ValidateCollectionNameForValidSystemNamespace(StringView *collectionView,
 				.length = VARSIZE_ANY_EXHDR(databaseNameDatum),
 				.string = VARDATA_ANY(databaseNameDatum)
 			};
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 							errmsg("Invalid system namespace: %.*s.%.*s",
 								   databaseView.length, databaseView.string,
 								   collectionView->length, collectionView->string)));
@@ -1367,7 +1367,7 @@ GetCollectionOrViewCore(PG_FUNCTION_ARGS, bool allowViews)
 	{
 		if (!allowViews && resultTupDesc->natts > 5 && !resultIsNulls[5])
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTEDONVIEW),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTEDONVIEW),
 							errmsg("Namespace %s.%s is a view, not a collection",
 								   TextDatumGetCString(databaseDatum),
 								   TextDatumGetCString(collectionName))));
@@ -1394,7 +1394,7 @@ CreateCollection(Datum dbNameDatum, Datum collectionNameDatum)
 	char *collectionNameStr = TextDatumGetCString(collectionNameDatum);
 	if (collectionNameStr != NULL && strlen(collectionNameStr) == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 						errmsg("Invalid empty namespace specified")));
 	}
 
@@ -1645,7 +1645,7 @@ ValidateDatabaseCollection(Datum databaseDatum, Datum collectionDatum)
 
 	if (databaseView.length >= MAX_DATABASE_NAME_LENGTH)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 						errmsg("Database %.*s must be less than 64 characters",
 							   databaseView.length, databaseView.string)));
 	}
@@ -1654,7 +1654,7 @@ ValidateDatabaseCollection(Datum databaseDatum, Datum collectionDatum)
 	{
 		if (StringViewContains(&databaseView, CharactersNotAllowedInDatabaseNames[i]))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 							errmsg("Database %.*s has an invalid character %c",
 								   databaseView.length, databaseView.string,
 								   CharactersNotAllowedInDatabaseNames[i])));
@@ -1663,14 +1663,14 @@ ValidateDatabaseCollection(Datum databaseDatum, Datum collectionDatum)
 
 	if (collectionView.string == NULL || collectionView.length == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 						errmsg("Invalid namespace specified '%.*s.'",
 							   databaseView.length, databaseView.string)));
 	}
 
 	if (StringViewStartsWith(&collectionView, '.'))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 						errmsg("Collection names cannot start with '.': %.*s",
 							   collectionView.length, collectionView.string)));
 	}
@@ -1679,7 +1679,7 @@ ValidateDatabaseCollection(Datum databaseDatum, Datum collectionDatum)
 	{
 		if (StringViewContains(&collectionView, CharactersNotAllowedInCollectionNames[i]))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 							errmsg("Invalid collection name: %.*s",
 								   collectionView.length, collectionView.string)));
 		}
@@ -1687,7 +1687,7 @@ ValidateDatabaseCollection(Datum databaseDatum, Datum collectionDatum)
 
 	if (databaseView.length + collectionView.length + 1 > MaxDatabaseCollectionLength)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 						errmsg("Full namespace must not exceed %u bytes.",
 							   MaxDatabaseCollectionLength)));
 	}
@@ -1712,7 +1712,7 @@ validate_dbname(PG_FUNCTION_ARGS)
 
 	if (databaseView.length >= MAX_DATABASE_NAME_LENGTH)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 						errmsg("Database %.*s must be less than 64 characters",
 							   databaseView.length, databaseView.string)));
 	}
@@ -1723,7 +1723,7 @@ validate_dbname(PG_FUNCTION_ARGS)
 		if (!StringViewEqualsCString(&databaseView, (char *) dbNameInTable))
 		{
 			ereport(ERROR,
-					(errcode(ERRCODE_HELIO_DBALREADYEXISTS),
+					(errcode(ERRCODE_DOCUMENTDB_DBALREADYEXISTS),
 					 errmsg("db already exists with different case already have: "
 							"[%s] trying to create [%.*s]", dbNameInTable,
 							databaseView.length, databaseView.string)));
@@ -1807,7 +1807,7 @@ ParseAndGetValidatorSpec(bson_iter_t *iter, const char *validatorName, bool *has
 {
 	if (!EnableSchemaValidation)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("validator not supported yet")));
 	}
 
@@ -1824,7 +1824,7 @@ ParseAndGetValidatorSpec(bson_iter_t *iter, const char *validatorName, bool *has
 	/* Large and overly complex validation rules can impact database performance, especially during write operations. */
 	if (validator->value.v_doc.data_len > (uint32_t) MaxSchemaValidatorSize)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"validator of size > %dKB is not supported. Contact Azure Support if you need to increase this limit.",
 							MaxSchemaValidatorSize / 1024),
@@ -1848,7 +1848,7 @@ ParseAndGetValidationActionOption(bson_iter_t *iter, const char *validationActio
 {
 	if (!EnableSchemaValidation)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("validator not supported yet")));
 	}
 
@@ -1870,7 +1870,7 @@ ParseAndGetValidationActionOption(bson_iter_t *iter, const char *validationActio
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"Enumeration value '%s' for field '%s' is not a valid value.",
 							validationAction, validationActionName),
@@ -1891,7 +1891,7 @@ ParseAndGetValidationLevelOption(bson_iter_t *iter, const char *validationLevelN
 {
 	if (!EnableSchemaValidation)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("validator not supported yet")));
 	}
 
@@ -1914,7 +1914,7 @@ ParseAndGetValidationLevelOption(bson_iter_t *iter, const char *validationLevelN
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"Enumeration value '%s' for field '%s' is not a valid value.",
 							validationLevel, validationLevelName),

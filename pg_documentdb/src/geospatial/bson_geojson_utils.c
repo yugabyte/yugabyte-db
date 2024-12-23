@@ -20,7 +20,7 @@
 #include "utils/typcache.h"
 
 
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "geospatial/bson_geojson_utils.h"
 #include "utils/list_utils.h"
 #include "utils/hashset_utils.h"
@@ -987,7 +987,7 @@ VisitPolygonRingForValidation(const WKBGeometryConst *geometryConst, void *state
 	if (geometryConst->geometryType != WKBGeometryType_Polygon)
 	{
 		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_INTERNALERROR),
+					errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 					errmsg(
 						"%d unexpected geospatial type for polygon validation found in document WKB",
 						geometryConst->geometryType),

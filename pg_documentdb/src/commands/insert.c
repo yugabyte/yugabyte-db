@@ -42,7 +42,7 @@
 #include "metadata/metadata_cache.h"
 #include "utils/error_utils.h"
 #include "utils/version_utils.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "api_hooks.h"
 #include "schema_validation/schema_validation.h"
 #include "operators/bson_expr_eval.h"
@@ -256,7 +256,7 @@ CreateCollectionForInsert(Datum databaseNameDatum, Datum collectionNameDatum)
 
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("failed to create collection"),
 						errdetail_log(
 							"Could not get collection from cache after creating the collection")));
@@ -288,7 +288,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 		{
 			if (!BSON_ITER_HOLDS_UTF8(insertCommandIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("collection name has invalid type %s",
 									   BsonIterTypeName(insertCommandIter))));
 			}
@@ -303,7 +303,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 			/* if both docs and spec are provided, fail */
 			if (insertDocs != NULL)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg("Unexpected additional documents")));
 			}
 
@@ -345,7 +345,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
 							errmsg("BSON field 'insert.%s' is an unknown field",
 								   field)));
 		}
@@ -353,7 +353,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 
 	if (collectionName == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414),
 						errmsg("BSON field 'insert.insert' is missing but "
 							   "a required field")));
 	}
@@ -367,7 +367,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 
 	if (!hasDocuments)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414),
 						errmsg("BSON field 'insert.documents' is missing but "
 							   "a required field")));
 	}
@@ -376,7 +376,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 	if ((!hasSkippedDocuments && insertionCount == 0) ||
 		insertionCount > MaxWriteBatchSize)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDLENGTH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDLENGTH),
 						errmsg("Write batch sizes must be between 1 and %d. "
 							   "Got %d operations.", MaxWriteBatchSize, insertionCount)));
 	}
@@ -414,7 +414,7 @@ ValidateAndCheckShouldInsertDocument(const bson_value_t *docValue)
 	uint32_t size = docValue->value.v_doc.data_len;
 	if (size > BSON_MAX_ALLOWED_SIZE)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Size %u is larger than MaxDocumentSize %u",
 							   size, BSON_MAX_ALLOWED_SIZE)));
 	}
@@ -629,7 +629,7 @@ DoMultiInsertWithoutTransactionId(MongoCollection *collection, List *inserts, Oi
 
 		int errorCode = errorData->sqlerrcode;
 		const char *errorCodeStr = unpack_sql_state(errorCode);
-		if (EreportCodeIsHelioError(errorCode))
+		if (EreportCodeIsDocumentDBError(errorCode))
 		{
 			/*
 			 * TODO: Since there is no mapping from PG error to mongo error today in engine,
@@ -637,7 +637,7 @@ DoMultiInsertWithoutTransactionId(MongoCollection *collection, List *inserts, Oi
 			 */
 			ereport(LOG, (
 						errmsg(
-							"Optimistic Batch Insert failed. Retrying with single insert. helio errorCode %s",
+							"Optimistic Batch Insert failed. Retrying with single insert. documentDB errorCode %s",
 							errorCodeStr)));
 		}
 		else
@@ -951,7 +951,7 @@ CallInsertWorkerForInsertOne(MongoCollection *collection, int64 shardKeyHash,
 
 	if (isNulls[0])
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("insert_worker should not return null")));
 	}
 
@@ -1064,7 +1064,7 @@ command_insert_worker(PG_FUNCTION_ARGS)
 	if (shardOid == InvalidOid)
 	{
 		/* The planner is expected to replace this */
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("Explicit shardOid must be set - this is a server bug"),
 						errdetail_log(
 							"Explicit shardOid must be set - this is a server bug")));
@@ -1076,7 +1076,7 @@ command_insert_worker(PG_FUNCTION_ARGS)
 	if (strcmp(element.path, "insertOne") != 0 ||
 		element.bsonValue.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Only insertOne with a single document on the worker is supported currently")));
 	}

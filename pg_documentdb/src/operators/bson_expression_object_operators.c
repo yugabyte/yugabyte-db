@@ -15,7 +15,7 @@
 #include "operators/bson_expression_operators.h"
 #include "aggregation/bson_tree.h"
 #include "aggregation/bson_tree_write.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 /* Struct that represents the parsed arguments to a $getField expression. */
 typedef struct DollarGetFieldArguments
@@ -311,7 +311,7 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION3041701), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION3041701), errmsg(
 									"$getField found an unknown argument: %s",
 									key)));
 			}
@@ -329,14 +329,14 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
 	/* check if required key is missing */
 	if (field.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION3041702),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION3041702),
 						errmsg(
 							"$getField requires 'field' to be specified")));
 	}
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION3041703),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION3041703),
 						errmsg(
 							"$getField requires 'input' to be specified")));
 	}
@@ -353,7 +353,7 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
 																	  context);
 	if (validationCode == PATH_IS_NOT_ALLOWED)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5654600),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5654600),
 						errmsg(
 							"A field path reference which is not allowed in this context. Did you mean {$literal: '%s'}?",
 							arguments->field.value.value.v_utf8.str)));
@@ -361,14 +361,14 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
 	else if (validationCode == NON_CONSTANT_ARGUMENT)
 	{
 		ereport(ERROR, (errcode(
-							ERRCODE_HELIO_LOCATION5654601),
+							ERRCODE_DOCUMENTDB_LOCATION5654601),
 						errmsg(
 							"$getField requires 'field' to evaluate to a constant, but got a non-constant argument")));
 	}
 	else if (validationCode == NON_STRING_CONSTANT)
 	{
 		ereport(ERROR, (errcode(
-							ERRCODE_HELIO_LOCATION5654602),
+							ERRCODE_DOCUMENTDB_LOCATION5654602),
 						errmsg(
 							"$getField requires 'field' to evaluate to type String, but got %s",
 							BsonTypeName(arguments->field.value.value_type)),
@@ -462,7 +462,7 @@ ParseDollarSetFieldOrUnsetFieldCore(const bson_value_t *argument,
 
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSETFIELDREQUIRESOBJECT), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSETFIELDREQUIRESOBJECT), errmsg(
 							"%s only supports an object as its argument", operatorName),
 						errdetail_log("%s only supports an object as its argument",
 									  operatorName)));
@@ -488,28 +488,29 @@ ParseDollarSetFieldOrUnsetFieldCore(const bson_value_t *argument,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSETFIELDUNKNOWNARGUMENT), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSETFIELDUNKNOWNARGUMENT),
+							errmsg(
 								"%s found an unknown argument: %s", operatorName, key)));
 		}
 	}
 
 	if (field.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION4161102),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION4161102),
 						errmsg(
 							"%s requires 'field' to be specified", operatorName)));
 	}
 
 	if (isSetField && value.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION4161103),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION4161103),
 						errmsg(
 							"$setField requires 'value' to be specified")));
 	}
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION4161109),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION4161109),
 						errmsg(
 							"%s requires 'input' to be specified", operatorName)));
 	}
@@ -526,7 +527,7 @@ ParseDollarSetFieldOrUnsetFieldCore(const bson_value_t *argument,
 	if (validationCode == NON_CONSTANT_ARGUMENT)
 	{
 		ereport(ERROR, (errcode(
-							ERRCODE_HELIO_LOCATION4161106),
+							ERRCODE_DOCUMENTDB_LOCATION4161106),
 						errmsg(
 							"%s requires 'field' to evaluate to a constant, but got a non-constant argument",
 							operatorName)));
@@ -534,7 +535,7 @@ ParseDollarSetFieldOrUnsetFieldCore(const bson_value_t *argument,
 	else if (validationCode == NON_STRING_CONSTANT)
 	{
 		ereport(ERROR, (errcode(
-							ERRCODE_HELIO_LOCATION4161107),
+							ERRCODE_DOCUMENTDB_LOCATION4161107),
 						errmsg(
 							"%s requires 'field' to evaluate to type String, but got %s",
 							operatorName,
@@ -546,7 +547,7 @@ ParseDollarSetFieldOrUnsetFieldCore(const bson_value_t *argument,
 	}
 	else if (validationCode == PATH_IS_NOT_ALLOWED)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION4161108),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION4161108),
 						errmsg(
 							"A field path reference which is not allowed in this context. Did you mean {$literal: '%s'}?",
 							arguments->field.value.value.v_utf8.str)));
@@ -582,7 +583,7 @@ ParseDollarSetFieldOrUnsetFieldCore(const bson_value_t *argument,
 		else
 		{
 			ereport(ERROR, (errcode(
-								ERRCODE_HELIO_LOCATION4161105),
+								ERRCODE_DOCUMENTDB_LOCATION4161105),
 							errmsg(
 								"%s requires 'input' to evaluate to type Object",
 								operatorName)));
@@ -646,7 +647,7 @@ HandlePreParsedDollarSetFieldOrUnsetFieldCore(pgbson *doc, void *arguments,
 
 	if (evaluatedInputArg.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSETFIELDREQUIRESOBJECT), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSETFIELDREQUIRESOBJECT), errmsg(
 							"%s requires 'input' to evaluate to type Object",
 							operatorName)));
 	}
@@ -690,8 +691,8 @@ ParseFieldExpressionForDollarGetFieldAndSetFieldAndUnsetField(const bson_value_t
 	/* as we need to separate these two cases where fieldExpression->kind are both AggregationExpressionKind_Constant */
 	/* and fieldExpression->value.value_type are both BSON_TYPE_ARRAY */
 	/* example: */
-	/*		{ $getField: { $const: [1,2]}} should throw ERRCODE_HELIO_LOCATION5654602 */
-	/*		{ $getField: { $zip: { inputs: [ [ "a" ], [ "b" ], [ "c" ] ] }}} should throw ERRCODE_HELIO_LOCATION5654601 */
+	/*		{ $getField: { $const: [1,2]}} should throw ERRCODE_DOCUMENTDB_LOCATION5654602 */
+	/*		{ $getField: { $zip: { inputs: [ [ "a" ], [ "b" ], [ "c" ] ] }}} should throw ERRCODE_DOCUMENTDB_LOCATION5654601 */
 	if (field->value_type == BSON_TYPE_DOCUMENT)
 	{
 		bson_iter_t docIter;
@@ -845,7 +846,7 @@ AppendDocumentForMergeObjects(const bson_value_t *currentValue, bool isConstant,
 		!IsExpressionResultNullOrUndefined(currentValue))
 	{
 		ereport(ERROR,
-				errcode(ERRCODE_HELIO_DOLLARMERGEOBJECTSINVALIDTYPE),
+				errcode(ERRCODE_DOCUMENTDB_DOLLARMERGEOBJECTSINVALIDTYPE),
 				errmsg("$mergeObjects requires object inputs, but input %s is of type %s",
 					   BsonValueToJsonForLogging(currentValue),
 					   BsonTypeName(currentValue->value_type)),

@@ -20,7 +20,7 @@
 
 #include "update/bson_update_common.h"
 #include "query/helio_bson_compare.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "aggregation/bson_tree.h"
 #include "operators/bson_expr_eval.h"
 #include "update/bson_update_operators.h"
@@ -490,7 +490,7 @@ pg_attribute_noreturn()
 ThrowDollarPathNotAllowedError(const BsonPathNode * node)
 {
 	const char *relativePath = GetRelativePathFromNode(node);
-	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 					errmsg(
 						"The dollar ($) prefixed field '%.*s' in '%s' is not allowed in the context of"
 						" an update's replacement document. Consider using an aggregation pipeline with $replaceWith.",
@@ -623,7 +623,7 @@ GetOperatorUpdateState(pgbson *updateSpec, pgbson *querySpec,
 	if (!BSON_ITER_HOLDS_DOCUMENT(&updateIterator) ||
 		!bson_iter_recurse(&updateIterator, &updateIterator))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Update should be a document")));
 	}
 
@@ -877,7 +877,7 @@ ReadUpdateSpecAndUpdateTree(bson_iter_t *updateIterator,
 				!bson_iter_recurse(updateIterator, &operatorIterator))
 			{
 				const bson_value_t *updateItrVal = bson_iter_value(updateIterator);
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"Modifiers operate on fields but we found type %s instead. "
 									"For example: {$mod: {<field>: ...}} not {%s: %s}",
@@ -905,7 +905,7 @@ ReadUpdateSpecAndUpdateTree(bson_iter_t *updateIterator,
 
 		if (!operatorFound)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
 								"Unknown modifier: %s. Expected a valid update modifier or "
 								"pipeline-style update specified as an array",
@@ -1100,7 +1100,7 @@ HandleRenameUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 
 		if (value->value_type != BSON_TYPE_UTF8)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"Rename target should be a string")));
 		}
 
@@ -1149,7 +1149,7 @@ HandleRenameUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 
 		if (hasPositionalInAncestors)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("The source field for $rename may not be dynamic: %s",
 								   updatePathView.string)));
 		}
@@ -1160,7 +1160,7 @@ HandleRenameUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 														  sourceNode);
 		if (hasPositionalInAncestors)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"The destination field for $rename may not be dynamic: %s",
 								renamePath.string)));
@@ -1242,13 +1242,13 @@ ValidateSpecPathForUpdateTree(const StringView *updatePath)
 {
 	if (updatePath->length == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_EMPTYFIELDNAME), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_EMPTYFIELDNAME), errmsg(
 							"An empty update path is not valid")));
 	}
 
 	if (updatePath->string[updatePath->length - 1] == '.')
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_EMPTYFIELDNAME),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_EMPTYFIELDNAME),
 						errmsg(
 							"An update path '%s' contains an empty field name, which is not allowed.",
 							updatePath->string)));
@@ -1264,14 +1264,14 @@ ValidateSpecPathForUpdateTree(const StringView *updatePath)
 
 		if (StringViewEquals(&path, &PositionalType_AllString))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"Cannot have array filter identifier (i.e. '$[<id>]') element in the first position in path '%s'",
 								updatePath->string)));
 		}
 		else if (StringViewEquals(&path, &PositionalFilterString))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"Cannot have positional (i.e. '$') element in the first position in path '%s'",
 								updatePath->string)));
@@ -1329,7 +1329,7 @@ ValidateNodePathInTree(const StringView *path, const char *relativePath)
 {
 	if (path->length == 0 || path->string[path->length - 1] == '.')
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"An empty path '%s' contains an empty field name, which is not allowed.",
 							relativePath)));
@@ -1387,7 +1387,7 @@ GetNodePositionalDataFromPath(const StringView *path,
 
 		if (!found || hashEntry == NULL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("No array filter found for identifier %.*s",
 								   identifier.length, identifier.string)));
 		}
@@ -1498,7 +1498,7 @@ HandleUpdateDocumentId(pgbson_writer *writer,
 
 		case NodeType_Intermediate:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"_id cannot be an object/array")));
 		}
 
@@ -1771,7 +1771,7 @@ HandleCurrentIteratorPosition(bson_iter_t *documentIterator,
 					 */
 					if (isArray)
 					{
-						ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 											"Cannot create field '%s' in element {%s : %s}",
 											path.string, path.string,
 											BsonValueToJsonForLogging(bson_iter_value(
@@ -1781,7 +1781,7 @@ HandleCurrentIteratorPosition(bson_iter_t *documentIterator,
 								 intermediate->sourceOrTargetNodeForRenameOP,
 								 state->sourceDocument))
 					{
-						ereport(ERROR, (errcode(ERRCODE_HELIO_PATHNOTVIABLE),
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_PATHNOTVIABLE),
 										errmsg(
 											"Cannot create field '%s' in element {%s : %s}",
 											path.string, path.string,
@@ -1796,7 +1796,7 @@ HandleCurrentIteratorPosition(bson_iter_t *documentIterator,
 				}
 				else
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_PATHNOTVIABLE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_PATHNOTVIABLE),
 									errmsg(
 										"Cannot create field '%s' in element {%s : %s}",
 										path.string, path.string,
@@ -1833,7 +1833,7 @@ ThrowPositionalOnNonArrayPathError(const BsonPathNode * node,
 								   const bson_value_t * currentValue)
 {
 	const char *elementValue = BsonValueToJsonForLogging(currentValue);
-	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 						"Cannot apply array updates to non-array element %.*s: { %.*s: %s }",
 						node->parent->baseNode.field.length,
 						node->parent->baseNode.field.string,
@@ -1865,7 +1865,7 @@ IsNodeMatchForIteratorPath(const BsonPathNode *node,
 					positionalData->positionalQueryData, state->sourceDocument);
 				if (matchedIndex < 0)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg(
 										"The positional operator did not find the match needed from the query.")));
 				}
@@ -1925,7 +1925,7 @@ IsNodeMatchForIteratorPath(const BsonPathNode *node,
 				int32_t arrayIndex = StringViewToPositiveInteger(&node->field);
 				if (arrayIndex < 0)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg("Invalid array index path %.*s",
 										   node->field.length,
 										   node->field.string)));
@@ -1969,7 +1969,7 @@ HandleUnresolvedDocumentFields(const BsonUpdateIntermediatePathNode *tree,
 
 	if (tree->hasPositionalChildren)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"The path '%.*s' must exist in the document in order to apply array updates.",
 							tree->base.baseNode.field.length,
@@ -2117,7 +2117,7 @@ HandleUnresolvedArrayFields(const BsonUpdateIntermediatePathNode *tree,
 		}
 		else if (positionalData->type == PositionalType_None)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
 								"The destination field is an invalid array element")));
 		}
@@ -2130,7 +2130,7 @@ HandleUnresolvedArrayFields(const BsonUpdateIntermediatePathNode *tree,
 
 	if (maxIndex - currentMaxIndex > 1500000)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTBACKFILLARRAY), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTBACKFILLARRAY), errmsg(
 							"can't backfill more than 1500000 elements")));
 	}
 
@@ -2264,7 +2264,7 @@ HandlePullWriterGetState(const bson_value_t *updateValue)
 				hasDollarField = true;
 				if (hasPlainField)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 										"unknown top level operator: %s. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.",
 										field)));
 				}
@@ -2274,7 +2274,7 @@ HandlePullWriterGetState(const bson_value_t *updateValue)
 				hasPlainField = true;
 				if (hasDollarField)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 										"unknown operator: %s", field)));
 				}
 			}
@@ -2346,7 +2346,7 @@ BuildExpressionForArrayFilters(pgbson *arrayFilters)
 		pgbsonelement singleElement;
 		if (!BSON_ITER_HOLDS_DOCUMENT(&arrayIterator))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 							errmsg("BSONField updates.update.arrayFilters.%s"
 								   " is the wrong type %s. expected type object",
 								   bson_iter_key(&arrayIterator),
@@ -2355,7 +2355,7 @@ BuildExpressionForArrayFilters(pgbson *arrayFilters)
 
 		if (!bson_iter_recurse(&arrayIterator, &documentIterator))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
 								"Cannot use an expression without a top-level field name in"
 								" arrayFilters")));
@@ -2376,7 +2376,7 @@ BuildExpressionForArrayFilters(pgbson *arrayFilters)
 
 			if (keyView.length == 0 || !isalnum(keyView.string[0]))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"The top level field name must be alphanumeric string. Found '%.*s'",
 									keyView.length, keyView.string)));
@@ -2397,7 +2397,7 @@ BuildExpressionForArrayFilters(pgbson *arrayFilters)
 
 			if (topLevelKey.length > 0 && !StringViewEquals(&fieldPath, &topLevelKey))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"Error parsing array filter :: caused by :: "
 									"Expected a single top-level field name, found %.*s and %.*s",
@@ -2423,7 +2423,7 @@ BuildExpressionForArrayFilters(pgbson *arrayFilters)
 
 		if (!hasElements)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
 								"Cannot use an expression without a top-level field name in"
 								" arrayFilters")));
@@ -2434,7 +2434,7 @@ BuildExpressionForArrayFilters(pgbson *arrayFilters)
 													 HASH_ENTER, &found);
 		if (found)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
 								"Found multiple array filters with the same top-level field name %.*s",
 								topLevelKey.length, topLevelKey.string)));
@@ -2521,7 +2521,7 @@ PostValidateArrayFilters(HTAB *arrayFiltersHash, pgbson *updateSpec)
 			PgbsonInitIteratorAtPath(updateSpec, "", &updateSpecIter);
 			const bson_value_t *bsonValue = bson_iter_value(&updateSpecIter);
 			const char *updateSpecStr = FormatBsonValueForShellLogging(bsonValue);
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
 								"The array filter for identifier \'%.*s\' was not used in the update %s",
 								entry->identifier.length, entry->identifier.string,

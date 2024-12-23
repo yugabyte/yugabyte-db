@@ -18,7 +18,7 @@
 #include "parser/parse_type.h"
 #include "nodes/makefuncs.h"
 
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "utils/guc_utils.h"

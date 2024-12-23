@@ -30,7 +30,7 @@
 #include "types/decimal128.h"
 #include "utils/date_utils.h"
 #include "utils/feature_counter.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 /* --------------------------------------------------------- */
 /* Data types */
@@ -402,7 +402,7 @@ EnsureValidWindowSpec(int frameOptions)
 	{
 		/* Only unknwon fields are provided */
 		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 					errmsg(
 						"'window' field can only contain 'documents' as the only argument "
 						"or 'range' with an optional 'unit' field")));
@@ -435,7 +435,7 @@ EnsureValidWindowSpec(int frameOptions)
 	{
 		/* Units without range */
 		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 					errmsg(
 						"Window bounds can only specify 'unit' with range-based bounds.")));
 	}
@@ -467,7 +467,7 @@ EnsureSortRequirements(int frameOptions, WindowOperatorContext *context)
 		/* Must be supplied for a range window */
 		if (sortByLength != 1)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5339902),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5339902),
 							errmsg("Range-based bounds require sortBy a single field")));
 		}
 
@@ -479,7 +479,7 @@ EnsureSortRequirements(int frameOptions, WindowOperatorContext *context)
 			 * Fix later to extend the error code range to accomodate this, for now throwing
 			 * generic failed to parse
 			 */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Range-based bounds require an ascending sortBy")));
 		}
 	}
@@ -491,7 +491,7 @@ EnsureSortRequirements(int frameOptions, WindowOperatorContext *context)
 		if (!isUnbounded)
 		{
 			/* Must be supplied for a bounded document window */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5339901),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5339901),
 							errmsg("Document-based bounds require a sortBy")));
 		}
 	}
@@ -567,7 +567,7 @@ HandleSetWindowFieldsCore(const bson_value_t *existingValue,
 
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"the $setWindowFields stage specification must be an object, "
 							"found %s", BsonTypeName(existingValue->value_type)),
@@ -605,7 +605,7 @@ HandleSetWindowFieldsCore(const bson_value_t *existingValue,
 			if (value->value_type == BSON_TYPE_ARRAY)
 			{
 				ereport(ERROR, (
-							errcode(ERRCODE_HELIO_TYPEMISMATCH),
+							errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 							errmsg(
 								"An expression used to partition cannot evaluate to value of type array")));
 			}
@@ -686,7 +686,7 @@ HandleSetWindowFieldsCore(const bson_value_t *existingValue,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
 							errmsg(
 								"BSON field '$setWindowFields.%s' is an unknown field.",
 								key),
@@ -700,7 +700,7 @@ HandleSetWindowFieldsCore(const bson_value_t *existingValue,
 	if (outputSpec.value_type == BSON_TYPE_EOD)
 	{
 		ThrowTopLevelMissingFieldErrorWithCode("$setWindowFields.output",
-											   ERRCODE_HELIO_LOCATION40414);
+											   ERRCODE_DOCUMENTDB_LOCATION40414);
 	}
 
 	/* Construct all the window clauses */
@@ -724,20 +724,20 @@ HandleSetWindowFieldsCore(const bson_value_t *existingValue,
 
 		if (output.pathLength == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40352),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40352),
 							errmsg("FieldPath cannot be constructed with empty string")));
 		}
 
 		if (output.path[0] == '$')
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16410),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16410),
 							errmsg(
 								"FieldPath field names may not start with '$'. Consider using $getField or $setField.")));
 		}
 
 		if (output.bsonValue.value_type != BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("The field '%s' must be an object", output.path),
 							errdetail_log(
 								"$setWindowField output field must be an object")));
@@ -852,7 +852,7 @@ UpdateWindowOperatorAndFrameOptions(const bson_value_t *windowOpValue,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Window function found an unknown argument: %s", key),
 							errdetail_log("Window function found an unknown argument")));
 		}
@@ -860,7 +860,7 @@ UpdateWindowOperatorAndFrameOptions(const bson_value_t *windowOpValue,
 
 	if (operatorValue.bsonValue.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("Expected a $-prefixed window function, window")));
 	}
 
@@ -872,7 +872,7 @@ UpdateWindowOperatorAndFrameOptions(const bson_value_t *windowOpValue,
 		/* The window value object should be a document.*/
 		if (windowValue.bsonValue.value_type != BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("'window' field must be an object")));
 		}
 
@@ -1004,7 +1004,7 @@ EnsureValidUnitOffsetAndGetInterval(const bson_value_t *value, DateUnit dateUnit
 
 	if (!IsBsonValueFixedInteger(value))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("With 'unit', range-based bounds must be an integer")));
 	}
 
@@ -1047,13 +1047,13 @@ ParseAndSetFrameOption(const bson_value_t *value, WindowClause *windowClause,
 			if (isDocumentFrame)
 			{
 				ereport(ERROR, (
-							errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+							errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Numeric document-based bounds must be an integer")));
 			}
 			else
 			{
 				ereport(ERROR, (
-							errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+							errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Range-based bounds expression must be a number")));
 			}
 		}
@@ -1080,7 +1080,7 @@ ParseAndSetFrameOption(const bson_value_t *value, WindowClause *windowClause,
 			else
 			{
 				ereport(ERROR, (
-							errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+							errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
 								"Window bounds must be 'unbounded', 'current', or a number.")));
 			}
@@ -1097,7 +1097,7 @@ ParseAndSetFrameOption(const bson_value_t *value, WindowClause *windowClause,
 				if (!IsBsonValue64BitInteger(frameValue, checkFixedInteger))
 				{
 					ereport(ERROR, (
-								errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+								errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"Numeric document-based bounds must be an integer")));
 				}
@@ -1174,7 +1174,7 @@ ParseAndSetFrameOption(const bson_value_t *value, WindowClause *windowClause,
 								&isComparisionValid) > 0)
 	{
 		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_LOCATION5339900),
+					errcode(ERRCODE_DOCUMENTDB_LOCATION5339900),
 					errmsg("Lower bound must not exceed upper bound: %s",
 						   BsonValueToJsonForLogging(value)),
 					errdetail_log("Lower bound must not exceed upper bound.")));
@@ -1231,7 +1231,7 @@ pg_attribute_noreturn()
 ThrowInvalidFrameOptions()
 {
 	ereport(ERROR, (
-				errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 				errmsg(
 					"Window bounds can specify either 'documents' or 'unit', not both.")));
 }
@@ -1243,7 +1243,7 @@ pg_attribute_noreturn()
 ThrowExtraInvalidFrameOptions(const char * str1, const char * str2)
 {
 	ereport(ERROR, (
-				errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 				errmsg("'window' field that specifies %s cannot have other fields %s",
 					   str1, str2),
 				errdetail_log(
@@ -1256,7 +1256,7 @@ static void
 pg_attribute_noreturn()
 ThrowInvalidWindowValue(const char * windowType, const bson_value_t * value)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 					errmsg("Window bounds must be a 2-element array: %s: %s",
 						   windowType,
 						   BsonValueToJsonForLogging(value)),
@@ -1309,14 +1309,14 @@ UpdateWindowOptions(const pgbsonelement *element, WindowClause *windowClause,
 			*frameOptions |= FRAMEOPTION_MONGO_RANGE_UNITS;
 			if (windowValue->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg("'unit' must be a string")));
 			}
 			dateUnit = GetDateUnitFromString(windowValue->value.v_utf8.str);
 
 			if (dateUnit == DateUnit_Invalid)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg("unknown time unit value: %s",
 									   windowValue->value.v_utf8.str)));
 			}
@@ -1365,7 +1365,7 @@ UpdateWindowAggregationOperator(const pgbsonelement *element,
 			if (definition->windowOperatorFunc == NULL)
 			{
 				ereport(ERROR, (
-							errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+							errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("Window operator %s is not supported yet",
 								   element->path),
 							errdetail_log("Window operator %s is not supported yet",
@@ -1386,7 +1386,7 @@ UpdateWindowAggregationOperator(const pgbsonelement *element,
 
 	if (!knownOperator)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("Unrecognized window function, %s", element->path),
 						errdetail_log("Unrecognized window function, %s",
 									  element->path)));
@@ -1448,7 +1448,7 @@ HandleDollarIntegralWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
 							"$integral is only supported on vCore 1.22.0 and above")));
 	}
@@ -1466,7 +1466,7 @@ HandleDollarDerivativeWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
 							"$derivative is only supported on vCore 1.22.0 and above")));
 	}
@@ -1484,7 +1484,7 @@ GetIntegralDerivativeWindowFunc(const bson_value_t *opValue,
 {
 	if (!(context->isWindowPresent || isIntegral))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("$derivative requires explicit window bounds")));
 	}
 	WindowFunc *windowFunc = makeNode(WindowFunc);
@@ -1548,12 +1548,12 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 	SetWindowFieldSortOption *sortField;
 	if (!list_length(context->sortOptions))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("%s requires a sortBy", operatorName)));
 	}
 	else if (list_length(context->sortOptions) > 1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("%s requires a non-compound sortBy", operatorName)));
 	}
 	else
@@ -1586,7 +1586,7 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 				DateUnit unit = GetDateUnitFromString(value->value.v_utf8.str);
 				if (unit == DateUnit_Invalid)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 									errmsg("unknown time unit value: %s",
 										   value->value.v_utf8.str),
 									errdetail_log("unknown time unit value: %s",
@@ -1594,7 +1594,7 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 				}
 				else if (unit < DateUnit_Week)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5490710), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5490710), errmsg(
 										"unit must be 'week' or smaller"),
 									errdetail_log("unit must be 'week' or smaller")));
 				}
@@ -1607,7 +1607,7 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg("%s got unexpected argument: %s", operatorName,
 									   key)));
 			}
@@ -1616,7 +1616,7 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 	if (!(*yExpr))
 	{
 		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 					errmsg(
 						"%s requires an 'input' expression", operatorName)));
 	}
@@ -1634,7 +1634,7 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("%s requires a non-compound sortBy", operatorName)));
 	}
 }
@@ -1676,7 +1676,7 @@ HandleDollarCountWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsBsonValueEmptyDocument(opValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("$count only accepts an empty object as input")));
 	}
 
@@ -1836,7 +1836,7 @@ HandleDollarCovariancePopWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 21, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $covariancePop is not supported yet")));
 	}
 
@@ -1862,7 +1862,7 @@ HandleDollarCovarianceSampWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 21, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $covarianceSamp is not supported yet")));
 	}
 	WindowFunc *windowFunc = makeNode(WindowFunc);
@@ -1887,7 +1887,7 @@ HandleDollarRankWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 21, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$rank is not supported yet")));
 	}
 	char *opName = "$rank";
@@ -1913,7 +1913,7 @@ HandleDollarDenseRankWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 21, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$denseRank is not supported yet")));
 	}
 	char *opName = "$denseRank";
@@ -1939,7 +1939,7 @@ HandleDollarDocumentNumberWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$documentNumber is not supported yet")));
 	}
 	char *opName = "$documentNumber";
@@ -1961,19 +1961,19 @@ ValidateInputForRankFunctions(const bson_value_t *opValue,
 {
 	if (context->isWindowPresent)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5371601),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5371601),
 						errmsg("Rank style window functions take no other arguments")));
 	}
 
 	if (!IsBsonValueEmptyDocument(opValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5371603),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5371603),
 						errmsg("(None) must be specified with '{}' as the value")));
 	}
 
 	if (list_length(context->sortOptions) != 1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5371602),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5371602),
 						errmsg(
 							"%s must be specified with a top level sortBy expression with exactly one element",
 							opName)));
@@ -1999,14 +1999,14 @@ HandleDollarExpMovingAvgWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
 							"$expMovingAvg is not supported yet.")));
 	}
 
 	if (list_length(context->sortOptions) == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"$expMovingAvg requires an explicit 'sortBy'")));
 	}
@@ -2014,7 +2014,7 @@ HandleDollarExpMovingAvgWindowOperator(const bson_value_t *opValue,
 	/* $expMovingAvg is not support window parameter*/
 	if (context->isWindowPresent == true || opValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"$expMovingAvg must have exactly one argument that is an object")));
 	}
@@ -2084,19 +2084,19 @@ HandleDollarLinearFillWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION605001),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION605001),
 						errmsg(
 							"$linearFill is not supported yet.")));
 	}
 	if (list_length(context->sortOptions) != 1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION605001),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION605001),
 						errmsg(
 							"$linearFill must be specified with a top level sortBy expression with exactly one element")));
 	}
 	if (context->isWindowPresent)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"'window' field is not allowed in $linearFill")));
 	}
@@ -2151,13 +2151,13 @@ HandleDollarLocfFillWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
 							"$locf is not supported yet.")));
 	}
 	if (context->isWindowPresent)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"'window' field is not allowed in $locf")));
 	}
@@ -2212,19 +2212,19 @@ HandleDollarShiftWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$shift is not supported yet")));
 	}
 
 	if (context->isWindowPresent)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("$shift does not accept a 'window' field")));
 	}
 
 	if (context->sortOptions == NIL || list_length(context->sortOptions) < 1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("'$shift' requires a sortBy")));
 	}
 
@@ -2291,7 +2291,7 @@ ParseInputDocumentForDollarShift(const bson_value_t *opValue, bson_value_t *outp
 {
 	if (opValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("Argument to $shift must be an object")));
 	}
 
@@ -2314,20 +2314,20 @@ ParseInputDocumentForDollarShift(const bson_value_t *opValue, bson_value_t *outp
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Unknown argument in $shift")));
 		}
 	}
 
 	if (output->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("$shift requires an 'output' expression.")));
 	}
 
 	if (by->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("$shift requires 'by' as an integer value.")));
 	}
 
@@ -2339,7 +2339,7 @@ ParseInputDocumentForDollarShift(const bson_value_t *opValue, bson_value_t *outp
 	bool checkFixedInteger = true;
 	if (!IsBsonValue32BitInteger(by, checkFixedInteger))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("'$shift:by' field must be an integer, but found by: %s",
 							   BsonValueToJsonForLogging(by)),
 						errdetail_log(
@@ -2358,7 +2358,7 @@ ParseInputDocumentForDollarShift(const bson_value_t *opValue, bson_value_t *outp
 
 	if (!IsAggregationExpressionConstant(expressionData))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"'$shift:default' expression must yield a constant value.")));
 	}
@@ -2385,7 +2385,7 @@ HandleDollarTopNWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$topN is not supported yet")));
 	}
 
@@ -2414,7 +2414,7 @@ HandleDollarBottomNWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$bottomN is not supported yet")));
 	}
 
@@ -2442,7 +2442,7 @@ HandleDollarTopWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$top is not supported yet")));
 	}
 
@@ -2470,7 +2470,7 @@ HandleDollarBottomWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$bottom is not supported yet")));
 	}
 
@@ -2607,7 +2607,7 @@ HandleDollarStdDevPopWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $stdDevPop is not supported yet")));
 	}
 
@@ -2633,7 +2633,7 @@ HandleDollarStdDevSampWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $stdDevSamp is not supported yet")));
 	}
 
@@ -2659,7 +2659,7 @@ ValidteForMaxNMinNNAccumulators(const bson_value_t *opValue, const char *opName)
 {
 	if (opValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787900),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787900),
 						errmsg("specification must be an object; found %s: %s", opName,
 							   BsonValueToJsonForLogging(opValue)),
 						errdetail_log(
@@ -2685,7 +2685,7 @@ ValidteForMaxNMinNNAccumulators(const bson_value_t *opValue, const char *opName)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787901),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787901),
 							errmsg("%s found an unknown argument: %s", opName, key),
 							errdetail_log("%s found an unknown argument", opName)));
 		}
@@ -2696,14 +2696,14 @@ ValidteForMaxNMinNNAccumulators(const bson_value_t *opValue, const char *opName)
 	 */
 	if (input.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787907),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787907),
 						errmsg("%s requires an 'input' field", opName),
 						errdetail_log("%s requires an 'input' field", opName)));
 	}
 
 	if (elementsToFetch.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787906),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787906),
 						errmsg("%s requires an 'n' field", opName),
 						errdetail_log("%s requires an 'n' field", opName)));
 	}
@@ -2719,7 +2719,7 @@ HandleDollarMaxNWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $maxN is not supported yet")));
 	}
 
@@ -2741,7 +2741,7 @@ HandleDollarMinNWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $minN is not supported yet")));
 	}
 
@@ -2764,7 +2764,7 @@ HandleDollarFirstWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$first is not supported yet")));
 	}
 
@@ -2794,7 +2794,7 @@ HandleDollarLastWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$last is not supported yet")));
 	}
 
@@ -2831,7 +2831,7 @@ HandleDollarFirstNWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$firstN is not supported yet")));
 	}
 
@@ -2868,7 +2868,7 @@ HandleDollarLastNWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$lastN is not supported yet")));
 	}
 
@@ -2983,7 +2983,7 @@ HandleDollarConstFillWindowOperator(const bson_value_t *opValue,
 {
 	if (!context->enableInternalWindowOperator)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("Unrecognized window function, $_internal_constFill.")));
 	}
 	WindowFunc *windowFunc = makeNode(WindowFunc);
@@ -3012,7 +3012,7 @@ HandleDollarConstFillWindowOperator(const bson_value_t *opValue,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Unknown field %s in $constFill", key)));
 		}
 	}

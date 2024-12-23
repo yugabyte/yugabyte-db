@@ -8,7 +8,7 @@
  *-------------------------------------------------------------------------
  */
 
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "operators/bson_expression.h"
 
 #ifndef BSON_EXPRESSION_OPERATORS_H
@@ -857,7 +857,7 @@ inline static void
 pg_attribute_noreturn()
 ThrowExpressionTakesExactlyNArgs(const char * expression, int requiredArgs, int numArgs)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16020), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16020), errmsg(
 						"Expression %s takes exactly %d arguments. %d were passed in.",
 						expression, requiredArgs, numArgs)));
 }
@@ -870,7 +870,7 @@ pg_attribute_noreturn()
 ThrowExpressionNumOfArgsOutsideRange(const char * expression, int minRequiredArgs,
 									 int maxRequiredArgs, int numArgs)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_RANGEARGUMENTEXPRESSIONARGSOUTOFRANGE),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_RANGEARGUMENTEXPRESSIONARGSOUTOFRANGE),
 					errmsg(
 						"Expression %s takes at least %d arguments, and at most %d, but %d were passed in.",
 						expression, minRequiredArgs, maxRequiredArgs, numArgs)));

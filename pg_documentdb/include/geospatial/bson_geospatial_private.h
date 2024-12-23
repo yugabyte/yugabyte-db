@@ -17,7 +17,7 @@
 
 #include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 
 /*
@@ -64,7 +64,7 @@
  * if (some error condition )
  * {
  *      RETURN_FALSE_IF_ERROR_NOT_EXPECTED(shouldThrowError, (
- *          errcode(ERRCODE_HELIO_BADVALUE),
+ *          errcode(ERRCODE_DOCUMENTDB_BADVALUE),
  *          errmsg("Error"),
  *          errdetail_log("PII Safe error")
  *      ));
@@ -80,7 +80,7 @@
 
 #define EMPTY_GEO_ERROR_PREFIX ""
 #define GEO_ERROR_CODE(errorCtxt) (errorCtxt ? errorCtxt->errCode : \
-								   ERRCODE_HELIO_BADVALUE)
+								   ERRCODE_DOCUMENTDB_BADVALUE)
 #define GEO_ERROR_PREFIX(errorCtxt) (errorCtxt && errorCtxt->errPrefix ? \
 									 errorCtxt->errPrefix(errorCtxt->document) : \
 									 EMPTY_GEO_ERROR_PREFIX)

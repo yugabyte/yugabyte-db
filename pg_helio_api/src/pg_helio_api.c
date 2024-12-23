@@ -22,7 +22,7 @@ void _PG_init(void);
 void _PG_fini(void);
 
 
-extern bool SkipDocumentDbLoad;
+extern bool SkipDocumentDBLoad;
 bool SkipHelioApiLoad = false;
 
 
@@ -46,7 +46,7 @@ _PG_init(void)
 							"variable in postgresql.conf. ")));
 	}
 
-	SkipDocumentDbLoad = true;
+	SkipDocumentDBLoad = true;
 	InstallBsonMemVTables();
 	InitApiConfigurations("helio_api");
 	InitializeExtensionExternalConfigs("helio_api");

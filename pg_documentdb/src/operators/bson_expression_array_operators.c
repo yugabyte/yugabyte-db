@@ -699,7 +699,7 @@ ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28646), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28646), errmsg(
 							"$filter only supports an object as its argument")));
 	}
 
@@ -733,7 +733,7 @@ ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28647), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28647), errmsg(
 								"Unrecognized parameter to $filter: %s", key),
 							errdetail_log(
 								"Unrecognized parameter to $filter, unexpected key")));
@@ -742,13 +742,13 @@ ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28648), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28648), errmsg(
 							"Missing 'input' parameter to $filter")));
 	}
 
 	if (cond.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28650), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28650), errmsg(
 							"Missing 'cond' parameter to $filter")));
 	}
 
@@ -825,7 +825,7 @@ HandlePreParsedDollarFilter(pgbson *doc, void *arguments,
 		bool checkFixedInteger = true;
 		if (!IsBsonValue32BitInteger(&evaluatedLimit, checkFixedInteger))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION327391), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION327391), errmsg(
 								"$filter: limit must be represented as a 32-bit integral value: %s",
 								BsonValueToJsonForLogging(&evaluatedLimit)),
 							errdetail_log(
@@ -836,7 +836,7 @@ HandlePreParsedDollarFilter(pgbson *doc, void *arguments,
 		limit = BsonValueAsInt32(&evaluatedLimit);
 		if (limit < 1)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION327392), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION327392), errmsg(
 								"$filter: limit must be greater than 0: %d",
 								limit)));
 		}
@@ -861,7 +861,7 @@ HandlePreParsedDollarFilter(pgbson *doc, void *arguments,
 
 	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28651), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28651), errmsg(
 							"input to $filter must be an array not %s", BsonTypeName(
 								evaluatedInputArg.value_type)),
 						errdetail_log("input to $filter must be an array not %s",
@@ -1073,7 +1073,7 @@ HandlePreParsedDollarReverseArray(pgbson *doc, void *state,
 
 	if (childResult.value.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34435), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34435), errmsg(
 							"The argument to $reverseArray must be an array, but was of type: %s",
 							BsonTypeName(childResult.value.value_type)),
 						errdetail_log(
@@ -1467,7 +1467,7 @@ ParseDollarIndexOfArray(const bson_value_t *argument, AggregationExpressionData 
 		}
 		else if (arrExpressionData->value.value_type != BSON_TYPE_ARRAY)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40090), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40090), errmsg(
 								"$indexOfArray requires an array as a first argument, found: %s",
 								BsonTypeName(arrExpressionData->value.value_type)),
 							errdetail_log(
@@ -1535,7 +1535,7 @@ HandlePreParsedDollarIndexOfArray(pgbson *doc, void *arguments,
 	}
 	else if (childResult.value.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40090), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40090), errmsg(
 							"$indexOfArray requires an array as a first argument, found: %s",
 							BsonTypeName(arrExpressionData->value.value_type)),
 						errdetail_log(
@@ -1598,7 +1598,7 @@ ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data,
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16878), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16878), errmsg(
 							"$map only supports an object as its argument")));
 	}
 
@@ -1627,7 +1627,7 @@ ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16879), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16879), errmsg(
 								"Unrecognized parameter to $map: %s", key),
 							errdetail_log(
 								"Unrecognized parameter to $map, unexpected key")));
@@ -1636,13 +1636,13 @@ ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data,
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16880), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16880), errmsg(
 							"Missing 'input' parameter to $map")));
 	}
 
 	if (in.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16882), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16882), errmsg(
 							"Missing 'in' parameter to $map")));
 	}
 
@@ -1715,7 +1715,7 @@ HandlePreParsedDollarMap(pgbson *doc, void *arguments,
 
 	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16883), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16883), errmsg(
 							"input to $map must be an array not %s", BsonTypeName(
 								evaluatedInputArg.value_type)),
 						errdetail_log("input to $map must be an array not %s",
@@ -1771,7 +1771,7 @@ ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data,
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40075), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40075), errmsg(
 							"$reduce only supports an object as its argument")));
 	}
 
@@ -1800,7 +1800,7 @@ ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40076), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40076), errmsg(
 								"Unrecognized parameter to $reduce: %s", key),
 							errdetail_log(
 								"Unrecognized parameter to $reduce, unexpected key")));
@@ -1809,19 +1809,19 @@ ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data,
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40077), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40077), errmsg(
 							"Missing 'input' parameter to $reduce")));
 	}
 
 	if (in.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40079), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40079), errmsg(
 							"Missing 'in' parameter to $reduce")));
 	}
 
 	if (initialValue.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40078), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40078), errmsg(
 							"Missing 'initialValue' parameter to $reduce")));
 	}
 
@@ -1868,7 +1868,7 @@ HandlePreParsedDollarReduce(pgbson *doc, void *arguments,
 
 	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40080), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40080), errmsg(
 							"input to $reduce must be an array not %s", BsonTypeName(
 								evaluatedInputArg.value_type)),
 						errdetail_log("input to $reduce must be an array not %s",
@@ -1937,7 +1937,7 @@ ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *da
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942500), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION2942500), errmsg(
 							"$sortArray requires an object as an argument, found: %s",
 							BsonTypeName(argument->value_type)),
 						errdetail_log(
@@ -1965,7 +1965,7 @@ ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *da
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942501), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION2942501), errmsg(
 								"$sortArray found an unknown argument: %s", key),
 							errdetail_log(
 								"$sortArray found an unknown argument: %s", key)));
@@ -1974,13 +1974,13 @@ ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *da
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942502), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION2942502), errmsg(
 							"$sortArray requires 'input' to be specified")));
 	}
 
 	if (sortby.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942503), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION2942503), errmsg(
 							"$sortArray requires 'sortBy' to be specified")));
 	}
 
@@ -2044,7 +2044,7 @@ ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34460), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34460), errmsg(
 							"$zip only supports an object as an argument, found %s",
 							BsonTypeName(
 								argument->value_type)),
@@ -2079,7 +2079,7 @@ ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34464), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34464), errmsg(
 								"$zip found an unknown argument: %s", key),
 							errdetail_log("$zip found an unknown argument: %s", key)));
 		}
@@ -2087,7 +2087,7 @@ ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
 
 	if (inputs.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34465), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34465), errmsg(
 							"$zip requires at least one input array")));
 	}
 
@@ -2098,7 +2098,7 @@ ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
 	}
 	else if (useLongestLength.value_type != BSON_TYPE_BOOL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34463), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34463), errmsg(
 							"useLongestLength must be a bool, found %s", BsonTypeName(
 								useLongestLength.value_type)),
 						errdetail_log("useLongestLength must be a bool, found %s",
@@ -2218,7 +2218,7 @@ ParseElementFromObjectForArrayToObject(const bson_value_t *element)
 {
 	if (element->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTALLMUSTBEOBJECTS),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTALLMUSTBEOBJECTS),
 						errmsg(
 							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Object was detected, now found: %s",
 							BsonTypeName(element->value_type)),
@@ -2230,7 +2230,8 @@ ParseElementFromObjectForArrayToObject(const bson_value_t *element)
 	int keyCount = BsonDocumentValueCountKeys(element);
 	if (keyCount != 2)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTINCORRECTNUMBEROFKEYS),
+		ereport(ERROR, (errcode(
+							ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTINCORRECTNUMBEROFKEYS),
 						errmsg(
 							"$arrayToObject requires an object keys of 'k' and 'v'. Found incorrect number of keys:%d",
 							keyCount),
@@ -2253,7 +2254,7 @@ ParseElementFromObjectForArrayToObject(const bson_value_t *element)
 			if (resultKey->value_type != BSON_TYPE_UTF8)
 			{
 				ereport(ERROR, (errcode(
-									ERRCODE_HELIO_DOLLARARRAYTOOBJECTOBJECTKEYMUSTBESTRING),
+									ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTOBJECTKEYMUSTBESTRING),
 								errmsg(
 									"$arrayToObject requires an object with keys 'k' and 'v', where the value of 'k' must be of type string. Found type: %s",
 									BsonTypeName(resultKey->value_type)),
@@ -2272,7 +2273,7 @@ ParseElementFromObjectForArrayToObject(const bson_value_t *element)
 		else
 		{
 			ereport(ERROR, (errcode(
-								ERRCODE_HELIO_DOLLARARRAYTOOBJECTREQUIRESOBJECTWITHKANDV),
+								ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTREQUIRESOBJECTWITHKANDV),
 							errmsg(
 								"$arrayToObject requires an object with keys 'k' and 'v'. Missing either or both keys from: %s",
 								BsonValueToJsonForLogging(element)),
@@ -2290,7 +2291,8 @@ ParseElementFromArrayForArrayToObject(const bson_value_t *element)
 {
 	if (element->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTALLMUSTBEARRAYS), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTALLMUSTBEARRAYS),
+						errmsg(
 							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Array was detected, now found: %s",
 							BsonTypeName(element->value_type)),
 						errdetail_log(
@@ -2301,7 +2303,8 @@ ParseElementFromArrayForArrayToObject(const bson_value_t *element)
 	int arrayLength = BsonDocumentValueCountKeys(element);
 	if (arrayLength != 2)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTINCORRECTARRAYLENGTH),
+		ereport(ERROR, (errcode(
+							ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTINCORRECTARRAYLENGTH),
 						errmsg(
 							"$arrayToObject requires an array of size 2 arrays,found array of size: %d",
 							arrayLength),
@@ -2318,7 +2321,8 @@ ParseElementFromArrayForArrayToObject(const bson_value_t *element)
 	const bson_value_t *currentKey = bson_iter_value(&arrayIter);
 	if (currentKey->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTARRAYKEYMUSTBESTRING),
+		ereport(ERROR, (errcode(
+							ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTARRAYKEYMUSTBESTRING),
 						errmsg(
 							"$arrayToObject requires an array of key-value pairs, where the key must be of type string. Found key type: %s",
 							BsonTypeName(currentKey->value_type)),
@@ -2394,7 +2398,7 @@ ParseDollarMaxMinN(const bson_value_t *argument, AggregationExpressionData *data
 
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787900), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787900), errmsg(
 							"specification must be an object; found %s: %s", operatorName,
 							BsonValueToJsonForLogging(argument)),
 						errdetail_log(
@@ -2422,7 +2426,7 @@ ParseDollarMaxMinN(const bson_value_t *argument, AggregationExpressionData *data
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787901), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787901), errmsg(
 								"Unknown argument for 'n' operator: %s", key),
 							errdetail_log(
 								"Unknown argument for 'n' operator: %s", key)));
@@ -2431,13 +2435,13 @@ ParseDollarMaxMinN(const bson_value_t *argument, AggregationExpressionData *data
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787907), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787907), errmsg(
 							"Missing value for 'input'")));
 	}
 
 	if (count.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787906), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787906), errmsg(
 							"Missing value for 'n'")));
 	}
 
@@ -2520,7 +2524,7 @@ ParseZipDefaultsArgument(int rowNum, bson_value_t evaluatedDefaultsArg, bool
 	{
 		if (evaluatedDefaultsArg.value_type != BSON_TYPE_ARRAY)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34462), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34462), errmsg(
 								"defaults must be an array of expressions, found %s",
 								BsonTypeName(
 									evaluatedDefaultsArg.value_type)),
@@ -2531,12 +2535,12 @@ ParseZipDefaultsArgument(int rowNum, bson_value_t evaluatedDefaultsArg, bool
 		}
 		else if (useLongestLengthArgBoolValue == false)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34466), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34466), errmsg(
 								"cannot specify defaults unless useLongestLength is true")));
 		}
 		else if (BsonDocumentValueCountKeys(&evaluatedDefaultsArg) != rowNum)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34467), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34467), errmsg(
 								"defaults and inputs must have the same length")));
 		}
 	}
@@ -2608,7 +2612,7 @@ ParseZipInputsArgument(int rowNum, bson_value_t evaluatedInputsArg, bool
 		/* In native mongo, if any of the inputs arrays does not resolve to an array or null nor refers to a missing field, $zip returns an error. */
 		else if (inputsElem->value_type != BSON_TYPE_ARRAY)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34468), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34468), errmsg(
 								"$zip found a non-array expression in input: %s",
 								BsonValueToJsonForLogging(inputsElem)),
 							errdetail_log(
@@ -2785,7 +2789,7 @@ ProcessDollarIn(void *state, bson_value_t *result)
 
 	if (array.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARINREQUIRESARRAY), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARINREQUIRESARRAY), errmsg(
 							"$in requires an array as a second argument, found: %s",
 							array.value_type == BSON_TYPE_EOD ?
 							MISSING_TYPE_NAME :
@@ -2849,7 +2853,7 @@ ProcessDollarSlice(void *state, bson_value_t *result)
 
 	if (sourceArray->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSLICEINVALIDINPUT), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDINPUT), errmsg(
 							"First argument to $slice must be an array, but is of type: %s",
 							BsonTypeName(sourceArray->value_type)),
 						errdetail_log(
@@ -2889,7 +2893,7 @@ ProcessDollarSlice(void *state, bson_value_t *result)
 
 		if (int32Val <= 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSLICEINVALIDSIGNTHIRDARG),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDSIGNTHIRDARG),
 							errmsg(
 								"Third argument to $slice must be positive: %s",
 								BsonValueToJsonForLogging(currentElement)),
@@ -2942,7 +2946,8 @@ ProcessDollarArrayElemAt(void *state, bson_value_t *result)
 
 	if (array.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_ARRAYOPERATORELEMATFIRSTARGMUSTBEARRAY),
+		ereport(ERROR, (errcode(
+							ERRCODE_DOCUMENTDB_ARRAYOPERATORELEMATFIRSTARGMUSTBEARRAY),
 						errmsg(
 							elemAtState->isArrayElemAtOperator ?
 							"%s's first argument must be an array, but is %s" :
@@ -2958,7 +2963,8 @@ ProcessDollarArrayElemAt(void *state, bson_value_t *result)
 	if (elemAtState->isArrayElemAtOperator && !BsonTypeIsNumber(indexValue.value_type))
 	{
 		bool isUndefined = IsExpressionResultUndefined(&indexValue);
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYELEMATSECONDARGARGMUSTBENUMERIC),
+		ereport(ERROR, (errcode(
+							ERRCODE_DOCUMENTDB_DOLLARARRAYELEMATSECONDARGARGMUSTBENUMERIC),
 						errmsg(
 							"$arrayElemAt's second argument must be a numeric value, but is %s",
 							isUndefined ?
@@ -2975,7 +2981,8 @@ ProcessDollarArrayElemAt(void *state, bson_value_t *result)
 	if (elemAtState->isArrayElemAtOperator &&
 		!IsBsonValue32BitInteger(&indexValue, checkFixedInteger))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYELEMATSECONDARGARGMUSTBE32BIT),
+		ereport(ERROR, (errcode(
+							ERRCODE_DOCUMENTDB_DOLLARARRAYELEMATSECONDARGARGMUSTBE32BIT),
 						errmsg(
 							"$arrayElemAt's second argument must be representable as a 32-bit integer: %s",
 							BsonValueToJsonForLogging(&indexValue)),
@@ -3055,7 +3062,7 @@ ProcessDollarSize(const bson_value_t *currentValue, bson_value_t *result)
 	if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
 		bool isUndefined = IsExpressionResultUndefined(currentValue);
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSIZEREQUIRESARRAY), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSIZEREQUIRESARRAY), errmsg(
 							"The argument to $size must be an array, but was of type: %s",
 							isUndefined ?
 							MISSING_TYPE_NAME :
@@ -3093,7 +3100,8 @@ ProcessDollarArrayToObject(const bson_value_t *currentValue, bson_value_t *resul
 	}
 	else if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTREQUIRESARRAY), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTREQUIRESARRAY),
+						errmsg(
 							"$arrayToObject requires an array input, found: %s",
 							BsonTypeName(currentValue->value_type)),
 						errdetail_log("$arrayToObject requires an array input, found: %s",
@@ -3111,7 +3119,8 @@ ProcessDollarArrayToObject(const bson_value_t *currentValue, bson_value_t *resul
 		if (!BSON_ITER_HOLDS_ARRAY(&arrayIter) &&
 			!BSON_ITER_HOLDS_DOCUMENT(&arrayIter))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTBADINPUTTYPEFORMAT),
+			ereport(ERROR, (errcode(
+								ERRCODE_DOCUMENTDB_DOLLARARRAYTOOBJECTBADINPUTTYPEFORMAT),
 							errmsg(
 								"Unrecognised input type format for $arrayToObject: %s",
 								BsonIterTypeName(&arrayIter)),
@@ -3136,9 +3145,10 @@ ProcessDollarArrayToObject(const bson_value_t *currentValue, bson_value_t *resul
 
 			if (strlen(elementToWrite.path) < elementToWrite.pathLength)
 			{
-				HelioErrorEreportCode errorCode = expectObjectElements ?
-												  ERRCODE_HELIO_LOCATION4940401 :
-												  ERRCODE_HELIO_LOCATION4940400;
+				DocumentdbErrorEreportCode errorCode = expectObjectElements ?
+													   ERRCODE_DOCUMENTDB_LOCATION4940401
+													   :
+													   ERRCODE_DOCUMENTDB_LOCATION4940400;
 
 				ereport(ERROR, (errcode(errorCode), errmsg(
 									"Key field cannot contain an embedded null byte")));
@@ -3210,7 +3220,7 @@ ProcessDollarSortArray(bson_value_t *inputValue, SortContext *sortContext,
 
 	if (inputValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942504), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION2942504), errmsg(
 							"The input argument to $sortArray must be an array, but was of type: %s",
 							BsonTypeName(inputValue->value_type)),
 						errdetail_log(
@@ -3270,7 +3280,7 @@ ProcessDollarZip(bson_value_t evaluatedInputsArg, bson_value_t evaluatedLongestL
 
 	if (evaluatedInputsArg.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34461), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34461), errmsg(
 							"inputs must be an array of expressions, found %s",
 							BsonTypeName(
 								evaluatedInputsArg.value_type)),
@@ -3283,7 +3293,7 @@ ProcessDollarZip(bson_value_t evaluatedInputsArg, bson_value_t evaluatedLongestL
 
 	if (rowNum == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34465), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34465), errmsg(
 							"$zip requires at least one input array")));
 	}
 
@@ -3339,7 +3349,7 @@ ProcessDollarMaxAndMinN(bson_value_t *result, bson_value_t *evaluatedLimit,
 		bool checkFixedInteger = true;
 		if (!IsBsonValue64BitInteger(evaluatedLimit, checkFixedInteger))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31109), errmsg(
 								"Can't coerce out of range value %s to long",
 								BsonValueToJsonForLogging(evaluatedLimit)),
 							errdetail_log(
@@ -3348,7 +3358,7 @@ ProcessDollarMaxAndMinN(bson_value_t *result, bson_value_t *evaluatedLimit,
 
 		if (nValue < 1)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787908), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787908), errmsg(
 								"'n' must be greater than 0, found %ld",
 								nValue),
 							errdetail_log(
@@ -3358,7 +3368,7 @@ ProcessDollarMaxAndMinN(bson_value_t *result, bson_value_t *evaluatedLimit,
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787902), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787902), errmsg(
 							"Value for 'n' must be of integral type, but found %s",
 							BsonValueToJsonForLogging(evaluatedLimit)),
 						errdetail_log(
@@ -3376,7 +3386,7 @@ ProcessDollarMaxAndMinN(bson_value_t *result, bson_value_t *evaluatedLimit,
 
 	if (evaluatedInput->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788200)), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5788200)), errmsg(
 					"Input must be an array"));
 	}
 
@@ -3465,7 +3475,8 @@ ProcessDollarObjectToArray(const bson_value_t *currentValue, bson_value_t *resul
 	}
 	else if (currentValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLAROBJECTTOARRAYREQUIRESOBJECT), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLAROBJECTTOARRAYREQUIRESOBJECT),
+						errmsg(
 							"$objectToArray requires a document input, found: %s",
 							BsonTypeName(currentValue->value_type)),
 						errdetail_log(
@@ -3523,7 +3534,7 @@ ProcessDollarConcatArraysElement(const bson_value_t *currentValue, void *state,
 
 	if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28664), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28664), errmsg(
 							"$concatArrays only supports arrays, not %s",
 							BsonTypeName(currentValue->value_type)),
 						errdetail_log("$concatArrays only supports arrays, not %s",
@@ -3574,21 +3585,21 @@ ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
 		{
 			if (IsBsonValueNaN(elementsToFetch))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31109), errmsg(
 									"Can't coerce out of range value %s to long",
 									BsonValueToJsonForLogging(elementsToFetch))));
 			}
 
 			if (IsBsonValueInfinity(elementsToFetch) != 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31109), errmsg(
 									"Can't coerce out of range value %s to long",
 									BsonValueToJsonForLogging(elementsToFetch))));
 			}
 
 			if (!IsBsonValueFixedInteger(elementsToFetch))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787903), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787903), errmsg(
 									"Value for 'n' must be of integral type, but found %s",
 									BsonValueToJsonForLogging(elementsToFetch)),
 								errdetail_log(
@@ -3604,7 +3615,7 @@ ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
 
 			if (elementsToFetch->value.v_int64 <= 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787908), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787908), errmsg(
 									"'n' must be greater than 0, found %s",
 									BsonValueToJsonForLogging(elementsToFetch)),
 								errdetail_log(
@@ -3616,7 +3627,7 @@ ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
 
 		default:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787902), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5787902), errmsg(
 								"Value for 'n' must be of integral type, but found %s",
 								BsonValueToJsonForLogging(elementsToFetch)),
 							errdetail_log(
@@ -3642,7 +3653,7 @@ FillResultForDollarFirstAndLastN(bson_value_t *input,
 	 */
 	if (input->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788200), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5788200), errmsg(
 							"Input must be an array")));
 	}
 	int64_t elements_to_skip = 0;
@@ -3701,7 +3712,7 @@ GetStartValueForDollarRange(bson_value_t *startValue)
 	bool checkFixedInteger = true;
 	if (!BsonTypeIsNumber(startValue->value_type))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34443), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34443), errmsg(
 							"$range requires a numeric starting value, found value of type: %s",
 							BsonTypeName(startValue->value_type)),
 						errdetail_log(
@@ -3710,7 +3721,7 @@ GetStartValueForDollarRange(bson_value_t *startValue)
 	}
 	else if (!IsBsonValue32BitInteger(startValue, checkFixedInteger))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34444), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34444), errmsg(
 							"$range requires a starting value that can be represented as a 32-bit integer, found value: %s",
 							BsonValueToJsonForLogging(startValue))));
 	}
@@ -3735,13 +3746,13 @@ GetEndValueForDollarRange(bson_value_t *endValue)
 	bool checkFixedInteger = true;
 	if (!BsonTypeIsNumber(endValue->value_type))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34445), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34445), errmsg(
 							"$range requires a numeric ending value, found value of type: %s",
 							BsonTypeName(endValue->value_type))));
 	}
 	else if (!IsBsonValue32BitInteger(endValue, checkFixedInteger))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34446), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34446), errmsg(
 							"$range requires a ending value that can be represented as a 32-bit integer, found value: %s",
 							BsonValueToJsonForLogging(endValue))));
 	}
@@ -3762,7 +3773,7 @@ GetStepValueForDollarRange(bson_value_t *stepValue)
 	int32_t stepValInt32;
 	if (!BsonTypeIsNumber(stepValue->value_type))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34447), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34447), errmsg(
 							"$range requires a numeric step value, found value of type: %s",
 							BsonTypeName(stepValue->value_type)),
 						errdetail_log(
@@ -3771,7 +3782,7 @@ GetStepValueForDollarRange(bson_value_t *stepValue)
 	}
 	else if (!IsBsonValue32BitInteger(stepValue, checkFixedInteger))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34448), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34448), errmsg(
 							"$range requires a step value that can be represented as a 32-bit integer, found value: %s",
 							BsonValueToJsonForLogging(stepValue))));
 	}
@@ -3783,7 +3794,7 @@ GetStepValueForDollarRange(bson_value_t *stepValue)
 	/* step value cannot be zero as it will generate infinite numbers. */
 	if (stepValInt32 == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34449), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION34449), errmsg(
 							"$range requires a non-zero step value")));
 	}
 
@@ -3884,7 +3895,7 @@ ValidateArraySizeLimit(int32_t startValue, int32_t endValue, int32_t stepValue)
 							   totalSizeOfKeys + SIZE_OF_PARENT_OF_ARRAY_FOR_BSON;
 	if (totalSizeOfArray > BSON_MAX_ALLOWED_SIZE_INTERMEDIATE)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_EXCEEDEDMEMORYLIMIT), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_EXCEEDEDMEMORYLIMIT), errmsg(
 							"$range would use too much memory (%ld bytes) and cannot spill to disk. Memory limit: 104857600 bytes",
 							totalSizeOfArray),
 						errdetail_log(
@@ -3894,7 +3905,7 @@ ValidateArraySizeLimit(int32_t startValue, int32_t endValue, int32_t stepValue)
 
 	if (totalSizeOfArray > MAX_BUFFER_SIZE_DOLLAR_RANGE)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION13548), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION13548), errmsg(
 							"$range: the size of buffer to store output exceeded the 64MB limit")));
 	}
 }
@@ -3961,7 +3972,7 @@ GetIndexValueFromDollarIdxInput(bson_value_t *arg, bool isStartIndex)
 	const char *startingIndexString = "starting";
 	if (!BsonTypeIsNumber(arg->value_type) || !IsBsonValueFixedInteger(arg))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40096), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40096), errmsg(
 							"$indexOfArray requires an integral %s index, found a value of type: %s, with value: %s",
 							isStartIndex ? startingIndexString : endingIndexString,
 							BsonTypeName(arg->value_type),
@@ -3977,7 +3988,7 @@ GetIndexValueFromDollarIdxInput(bson_value_t *arg, bool isStartIndex)
 
 	if (result > INT32_MAX)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40096), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40096), errmsg(
 							"$indexOfArray requires an integral %s index, found a value of type: %s, with value: %s",
 							isStartIndex ? startingIndexString : endingIndexString,
 							BsonTypeName(arg->value_type),
@@ -3990,7 +4001,7 @@ GetIndexValueFromDollarIdxInput(bson_value_t *arg, bool isStartIndex)
 	}
 	else if (result < 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40097), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40097), errmsg(
 							"$indexOfArray requires a nonnegative %s index, found: %s",
 							isStartIndex ? startingIndexString : endingIndexString,
 							BsonValueToJsonForLogging(arg)),
@@ -4049,8 +4060,8 @@ DollarSliceInputValidation(bson_value_t *inputValue, bool isSecondArg)
 	if (!BsonValueIsNumber(inputValue))
 	{
 		ereport(ERROR, (errcode(isSecondArg ?
-								ERRCODE_HELIO_DOLLARSLICEINVALIDTYPESECONDARG :
-								ERRCODE_HELIO_DOLLARSLICEINVALIDTYPETHIRDARG),
+								ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDTYPESECONDARG :
+								ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDTYPETHIRDARG),
 						errmsg(
 							"%s argument to $slice must be numeric, but is of type: %s",
 							isSecondArg ? "Second" : "Third",
@@ -4066,8 +4077,8 @@ DollarSliceInputValidation(bson_value_t *inputValue, bool isSecondArg)
 	if (!IsBsonValue32BitInteger(inputValue, checkForFixedInteger))
 	{
 		ereport(ERROR, (errcode(isSecondArg ?
-								ERRCODE_HELIO_DOLLARSLICEINVALIDVALUESECONDARG :
-								ERRCODE_HELIO_DOLLARSLICEINVALIDVALUETHIRDARG),
+								ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDVALUESECONDARG :
+								ERRCODE_DOCUMENTDB_DOLLARSLICEINVALIDVALUETHIRDARG),
 						errmsg(
 							"%s argument to $slice can't be represented as a 32-bit integer: %s",
 							isSecondArg ? "Second" : "Third",

@@ -20,7 +20,7 @@
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
 #include "aggregation/bson_project.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "update/bson_update_common.h"
 #include "update/bson_update.h"
 #include "utils/fmgr_utils.h"
@@ -116,7 +116,7 @@ static bool LastBsonUpdateReturnedNewValue = false;
 inline static void
 ThrowIdPathModifiedError(void)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_IMMUTABLEFIELD),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_IMMUTABLEFIELD),
 					errmsg(
 						"After applying the update, the (immutable) field '_id' was found to have been altered")));
 }
@@ -131,7 +131,7 @@ ValidateIdForUpdateTypeReplacement(const bson_value_t *idValue)
 {
 	if (idValue->value_type == BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_NOTSINGLEVALUEFIELD),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NOTSINGLEVALUEFIELD),
 						errmsg(
 							"After applying the update to the document, the (immutable) field"
 							" '_id' was found to be an array or array descendant.")));
@@ -378,8 +378,9 @@ BsonUpdateDocumentCore(pgbson *sourceDocument, pgbson *updateSpec,
 		uint32_t size = PgbsonGetBsonSize(document);
 		if (size > BSON_MAX_ALLOWED_SIZE)
 		{
-			int errorCode = isUpsert ? ERRCODE_HELIO_DOCUMENTTOUPSERTLARGERTHANMAXSIZE :
-							ERRCODE_HELIO_DOCUMENTAFTERUPDATELARGERTHANMAXSIZE;
+			int errorCode = isUpsert ?
+							ERRCODE_DOCUMENTDB_DOCUMENTTOUPSERTLARGERTHANMAXSIZE :
+							ERRCODE_DOCUMENTDB_DOCUMENTAFTERUPDATELARGERTHANMAXSIZE;
 			ereport(ERROR, (errcode(errorCode),
 							errmsg("Size %u is larger than MaxDocumentSize %u",
 								   size, BSON_MAX_ALLOWED_SIZE)));
@@ -420,7 +421,7 @@ BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *updateSpec,
 				PgbsonToSinglePgbsonElement(arrayFilters, &arrayFiltersElement);
 				if (!IsBsonValueEmptyArray(&arrayFiltersElement.bsonValue))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg(
 										"arrayFilters may not be specified for pipeline-style updates")));
 				}
@@ -445,7 +446,7 @@ BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *updateSpec,
 			PgbsonInitIteratorAtPath(updateSpec, "", &updateIterator);
 			if (!BSON_ITER_HOLDS_DOCUMENT(&updateIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 									"Replace should be a document")));
 			}
 			break;
@@ -500,7 +501,7 @@ DetermineUpdateType(pgbson *updateSpec)
 				}
 				else
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARPREFIXEDFIELDNAME),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARPREFIXEDFIELDNAME),
 									errmsg(
 										"The dollar ($) prefixed field '%s' in '%s' is not allowed in the context of an update's"
 										" replacement document. Consider using an aggregation pipeline with $replaceWith.",
@@ -518,7 +519,7 @@ DetermineUpdateType(pgbson *updateSpec)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH), errmsg(
 							"Update should be a document or an array")));
 	}
 }
@@ -541,7 +542,7 @@ ProcessReplaceDocument(pgbson *sourceDoc, pgbson *updateSpec,
 	PgbsonInitIteratorAtPath(updateSpec, "", &updateIterator);
 	if (!BSON_ITER_HOLDS_DOCUMENT(&updateIterator))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Replace should be a document")));
 	}
 
@@ -726,7 +727,7 @@ ProcessQueryProjectionValue(void *context, const char *path, const bson_value_t 
 	/* Native mongo gives an error when update type is replacement and querySpec has dotted id field */
 	if (isUpdateTypeReplacement && isDocumentDottedIdField)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_NOTEXACTVALUEFIELD),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NOTEXACTVALUEFIELD),
 						errmsg(
 							"field at '_id' must be exactly specified, field at sub-path '%s'found",
 							path)));
@@ -734,7 +735,7 @@ ProcessQueryProjectionValue(void *context, const char *path, const bson_value_t 
 
 	if ((!isUpdateTypeReplacement || isDocumentIdField) && !nodeCreated)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_NOTSINGLEVALUEFIELD),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NOTSINGLEVALUEFIELD),
 						errmsg(
 							"cannot infer query fields to set, path '%s' is matched twice",
 							path)));

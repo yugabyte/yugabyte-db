@@ -24,7 +24,7 @@
 #include "io/pgbsonsequence.h"
 #include "io/pgbsonelement.h"
 #include "io/bson_set_returning_functions.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 extern char * BsonTypeName(bson_type_t type);
 
@@ -206,7 +206,7 @@ bson_to_bsonsequence(PG_FUNCTION_ARGS)
 	if (!bson_init_static(&currentDoc, currentValue.value.v_doc.data,
 						  currentValue.value.v_doc.data_len))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("Failed to initialize single bson value")));
 	}
 
@@ -280,13 +280,13 @@ PgbsonSequenceInitFromHexadecimalString(const char *hexString)
 	uint32_t hexStringLength = (strLength - BsonSeqHexPrefixLength);
 	if (hexStringLength <= 0 || (hexStringLength % 2 != 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Invalid Hex string for pgbson input")));
 	}
 
 	if (strncmp(hexString, BsonSeqHexPrefix, BsonSeqHexPrefixLength) != 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("BsonSequence Hex string does not have valid prefix %s",
 							   BsonSeqHexPrefix)));
 	}
@@ -345,7 +345,7 @@ PgbsonSequenceInitFromJson(const char *jsonString)
 
 	if (element.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Json value for bsonsequence must be an array. got %s",
 							   BsonTypeName(element.bsonValue.value_type))));
 	}
@@ -366,14 +366,14 @@ PgbsonSequenceInitFromJson(const char *jsonString)
 		const bson_value_t *currentValue = bson_iter_value(&arrayIterator);
 		if (currentValue->value_type != BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("bsonsequence must be an array of documents. got %s",
 								   BsonTypeName(currentValue->value_type))));
 		}
 
 		if (!bson_writer_begin(writer, &doc))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Could not initialize bson writer for sequence")));
 		}
 
@@ -381,13 +381,13 @@ PgbsonSequenceInitFromJson(const char *jsonString)
 							  currentValue->value.v_doc.data,
 							  currentValue->value.v_doc.data_len))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Could not initialize bson from value")));
 		}
 
 		if (!bson_concat(doc, &currentbson))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
 								"Could not write value into bson writer for sequence")));
 		}

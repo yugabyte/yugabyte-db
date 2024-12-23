@@ -19,7 +19,7 @@
 
 #include "api_hooks.h"
 #include "io/helio_bson_core.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "metadata/metadata_cache.h"
 #include "vector/bson_extract_vector.h"
 #include "vector/vector_common.h"
@@ -62,7 +62,7 @@ CreateFCInfoForScoreCalculation(const SearchQueryEvalData *queryEvalData)
 											queryEvalData->SimilaritySearchOpOid));
 	if (!HeapTupleIsValid(opertup))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"unsupported vector search operator type")));
 	}
@@ -117,7 +117,7 @@ EvaluateMetaSearchScore(pgbson *document)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40218),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40218),
 							errmsg(
 								"query requires search score metadata, but it is not available")));
 		}
@@ -130,7 +130,7 @@ EvaluateMetaSearchScore(pgbson *document)
 
 	if (isNull)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("Vector field should not be null.")));
 	}
 
@@ -162,7 +162,7 @@ EvaluateMetaSearchScore(pgbson *document)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"unsupported vector search operator type")));
 	}
@@ -211,7 +211,7 @@ CalculateSearchParamBsonForIndexPath(IndexPath *vectorSearchPath)
 
 	if (searchParamBson == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"The vector index type is not supported for dynamic calculation of search parameters."),
 						errdetail_log(
@@ -478,7 +478,7 @@ GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid accessMethodOid)
 	if (operatorOid == InvalidOid)
 	{
 		const char *accessMethodName = get_am_name(accessMethodOid);
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("Unsupported vector index type: %s", accessMethodName),
 						errdetail_log(
 							"Unsupported vector index type: %s", accessMethodName)));

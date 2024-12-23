@@ -10,7 +10,7 @@
 #include <postgres.h>
 
 #include "io/helio_bson_core.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 
 #ifndef PARSE_ERROR_H
@@ -21,7 +21,7 @@ static inline void
 ThrowTopLevelTypeMismatchError(const char *fieldName, const char *fieldTypeName,
 							   const char *expectedTypeName)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 					errmsg("BSON field '%s' is the wrong type '%s', "
 						   "expected type '%s'",
 						   fieldName, fieldTypeName, expectedTypeName),
@@ -127,7 +127,7 @@ EnsureTopLevelFieldIsBooleanLike(const char *fieldName, const bson_iter_t *iter)
 {
 	if (!BsonTypeIsNumberOrBool(bson_iter_type(iter)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg("BSON field '%s' is the wrong type '%s', "
 							   "expected types '[bool, long, int, decimal, "
 							   "double']",
@@ -149,7 +149,7 @@ EnsureTopLevelFieldIsNumberLike(const char *fieldName, const bson_value_t *value
 {
 	if (!BsonTypeIsNumber(value->value_type))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg("BSON field '%s' is the wrong type '%s', "
 							   "expected types '[int, decimal, double, long']",
 							   fieldName, BsonTypeName(value->value_type)),
@@ -188,7 +188,7 @@ EnsureTopLevelFieldIsBooleanLikeNullOk(const char *fieldName, const bson_iter_t 
 static inline void
 ThrowTopLevelMissingFieldError(const char *fieldName)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 					errmsg("BSON field '%s' is missing but a required field",
 						   fieldName)));
 }
@@ -211,7 +211,7 @@ EnsureStringValueNotDollarPrefixed(const char *fieldValue, int fieldLength)
 	if (fieldLength > 0 && fieldValue[0] == '$')
 	{
 		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_LOCATION16410),
+					errcode(ERRCODE_DOCUMENTDB_LOCATION16410),
 					errmsg(
 						"FieldPath field names may not start with '$'. Consider using $getField or $setField.")));
 	}

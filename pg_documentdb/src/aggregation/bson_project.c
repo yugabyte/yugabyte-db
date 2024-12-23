@@ -30,7 +30,7 @@
 #include "aggregation/bson_tree_write.h"
 #include "geospatial/bson_geospatial_geonear.h"
 #include "query/helio_bson_compare.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "metadata/metadata_cache.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expr_eval.h"
@@ -730,7 +730,7 @@ ProjectReplaceRootDocument(pgbson *document,
 	{
 		if (resultElement.bsonValue.value_type == BSON_TYPE_EOD)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40228),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40228),
 							errmsg(
 								"'newRoot' expression must evaluate to an object, but resulting value was: : MISSING. Type of resulting value: 'missing'")));
 		}
@@ -742,7 +742,7 @@ ProjectReplaceRootDocument(pgbson *document,
 
 	if (resultElement.bsonValue.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40228),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40228),
 						errmsg(
 							"'newRoot' expression must evaluate to an object, but resulting value was: %s. Type of resulting value: '%s'.",
 							BsonValueToJsonForLogging(&resultElement.bsonValue),
@@ -791,7 +791,7 @@ GetBsonValueForReplaceRoot(bson_iter_t *replaceRootIterator, bson_value_t *value
 		/* Mongo behavior: replaceRoot spec can't have anything other field than "newRoot" */
 		if (strcmp(path, "newRoot") != 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
 							errmsg(
 								"BSON fields '$replaceRoot.%s' is an unknown field",
 								path)));
@@ -803,7 +803,7 @@ GetBsonValueForReplaceRoot(bson_iter_t *replaceRootIterator, bson_value_t *value
 
 	if (!replaceRootFound)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414),
 						errmsg(
 							"BSON field '$replaceRoot.newRoot' is missing but a required field")));
 	}
@@ -936,7 +936,7 @@ bson_dollar_facet_project(PG_FUNCTION_ARGS)
 		uint32_t size = PgbsonGetBsonSize(document);
 		if (size > BSON_MAX_ALLOWED_SIZE)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BSONOBJECTTOOLARGE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BSONOBJECTTOOLARGE),
 							errmsg("Size %u is larger than MaxDocumentSize %u",
 								   size, BSON_MAX_ALLOWED_SIZE)));
 		}
@@ -1332,7 +1332,7 @@ BuildBsonPathTreeForDollarUnset(BsonProjectionQueryState *state,
 
 	if (!IntermediateNodeHasChildren(root))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"$unset specification must have at least one field.")));
 	}
@@ -1379,7 +1379,7 @@ BsonLookUpGetFilterExpression(pgbson *sourceDocument,
 
 	if (localFieldPath.value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"$lookup argument 'localField' must be a string, found localField: %s",
 							BsonTypeName(localFieldPath.value_type))));
@@ -1390,7 +1390,7 @@ BsonLookUpGetFilterExpression(pgbson *sourceDocument,
 
 	if (pathLength > 0 && path[0] == '$')
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"FieldPath field names may not start with '$'")));
 	}
@@ -1703,7 +1703,7 @@ BuildBsonUnsetPathTree(const bson_value_t *pathSpecification)
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31120),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31120),
 								errmsg(
 									"$unset specification must be a string or an array containing only string values")));
 			}
@@ -1711,7 +1711,7 @@ BuildBsonUnsetPathTree(const bson_value_t *pathSpecification)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31002),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31002),
 						errmsg("$unset specification must be a string or an array")));
 	}
 

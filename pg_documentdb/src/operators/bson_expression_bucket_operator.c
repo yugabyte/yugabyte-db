@@ -14,7 +14,7 @@
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "operators/bson_expression_bucket_operator.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "query/helio_bson_compare.h"
 
 /* --------------------------------------------------------- */
@@ -56,7 +56,7 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 {
 	if (bucketSpec->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40201),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40201),
 						errmsg(
 							"Argument to $bucket stage must be an object, but found type: %s",
 							BsonTypeName(
@@ -97,7 +97,7 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40197),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40197),
 							errmsg("Unrecognized option to $bucket: %s", key),
 							errdetail_log("Unrecognized option to $bucket: %s", key)));
 		}
@@ -106,7 +106,7 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	/* Check required field of groupBy and boundaries */
 	if (groupBy.value_type == BSON_TYPE_EOD || boundaries.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40198),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40198),
 						errmsg(
 							"$bucket requires 'groupBy' and 'boundaries' to be specified."),
 						errdetail_log(
@@ -116,7 +116,7 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	/* Validate 'groupBy' value type */
 	if (groupBy.value_type != BSON_TYPE_UTF8 && groupBy.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40202),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40202),
 						errmsg(
 							"The $bucket 'groupBy' field must be defined as a $-prefixed path or an expression. But found: %s",
 							BsonTypeName(
@@ -130,7 +130,7 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	/* Validate 'boundaries' type */
 	if (boundaries.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40200),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40200),
 						errmsg(
 							"The $bucket 'boundaries' field must be an array of values. But found: %s",
 							BsonTypeName(
@@ -150,7 +150,7 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 									   &parseContext);
 		if (parsedDefaultValue.kind != AggregationExpressionKind_Constant)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40195),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40195),
 							errmsg(
 								"The $bucket 'default' field must be a constant. Input value: %s",
 								BsonValueToJsonForLogging(&defaultBucket)),
@@ -162,7 +162,7 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	/* validate 'output' value type is document */
 	if (output.value_type != BSON_TYPE_EOD && output.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40196),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40196),
 						errmsg(
 							"The $bucket 'output' field must be a document. But found: %s",
 							BsonTypeName(
@@ -289,7 +289,7 @@ HandlePreParsedDollarBucketInternal(pgbson *doc, void *arguments,
 	{
 		if (parsedData->defaultBucket.kind == AggregationExpressionKind_Invalid)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"$bucket could not find a bucket for an input value %s, and no default was specified.",
 								BsonValueToJsonForLogging(&evaluatedGroupByField)),
 							errdetail_log(
@@ -368,7 +368,7 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 		ParseAggregationExpressionData(&parsedValue, value, &parseContext);
 		if (parsedValue.kind != AggregationExpressionKind_Constant)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40191),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40191),
 							errmsg(
 								"The $bucket 'boundaries' field must be an array of constant values."),
 							errdetail_log(
@@ -378,7 +378,7 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 		if (boundaryType != BSON_TYPE_EOD && CompareSortOrderType(boundaryType,
 																  value->value_type) != 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40193),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40193),
 							errmsg(
 								"The $bucket 'boundaries' field must be an array of values of the same type. Found different types: %s and %s",
 								BsonTypeName(
@@ -393,7 +393,7 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 			if (CompareBsonValueAndType(value, llast(arguments->boundaries),
 										&isComparisonValid) <= 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40194),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40194),
 								errmsg(
 									"The $bucket 'boundaries' field must be an array of values in ascending order."),
 								errdetail_log(
@@ -408,7 +408,7 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 
 	if (list_length(arguments->boundaries) < 2)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40192),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40192),
 						errmsg(
 							"The $bucket 'boundaries' field must have at least 2 values, but found: %d",
 							list_length(arguments->boundaries)),
@@ -428,7 +428,7 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 				CompareBsonValueAndType(defaultBucket, llast(arguments->boundaries),
 										&isComparisonValid) < 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40199),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40199),
 								errmsg(
 									"The $bucket 'default' field must be less than the lowest boundary or greater than or equal to the highest boundary.")));
 			}

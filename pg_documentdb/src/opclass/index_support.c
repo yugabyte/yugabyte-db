@@ -32,7 +32,7 @@
 #include "opclass/helio_gin_index_mgmt.h"
 #include "opclass/helio_bson_text_gin.h"
 #include "metadata/metadata_cache.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "vector/vector_utilities.h"
 #include "vector/vector_spec.h"
 #include "utils/version_utils.h"
@@ -1234,7 +1234,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 						context->forceIndexQueryOpData.opExtraState;
 					if (textIndexData != NULL)
 					{
-						ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 										errmsg("Too many text expressions")));
 					}
 					context->forceIndexQueryOpData.type = QUERY_OPERATOR_TEXT;
@@ -1896,6 +1896,6 @@ pg_attribute_noreturn()
 static void
 ThrowNoTextIndexFound()
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_INDEXNOTFOUND),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INDEXNOTFOUND),
 					errmsg("text index required for $text query")));
 }

@@ -25,7 +25,7 @@
 #include "commands/parse_error.h"
 #include "commands/diagnostic_commands_common.h"
 #include "utils/error_utils.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 
 /*
@@ -166,7 +166,7 @@ GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
 					}
 					else if (StringViewStartsWithStringView(&errorView, &outOfMemoryView))
 					{
-						ereport(ERROR, (errcode(ERRCODE_HELIO_EXCEEDEDMEMORYLIMIT),
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_EXCEEDEDMEMORYLIMIT),
 										errmsg(
 											"%s on worker failed with out of memory errors",
 											commandName),
@@ -176,7 +176,7 @@ GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
 					}
 					else
 					{
-						ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 										errmsg(
 											"%s on worker failed with an unexpected error",
 											commandName),

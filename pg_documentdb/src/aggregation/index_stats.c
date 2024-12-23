@@ -13,7 +13,7 @@
 #include <executor/spi.h>
 
 #include "metadata/collection.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "io/bson_set_returning_functions.h"
 #include "utils/query_utils.h"
 #include "metadata/index.h"
@@ -73,7 +73,7 @@ command_index_stats_aggregation(PG_FUNCTION_ARGS)
 
 	if (collection->viewDefinition != NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTEDONVIEW),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTEDONVIEW),
 						errmsg("Namespace %s.%s is a view, not a collection",
 							   TextDatumGetCString(databaseName),
 							   TextDatumGetCString(collectionName))));
@@ -153,7 +153,7 @@ IndexStatsWorker(void *fcinfoPointer)
 
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 						errmsg("Collection not found")));
 	}
 
@@ -338,7 +338,7 @@ ParseWorkerResults(List *workerResults)
 
 		if (errorMessage != NULL)
 		{
-			errorCode = errorCode == 0 ? ERRCODE_HELIO_INTERNALERROR : errorCode;
+			errorCode = errorCode == 0 ? ERRCODE_DOCUMENTDB_INTERNALERROR : errorCode;
 			ereport(ERROR, (errcode(errorCode), errmsg("Error running indexStats %s",
 													   errorMessage)));
 		}

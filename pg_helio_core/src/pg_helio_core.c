@@ -44,7 +44,7 @@ _PG_init(void)
 
 	InstallBsonMemVTables();
 
-	InitDocumentDbCoreConfigurations("helio_core");
+	InitDocumentDBCoreConfigurations("helio_core");
 
 	MarkGUCPrefixReserved("helio_core");
 	ereport(LOG, (errmsg("Initialized pg_helio_core extension")));

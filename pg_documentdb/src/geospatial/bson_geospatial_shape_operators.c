@@ -13,7 +13,7 @@
 #include "utils/lsyscache.h"
 #include "utils/float.h"
 
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geojson_utils.h"
 #include "geospatial/bson_geospatial_shape_operators.h"
@@ -138,7 +138,7 @@ GetShapeOperatorByValue(const bson_value_t *shapeValue, bson_value_t *shapePoint
 {
 	if (IsBsonValueEmptyDocument(shapeValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("geo query doesn't have any geometry")));
 	}
 
@@ -163,7 +163,7 @@ GetShapeOperatorByValue(const bson_value_t *shapeValue, bson_value_t *shapePoint
 		/* If anytime we encounter non existing shape operator return error */
 		if (shapeOperator->op == GeospatialShapeOperator_UNKNOWN)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("unknown geo specifier: %s: %s",
 								   shapeOperatorName,
 								   BsonValueToJsonForLogging(shapeOperatorValue)),
@@ -227,7 +227,7 @@ BsonValueGetBox(const bson_value_t *shapePointValue, ShapeOperatorInfo *opInfo)
 	if (shapePointValue->value_type != BSON_TYPE_ARRAY &&
 		shapePointValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("unknown geo specifier: $box: %s",
 							   BsonValueToJsonForLogging(shapePointValue)),
 						errdetail_log("unknown geo specifier: $box with argument type %s",
@@ -254,7 +254,7 @@ BsonValueGetBox(const bson_value_t *shapePointValue, ShapeOperatorInfo *opInfo)
 		if (value->value_type != BSON_TYPE_ARRAY &&
 			value->value_type != BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Point must be an array or object")));
 		}
 
@@ -265,7 +265,7 @@ BsonValueGetBox(const bson_value_t *shapePointValue, ShapeOperatorInfo *opInfo)
 
 		GeospatialErrorContext errCtxt;
 		memset(&errCtxt, 0, sizeof(GeospatialErrorContext));
-		errCtxt.errCode = ERRCODE_HELIO_BADVALUE;
+		errCtxt.errCode = ERRCODE_DOCUMENTDB_BADVALUE;
 
 		ParseBsonValueAsPoint(value, throwError, &errCtxt, &point);
 		if (index == 0)
@@ -286,7 +286,7 @@ BsonValueGetBox(const bson_value_t *shapePointValue, ShapeOperatorInfo *opInfo)
 		/*
 		 * If 2 points are not given, the box is not defined
 		 */
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Point must be an array or object")));
 	}
 
@@ -339,7 +339,7 @@ BsonValueGetPolygon(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 	if (shapeValue->value_type != BSON_TYPE_ARRAY &&
 		shapeValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("unknown geo specifier: $polygon: %s",
 							   BsonValueToJsonForLogging(shapeValue)),
 						errdetail_log(
@@ -376,7 +376,7 @@ BsonValueGetPolygon(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 		if (value->value_type != BSON_TYPE_ARRAY &&
 			value->value_type != BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Point must be an array or object")));
 		}
 
@@ -387,7 +387,7 @@ BsonValueGetPolygon(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 
 		GeospatialErrorContext errCtxt;
 		memset(&errCtxt, 0, sizeof(GeospatialErrorContext));
-		errCtxt.errCode = ERRCODE_HELIO_BADVALUE;
+		errCtxt.errCode = ERRCODE_DOCUMENTDB_BADVALUE;
 
 		ParseBsonValueAsPoint(value, throwError, &errCtxt, &point);
 		if (totalPoints == 0)
@@ -407,7 +407,7 @@ BsonValueGetPolygon(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 	{
 		/* If 3 points are not given, the polygon is not defined
 		 */
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Polygon must have at least 3 points")));
 	}
 
@@ -448,7 +448,7 @@ BsonValueGetCenter(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 	if (shapeValue->value_type != BSON_TYPE_ARRAY &&
 		shapeValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("unknown geo specifier: $center: %s",
 							   BsonValueToJsonForLogging(shapeValue)),
 						errdetail_log(
@@ -466,7 +466,7 @@ BsonValueGetCenter(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 	{
 		if (index > 1)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Only 2 fields allowed for circular region")));
 		}
 		const bson_value_t *value = bson_iter_value(&centerValueIter);
@@ -475,7 +475,7 @@ BsonValueGetCenter(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 			if (value->value_type != BSON_TYPE_ARRAY &&
 				value->value_type != BSON_TYPE_DOCUMENT)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Point must be an array or object")));
 			}
 			else
@@ -487,7 +487,7 @@ BsonValueGetCenter(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 
 				GeospatialErrorContext errCtxt;
 				memset(&errCtxt, 0, sizeof(GeospatialErrorContext));
-				errCtxt.errCode = ERRCODE_HELIO_BADVALUE;
+				errCtxt.errCode = ERRCODE_DOCUMENTDB_BADVALUE;
 
 				ParseBsonValueAsPoint(value, throwError, &errCtxt, &point);
 				centerPoint = GetLegacyPointDatum(point.x, point.y);
@@ -499,7 +499,7 @@ BsonValueGetCenter(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 			if (!BsonValueIsNumber(value) || BsonValueAsDouble(value) < 0 ||
 				IsBsonValueNaN(value))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("radius must be a non-negative number")));
 			}
 			else if (IsBsonValueInfinity(value))
@@ -527,12 +527,12 @@ BsonValueGetCenter(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 
 	if (index == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Point must be an array or object")));
 	}
 	else if (index == 1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("radius must be a non-negative number")));
 	}
 
@@ -562,7 +562,7 @@ BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo)
 {
 	if (value->value_type != BSON_TYPE_DOCUMENT && value->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("unknown geo specifier: $geometry: %s",
 							   BsonValueToJsonForLogging(value)),
 						errdetail_log(
@@ -590,7 +590,7 @@ BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo)
 	parseState.buffer = makeStringInfo();
 
 	parseState.errorCtxt = palloc0(sizeof(GeospatialErrorContext));
-	parseState.errorCtxt->errCode = ERRCODE_HELIO_BADVALUE;
+	parseState.errorCtxt->errCode = ERRCODE_DOCUMENTDB_BADVALUE;
 
 	bool isValid = BsonValueGetGeometryWKB(value, parseFlags, &parseState);
 
@@ -598,7 +598,7 @@ BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo)
 	{
 		/* This is not expected, as we would have already thrown error if any validity issues are there */
 		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_INTERNALERROR),
+					errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 					errmsg("$geometry: could not extract a valid geo value")));
 	}
 
@@ -607,7 +607,7 @@ BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo)
 		GeoJsonType_MULTIPOLYGON)
 	{
 		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_BADVALUE),
+					errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 					errmsg("$geoWithin not supported with provided geometry: %s",
 						   BsonValueToJsonForLogging(value)),
 					errdetail_log("$geoWithin not supported with provided geometry.")));
@@ -620,7 +620,7 @@ BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo)
 		 * Postgis matching difference for these cases
 		 */
 		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+					errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 					errmsg("$geoWithin currently doesn't support polygons with holes")
 					));
 	}
@@ -630,7 +630,7 @@ BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo)
 		if (parseState.type != GeoJsonType_POLYGON)
 		{
 			ereport(ERROR, (
-						errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+						errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Strict winding order is only supported by Polygon.")));
 		}
 		else
@@ -640,7 +640,7 @@ BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo)
 			 * support this
 			 */
 			ereport(ERROR, (
-						errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+						errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Custom CRS for big polygon is not supported yet.")));
 		}
 	}
@@ -668,7 +668,7 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opIn
 	if (shapeValue->value_type != BSON_TYPE_ARRAY &&
 		shapeValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("unknown geo specifier: $centerSphere: %s",
 							   BsonValueToJsonForLogging(shapeValue)),
 						errdetail_log(
@@ -685,7 +685,7 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opIn
 	{
 		if (index > 1)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Only 2 fields allowed for circular region")));
 		}
 		const bson_value_t *value = bson_iter_value(&centerValueIter);
@@ -694,7 +694,7 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opIn
 			if (value->value_type != BSON_TYPE_ARRAY &&
 				value->value_type != BSON_TYPE_DOCUMENT)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Point must be an array or object")));
 			}
 			else
@@ -705,7 +705,7 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opIn
 
 				GeospatialErrorContext errCtxt;
 				memset(&errCtxt, 0, sizeof(GeospatialErrorContext));
-				errCtxt.errCode = ERRCODE_HELIO_BADVALUE;
+				errCtxt.errCode = ERRCODE_DOCUMENTDB_BADVALUE;
 
 				ParseBsonValueAsPointWithBounds(value, throwError, &errCtxt, &point);
 			}
@@ -716,7 +716,7 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opIn
 			if (!BsonValueIsNumber(value) || BsonValueAsDouble(value) < 0 ||
 				IsBsonValueNaN(value))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("radius must be a non-negative number")));
 			}
 			else if (IsBsonValueInfinity(value))
@@ -737,12 +737,12 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opIn
 
 	if (index == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("Point must be an array or object")));
 	}
 	else if (index == 1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("radius must be a non-negative number")));
 	}
 

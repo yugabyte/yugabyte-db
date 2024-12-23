@@ -27,7 +27,7 @@
 #include "utils/hashset_utils.h"
 #include "utils/fmgr_utils.h"
 #include "utils/feature_counter.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "utils/date_utils.h"
 
 #include "aggregation/bson_densify.h"
@@ -468,13 +468,13 @@ HandleDensify(const bson_value_t *existingValue, Query *query,
 
 	if (!EnableDensifyStage || !IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$densify aggregation stage is not supported yet.")));
 	}
 
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"The $densify stage specification must be an object, found %s",
 							BsonTypeName(existingValue->value_type)),
@@ -672,21 +672,21 @@ CheckFieldValue(const bson_value_t *fieldValue, DensifyWindowState *state)
 
 	if (!BsonValueIsNumber(fieldValue) && fieldValue->value_type != BSON_TYPE_DATE_TIME)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5733201),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733201),
 						errmsg("PlanExecutor error during aggregation :: caused by :: "
 							   "Densify field type must be numeric or a date")));
 	}
 
 	if (isDateUnitPresent && BsonValueIsNumber(fieldValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION6053600),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION6053600),
 						errmsg("PlanExecutor error during aggregation :: caused by :: "
 							   "Encountered numeric densify value in collection when step has a date unit.")));
 	}
 
 	if (!isDateUnitPresent && fieldValue->value_type == BSON_TYPE_DATE_TIME)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION6053600),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION6053600),
 						errmsg("PlanExecutor error during aggregation :: caused by :: "
 							   "Encountered date densify value in collection when step does not have a date unit.")));
 	}
@@ -719,7 +719,7 @@ pg_attribute_noreturn()
 ThorwLimitExceededError(int32 nDocumentsGenerated)
 {
 	ereport(ERROR, (
-				errcode(ERRCODE_HELIO_LOCATION5897900),
+				errcode(ERRCODE_DOCUMENTDB_LOCATION5897900),
 				errmsg(
 					"PlanExecutor error during aggregation :: caused by :: Generated %d documents in $densify"
 					", which is over the limit of %d. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter"
@@ -735,7 +735,7 @@ pg_attribute_noreturn()
 ThrowMemoryLimitExceededError(int meConsumed)
 {
 	ereport(ERROR, (
-				errcode(ERRCODE_HELIO_LOCATION6007200),
+				errcode(ERRCODE_DOCUMENTDB_LOCATION6007200),
 				errmsg(
 					"PlanExecutor error during aggregation :: caused by :: "
 					"$densify exceeded memory limit of %d",
@@ -1092,7 +1092,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 	else
 	{
 		ThrowTopLevelMissingFieldErrorWithCode("$densify.field",
-											   ERRCODE_HELIO_LOCATION40414);
+											   ERRCODE_DOCUMENTDB_LOCATION40414);
 	}
 
 	/* Parse required range */
@@ -1113,7 +1113,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 					rangeElement.bsonValue.value_type != BSON_TYPE_UTF8)
 				{
 					ereport(ERROR, (
-								errcode(ERRCODE_HELIO_LOCATION5733402),
+								errcode(ERRCODE_DOCUMENTDB_LOCATION5733402),
 								errmsg(
 									"the bounds in a range statement must be the string 'full', 'partition',"
 									" or an ascending array of two numbers or two dates")));
@@ -1134,7 +1134,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 					else
 					{
 						ereport(ERROR, (
-									errcode(ERRCODE_HELIO_LOCATION5946802),
+									errcode(ERRCODE_DOCUMENTDB_LOCATION5946802),
 									errmsg(
 										"Bounds string must either be 'full' or 'partition'")));
 					}
@@ -1161,7 +1161,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 
 					if (index != 2)
 					{
-						ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5733403),
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733403),
 										errmsg(
 											"a bounding array in a range statement must have exactly two elements")));
 					}
@@ -1176,7 +1176,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 				if (IsBsonValueNegativeNumber(&rangeElement.bsonValue) ||
 					BsonValueAsDouble(&rangeElement.bsonValue) == 0.0)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5733401),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733401),
 									errmsg(
 										"the step parameter in a range statement must be a strictly positive numeric value")));
 				}
@@ -1191,7 +1191,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 
 				if (arguments->timeUnit == DateUnit_Invalid)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 									errmsg("unknown time unit value: %s",
 										   rangeElement.bsonValue.value.v_utf8.str)));
 				}
@@ -1201,7 +1201,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 	else
 	{
 		ThrowTopLevelMissingFieldErrorWithCode("$densify.range",
-											   ERRCODE_HELIO_LOCATION40414);
+											   ERRCODE_DOCUMENTDB_LOCATION40414);
 	}
 
 	/* Parse the option partitionByFields */
@@ -1231,7 +1231,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 			if (StringViewEqualsCString(&arguments->field, path->value.v_utf8.str))
 			{
 				ereport(ERROR, (
-							errcode(ERRCODE_HELIO_LOCATION8993000),
+							errcode(ERRCODE_DOCUMENTDB_LOCATION8993000),
 							errmsg(
 								"BSON field '$densify.partitionByFields' contains the field that is being densified")));
 			}
@@ -1249,19 +1249,19 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 	{
 		/* No bounds provided */
 		ThrowTopLevelMissingFieldErrorWithCode("$densify.range.bounds",
-											   ERRCODE_HELIO_LOCATION40414);
+											   ERRCODE_DOCUMENTDB_LOCATION40414);
 	}
 
 	if (arguments->step.value_type == BSON_TYPE_EOD)
 	{
 		ThrowTopLevelMissingFieldErrorWithCode("$densify.range.step",
-											   ERRCODE_HELIO_LOCATION40414);
+											   ERRCODE_DOCUMENTDB_LOCATION40414);
 	}
 
 	if (arguments->partitionByFields == NULL && arguments->densifyType ==
 		DENSIFY_TYPE_PARTITION)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5733408),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733408),
 						errmsg(
 							"one may not specify the bounds as 'partition' without specifying "
 							"a non-empty array of partitionByFields. You may have meant to specify 'full' bounds.")));
@@ -1273,7 +1273,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 		if (CompareBsonValueAndType(&arguments->lowerBound, &arguments->upperBound,
 									&isComparisionValid) > 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5733402),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733402),
 							errmsg(
 								"the bounds in a range statement must be the string 'full', 'partition',"
 								" or an ascending array of two numbers or two dates")));
@@ -1281,27 +1281,27 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 		else if (BsonTypeIsNumber(arguments->lowerBound.value_type) &&
 				 arguments->timeUnit != DateUnit_Invalid)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5733409),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733409),
 							errmsg("numeric bounds may not have unit parameter")));
 		}
 		else if (BsonValueIsNumber(&arguments->lowerBound) &&
 				 arguments->upperBound.value_type == BSON_TYPE_DATE_TIME)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5733406),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733406),
 							errmsg(
 								"a bounding array must contain either both dates or both numeric types")));
 		}
 		else if (BsonValueIsNumber(&arguments->upperBound) &&
 				 arguments->lowerBound.value_type == BSON_TYPE_DATE_TIME)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5733402),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733402),
 							errmsg(
 								"a bounding array must be an ascending array of either two dates or two numbers")));
 		}
 		else if (arguments->lowerBound.value_type == BSON_TYPE_DATE_TIME &&
 				 !IsBsonValueFixedInteger(&arguments->step))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION6586400),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION6586400),
 							errmsg(
 								"The step parameter in a range satement must be a whole number when densifying a date range")));
 		}
@@ -1309,7 +1309,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 				 !(arguments->step.value_type == arguments->lowerBound.value_type &&
 				   arguments->step.value_type == arguments->upperBound.value_type))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5876900),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5876900),
 							errmsg(
 								"Upper bound, lower bound, and step must all have the same type")));
 		}

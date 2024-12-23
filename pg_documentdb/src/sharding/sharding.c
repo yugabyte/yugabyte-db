@@ -19,7 +19,7 @@
 #include "io/helio_bson_core.h"
 #include "api_hooks.h"
 #include "commands/create_indexes.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "sharding/sharding.h"
 #include "metadata/metadata_cache.h"
 #include "utils/query_utils.h"
@@ -148,7 +148,7 @@ command_shard_collection(PG_FUNCTION_ARGS)
 
 		if (!result.success)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Internal error sharding collection in metadata coordinator"),
 							errdetail_log(
@@ -185,7 +185,7 @@ command_reshard_collection(PG_FUNCTION_ARGS)
 
 		if (!result.success)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Internal error resharding collection in metadata coordinator"),
 							errdetail_log(
@@ -222,7 +222,7 @@ command_unshard_collection(PG_FUNCTION_ARGS)
 
 		if (!result.success)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Internal error unsharding collection in metadata coordinator"),
 							errdetail_log(
@@ -629,7 +629,7 @@ FindShardKeyFieldValuesForQuery(bson_iter_t *queryDocument,
 			if (!BSON_ITER_HOLDS_ARRAY(queryDocument) ||
 				!bson_iter_recurse(queryDocument, &andIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Could not iterate through query document "
 									   "$and.")));
 			}
@@ -640,7 +640,7 @@ FindShardKeyFieldValuesForQuery(bson_iter_t *queryDocument,
 				if (!BSON_ITER_HOLDS_DOCUMENT(&andIterator) ||
 					!bson_iter_recurse(&andIterator, &andElementIterator))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg("Could not iterate through elements within "
 										   "$and query.")));
 				}
@@ -720,7 +720,7 @@ FindShardKeyValuesExpr(bson_iter_t *queryDocIter, pgbson *shardKey, int collecti
 			if (!BSON_ITER_HOLDS_ARRAY(queryDocIter) ||
 				!bson_iter_recurse(queryDocIter, &andIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Could not iterate through query document "
 									   "$and.")));
 			}
@@ -731,7 +731,7 @@ FindShardKeyValuesExpr(bson_iter_t *queryDocIter, pgbson *shardKey, int collecti
 				if (!BSON_ITER_HOLDS_DOCUMENT(&andIterator) ||
 					!bson_iter_recurse(&andIterator, &andElementIterator))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg("Could not iterate through elements within "
 										   "$and query.")));
 				}
@@ -756,7 +756,7 @@ FindShardKeyValuesExpr(bson_iter_t *queryDocIter, pgbson *shardKey, int collecti
 			if (!BSON_ITER_HOLDS_ARRAY(queryDocIter) ||
 				!bson_iter_recurse(queryDocIter, &orIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Could not iterate through query document "
 									   "$or.")));
 			}
@@ -769,7 +769,7 @@ FindShardKeyValuesExpr(bson_iter_t *queryDocIter, pgbson *shardKey, int collecti
 				if (!BSON_ITER_HOLDS_DOCUMENT(&orIterator) ||
 					!bson_iter_recurse(&orIterator, &orElementIterator))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg("Could not iterate through elements within "
 										   "$or query.")));
 				}
@@ -902,7 +902,7 @@ ShardCollectionLegacy(PG_FUNCTION_ARGS)
 
 		if (!result.success)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Internal error sharding collection in metadata coordinator"),
 							errdetail_log(
@@ -940,7 +940,7 @@ ShardCollectionCore(ShardCollectionArgs *args)
 	{
 		if (args->shardingMode != ShardCollectionMode_Shard)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTSHARDED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACENOTSHARDED),
 							errmsg("Collection %s.%s is not sharded",
 								   args->databaseName, args->collectionName),
 							errdetail_log(
@@ -958,7 +958,7 @@ ShardCollectionCore(ShardCollectionArgs *args)
 	if (collection->shardKey == NULL &&
 		args->shardingMode != ShardCollectionMode_Shard)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTSHARDED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACENOTSHARDED),
 						errmsg("Collection %s.%s is not sharded",
 							   args->databaseName, args->collectionName),
 						errdetail_log(
@@ -978,7 +978,7 @@ ShardCollectionCore(ShardCollectionArgs *args)
 
 	if (collection->shardKey != NULL && args->shardingMode == ShardCollectionMode_Shard)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_ALREADYINITIALIZED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_ALREADYINITIALIZED),
 						errmsg(
 							"Sharding already enabled for collection %s.%s with options { \"_id\": \"%s.%s\", \"dropped\" : false, \"key\" : %s, \"unique\": false }.",
 							args->databaseName, args->collectionName, args->databaseName,
@@ -1212,13 +1212,13 @@ ParseNamespaceName(const char *namespacePath, char **databaseName, char **collec
 	StringView databaseView = StringViewFindPrefix(&strView, '.');
 	if (databaseView.length == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("name needs to be fully qualified <db>.<collection>")));
 	}
 
 	if (strView.length < databaseView.length + 2)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("name needs to be fully qualified <db>.<collection>")));
 	}
 
@@ -1260,7 +1260,7 @@ ParseShardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
 			EnsureTopLevelFieldIsBooleanLike("unique", &argIter);
 			if (bson_iter_as_bool(&argIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("hashed shard keys cannot be declared unique.")));
 			}
 		}
@@ -1272,13 +1272,13 @@ ParseShardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
 
 			if (shardArgs->numChunks <= 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("numInitialChunks must be a positive number")));
 			}
 
 			if (shardArgs->numChunks > ShardingMaxChunks)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg("numInitialChunks must be less than %d.",
 									   ShardingMaxChunks)));
 			}
@@ -1307,7 +1307,7 @@ ParseShardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Unknown key %s", key)));
 		}
 	}
@@ -1316,13 +1316,13 @@ ParseShardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
 	if (shardArgs->collectionName == NULL ||
 		shardArgs->databaseName == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("shardCollection is a required field.")));
 	}
 
 	if (shardArgs->shardKeyDefinition == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("key is a required field.")));
 	}
 
@@ -1356,7 +1356,7 @@ ParseReshardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
 			EnsureTopLevelFieldIsBooleanLike("unique", &argIter);
 			if (bson_iter_as_bool(&argIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("hashed shard keys cannot be declared unique.")));
 			}
 		}
@@ -1368,13 +1368,13 @@ ParseReshardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
 
 			if (shardArgs->numChunks <= 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("numInitialChunks must be a positive number")));
 			}
 
 			if (shardArgs->numChunks > ShardingMaxChunks)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg("numInitialChunks must be less than %d.",
 									   ShardingMaxChunks)));
 			}
@@ -1401,7 +1401,7 @@ ParseReshardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Unknown key %s", key)));
 		}
 	}
@@ -1410,13 +1410,13 @@ ParseReshardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
 	if (shardArgs->collectionName == NULL ||
 		shardArgs->databaseName == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("reshardCollection is a required field.")));
 	}
 
 	if (shardArgs->shardKeyDefinition == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("key is a required field.")));
 	}
 
@@ -1442,7 +1442,7 @@ ParseUnshardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
 		else if (strcmp(key, "toShard") == 0)
 		{
 			EnsureTopLevelFieldType("toShard", &argIter, BSON_TYPE_UTF8);
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("unshardCollection with toShard not supported yet")));
 		}
 		else if (IsCommonSpecIgnoredField(key))
@@ -1451,7 +1451,7 @@ ParseUnshardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Unknown key %s", key)));
 		}
 	}
@@ -1460,7 +1460,7 @@ ParseUnshardCollectionRequest(pgbson *args, ShardCollectionArgs *shardArgs)
 	if (shardArgs->collectionName == NULL ||
 		shardArgs->databaseName == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg("unshardCollection is a required field.")));
 	}
 

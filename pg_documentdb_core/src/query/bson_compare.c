@@ -18,7 +18,7 @@
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
 #include "types/decimal128.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "utils/date_utils.h"
 #include "utils/hashset_utils.h"
 #include "collation/collation.h"
@@ -182,7 +182,7 @@ bson_in_range_interval(PG_FUNCTION_ARGS)
 	if (!TryGetSinglePgbsonElementFromPgbson(val, &valElement) ||
 		!TryGetSinglePgbsonElementFromPgbson(base, &baseElement))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Unexpected error during in_range interval comparision, expected single value bson")));
 	}
@@ -194,7 +194,7 @@ bson_in_range_interval(PG_FUNCTION_ARGS)
 									  BSON_TYPE_DATE_TIME ?
 									  baseElement.bsonValue.value_type :
 									  valElement.bsonValue.value_type;
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5429513),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5429513),
 						errmsg(
 							"PlanExecutor error during aggregation :: caused by :: Invalid range: "
 							"Expected the sortBy field to be a Date, but it was %s",
@@ -237,7 +237,7 @@ bson_in_range_numeric(PG_FUNCTION_ARGS)
 		!TryGetSinglePgbsonElementFromPgbson(base, &baseElement) ||
 		!TryGetSinglePgbsonElementFromPgbson(offset, &offsetElement))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Unexpected error during in_range numeric comparision, expected single value bson")));
 	}
@@ -248,7 +248,7 @@ bson_in_range_numeric(PG_FUNCTION_ARGS)
 		bson_type_t conflictingType = BsonTypeIsNumber(valElement.bsonValue.value_type) ?
 									  baseElement.bsonValue.value_type :
 									  valElement.bsonValue.value_type;
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5429414),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5429414),
 						errmsg(
 							"PlanExecutor error during aggregation :: caused by :: Invalid range: "
 							"Expected the sortBy field to be a number, but it was %s",
@@ -573,7 +573,7 @@ BsonValueAsInt64WithRoundingMode(const bson_value_t *value,
 	{
 		if (!BsonValueIsNumber(value))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16004), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16004), errmsg(
 								"can't convert from BSON type %s to long",
 								BsonTypeName(value->value_type))));
 		}
@@ -581,7 +581,7 @@ BsonValueAsInt64WithRoundingMode(const bson_value_t *value,
 		bool checkFixedInteger = false;
 		if (!IsBsonValue64BitInteger(value, checkFixedInteger))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31109), errmsg(
 								"Can't coerce out of range value %s to long",
 								BsonValueToJsonForLogging(value))));
 		}
@@ -773,7 +773,7 @@ BsonValueAsDateTime(const bson_value_t *value)
 
 		default:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16006), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16006), errmsg(
 								"can't convert from BSON type %s to Date",
 								BsonTypeName(value->value_type))));
 		}
@@ -1241,7 +1241,7 @@ CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
 
 		default:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("invalid bson type %s - not supported yet",
 								   BsonTypeName(left->value_type)),
 							errdetail_log("bson type %s - not supported yet",

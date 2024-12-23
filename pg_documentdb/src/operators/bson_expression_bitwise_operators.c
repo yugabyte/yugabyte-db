@@ -279,7 +279,7 @@ ProcessDollarBit(pgbson *doc, bson_value_t *result, void *arguments,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH)), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH)), errmsg(
 							"%s only supports int and long, not: %s.", operatorName,
 							BsonTypeName(currentElem.value_type)),
 						errdetail_log(
@@ -289,7 +289,7 @@ ProcessDollarBit(pgbson *doc, bson_value_t *result, void *arguments,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28765)), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28765)), errmsg(
 						"%s only supports numeric types, not %s", operatorName,
 						BsonTypeName(currentElem.value_type)),
 					errdetail_log(
@@ -346,7 +346,7 @@ ProcessDollarBit(pgbson *doc, bson_value_t *result, void *arguments,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH)), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH)), errmsg(
 							"%s only supports int and long operands.", operatorName),
 						errdetail_log(
 							"%s only supports int and long operands.", operatorName));

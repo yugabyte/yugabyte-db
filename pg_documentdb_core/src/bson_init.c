@@ -64,7 +64,7 @@ InstallBsonMemVTables(void)
  * Initializes core configurations pertaining to helio core.
  */
 void
-InitDocumentDbCoreConfigurations(const char *prefix)
+InitDocumentDBCoreConfigurations(const char *prefix)
 {
 	DefineCustomBoolVariable(
 		psprintf("%s.bsonUseEJson", prefix),

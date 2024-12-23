@@ -25,7 +25,7 @@
 
 #include "io/helio_bson_core.h"
 #include "utils/type_cache.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "types/decimal128.h"
 #include "io/bson_traversal.h"
 
@@ -66,7 +66,7 @@ BsonValueHoldsNumberArray(const bson_value_t *currentValue, int32_t *numElements
 {
 	if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"value must be of type array")));
 	}
@@ -241,7 +241,7 @@ DivideBsonValueNumbers(bson_value_t *dividend, const bson_value_t *divisor)
 
 		if (IsDecimal128Zero(&divisor128))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("can't $divide by zero")));
 		}
 
@@ -255,7 +255,7 @@ DivideBsonValueNumbers(bson_value_t *dividend, const bson_value_t *divisor)
 
 		if (divisorDouble == 0.0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("can't $divide by zero")));
 		}
 
@@ -534,7 +534,7 @@ BsonTypeFromName(const char *name)
 		return BSON_TYPE_CODEWSCOPE;
 	}
 
-	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 					errmsg("Unknown type name alias: %s", name)));
 }
 

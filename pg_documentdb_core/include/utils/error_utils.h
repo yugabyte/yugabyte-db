@@ -13,10 +13,10 @@
 #include <lib/stringinfo.h>
 
 /*
- * Given ereport error code belongs to a Helio error ?
+ * Given ereport error code belongs to a DocumentDB error ?
  */
-#define EreportCodeIsHelioError(helioErrorEreportCode) \
-	(PGUNSIXBIT(helioErrorEreportCode) == 'M')
+#define EreportCodeIsDocumentDBError(documentdbErrorEreportCode) \
+	(PGUNSIXBIT(documentdbErrorEreportCode) == 'M')
 
 /*
  * This is an PG aligned error code for Internal errors category to represent
@@ -37,13 +37,13 @@ CopyErrorDataAndFlush()
 
 
 /*
- * Prepend error messages of Helio errors within a PG_CATCH() block.
+ * Prepend error messages of DocumentDB errors within a PG_CATCH() block.
  * Example usage:
  *
  *   MemoryContext savedMemoryContext = CurrentMemoryContext;
  *   PG_TRY();
  *   {
- *     // perform the stuff that could result in throwing a Helio error
+ *     // perform the stuff that could result in throwing a DocumentDB error
  *   }
  *   PG_CATCH();
  *   {
@@ -51,16 +51,16 @@ CopyErrorDataAndFlush()
  *     // re-throwing the error.
  *     MemoryContextSwitchTo(savedMemoryContext);
  *
- *     RethrowPrependHelioError(errorPrefix);
+ *     RethrowPrependDocumentDBError(errorPrefix);
  *   }
  *   PG_END_TRY();
  */
 static inline void
-RethrowPrependHelioError(char *errorPrefix)
+RethrowPrependDocumentDBError(char *errorPrefix)
 {
 	ErrorData *errorData = CopyErrorDataAndFlush();
 
-	if (EreportCodeIsHelioError(errorData->sqlerrcode))
+	if (EreportCodeIsDocumentDBError(errorData->sqlerrcode))
 	{
 		StringInfo newErrorMessageStr = makeStringInfo();
 		appendStringInfo(newErrorMessageStr, "%s%s", errorPrefix,

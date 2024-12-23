@@ -15,7 +15,7 @@
 #include "update/bson_update_operators.h"
 #include "query/helio_bson_compare.h"
 #include "types/decimal128.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "io/bson_traversal.h"
 #include "utils/sort_utils.h"
 
@@ -206,7 +206,7 @@ HandleUpdateDollarInc(const bson_value_t *existingValue,
 {
 	if (!BsonTypeIsNumber(updateValue->value_type))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg("Increment should be numeric")));
 	}
 
@@ -215,7 +215,7 @@ HandleUpdateDollarInc(const bson_value_t *existingValue,
 	 * */
 	if (!BsonValueIsNumberOrBool(updateValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg("Cannot increment with non-numeric argument")));
 	}
 
@@ -228,7 +228,7 @@ HandleUpdateDollarInc(const bson_value_t *existingValue,
 	}
 	else if (!AddNumberToBsonValue(&valueToModify, updateValue, &overflowedFromInt64))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg(
 							"Cannot apply $inc to a value of non-numeric type. { _id: %s } has the field '%.*s' of non-numeric type %s",
 							BsonValueToJsonForLogging(&state->documentId),
@@ -246,7 +246,7 @@ HandleUpdateDollarInc(const bson_value_t *existingValue,
 
 	if (overflowedFromInt64)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"Failed to apply $inc operations to current value (%s) for document {_id: %s}",
 							FormatBsonValueForShellLogging(existingValue),
@@ -330,7 +330,7 @@ HandleUpdateDollarBit(const bson_value_t *existingValue,
 {
 	if (updateValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("$bit should be a document")));
 	}
 
@@ -339,7 +339,7 @@ HandleUpdateDollarBit(const bson_value_t *existingValue,
 	BsonValueInitIterator(updateValue, &updateValueSpec);
 	if (IsBsonValueEmptyDocument(updateValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"You must pass in at least one bitwise operation. The format is: {$bit: {field: {and/or/xor: #}}")));
 	}
@@ -382,7 +382,7 @@ HandleUpdateDollarBit(const bson_value_t *existingValue,
 			case BITWISE_OPERATOR_UNKNOWN:
 			default:
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"The $bit modifier only supports 'and', 'or', and 'xor', not '%s' which is an unknown operator",
 									key)));
@@ -416,7 +416,7 @@ HandleUpdateDollarMul(const bson_value_t *existingValue,
 	const bson_value_t *mulFactor = updateValue;
 	if (!BsonTypeIsNumber(mulFactor->value_type))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg(
 							"Cannot multiply with non-numeric argument: { %s : %s }",
 							setValueState->relativePath, BsonValueToJsonForLogging(
@@ -462,7 +462,7 @@ HandleUpdateDollarMul(const bson_value_t *existingValue,
 
 			default:
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 								errmsg("Unexpected data type")));
 			}
 		}
@@ -472,7 +472,7 @@ HandleUpdateDollarMul(const bson_value_t *existingValue,
 	}
 	else if (!BsonValueIsNumber(existingValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg(
 							"Cannot apply $mul to a value of non-numeric type. { _id: %s } has the field '%.*s' of non-numeric type %s",
 							BsonValueToJsonForLogging(&state->documentId),
@@ -486,7 +486,7 @@ HandleUpdateDollarMul(const bson_value_t *existingValue,
 	else if (!MultiplyWithFactorAndUpdate(&valueToModify, mulFactor,
 										  convertInt64OverflowToDouble))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"Failed to apply $mul operations to current (%s) value for document { _id: %s }",
 							FormatBsonValueForShellLogging(existingValue),
@@ -531,7 +531,7 @@ HandleUpdateDollarPull(const bson_value_t *existingValue,
 
 	if (existingValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"Cannot apply $pull to a non-array value")));
 	}
@@ -633,7 +633,7 @@ HandleUpdateDollarCurrentDate(const bson_value_t *existingValue,
 									  updateValue->value.v_doc.data_len) ||
 			!bson_iter_next(&nestedIterator))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"The '$type' string field is required to be 'date' or 'timestamp': {$currentDate: {field : {$type: 'date'}}}")));
 		}
@@ -646,13 +646,13 @@ HandleUpdateDollarCurrentDate(const bson_value_t *existingValue,
 		 * TODO: Remove the "$$type" support once the bson_init_from_json() func is fixed in libbson */
 		if ((strcmp(key, "$type") != 0 && strcmp(key, "$$type") != 0))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Unrecognized $currentDate option: %s", key)));
 		}
 
 		if (!BSON_ITER_HOLDS_UTF8(&nestedIterator))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"The '$type' string field is required to be 'date' or 'timestamp': {$currentDate: {field : {$type: 'date'}}}")));
 		}
@@ -677,14 +677,14 @@ HandleUpdateDollarCurrentDate(const bson_value_t *existingValue,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
 								"The '$type' string field is required to be 'date' or 'timestamp': {$currentDate: {field : {$type: 'date'}}}")));
 		}
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"%s is not valid type for $currentDate. Please use a boolean ('true') or a $type expression ({$type: 'timestamp/date'})",
 							BsonTypeName(updateValue->value_type))));
@@ -710,7 +710,7 @@ HandleUpdateDollarRename(const bson_value_t *existingValue,
 {
 	if (setValueState->isArray || setValueState->hasArrayAncestors)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"The target field of a rename cannot be an array element")));
 	}
@@ -740,7 +740,7 @@ HandleUpdateDollarRenameSource(const bson_value_t *existingValue,
 {
 	if (setValueState->isArray || setValueState->hasArrayAncestors)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"The source field of a rename cannot be an array element")));
 	}
@@ -773,7 +773,7 @@ HandleUpdateDollarAddToSet(const bson_value_t *existingValue,
 	if (existingValue->value_type != BSON_TYPE_EOD &&
 		existingValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"Cannot apply $addToSet to non-array field. Field named '%.*s' has non-array type %s",
 							setValueState->fieldPath->length,
@@ -819,7 +819,7 @@ HandleUpdateDollarPullAll(const bson_value_t *existingValue,
 	/* If $pullAll argument is not an array, the operation should fail. */
 	if (updateValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"$pullAll requires an array argument but was given a %s",
 							BsonTypeName(updateValue->value_type))));
@@ -834,7 +834,7 @@ HandleUpdateDollarPullAll(const bson_value_t *existingValue,
 	/* If $pullAll is applicable only on the array field */
 	if (existingValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"Cannot apply $pullAll to a non-array value")));
 	}
@@ -914,7 +914,7 @@ HandleUpdateDollarPush(const bson_value_t *existingValue,
 
 	if (currentValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"The field '%.*s' must be an array but is of type %s in document { _id: %s }",
 							setValueState->fieldPath->length,
@@ -989,7 +989,7 @@ HandleUpdateDollarPop(const bson_value_t *existingValue,
 {
 	if (!BsonTypeIsNumber(updateValue->value_type))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"Expected a number in: %s: %s",
 							setValueState->relativePath,
@@ -1002,7 +1002,7 @@ HandleUpdateDollarPop(const bson_value_t *existingValue,
 	double doubleVal = BsonValueAsDouble(updateValue);
 	if (floor(doubleVal) != doubleVal)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"Expected an integer: %s: %s",
 							setValueState->relativePath,
@@ -1014,7 +1014,7 @@ HandleUpdateDollarPop(const bson_value_t *existingValue,
 
 	if ((int) doubleVal != 1 && (int) doubleVal != -1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"$pop expects 1 or -1, found: %s",
 							BsonValueToJsonForLogging(updateValue))));
@@ -1030,7 +1030,7 @@ HandleUpdateDollarPop(const bson_value_t *existingValue,
 
 	if (existingValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"Path '%s' contains an element of non-array type '%s'",
 							setValueState->relativePath,
@@ -1105,7 +1105,7 @@ RenameSetTraverseErrorResult(void *state, TraverseBsonResult traverseResult)
 static bool
 RenameProcessIntermediateArray(void *state, const bson_value_t *value)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 					errmsg("The source field of a rename cannot be an array element")));
 }
 
@@ -1144,7 +1144,7 @@ ValidateBitwiseInputParams(const MongoBitwiseOperatorType operatorType,
 {
 	if (operatorType == BITWISE_OPERATOR_UNKNOWN)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"The $bit modifier only supports 'and', 'or', and 'xor', "
 							"not '%s' which is an unknown operator: { \"%s\" : %s }",
@@ -1155,7 +1155,7 @@ ValidateBitwiseInputParams(const MongoBitwiseOperatorType operatorType,
 	if (!(modifier->value_type == BSON_TYPE_INT32 ||
 		  modifier->value_type == BSON_TYPE_INT64))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("The $bit modifier field must be an Integer(32/64 bit);"
 							   " a '%s' is not supported here: { \"%s\" : %s }",
 							   BsonTypeName(modifier->value_type),
@@ -1172,7 +1172,7 @@ ValidateBitwiseInputParams(const MongoBitwiseOperatorType operatorType,
 			  state->value_type == BSON_TYPE_INT64))
 		{
 			/* Get the document Id for error reporting */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Cannot apply $bit to a value of non-integral type."
 								   "{ \"_id\" : %s } has the field %s of non-integer type %s",
 								   BsonValueToJsonForLogging(&docState->documentId),
@@ -1234,7 +1234,7 @@ ValidateAddToSetWithDollarEach(const bson_value_t *updateValue,
 		/* The argument to $each in $addToSet must be an array, else error out */
 		if (element.bsonValue.value_type != BSON_TYPE_ARRAY)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 							errmsg(
 								"The argument to $each in $addToSet must be an array but it was of type %s",
 								BsonTypeName(element.bsonValue.value_type))));
@@ -1412,7 +1412,7 @@ ValidateUpdateSpecAndSetPushUpdateState(const bson_value_t *fieldUpdateValue,
 			/* If a non clause key is present and $each is also provide,
 			 * it's an invalid spec def
 			 */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("Unrecognized clause in $push: %s",
 								   nonClauseKey)));
 		}
@@ -1431,7 +1431,7 @@ ValidateUpdateSpecAndSetPushUpdateState(const bson_value_t *fieldUpdateValue,
 	/* Validate $each spec */
 	if (eachBsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"The argument to $each in $push must be an array but it was of type: %s",
 							BsonTypeName(eachBsonValue.value_type))));
@@ -1457,7 +1457,7 @@ ValidateUpdateSpecAndSetPushUpdateState(const bson_value_t *fieldUpdateValue,
 	}
 	if (!validSliceValue)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"The argument to $slice in $push must be an integer value but was given type: %s",
 							BsonTypeName(sliceBsonValue.value_type))));
@@ -1481,7 +1481,7 @@ ValidateUpdateSpecAndSetPushUpdateState(const bson_value_t *fieldUpdateValue,
 	}
 	if (!validPositionValue)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"The value for $position must be an integer value, not of type: %s",
 							BsonTypeName(positionBsonValue.value_type))));
@@ -1515,7 +1515,7 @@ ApplyDollarPushModifiers(const bson_value_t *bsonArray,
 {
 	if (bsonArray->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
 							"Unexpected type other than array")));
 	}

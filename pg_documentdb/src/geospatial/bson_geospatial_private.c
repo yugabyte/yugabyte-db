@@ -16,7 +16,7 @@
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_private.h"
 #include "geospatial/bson_geojson_utils.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 
 static bool ParseBsonValueAsLegacyPointInternal(const bson_value_t *pointValue,

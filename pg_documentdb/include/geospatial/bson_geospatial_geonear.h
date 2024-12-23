@@ -201,7 +201,7 @@ pg_attribute_noreturn()
 ThrowGeoNearNotAllowedInContextError()
 {
 	ereport(ERROR, (
-				errcode(ERRCODE_HELIO_LOCATION5626500),
+				errcode(ERRCODE_DOCUMENTDB_LOCATION5626500),
 				errmsg(
 					"$geoNear, $near, and $nearSphere are not allowed in this context")));
 }
@@ -210,7 +210,7 @@ static inline void
 pg_attribute_noreturn()
 ThrowGeoNearUnableToFindIndex()
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_UNABLETOFINDINDEX),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNABLETOFINDINDEX),
 					errmsg(
 						"planner returned error :: caused by :: unable to find index for $geoNear query")));
 }
@@ -220,7 +220,7 @@ pg_attribute_noreturn()
 ThrowNoGeoIndexesFound()
 {
 	ereport(ERROR, (
-				errcode(ERRCODE_HELIO_INDEXNOTFOUND),
+				errcode(ERRCODE_DOCUMENTDB_INDEXNOTFOUND),
 				errmsg("$geoNear requires a 2d or 2dsphere index, but none were found")));
 }
 
@@ -229,7 +229,7 @@ pg_attribute_noreturn()
 ThrowAmbigousIndexesFound(const char * indexType)
 {
 	ereport(ERROR, (
-				errcode(ERRCODE_HELIO_INDEXNOTFOUND),
+				errcode(ERRCODE_DOCUMENTDB_INDEXNOTFOUND),
 				errmsg(
 					"There is more than one %s index; unsure which to use for $geoNear",
 					indexType)));

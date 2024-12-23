@@ -18,7 +18,7 @@
 #include <math.h>
 #include <nodes/pg_list.h>
 
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "types/decimal128.h"
 
 
@@ -1899,7 +1899,7 @@ ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
 			if (BsonValueAsDouble(weightExpression) <= 0 || BsonValueAsDouble(
 					weightExpression) >= 1)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"'alpha' must be between 0 and 1 (exclusive), found alpha: %lf",
 									BsonValueAsDouble(weightExpression))));
@@ -1922,14 +1922,14 @@ ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
 				if (!IsBsonValue64BitInteger(weightExpression, checkFixedInteger) &&
 					!IsBsonValueNegativeNumber(weightExpression))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 									errmsg(
 										"'N' field must be an integer, but found  N: %lf. To use a non-integer, use the 'alpha' argument instead",
 										BsonValueAsDouble(weightExpression))));
 				}
 				else if (IsBsonValueNegativeNumber(weightExpression))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 									errmsg(
 										"'N' must be greater than zero. Got %d",
 										BsonValueAsInt32(weightExpression))));
@@ -1937,7 +1937,7 @@ ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"'N' field must be an integer, but found type %s",
 									BsonTypeName(weightExpression->value_type))));
@@ -1952,7 +1952,7 @@ ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
 		else
 		{
 			/*incorrect parameter,like "alpah" */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg(
 								"Got unrecognized field in $expMovingAvg, $expMovingAvg sub object must have exactly two fields: An 'input' field, and either an 'N' field or an 'alpha' field")));
 		}
@@ -1962,7 +1962,7 @@ ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
 																InputValidFlags_N |
 																InputValidFlags_Alpha))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"$expMovingAvg sub object must have exactly two fields: An 'input' field, and either an 'N' field or an 'alpha' field")));
 	}
@@ -2127,7 +2127,7 @@ HandleIntegralDerivative(bson_value_t *xBsonValue, bson_value_t *yBsonValue,
 	if (!success)
 	{
 		char *opName = isIntegralOperator ? "$integral" : "$derivative";
-		ereport(ERROR, errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 				errmsg(
 					"Handling %s: yValue = %f, xValue = %f, currentState->anchorX = %f, currentState->anchorY = %f, currentState->result = %f",
 					opName, BsonValueAsDouble(&yValue), BsonValueAsDouble(&xValue),
@@ -2157,8 +2157,8 @@ RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue, bson_value_t *yBs
 	{
 		if (!timeUnitInt64)
 		{
-			int errorCode = isIntegralOperator ? ERRCODE_HELIO_LOCATION5423902 :
-							ERRCODE_HELIO_LOCATION5624901;
+			int errorCode = isIntegralOperator ? ERRCODE_DOCUMENTDB_LOCATION5423902 :
+							ERRCODE_DOCUMENTDB_LOCATION5624901;
 			const char *errorMsg = isIntegralOperator
 								   ?
 								   "%s (with no 'unit') expects the sortBy field to be numeric"
@@ -2174,8 +2174,8 @@ RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue, bson_value_t *yBs
 	{
 		if (timeUnitInt64)
 		{
-			int errorCode = isIntegralOperator ? ERRCODE_HELIO_LOCATION5423901 :
-							ERRCODE_HELIO_LOCATION5624900;
+			int errorCode = isIntegralOperator ? ERRCODE_DOCUMENTDB_LOCATION5423901 :
+							ERRCODE_DOCUMENTDB_LOCATION5624900;
 			const char *errorMsg = "%s with 'unit' expects the sortBy field to be a Date";
 			ereport(ERROR, errcode(errorCode),
 					errmsg(errorMsg, opName),
@@ -2186,7 +2186,7 @@ RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue, bson_value_t *yBs
 	/* if unit is specifed but x is not a date, throw an error */
 	if (timeUnitInt64 && xBsonValue->value_type != BSON_TYPE_DATE_TIME)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5429513), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5429513), errmsg(
 							"Expected the sortBy field to be a Date, but it was %s",
 							BsonTypeName(
 								xBsonValue->value_type))));
@@ -2195,7 +2195,7 @@ RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue, bson_value_t *yBs
 	/* if unit is not specified and x is a date, throw an error */
 	else if (!timeUnitInt64 && xBsonValue->value_type == BSON_TYPE_DATE_TIME)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5429413), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5429413), errmsg(
 							"For windows that involve date or time ranges, a unit must be provided.")));
 	}
 
@@ -2203,7 +2203,7 @@ RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue, bson_value_t *yBs
 	if (!(BsonTypeIsNumber(yBsonValue->value_type) ||
 		  yBsonValue->value_type == BSON_TYPE_DATE_TIME))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5423900),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5423900),
 						errmsg(
 							"The input value of %s window function must be a vector"
 							" of 2 value, the first value must be numeric or date type "
@@ -2307,7 +2307,7 @@ CalculateSqrtForStdDev(const bson_value_t *inputValue, bson_value_t *outputResul
 			resultForSqrt = BsonValueAsDouble(inputValue);
 			if (resultForSqrt < 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR)),
 						errmsg("CalculateSqrtForStdDev: *inputValue = %f",
 							   BsonValueAsDouble(inputValue)),
 						errdetail_log(
@@ -2376,7 +2376,7 @@ ArithmeticOperationFunc(ArithmeticOperation op, bson_value_t *state, const
 		}
 
 		default:
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR)),
 					errmsg("Unknown arithmetic operation: %d", op));
 	}
 
@@ -2468,7 +2468,7 @@ HandleArithmeticOperationError(const char *opName, bson_value_t *state, const
 		}
 	}
 
-	ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR)),
 			errmsg(errMsg, errMsgSource),
 			errdetail_log(
 				errMsgDetails,

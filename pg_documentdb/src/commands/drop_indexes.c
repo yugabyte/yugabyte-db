@@ -29,7 +29,7 @@
 #include "metadata/metadata_cache.h"
 #include "metadata/index.h"
 #include "utils/error_utils.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "utils/query_utils.h"
 #include "utils/index_utils.h"
 
@@ -153,7 +153,7 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 									  AccessShareLock);
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTFOUND),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACENOTFOUND),
 						errmsg("ns not found %s.%s", dbName, collectionName)));
 	}
 
@@ -178,7 +178,7 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 
 			if (strcmp(indexName, ID_INDEX_NAME) == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
 								errmsg("cannot drop _id index")));
 			}
 
@@ -186,7 +186,7 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 																  indexName);
 			if (indexDetails == NULL)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INDEXNOTFOUND),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INDEXNOTFOUND),
 								errmsg("index not found with name [%s]", indexName)));
 			}
 
@@ -211,7 +211,7 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 				PgbsonWriterAppendUtf8(&writer, ErrMsgKey, ErrMsgLength,
 									   "DropIndexes is requested for the index");
 				PgbsonWriterAppendInt32(&writer, ErrCodeKey, ErrCodeLength,
-										ERRCODE_HELIO_CANNOTCREATEINDEX);
+										ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX);
 				pgbson *newComment = PgbsonWriterGetPgbson(&writer);
 				MarkIndexRequestStatus(indexDetails->indexId, CREATE_INDEX_COMMAND_TYPE,
 									   IndexCmdStatus_Skippable, newComment, NULL, 1);
@@ -270,7 +270,7 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 			const char *keyDocumentStr =
 				PgbsonToJsonForLogging(dropIndexesArg.index.document);
 
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INDEXNOTFOUND),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INDEXNOTFOUND),
 							errmsg("can't find index with key: %s", keyDocumentStr)));
 		}
 		else if (nmatchingIndexes > 1)
@@ -288,7 +288,7 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 			const char *secondMatchingIndexSpecStr = PgbsonToJsonForLogging(
 				IndexSpecAsBson(&secondMatchingIndexDetails->indexSpec));
 
-			ereport(ERROR, (errcode(ERRCODE_HELIO_AMBIGUOUSINDEXKEYPATTERN),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_AMBIGUOUSINDEXKEYPATTERN),
 							errmsg("%d indexes found for key: %s, identify by "
 								   "name instead. Conflicting indexes: %s, %s",
 								   nmatchingIndexes, keyDocumentStr,
@@ -299,7 +299,7 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 		IndexDetails *matchingIndexDetails = linitial(matchingIndexDetailsList);
 		if (strcmp(matchingIndexDetails->indexSpec.indexName, ID_INDEX_NAME) == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
 							errmsg("cannot drop _id index")));
 		}
 
@@ -318,7 +318,7 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 			PgbsonWriterAppendUtf8(&writer, ErrMsgKey, ErrMsgLength,
 								   "DropIndexes is requested for the index");
 			PgbsonWriterAppendInt32(&writer, ErrCodeKey, ErrCodeLength,
-									ERRCODE_HELIO_CANNOTCREATEINDEX);
+									ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX);
 			pgbson *newComment = PgbsonWriterGetPgbson(&writer);
 
 			MarkIndexRequestStatus(matchingIndexDetails->indexId,
@@ -395,7 +395,7 @@ command_drop_indexes_concurrently(PG_FUNCTION_ARGS)
 		DistributedRunCommandResult result = RunCommandOnMetadataCoordinator(query->data);
 		if (!result.success)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Error submitting background index/ drop index %s",
 								text_to_cstring(result.response)),
@@ -613,7 +613,7 @@ ParseDropIndexesArg(pgbson *arg)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg("BSON field 'dropIndexes.%s' is an unknown field",
 								   argKey)));
 		}

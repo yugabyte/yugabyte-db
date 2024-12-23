@@ -18,7 +18,7 @@
 #include "api_hooks.h"
 #include "api_hooks_def.h"
 #include "utils/query_utils.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "vector/vector_spec.h"
 
 
@@ -74,7 +74,7 @@ RunCommandOnMetadataCoordinator(const char *query)
 		return run_command_on_metadata_coordinator_hook(query);
 	}
 
-	ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 					errmsg("Unexpected. Should not call RunCommandOnMetadataCoordinator"
 						   "When the node is a MetadataCoordinator")));
 }

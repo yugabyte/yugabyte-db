@@ -22,7 +22,7 @@ void _PG_init(void);
 void _PG_fini(void);
 
 
-bool SkipDocumentDbLoad = false;
+bool SkipDocumentDBLoad = false;
 
 
 /*
@@ -31,7 +31,7 @@ bool SkipDocumentDbLoad = false;
 void
 _PG_init(void)
 {
-	if (SkipDocumentDbLoad)
+	if (SkipDocumentDBLoad)
 	{
 		return;
 	}
@@ -63,7 +63,7 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
-	if (SkipDocumentDbLoad)
+	if (SkipDocumentDBLoad)
 	{
 		return;
 	}

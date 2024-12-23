@@ -17,7 +17,7 @@
 #include <utils/array.h>
 #include <utils/builtins.h>
 #include <utils/heap_utils.h>
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "metadata/collection.h"
 #include "commands/insert.h"
 #include "sharding/sharding.h"
@@ -228,7 +228,7 @@ bson_out_transition(PG_FUNCTION_ARGS)
 
 			if (sourceCollection != NULL && sourceCollection->shardKey != NULL)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28769),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28769),
 								errmsg(
 									"For a sharded cluster, the specified output database must already exist")));
 			}
@@ -249,7 +249,7 @@ bson_out_transition(PG_FUNCTION_ARGS)
 
 			if (destCollection->shardKey != NULL)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28769),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28769),
 								errmsg("%s.%s cannot be sharded", destDatabaseName,
 									   destCollectionName)));
 			}
@@ -320,7 +320,7 @@ bson_out_transition(PG_FUNCTION_ARGS)
 			if (stagingCollection == NULL)
 			{
 				/* failed to create the staging collection. We use the word 'temporary' to match Mongo error message */
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16994),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16994),
 								errmsg(
 									"failed to create temporary $out collection")));
 			}
@@ -1517,7 +1517,7 @@ bson_add_to_set_transition(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg("Bad input format for addToSet transition.")));
 		}
 	}
@@ -1612,7 +1612,7 @@ CheckAggregateIntermediateResultSize(uint32_t size)
 {
 	if (size > BSON_MAX_ALLOWED_SIZE_INTERMEDIATE)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERMEDIATERESULTTOOLARGE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERMEDIATERESULTTOOLARGE),
 						errmsg(
 							"Size %u is larger than maximum size allowed for an intermediate document %u",
 							size, BSON_MAX_ALLOWED_SIZE_INTERMEDIATE)));
@@ -1713,7 +1713,7 @@ ValidateMergeObjectsInput(pgbson *input)
 	 */
 	if (input == NULL || !TryGetSinglePgbsonElementFromPgbson(input, &singleBsonElement))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("Bad input format for mergeObjects transition.")));
 	}
 
@@ -1725,7 +1725,7 @@ ValidateMergeObjectsInput(pgbson *input)
 		singleBsonElement.bsonValue.value_type != BSON_TYPE_NULL)
 	{
 		ereport(ERROR,
-				errcode(ERRCODE_HELIO_DOLLARMERGEOBJECTSINVALIDTYPE),
+				errcode(ERRCODE_DOCUMENTDB_DOLLARMERGEOBJECTSINVALIDTYPE),
 				errmsg("$mergeObjects requires object inputs, but input %s is of type %s",
 					   BsonValueToJsonForLogging(&singleBsonElement.bsonValue),
 					   BsonTypeName(singleBsonElement.bsonValue.value_type)),
@@ -1883,7 +1883,7 @@ bson_maxminn_transition(PG_FUNCTION_ARGS, bool isMaxN)
 		/* TODO: Support element as int64. */
 		if (element > INT32_MAX || totalSize > BSON_MAX_ALLOWED_SIZE_INTERMEDIATE)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERMEDIATERESULTTOOLARGE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERMEDIATERESULTTOOLARGE),
 							errmsg(
 								"Size is larger than maximum size allowed for an intermediate document %u",
 								BSON_MAX_ALLOWED_SIZE_INTERMEDIATE)));

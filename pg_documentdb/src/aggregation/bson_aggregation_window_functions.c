@@ -14,7 +14,7 @@
 
 #include "io/helio_bson_core.h"
 #include "types/decimal128.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "windowapi.h"
 
 typedef struct BsonLocfFillState
@@ -132,7 +132,7 @@ bson_linear_fill(PG_FUNCTION_ARGS)
 	}
 	if (stateData->sortKeyIsDate && stateData->sortKeyIsNumeric)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg(
 							"The sortBy field must be either numeric or a date, but not both"),
 						errdetail_log(
@@ -142,7 +142,7 @@ bson_linear_fill(PG_FUNCTION_ARGS)
 	/* Check if there are repeated values in the sortBy field in a single partition */
 	if (current_pos != 0 && WinRowsArePeers(winobj, current_pos - 1, current_pos))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION6050106),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION6050106),
 						errmsg("There can be no repeated values in the sort field"),
 						errdetail_log(
 							"There can be no repeated values in the sort field")));
@@ -159,7 +159,7 @@ bson_linear_fill(PG_FUNCTION_ARGS)
 		/* As Mongo does, the filled value should be numeric or nullish. */
 		if (!BsonValueIsNumber(&currentValueElement.bsonValue))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 							errmsg(" Value to be filled must be numeric or nullish"),
 							errdetail_log(
 								"Value to be filled must be numeric or nullish")));
@@ -238,7 +238,7 @@ bson_linear_fill(PG_FUNCTION_ARGS)
 	 */
 	if (!BsonValueIsNumber(&stateData->nextValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg(" Value to be filled must be numeric or nullish"),
 						errdetail_log("Value to be filled must be numeric or nullish")));
 	}
@@ -409,7 +409,7 @@ CheckSortKeyBsonValue(bool isnull, pgbsonelement *sortKeyElement)
 {
 	if (isnull || sortKeyElement->bsonValue.value_type == BSON_TYPE_NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg("sortBy value must be numeric or a date, but found null"),
 						errdetail_log(
 							"sortBy value must be numeric or a date, but found null")));
@@ -417,7 +417,7 @@ CheckSortKeyBsonValue(bool isnull, pgbsonelement *sortKeyElement)
 	if (!BsonValueIsNumber(&sortKeyElement->bsonValue) &&
 		sortKeyElement->bsonValue.value_type != BSON_TYPE_DATE_TIME)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg("sortBy value must be numeric or a date, but found %s",
 							   BsonTypeName(sortKeyElement->bsonValue.value_type)),
 						errdetail_log(
@@ -437,7 +437,7 @@ CheckDecimal128Result(Decimal128Result result)
 {
 	if (result == Decimal128Result_Unknown)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							" Unknown error when processing Decimal128 numbers in $linearFill"),
 						errdetail_log(

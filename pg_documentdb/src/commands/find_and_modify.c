@@ -18,7 +18,7 @@
 #include "commands/commands_common.h"
 #include "commands/delete.h"
 #include "commands/insert.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "commands/parse_error.h"
 #include "commands/update.h"
 #include "metadata/collection.h"
@@ -243,7 +243,7 @@ ParseFindAndModifyMessage(pgbson *message)
 		{
 			if (!BSON_ITER_HOLDS_UTF8(&messageIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("collection name has invalid type %s",
 									   BsonIterTypeName(&messageIter))));
 			}
@@ -251,7 +251,7 @@ ParseFindAndModifyMessage(pgbson *message)
 			spec.collectionName = bson_iter_dup_utf8(&messageIter, NULL);
 			if (strlen(spec.collectionName) == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 								errmsg("Invalid empty namespace specified")));
 			}
 		}
@@ -284,7 +284,7 @@ ParseFindAndModifyMessage(pgbson *message)
 			if (!BSON_ITER_HOLDS_DOCUMENT(&messageIter) &&
 				!BSON_ITER_HOLDS_ARRAY(&messageIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg("Update argument must be either an "
 									   "object or an array")));
 			}
@@ -321,7 +321,7 @@ ParseFindAndModifyMessage(pgbson *message)
 		{
 			if (BSON_ITER_HOLDS_NULL(&messageIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
 									"Invalid parameter. expected an object (arrayFilters)")));
 			}
@@ -335,7 +335,7 @@ ParseFindAndModifyMessage(pgbson *message)
 		else if (!SkipFailOnCollation && strcmp(key, "collation") == 0)
 		{
 			/* If Collation is not enabled, it is silently ignored */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("findAndModify.collation is not implemented yet")));
 		}
 		else
@@ -370,13 +370,13 @@ ParseFindAndModifyMessage(pgbson *message)
 			const char *notImplementedOption = NotImplementedOptions[i];
 			if (strcmp(key, notImplementedOption) == 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 								errmsg("findAndModify.%s is not implemented yet",
 									   notImplementedOption)));
 			}
 		}
 
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg("BSON field 'findAndModify.%s' is an unknown "
 							   "field", key)));
 	}
@@ -390,21 +390,21 @@ ParseFindAndModifyMessage(pgbson *message)
 	{
 		if (spec.update != NULL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Cannot specify both an update and "
 								   "remove=true")));
 		}
 
 		if (spec.upsert)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Cannot specify both upsert=true and "
 								   "remove=true")));
 		}
 
 		if (spec.returnNewDocument)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Cannot specify both new=true and "
 								   "remove=true; 'remove' always returns "
 								   "the deleted document")));
@@ -414,7 +414,7 @@ ParseFindAndModifyMessage(pgbson *message)
 	{
 		if (spec.update == NULL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("Either an update or remove=true must be "
 								   "specified")));
 		}
@@ -445,7 +445,7 @@ ProcessFindAndModifySpec(MongoCollection *collection, FindAndModifySpec *spec,
 
 	if (!hasShardKeyValueFilter)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_SHARDKEYNOTFOUND),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_SHARDKEYNOTFOUND),
 						errmsg("Query for sharded findAndModify must "
 							   "contain the shard key")));
 	}

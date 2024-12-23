@@ -220,7 +220,7 @@ bson_dollar_extract_merge_filter(PG_FUNCTION_ARGS)
 			PG_RETURN_NULL();
 		}
 
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51132),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51132),
 						errmsg(
 							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
 						errdetail_log(
@@ -234,7 +234,7 @@ bson_dollar_extract_merge_filter(PG_FUNCTION_ARGS)
 
 	if (filterElement.bsonValue.value_type == BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51185),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51185),
 						errmsg(
 							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
 						errdetail_log(
@@ -243,7 +243,7 @@ bson_dollar_extract_merge_filter(PG_FUNCTION_ARGS)
 	else if (filterElement.bsonValue.value_type == BSON_TYPE_NULL ||
 			 filterElement.bsonValue.value_type == BSON_TYPE_UNDEFINED)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51132),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51132),
 						errmsg(
 							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
 						errdetail_log(
@@ -342,7 +342,7 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 			if (!bson_iter_next(&iter) || strcmp(bson_iter_key(&iter), "_id") != 0)
 			{
 				/* In target document we expect _id to be first field. */
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 								errmsg(
 									"$merge write error: target document missing _id field as first field"),
 								errdetail_log(
@@ -450,15 +450,15 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 		case WhenMatched_KEEPEXISTING:
 		{
 			/* we are not suppose to reach here if action is `WhenMatched_KEEPEXISTING` we should set `DO NOTHING` Action of PG */
-			ereport(ERROR, errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
-																	  "whenMathed KeepEXISTING should not reach here"),
-																  errdetail_log(
-																	  "whenMathed KeepEXISTING should not reach here")));
+			ereport(ERROR, errcode(ERRCODE_DOCUMENTDB_INTERNALERROR), (errmsg(
+																		   "whenMathed KeepEXISTING should not reach here"),
+																	   errdetail_log(
+																		   "whenMathed KeepEXISTING should not reach here")));
 		}
 
 		case WhenMatched_FAIL:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DUPLICATEKEY),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DUPLICATEKEY),
 							errmsg(
 								"$merge with whenMatched: fail found an existing document with the same values for the 'on' fields"),
 							errdetail_log(
@@ -468,7 +468,7 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 		case WhenMatched_PIPELINE:
 		case WhenMatched_LET:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"merge, pipeline and Let option not supported yet in whenMatched field of $merge aggreagtion stage"),
 							errdetail_log(
@@ -477,10 +477,10 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 
 		default:
 		{
-			ereport(ERROR, errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
-																	  "Unrecognized WhenMatched value"),
-																  errdetail_log(
-																	  "Unrecognized WhenMatched value")));
+			ereport(ERROR, errcode(ERRCODE_DOCUMENTDB_INTERNALERROR), (errmsg(
+																		   "Unrecognized WhenMatched value"),
+																	   errdetail_log(
+																		   "Unrecognized WhenMatched value")));
 		}
 	}
 
@@ -497,7 +497,7 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 Datum
 bson_dollar_merge_fail_when_not_matched(PG_FUNCTION_ARGS)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_MERGESTAGENOMATCHINGDOCUMENT),
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_MERGESTAGENOMATCHINGDOCUMENT),
 					errmsg(
 						"$merge could not find a matching document in the target collection for at least one document in the source collection"),
 					errdetail_log(
@@ -540,14 +540,14 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 
 	if (IsCollationApplicable(context->collationString))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED), errmsg(
 							"collation is not supported with $merge yet")));
 	}
 
 	bool isTopLevel = true;
 	if (IsInTransactionBlock(isTopLevel))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_OPERATIONNOTSUPPORTEDINTRANSACTION),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_OPERATIONNOTSUPPORTEDINTRANSACTION),
 						errmsg("$merge cannot be used in a transaction")));
 	}
 
@@ -588,7 +588,7 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"$merge target collection create not supported yet, Please create target collection first and try again"),
 							errdetail_log(
@@ -599,7 +599,7 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 	{
 		if (targetCollection->viewDefinition != NULL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTEDONVIEW),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTEDONVIEW),
 							errmsg("Namespace %s.%s is a view, not a collection",
 								   targetCollection->name.databaseName,
 								   targetCollection->name.collectionName),
@@ -609,7 +609,7 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 		}
 		else if (targetCollection->shardKey != NULL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"$merge for sharded output collection not supported yet"),
 							errdetail_log(
@@ -813,7 +813,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT && existingValue->value_type !=
 		BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg(
 							"$merge requires a string or object argument, but found %s",
 							BsonTypeName(
@@ -870,7 +870,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 
 					if (innerValue->value_type != BSON_TYPE_UTF8)
 					{
-						ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 										errmsg(
 											"BSON field 'into.%s' is the wrong type '%s', expected type 'string",
 											innerKey, BsonTypeName(value->value_type)),
@@ -895,7 +895,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 					}
 					else
 					{
-						ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
 										errmsg("BSON field 'into.%s' is an unknown field",
 											   innerKey),
 										errdetail_log(
@@ -906,7 +906,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 
 				if (args->targetCollection.length == 0)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51178),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51178),
 									errmsg(
 										"$merge 'into' field must specify a 'coll' that is not empty, null or undefined"),
 									errdetail_log(
@@ -915,7 +915,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51178),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51178),
 								errmsg(
 									"$merge 'into' field  must be either a string or an object, but found %s",
 									BsonTypeName(value->value_type)),
@@ -935,7 +935,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 			else if (!EnableMergeAcrossDB && !StringViewEquals(&currentDBName,
 															   &args->targetDB))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 								errmsg("merge is not supported across databases")));
 			}
 		}
@@ -944,7 +944,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 			if (value->value_type != BSON_TYPE_UTF8 && value->value_type !=
 				BSON_TYPE_ARRAY)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51186),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51186),
 								errmsg(
 									"$merge 'on' field  must be either a string or an array of strings, but found %s",
 									BsonTypeName(value->value_type)),
@@ -965,7 +965,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 					const bson_value_t *onValuesElement = bson_iter_value(&onValuesIter);
 					if (onValuesElement->value_type != BSON_TYPE_UTF8)
 					{
-						ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51134),
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51134),
 										errmsg(
 											"$merge 'on' array elements must be strings, but found %s",
 											BsonTypeName(onValuesElement->value_type)),
@@ -977,7 +977,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 
 				if (!atLeastOneElement)
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51187),
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51187),
 									errmsg(
 										"If explicitly specifying $merge 'on', must include at least one field"),
 									errdetail_log(
@@ -990,7 +990,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 		}
 		else if (strcmp(key, "let") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("let option is not supported"),
 							errdetail_log("let option is not supported")));
 		}
@@ -998,7 +998,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 		{
 			if (value->value_type == BSON_TYPE_ARRAY)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 								errmsg(
 									"$merge 'whenMatched' with 'pipeline' not supported yet"),
 								errdetail_log(
@@ -1007,7 +1007,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 			else if (value->value_type != BSON_TYPE_UTF8)
 			{
 				/* TODO : Modify error text when we support pipeline. Replace `must be string` with `must be either a string or array` */
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51191),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51191),
 								errmsg(
 									"$merge 'whenMatched' field  must be string, but found %s",
 									BsonTypeName(
@@ -1037,7 +1037,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"Enumeration value '%s' for field 'whenMatched' is not a valid value.",
 									value->value.v_utf8.str),
@@ -1050,7 +1050,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 		{
 			if (value->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 								errmsg(
 									"BSON field '$merge.whenNotMatched' is the wrong type '%s', expected type 'string'",
 									BsonTypeName(value->value_type)),
@@ -1073,7 +1073,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"Enumeration value '%s' for field '$merge.whenNotMatched' is not a valid value",
 									value->value.v_utf8.str),
@@ -1084,7 +1084,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 							errmsg("BSON field '$merge.%s' is an unknown field", key),
 							errdetail_log("BSON field '$merge.%s' is an unknown field",
 										  key)));
@@ -1093,7 +1093,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 
 	if (args->targetCollection.length == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414),
 						errmsg(
 							"BSON field '$merge.into' is missing but a required field"),
 						errdetail_log(
@@ -1351,7 +1351,7 @@ WriteJoinConditionToQueryDollarMerge(Query *query,
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
 							"on field in $merge stage must be either a string or an array of strings, but found %s",
 							BsonTypeName(mergeArgs.on.value_type)),
@@ -1503,7 +1503,7 @@ VaildateMergeOnFieldValues(const bson_value_t *onValues, uint64 collectionId)
 
 	if (!foundRequiredIndex)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51183),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51183),
 						errmsg(
 							"Cannot find index to verify that join fields will be unique"),
 						errdetail_log(
@@ -1637,7 +1637,7 @@ InitHashTableFromStringArray(const bson_value_t *inputKeyArray, int arraySize)
 
 		if (found)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31465),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31465),
 							errmsg(
 								"Found a duplicate field %s", value.string),
 							errdetail_log(
@@ -1658,7 +1658,7 @@ ValidatePreOutputStages(Query *query)
 	/* An example of this could be when the target collection for the $lookup operation is missing, and the empty_data_table function is invoked. */
 	if (contain_mutable_functions((Node *) query))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
 							"The `$merge` stage is not supported with this command. If your query references any non-existent collections, please create them and try again."),
 						errdetail_log(
@@ -1686,7 +1686,7 @@ MergeQueryCTEWalker(Node *node, void *context)
 
 		if (query->hasRecursive)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"$graphLookup is not supported with $merge stage yet."),
 							errdetail_log(
@@ -1714,7 +1714,7 @@ ValidateFinalPgbsonBeforeWriting(const pgbson *finalBson)
 		uint32_t size = PgbsonGetBsonSize(finalBson);
 		if (size > BSON_MAX_ALLOWED_SIZE)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BSONOBJECTTOOLARGE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BSONOBJECTTOOLARGE),
 							errmsg("Size %u is larger than MaxDocumentSize %u",
 								   size, BSON_MAX_ALLOWED_SIZE)));
 		}
@@ -1747,7 +1747,7 @@ ValidateAndAddObjectIdToWriter(pgbson_writer *writer,
 											 &objectIdFromTargetDocument) &&
 		strcmp(objectIdFromTargetDocument.path, "_id") != 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Something went wrong, Expecting object ID to be the first field in the target document"),
 						errdetail_log(
@@ -1768,7 +1768,7 @@ ValidateAndAddObjectIdToWriter(pgbson_writer *writer,
 		{
 			/* We validate the object ID in failure scenarios to ensure that if the ID is incorrect, we return the appropriate error code initially. */
 			ValidateIdField(value);
-			ereport(ERROR, (errcode(ERRCODE_HELIO_IMMUTABLEFIELD),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_IMMUTABLEFIELD),
 							errmsg(
 								"$merge failed to update the matching document, did you attempt to modify the _id or the shard key?")));
 		}
@@ -1823,7 +1823,7 @@ HandleOut(const bson_value_t *existingValue, Query *query,
 
 		if (targetCollection->viewDefinition != NULL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTEDONVIEW),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTEDONVIEW),
 							errmsg("Namespace %s.%s is a view, not a collection",
 								   targetCollection->name.databaseName,
 								   targetCollection->name.collectionName),
@@ -1833,13 +1833,13 @@ HandleOut(const bson_value_t *existingValue, Query *query,
 		}
 		else if (targetCollection && targetCollection->shardKey != NULL)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28769),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28769),
 							errmsg("%s.%s cannot be sharded", outArgs.targetDB.string,
 								   outArgs.targetCollection.string)));
 		}
 		else if (isSourceSameAsTarget)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"The target collection cannot be the same as the source collection in $out stage.")));
 		}
@@ -1935,7 +1935,7 @@ ParseOutStage(const bson_value_t *existingValue, const char *currentNameSpace,
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT && existingValue->value_type !=
 		BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16990),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16990),
 						errmsg(
 							"$out only supports a string or object argument, but found %s",
 							BsonTypeName(existingValue->value_type))));
@@ -1972,7 +1972,7 @@ ParseOutStage(const bson_value_t *existingValue, const char *currentNameSpace,
 		{
 			if (bsonValue->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION13111),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION13111),
 								errmsg("wrong type for field (db) %s != string",
 									   BsonTypeName(bsonValue->value_type))));
 			}
@@ -1986,7 +1986,7 @@ ParseOutStage(const bson_value_t *existingValue, const char *currentNameSpace,
 		{
 			if (bsonValue->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION13111),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION13111),
 								errmsg("wrong type for field (coll) %s != string",
 									   BsonTypeName(bsonValue->value_type))));
 			}
@@ -1998,7 +1998,7 @@ ParseOutStage(const bson_value_t *existingValue, const char *currentNameSpace,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16990),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16990),
 							errmsg(
 								"If an object is passed to $out it must have exactly 2 fields: 'db' and 'coll'")));
 		}
@@ -2006,7 +2006,7 @@ ParseOutStage(const bson_value_t *existingValue, const char *currentNameSpace,
 
 	if (args->targetDB.length == 0 || args->targetCollection.length == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16994),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16994),
 						errmsg(
 							"If an object is passed to $out it must have exactly 2 fields: 'db' and 'coll'")));
 	}

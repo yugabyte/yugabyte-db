@@ -24,7 +24,7 @@
 #include "metadata/collection.h"
 #include "metadata/index.h"
 #include "metadata/metadata_cache.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "utils/feature_counter.h"
 #include "vector/vector_common.h"
 #include "vector/vector_spec.h"
@@ -277,7 +277,7 @@ ParseIVFCreationSpec(bson_iter_t *vectorOptionsIter,
 		{
 			if (!BsonValueIsNumber(keyValue))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 								errmsg("%s must be a number not %s",
 									   VECTOR_PARAMETER_NAME_IVF_NLISTS,
 									   BsonTypeName(bson_iter_type(vectorOptionsIter)))));
@@ -287,7 +287,7 @@ ParseIVFCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->numLists < IVFFLAT_MIN_LISTS)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 								errmsg(
 									"%s must be greater than or equal to %d not %d",
 									VECTOR_PARAMETER_NAME_IVF_NLISTS,
@@ -297,7 +297,7 @@ ParseIVFCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->numLists > IVFFLAT_MAX_LISTS)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 								errmsg(
 									"%s must be less or equal than or equal to %d not %d",
 									VECTOR_PARAMETER_NAME_IVF_NLISTS,
@@ -325,7 +325,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 	if (!EnableVectorHNSWIndex)
 	{
 		/* Safe guard against the helio_api.enableVectorHNSWIndex GUC */
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
 							"hnsw index is not supported for this cluster tier")));
 	}
@@ -346,7 +346,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 		{
 			if (!BsonValueIsNumber(keyValue))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 								errmsg("%s must be a number not %s",
 									   VECTOR_PARAMETER_NAME_HNSW_M,
 									   BsonTypeName(bson_iter_type(vectorOptionsIter)))));
@@ -356,7 +356,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->m < HNSW_MIN_M)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 								errmsg("%s must be greater than or equal to %d not %d",
 									   VECTOR_PARAMETER_NAME_HNSW_M,
 									   HNSW_MIN_M,
@@ -365,7 +365,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->m > HNSW_MAX_M)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 								errmsg("%s must be less than or equal to %d not %d",
 									   VECTOR_PARAMETER_NAME_HNSW_M,
 									   HNSW_MAX_M,
@@ -377,7 +377,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 		{
 			if (!BsonValueIsNumber(keyValue))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 								errmsg("%s must be a number not %s",
 									   VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION,
 									   BsonTypeName(bson_iter_type(vectorOptionsIter)))));
@@ -388,7 +388,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->efConstruction < HNSW_MIN_EF_CONSTRUCTION)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 								errmsg(
 									"%s must be greater than or equal to %d not %d",
 									VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION,
@@ -398,7 +398,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->efConstruction > HNSW_MAX_EF_CONSTRUCTION)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 								errmsg(
 									"%s must be less than or equal to %d not %d",
 									VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION,
@@ -423,7 +423,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 	/* Check efConstruction is greater than or equal to m * 2 */
 	if ((vectorIndexOptions->efConstruction < vectorIndexOptions->m * 2))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CANNOTCREATEINDEX),
 						errmsg(
 							"%s must be greater than or equal to 2 * m for vector-hnsw indexes",
 							VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION)));
@@ -490,7 +490,7 @@ ParseIVFIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 		{
 			if (!BSON_ITER_HOLDS_NUMBER(&specIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"$nProbes must be an integer value.")));
 			}
@@ -499,7 +499,7 @@ ParseIVFIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 
 			if (nProbes < IVFFLAT_MIN_NPROBES)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"$nProbes must be greater than or equal to %d.",
 									IVFFLAT_MIN_NPROBES)));
@@ -507,7 +507,7 @@ ParseIVFIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 
 			if (nProbes > IVFFLAT_MAX_NPROBES)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"$nProbes must be less than or equal to %d.",
 									IVFFLAT_MAX_NPROBES)));
@@ -515,7 +515,7 @@ ParseIVFIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 
 			if (searchSpec != NULL)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg("Only one search option can be specified. "
 									   "You have specified options nProbes already,"
 									   " and the second option nProbes is not allowed.")));
@@ -542,7 +542,7 @@ ParseHNSWIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 	if (!EnableVectorHNSWIndex)
 	{
 		/* Safe guard against the helio_api.enableVectorHNSWIndex GUC */
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
 							"hnsw index is not supported."),
 						errdetail(
@@ -566,7 +566,7 @@ ParseHNSWIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 		{
 			if (!BSON_ITER_HOLDS_NUMBER(&specIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"$efSearch must be an integer value.")));
 			}
@@ -575,7 +575,7 @@ ParseHNSWIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 
 			if (efSearch < HNSW_MIN_EF_SEARCH)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"$efSearch must be greater than or equal to %d.",
 									HNSW_MIN_EF_SEARCH)));
@@ -583,7 +583,7 @@ ParseHNSWIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 
 			if (efSearch > HNSW_MAX_EF_SEARCH)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg(
 									"$efSearch must be less than or equal to %d.",
 									HNSW_MAX_EF_SEARCH)));
@@ -591,7 +591,7 @@ ParseHNSWIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 
 			if (searchSpec != NULL)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg("Only one search option can be specified. "
 									   "You have specified options efSearch already, "
 									   "and the second option efSearch is not allowed.")));
@@ -626,7 +626,7 @@ GetIVFSimilarityOpOidByFamilyOid(Oid operatorFamilyOid)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Unsupported vector search operator for ivf index"),
 						errdetail_log(
@@ -653,7 +653,7 @@ GetHNSWSimilarityOpOidByFamilyOid(Oid operatorFamilyOid)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Unsupported vector search operator for hnsw index"),
 						errdetail_log(

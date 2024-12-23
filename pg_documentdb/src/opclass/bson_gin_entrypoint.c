@@ -33,7 +33,7 @@
 #include "opclass/helio_gin_index_term.h"
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "metadata/metadata_cache.h"
 #include "collation/collation.h"
 
@@ -793,7 +793,7 @@ ValidateIndexForQualifierValue(bytea *indexOptions, Datum queryValue, BsonIndexS
 
 				if (StringViewEndsWith(&fieldPathName, '.'))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_DOTTEDFIELDNAME), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOTTEDFIELDNAME), errmsg(
 										"FieldPath must not end with a '.'.")));
 				}
 			}
@@ -889,7 +889,7 @@ ValidateIndexForQualifierPathForDollarIn(bytea *indexOptions, const StringView *
 			{
 				if (StringViewEndsWith(queryPath, '.'))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_DOTTEDFIELDNAME), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOTTEDFIELDNAME), errmsg(
 										"FieldPath must not end with a '.'.")));
 				}
 			}
@@ -1240,7 +1240,7 @@ ValidateWildcardProjectPathSpec(const char *prefix)
 	int32_t stringLength = strlen(prefix);
 	if (stringLength < 3)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"at least one filter path must be specified")));
 	}
 }
@@ -1262,7 +1262,7 @@ FillWildcardProjectPathSpec(const char *prefix, void *buffer)
 {
 	if (prefix == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"at least one filter path must be specified")));
 	}
 
@@ -1277,7 +1277,7 @@ FillWildcardProjectPathSpec(const char *prefix, void *buffer)
 	{
 		if (!BSON_ITER_HOLDS_UTF8(&bsonIterator))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"filter must have a valid string path")));
 		}
 
@@ -1285,7 +1285,7 @@ FillWildcardProjectPathSpec(const char *prefix, void *buffer)
 		bson_iter_utf8(&bsonIterator, &pathLength);
 		if (pathLength == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 								"filter must have a valid path")));
 		}
 

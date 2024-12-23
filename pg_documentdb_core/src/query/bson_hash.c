@@ -16,7 +16,7 @@
 
 #include "io/bson_hash.h"
 #include "types/decimal128.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 /* --------------------------------------------------------- */
 /* Data-types */
@@ -716,7 +716,7 @@ HashBsonValueCompare(const bson_value_t *value,
 
 		default:
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
 								"invalid bson type for hash value bson- not supported yet"),
 							errdetail_log(

@@ -48,7 +48,7 @@
 
 #include "io/helio_bson_core.h"
 #include "io/bson_hash.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "utils/version_utils.h"
 #include "utils/hashset_utils.h"
 #include "opclass/helio_bson_gin_private.h"
@@ -353,7 +353,7 @@ generate_unique_shard_document(PG_FUNCTION_ARGS)
 
 		if (indexColumn >= INDEX_MAX_KEYS)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"Cannot have more than 32 columns in the composite index extraction")));
 		}
@@ -400,7 +400,7 @@ generate_unique_shard_document(PG_FUNCTION_ARGS)
 			InitializeBsonIndexTerm(termBson, &indexTerm);
 			if (indexTerm.isIndexTermMetadata)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 								errmsg(
 									"Unexpected - found metadata term in index build for unique_shard_document"),
 								errdetail_log(
@@ -460,7 +460,7 @@ ExtractUniqueShardTermsFromInput(pgbson *input, int32_t *nentries, Pointer **ext
 	/* First field is the shard key value */
 	if (!bson_iter_next(&specIter))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"$shard_key_value is a required field for unique shard key path")));
 	}
@@ -471,7 +471,7 @@ ExtractUniqueShardTermsFromInput(pgbson *input, int32_t *nentries, Pointer **ext
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"$shard_key_value must be the first field in the document")));
 	}
@@ -479,7 +479,7 @@ ExtractUniqueShardTermsFromInput(pgbson *input, int32_t *nentries, Pointer **ext
 	/* next field is numTerms */
 	if (!bson_iter_next(&specIter))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"$numTerms is a required field for unique shard key path")));
 	}
@@ -490,14 +490,14 @@ ExtractUniqueShardTermsFromInput(pgbson *input, int32_t *nentries, Pointer **ext
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("$numTerms must be the second field in the document")));
 	}
 
 	/* next field is numTerms */
 	if (!bson_iter_next(&specIter))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"$numPaths is a required field for unique shard key path")));
 	}
@@ -508,7 +508,7 @@ ExtractUniqueShardTermsFromInput(pgbson *input, int32_t *nentries, Pointer **ext
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg("$numPaths must be the third field in the document")));
 	}
 
@@ -530,7 +530,7 @@ ExtractUniqueShardTermsFromInput(pgbson *input, int32_t *nentries, Pointer **ext
 	{
 		if (pathIndex >= numPaths)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg("numPaths specified was >= indexPaths encountered"),
 							errdetail_log(
 								"numPaths specified %d was >= indexPaths %d encountered",
@@ -542,7 +542,7 @@ ExtractUniqueShardTermsFromInput(pgbson *input, int32_t *nentries, Pointer **ext
 
 		if (!BSON_ITER_HOLDS_ARRAY(&specIter))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg(
 								"term values to generate for a given key should be an array")));
 		}
@@ -583,7 +583,7 @@ ExtractUniqueShardTermsFromInput(pgbson *input, int32_t *nentries, Pointer **ext
 
 			if (index > numTerms)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 								errmsg(
 									"Invalid number of terms specified. Specified %d terms but found at least %d terms",
 									numTerms, index),
@@ -699,13 +699,13 @@ ValidateExclusionPathSpec(const char *prefix)
 	int32_t stringLength = strlen(prefix);
 	if (stringLength == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Unique hash index path must not be empty")));
 	}
 
 	if (prefix[stringLength - 1] == '.')
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"Unique hash path must not have a trailing '.'")));
 	}
 }

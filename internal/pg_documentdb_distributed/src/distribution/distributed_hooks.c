@@ -20,7 +20,7 @@
 #include "utils/guc_utils.h"
 #include "utils/version_utils.h"
 #include "metadata/metadata_cache.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 #include "metadata/collection.h"
 #include "api_hooks_def.h"
@@ -220,7 +220,7 @@ DistributePostgresTableCore(const char *postgresTable, const char *distributionC
 
 	if (distributionColumnUsed == NULL && shardCount != 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 						errmsg(
 							"Unexpected - distribution column is null but shardCount is %d",
 							shardCount),

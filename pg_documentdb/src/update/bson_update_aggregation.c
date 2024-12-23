@@ -15,7 +15,7 @@
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
 #include "aggregation/bson_project.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 #include "update/bson_update_common.h"
 #include "commands/commands_common.h"
 
@@ -170,7 +170,7 @@ GetAggregationPipelineUpdateState(pgbson *updateSpec)
 	if (!BSON_ITER_HOLDS_ARRAY(&updateIterator) ||
 		!bson_iter_recurse(&updateIterator, &updateIterator))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"aggregation pipeline should be an array")));
 	}
 
@@ -207,7 +207,7 @@ GetAggregationPipelineUpdateState(pgbson *updateSpec)
 
 			if (AggregationOperators[i].populateFunc == NULL)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED), errmsg(
 									"%s not supported yet",
 									aggregationElement.path), errdetail_log(
 									"%s not supported yet",
@@ -228,7 +228,7 @@ GetAggregationPipelineUpdateState(pgbson *updateSpec)
 
 		if (!operatorFound)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS), errmsg(
 								"Invalid aggregation pipeline operator for update %s",
 								aggregationElement.path)));
 		}
@@ -378,7 +378,7 @@ PopulateDollarProjectState(const bson_value_t *projectionValue,
 {
 	if (projectionValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"$project should be a document")));
 	}
 
@@ -421,7 +421,7 @@ PopulateDollarAddFieldsState(const bson_value_t *addFieldsValue,
 {
 	if (addFieldsValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40272), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40272), errmsg(
 							"$addFields should be a document")));
 	}
 
@@ -445,7 +445,7 @@ PopulateDollarReplaceRootState(const bson_value_t *replaceRootValue,
 {
 	if (replaceRootValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40229), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40229), errmsg(
 							"$replaceRoot should be a document")));
 	}
 
@@ -503,7 +503,7 @@ ValidateReplaceRootElement(const bson_value_t *value)
 
 			if (StringViewContains(&keyView, '.'))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("FieldPath field names may not contain '.'."
 									   " Consider using $getField or $setField")));
 			}

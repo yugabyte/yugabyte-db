@@ -154,7 +154,7 @@ GenerateListCollectionsQuery(Datum databaseDatum, pgbson *listCollectionsSpec,
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
 							errmsg("BSON field listCollections.%.*s is an unknown field",
 								   keyView.length, keyView.string),
 							errdetail_log(
@@ -212,7 +212,7 @@ GenerateListIndexesQuery(Datum databaseDatum, pgbson *listIndexesSpec,
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
 							errmsg("BSON field listIndexes.%.*s is an unknown field",
 								   keyView.length, keyView.string),
 							errdetail_log(
@@ -245,7 +245,7 @@ HandleCurrentOp(const bson_value_t *existingValue, Query *query,
 
 	if (context->stageNum != 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40602),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40602),
 						errmsg(
 							"$currentOp is only valid as the first stage in the pipeline.")));
 	}
@@ -254,7 +254,7 @@ HandleCurrentOp(const bson_value_t *existingValue, Query *query,
 	if (strcmp(databaseStr, "admin") != 0 ||
 		query->jointree->fromlist != NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 						errmsg(
 							"$currentOp must be run against the 'admin' database with {aggregate: 1}")));
 	}
@@ -338,7 +338,7 @@ GenerateBaseListIndexesQuery(Datum databaseDatum, const StringView *collectionNa
 																NoLock);
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTFOUND),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACENOTFOUND),
 						errmsg("ns does not exist: %s", context->namespaceName)));
 	}
 
@@ -558,7 +558,7 @@ HandleCollStats(const bson_value_t *existingValue, Query *query,
 
 	if (context->stageNum != 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40602),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40602),
 						errmsg(
 							"$collStats is only valid as the first stage in the pipeline.")));
 	}
@@ -592,14 +592,14 @@ HandleIndexStats(const bson_value_t *existingValue, Query *query,
 
 	if (!IsBsonValueEmptyDocument(existingValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28803),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28803),
 						errmsg(
 							"The $indexStats stage specification must be an empty object")));
 	}
 
 	if (context->stageNum != 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40602),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40602),
 						errmsg(
 							"$indexStats is only valid as the first stage in the pipeline.")));
 	}
@@ -607,7 +607,7 @@ HandleIndexStats(const bson_value_t *existingValue, Query *query,
 	bool isTopLevel = true;
 	if (IsInTransactionBlock(isTopLevel))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_OPERATIONNOTSUPPORTEDINTRANSACTION),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_OPERATIONNOTSUPPORTEDINTRANSACTION),
 						errmsg("$indexStats cannot be used in a transaction")));
 	}
 

@@ -14,7 +14,7 @@
 #include "io/helio_bson_core.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
-#include "utils/helio_errors.h"
+#include "utils/documentdb_errors.h"
 
 /* --------------------------------------------------------- */
 /* Type definitions */
@@ -47,7 +47,8 @@ ParseDollarIfNull(const bson_value_t *argument, AggregationExpressionData *data,
 
 	if (numArgs < 2)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARIFNULLREQUIRESATLEASTTWOARGS), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARIFNULLREQUIRESATLEASTTWOARGS),
+						errmsg(
 							"$ifNull needs at least two arguments, had: %d",
 							numArgs)));
 	}
@@ -171,24 +172,25 @@ ParseDollarCond(const bson_value_t *argument, AggregationExpressionData *data,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARCONDBADPARAMETER), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARCONDBADPARAMETER),
+								errmsg(
 									"Unrecognized parameter to $cond: %s", key)));
 			}
 		}
 
 		if (isIfMissing)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARCONDMISSINGIFPARAMETER),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARCONDMISSINGIFPARAMETER),
 							errmsg("Missing 'if' parameter to $cond")));
 		}
 		else if (isThenMissing)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARCONDMISSINGTHENPARAMETER),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARCONDMISSINGTHENPARAMETER),
 							errmsg("Missing 'then' parameter to $cond")));
 		}
 		else if (isElseMissing)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARCONDMISSINGELSEPARAMETER),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARCONDMISSINGELSEPARAMETER),
 							errmsg("Missing 'else' parameter to $cond")));
 		}
 
@@ -283,7 +285,7 @@ ParseDollarSwitch(const bson_value_t *argument, AggregationExpressionData *data,
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSWITCHREQUIRESOBJECT), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSWITCHREQUIRESOBJECT), errmsg(
 							"$switch requires an object as an argument, found: %s",
 							BsonTypeName(argument->value_type))));
 	}
@@ -302,7 +304,7 @@ ParseDollarSwitch(const bson_value_t *argument, AggregationExpressionData *data,
 			if (!BSON_ITER_HOLDS_ARRAY(&documentIter))
 			{
 				ereport(ERROR, (errcode(
-									ERRCODE_HELIO_DOLLARSWITCHREQUIRESARRAYFORBRANCHES),
+									ERRCODE_DOCUMENTDB_DOLLARSWITCHREQUIRESARRAYFORBRANCHES),
 								errmsg(
 									"$switch expected an array for 'branches', found: %s",
 									BsonTypeName(bson_iter_type(&documentIter)))));
@@ -348,14 +350,14 @@ ParseDollarSwitch(const bson_value_t *argument, AggregationExpressionData *data,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSWITCHBADARGUMENT), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSWITCHBADARGUMENT), errmsg(
 								"$switch found an unknown argument: %s", key)));
 		}
 	}
 
 	if (list_length(arguments) <= 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSWITCHREQUIRESATLEASTONEBRANCH),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARSWITCHREQUIRESATLEASTONEBRANCH),
 						errmsg(
 							"$switch requires at least one branch.")));
 	}
@@ -396,7 +398,7 @@ ParseDollarSwitch(const bson_value_t *argument, AggregationExpressionData *data,
 		if (!foundTrueCase)
 		{
 			ereport(ERROR, (errcode(
-								ERRCODE_HELIO_DOLLARSWITCHNOMATCHINGBRANCHANDNODEFAULT),
+								ERRCODE_DOCUMENTDB_DOLLARSWITCHNOMATCHINGBRANCHANDNODEFAULT),
 							errmsg(
 								"$switch could not find a matching branch for an input, and no default was specified.")));
 		}
@@ -466,7 +468,8 @@ HandlePreParsedDollarSwitch(pgbson *doc, void *arguments,
 	/* If no match was found, then no switch branch matched and no default was provided.*/
 	if (!foundTrueCase)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSWITCHNOMATCHINGBRANCHANDNODEFAULT),
+		ereport(ERROR, (errcode(
+							ERRCODE_DOCUMENTDB_DOLLARSWITCHNOMATCHINGBRANCHANDNODEFAULT),
 						errmsg(
 							"$switch could not find a matching branch for an input, and no default was specified.")));
 	}
@@ -485,7 +488,8 @@ ParseBranchForSwitch(bson_iter_t *iter, bool *allArgumentsConstant,
 {
 	if (!BSON_ITER_HOLDS_DOCUMENT(iter))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSWITCHREQUIRESOBJECTFOREACHBRANCH),
+		ereport(ERROR, (errcode(
+							ERRCODE_DOCUMENTDB_DOLLARSWITCHREQUIRESOBJECTFOREACHBRANCH),
 						errmsg(
 							"$switch expected each branch to be an object, found: %s",
 							BsonTypeName(bson_iter_type(iter)))));
@@ -524,7 +528,8 @@ ParseBranchForSwitch(bson_iter_t *iter, bool *allArgumentsConstant,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSWITCHUNKNOWNARGUMENTFORBRANCH),
+			ereport(ERROR, (errcode(
+								ERRCODE_DOCUMENTDB_DOLLARSWITCHUNKNOWNARGUMENTFORBRANCH),
 							errmsg(
 								"$switch found an unknown argument to a branch: %s",
 								key)));
@@ -534,14 +539,14 @@ ParseBranchForSwitch(bson_iter_t *iter, bool *allArgumentsConstant,
 	if (isCaseMissing)
 	{
 		ereport(ERROR, (errcode(
-							ERRCODE_HELIO_DOLLARSWITCHREQUIRESCASEEXPRESSIONFORBRANCH),
+							ERRCODE_DOCUMENTDB_DOLLARSWITCHREQUIRESCASEEXPRESSIONFORBRANCH),
 						errmsg(
 							"$switch requires each branch have a 'case' expression")));
 	}
 	else if (isThenMissing)
 	{
 		ereport(ERROR, (errcode(
-							ERRCODE_HELIO_DOLLARSWITCHREQUIRESTHENEXPRESSIONFORBRANCH),
+							ERRCODE_DOCUMENTDB_DOLLARSWITCHREQUIRESTHENEXPRESSIONFORBRANCH),
 						errmsg(
 							"$switch requires each branch have a 'then' expression")));
 	}
