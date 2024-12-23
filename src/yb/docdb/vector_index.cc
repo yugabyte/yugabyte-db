@@ -33,8 +33,20 @@
 #include "yb/vector_index/usearch_wrapper.h"
 #include "yb/vector_index/vector_lsm.h"
 
-DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 1024,
+DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
                       "Number of vector in initial vector index chunk");
+
+DEFINE_RUNTIME_PREVIEW_uint32(vector_index_ef, 128,
+    "The \"expansion\" parameter for search");
+
+DEFINE_RUNTIME_PREVIEW_uint32(vector_index_ef_construction, 256,
+    "The \"expansion\" parameter during graph construction");
+
+DEFINE_RUNTIME_PREVIEW_uint32(vector_index_num_neighbors_per_vertex, 32,
+    "Number of neighbors per graph node");
+
+DEFINE_RUNTIME_PREVIEW_uint32(vector_index_num_neighbors_per_vertex_base, 128,
+    "Number of neighbors per graph node in base level graph");
 
 namespace yb::docdb {
 
@@ -48,6 +60,10 @@ auto VectorLSMFactory(size_t dimensions) {
   return [dimensions] {
     vector_index::HNSWOptions hnsw_options = {
       .dimensions = dimensions,
+      .num_neighbors_per_vertex = FLAGS_vector_index_num_neighbors_per_vertex,
+      .num_neighbors_per_vertex_base = FLAGS_vector_index_num_neighbors_per_vertex_base,
+      .ef_construction = FLAGS_vector_index_ef_construction,
+      .ef = FLAGS_vector_index_ef,
     };
     return FactoryImpl::Create(hnsw_options);
   };
