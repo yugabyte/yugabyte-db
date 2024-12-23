@@ -134,6 +134,11 @@ SetupCluster(bool isInitialize)
 	ExtensionVersion lastUpgradeVersion = { 0 };
 	ExtensionVersion installedVersion = { 0 };
 
+	/* Ensure that the cluster_data table is replicated on all nodes
+	 * otherwise, writes to cluster_data will fail.
+	 */
+	EnsureMetadataTableReplicated("collections");
+
 	char *lastUpgradeVersionString = UpdateClusterMetadata(isInitialize);
 	ParseVersionString(&lastUpgradeVersion, lastUpgradeVersionString);
 

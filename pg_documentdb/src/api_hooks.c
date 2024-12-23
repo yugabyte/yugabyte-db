@@ -309,9 +309,10 @@ IsNtoReturnSupported(void)
 
 /*
  * Ensure that the given metadata table is replicated on all nodes
- * as applicable
+ * as applicable.
+ * Returns true if something changed and was replicated.
  */
-void
+bool
 EnsureMetadataTableReplicated(const char *tableName)
 {
 	if (ensure_metadata_table_replicated_hook != NULL)
@@ -320,6 +321,7 @@ EnsureMetadataTableReplicated(const char *tableName)
 	}
 
 	/* Single node default - it's always replicated */
+	return false;
 }
 
 

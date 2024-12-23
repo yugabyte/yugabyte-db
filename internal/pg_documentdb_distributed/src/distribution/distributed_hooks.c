@@ -401,14 +401,9 @@ GetDistributedApplicationNameCore(void)
 }
 
 
-static void
-EnsureMetadataTableReplicatedCore(const char *tableName)
+static bool
+ExecuteMetadataChecksForReferenceTables(const char *tableName)
 {
-	if (!EnableMetadataReferenceTableSync)
-	{
-		return;
-	}
-
 	/* First get the shard_id for the table */
 	StringInfo queryStringInfo = makeStringInfo();
 	appendStringInfo(queryStringInfo,
@@ -421,7 +416,7 @@ EnsureMetadataTableReplicatedCore(const char *tableName)
 
 	if (isNull)
 	{
-		return;
+		return false;
 	}
 
 	int64 shardId = DatumGetInt64(result);
@@ -432,7 +427,7 @@ EnsureMetadataTableReplicatedCore(const char *tableName)
 		false, SPI_OK_SELECT, &isNull);
 	if (isNull)
 	{
-		return;
+		return false;
 	}
 
 	int numNodes = DatumGetInt32(result);
@@ -445,7 +440,7 @@ EnsureMetadataTableReplicatedCore(const char *tableName)
 										 &isNull);
 	if (isNull)
 	{
-		return;
+		return false;
 	}
 
 	int numPlacements = DatumGetInt32(result);
@@ -455,7 +450,29 @@ EnsureMetadataTableReplicatedCore(const char *tableName)
 		/* There was an add node but the metadata table needed wasn't replicated: Call replicate_reference_tables first */
 		ExtensionExecuteQueryOnLocalhostViaLibPQ(
 			"SELECT pg_catalog.replicate_reference_tables('block_writes')");
+		return true;
 	}
+	else
+	{
+		return false;
+	}
+}
+
+
+static bool
+EnsureMetadataTableReplicatedCore(const char *tableName)
+{
+	if (!EnableMetadataReferenceTableSync)
+	{
+		return false;
+	}
+
+	/* Set min messagees to reduce log spam in tests */
+	int savedGUCLevel = NewGUCNestLevel();
+	SetGUCLocally("client_min_messages", "WARNING");
+	bool result = ExecuteMetadataChecksForReferenceTables(tableName);
+	RollbackGUCChange(savedGUCLevel);
+	return result;
 }
 
 

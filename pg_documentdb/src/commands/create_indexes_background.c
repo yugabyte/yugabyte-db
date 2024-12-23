@@ -152,6 +152,17 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 		PG_RETURN_VOID();
 	}
 
+	/* Before starting, ensure that tables are replicated
+	 * If this action did replicate tables, try again in the
+	 * next loop to ensure the transaction is committed.
+	 */
+	if (EnsureMetadataTableReplicated("collections"))
+	{
+		ereport(LOG, (errmsg(
+						  "Metadata tables were replicated. Retrying index checks in another round.")));
+		PG_RETURN_VOID();
+	}
+
 	List *excludeCollectionIds = NIL;
 	uint64 *collectionIds = GetCollectionIdsForIndexBuild(
 		CREATE_INDEX_COMMAND_TYPE, excludeCollectionIds);

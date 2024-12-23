@@ -146,7 +146,7 @@ bool IsChangeStreamFeatureAvailableAndCompatible(void);
 /*
  * Ensure the given metadata catalog table is replicated.
  */
-void EnsureMetadataTableReplicated(const char *tableName);
+bool EnsureMetadataTableReplicated(const char *tableName);
 
 /*
  * The hook allows the extension to do any additional setup
