@@ -222,7 +222,7 @@ CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith, const
 	                 /*
 	                  * the document
 	                  *
-	                  * NB: Ensure to match MONGO_DATA_TABLE_DOCUMENT_VAR_ contants
+	                  * NB: Ensure to match DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ contants
 	                  *     defined in collection.h if you decide changing definiton
 	                  *     or position of document column.
 	                  */

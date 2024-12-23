@@ -375,9 +375,9 @@ MakeSimpleDocumentVar(void)
 	/* not lives in a subquery */
 	Index varlevelsup = 0;
 
-	return makeVar(varno, MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER,
-				   BsonTypeId(), MONGO_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
-				   MONGO_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
+	return makeVar(varno, DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER,
+				   BsonTypeId(), DOCUMENT_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
+				   DOCUMENT_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
 }
 
 
@@ -2747,7 +2747,7 @@ CheckAndAddIdFilter(List *opArgs, IdFilterWalkerContext *context,
 
 	/* Skip if the qual is not against the document column */
 	Var *firstVar = (Var *) firstArg;
-	if (firstVar->varattno != MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER ||
+	if (firstVar->varattno != DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER ||
 		((Index) firstVar->varno) != context->collectionVarno)
 	{
 		return;

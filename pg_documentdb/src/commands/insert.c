@@ -1420,12 +1420,14 @@ CreateInsertQuery(MongoCollection *collection, Oid shardOid, List *valuesLists)
 	/* Now create the targetlist */
 	query->targetList = list_make4(
 		makeTargetEntry((Expr *) makeVar(2, 1, INT8OID, -1, InvalidOid, 0),
-						MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER,
+						DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER,
 						"shard_key_value", false),
 		makeTargetEntry((Expr *) makeVar(2, 2, BsonTypeId(), -1, InvalidOid, 0),
-						MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER, "object_id", false),
+						DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER, "object_id",
+						false),
 		makeTargetEntry((Expr *) makeVar(2, 3, BsonTypeId(), -1, InvalidOid, 0),
-						MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER, "document", false),
+						DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER, "document",
+						false),
 		makeTargetEntry((Expr *) makeVar(2, 4, TIMESTAMPTZOID, -1, InvalidOid, 0),
 						collection->mongoDataCreationTimeVarAttrNumber, "creation_time",
 						false)

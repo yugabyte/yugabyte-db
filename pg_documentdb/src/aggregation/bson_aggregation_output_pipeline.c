@@ -513,12 +513,12 @@ bson_dollar_merge_fail_when_not_matched(PG_FUNCTION_ARGS)
  * Example mongo command : { $merge: { into: "targetCollection", on: "_id", whenMatched: "replace", whenNotMatched: "insert" } }
  * sql query :
  *
- * MERGE INTO ONLY mongo_data.documents_2 documents_2
+ * MERGE INTO ONLY ApiDataSchemaName.documents_2 documents_2
  * USING (
  *          SELECT collection.document AS document,
  *                 '2'::bigint AS target_shard_key_value,  -- (2 is collection_id of target collection)
  *                  bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id
- *			FROM mongo_data.documents_1 collection
+ *			FROM ApiDataSchemaName.documents_1 collection
  *			WHERE collection.shard_key_value = '1'::bigint
  *		 ) agg_stage_0
  * ON documents_2.shard_key_value OPERATOR(pg_catalog.=) agg_stage_0.target_shard_key_value
@@ -710,7 +710,7 @@ MakeActionWhenMatched(WhenMatchedAction whenMatched, Var *sourceDocVar, Var *tar
 
 	action->targetList = list_make1(
 		makeTargetEntry((Expr *) resultExpr,
-						MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER, "document", false)
+						DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER, "document", false)
 		);
 	return action;
 }
@@ -775,12 +775,14 @@ MakeActionWhenNotMatched(WhenNotMatchedAction whenNotMatched, Var *sourceDocVar,
 	/* for insert operation */
 	action->targetList = list_make4(
 		makeTargetEntry((Expr *) sourceShardKeyVar,
-						MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER,
+						DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER,
 						"target_shard_key_value", false),
 		makeTargetEntry((Expr *) coalesce,
-						MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER, "object_id", false),
+						DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER, "object_id",
+						false),
 		makeTargetEntry((Expr *) addObjecIdFuncExpr,
-						MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER, "document", false),
+						DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER, "document",
+						false),
 		makeTargetEntry((Expr *) nowValue,
 						targetCollection->mongoDataCreationTimeVarAttrNumber,
 						"creation_time",
@@ -1116,7 +1118,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
  * SELECT  collection.document AS document,
  *        '2'::bigint AS target_shard_key_value,  -- (2 is collection_id of target collection)
  *         bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id
- * FROM   mongo_data.documents_1 collection
+ * FROM   ApiDataSchemaName.documents_1 collection
  * WHERE collection.shard_key_value = '1'::bigint
  *
  * TODO : if source and target collection are same we need to add actual shard_key_value column to the query but need to be careful when there are nested stages
@@ -1784,11 +1786,11 @@ ValidateAndAddObjectIdToWriter(pgbson_writer *writer,
  * Example mongo command : { $out: { "db": "targetDb", "coll" : "targetColl" } }
  * sql query :
  *
- * MERGE INTO ONLY mongo_data.documents_3 documents_3
+ * MERGE INTO ONLY ApiDataSchemaName.documents_3 documents_3
  * USING ( SELECT collection.document,
  *            '3'::bigint AS target_shard_key_value,
  *            helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id
- *           FROM mongo_data.documents_2 collection
+ *           FROM ApiDataSchemaName.documents_2 collection
  *          WHERE collection.shard_key_value = '2'::bigint) agg_stage_0
  *   ON documents_3.shard_key_value OPERATOR(pg_catalog.=) agg_stage_0.target_shard_key_value AND FALSE
  *   WHEN NOT MATCHED

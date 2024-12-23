@@ -617,7 +617,7 @@ HandleSetWindowFieldsCore(const bson_value_t *existingValue,
 				IsPartitionByOnShardKey(value, context->mongoCollection))
 			{
 				partitionExpr = (Expr *) makeVar(((Var *) docExpr)->varno,
-												 MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER,
+												 DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER,
 												 INT8OID, -1,
 												 InvalidOid, 0);
 			}

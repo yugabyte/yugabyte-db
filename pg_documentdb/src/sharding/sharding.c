@@ -553,7 +553,7 @@ Expr *
 CreateShardKeyValueFilter(int collectionVarno, Const *valueConst)
 {
 	/* shard_key_value is always the first column in our data tables */
-	AttrNumber shardKeyAttNum = MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER;
+	AttrNumber shardKeyAttNum = DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER;
 	Var *shardKeyValueVar = makeVar(collectionVarno, shardKeyAttNum, INT8OID, -1,
 									InvalidOid, 0);
 

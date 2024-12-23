@@ -702,19 +702,19 @@ DropPostgresIndexWithSuffix(uint64 collectionId, IndexDetails *index, bool concu
 	{
 		/* These are constraints */
 		appendStringInfo(cmdStr,
-						 "ALTER TABLE %s." MONGO_DATA_TABLE_NAME_FORMAT
+						 "ALTER TABLE %s." DOCUMENT_DATA_TABLE_NAME_FORMAT
 						 " DROP CONSTRAINT %s ", ApiDataSchemaName, collectionId,
 						 missingOk ? "IF EXISTS" : "");
 		if (isUnique)
 		{
 			appendStringInfo(cmdStr,
-							 MONGO_DATA_TABLE_INDEX_NAME_FORMAT "%s",
+							 DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT "%s",
 							 index->indexId, suffix);
 		}
 		else
 		{
 			appendStringInfo(cmdStr,
-							 MONGO_DATA_PRIMARY_KEY_FORMAT_PREFIX UINT64_FORMAT "%s",
+							 DOCUMENT_DATA_PRIMARY_KEY_FORMAT_PREFIX UINT64_FORMAT "%s",
 							 collectionId, suffix);
 		}
 
@@ -728,7 +728,7 @@ DropPostgresIndexWithSuffix(uint64 collectionId, IndexDetails *index, bool concu
 		/* These are indexes */
 		appendStringInfo(cmdStr,
 						 "DROP INDEX %s %s %s."
-						 MONGO_DATA_TABLE_INDEX_NAME_FORMAT "%s",
+						 DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT "%s",
 						 concurrently ? "CONCURRENTLY" : "",
 						 missingOk ? "IF EXISTS" : "", ApiDataSchemaName, index->indexId,
 						 suffix);
@@ -785,8 +785,8 @@ CreateDropIndexCommand(uint64 collectionId, int indexId, bool unique, bool concu
 	if (unique)
 	{
 		appendStringInfo(cmdStr,
-						 "ALTER TABLE %s." MONGO_DATA_TABLE_NAME_FORMAT
-						 " DROP CONSTRAINT %s " MONGO_DATA_TABLE_INDEX_NAME_FORMAT,
+						 "ALTER TABLE %s." DOCUMENT_DATA_TABLE_NAME_FORMAT
+						 " DROP CONSTRAINT %s " DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT,
 						 ApiDataSchemaName, collectionId, missingOk ? "IF EXISTS" : "",
 						 indexId);
 	}
@@ -794,7 +794,7 @@ CreateDropIndexCommand(uint64 collectionId, int indexId, bool unique, bool concu
 	{
 		appendStringInfo(cmdStr,
 						 "DROP INDEX %s %s %s."
-						 MONGO_DATA_TABLE_INDEX_NAME_FORMAT,
+						 DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT,
 						 concurrently ? "CONCURRENTLY" : "",
 						 missingOk ? "IF EXISTS" : "", ApiDataSchemaName, indexId);
 	}

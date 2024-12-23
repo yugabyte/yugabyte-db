@@ -887,7 +887,7 @@ GetMongoCollectionFromCatalogById(uint64 collectionId, Oid relationId,
 		}
 
 		/* table name is: documents_<collection id> */
-		snprintf(collection->tableName, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
+		snprintf(collection->tableName, NAMEDATALEN, DOCUMENT_DATA_TABLE_NAME_FORMAT,
 				 collection->collectionId);
 
 		collection->collectionId = collectionId;
@@ -967,7 +967,7 @@ GetMongoCollectionFromCatalogByNameDatum(Datum databaseNameDatum,
 			   VARSIZE_ANY_EXHDR(collectionNameDatum));
 
 		/* table name is: documents_<collection id> */
-		snprintf(collection->tableName, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
+		snprintf(collection->tableName, NAMEDATALEN, DOCUMENT_DATA_TABLE_NAME_FORMAT,
 				 collection->collectionId);
 
 		Datum shardKeyDatum = heap_getattr(tuple, 4, tupleDescriptor, &isNull);
@@ -1058,7 +1058,8 @@ Oid
 GetRelationIdForCollectionId(uint64 collectionId, LOCKMODE lockMode)
 {
 	StringInfo collectionTableNameStr = makeStringInfo();
-	appendStringInfo(collectionTableNameStr, MONGO_DATA_TABLE_NAME_FORMAT, collectionId);
+	appendStringInfo(collectionTableNameStr, DOCUMENT_DATA_TABLE_NAME_FORMAT,
+					 collectionId);
 
 	Oid relationId = GetRelationIdForCollectionTableName(collectionTableNameStr->data,
 														 lockMode);
@@ -1944,6 +1945,6 @@ UpdateMongoCollectionUsingIds(MongoCollection *mongoCollection, uint64 collectio
 		strcpy(mongoCollection->shardTableName, shardTableName);
 	}
 
-	snprintf(mongoCollection->tableName, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
+	snprintf(mongoCollection->tableName, NAMEDATALEN, DOCUMENT_DATA_TABLE_NAME_FORMAT,
 			 collectionId);
 }

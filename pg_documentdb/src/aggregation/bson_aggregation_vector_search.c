@@ -545,8 +545,8 @@ JoinVectorSearchQueryWithFilterQuery(Query *leftQuery, Query *rightQuery,
 	Var *documentVar = makeVar(leftQueryRteIndex,
 							   1,
 							   BsonTypeId(),
-							   MONGO_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
-							   MONGO_DATA_TABLE_DOCUMENT_VAR_COLLATION,
+							   DOCUMENT_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
+							   DOCUMENT_DATA_TABLE_DOCUMENT_VAR_COLLATION,
 							   0);
 	TargetEntry *documentEntry = makeTargetEntry((Expr *) documentVar, 1, "document",
 												 resjunk);
@@ -772,7 +772,7 @@ AddPathStringToHashset(List *indexIdList, HTAB *stringHashSet)
  *        (public.vector(ApiCatalogSchema.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(ApiCatalogSchema.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::CoreSchema.bson, 'vector'::text), 3, true)) AS orderVal,
  *        ctid
  *    FROM
- *        mongo_data.documents_1 collection
+ *        ApiDataSchemaName.documents_1 collection
  *    WHERE
  *        shard_key_value = 0
  *        AND ((ApiCatalogSchema.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL))
@@ -783,7 +783,7 @@ AddPathStringToHashset(List *indexIdList, HTAB *stringHashSet)
  *    SELECT
  *        ctid
  *    FROM
- *        mongo_data.documents_1
+ *        ApiDataSchemaName.documents_1
  *    WHERE
  *        shard_key_value = 0
  *        AND document @@ '{ "a": "some sentence" }'

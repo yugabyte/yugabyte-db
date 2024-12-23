@@ -276,7 +276,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 										  targetCollectionName)));
 		}
 
-		/* Validate that targetCollection is not colocated with mongo_data.changes
+		/* Validate that targetCollection is not colocated with ApiDataSchemaName.changes
 		 * (if it is, we fail until it is colocated with null) - this is a back-compat
 		 * cleanup decision.
 		 */
@@ -436,7 +436,7 @@ RewriteListCollectionsQueryForDistribution(Query *source)
 	Var *collectionIdVar = makeVar(1, 3, INT8OID, -1, InvalidOid, 0);
 
 	char *tablePrefixString = psprintf("%s.%s", ApiDataSchemaName,
-									   MONGO_DATA_TABLE_NAME_PREFIX);
+									   DOCUMENT_DATA_TABLE_NAME_PREFIX);
 	Const *tablePrefix = makeConst(TEXTOID, -1, InvalidOid, -1, CStringGetTextDatum(
 									   tablePrefixString), false, false);
 
@@ -574,7 +574,7 @@ GetCitusShardSizesFunctionOid(void)
 /*
  * Provides the output for the config.chunks query after consulting with Citus.
  * This will be the query:
- * WITH coll AS (SELECT database_name, collection_name, ('mongo_data.documents_' || collection_id)::regclass AS tableId FROM ApiCatalogSchema.collections)
+ * WITH coll AS (SELECT database_name, collection_name, ('ApiDataSchemaName.documents_' || collection_id)::regclass AS tableId FROM ApiCatalogSchema.collections)
  * SELECT database_name, collection_name, shardid, size, shardminvalue, shardmaxvalue FROM coll
  *  JOIN pg_dist_shard dist ON coll.tableId = dist.logicalrelid
  *  JOIN citus_shard_sizes() sz ON dist.shardid = sz.shard_id;
@@ -734,7 +734,7 @@ RewriteConfigChunksQueryForDistribution(Query *baseQuery)
 								   0);
 
 	char *tablePrefixString = psprintf("%s.%s", ApiDataSchemaName,
-									   MONGO_DATA_TABLE_NAME_PREFIX);
+									   DOCUMENT_DATA_TABLE_NAME_PREFIX);
 	Const *tablePrefix = makeConst(TEXTOID, -1, InvalidOid, -1, CStringGetTextDatum(
 									   tablePrefixString), false, false);
 

@@ -249,7 +249,7 @@ TryExtractObjectIdDataFormFuncExprRestrictInfo(RestrictInfo *rinfo, Oid funcOid,
 		return false;
 	}
 
-	if (castNode(Var, leftExpr)->varattno != MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER)
+	if (castNode(Var, leftExpr)->varattno != DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER)
 	{
 		return false;
 	}
@@ -398,7 +398,7 @@ TrimPrimaryKeyQuals(List *restrictInfo, IndexPath *primaryKeyPath)
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, cell);
 		if (TryExtractDataFromRestrictInfo(rinfo, &objectAttr, &opNo, &rightConst) &&
-			objectAttr == MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER)
+			objectAttr == DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER)
 		{
 			if (objectIdColumnFilter.value_type != BSON_TYPE_EOD &&
 				opNo == BsonEqualMatchRuntimeOperatorId() &&
@@ -459,14 +459,14 @@ AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
 				continue;
 			}
 
-			if (objectAttr == MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
+			if (objectAttr == DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
 				opNo == BigintEqualOperatorId())
 			{
 				shardKeyFilter = rinfo;
 				continue;
 			}
 
-			if (objectAttr == MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
+			if (objectAttr == DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
 				opNo == BsonEqualOperatorId())
 			{
 				objectIdFilter = rinfo;
@@ -480,7 +480,7 @@ AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
 				continue;
 			}
 
-			if (objectAttr == MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER &&
+			if (objectAttr == DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER &&
 				opNo == BsonEqualMatchRuntimeOperatorId() &&
 				TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
 														rightConst->constvalue),
@@ -519,7 +519,7 @@ AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
 			}
 
 			Var *leftVar = (Var *) leftExpr;
-			if (leftVar->varattno == MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
+			if (leftVar->varattno == DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
 				arrayExpr->opno == BsonEqualOperatorId())
 			{
 				objectIdFilter = rinfo;
@@ -1145,8 +1145,8 @@ ExtensionExplainGetIndexName(Oid indexId)
 const char *
 GetHelioIndexNameFromPostgresIndex(const char *pgIndexName, bool useLibPq)
 {
-	int prefixLength = strlen(MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX);
-	if (strncmp(pgIndexName, MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX,
+	int prefixLength = strlen(DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX);
+	if (strncmp(pgIndexName, DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX,
 				prefixLength) == 0)
 	{
 		int64 indexIdValue = atoll(pgIndexName + prefixLength);
@@ -1175,8 +1175,8 @@ GetHelioIndexNameFromPostgresIndex(const char *pgIndexName, bool useLibPq)
 
 		return indexName;
 	}
-	else if (strncmp(pgIndexName, MONGO_DATA_PRIMARY_KEY_FORMAT_PREFIX,
-					 strlen(MONGO_DATA_PRIMARY_KEY_FORMAT_PREFIX)) == 0)
+	else if (strncmp(pgIndexName, DOCUMENT_DATA_PRIMARY_KEY_FORMAT_PREFIX,
+					 strlen(DOCUMENT_DATA_PRIMARY_KEY_FORMAT_PREFIX)) == 0)
 	{
 		/* this is the _id index on mongo */
 		return ID_INDEX_NAME;

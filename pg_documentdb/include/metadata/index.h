@@ -18,10 +18,11 @@
 #define INVALID_INDEX_ID ((int) 0)
 
 /* arg1: ApiCatalogSchema.collection_indexes.index_id */
-#define MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX "documents_rum_index_"
-#define MONGO_DATA_TABLE_INDEX_NAME_FORMAT MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX "%d"
+#define DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX "documents_rum_index_"
+#define DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT \
+	DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX "%d"
 
-#define MONGO_DATA_PRIMARY_KEY_FORMAT_PREFIX "collection_pk_"
+#define DOCUMENT_DATA_PRIMARY_KEY_FORMAT_PREFIX "collection_pk_"
 
 #define ID_FIELD_KEY "_id"
 #define ID_INDEX_NAME "_id_"

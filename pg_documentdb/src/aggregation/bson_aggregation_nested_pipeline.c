@@ -561,7 +561,7 @@ HandleInverseMatch(const bson_value_t *existingValue, Query *query,
 	{
 		/* if from collection is specified we generate a query like:
 		 * SELECT document
-		 * FROM mongo_data.documents_963002 collection
+		 * FROM ApiDataSchemaName.documents_963002 collection
 		 * WHERE helio_api_internal.bson_dollar_inverse_match(
 		 *  document,
 		 *  (
@@ -572,7 +572,7 @@ HandleInverseMatch(const bson_value_t *existingValue, Query *query,
 		 *                  ApiCatalogSchema.bson_array_agg(collection_0_1.document, 'input'::text),
 		 *                  '{ "input" : [  ] }'::CoreSchema.bson
 		 *              ) AS document
-		 *              FROM mongo_data.documents_963001_9630019 collection_0_1
+		 *              FROM ApiDataSchemaName.documents_963001_9630019 collection_0_1
 		 *              WHERE ApiCatalogSchema.bson_dollar_ne(
 		 *                  collection_0_1.document,
 		 *                  '{ "user_id" : { "$numberInt" : "200" } }'::CoreSchema.bson
@@ -2015,7 +2015,8 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 			if (entry->rtekind == RTE_RELATION && IsA(firstEntry->expr, Var))
 			{
 				/* Add the object_id targetEntry */
-				Var *objectIdVar = makeVar(1, MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
+				Var *objectIdVar = makeVar(1,
+										   DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
 										   BsonTypeId(), -1, InvalidOid, 0);
 				TargetEntry *objectEntry = makeTargetEntry((Expr *) objectIdVar,
 														   list_length(
@@ -2633,7 +2634,7 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 			Assert(entry->rtekind == RTE_RELATION && IsA(firstEntry->expr, Var));
 
 			/* Add the object_id targetEntry */
-			Var *objectIdVar = makeVar(1, MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
+			Var *objectIdVar = makeVar(1, DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
 									   BsonTypeId(), -1, InvalidOid, 0);
 			TargetEntry *objectEntry = makeTargetEntry((Expr *) objectIdVar,
 													   list_length(
@@ -2676,7 +2677,7 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 		{
 			/* If we can join on the left _id, then just use object_id */
 			projectorFunc = (Expr *) makeVar(1,
-											 MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
+											 DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
 											 BsonTypeId(), -1, InvalidOid, 0);
 		}
 		else if (optimizationArgs.isLookupJoinOnRightId)

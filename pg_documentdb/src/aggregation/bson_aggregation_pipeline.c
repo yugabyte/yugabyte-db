@@ -780,9 +780,9 @@ CreateDocumentVar(void)
 
 	/* not lives in a subquery */
 	Index varlevelsup = 0;
-	return makeVar(varno, MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER,
-				   BsonTypeId(), MONGO_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
-				   MONGO_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
+	return makeVar(varno, DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER,
+				   BsonTypeId(), DOCUMENT_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
+				   DOCUMENT_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
 }
 
 
@@ -797,9 +797,9 @@ CreateChangeStreamDocumentVar(void)
 
 	/* not lives in a subquery */
 	Index varlevelsup = 0;
-	return makeVar(varno, MONGO_CHANGE_STREAM_TABLE_DOCUMENT_VAR_ATTR_NUMBER,
-				   BsonTypeId(), MONGO_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
-				   MONGO_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
+	return makeVar(varno, DOCUMENT_CHANGE_STREAM_TABLE_DOCUMENT_VAR_ATTR_NUMBER,
+				   BsonTypeId(), DOCUMENT_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
+				   DOCUMENT_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
 }
 
 
@@ -814,9 +814,9 @@ CreateChangeStreamContinuationtVar(void)
 
 	/* not lives in a subquery */
 	Index varlevelsup = 0;
-	return makeVar(varno, MONGO_CHANGE_STREAM_TABLE_CONTINUATION_VAR_ATTR_NUMBER,
-				   BsonTypeId(), MONGO_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
-				   MONGO_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
+	return makeVar(varno, DOCUMENT_CHANGE_STREAM_TABLE_CONTINUATION_VAR_ATTR_NUMBER,
+				   BsonTypeId(), DOCUMENT_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
+				   DOCUMENT_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
 }
 
 
@@ -2624,7 +2624,7 @@ HandleFill(const bson_value_t *existingValue, Query *query,
 															context->mongoCollection))
 		{
 			partitionByFieldsExpr = (Expr *) makeVar(((Var *) docExpr)->varno,
-													 MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER,
+													 DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER,
 													 INT8OID, -1,
 													 InvalidOid, 0);
 		}
@@ -4179,7 +4179,8 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 			if (strcmp(element.path, "_id") == 0 &&
 				CanSortByObjectId(query, context))
 			{
-				expr = (Expr *) makeVar(1, MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
+				expr = (Expr *) makeVar(1,
+										DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
 										BsonTypeId(), -1, InvalidOid, 0);
 			}
 			else
@@ -4381,7 +4382,7 @@ HasShardKeyFilterWalker(Node *node, void *state)
 		}
 
 		return ((Var *) leftOperator)->varattno ==
-			   MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER;
+			   DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER;
 	}
 
 	return expression_tree_walker(node, HasShardKeyFilterWalker, state);

@@ -4396,7 +4396,7 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 		else
 		{
 			appendStringInfo(cmdStr,
-							 "ALTER TABLE %s." MONGO_DATA_TABLE_NAME_FORMAT,
+							 "ALTER TABLE %s." DOCUMENT_DATA_TABLE_NAME_FORMAT,
 							 ApiDataSchemaName, collectionId);
 		}
 
@@ -4407,7 +4407,7 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 		}
 
 		appendStringInfo(cmdStr,
-						 " ADD CONSTRAINT " MONGO_DATA_TABLE_INDEX_NAME_FORMAT
+						 " ADD CONSTRAINT " DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT
 						 " EXCLUDE USING %s_rum (%s) %s%s%s",
 						 indexId, ExtensionObjectPrefix,
 						 GenerateIndexExprStr(unique, sparse, indexDef->key,
@@ -4438,8 +4438,8 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 		CosmosSearchOptions *cosmosSearchOptions =
 			indexDef->cosmosSearchOptions;
 		appendStringInfo(cmdStr,
-						 "CREATE INDEX " MONGO_DATA_TABLE_INDEX_NAME_FORMAT
-						 " ON %s." MONGO_DATA_TABLE_NAME_FORMAT
+						 "CREATE INDEX " DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT
+						 " ON %s." DOCUMENT_DATA_TABLE_NAME_FORMAT
 						 " USING %s(%s) WITH (%s)",
 						 indexId, ApiDataSchemaName, collectionId,
 						 definition->indexAccessMethodName,
@@ -4477,8 +4477,8 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 		double maxBound = indexDef->maxBound ? *indexDef->maxBound :
 						  DEFAULT_2D_INDEX_MAX_BOUND;
 		appendStringInfo(cmdStr,
-						 "CREATE INDEX %s " MONGO_DATA_TABLE_INDEX_NAME_FORMAT
-						 " ON %s." MONGO_DATA_TABLE_NAME_FORMAT
+						 "CREATE INDEX %s " DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT
+						 " ON %s." DOCUMENT_DATA_TABLE_NAME_FORMAT
 						 " USING GIST( %s.bson_validate_geometry(document, %s::text) "
 						 "%s.bson_gist_geometry_ops_2d(path=%s, minbound=%g, maxbound=%g) )"
 						 " WHERE %s.bson_validate_geometry(document, %s::text) IS NOT NULL %s%s%s",
@@ -4497,8 +4497,8 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 	else if (indexDef->key->has2dsphereIndex)
 	{
 		appendStringInfo(cmdStr,
-						 "CREATE INDEX %s " MONGO_DATA_TABLE_INDEX_NAME_FORMAT
-						 " ON %s." MONGO_DATA_TABLE_NAME_FORMAT
+						 "CREATE INDEX %s " DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT
+						 " ON %s." DOCUMENT_DATA_TABLE_NAME_FORMAT
 						 " USING GIST(%s) WHERE (%s)"
 						 " %s%s%s",
 						 concurrently ? "CONCURRENTLY" : "", indexId,
@@ -4514,7 +4514,7 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 	else
 	{
 		appendStringInfo(cmdStr,
-						 "CREATE INDEX %s " MONGO_DATA_TABLE_INDEX_NAME_FORMAT,
+						 "CREATE INDEX %s " DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT,
 						 concurrently ? "CONCURRENTLY" : "", indexId);
 
 		if (isTempCollection)
@@ -4525,7 +4525,7 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 		else
 		{
 			appendStringInfo(cmdStr,
-							 " ON %s." MONGO_DATA_TABLE_NAME_FORMAT,
+							 " ON %s." DOCUMENT_DATA_TABLE_NAME_FORMAT,
 							 ApiDataSchemaName, collectionId);
 		}
 
@@ -4687,12 +4687,13 @@ ReIndexPostgresIndex(uint64 collectionId, IndexDetails *indexDetail, bool concur
 		appendStringInfo(cmdStr, "REINDEX INDEX %s.", ApiDataSchemaName);
 		if (isIdIndex)
 		{
-			appendStringInfo(cmdStr, MONGO_DATA_PRIMARY_KEY_FORMAT_PREFIX UINT64_FORMAT,
+			appendStringInfo(cmdStr, DOCUMENT_DATA_PRIMARY_KEY_FORMAT_PREFIX
+							 UINT64_FORMAT,
 							 collectionId);
 		}
 		else
 		{
-			appendStringInfo(cmdStr, MONGO_DATA_TABLE_INDEX_NAME_FORMAT,
+			appendStringInfo(cmdStr, DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT,
 							 indexDetail->indexId);
 		}
 
@@ -4701,7 +4702,7 @@ ReIndexPostgresIndex(uint64 collectionId, IndexDetails *indexDetail, bool concur
 		Assert(isNull);
 
 		ereport(DEBUG1, (errmsg("Non-concurrent index rebuilt is successful - "
-								MONGO_DATA_TABLE_INDEX_NAME_FORMAT,
+								DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT,
 								indexDetail->indexId)));
 	}
 	else
@@ -4710,12 +4711,13 @@ ReIndexPostgresIndex(uint64 collectionId, IndexDetails *indexDetail, bool concur
 		appendStringInfo(cmdStr, "REINDEX INDEX CONCURRENTLY %s.", ApiDataSchemaName);
 		if (isIdIndex)
 		{
-			appendStringInfo(cmdStr, MONGO_DATA_PRIMARY_KEY_FORMAT_PREFIX UINT64_FORMAT,
+			appendStringInfo(cmdStr, DOCUMENT_DATA_PRIMARY_KEY_FORMAT_PREFIX
+							 UINT64_FORMAT,
 							 collectionId);
 		}
 		else
 		{
-			appendStringInfo(cmdStr, MONGO_DATA_TABLE_INDEX_NAME_FORMAT,
+			appendStringInfo(cmdStr, DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT,
 							 indexDetail->indexId);
 		}
 

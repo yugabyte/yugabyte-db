@@ -1043,11 +1043,11 @@ GetIndexSpecForShardedCreateIndexQuery(SingleWorkerActivity *activity)
 	char *relationName = text_to_cstring(DatumGetTextP(result));
 
 	int indexId = 0;
-	int prefixLength = strlen(MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX);
+	int prefixLength = strlen(DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX);
 
 	if (relationName == NULL ||
-		strncmp(relationName, MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX, prefixLength) !=
-		0)
+		strncmp(relationName, DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX,
+				prefixLength) != 0)
 	{
 		return NULL;
 	}
@@ -1072,7 +1072,7 @@ GetIndexSpecForShardedCreateIndexQuery(SingleWorkerActivity *activity)
 
 	/* assign right value to rawMongoTable */
 	activity->rawMongoTable = (char *) palloc(NAMEDATALEN);
-	snprintf(activity->rawMongoTable, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
+	snprintf(activity->rawMongoTable, NAMEDATALEN, DOCUMENT_DATA_TABLE_NAME_FORMAT,
 			 detail->collectionId);
 
 	return &(detail->indexSpec);

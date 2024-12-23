@@ -367,7 +367,7 @@ IsOpExprShardKeyForUnshardedCollections(Expr *expr, uint64 collectionId)
 
 	Var *firstArgVar = (Var *) firstArg;
 	Const *secondArgConst = (Const *) secondArg;
-	return firstArgVar->varattno == MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
+	return firstArgVar->varattno == DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
 		   DatumGetInt64(secondArgConst->constvalue) == (int64) collectionId;
 }
 
@@ -475,8 +475,9 @@ IsBtreePrimaryKeyIndex(IndexOptInfo *indexInfo)
 	return indexInfo->relam == BTREE_AM_OID &&
 		   indexInfo->nkeycolumns == 2 &&
 		   indexInfo->unique &&
-		   indexInfo->indexkeys[0] == MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
-		   indexInfo->indexkeys[1] == MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER;
+		   indexInfo->indexkeys[0] ==
+		   DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
+		   indexInfo->indexkeys[1] == DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER;
 }
 
 
