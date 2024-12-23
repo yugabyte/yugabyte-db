@@ -68,8 +68,8 @@ DEFINE_test_flag(
     "Interval in micro seconds at which the table list in the publication will be refreshed. This "
     "will be used only when cdcsdk_use_microseconds_refresh_interval is set to true");
 
-DEFINE_RUNTIME_PREVIEW_bool(
-    cdcsdk_enable_dynamic_table_support, false,
+DEFINE_RUNTIME_bool(
+    cdcsdk_enable_dynamic_table_support, true,
     "This flag can be used to switch the dynamic addition of tables ON or OFF.");
 
 namespace yb {
