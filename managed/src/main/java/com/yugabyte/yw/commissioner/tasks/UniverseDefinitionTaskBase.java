@@ -3193,12 +3193,29 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean enableConnectionPooling,
       boolean enableYCQL,
       boolean enableYCQLAuth) {
+    return createUpdateDBApiDetailsTask(
+        enableYSQL,
+        enableYSQLAuth,
+        enableConnectionPooling,
+        new HashMap<>(),
+        enableYCQL,
+        enableYCQLAuth);
+  }
+
+  protected SubTaskGroup createUpdateDBApiDetailsTask(
+      boolean enableYSQL,
+      boolean enableYSQLAuth,
+      boolean enableConnectionPooling,
+      Map<String, String> connectionPoolingGflags,
+      boolean enableYCQL,
+      boolean enableYCQLAuth) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterAPIDetails");
     UpdateClusterAPIDetails.Params params = new UpdateClusterAPIDetails.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.enableYCQL = enableYCQL;
     params.enableYCQLAuth = enableYCQLAuth;
     params.enableConnectionPooling = enableConnectionPooling;
+    params.connectionPoolingGflags = connectionPoolingGflags;
     params.enableYSQL = enableYSQL;
     params.enableYSQLAuth = enableYSQLAuth;
     UpdateClusterAPIDetails task = createTask(UpdateClusterAPIDetails.class);

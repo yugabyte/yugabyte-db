@@ -76,6 +76,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                   taskParams().enableYSQL,
                   taskParams().enableYSQLAuth,
                   taskParams().enableConnectionPooling,
+                  taskParams().connectionPoolingGflags,
                   taskParams().enableYCQL,
                   taskParams().enableYCQLAuth)
               .setSubTaskGroupType(getTaskSubGroupType());
@@ -125,7 +126,8 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                 currClusters,
                 currentCluster,
                 currClusters,
-                taskParams().communicationPorts);
+                taskParams().communicationPorts,
+                taskParams().connectionPoolingGflags);
             if (processTypes.size() == 1 && processTypes.contains(ServerType.TSERVER)) {
               NodeDetails node = nodes.iterator().next();
               node.isYqlServer = taskParams().enableYCQL;
