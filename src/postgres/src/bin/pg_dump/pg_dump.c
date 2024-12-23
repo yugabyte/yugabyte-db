@@ -109,10 +109,7 @@ static bool is_colocated_database = false;
 /* Cache whether the dumped database is a legacy colocated database. */
 static bool is_legacy_colocated_database = false;
 
-/* YB_TODO(neil) Assign this work to alex.
- * These variables might not work with the current design of pg_dump.
- */
-static bool pg_tablegroup_exists = false;
+/* Support for YB-only table pg_yb_tablegroup. */
 static bool pg_yb_tablegroup_exists = false;
 /*
  * Array of pointers to extensions having configuration tables.
@@ -903,12 +900,8 @@ main(int argc, char **argv)
 	if (dopt.include_everything && !dopt.schemaOnly && !dopt.dontOutputBlobs)
 		dopt.outputBlobs = true;
 
-	/* YB_TODO(neil) Assign this work to alex.
-	 * These variables might not work with the current design of pg_dump.
-	 */
-	/* Update pg_tablegroup existence variables */
+	/* Update pg_yb_tablegroup existence variable */
 	pg_yb_tablegroup_exists = catalogTableExists(fout, "pg_yb_tablegroup");
-	pg_tablegroup_exists = catalogTableExists(fout, "pg_tablegroup");
 
 	/*
 	 * Cache (1) whether the dumped database is a colocated database and
@@ -6796,7 +6789,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 	int			i_grpoptions;
 	int			i_grptablespace;
 
-	if (!pg_yb_tablegroup_exists && !pg_tablegroup_exists)
+	if (!pg_yb_tablegroup_exists)
 	{
 		*numTablegroups = 0;
 		return NULL;
@@ -6806,17 +6799,14 @@ getTablegroups(Archive *fout, int *numTablegroups)
 
 	Assert(fout->remoteVersion >= 90600);
 
-	/* Select all tablegroups from pg_tablegroup or pg_yb_tablegroup table */
+	/* Select all tablegroups from pg_yb_tablegroup table */
 	appendPQExpBuffer(query,
 					  "SELECT grpname, oid, tableoid, grpoptions, "
 					  "grpowner, "
 					  "(%s) AS grptablespace, "
 					  "grpacl, acldefault('L', grpowner) AS acldefault "
-					  "FROM %s",
-					  pg_yb_tablegroup_exists ?
-						  "SELECT spcname FROM pg_tablespace t WHERE t.oid = grptablespace" :
-						  "NULL",
-					  pg_yb_tablegroup_exists ? "pg_yb_tablegroup" : "pg_tablegroup");
+					  "FROM pg_yb_tablegroup",
+					  "SELECT spcname FROM pg_tablespace t WHERE t.oid = grptablespace");
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
