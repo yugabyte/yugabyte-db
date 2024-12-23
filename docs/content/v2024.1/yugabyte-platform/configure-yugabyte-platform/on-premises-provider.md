@@ -68,9 +68,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 
 ### SSH Key Pairs
 
-In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because YBA needs SSH access to the nodes to provision them with YugabyteDB. This SSH user cannot be named yugabyte. Unless you plan to provision the database nodes manually, the SSH user needs to have password-free sudo permissions to complete a few tasks.
-
-If the SSH user requires a password for sudo access or the SSH user does not have sudo access, you must enable the **Manually Provision Nodes** option (under **Advanced**) and [manually provision the instances](../on-premises-script/).
+In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required only if YBA needs SSH access to the nodes to provision them (for [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/)). This SSH user cannot be named yugabyte.
 
 {{< tip title="SSH access" >}}
 After you have provisioned and added the instances to the provider (including installing the [node agent](../../../faq/yugabyte-platform/#node-agent)), YBA no longer requires SSH or sudo access to nodes.
@@ -84,28 +82,25 @@ Use the **SSH Private Key Content** field to upload the private key PEM file ava
 
 ### Advanced
 
-Disable the **DB Nodes have public internet access** option if you want the installation to run in an airgapped mode without expecting any internet access.
+DB Nodes have public internet access
+: Disable this option if you want the installation to run in an airgapped mode without expecting any internet access.
 
-YBA uses the sudo user to set up YugabyteDB nodes. However, if any of the following statements are applicable to your use case, you need to enable the **Manually Provision Nodes** option:
+Manually Provision Nodes
+: IMPORTANT: Enable the **Manually Provision Nodes** option if you provisioned nodes using the [YugabyteDB Anywhere node agent package](../../prepare/server-nodes-software/software-on-prem/).
+: You must also enable this option if you used legacy [assisted manual](../../prepare/server-nodes-software/software-on-prem-assist/) or [fully manual](../../prepare/server-nodes-software/software-on-prem-manual/) provisioning to provision your nodes. For manual provisioning, you are prompted to run a Python pre-provisioning script at a later stage to provision the database instances. Refer to [Add nodes to the on-premises provider](../on-premises-nodes/).
 
-- Pre-provisioned `yugabyte:yugabyte` user and group.
-- Sudo user requires a password.
-- The [SSH user](#ssh-key-pairs) is not a sudo user.
+YB Nodes Home Directory
+: Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
 
-For manual provisioning, you are prompted to run a Python pre-provisioning script at a later stage to provision the database instances. Refer to [Add nodes to the on-premises provider](../on-premises-nodes/).
+Install Node Exporter
+: Enable this option if you want the Prometheus Node Exporter installed. You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
+: The **Node Exporter User** field allows you to override the default `prometheus` user. This is helpful when the user is pre-provisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+: Use the **Node Exporter Port** field to specify the port number for the Prometheus Node Exporter. The default value is 9300.
 
-Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
-
-Enable **Install Node Exporter** if you want the Node Exporter installed. You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
-
-The **Node Exporter User** field allows you to override the default `prometheus` user. This is helpful when the user is pre-provisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
-
-Use the **Node Exporter Port** field to specify the port number for the Prometheus Node Exporter. The default value is 9300.
-
-**NTP Setup** lets you to customize the Network Time Protocol server, as follows:
-
-- Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-- Select **Assume NTP server configured in machine image** to prevent YBA from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+NTP Setup
+: You can customize the Network Time Protocol server.
+: Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
+: Select **Assume NTP server configured in machine image** to prevent YBA from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ## Next step
 
