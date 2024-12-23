@@ -118,12 +118,13 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch
                              ". This might be because the leader master node is down.");
             }
           });
-          let hashPartition = tablet.partition
-            ? [...tablet.partition?.matchAll(/hash_split: \[(.*)\]/g)][0][1]
-            : "";
+          /* Example conversion: "hash_split: [0x0000, 0xFFFF]" to "[0x0000, 0xFFFF]" */
+          let partitionRange =
+            (tablet.partition && [...tablet.partition.matchAll(/\w+:\s*(.*)/g)][0]?.[1]) ||
+            "N/A";
           return {
             id: tablet.tablet_id,
-            range: hashPartition,
+            range: partitionRange,
             leaderNode: leader,
             followerNodes: followers.join(", "),
             readReplicaNodes: read_replicas.join(", "),
