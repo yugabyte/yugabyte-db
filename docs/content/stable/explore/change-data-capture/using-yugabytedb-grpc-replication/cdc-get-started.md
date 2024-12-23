@@ -433,7 +433,7 @@ For record type `MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES`, the update and delete rec
 
 ### Updating or deleting a row which was inserted in the same transaction
 
-If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the before image record type is not `CHANGE` then CDC will throw an error while processing such events. To handle such updates/deletes with a non-CHANGE before image record type, set the tserver flag [cdc_send_null_before_image_if_not_exists](../../../reference/configuration/yb-tserver/#cdc-send-null-before-image-if-not-exists) to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
+If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the before image record type is not `CHANGE` then CDC will throw an error while processing such events. To handle such updates/deletes with a non-CHANGE before image record type, set the tserver flag [cdc_send_null_before_image_if_not_exists](../../../reference/configuration/yb-tserver.md#cdc-send-null-before-image-if-not-exists) to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
 
 ## Schema evolution
 

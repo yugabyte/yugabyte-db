@@ -83,7 +83,7 @@ Provide information about CDC service in YugabyteDB.
 
 {{< note title="Note" >}}
 
-The cdc service metrics are calculated for every tablet that is of interest for a particular stream. In the scenario where user is not interested in polling all the tables (and consequently all the tablets) in database, the metrics will be calculated considering the unpolled tablets until [cdcsdk_tablet_not_of_interest_timeout_secs](../../../reference/configuration/yb-tserver/#cdcsdk-tablet-not-of-interest-timeout-secs) interval.
+The cdc service metrics are calculated for every tablet that is of interest for a particular stream. In the scenario where user is not interested in polling all the tables (and consequently all the tablets) in database, the metrics will be calculated considering the unpolled tablets until [cdcsdk_tablet_not_of_interest_timeout_secs](../../../reference/configuration/yb-tserver.md#cdcsdk-tablet-not-of-interest-timeout-secs) interval.
 
 {{< /note >}}
 
