@@ -18,17 +18,17 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 ### Enhancements
 
 - Assessment and Schema Analysis Reports
-  - [assess-migration](../reference/assess-migration/) and [analyze-schema](../reference/schema-migration/analyze-schema/) now accept a new flag `--target-db-version`, which allows the user to specify the version of YugabyteDB they wish to assess/analyze against. It defaults to the latest stable release version (currently 2024.2.0.0).
+  - [assess-migration](../reference/assess-migration/) and [analyze-schema](../reference/schema-migration/analyze-schema/) now accept a new flag `--target-db-version`, which allows the user to specify the version of YugabyteDB they wish to assess/analyze against. It defaults to the latest stable release version (currently {{<yb-version version="stable">}}).
   - Presence of advisory locks, XML functions, and system columns in DDLs will now be detected and reported in assessment and schema analysis reports.
   - Presence of [large objects](https://www.postgresql.org/docs/current/largeobjects.html) (and its functions) in DDLs/DMLs is now detected and reported in assessment and schema analysis reports.
   - In the Schema analysis report (html/text), a few field names have been modified to improve readability. Invalid Count -> Objects with Issues, Total Count -> Total Objects, Valid Count -> Objects without Issues. The logic of determining when an object is considered to have issues or not has also been improved.
-  - Stop reporting Unlogged tables as an issue in assessment and schema analysis reports by default, as it has been fixed in YugabyteDB 2024.2.0.0.
+  - Stop reporting Unlogged tables as an issue in assessment and schema analysis reports by default, as it has been fixed in YugabyteDB {{<release "2024.2.0.0">}}.
   - Stop reporting [ALTER PARTITIONED TABLE ADD PRIMARY KEY](https://github.com/yugabyte/yb-voyager/issues/612) as an issue by default in assessment and schema analysis reports, as it has been fixed in YugabyteDB.
   - In the assessment report, only statements from `pg_stat_statements` that belong to the schemas provided by the user will be processed for detecting and reporting issues.
 - Data Migration
   - `import data file` and `import data to source replica` now accept a new flag `truncate-tables` (in addition to `import data`), which, when used with `start-clean true`, truncates all the tables in the target/source-replica DB before importing data into the tables.
 - Miscellaneous
-    - Enhanced guardrail checks in import-schema for YugabyteDB Aeon.
+  - Enhanced guardrail checks in import-schema for YugabyteDB Aeon.
 
 ### Bug Fixes
 
