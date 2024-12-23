@@ -385,3 +385,12 @@ WITH w(i) AS (
 ) INSERT INTO with_a VALUES (generate_series(9, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
 TABLE with_a;
 ABORT;
+
+--- GH-25070
+CREATE TABLE main (a INT, b TEXT, PRIMARY KEY (a, b));
+CREATE TABLE copy (a INT, b TEXT, PRIMARY KEY (b, a));
+INSERT INTO main (SELECT i, 'name_' || i FROM generate_series(1, 10) AS i);
+INSERT INTO copy (SELECT a, b FROM main) ON CONFLICT DO NOTHING;
+TABLE copy ORDER BY a;
+INSERT INTO copy (SELECT a, b FROM main) ON CONFLICT (b, a) DO UPDATE SET b = 'replaced_' || EXCLUDED.b;
+TABLE copy ORDER BY a;
