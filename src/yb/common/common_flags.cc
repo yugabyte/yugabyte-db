@@ -230,7 +230,7 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_update_optimization_infra, kLocalPersisted,
                             "(but not limited to) skipping redundant secondary index updates "
                             "and redundant constraint checks.");
 
-DEFINE_RUNTIME_PG_FLAG(bool, yb_skip_redundant_update_ops, false,
+DEFINE_RUNTIME_PG_FLAG(bool, yb_skip_redundant_update_ops, true,
                        "Enables the comparison of old and new values of columns specified in the "
                        "SET clause of YSQL UPDATE queries to skip redundant secondary index "
                        "updates and redundant constraint checks.");

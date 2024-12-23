@@ -1461,7 +1461,7 @@ bool yb_enable_nop_alter_role_optimization = true;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,
-	.is_enabled = false,
+	.is_enabled = true,
 	.num_cols_to_compare = 50,
 	.max_cols_size_to_compare = 10 * 1024
 };

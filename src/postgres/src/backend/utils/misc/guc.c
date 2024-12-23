@@ -2683,7 +2683,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_update_optimization_options.is_enabled,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
