@@ -112,7 +112,7 @@ SELECT * FROM aggregate_cursor_first_page('defDb', '{ "aggregate": "defSrc", "pi
 SELECT document FROM helio_api.collection('defDb', 'defTar');
                                             document                                            
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
  { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
 (2 rows)
 
@@ -555,12 +555,12 @@ SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceWhenMatch
 select document from helio_api.collection('db', 'targetWhenMatchMerge');
                                                                                  document                                                                                  
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "new_column" : "testing merge", "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
- { "_id" : { "$numberInt" : "2" }, "new_column" : "testing merge", "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
- { "_id" : { "$numberInt" : "3" }, "new_column" : "testing merge", "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "4" }, "new_column" : "testing merge", "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "5" }, "new_column" : "testing merge", "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "6" }, "new_column" : "testing merge", "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" }, "new_column" : "testing merge" }
 (6 rows)
 
 -- let's try to modify value of existing column of target collection. 
@@ -578,12 +578,12 @@ SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceWhenMatch
 select document from helio_api.collection('db', 'targetWhenMatchMerge');
                                                                                  document                                                                                  
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge", "employee" : "Ant", "salary" : { "$numberInt" : "100000" } }
- { "_id" : { "$numberInt" : "2" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge", "employee" : "Bee", "salary" : { "$numberInt" : "120000" } }
- { "_id" : { "$numberInt" : "3" }, "fiscal_year" : { "$numberInt" : "2019" }, "new_column" : "testing merge", "employee" : "Ant", "salary" : { "$numberInt" : "115000" } }
- { "_id" : { "$numberInt" : "4" }, "fiscal_year" : { "$numberInt" : "2019" }, "new_column" : "testing merge", "employee" : "Bee", "salary" : { "$numberInt" : "145000" } }
- { "_id" : { "$numberInt" : "5" }, "fiscal_year" : { "$numberInt" : "2019" }, "new_column" : "testing merge", "employee" : "Cat", "salary" : { "$numberInt" : "135000" } }
- { "_id" : { "$numberInt" : "6" }, "fiscal_year" : { "$numberInt" : "2020" }, "new_column" : "testing merge", "employee" : "Cat", "salary" : { "$numberInt" : "150000" } }
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2019" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2019" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2019" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2020" }, "new_column" : "testing merge" }
 (6 rows)
 
 -- let's create index and match on other key and try to merge when _id field on source and target ID are same
@@ -1318,7 +1318,7 @@ SELECT * FROM  aggregate_cursor_first_page('db', '{ "aggregate": "AsSourceAsTarg
 SELECT document FROM helio_api.collection('db', 'AsSourceAsTarget');
                                                     document                                                    
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "new" : "data", "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "new" : "data" }
 (1 row)
 
 -- Negative tests : Invalid input

@@ -114,6 +114,19 @@ typedef struct OutArgs
 	StringView targetCollection;
 } OutArgs;
 
+/*
+ * Struct used to store key, value pair in PG hash table.
+ */
+typedef struct PgbsonElementHashEntryOrdered
+{
+	/* pgbsonelement to store key and value in the hash map */
+	pgbsonelement element;
+
+	/* To maintain insertion order, we store the address of the next hash entry here. We need to update the tail every time we insert a new element. */
+	struct PgbsonElementHashEntryOrdered *next;
+} PgbsonElementHashEntryOrdered;
+
+
 /* GUC to enable $merge target collection creatation if not exist */
 extern bool EnableMergeTargetCreation;
 
@@ -175,6 +188,11 @@ static inline TargetEntry * MakeExtractFuncExprForMergeTE(const char *onField, u
 														  length, Var *sourceDocument,
 														  const int resNum);
 static void TruncateDataTable(int collectionId);
+
+HTAB * CreatePgbsonElementOrderedHashSet(void);
+static uint32 PgbsonElementOrderedHashEntryFunc(const void *obj, size_t objsize);
+static int PgbsonElementOrderedHashCompareFunc(const void *obj1, const void *obj2, Size
+											   objsize);
 
 PG_FUNCTION_INFO_V1(bson_dollar_merge_handle_when_matched);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_add_object_id);
@@ -317,21 +335,115 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 		{
 			pgbson_writer writer;
 			ValidateAndAddObjectIdToWriter(&writer, sourceDocument, targetDocument);
+			bson_iter_t iter;
+			PgbsonInitIterator(targetDocument, &iter);
 
-			/*
-			 * Project the key-value pairs of both the source and target documents onto the BsonIntermediatePathNode Tree.
-			 * The source document is projected first because its values are prioritized; if a target document's key already exists in the tree,
-			 * its values will not override the existing ones.
-			 */
-			BsonIntermediatePathNode *tree = MakeRootNode();
-			ParseAggregationExpressionContext parseContext = { 0 };
-			BuildTreeFromPgbson(tree, sourceDocument, &parseContext);
-			BuildTreeFromPgbson(tree, targetDocument, &parseContext);
+			/* _id is already written to writer as first field of writer. so ignore for target document. */
+			if (!bson_iter_next(&iter) || strcmp(bson_iter_key(&iter), "_id") != 0)
+			{
+				/* In target document we expect _id to be first field. */
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+								errmsg(
+									"$merge write error: target document missing _id field as first field"),
+								errdetail_log(
+									"$merge write error: target document missing _id field as first field")));
+			}
 
-			TraverseTreeAndWrite(tree, &writer, targetDocument);
+			HTAB *hashTable = CreatePgbsonElementOrderedHashSet();
+			PgbsonElementHashEntryOrdered *head = NULL;
+			PgbsonElementHashEntryOrdered *tail = NULL;
+
+			/* step 1 : Add target document to the hashmap with values and maintain order using PgbsonElementHashEntryOrdered linked list */
+			while (bson_iter_next(&iter))
+			{
+				pgbsonelement element = {
+					.path = bson_iter_key(&iter),
+					.pathLength = bson_iter_key_len(&iter),
+					.bsonValue = *bson_iter_value(&iter)
+				};
+
+				PgbsonElementHashEntryOrdered hashEntry = {
+					.element = element,
+					.next = NULL,
+				};
+
+				bool found = false;
+				PgbsonElementHashEntryOrdered *currNode = hash_search(hashTable,
+																	  &hashEntry,
+																	  HASH_ENTER, &found);
+
+				if (head == NULL)
+				{
+					head = currNode;
+					tail = currNode;
+				}
+				else
+				{
+					tail->next = currNode;
+					tail = currNode;
+				}
+			}
+
+			/* step 2 : let's add source document to hashmap with values and update the tail of the linked list if a new element is inserted */
+
+			PgbsonInitIterator(sourceDocument, &iter);
+			while (bson_iter_next(&iter))
+			{
+				/* _id is already written to writer as the first field, so ignore it here */
+				if (strcmp(bson_iter_key(&iter), "_id") == 0)
+				{
+					continue;
+				}
+
+				pgbsonelement element = {
+					.path = bson_iter_key(&iter),
+					.pathLength = bson_iter_key_len(&iter),
+					.bsonValue = *bson_iter_value(&iter)
+				};
+
+				PgbsonElementHashEntryOrdered hashEntry = {
+					.element = element,
+					.next = NULL,
+				};
+
+				bool found = false;
+				PgbsonElementHashEntryOrdered *currNode = hash_search(hashTable,
+																	  &hashEntry,
+																	  HASH_ENTER,
+																	  &found);
+
+				if (found)
+				{
+					/* Replace the existing value with the value from the source document */
+					currNode->element.bsonValue = element.bsonValue;
+				}
+				else if (head == NULL)
+				{
+					/* If the target document contains only the _id field, we reach here */
+					head = currNode;
+					tail = currNode;
+				}
+				else
+				{
+					tail->next = currNode;
+					tail = currNode;
+				}
+			}
+
+
+			/* step 3: Iterate through the linked list to fetch elements in order and write them to the final BSON */
+			while (head != NULL)
+			{
+				PgbsonElementHashEntryOrdered *temp = head;
+				PgbsonWriterAppendValue(&writer, temp->element.path,
+										temp->element.pathLength,
+										&temp->element.bsonValue);
+				head = head->next;
+			}
+
+			hash_destroy(hashTable);
 			finalDocument = PgbsonWriterGetPgbson(&writer);
 
-			FreeTree(tree);
 			break;
 		}
 
@@ -1896,4 +2008,66 @@ ParseOutStage(const bson_value_t *existingValue, const char *currentNameSpace,
 						errmsg(
 							"If an object is passed to $out it must have exactly 2 fields: 'db' and 'coll'")));
 	}
+}
+
+
+/*
+ * Creates a hash table that stores pgbsonelement entries using
+ * a hash and search based on the element path.
+ */
+HTAB *
+CreatePgbsonElementOrderedHashSet()
+{
+	HASHCTL hashInfo = CreateExtensionHashCTL(
+		sizeof(PgbsonElementHashEntryOrdered),
+		sizeof(PgbsonElementHashEntryOrdered),
+		PgbsonElementOrderedHashCompareFunc,
+		PgbsonElementOrderedHashEntryFunc
+		);
+	HTAB *bsonElementHashSet =
+		hash_create("Ordered Bson Element Hash Table", 32, &hashInfo,
+					DefaultExtensionHashFlags);
+
+	return bsonElementHashSet;
+}
+
+
+/*
+ * PgbsonElementOrderedHashEntryFunc is the (HASHCTL.hash) callback (based on
+ * string_hash()) used to hash a PgbsonElementHashEntryOrdered object based on key
+ * of the bson element that it holds.
+ */
+static uint32
+PgbsonElementOrderedHashEntryFunc(const void *obj, size_t objsize)
+{
+	const PgbsonElementHashEntryOrdered *hashEntry = obj;
+	return hash_bytes((const unsigned char *) hashEntry->element.path,
+					  (int) hashEntry->element.pathLength);
+}
+
+
+/*
+ * PgbsonElementOrderedHashCompareFunc is the (HASHCTL.match) callback (based
+ * on string_compare()) used to determine if keys of the bson elements hold
+ * by given two PgbsonElementHashEntryOrdered objects are the same.
+ *
+ * Returns 0 if those two bson element keys are same, +ve Int if first is greater otherwise -ve Int.
+ */
+static int
+PgbsonElementOrderedHashCompareFunc(const void *obj1, const void *obj2, Size objsize)
+{
+	const PgbsonElementHashEntryOrdered *hashEntry1 = obj1;
+	const PgbsonElementHashEntryOrdered *hashEntry2 = obj2;
+
+	int minPathLength = Min(hashEntry1->element.pathLength,
+							hashEntry2->element.pathLength);
+	int result = strncmp(hashEntry1->element.path, hashEntry2->element.path,
+						 minPathLength);
+
+	if (result == 0)
+	{
+		return hashEntry1->element.pathLength - hashEntry2->element.pathLength;
+	}
+
+	return result;
 }
