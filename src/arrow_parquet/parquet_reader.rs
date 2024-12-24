@@ -10,7 +10,8 @@ use pgrx::{
         fmgr_info, getTypeBinaryOutputInfo, varlena, Datum, FmgrInfo, FormData_pg_attribute,
         InvalidOid, SendFunctionCall,
     },
-    vardata_any, varsize_any_exhdr, void_mut_ptr, AllocatedByPostgres, PgBox, PgTupleDesc,
+    vardata_any, varsize_any_exhdr, void_mut_ptr, AllocatedByPostgres, PgBox, PgMemoryContexts,
+    PgTupleDesc,
 };
 use url::Url;
 
@@ -44,6 +45,7 @@ pub(crate) struct ParquetReaderContext {
     attribute_contexts: Vec<ArrowToPgAttributeContext>,
     binary_out_funcs: Vec<PgBox<FmgrInfo>>,
     match_by: MatchBy,
+    per_row_memory_ctx: PgMemoryContexts,
 }
 
 impl ParquetReaderContext {
@@ -88,6 +90,8 @@ impl ParquetReaderContext {
 
         let binary_out_funcs = Self::collect_binary_out_funcs(&attributes);
 
+        let per_row_memory_ctx = PgMemoryContexts::new("COPY FROM parquet per row memory context");
+
         ParquetReaderContext {
             buffer: Vec::new(),
             offset: 0,
@@ -97,6 +101,7 @@ impl ParquetReaderContext {
             match_by,
             started: false,
             finished: false,
+            per_row_memory_ctx,
         }
     }
 
@@ -172,11 +177,9 @@ impl ParquetReaderContext {
         }
 
         if !self.started {
-            // starts PG copy protocol
+            // starts PG copy
             self.copy_start();
         }
-
-        let natts = self.attribute_contexts.len() as i16;
 
         // read a record batch from the parquet file. Record batch will contain
         // DEFAULT_BATCH_SIZE rows as we configured in the parquet reader.
@@ -193,8 +196,21 @@ impl ParquetReaderContext {
 
                 // slice the record batch to get the next row
                 let record_batch = record_batch.slice(i, 1);
+                self.copy_row(record_batch);
+            }
+        } else {
+            // finish PG copy
+            self.copy_finish();
+        }
 
+        true
+    }
+
+    fn copy_row(&mut self, record_batch: RecordBatch) {
+        unsafe {
+            self.per_row_memory_ctx.switch_to(|_context| {
                 /* 2 bytes: per-tuple header */
+                let natts = self.attribute_contexts.len() as i16;
                 let attnum_len_bytes = natts.to_be_bytes();
                 self.buffer.extend_from_slice(&attnum_len_bytes);
 
@@ -209,20 +225,17 @@ impl ParquetReaderContext {
                 for (datum, out_func) in tuple_datums.into_iter().zip(self.binary_out_funcs.iter())
                 {
                     if let Some(datum) = datum {
-                        unsafe {
-                            let datum_bytes: *mut varlena =
-                                SendFunctionCall(out_func.as_ptr(), datum);
+                        let datum_bytes: *mut varlena = SendFunctionCall(out_func.as_ptr(), datum);
 
-                            /* 4 bytes: attribute's data size */
-                            let data_size = varsize_any_exhdr(datum_bytes);
-                            let data_size_bytes = (data_size as i32).to_be_bytes();
-                            self.buffer.extend_from_slice(&data_size_bytes);
+                        /* 4 bytes: attribute's data size */
+                        let data_size = varsize_any_exhdr(datum_bytes);
+                        let data_size_bytes = (data_size as i32).to_be_bytes();
+                        self.buffer.extend_from_slice(&data_size_bytes);
 
-                            /* variable bytes: attribute's data */
-                            let data = vardata_any(datum_bytes) as _;
-                            let data_bytes = std::slice::from_raw_parts(data, data_size);
-                            self.buffer.extend_from_slice(data_bytes);
-                        };
+                        /* variable bytes: attribute's data */
+                        let data = vardata_any(datum_bytes) as _;
+                        let data_bytes = std::slice::from_raw_parts(data, data_size);
+                        self.buffer.extend_from_slice(data_bytes);
                     } else {
                         /* 4 bytes: null */
                         let null_value = -1_i32;
@@ -230,13 +243,10 @@ impl ParquetReaderContext {
                         self.buffer.extend_from_slice(&null_value_bytes);
                     }
                 }
-            }
-        } else {
-            // finish PG copy protocol
-            self.copy_finish();
-        }
+            });
 
-        true
+            self.per_row_memory_ctx.reset();
+        };
     }
 
     fn copy_start(&mut self) {
