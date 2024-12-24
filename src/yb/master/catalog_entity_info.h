@@ -128,6 +128,12 @@ struct TabletLeaderLeaseInfo {
   MicrosTime ht_lease_expiration = 0;
   // Number of heartbeats that current tablet leader doesn't have a valid lease.
   uint64 heartbeats_without_leader_lease = 0;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        initialized, (leader_lease_status, consensus::LeaderLeaseStatus_Name(leader_lease_status)),
+        ht_lease_expiration, heartbeats_without_leader_lease);
+  }
 };
 
 // Drive usage information on a current replica of a tablet.

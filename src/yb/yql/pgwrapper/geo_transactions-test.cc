@@ -636,8 +636,8 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
   WaitForLoadBalanceCompletion();
 
   auto status_tablet_ids = ASSERT_RESULT(GetStatusTablets(1, ExpectedLocality::kLocal));
-  ValidateAllTabletLeaderinZone(table_uuids, 1);
-  ValidateAllTabletLeaderinZone(status_tablet_ids, 1);
+  ValidateAllTabletLeaderInZone(table_uuids, 1);
+  ValidateAllTabletLeaderInZone(status_tablet_ids, 1);
 
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 SET TABLESPACE tablespace2", table_name));
 
@@ -645,13 +645,13 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
   WaitForLoadBalanceCompletion();
 
   status_tablet_ids = ASSERT_RESULT(GetStatusTablets(2, ExpectedLocality::kLocal));
-  ValidateAllTabletLeaderinZone(table_uuids, 3);
-  ValidateAllTabletLeaderinZone(status_tablet_ids, 3);
+  ValidateAllTabletLeaderInZone(table_uuids, 3);
+  ValidateAllTabletLeaderInZone(status_tablet_ids, 3);
 
   ASSERT_OK(ShutdownTabletServersByRegion(3));
   WaitForLoadBalanceCompletion();
-  ValidateAllTabletLeaderinZone(table_uuids, 1);
-  ValidateAllTabletLeaderinZone(status_tablet_ids, 1);
+  ValidateAllTabletLeaderInZone(table_uuids, 1);
+  ValidateAllTabletLeaderInZone(status_tablet_ids, 1);
 }
 
 // Create a geo-partitioned table with 3 partitions, each pinned to a different zone, with 3 tablet
