@@ -48,35 +48,42 @@ METRIC_DEFINE_counter(xcluster, rpc_heartbeats_responded, "xCluster Rpc Heartbea
 METRIC_DEFINE_gauge_int64(xcluster, last_read_opid_term, "xCluster Last Read OpId (Term)",
     yb::MetricUnit::kOperations,
     "ID of the Last Read Producer Operation from a xCluster GetChanges request. Format = "
-    "term.index");
+    "term.index",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
 METRIC_DEFINE_gauge_int64(xcluster, last_read_opid_index, "xCluster Last Read OpId (Index)",
     yb::MetricUnit::kOperations,
     "ID of the Last Read Producer Operation from a xCluster GetChanges request. Format = "
-    "term.index");
+    "term.index",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
 METRIC_DEFINE_gauge_int64(xcluster, last_checkpoint_opid_index, "xCluster Last Checkpoint OpId "
 "(Index)",
     yb::MetricUnit::kOperations,
     "ID of the Last Checkpoint Sent by Consumer in a xCluster GetChanges request. Format = "
-    "term.index");
+    "term.index",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
 METRIC_DEFINE_gauge_uint64(xcluster, last_read_hybridtime, "xCluster Last Read HybridTime.",
     yb::MetricUnit::kMicroseconds,
-    "HybridTime of the Last Read Operation from a xCluster GetChanges request");
+    "HybridTime of the Last Read Operation from a xCluster GetChanges request",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
 METRIC_DEFINE_gauge_uint64(xcluster, last_read_physicaltime, "xCluster Last Read Physical TIme.",
     yb::MetricUnit::kMicroseconds,
-    "Physical Time of the Last Read Operation from a xCluster GetChanges request");
+    "Physical Time of the Last Read Operation from a xCluster GetChanges request",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
 METRIC_DEFINE_gauge_uint64(xcluster, last_checkpoint_physicaltime,
     "xCluster Last Committed Physical Time.",
     yb::MetricUnit::kMicroseconds,
-    "Physical Time of the Last Committed Operation on Consumer.");
+    "Physical Time of the Last Committed Operation on Consumer.",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
 METRIC_DEFINE_gauge_int64(xcluster, last_readable_opid_index, "xCluster Last Readable OpId (Index)",
     yb::MetricUnit::kOperations,
-    "Index of the Last Producer Operation that a xCluster GetChanges request COULD read.");
+    "Index of the Last Producer Operation that a xCluster GetChanges request COULD read.",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
 METRIC_DEFINE_gauge_int64(xcluster, async_replication_sent_lag_micros,
     "xCluster Physical Time Lag Last Sent",
@@ -91,7 +98,8 @@ METRIC_DEFINE_gauge_int64(xcluster, async_replication_committed_lag_micros,
 
 METRIC_DEFINE_gauge_bool(xcluster, is_bootstrap_required, "Is Bootstrap Required",
     yb::MetricUnit::kUnits,
-    "Is bootstrap required for the replication universe.");
+    "Is bootstrap required for the replication universe.",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
 METRIC_DEFINE_gauge_uint64(xcluster, last_getchanges_time, "xCluster Last GetChanges Physical Time",
     yb::MetricUnit::kMicroseconds,
@@ -109,7 +117,8 @@ METRIC_DEFINE_gauge_int64(xcluster, time_since_last_getchanges,
 METRIC_DEFINE_gauge_uint64(xcluster, last_caughtup_physicaltime,
     "xCluster Last Caught-up Physical Time.",
     yb::MetricUnit::kMicroseconds,
-    "Physical Time till which consumer has caught-up with producer.");
+    "Physical Time till which consumer has caught-up with producer.",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
 // CdcSdk Tablet metrics.
 METRIC_DEFINE_gauge_int64(cdcsdk, cdcsdk_sent_lag_micros, "CDCSDK sent Lag",
