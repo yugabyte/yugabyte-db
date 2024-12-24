@@ -349,6 +349,11 @@ CreateAndDrainPersistedQuery(const char *cursorName, Query *query,
 	{
 		cursorOptions |= CURSOR_OPT_SCROLL;
 	}
+	else
+	{
+		/* We can't scroll backwards, make it holdable so it can scroll back. */
+		isHoldCursor = true;
+	}
 
 	/* Create the cursor */
 	Portal queryPortal = CreatePortal(cursorName, false, false);
@@ -506,7 +511,9 @@ HoldPortal(Portal portal)
 	/*
 	 * Note that PersistHoldablePortal() must release all resources used by
 	 * the portal that are local to the creating transaction.
+	 * Since we need backwards scan here, ensure we set SCROLL on the portal
 	 */
+	portal->cursorOptions = portal->cursorOptions | CURSOR_OPT_SCROLL;
 	PortalCreateHoldStore(portal);
 	PersistHoldablePortal(portal);
 
