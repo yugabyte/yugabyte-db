@@ -740,8 +740,9 @@ Refer to [import schema](../../reference/schema-migration/import-schema/) for de
 
 {{< note title="NOT VALID constraints are not imported" >}}
 
-Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.  
-Yb-voyager created these type of constraint during the `post-snapshot-import` phase.
+Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
+
+To add the constraints back, you run the `import schema` command after data import. See [Cutover to the target](#cutover-to-the-target).
 
 {{< /note >}}
 
