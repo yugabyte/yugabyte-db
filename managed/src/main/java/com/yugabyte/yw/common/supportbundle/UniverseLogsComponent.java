@@ -103,7 +103,11 @@ class UniverseLogsComponent implements SupportBundleComponent {
         confGetter.getConfForScope(universe, UniverseConfKeys.universeLogsRegexPattern);
     String postgresLogsRegexPattern =
         confGetter.getConfForScope(universe, UniverseConfKeys.postgresLogsRegexPattern);
-    List<String> fileRegexList = Arrays.asList(universeLogsRegexPattern, postgresLogsRegexPattern);
+    String connectionPoolingLogsRegexPattern =
+        confGetter.getConfForScope(universe, UniverseConfKeys.connectionPoolingLogsRegexPattern);
+    List<String> fileRegexList =
+        Arrays.asList(
+            universeLogsRegexPattern, postgresLogsRegexPattern, connectionPoolingLogsRegexPattern);
 
     // Get and filter master log files that fall within given dates
     String masterLogsPath = nodeHomeDir + "/master/logs";

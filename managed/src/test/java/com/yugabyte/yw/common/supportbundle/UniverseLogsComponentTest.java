@@ -54,6 +54,8 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
   private final String testUniverseLogsRegexPattern =
       "((?:.*)(?:yb-)(?:master|tserver)(?:.*))(\\d{8})-(?:\\d*)\\.(?:.*)";
   private final String testPostgresLogsRegexPattern = "((?:.*)(?:postgresql)-)(.{10})(?:.*)";
+  private final String testConnectionPoolingLogsRegexPattern =
+      "((?:.*)(?:ysql-conn-mgr)-)(.{10})(?:.*)";
   private Universe universe;
   private Customer customer;
   private String fakeSupportBundleBasePath = "/tmp/yugaware_tests/support_bundle-universe_logs/";
@@ -102,6 +104,9 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     when(MockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.postgresLogsRegexPattern)))
         .thenReturn(testPostgresLogsRegexPattern);
+    when(MockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.connectionPoolingLogsRegexPattern)))
+        .thenReturn(testConnectionPoolingLogsRegexPattern);
     when(mockSupportBundleUtil.extractFileTypeFromFileNameAndRegex(any(), any()))
         .thenCallRealMethod();
     when(mockSupportBundleUtil.extractDateFromFileNameAndRegex(any(), any())).thenCallRealMethod();

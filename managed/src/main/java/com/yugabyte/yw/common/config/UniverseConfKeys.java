@@ -709,6 +709,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Postgres logs regex pattern in support bundle",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> connectionPoolingLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.connection_pooling_logs_regex_pattern",
+          ScopeType.UNIVERSE,
+          "Connection Pooling logs regex pattern",
+          "Connection Pooling logs regex pattern in support bundle",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ysqlUpgradeTimeoutSec =
       new ConfKeyInfo<>(
           "yb.upgrade.ysql_upgrade_timeout_sec",
