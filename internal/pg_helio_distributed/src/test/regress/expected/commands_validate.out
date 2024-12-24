@@ -127,3 +127,6 @@ ERROR:  Running the validate command with { metadata: true } is not supported wi
 -- validate with repair, full and metadata
 SELECT helio_api.validate('db', '{"validate" : "validatecoll", "full" : true, "metadata" : true, "repair" : true}');
 ERROR:  Running the validate command with { metadata: true } is not supported with any other options
+-- validate field is an object
+SELECT helio_api.validate('db','{"validate":{}}');
+ERROR:  collection name has invalid type object

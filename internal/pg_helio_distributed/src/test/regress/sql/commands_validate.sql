@@ -60,3 +60,6 @@ SELECT helio_api.validate('db', '{"validate" : "validatecoll", "full" : true,  "
 
 -- validate with repair, full and metadata
 SELECT helio_api.validate('db', '{"validate" : "validatecoll", "full" : true, "metadata" : true, "repair" : true}');
+
+-- validate field is an object
+SELECT helio_api.validate('db','{"validate":{}}');
