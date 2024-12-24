@@ -4502,5 +4502,62 @@ TEST_F_EX(PgLibPqTest, BlockDangerousRoles, PgLibPqBlockDangerousRolesTest) {
                            YBPgErrorCode::YB_PG_RESERVED_NAME);
 }
 
+class BatchInsertOnConflictTest : public PgLibPqTestRF1 {
+ protected:
+  void RunConflictingIOCTxn(PGConn& conn, IsolationLevel isolation_level, int32_t expected_price) {
+    thread_holder_.AddThreadFunctor([this, &conn, isolation_level, expected_price]() -> void {
+      ASSERT_OK(conn.StartTransaction(isolation_level));
+      ASSERT_OK(conn.Execute(kIOCQuery));
+      const int32_t price = ASSERT_RESULT(conn.FetchRow<int32_t>(
+          "SELECT price FROM products WHERE id = 1"));
+
+      ASSERT_EQ(price, expected_price);
+      ASSERT_OK(conn.CommitTransaction());
+    });
+  }
+
+  void StartMainTxn(PGConn& conn, IsolationLevel isolation_level = READ_COMMITTED) {
+    ASSERT_OK(conn.StartTransaction(isolation_level));
+    ASSERT_OK(conn.Execute("UPDATE products SET price = price + 5 WHERE id = 1"));
+  }
+
+  void CommitMainTxnAfterWait(PGConn& conn) {
+    std::this_thread::sleep_for(RandomUniformInt(1, 10) * 100ms);
+    ASSERT_OK(conn.CommitTransaction());
+  }
+
+  constexpr static auto kInsertOnConflictBatchSize = 1024;
+  const std::vector<IsolationLevel> kIsolationLevels = {
+    READ_COMMITTED, SNAPSHOT_ISOLATION, SERIALIZABLE_ISOLATION
+  };
+  const std::string kIOCQuery = "INSERT INTO products VALUES (1, 'oats', 10) ON CONFLICT (id) "
+                                "DO UPDATE SET price = products.price + 5";
+  TestThreadHolder thread_holder_;
+};
+
+TEST_F(BatchInsertOnConflictTest, InsertOnConflictWithQueryRestart) {
+  PGConn conn1 = ASSERT_RESULT(Connect());
+  PGConn conn2 = ASSERT_RESULT(Connect());
+  int32_t expected_price = 10;
+
+  // Setup
+  ASSERT_OK(conn1.Execute("DROP TABLE IF EXISTS products"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE products (id INT PRIMARY KEY, name TEXT, price INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO products VALUES (1, 'oats', 10)"));
+  ASSERT_OK(conn2.Execute(
+      Format("SET yb_insert_on_conflict_read_batch_size TO $0", kInsertOnConflictBatchSize)));
+
+  // Test that a query retried due to a kConflict error correctly clears the insert on conflict
+  // buffer between retries. Not clearing the buffer would result in an incorrect "command cannot
+  // affect row a second time" error.
+  for (IsolationLevel isolation_level : kIsolationLevels) {
+    expected_price += 10;
+    StartMainTxn(conn1);
+    RunConflictingIOCTxn(conn2, isolation_level, expected_price);
+    CommitMainTxnAfterWait(conn1);
+    thread_holder_.WaitAndStop(2s * kTimeMultiplier);
+  }
+}
+
 } // namespace pgwrapper
 } // namespace yb

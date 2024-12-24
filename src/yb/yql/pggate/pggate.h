@@ -772,6 +772,10 @@ class PgApiImpl {
 
   void RestoreSessionState(const YBCPgSessionState& session_data);
 
+  void RollbackSubTransactionScopedSessionState();
+  void RollbackTransactionScopedSessionState();
+  Status CommitTransactionScopedSessionState();
+
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.
 
@@ -824,8 +828,6 @@ class PgApiImpl {
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);
 
  private:
-  void ClearSessionState();
-
   class Interrupter;
 
   class TupleIdBuilder {
