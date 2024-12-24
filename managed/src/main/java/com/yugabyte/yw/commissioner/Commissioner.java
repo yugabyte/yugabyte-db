@@ -222,11 +222,14 @@ public class Commissioner {
    */
   public boolean abortTask(UUID taskUUID, boolean force) {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    if (taskQueue.cancel(taskUUID)) {
+      log.info("Task {} is removed from the queue", taskUUID);
+      return true;
+    }
     if (!force && !isTaskTypeAbortable(taskInfo.getTaskType())) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid task type: Task %s cannot be aborted", taskUUID));
     }
-
     if (taskInfo.getTaskState() != TaskInfo.State.Running) {
       log.warn("Task {} is not in running state", taskUUID);
       return false;
@@ -359,8 +362,14 @@ public class Commissioner {
   }
 
   public boolean isTaskAbortable(TaskInfo taskInfo) {
-    return isTaskTypeAbortable(taskInfo.getTaskType())
-        && taskExecutor.isTaskRunning(taskInfo.getUuid());
+    RunnableTask taskRunnable = taskQueue.find(taskInfo.getUuid());
+    if (taskRunnable == null || taskRunnable.isRunning()) {
+      // Check with the executor if the task is not queued or already running.
+      return isTaskTypeAbortable(taskInfo.getTaskType())
+          && taskExecutor.isTaskRunning(taskInfo.getUuid());
+    }
+    // Task is still in the queue.
+    return true;
   }
 
   public boolean isTaskRetryable(TaskInfo taskInfo, Predicate<TaskInfo> moreCondition) {

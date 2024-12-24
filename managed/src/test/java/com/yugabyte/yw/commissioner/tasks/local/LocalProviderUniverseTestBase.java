@@ -1114,7 +1114,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   protected TaskInfo waitForTask(UUID taskUUID, Universe... universes) throws InterruptedException {
     try {
-      return CommissionerBaseTest.waitForTask(taskUUID);
+      return waitForTask(taskUUID);
     } catch (Exception e) {
       dumpToLog(universes);
       throw new RuntimeException(e);
@@ -1219,7 +1219,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
           && !lastTaskUuid.equals(details.placementModificationTaskUuid)) {
         // A new task has already started, wait for it to complete.
         TaskInfo taskInfo = TaskInfo.getOrBadRequest(details.placementModificationTaskUuid);
-        return CommissionerBaseTest.waitForTask(taskInfo.getUuid());
+        return waitForTask(taskInfo.getUuid());
       }
       CustomerTask customerTask = CustomerTask.getLastTaskByTargetUuid(universeUuid);
       if (!lastTaskUuid.equals(customerTask.getTaskUUID())) {

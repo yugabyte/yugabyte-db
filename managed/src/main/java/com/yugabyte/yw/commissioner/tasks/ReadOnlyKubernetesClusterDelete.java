@@ -66,16 +66,8 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
 
   @Override
   public void run() {
+    Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
     try {
-      // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
-      // to prevent other updates from happening.
-      Universe universe = null;
-      if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1);
-      } else {
-        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
-      }
-
       List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
       if (CollectionUtils.isEmpty(roClusters)) {
         String msg =

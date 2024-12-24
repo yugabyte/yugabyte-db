@@ -1446,4 +1446,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Use S3 IAM roles attached to DB node for Backup/Restore",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> queuedTaskWaitTime =
+      new ConfKeyInfo<>(
+          "yb.task.queue_wait_time",
+          ScopeType.UNIVERSE,
+          "Queue Wait Time for Tasks",
+          "Wait time for a queued task before the running task can be evicted forcefully.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

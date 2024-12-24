@@ -11,8 +11,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.api.client.util.Throwables;
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -263,7 +261,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -451,8 +448,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected Set<UUID> lockedXClusterUniversesUuidSet = null;
 
   protected static final String MIN_WRITE_READ_TABLE_CREATION_RELEASE = "2.6.0.0";
-
-  @VisibleForTesting static final Duration SLEEP_TIME_FORCE_LOCK_RETRY = Duration.ofSeconds(10);
 
   protected String ysqlPassword;
   protected String ycqlPassword;
@@ -773,6 +768,33 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  @Override
+  public Duration getQueueWaitTime(TaskType taskType, ITaskParams taskParams) {
+    TaskType thisTaskType = getRunnableTask().getTaskType();
+    if (thisTaskType == TaskType.CreateBackup
+        || thisTaskType == TaskType.EnableNodeAgentInUniverse) {
+      if (PLACEMENT_MODIFICATION_TASKS.contains(taskType)) {
+        return confGetter.getConfForScope(getUniverse(), UniverseConfKeys.queuedTaskWaitTime);
+      }
+    }
+    if (taskType == TaskType.AddOnClusterDelete
+        || taskType == TaskType.DestroyUniverse
+        || taskType == TaskType.ReadOnlyClusterDelete
+        || taskType == TaskType.DestroyKubernetesUniverse
+        || taskType == TaskType.ReadOnlyKubernetesClusterDelete) {
+      JsonNode isforceDelete = Json.toJson(taskParams).get("isForceDelete");
+      if (isforceDelete != null && !isforceDelete.isNull() && isforceDelete.asBoolean()) {
+        if (confGetter.getConfForScope(
+            getUniverse(), UniverseConfKeys.taskOverrideForceUniverseLock)) {
+          return Duration.ZERO;
+        }
+        return confGetter.getConfForScope(getUniverse(), UniverseConfKeys.queuedTaskWaitTime);
+      }
+    }
+    // Let the incoming task fail by not allowing queuing.
+    return null;
+  }
+
   /**
    * Override this to perform additional universe state check in addition to {@link
    * #validateParams(boolean)}.
@@ -883,7 +905,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           throw new RuntimeException(msg);
         }
         // If this universe is already being edited, fail the request.
-        if (!getConfig().isForceUpdate() && universeDetails.updateInProgress) {
+        if (universeDetails.updateInProgress) {
           String msg = "Universe " + universe.getUniverseUUID() + " is already being updated";
           log.error(msg);
           throw new UniverseInProgressException(msg);
@@ -896,7 +918,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   || Objects.equals(
                       taskParams().getPreviousTaskUUID(),
                       universeDetails.placementModificationTaskUuid);
-          if (!getConfig().isForceUpdate() && !isLastTaskOrLastPlacementTaskRetry) {
+          if (!isLastTaskOrLastPlacementTaskRetry) {
             String msg =
                 "Only the last task " + taskParams().getPreviousTaskUUID() + " can be retried";
             log.error(msg);
@@ -1051,82 +1073,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  // Abort the ongoing task on the universe and grab the lock forcefully.
-  private Universe lockUniversePremptively(
-      Universe universe, long timeoutSecs, UniverseUpdater updater) {
-    // Ensure that the force update is set.
-    updater.getConfig().setForceUpdate(true);
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    if (universeDetails.updatingTaskUUID != null) {
-      log.info(
-          "Lock preempively universe {} at version {}.",
-          universe.getUniverseUUID(),
-          updater.getConfig().getExpectedUniverseVersion());
-      // Abort the current task if it is running before grabbing the lock on this universe.
-      getCommissioner().abortTask(universeDetails.updatingTaskUUID, true);
-      Stopwatch stopwatch = Stopwatch.createStarted();
-      // The task will always abort. This timeout loop is just for safety.
-      while (getCommissioner().isTaskRunning(universeDetails.updatingTaskUUID)) {
-        if (stopwatch.elapsed(TimeUnit.SECONDS) > timeoutSecs) {
-          String msg = "Universe " + universe.getUniverseUUID() + " could not be aborted in time";
-          log.error(msg);
-          throw new UniverseInProgressException(msg);
-        }
-        log.debug("Waiting for running task {} to abort", universeDetails.updatingTaskUUID);
-        UniverseTaskBase.this.waitFor(SLEEP_TIME_FORCE_LOCK_RETRY);
-      }
-    }
-    universe = saveUniverseDetails(universe.getUniverseUUID(), updater);
-    getOrCreateExecutionContext().lockUniverse(universe.getUniverseUUID(), updater.getConfig());
-    log.debug("Locked universe {}", universe.getUniverseUUID());
-    return universe;
-  }
-
   private Universe lockUniverseForUpdate(UUID universeUuid, UniverseUpdater updater) {
-    if (!updater.getConfig().isForceUpdate()) {
-      Universe universe = saveUniverseDetails(universeUuid, updater);
-      getOrCreateExecutionContext().lockUniverse(universeUuid, updater.getConfig());
-      log.debug("Locked universe {}", universeUuid);
-      return universe;
-    }
-    log.info(
-        "Force lock universe {} at version {}.",
-        universeUuid,
-        updater.getConfig().getExpectedUniverseVersion());
-    Universe universe = Universe.getOrBadRequest(universeUuid);
-    long retryNumber = 0;
-    long timeoutSecs =
-        config.getDuration("yb.task.max_force_universe_lock_timeout", TimeUnit.SECONDS);
-    Stopwatch stopwatch = Stopwatch.createStarted();
-    while (true) {
-      try {
-        // This allows switching the runtime flag from wait-retry to preemptive lock in the loop.
-        if (confGetter.getConfForScope(universe, UniverseConfKeys.taskOverrideForceUniverseLock)) {
-          return lockUniversePremptively(universe, timeoutSecs, updater);
-        }
-        // TODO Need to investigate the effectiveness of the wait below in real scenario.
-        // Override force locking to false and retry.
-        updater.getConfig().setForceUpdate(false);
-        universe = saveUniverseDetails(universeUuid, updater);
-        getOrCreateExecutionContext().lockUniverse(universeUuid, updater.getConfig());
-        log.debug("Locked universe {}", universeUuid);
-        return universe;
-      } catch (UniverseInProgressException e) {
-        if (updater.getConfig().isForceUpdate()
-            || stopwatch.elapsed(TimeUnit.SECONDS) > timeoutSecs) {
-          // If it is either preemptive lock or time is up, throw the exception.
-          throw e;
-        }
-        retryNumber++;
-        log.warn(
-            "Universe {} was locked: {}; retrying after {} seconds. Completed attempt {}",
-            universeUuid,
-            e.getMessage(),
-            SLEEP_TIME_FORCE_LOCK_RETRY.getSeconds(),
-            retryNumber);
-      }
-      waitFor(SLEEP_TIME_FORCE_LOCK_RETRY);
-    }
+    Universe universe = saveUniverseDetails(universeUuid, updater);
+    getOrCreateExecutionContext().lockUniverse(universeUuid, updater.getConfig());
+    log.debug("Locked universe {}", universeUuid);
+    return universe;
   }
 
   public SubTaskGroup createManageEncryptionAtRestTask() {
@@ -1193,17 +1144,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   @Override
   public String getName() {
     return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
-  }
-
-  public Universe forceLockUniverseForUpdate(int expectedUniverseVersion) {
-    UniverseUpdaterConfig updaterConfig =
-        UniverseUpdaterConfig.builder()
-            .checkSuccess(true)
-            .expectedUniverseVersion(expectedUniverseVersion)
-            .forceUpdate(true)
-            .build();
-    return lockUniverseForUpdate(
-        taskParams().getUniverseUUID(), getLockingUniverseUpdater(updaterConfig));
   }
 
   /**

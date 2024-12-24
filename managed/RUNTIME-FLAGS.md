@@ -297,3 +297,4 @@
 | "Node Agent Enabler Reinstallation Cooldown Period" | "yb.node_agent.enabler.reinstall_cooldown" | "UNIVERSE" | "Node agent enabler reinstallation cooldown period for the universe" | "Duration" |
 | "Option for Off-Cluster PITR based Backup Schedule" | "yb.ui.feature_flags.off_cluster_pitr_enabled" | "UNIVERSE" | "Enable option for creating backup schedules that support off-cluster PITR" | "Boolean" |
 | "Use S3 IAM roles attached to DB node for Backup/Restore" | "yb.backup.s3.use_db_nodes_iam_role_for_backup" | "UNIVERSE" | "Use S3 IAM roles attached to DB node for Backup/Restore" | "Boolean" |
+| "Queue Wait Time for Tasks" | "yb.task.queue_wait_time" | "UNIVERSE" | "Wait time for a queued task before the running task can be evicted forcefully." | "Duration" |

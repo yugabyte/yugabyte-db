@@ -374,12 +374,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     return taskType;
   }
 
-  public static TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
+  public TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
     return waitForTask(taskUUID, 200);
   }
 
-  public static TaskInfo waitForTask(UUID taskUUID, long sleepDuration)
-      throws InterruptedException {
+  public TaskInfo waitForTask(UUID taskUUID, long sleepDuration) throws InterruptedException {
     int numRetries = 0;
     TaskInfo taskInfo = null;
     while (numRetries < MAX_RETRY_COUNT) {
@@ -388,15 +387,16 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       // Surrounding the next block with try {} catch {} as sometimes h2 raises NPE
       // inside the get() request. We are not afraid of such exception as the next
       // request will succeeded.
-      try {
-        taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-        if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
+      if (!commissioner.isTaskRunning(taskUUID)) {
+        try {
+          taskInfo = TaskInfo.getOrBadRequest(taskUUID);
           // Also, ensure task details are set before returning.
-          if (taskInfo.getTaskParams() != null) {
+          if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())
+              && taskInfo.getTaskParams() != null) {
             return taskInfo;
           }
+        } catch (Exception e) {
         }
-      } catch (Exception e) {
       }
       Thread.sleep(sleepDuration);
       numRetries++;

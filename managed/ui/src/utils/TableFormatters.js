@@ -47,6 +47,12 @@ export function successStringFormatter(cell, row) {
           <YBLoadingCircleIcon size="inline" /> Initializing
         </span>
       );
+    case 'Created':
+      return (
+        <span className="yb-pending-color">
+          <YBLoadingCircleIcon size="inline" /> Queued
+        </span>
+      );
     case 'InProgress':
       return (
         <span className="yb-pending-color">

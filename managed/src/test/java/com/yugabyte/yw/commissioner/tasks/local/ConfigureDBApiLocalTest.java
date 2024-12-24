@@ -9,7 +9,6 @@ import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -161,7 +160,7 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     result = configureYCQL(formData, universe.getUniverseUUID());
     assertOk(result);
     json = Json.parse(contentAsString(result));
-    taskInfo = CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()));
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     verifyYCQL(universe);

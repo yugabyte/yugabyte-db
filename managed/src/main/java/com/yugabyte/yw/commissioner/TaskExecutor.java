@@ -65,6 +65,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
@@ -266,9 +267,7 @@ public class TaskExecutor {
     this.taskOwner = Util.getHostname();
     this.skipSubTaskAbortableCheck = true;
     shutdownHookHandler.addShutdownHook(
-        TaskExecutor.this,
-        (taskExecutor) -> taskExecutor.shutdown(Duration.ofMinutes(2)),
-        100 /* weight */);
+        this, taskExecutor -> taskExecutor.shutdown(Duration.ofMinutes(2)), 100 /* weight */);
     this.taskTypeMap = taskTypeMap;
     this.inverseTaskTypeMap = inverseTaskTypeMap;
   }
@@ -1004,6 +1003,10 @@ public class TaskExecutor {
       return taskInfo.getUuid();
     }
 
+    public TaskType getTaskType() {
+      return taskInfo.getTaskType();
+    }
+
     // This is invoked from tasks to save the updated task details generally in transaction with
     // other DB updates.
     public synchronized void setTaskParams(JsonNode taskParams) {
@@ -1014,7 +1017,7 @@ public class TaskExecutor {
 
     protected abstract Map<String, String> getTaskMetricLabels();
 
-    protected abstract Instant getAbortTime();
+    protected abstract boolean isAbortTimeReached(@Nullable Duration graceTime);
 
     protected abstract TaskExecutionListener getTaskExecutionListener();
 
@@ -1028,32 +1031,12 @@ public class TaskExecutor {
      */
     protected abstract Throwable handleAfterRun(ITask task, Throwable t);
 
-    /**
-     * Checks if the future abort time is reached with the additional graceTime if it is provided.
-     */
-    protected boolean isAbortTimeReached(@Nullable Duration graceTime) {
-      Instant abortTime = getAbortTime();
-      if (abortTime == null) {
-        return false;
-      }
-      long graceMillis = 0L;
-      Instant actualAbortTime = abortTime;
-      if (graceTime != null && (graceMillis = graceTime.toMillis()) > 0) {
-        actualAbortTime = actualAbortTime.plus(graceMillis, ChronoUnit.MILLIS);
-      }
-      return Instant.now().isAfter(actualAbortTime);
-    }
-
     Duration getTimeLimit() {
       return timeLimit;
     }
 
     void updateScheduledTime() {
       taskScheduledTime = Instant.now();
-    }
-
-    TaskType getTaskType() {
-      return taskInfo.getTaskType();
     }
 
     synchronized void setPosition(int position) {
@@ -1162,7 +1145,7 @@ public class TaskExecutor {
     private final AtomicReference<TaskExecutionListener> taskExecutionListenerRef =
         new AtomicReference<>();
     // Time when the abort is set.
-    private volatile Instant abortTime;
+    private final AtomicReference<Supplier<Instant>> abortTimeSupplierRef = new AtomicReference<>();
 
     RunnableTask(ITask task, TaskInfo taskInfo) {
       super(task, taskInfo);
@@ -1235,13 +1218,37 @@ public class TaskExecutor {
           getTaskInfo().getTaskType().name());
     }
 
-    @Override
-    protected Instant getAbortTime() {
+    private Instant getAbortTime() {
+      Supplier<Instant> supplier = abortTimeSupplierRef.get();
+      if (supplier == null) {
+        return null;
+      }
+      Instant abortTime = supplier.get();
+      if (abortTime == null) {
+        throw new IllegalStateException("Abort time must be set by the supplier");
+      }
       return abortTime;
     }
 
     private void setAbortTime(Instant abortTime) {
-      this.abortTime = abortTime;
+      abortTimeSupplierRef.set(() -> checkNotNull(abortTime, "Abort time must be set"));
+    }
+
+    /**
+     * Checks if the future abort time is reached with the additional graceTime if it is provided.
+     */
+    @Override
+    protected boolean isAbortTimeReached(@Nullable Duration graceTime) {
+      Instant abortTime = getAbortTime();
+      if (abortTime == null) {
+        return false;
+      }
+      long graceMillis = 0L;
+      Instant actualAbortTime = abortTime;
+      if (graceTime != null && (graceMillis = graceTime.toMillis()) > 0) {
+        actualAbortTime = actualAbortTime.plus(graceMillis, ChronoUnit.MILLIS);
+      }
+      return Instant.now().isAfter(actualAbortTime);
     }
 
     @Override
@@ -1395,13 +1402,20 @@ public class TaskExecutor {
     }
 
     // Restricted access to package level for internal use.
+    // Sets a supplier for abort time on request.
+    void setAbortTimeSupplier(Supplier<Instant> abortTimeSupplier) {
+      abortTimeSupplierRef.compareAndSet(null, abortTimeSupplier);
+    }
+
+    // Restricted access to package level for internal use.
     void abort(@Nullable Duration delay) {
       Instant abortTime = Instant.now();
       if (delay != null && delay.toMillis() > 0) {
         abortTime = abortTime.plus(delay.toMillis(), ChronoUnit.MILLIS);
       }
+      Instant currentAbortTime = getAbortTime();
       // Signal abort to the task.
-      if (getAbortTime() == null || getAbortTime().isAfter(abortTime)) {
+      if (currentAbortTime == null || currentAbortTime.isAfter(abortTime)) {
         log.info("Aborting task {} in {} secs", getTaskUUID(), abortTime);
         setAbortTime(abortTime);
       }
@@ -1488,8 +1502,8 @@ public class TaskExecutor {
     }
 
     @Override
-    protected synchronized Instant getAbortTime() {
-      return parentRunnableTask == null ? null : parentRunnableTask.getAbortTime();
+    protected synchronized boolean isAbortTimeReached(@Nullable Duration graceTime) {
+      return parentRunnableTask == null ? false : parentRunnableTask.isAbortTimeReached(graceTime);
     }
 
     @Override

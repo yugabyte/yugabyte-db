@@ -9,6 +9,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
@@ -322,5 +323,11 @@ public class UniverseTaskParams extends AbstractTaskParams {
   @JsonIgnore
   public boolean isRunOnlyPrechecks() {
     return runOnlyPrechecks;
+  }
+
+  @JsonIgnore
+  @Override
+  public UUID getTargetUuid(TaskType taskType) {
+    return getUniverseUUID();
   }
 }

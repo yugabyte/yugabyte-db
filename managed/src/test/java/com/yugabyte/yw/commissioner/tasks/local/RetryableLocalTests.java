@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner.tasks.local;
 import static org.junit.Assert.assertEquals;
 
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -92,7 +91,7 @@ public class RetryableLocalTests extends LocalProviderUniverseTestBase {
                   Universe.getOrBadRequest(universe.getUniverseUUID()),
                   universe.getUniverseDetails());
           try {
-            return CommissionerBaseTest.waitForTask(taskID);
+            return waitForTask(taskID);
           } catch (InterruptedException e) {
             throw new RuntimeException();
           }
@@ -138,7 +137,7 @@ public class RetryableLocalTests extends LocalProviderUniverseTestBase {
     MDC.remove(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY);
     CustomerTask customerTask =
         customerTaskManager.retryCustomerTask(customer.getUuid(), taskInfo.getUuid());
-    taskInfo = CommissionerBaseTest.waitForTask(customerTask.getTaskUUID());
+    taskInfo = waitForTask(customerTask.getTaskUUID());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyPayload();
