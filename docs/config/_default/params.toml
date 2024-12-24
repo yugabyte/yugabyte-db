@@ -20,7 +20,7 @@ version_menu_pagelinks = true
 
 [[links.developer]]
   name = "Slack"
-  url = "https://communityinviter.com/apps/yugabyte-db/register"
+  url = "https://inviter.co/yugabytedb"
   icon = "fab fa-slack"
 
 [[links.developer]]

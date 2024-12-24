@@ -169,4 +169,4 @@ Let's recap!
 * You used the latency-optimized [geo-partitioning design pattern](../../../develop/build-global-apps/latency-optimized-geo-partition/) to scale both reads and writes across various locations.
 * You learned how to offload the management and operations of your database cluster by migrating to [YugabyteDB Aeon](/preview/yugabyte-cloud/).
 
-With that said, good luck building applications that scale and never fail! And don't forget to [join our community](https://communityinviter.com/apps/yugabyte-db/register), where you can get your questions answered and learn about the latest updates from the world of YugabyteDB.
+With that said, good luck building applications that scale and never fail! And don't forget to [join our community](https://inviter.co/yugabytedb), where you can get your questions answered and learn about the latest updates from the world of YugabyteDB.
