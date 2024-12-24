@@ -21,7 +21,7 @@
 #include <catalog/namespace.h>
 #include <parser/parse_relation.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "metadata/metadata_cache.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "aggregation/bson_aggregation_pipeline_private.h"

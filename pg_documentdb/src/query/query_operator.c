@@ -34,8 +34,8 @@
 #include <math.h>
 #include <nodes/supportnodes.h>
 
-#include "io/helio_bson_core.h"
-#include "query/helio_bson_compare.h"
+#include "io/bson_core.h"
+#include "query/bson_compare.h"
 #include "aggregation/bson_query.h"
 #include "types/decimal128.h"
 #include "utils/documentdb_errors.h"

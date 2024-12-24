@@ -14,7 +14,7 @@
 
 #include <utils/hsearch.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "utils/documentdb_errors.h"
 #include "aggregation/bson_positional_query.h"
 

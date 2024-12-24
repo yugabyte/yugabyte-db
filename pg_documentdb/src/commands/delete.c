@@ -17,7 +17,7 @@
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "aggregation/bson_project.h"
 #include "aggregation/bson_query.h"
 #include "commands/commands_common.h"

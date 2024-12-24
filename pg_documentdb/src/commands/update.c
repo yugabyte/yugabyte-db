@@ -75,7 +75,7 @@
 #include "utils/builtins.h"
 #include "utils/typcache.h"
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "aggregation/bson_project.h"
 #include "aggregation/bson_query.h"
 #include "update/bson_update.h"

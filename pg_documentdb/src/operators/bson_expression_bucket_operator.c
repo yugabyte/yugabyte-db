@@ -10,12 +10,12 @@
 
 #include <postgres.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "operators/bson_expression_bucket_operator.h"
 #include "utils/documentdb_errors.h"
-#include "query/helio_bson_compare.h"
+#include "query/bson_compare.h"
 
 /* --------------------------------------------------------- */
 /* Type definitions */

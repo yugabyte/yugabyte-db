@@ -36,10 +36,10 @@
 #include <utils/version_utils.h>
 #include <executor/spi.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
-#include "query/helio_bson_compare.h"
+#include "query/bson_compare.h"
 #include "planner/helio_planner.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "commands/insert.h"

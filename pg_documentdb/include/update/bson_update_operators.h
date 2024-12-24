@@ -11,7 +11,7 @@
 #ifndef BSON_UPDATE_OPERATORS_H
 #define BSON_UPDATE_OPERATORS_H
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "operators/bson_expr_eval.h"
 #include "utils/documentdb_errors.h"
 

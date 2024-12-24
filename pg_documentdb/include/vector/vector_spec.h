@@ -13,7 +13,7 @@
 #include <nodes/primnodes.h>
 #include <utils/relcache.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 
 /*
  * The distance metric for a vector based index.

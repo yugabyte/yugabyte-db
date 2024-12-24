@@ -15,7 +15,7 @@
 #include <access/attnum.h>
 #include <utils/uuid.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 
 
 /* The max depth a view can have */

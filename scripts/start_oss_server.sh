@@ -50,13 +50,13 @@ if [ "$help" == "true" ]; then
 fi
 
 extensionName=""
-preloadExtensions=""
+preloadLibraries=""
 if [ "$serverType" == "helio" ]; then
   extensionName="pg_helio_api"
-  preloadExtensions="pg_helio_core, pg_helio_api"
+  preloadLibraries="pg_helio_core, pg_helio_api"
 elif [ "$serverType" == "documentdb" ]; then
-  extensionName="pg_documentdb"
-  preloadExtensions="pg_documentdb_core, pg_documentdb"
+  extensionName="documentdb"
+  preloadLibraries="pg_documentdb_core, pg_documentdb"
 else
   echo "${red}Unknown server type ${serverType}"
   exit 1
@@ -95,7 +95,7 @@ if [ "$stop" == "true" ]; then
 fi
 
 if [ "$initSetup" == "true" ]; then
-    InitDatabaseExtended $postgresDirectory "$preloadExtensions"
+    InitDatabaseExtended $postgresDirectory "$preloadLibraries"
 fi
 
 userName=$(whoami)

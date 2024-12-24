@@ -1,0 +1,1 @@
+-- TODO(OSSRename): to enable create extension, remove this after schema rename is done

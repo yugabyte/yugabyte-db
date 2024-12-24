@@ -27,7 +27,7 @@
 #include <lib/stringinfo.h>
 
 #include "utils/documentdb_errors.h"
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "metadata/metadata_cache.h"
 #include "vector/bson_extract_vector.h"
 

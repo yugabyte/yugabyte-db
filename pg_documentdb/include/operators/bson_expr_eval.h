@@ -11,7 +11,7 @@
 #ifndef BSON_EXPR_EVAL_H
 #define BSON_EXPR_EVAL_H
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include <nodes/execnodes.h>
 
 typedef struct FuncExpr FuncExpr;

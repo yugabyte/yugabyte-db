@@ -47,7 +47,7 @@
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "utils/query_utils.h"
 #include "api_hooks.h"
-#include "query/helio_bson_compare.h"
+#include "query/bson_compare.h"
 
 
 typedef enum MongoQueryFlag

@@ -15,7 +15,7 @@
 #include <utils/lsyscache.h>
 #include <utils/memutils.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "utils/query_utils.h"
 #include "utils/guc_utils.h"
 #include "utils/version_utils.h"

@@ -16,7 +16,7 @@
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "commands/commands_common.h"
 #include "utils/error_utils.h"
 #include "utils/documentdb_errors.h"

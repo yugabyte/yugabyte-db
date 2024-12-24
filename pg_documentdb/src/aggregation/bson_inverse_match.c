@@ -13,7 +13,7 @@
 #include <utils/builtins.h>
 
 #include "operators/bson_expr_eval.h"
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "io/bson_traversal.h"
 #include "operators/bson_expression.h"
 #include "utils/documentdb_errors.h"

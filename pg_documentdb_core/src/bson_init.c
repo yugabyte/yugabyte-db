@@ -61,7 +61,7 @@ InstallBsonMemVTables(void)
 
 
 /*
- * Initializes core configurations pertaining to helio core.
+ * Initializes core configurations pertaining to documentdb core.
  */
 void
 InitDocumentDBCoreConfigurations(const char *prefix)

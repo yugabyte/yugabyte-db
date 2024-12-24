@@ -39,7 +39,7 @@
 #include <parser/parse_relation.h>
 #include <access/xact.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
 #include "planner/helio_planner.h"

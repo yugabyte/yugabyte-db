@@ -23,7 +23,7 @@
 #include <utils/array.h>
 #include <nodes/makefuncs.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "opclass/helio_gin_common.h"
 #include "opclass/helio_gin_index_mgmt.h"
 #include "opclass/helio_bson_gin_private.h"

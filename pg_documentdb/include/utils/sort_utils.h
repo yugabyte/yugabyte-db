@@ -8,7 +8,7 @@
  *-------------------------------------------------------------------------
  */
 #include <postgres.h>
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 
 #ifndef SORT_UTILS_H
 #define SORT_UTILS_H

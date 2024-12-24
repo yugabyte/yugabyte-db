@@ -25,7 +25,7 @@
 #include "aggregation/bson_aggregation_statistics.h"
 #include "commands/parse_error.h"
 #include "operators/bson_expression_operators.h"
-#include "query/helio_bson_compare.h"
+#include "query/bson_compare.h"
 #include "query/query_operator.h"
 #include "types/decimal128.h"
 #include "utils/date_utils.h"

@@ -8,10 +8,10 @@
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_CORE_COLLATION_H
-#define HELIO_CORE_COLLATION_H
+#ifndef CORE_COLLATION_H
+#define CORE_COLLATION_H
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 
 /* This value is calulated assuming all parameters in collation document is specified
  * and each of them are set to the longest possible character values*/

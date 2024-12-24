@@ -15,7 +15,7 @@
 #include "postgres.h"
 #include "float.h"
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "geospatial/bson_geospatial_private.h"
 #include "planner/mongo_query_operator.h"
 #include "geospatial/bson_geospatial_shape_operators.h"

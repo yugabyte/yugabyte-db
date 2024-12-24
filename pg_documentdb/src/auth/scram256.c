@@ -12,7 +12,7 @@
 #include "common/scram-common.h"
 #include "libpq/crypt.h"
 #include "utils/builtins.h"
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "common/base64.h" /* Postgres base64 encode / decode functions */
 #include "common/hmac.h"   /* Postgres hmac functions */
 #include "utils/varlena.h" /* Postgres variable-length builtIn types functions*/

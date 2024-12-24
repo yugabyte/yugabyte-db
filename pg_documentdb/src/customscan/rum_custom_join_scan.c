@@ -26,7 +26,7 @@
 #include <access/genam.h>
 
 #include "api_hooks.h"
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "customscan/helio_custom_scan.h"
 #include "customscan/custom_scan_registrations.h"
 #include "metadata/metadata_cache.h"

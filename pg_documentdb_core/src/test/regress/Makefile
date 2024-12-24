@@ -11,7 +11,7 @@ export PG_CONFIG
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-EXTENSIONLOAD := --load-extension=vector --load-extension=postgis # --load-extension=pg_documentdb_core
+EXTENSIONLOAD := --load-extension=vector --load-extension=postgis --load-extension=documentdb_core
 
 MAKEFILE_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 export PATH := $(MAKEFILE_DIR)bin:$(PATH)

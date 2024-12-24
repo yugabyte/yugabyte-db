@@ -10,6 +10,7 @@
  */
 
 #include <postgres.h>
+#include "utils/documentdb_errors.h"
 
 #ifndef DATE_UTILS_H
 #define DATE_UTILS_H

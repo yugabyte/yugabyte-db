@@ -13,7 +13,7 @@
 
 #include "index_am/helio_rum.h"
 #include "metadata/collection.h"
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "lib/stringinfo.h"
 #include "api_hooks.h"
 #include "api_hooks_def.h"

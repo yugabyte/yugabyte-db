@@ -12,7 +12,7 @@
 #include <fmgr.h>
 #include <catalog/pg_type.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "types/decimal128.h"
 #include "utils/documentdb_errors.h"
 #include "windowapi.h"

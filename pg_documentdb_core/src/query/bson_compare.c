@@ -15,8 +15,8 @@
 #include <utils/timestamp.h>
 #include <math.h>
 
-#include "io/helio_bson_core.h"
-#include "query/helio_bson_compare.h"
+#include "io/bson_core.h"
+#include "query/bson_compare.h"
 #include "types/decimal128.h"
 #include "utils/documentdb_errors.h"
 #include "utils/date_utils.h"

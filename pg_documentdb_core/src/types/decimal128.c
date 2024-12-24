@@ -3,7 +3,7 @@
  *
  * src/bson/types/decimal128.c
  *
- * Decimal128 support for helioapi extension
+ * Decimal128 support for documentdb extension
  * Referrences:
  * http://www.netlib.org/misc/intel/README.txt
  *

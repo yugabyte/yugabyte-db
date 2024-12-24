@@ -17,7 +17,7 @@
 #include <utils/pg_locale.h>
 
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "lib/stringinfo.h"
 #include "utils/documentdb_errors.h"
 #include "collation/collation.h"

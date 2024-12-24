@@ -20,7 +20,7 @@
 #include <miscadmin.h>
 #include <utils/memutils.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "metadata/collection.h"
 #include "metadata/index.h"
 #include "metadata/metadata_cache.h"

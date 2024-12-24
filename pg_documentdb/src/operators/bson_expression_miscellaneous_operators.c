@@ -12,7 +12,7 @@
 #include <miscadmin.h>
 #include <fmgr.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "utils/documentdb_errors.h"

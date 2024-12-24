@@ -29,7 +29,7 @@
 #include <utils/builtins.h>
 #include <utils/rel.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
 #include "commands/parse_error.h"

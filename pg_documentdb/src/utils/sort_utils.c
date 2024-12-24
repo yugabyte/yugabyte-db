@@ -12,7 +12,7 @@
 
 #include "utils/sort_utils.h"
 #include "utils/documentdb_errors.h"
-#include "query/helio_bson_compare.h"
+#include "query/bson_compare.h"
 
 /**
  * Validate sort spec and set SortContext once verified

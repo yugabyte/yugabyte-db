@@ -11,7 +11,7 @@ export PG_CONFIG
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-EXTENSIONLOAD :=  --load-extension=tsm_system_rows --load-extension=pg_cron --load-extension=vector --load-extension=postgis --load-extension citus # --load-extension=pg_documentdb_core --load-extension=rum --load-extension=pg_documentdb --load-extension=pg_documentdb_distributed
+EXTENSIONLOAD :=  --load-extension=tsm_system_rows --load-extension=pg_cron --load-extension=vector --load-extension=postgis --load-extension citus  --load-extension=documentdb_core --load-extension=rum --load-extension=documentdb --load-extension=documentdb_distributed
 
 MAKEFILE_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 export PATH := $(MAKEFILE_DIR)bin:$(PATH)

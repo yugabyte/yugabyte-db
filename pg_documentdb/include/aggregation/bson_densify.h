@@ -12,7 +12,7 @@
 #define BSON_DENSIFY_H
 
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"

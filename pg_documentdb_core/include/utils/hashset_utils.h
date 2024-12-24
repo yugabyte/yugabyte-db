@@ -24,7 +24,7 @@ typedef struct
 
 
 /*
- * Defines the flags to be used in standard HTAB creations in the Helio scenario.
+ * Defines the flags to be used in standard HTAB creations in the DocumentDB scenario.
  * We use the hash of the element, with a custom comparison function, and create it in
  * the current query's memory context.
  */

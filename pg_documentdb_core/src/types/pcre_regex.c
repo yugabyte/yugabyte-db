@@ -19,7 +19,7 @@
 #include <postgres.h>
 #include <utils/builtins.h>
 #include <lib/stringinfo.h>
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "utils/documentdb_errors.h"
 #include "types/pcre_regex.h"
 

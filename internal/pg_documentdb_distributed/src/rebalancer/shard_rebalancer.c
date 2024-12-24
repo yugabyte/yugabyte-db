@@ -18,7 +18,7 @@
 #include "parser/parse_type.h"
 #include "nodes/makefuncs.h"
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "utils/documentdb_errors.h"
 #include "utils/query_utils.h"
 #include "commands/parse_error.h"

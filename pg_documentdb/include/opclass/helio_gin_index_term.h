@@ -12,7 +12,7 @@
 #define HELIO_GIN_INDEX_TERM_H
 
 #include "utils/string_view.h"
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "opclass/helio_gin_index_mgmt.h"
 
 /* Struct used in manipulating bson index terms */

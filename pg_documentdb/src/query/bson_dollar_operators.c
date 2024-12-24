@@ -14,10 +14,10 @@
 #include <utils/builtins.h>
 #include <math.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "aggregation/bson_query_common.h"
 #include "io/bson_traversal.h"
-#include "query/helio_bson_compare.h"
+#include "query/bson_compare.h"
 #include "operators/bson_expression.h"
 #include "query/bson_dollar_operators.h"
 #include "utils/documentdb_errors.h"

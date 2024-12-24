@@ -25,7 +25,7 @@
 #include <optimizer/paths.h>
 #include <access/ginblock.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "customscan/helio_custom_query_scan.h"
 #include "customscan/custom_scan_registrations.h"
 #include "metadata/metadata_cache.h"

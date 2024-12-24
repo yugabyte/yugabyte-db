@@ -13,7 +13,7 @@
 #include <utils/builtins.h>
 
 #include "update/bson_update_operators.h"
-#include "query/helio_bson_compare.h"
+#include "query/bson_compare.h"
 #include "types/decimal128.h"
 #include "utils/documentdb_errors.h"
 #include "io/bson_traversal.h"

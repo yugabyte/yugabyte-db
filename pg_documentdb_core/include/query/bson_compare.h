@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/helio_bson_compare.h
+ * include/bson/bson_compare.h
  *
  * Common declarations of the bson comparisons.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_BSON_COMPARE_H
-#define HELIO_BSON_COMPARE_H
+#ifndef BSON_COMPARE_H
+#define BSON_COMPARE_H
 
 int ComparePgbson(const pgbson *leftBson, const pgbson *rightBson);
 int CompareNullablePgbson(pgbson *leftBson, pgbson *rightBson);

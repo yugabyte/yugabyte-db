@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/helio_bson_core.h
+ * include/bson/bson_core.h
  *
  * Core declarations of the bson type.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_BSON_CORE_H
-#define HELIO_BSON_CORE_H
+#ifndef BSON_CORE_H
+#define BSON_CORE_H
 
 #define PRIVATE_PGBSON_H
 #include "io/pgbson.h"

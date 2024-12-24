@@ -87,7 +87,7 @@ function SetupPostgresServerExtensions()
 function InitDatabaseExtended()
 {
   local _directory=$1
-  local _preloadExtensions=$2
+  local _preloadLibraries=$2
   
   echo "Deleting directory $_directory"
   rm -rf $_directory
@@ -95,16 +95,16 @@ function InitDatabaseExtended()
 
   echo "Calling initdb for $_directory"
   $(GetInitDB) -D $_directory
-  SetupPostgresConfigurations $_directory "$_preloadExtensions"
+  SetupPostgresConfigurations $_directory "$_preloadLibraries"
 }
 
 
 function SetupPostgresConfigurations()
 {
   local installdir=$1;
-  local preloadExtensions=$2;
-  requiredExtensions="pg_cron, ${preloadExtensions}";
-  echo shared_preload_libraries = \'$requiredExtensions\' | tee -a $installdir/postgresql.conf
+  local preloadLibraries=$2;
+  requiredLibraries="pg_cron, ${preloadLibraries}";
+  echo shared_preload_libraries = \'$requiredLibraries\' | tee -a $installdir/postgresql.conf
   echo cron.database_name = \'postgres\' | tee -a $installdir/postgresql.conf
   echo ssl = off | tee -a $installdir/postgresql.conf
 }

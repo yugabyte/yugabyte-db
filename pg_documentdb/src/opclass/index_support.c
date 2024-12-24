@@ -36,7 +36,7 @@
 #include "vector/vector_utilities.h"
 #include "vector/vector_spec.h"
 #include "utils/version_utils.h"
-#include "query/helio_bson_compare.h"
+#include "query/bson_compare.h"
 
 typedef struct
 {

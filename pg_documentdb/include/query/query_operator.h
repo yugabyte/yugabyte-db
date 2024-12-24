@@ -15,7 +15,7 @@
 #include <nodes/parsenodes.h>
 
 #include "metadata/collection.h"
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "opclass/helio_gin_common.h"
 #include "planner/mongo_query_operator.h"
 

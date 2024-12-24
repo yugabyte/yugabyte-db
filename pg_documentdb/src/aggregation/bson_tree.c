@@ -16,7 +16,7 @@
 #include "aggregation/bson_tree_private.h"
 #undef BSON_TREE_PRIVATE
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 
 #include "aggregation/bson_projection_tree.h"
 

@@ -29,7 +29,7 @@
 #include "aggregation/bson_positional_query.h"
 #include "aggregation/bson_tree_write.h"
 #include "geospatial/bson_geospatial_geonear.h"
-#include "query/helio_bson_compare.h"
+#include "query/bson_compare.h"
 #include "utils/documentdb_errors.h"
 #include "metadata/metadata_cache.h"
 #include "operators/bson_expression.h"

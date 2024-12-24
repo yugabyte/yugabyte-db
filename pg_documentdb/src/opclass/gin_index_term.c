@@ -13,7 +13,7 @@
 #include <fmgr.h>
 #include <miscadmin.h>
 #include "opclass/helio_gin_index_term.h"
-#include "query/helio_bson_compare.h"
+#include "query/bson_compare.h"
 #include "utils/documentdb_errors.h"
 #include "types/decimal128.h"
 #include "io/bsonvalue_utils.h"

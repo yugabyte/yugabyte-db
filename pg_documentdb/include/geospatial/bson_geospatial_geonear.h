@@ -14,7 +14,7 @@
 #include <postgres.h>
 #include <nodes/pathnodes.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "geospatial/bson_geospatial_private.h"
 #include "opclass/helio_gin_index_mgmt.h"
 #include "opclass/helio_index_support.h"

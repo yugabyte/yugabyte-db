@@ -46,7 +46,7 @@
 #include <executor/executor.h>
 #include <utils/typcache.h>
 
-#include "io/helio_bson_core.h"
+#include "io/bson_core.h"
 #include "io/bson_hash.h"
 #include "utils/documentdb_errors.h"
 #include "utils/version_utils.h"
