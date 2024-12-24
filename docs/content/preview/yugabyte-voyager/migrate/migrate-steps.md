@@ -288,9 +288,9 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
-{{< note title="`NOT VALID` Constraints in yb-voyager" >}}
+{{< note title="NOT VALID constraints are not imported" >}}
 
-Currently, **yb-voyager** does not import the `NOT VALID` constraints exported from the source in the `import schema` phase. This is because doing so could lead to `constraint violation` errors during the data import phase, as the source may contain data that violates these constraints.
+Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
 
 **yb-voyager** creates these constraints during the `post-snapshot-import` phase.
 

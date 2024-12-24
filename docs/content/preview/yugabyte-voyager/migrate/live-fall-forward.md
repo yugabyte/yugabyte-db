@@ -751,9 +751,9 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
-{{< note title="`NOT VALID` Constraints in yb-voyager" >}}
+{{< note title="NOT VALID constraints are not imported" >}}
 
-Currently yb-voyager does not import the `NOT VALID` constraints exported from source in `import schema` as it may lead to `constraint violation` errors during the import data as source may contain the data that is violating the constraint.  
+Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
 Yb-voyager created these type of constraint during the `post-snapshot-import` phase.
 
 {{< /note >}}
@@ -979,7 +979,7 @@ Perform the following steps as part of the cutover process:
 The `export data from target` command may result in duplicated events if you restart Voyager, or there is a change in the YugabyteDB database server state. Consequently, the [get data-migration-report](#get-data-migration-report) command may display additional events that have been exported from the target YugabyteDB database, and imported into the source-replica or source database. For such situations, it is recommended to manually verify data in the target and source-replica, or source database to ensure accuracy and consistency.
        {{</note>}}
 
-1. If there are any `NOT VALID` constraints on the source, create them after the `import data` command is completed by using the `import schema` command with the `post-snapshot-import` flag:
+1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `import schema` with the `post-snapshot-import` flag:
 
     ```sh
     # Replace the argument values with those applicable for your migration.
