@@ -119,7 +119,7 @@ YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com
   linkUrl2="https://status.yugabyte.cloud/"
     linkTarget2="_blank"
   linkText3="Join Our Community"
-  linkUrl3="https://communityinviter.com/apps/yugabyte-db/register"
+  linkUrl3="https://inviter.co/yugabytedb"
   linkTarget3="_blank"
   >}}
 {{< /sections/3-boxes >}}
