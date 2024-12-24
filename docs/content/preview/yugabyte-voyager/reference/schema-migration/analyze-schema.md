@@ -29,6 +29,7 @@ The valid *arguments* for analyze schema are described in the following table:
 | -h, --help | Command line help. |
 | --output-format | Format in which the report file is generated. One of `html`, `txt`, `json`, or `xml`. If not provided, reports are generated in both `json` and `html` formats by default. |
 | &#8209;&#8209;send&#8209;diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --target-db-version | Specifies the target version of YugabyteDB in the format `A.B.C.D`.<br>Default: latest stable version |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
 ### Example

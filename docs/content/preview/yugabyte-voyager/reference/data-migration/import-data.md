@@ -238,6 +238,7 @@ The valid *arguments* for import data to source-replica are described in the fol
 | --parallel-jobs | The number of parallel batches issued to the source-replica database. <br> Default: 16 (Oracle); or, if yb-voyager can determine the total number of cores N, then N/2, otherwise 8 (PostgreSQL) |
 | --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If the target YugabyteDB database has any non-empty tables, you are prompted to continue the import without truncating those tables; if you proceed without truncating, then yb-voyager starts ingesting the data present in the data files in non-upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, duplicate data may be inserted. You can avoid duplication by excluding the table using `--exclude-table-list`, or by truncating those tables manually before using the `start-clean` flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --truncate-tables | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
 | -y, --yes | Answer yes to all prompts during the migration. <br>Default: false |
 
 ### Example

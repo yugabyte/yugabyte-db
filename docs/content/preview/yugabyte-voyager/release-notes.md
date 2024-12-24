@@ -13,6 +13,28 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.8 - December 24, 2024
+
+### Enhancements
+
+- Assessment and Schema Analysis Reports
+  - You can now specify the target version of YugabyteDB when running [assess-migration](../reference/assess-migration/) and [analyze-schema](../reference/schema-migration/analyze-schema/). Specify the version using the flag `--target-db-version`. The default is the latest stable release (currently {{<yb-version version="stable">}}).
+  - Assessment and schema analysis now detect and report the presence of advisory locks, XML functions, and system columns in DDLs.
+  - Assessment and schema analysis now detect the presence of [large objects](https://www.postgresql.org/docs/current/largeobjects.html) (and their functions) in DDLs/DMLs.
+  - In the Schema analysis report (html/text), changed the following field names to improve readability: Invalid Count to Objects with Issues; Total Count to Total Objects; and Valid Count to Objects without Issues. The logic determining when an object is considered to have issues or not has also been improved.
+  - Stop reporting [Unlogged tables](../known-issues/postgresql/#unlogged-table-is-not-supported) as an issue in assessment and schema analysis reports by default, as UNLOGGED no longer results in a syntax error in YugabyteDB {{<release "2024.2.0.0">}}.
+  - Stop reporting [ALTER PARTITIONED TABLE ADD PRIMARY KEY](https://github.com/yugabyte/yb-voyager/issues/612) as an issue in assessment and schema analysis reports, as [the issue](../known-issues/postgresql/#adding-primary-key-to-a-partitioned-table-results-in-an-error) has been fixed in YugabyteDB {{<release "2024.1.0.0">}} and later.
+  - In the assessment report, only statements from `pg_stat_statements` that belong to the schemas provided by the user will be processed for detecting and reporting issues.
+- Data Migration
+  - `import data file` and `import data to source replica` now accept a new flag `truncate-tables` (in addition to `import data`), which, when used with `start-clean true`, truncates all the tables in the target/source-replica database before importing data into the tables.
+- Miscellaneous
+  - Enhanced guardrail checks in import-schema for YugabyteDB Aeon.
+
+### Bug Fixes
+
+- Skip Unsupported Query Constructs detection if `pg_stat_statements` is not loaded via `shared_preloaded_libraries`.
+- Prevent Voyager from panicking/erroring out in case of `analyze-schema` and `import data` when `export-dir` is empty.
+
 ## v1.8.7 - December 10, 2024
 
 ### New Features
@@ -22,9 +44,9 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 ### Enhancements
 
 - Improved permission grant script (`yb-voyager-pg-grant-migration-permissions.sql`) by internally detecting table owners, eliminating the need to specify the `original_owner_of_tables` flag.
-- Enhanced reporting of **Unsupported Query Constructs** in the `assess-migration` command by filtering queries to include only those that match user-specified schemas, provided schema information is present in the query.
-- Enhanced the `assess-migration` and `analyze-schema` commands to report issues in Functions or Procedures for variables declared with reference types (%TYPE) in the **Unsupported PL/pgSQL Objects** section.
-- Added support to report DDL issues present in the PL/pgSQL blocks of objects listed in the **Unsupported PL/pgSQL Objects** section of the `assess-migration` and `analyze-schema` commands.
+- Enhanced reporting of "Unsupported Query Constructs" in the `assess-migration` command by filtering queries to include only those that match user-specified schemas, provided schema information is present in the query.
+- Enhanced the `assess-migration` and `analyze-schema` commands to report issues in Functions or Procedures for variables declared with reference types (%TYPE) in the "Unsupported PL/pgSQL Objects" section.
+- Added support to report DDL issues present in the PL/pgSQL blocks of objects listed in the "Unsupported PL/pgSQL Objects" section of the `assess-migration` and `analyze-schema` commands.
 - Allow yb-voyager upgrades during migration from the recent breaking release (v1.8.5) to later versions.
 - Modified the internal HTTP port to dynamically use an available free port instead of defaulting to 8080, avoiding conflicts with commonly used services.
 - Added a guardrail check to the `assess-migration` command to verify that the `pg_stat_statements` extension is properly loaded in the source database.
@@ -32,7 +54,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 ### Bug fixes
 
 - Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/1895) where NOT VALID constraints in the schema could cause constraint violation errors during data imports; these constraints are now created during the post-snapshot import phase.
-- Fixed formatting issues in the assessment HTML report, where extra spaces or characters appeared after the **Unsupported PL/pgSQL Objects** heading, depending on the browser used for viewing.
+- Fixed formatting issues in the assessment HTML report, where extra spaces or characters appeared after the "Unsupported PL/pgSQL Objects" heading, depending on the browser used for viewing.
 - Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/1913) of segmentation faults when certain commands are executed before migration initialization.
 
 ## v1.8.6 - November 26, 2024
