@@ -502,7 +502,7 @@ public class BackupHelperTest extends FakeDBApplication {
     preflightParams.setStorageConfigUUID(testStorageConfigS3.getConfigUUID());
     String successStr = TestUtils.readResource(successFilePath);
 
-    when(mockAWSUtil.createDsmCloudStoreSpec(anyString(), any(CustomerConfigData.class)))
+    when(mockAWSUtil.createDsmCloudStoreSpec(anyString(), any(CustomerConfigData.class), any()))
         .thenReturn(CloudStoreSpec.getDefaultInstance());
     when(mockYbcManager.downloadSuccessMarker(any(), any(UUID.class), anyString()))
         .thenReturn(successStr);

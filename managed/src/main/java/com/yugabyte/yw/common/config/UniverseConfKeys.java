@@ -1396,4 +1396,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow node agent and SSH communications to nodes at the same time for the universe.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> useDBNodesIAMRoleForBackup =
+      new ConfKeyInfo<>(
+          "yb.backup.s3.use_db_nodes_iam_role_for_backup",
+          ScopeType.UNIVERSE,
+          "Use S3 IAM roles attached to DB node for Backup/Restore",
+          "Use S3 IAM roles attached to DB node for Backup/Restore",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
