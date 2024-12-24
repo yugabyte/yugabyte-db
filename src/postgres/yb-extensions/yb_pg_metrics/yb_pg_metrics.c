@@ -770,28 +770,32 @@ _PG_init(void)
 
 	BackgroundWorker worker;
 
-	/* Registering the YSQL webserver as a background worker */
-	MemSet(&worker, 0, sizeof(BackgroundWorker));
-	strcpy(worker.bgw_name, "YSQL webserver");
-	worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
-	worker.bgw_start_time = BgWorkerStart_PostmasterStart;
-	/* Value of 1 allows the background worker for webserver to restart */
-	worker.bgw_restart_time = 1;
-	worker.bgw_main_arg = (Datum) 0;
-	strcpy(worker.bgw_library_name, "yb_pg_metrics");
-	strcpy(worker.bgw_function_name, "webserver_worker_main");
-	worker.bgw_notify_pid = 0;
-	if (getenv("FLAGS_yb_webserver_oom_score_adj") != NULL)
-		strncpy(worker.bgw_oom_score_adj,
-				getenv("FLAGS_yb_webserver_oom_score_adj"),
-				BGW_MAXLEN);
+	if (!IsBinaryUpgrade)
+	{
+		/* Registering the YSQL webserver as a background worker */
+		MemSet(&worker, 0, sizeof(BackgroundWorker));
+		strcpy(worker.bgw_name, "YSQL webserver");
+		worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
+		worker.bgw_start_time = BgWorkerStart_PostmasterStart;
+		/* Value of 1 allows the background worker for webserver to restart */
+		worker.bgw_restart_time = 1;
+		worker.bgw_main_arg = (Datum) 0;
+		strcpy(worker.bgw_library_name, "yb_pg_metrics");
+		strcpy(worker.bgw_function_name, "webserver_worker_main");
+		worker.bgw_notify_pid = 0;
+		if (getenv("FLAGS_yb_webserver_oom_score_adj") != NULL)
+			strncpy(worker.bgw_oom_score_adj,
+					getenv("FLAGS_yb_webserver_oom_score_adj"),
+					BGW_MAXLEN);
 
-	RegisterBackgroundWorker(&worker);
-	/*
-	 * Set the value of the hooks.
-	 */
+		RegisterBackgroundWorker(&worker);
+	}
 
-	prev_shmem_request_hook = shmem_request_hook;
+  /*
+   * Set the value of the hooks.
+   */
+
+  prev_shmem_request_hook = shmem_request_hook;
 	shmem_request_hook = ybpgm_shmem_request;
 
 	prev_shmem_startup_hook = shmem_startup_hook;

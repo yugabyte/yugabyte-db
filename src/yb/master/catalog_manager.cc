@@ -2315,8 +2315,8 @@ Status CatalogManager::ValidateTableReplicationInfo(
 }
 
 Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTablespaceInfo() {
-  auto table_info =
-      GetTableInfo(VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgTablespaceTableId)));
+  auto table_info = GetTableInfo(
+      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgTablespaceTableId)));
   if (table_info == nullptr) {
     return STATUS(InternalError, "pg_tablespace table info not found");
   }
@@ -2490,8 +2490,9 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
                    << nsid << " with error: " << table_tablespace_status.ToString();
     }
 
-    const TableId tablegroup_table_id = VERIFY_RESULT(
-        GetVersionSpecificCatalogTableId(GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid)));
+    const TableId tablegroup_table_id =
+        VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(
+            GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid)));
     const bool pg_yb_tablegroup_exists =
         VERIFY_RESULT(DoesTableExist(FindTableById(tablegroup_table_id)));
 
@@ -8525,17 +8526,9 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
           //
           // So in case #2, we must accept only current-version catalog tables.
           const auto& table_id = table->id();
-          if (IsPgsqlId(table_id) && CHECK_RESULT(GetPgsqlDatabaseOid(table_id)) == *source_oid) {
-            if (IsYsqlMajorCatalogUpgradeInProgress()) {
-              if (!IsCurrentVersionCatalogId(table_id)) {
-                continue;
-              }
-            } else {
-              // YB_TODO: Remove when we support cleanup of prior-version catalog tables after the
-              // YSQL major version upgrade.
-              if (IsPriorVersionCatalogId(table_id)) {
-                continue;
-              }
+          if (IsPgsqlId(table_id) && VERIFY_RESULT(GetPgsqlDatabaseOid(table_id)) == *source_oid) {
+            if (IsPriorVersionYsqlCatalogTable(table_id)) {
+              continue;
             }
             // Since indexes have dependencies on the base tables, put the tables in the front.
             const bool is_table = table->indexed_table_id().empty();
@@ -9269,7 +9262,7 @@ Status CatalogManager::DeleteYsqlDBTables(
       //  * The rollback deletes all current-version catalog tables in order to prepare for the next
       //    upgrade attempt.
       // In both cases, we delete only the current version's catalog tables.
-      if (is_ysql_major_upgrade && !IsCurrentVersionCatalogId(table->id())) {
+      if (is_ysql_major_upgrade && !IsCurrentVersionYsqlCatalogTable(table->id())) {
         continue;
       }
       if (table->namespace_id() != database->id()) {
@@ -9914,13 +9907,12 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
 Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
                                                uint64_t* catalog_version,
                                                uint64_t* last_breaking_version) {
-  auto table_id = VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
+  auto table_id =
+      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
   auto table_info = GetTableInfo(table_id);
   if (table_info != nullptr) {
-    RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(table_id,
-                                                         db_oid,
-                                                         catalog_version,
-                                                         last_breaking_version));
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(
+        kPgYbCatalogVersionTableId, db_oid, catalog_version, last_breaking_version));
     // If the version is properly initialized, we're done.
     if ((!catalog_version || *catalog_version > 0) &&
         (!last_breaking_version || *last_breaking_version > 0)) {
@@ -9944,10 +9936,11 @@ Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
 }
 
 Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions) {
-  auto table_id = VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
+  auto table_id =
+      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
   auto table_info = GetTableInfo(table_id);
   if (table_info != nullptr) {
-    RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(table_id, versions));
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId, versions));
   } else {
     versions->clear();
   }
@@ -13389,22 +13382,6 @@ Result<TSDescriptorPtr> CatalogManager::GetClosestLiveTserver(bool* local_ts) co
 
 bool CatalogManager::IsYsqlMajorCatalogUpgradeInProgress() const {
   return ysql_manager_->IsYsqlMajorCatalogUpgradeInProgress();
-}
-
-Result<TableId> CatalogManager::GetVersionSpecificCatalogTableId(const TableId& table_id) const {
-  if (!ysql_manager_->IsCurrentVersionCatalogEstablished()) {
-    // When a yb-master goes through the ysql major catalog upgrade process, the process begins
-    // before the current version's initdb and catalog upgrade have been run, so we can't depend on
-    // the existence of valid current-version catalog tables. We therefore utilize prior-version
-    // catalog tables while initdb and the catalog upgrade are in progress. Once we enter the
-    // MONITORING state, we switch to the current version's catalogs so that they can be exercised
-    // and tested.
-    uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_id));
-    uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
-    return GetPgsqlTableIdPriorVersion(database_oid, table_oid);
-  } else {
-    return table_id;
-  }
 }
 
 bool CatalogManager::SkipCatalogVersionChecks() {

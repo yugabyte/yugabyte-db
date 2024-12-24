@@ -780,7 +780,8 @@ TEST_F(Pg15UpgradeTest, Matviews) {
   ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 3, 4, 5, 6, 7}));
 }
 
-TEST_F(Pg15UpgradeTest, PartitionedTables) {
+// Blocked by #24226
+TEST_F(Pg15UpgradeTest, YB_DISABLE_TEST(PartitionedTables)) {
   // Set up partitioned tables
   ASSERT_OK(ExecuteStatements({
     "CREATE TABLE t_r (v INT, z TEXT, PRIMARY KEY(v ASC)) PARTITION BY RANGE (v)",

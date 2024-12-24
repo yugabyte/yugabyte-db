@@ -532,6 +532,16 @@ bool YBCIsNonColocatedYbctidsOnlyFetch(const YBCPgPrepareParameters *params) {
   return params->fetch_ybctids_only && !params->querying_colocated_table;
 }
 
+bool YBIsMajorUpgradeInitDb() {
+  static int cached_value = -1;
+  if (cached_value == -1) {
+    const char* env_var_value = getenv("YB_PG_MAJOR_UPGRADE_INITDB");
+    cached_value = env_var_value && strcmp(env_var_value, "true") == 0;
+  }
+
+  return cached_value;
+}
+
 } // extern "C"
 
 } // namespace yb::pggate

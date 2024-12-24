@@ -52,7 +52,8 @@ Status PgDmlWrite::Prepare(const PgObjectId& table_id, bool is_region_local) {
   write_req_->set_schema_version(target_->schema_version());
   write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
 
-  if (pg_session_->AreCatalogModificationsForceAllowed()) {
+  if (YBIsMajorUpgradeInitDb() || pg_session_->IsMajorPgVersionUpgrade() ||
+      pg_session_->AreCatalogModificationsForceAllowed()) {
     write_req_->set_force_catalog_modifications(true);
   }
 

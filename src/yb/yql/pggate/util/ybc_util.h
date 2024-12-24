@@ -361,6 +361,8 @@ int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 
 bool YBCIsNonColocatedYbctidsOnlyFetch(const YBCPgPrepareParameters *params);
 
+bool YBIsMajorUpgradeInitDb();
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

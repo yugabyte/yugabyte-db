@@ -25,6 +25,7 @@
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/ysql/ysql_manager.h"
 
 #include "yb/rpc/rpc_context.h"
 
@@ -112,6 +113,16 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
               "Catalog update without force_catalog_modifications when "
               "TEST_ysql_require_force_catalog_modifications is set"));
       return;
+    }
+
+    {
+      auto write_allowed = master_->ysql_manager_impl().ValidateWriteToCatalogTableAllowed(
+          pg_req.table_id(), pg_req.force_catalog_modifications());
+      if (!write_allowed.ok()) {
+        VLOG(1) << "Write to catalog table while it is not allowed: " << pg_req.ShortDebugString();
+        context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION, std::move(write_allowed));
+        return;
+      }
     }
 
     if (pg_req.is_ysql_catalog_change_using_protobuf()) {

@@ -267,6 +267,7 @@ ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg15_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg15_upgrade_pgregress-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)

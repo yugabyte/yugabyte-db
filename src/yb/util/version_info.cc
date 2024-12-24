@@ -41,6 +41,8 @@
 #include <rapidjson/writer.h>
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/once.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
@@ -210,6 +212,19 @@ std::shared_ptr<const VersionData> VersionInfo::GetVersionData() {
 
 void VersionInfo::InitInternal(Status* status_dest) {
   *status_dest = ReadVersionDataFromFile();
+}
+
+uint32 VersionInfo::YsqlMajorVersion() {
+  static uint32 ysql_major_version;
+  static GoogleOnceType once = GOOGLE_ONCE_INIT;
+  void (*get_ysql_major_version)(uint32*) = [](uint32* ysql_major_version) {
+    VersionInfoPB version_info;
+    VersionInfo::GetVersionInfoPB(&version_info);
+    *ysql_major_version = version_info.ysql_major_version();
+  };
+  GoogleOnceInitArg(&once, get_ysql_major_version, &ysql_major_version);
+
+  return ysql_major_version;
 }
 
 } // namespace yb

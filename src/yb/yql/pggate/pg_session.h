@@ -304,6 +304,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   bool AreCatalogModificationsForceAllowed() const { return force_allow_catalog_modifications_; }
 
+  bool IsMajorPgVersionUpgrade() const { return is_major_pg_version_upgrade_; }
+
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
