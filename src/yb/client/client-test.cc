@@ -2425,6 +2425,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   const std::string kPgsqlTableName = "pgsqlrangepartitionedtable";
   const std::string kPgsqlTableId = "pgsqlrangepartitionedtableid";
+  const std::string kYqlTableId = "yqlrangepartitionedtableid";
   const size_t kColIdx = 1;
   const int64_t kKeyValue = 48238;
   auto yql_table_name = YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "yqlrangepartitionedtable");
@@ -2472,6 +2473,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 
   // Create a YQL table using range partition.
   s = table_creator->table_name(yql_table_name)
+      .table_id(kYqlTableId)
       .schema(&schema)
       .set_range_partition_columns({"key"})
       .table_type(YBTableType::YQL_TABLE_TYPE)

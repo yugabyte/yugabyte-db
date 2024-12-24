@@ -171,7 +171,8 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
-          auto metrics = GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id);
+          auto metrics = GetXClusterTabletMetrics(
+              *cdc_service, tablet_id, stream_id, cdc::CreateMetricsEntityIfNotFound::kFalse);
 
           if (metrics && metrics.get()->last_read_hybridtime->value()) {
             producer_tablet_read_time_[tablet_id] = metrics.get()->last_read_hybridtime->value();
@@ -191,7 +192,8 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
-          auto metrics = GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id);
+          auto metrics = GetXClusterTabletMetrics(
+              *cdc_service, tablet_id, stream_id, cdc::CreateMetricsEntityIfNotFound::kFalse);
 
           if (metrics &&
               metrics.get()->last_read_hybridtime->value() >
