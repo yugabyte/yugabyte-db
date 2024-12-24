@@ -9523,7 +9523,7 @@ class YBAdminProxy(object):
             return None
 
         matches = re.findall(r'\[(.*?)\]', out)
-        replication_ids = matches[0].split(',')
+        replication_ids = [replication_id.strip() for replication_id in matches[0].split(',')]
 
         return replication_ids
 
