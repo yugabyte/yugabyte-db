@@ -47,7 +47,6 @@
 /* YB includes. */
 #include "pg_yb_utils.h"
 #include "replication/yb_virtual_wal_client.h"
-#include "replication/walsender.h"
 
 /* data for errcontext callback */
 typedef struct LogicalErrorCallbackState
@@ -642,25 +641,6 @@ YBValidateOutputPlugin(char *plugin)
 	callbacks = palloc(sizeof(OutputPluginCallbacks));
 	LoadOutputPlugin(callbacks, plugin);
 	pfree(callbacks);
-}
-
-void
-YBValidateLsnType(char *lsn_type)
-{
-	if (!(strcmp(lsn_type, LSN_TYPE_SEQUENCE) == 0
-		|| strcmp(lsn_type, LSN_TYPE_HYBRID_TIME) == 0))
-		elog(ERROR, "lsn type can only be SEQUENCE or HYBRID_TIME");
-}
-
-CRSLsnType
-YBParseLsnType(char *lsn_type)
-{
-	if (strcmp(lsn_type, LSN_TYPE_SEQUENCE) == 0)
-		return CRS_SEQUENCE;
-	else if (strcmp(lsn_type, LSN_TYPE_HYBRID_TIME) == 0)
-		return CRS_HYBRID_TIME;
-	else
-		elog(ERROR, "invalid lsn type provided");
 }
 
 static void

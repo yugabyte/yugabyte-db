@@ -783,7 +783,6 @@ class PgApiImpl {
                                   const char *plugin_name,
                                   const PgOid database_oid,
                                   YBCPgReplicationSlotSnapshotAction snapshot_action,
-                                  YBCLsnType lsn_type,
                                   PgStatement **handle);
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);

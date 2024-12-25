@@ -334,8 +334,7 @@ class PgCreateReplicationSlot : public PgDdl {
                           const char *slot_name,
                           const char *plugin_name,
                           PgOid database_oid,
-                          YBCPgReplicationSlotSnapshotAction snapshot_action,
-                          YBCLsnType lsn_type);
+                          YBCPgReplicationSlotSnapshotAction snapshot_action);
 
   Result<tserver::PgCreateReplicationSlotResponsePB> Exec();
 

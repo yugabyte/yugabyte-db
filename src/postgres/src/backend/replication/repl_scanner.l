@@ -133,9 +133,6 @@ NOEXPORT_SNAPSHOT	{ return K_NOEXPORT_SNAPSHOT; }
 USE_SNAPSHOT		{ return K_USE_SNAPSHOT; }
 WAIT				{ return K_WAIT; }
 
-SEQUENCE			{ return K_YB_SEQUENCE; }
-HYBRID_TIME			{ return K_YB_HYBRID_TIME; }
-
 {space}+		{ /* do nothing */ }
 
 {digit}+		{

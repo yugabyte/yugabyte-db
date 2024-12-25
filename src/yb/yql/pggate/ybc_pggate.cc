@@ -2263,13 +2263,11 @@ YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         const char *plugin_name,
                                         YBCPgOid database_oid,
                                         YBCPgReplicationSlotSnapshotAction snapshot_action,
-                                        YBCLsnType lsn_type,
                                         YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
                                                      plugin_name,
                                                      database_oid,
                                                      snapshot_action,
-                                                     lsn_type,
                                                      handle));
 }
 
