@@ -71,6 +71,8 @@
 #include "catalog/pg_range_d.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_d.h"
+#include "catalog/pg_statistic_ext_d.h"
+#include "catalog/pg_statistic_ext_data_d.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
@@ -2396,6 +2398,7 @@ YbDdlModeOptional YbGetDdlMode(
 		case T_AlterPublicationStmt:
 		case T_AlterRoleSetStmt:
 		case T_AlterSeqStmt:
+		case T_AlterStatsStmt:
 		case T_AlterSubscriptionStmt:
 		case T_AlterSystemStmt:
 		case T_AlterTSConfigurationStmt:
@@ -4586,6 +4589,13 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			break;
 		case StatisticRelationId:                         // pg_statistic
 			sys_only_filter_attr = Anum_pg_statistic_starelid;
+			break;
+		case StatisticExtRelationId:					  // pg_statistic_ext
+			sys_table_index_id = StatisticExtNameIndexId;
+			sys_only_filter_attr = Anum_pg_statistic_ext_oid;
+			break;
+		case StatisticExtDataRelationId:				  // pg_statistic_ext_data
+			sys_only_filter_attr = Anum_pg_statistic_ext_data_stxoid;
 			break;
 		case TriggerRelationId:                           // pg_trigger
 			sys_table_index_id = TriggerRelidNameIndexId;

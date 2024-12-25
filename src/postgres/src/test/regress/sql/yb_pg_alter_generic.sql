@@ -486,7 +486,6 @@ CREATE STATISTICS alt_stat1 ON a, b FROM alt_regress_1;
 CREATE STATISTICS alt_stat2 ON a, b FROM alt_regress_1;
 
 ALTER STATISTICS alt_stat1 RENAME TO alt_stat2;   -- failed (name conflict)
-/* YB: uncomment when ALTER STATISTICS is supported
 ALTER STATISTICS alt_stat1 RENAME TO alt_stat3;   -- OK
 ALTER STATISTICS alt_stat2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
 ALTER STATISTICS alt_stat2 OWNER TO regress_alter_generic_user3;  -- OK
@@ -503,16 +502,13 @@ ALTER STATISTICS alt_stat3 OWNER TO regress_alter_generic_user2; -- failed (not 
 ALTER STATISTICS alt_stat2 OWNER TO regress_alter_generic_user3; -- failed (no role membership)
 ALTER STATISTICS alt_stat3 SET SCHEMA alt_nsp2;		-- failed (not owner)
 ALTER STATISTICS alt_stat2 SET SCHEMA alt_nsp2;		-- failed (name conflict)
-*/ -- YB
 
 RESET SESSION AUTHORIZATION;
-/* YB: uncomment when ALTER STATISTICS is supported
 SELECT nspname, stxname, rolname
   FROM pg_statistic_ext s, pg_namespace n, pg_authid a
  WHERE s.stxnamespace = n.oid AND s.stxowner = a.oid
    AND n.nspname in ('alt_nsp1', 'alt_nsp2')
  ORDER BY nspname, stxname;
-*/ -- YB
 
 --
 -- Text Search Dictionary
