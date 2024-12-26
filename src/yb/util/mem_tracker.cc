@@ -518,12 +518,10 @@ bool MemTracker::TryConsume(int64_t bytes, MemTracker** blocking_mem_tracker) {
       if (!TryIncrementBy(bytes, tracker->limit_, &tracker->consumption_, tracker->metrics_)) {
         // One of the trackers failed, attempt to GC memory or expand our limit. If that
         // succeeds, TryUpdate() again. Bail if either fails.
-        if (!tracker->GcMemory(tracker->limit_ - bytes) ||
-            tracker->ExpandLimit(bytes)) {
-          if (!TryIncrementBy(bytes, tracker->limit_, &tracker->consumption_, tracker->metrics_)) {
-            break;
-          }
-        } else {
+        if (tracker->GcMemory(tracker->limit_ - bytes)) {
+          break;
+        }
+        if (!TryIncrementBy(bytes, tracker->limit_, &tracker->consumption_, tracker->metrics_)) {
           break;
         }
       }
@@ -728,7 +726,7 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
       if (did_gc) {
         current_consumption = GetUpdatedConsumption();
         if (current_consumption <= max_consumption) {
-          return true;
+          return false;
         }
       }
     }
