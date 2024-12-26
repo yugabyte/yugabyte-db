@@ -158,5 +158,3 @@ The following results are for a 3-node cluster, with each node running on a c5.2
 | oltp_read_write       | 2150                 | 11.1        |
 | oltp_multi_insert     | 5450                 | 4.4         |
 | oltp_update_index     | 2420                 | 9.8         |
-| oltp_update_non_index |                      |             |
-| oltp_delete           |                      |             |
