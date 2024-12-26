@@ -659,7 +659,9 @@ CreateInverseMatchFromCollectionQuery(InverseMatchArgs *inverseMatchArgs,
 							inverseMatchArgs->fromCollection.string)));
 	}
 
-	nestedPipeline = MutateQueryWithPipeline(nestedPipeline, &inverseMatchArgs->pipeline,
+	List *stages = ExtractAggregationStages(&inverseMatchArgs->pipeline,
+											&subPipelineContext);
+	nestedPipeline = MutateQueryWithPipeline(nestedPipeline, stages,
 											 &subPipelineContext);
 
 	bool requiresSubQuery = false;
@@ -955,7 +957,10 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 		{
 			bool hasCollection = collectionFrom.length != 0;
 			ValidateUnionWithPipeline(&pipelineValue, hasCollection);
-			rightQuery = MutateQueryWithPipeline(rightQuery, &pipelineValue,
+
+			List *stages = ExtractAggregationStages(&pipelineValue,
+													&subPipelineContext);
+			rightQuery = MutateQueryWithPipeline(rightQuery, stages,
 												 &subPipelineContext);
 		}
 	}
@@ -1274,8 +1279,11 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 				MAX_ICU_COLLATION_LENGTH);
 
 		nestedContext.mongoCollection = parentContext->mongoCollection;
+		nestedContext.collectionNameView = parentContext->collectionNameView;
 
-		modifiedQuery = MutateQueryWithPipeline(baseQuery, &singleElement.bsonValue,
+		List *stages = ExtractAggregationStages(&singleElement.bsonValue,
+												&nestedContext);
+		modifiedQuery = MutateQueryWithPipeline(baseQuery, stages,
 												&nestedContext);
 
 		/* Add bson_array_agg to the output */
@@ -1327,10 +1335,12 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 			strncpy((char *) nestedContext.collationString,
 					parentContext->collationString, MAX_ICU_COLLATION_LENGTH);
 			nestedContext.mongoCollection = parentContext->mongoCollection;
+			nestedContext.collectionNameView = parentContext->collectionNameView;
 			nestedContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 1;
 
-			Query *innerQuery = MutateQueryWithPipeline(baseQuery, bson_iter_value(
-															&facetIterator),
+			List *stages = ExtractAggregationStages(bson_iter_value(&facetIterator),
+													&nestedContext);
+			Query *innerQuery = MutateQueryWithPipeline(baseQuery, stages,
 														&nestedContext);
 
 			/* Add the BSON_ARRAY_AGG function */
@@ -1971,7 +1981,9 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 	{
 		/* If lookup is purely a pipeline (uncorrelated subquery) then
 		 * modify the pipeline. */
-		rightQuery = MutateQueryWithPipeline(rightQuery, &lookupArgs->pipeline,
+		List *stages = ExtractAggregationStages(&lookupArgs->pipeline,
+												&subPipelineContext);
+		rightQuery = MutateQueryWithPipeline(rightQuery, stages,
 											 &subPipelineContext);
 		Aggref **aggrefptr = NULL;
 		rightQuery = AddBsonArrayAggFunction(rightQuery, &subPipelineContext, parseState,
@@ -1987,7 +1999,9 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		/* For sharded lookup queries, we need the base table to be a CTE otherwise citus complains */
 		if (isRightQueryAgnostic)
 		{
-			rightQuery = MutateQueryWithPipeline(rightQuery, &lookupArgs->pipeline,
+			List *stages = ExtractAggregationStages(&lookupArgs->pipeline,
+													&subPipelineContext);
+			rightQuery = MutateQueryWithPipeline(rightQuery, stages,
 												 &subPipelineContext);
 		}
 
@@ -2048,7 +2062,9 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		if (canInlineInnerPipeline && !isRightQueryAgnostic &&
 			!canProcessForeignFieldAsDocumentId)
 		{
-			rightQuery = MutateQueryWithPipeline(rightQuery, &lookupArgs->pipeline,
+			List *stages = ExtractAggregationStages(&lookupArgs->pipeline,
+													&subPipelineContext);
+			rightQuery = MutateQueryWithPipeline(rightQuery, stages,
 												 &subPipelineContext);
 
 			if (list_length(rightQuery->targetList) > 1 || rightQuery->hasAggs)
@@ -2265,11 +2281,13 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		projectorQueryContext.databaseNameDatum =
 			subPipelineContext.databaseNameDatum;
 		projectorQueryContext.mongoCollection = subPipelineContext.mongoCollection;
+		projectorQueryContext.collectionNameView = subPipelineContext.collectionNameView;
 		projectorQueryContext.variableSpec = subPipelineContext.variableSpec;
 
+		List *stages = ExtractAggregationStages(&lookupArgs->pipeline,
+												&projectorQueryContext);
 		subSelectQuery = MutateQueryWithPipeline(subSelectQuery,
-												 &lookupArgs->pipeline,
-												 &projectorQueryContext);
+												 stages, &projectorQueryContext);
 
 		if (list_length(subSelectQuery->targetList) > 1 || subSelectQuery->hasAggs)
 		{
@@ -2599,8 +2617,10 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 	{
 		/* If lookup is purely a pipeline (uncorrelated subquery) then
 		 * modify the pipeline. */
+		List *stages = ExtractAggregationStages(&optimizationArgs.inlinedLookupPipeline,
+												&optimizationArgs.rightQueryContext);
 		rightQuery = MutateQueryWithPipeline(rightQuery,
-											 &optimizationArgs.inlinedLookupPipeline,
+											 stages,
 											 &optimizationArgs.rightQueryContext);
 	}
 
@@ -2991,6 +3011,8 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 		projectorQueryContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 		projectorQueryContext.databaseNameDatum =
 			optimizationArgs.rightQueryContext.databaseNameDatum;
+		projectorQueryContext.collectionNameView =
+			optimizationArgs.rightQueryContext.collectionNameView;
 		projectorQueryContext.mongoCollection =
 			optimizationArgs.rightQueryContext.mongoCollection;
 		projectorQueryContext.variableSpec = letExpr;
@@ -2998,9 +3020,11 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 				MAX_ICU_COLLATION_LENGTH);
 
 
+		List *stages = ExtractAggregationStages(
+			&optimizationArgs.nonInlinedLookupPipeline,
+			&projectorQueryContext);
 		subSelectQuery = MutateQueryWithPipeline(subSelectQuery,
-												 &optimizationArgs.
-												 nonInlinedLookupPipeline,
+												 stages,
 												 &projectorQueryContext);
 
 		if (list_length(subSelectQuery->targetList) > 1)

@@ -1358,11 +1358,9 @@ ERROR:  BSON field '$merge.whenNotMatched' is the wrong type 'int', expected typ
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "outColl", "whenNotMatched" : "falsevalue"   }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  Enumeration value 'falsevalue' for field '$merge.whenNotMatched' is not a valid value
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "outColl" }}, {} ], "cursor": { "batchSize": 1 } }', 4294967294);
-NOTICE:  creating collection
 ERROR:  A pipeline stage specification object must contain exactly one field.
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "outColl" }}, {"project" : {"a" : 1}
 } ], "cursor": { "batchSize": 1 } }', 4294967294);
-NOTICE:  creating collection
 ERROR:  $merge can only be the final stage in the pipeline
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into": "targetNotExists", "on" : [] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  If explicitly specifying $merge 'on', must include at least one field

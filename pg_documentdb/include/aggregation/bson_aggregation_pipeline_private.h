@@ -94,15 +94,22 @@ typedef struct
 	 * See: https://www.postgresql.org/docs/current/collation.html
 	 */
 	const char collationString[MAX_ICU_COLLATION_LENGTH];
+
+	/*
+	 * Whether or not to apply the optimization transformation on the stages
+	 */
+	bool optimizePipelineStages;
 } AggregationPipelineBuildContext;
 
 
 /* Core Infra exports */
-Query * MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
+Query * MutateQueryWithPipeline(Query *query, List *aggregationStages,
 								AggregationPipelineBuildContext *context);
 Query * MigrateQueryToSubQuery(Query *parse, AggregationPipelineBuildContext *context);
 Aggref * CreateMultiArgAggregate(Oid aggregateFunctionId, List *args, List *argTypes,
 								 ParseState *parseState);
+List * ExtractAggregationStages(const bson_value_t *pipelineValue,
+								AggregationPipelineBuildContext *context);
 Query * GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView,
 							   pg_uuid_t *collectionUuid,
 							   AggregationPipelineBuildContext *context);

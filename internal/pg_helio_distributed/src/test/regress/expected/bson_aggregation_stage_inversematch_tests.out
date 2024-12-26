@@ -326,22 +326,15 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
 (25 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": {}}} ], "cursor": {} }'); 
-                                                                                                                               QUERY PLAN                                                                                                                                
+                                              QUERY PLAN                                               
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive)
-   Output: remote_scan.document
-   Task Count: 1
-   Tasks Shown: All
-   ->  Task
-         Query: SELECT document FROM helio_data.documents_963003_9630006 collection WHERE (helio_api_internal.bson_dollar_inverse_match(document, '{ "path" : "rule", "input" : {  } }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '963003'::bigint))
-         Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on helio_data.documents_963003_9630006 collection
-               Output: document
-               Recheck Cond: (collection.shard_key_value = '963003'::bigint)
-               Filter: helio_api_internal.bson_dollar_inverse_match(collection.document, '{ "path" : "rule", "input" : {  } }'::helio_core.bson)
-               ->  Bitmap Index Scan on _id_
-                     Index Cond: (collection.shard_key_value = '963003'::bigint)
-(13 rows)
+ Bitmap Heap Scan on helio_data.documents_963003_9630006 collection
+   Output: document
+   Recheck Cond: (collection.shard_key_value = '963003'::bigint)
+   Filter: bson_dollar_inverse_match(collection.document, '{ "path" : "rule", "input" : {  } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '963003'::bigint)
+(6 rows)
 
 -- test with sharded collections.
 SELECT helio_api.shard_collection('invmatch', 'sales', '{"order": "hashed"}', false);

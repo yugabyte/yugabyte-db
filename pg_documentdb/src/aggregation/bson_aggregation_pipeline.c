@@ -136,7 +136,19 @@ typedef struct
 
 	/* Whether or not the stage is an output stage. $merge and $out are output stages */
 	bool isOutputStage;
+
+	/* Allow Base shard table pushdown */
+	bool allowBaseShardTablePushdown;
 } AggregationStageDefinition;
+
+typedef struct
+{
+	/* The bson value of the pipeline spec */
+	bson_value_t stageValue;
+
+	/* Definition of internal handlers */
+	AggregationStageDefinition *stageDefinition;
+} AggregationStage;
 
 
 static void TryHandleSimplifyAggregationRequest(SupportRequestSimplify *simplifyRequest);
@@ -231,6 +243,8 @@ static void RewriteFillToSetWindowFieldsSpec(const bson_value_t *fillSpec,
 											 bson_value_t *addFieldsForValueFill,
 											 bson_value_t *setWindowFieldsSpec,
 											 bson_value_t *partitionByFields);
+static void TryOptimizeAggregationPipelines(List *aggregationStages,
+											AggregationPipelineBuildContext *context);
 
 #define COMPATIBLE_CHANGE_STREAM_STAGES_COUNT 8
 const char *CompatibleChangeStreamPipelineStages[COMPATIBLE_CHANGE_STREAM_STAGES_COUNT] =
@@ -262,6 +276,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = true,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$addFields",
@@ -273,6 +288,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = true,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$bucket",
@@ -284,6 +300,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$bucketAuto",
@@ -295,6 +312,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$changeStream",
@@ -306,6 +324,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = PreCheckChangeStreamPipelineStages,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$collStats",
@@ -317,6 +336,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$count",
@@ -332,6 +352,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$currentOp",
@@ -348,6 +369,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$densify",
@@ -359,6 +381,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$documents",
@@ -370,6 +393,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$facet",
@@ -385,6 +409,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$fill",
@@ -396,6 +421,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$geoNear",
@@ -407,6 +433,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$graphLookup",
@@ -418,6 +445,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$group",
@@ -434,6 +462,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$indexStats",
@@ -445,6 +474,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$inverseMatch",
@@ -460,6 +490,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = true,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$limit",
@@ -475,6 +506,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$listLocalSessions",
@@ -486,6 +518,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$listSessions",
@@ -497,6 +530,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$lookup",
@@ -510,6 +544,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$match",
@@ -525,6 +560,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = true,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$merge",
@@ -536,6 +572,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = true,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$out",
@@ -547,6 +584,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = true,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$project",
@@ -560,6 +598,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = true,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$redact",
@@ -571,6 +610,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$replaceRoot",
@@ -584,6 +624,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = true,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$replaceWith",
@@ -597,6 +638,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = true,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$sample",
@@ -612,6 +654,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$search",
@@ -625,6 +668,9 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+
+		/* vector $search is needed to be executed withing custom scan boundaries see EvaluateMetaSearchScore in vector/vector_utilities.c */
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$searchMeta",
@@ -636,6 +682,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$set",
@@ -647,6 +694,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = true,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$setWindowFields",
@@ -658,6 +706,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$skip",
@@ -673,6 +722,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$sort",
@@ -688,6 +738,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$sortByCount",
@@ -699,6 +750,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$unionWith",
@@ -710,6 +762,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = false,
 	},
 	{
 		.stage = "$unset",
@@ -721,6 +774,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = true,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$unwind",
@@ -731,6 +785,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.allowBaseShardTablePushdown = true,
 	},
 	{
 		.stage = "$vectorSearch",
@@ -744,6 +799,9 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
+
+		/* $vectorSearch is needed to be executed withing custom scan boundaries see EvaluateMetaSearchScore in vector/vector_utilities.c */
+		.allowBaseShardTablePushdown = false,
 	}
 };
 
@@ -1097,7 +1155,9 @@ ValidateAggregationPipeline(Datum databaseDatum, const StringView *baseCollectio
 													baseCollection,
 													collectionUuid,
 													&validationContext);
-	validationQuery = MutateQueryWithPipeline(validationQuery, pipelineValue,
+	List *stages = ExtractAggregationStages(pipelineValue,
+											&validationContext);
+	validationQuery = MutateQueryWithPipeline(validationQuery, stages,
 											  &validationContext);
 	pfree(validationQuery);
 }
@@ -1109,93 +1169,26 @@ ValidateAggregationPipeline(Datum databaseDatum, const StringView *baseCollectio
  * The mutated query is returned as an output.
  */
 Query *
-MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
+MutateQueryWithPipeline(Query *query, List *aggregationStages,
 						AggregationPipelineBuildContext *context)
 {
-	bson_iter_t pipelineIterator;
-	BsonValueInitIterator(pipelineValue, &pipelineIterator);
-
-	/* $merge and $out are output stage must be last stage of pipeline */
-	const char *lastEncounteredOutputStage = NULL;
-
-	while (bson_iter_next(&pipelineIterator))
+	/* Apply stage transformations now */
+	ListCell *stageCell = NULL;
+	foreach(stageCell, aggregationStages)
 	{
-		bson_iter_t documentIterator;
-		if (!BSON_ITER_HOLDS_DOCUMENT(&pipelineIterator) ||
-			!bson_iter_recurse(&pipelineIterator, &documentIterator))
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-							errmsg(
-								"Each element of the 'pipeline' array must be an object")));
-		}
+		AggregationStage *stage = (AggregationStage *) lfirst(stageCell);
+		const AggregationStageDefinition *definition = stage->stageDefinition;
+		const char *stageName = definition->stage;
 
-		pgbsonelement stageElement;
-		if (!TryGetSinglePgbsonElementFromBsonIterator(&documentIterator, &stageElement))
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40323),
-							errmsg(
-								"A pipeline stage specification object must contain exactly one field.")));
-		}
-
-		/* If lastEncounteredOutputStage isn't NULL, it means we've seen an output stage like $out or $merge before this.
-		 * Since the output stage was expected to be last, encountering it earlier leads to failure. */
-		if (lastEncounteredOutputStage != NULL)
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40601),
-							errmsg("%s can only be the final stage in the pipeline",
-								   lastEncounteredOutputStage),
-							errdetail_log(
-								"%s can only be the final stage in the pipeline",
-								lastEncounteredOutputStage)));
-		}
-
-		/* Now handle each stage */
-		AggregationStageDefinition *definition = (AggregationStageDefinition *) bsearch(
-			stageElement.path, StageDefinitions,
-			AggregationStageCount,
-			sizeof(
-				AggregationStageDefinition),
-			CompareStageByStageName);
-		if (definition == NULL)
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNRECOGNIZEDCOMMAND),
-							errmsg("Unrecognized pipeline stage name: %s",
-								   stageElement.path),
-							errdetail_log("Unrecognized pipeline stage name: %s",
-										  stageElement.path)));
-		}
-		if (definition->pipelineCheckFunc != NULL)
-		{
-			definition->pipelineCheckFunc(pipelineValue, context);
-		}
-
-		if (definition->mutateFunc == NULL)
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-							errmsg(
-								"Stage %s is not supported yet in native pipeline",
-								definition->stage),
-							errdetail_log(
-								"Stage %s is not supported yet in native pipeline",
-								definition->stage)));
-		}
-
-		if (definition->isOutputStage)
-		{
-			lastEncounteredOutputStage = definition->stage;
-		}
-
-		/* If we're an agnostic query (we're not selecting from anything),
-		 * ensure that the stage handles agnostic-ness in the query */
 		if (query->jointree->fromlist == NIL && !definition->canHandleAgnosticQueries)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 							errmsg(
 								"{aggregate: 1} is not valid for '%s'; a collection is required.",
-								stageElement.path),
+								stageName),
 							errdetail_log(
 								"{aggregate: 1} is not valid for '%s'; a collection is required.",
-								stageElement.path)));
+								stageName)));
 		}
 
 		/* If the prior stage needed to be pushed to a sub-query before the next
@@ -1221,7 +1214,7 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 									errmsg(
 										"Cannot use tailable cursor with stage %s",
-										stageElement.path)));
+										stageName)));
 				}
 
 				/* Not a project, so push to a subquery */
@@ -1229,11 +1222,11 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 			}
 		}
 
-		query = definition->mutateFunc(&stageElement.bsonValue, query,
+		query = definition->mutateFunc(&stage->stageValue, query,
 									   context);
 		context->requiresPersistentCursor =
 			context->requiresPersistentCursor ||
-			definition->requiresPersistentCursor(&stageElement.bsonValue);
+			definition->requiresPersistentCursor(&stage->stageValue);
 
 		if (!definition->preservesStableSortOrder)
 		{
@@ -1263,6 +1256,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 {
 	AggregationPipelineBuildContext context = { 0 };
 	context.databaseNameDatum = database;
+	context.optimizePipelineStages = true;
 
 	bson_iter_t aggregationIterator;
 	PgbsonInitIterator(aggregationSpec, &aggregationIterator);
@@ -1381,6 +1375,9 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 		}
 	}
 
+	List *aggregationStages = ExtractAggregationStages(&pipelineValue,
+													   &context);
+
 	Query *query;
 	if (isCollectionAgnosticQuery)
 	{
@@ -1395,7 +1392,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 	/* Remember the base query - this will be needed since we need to update the cursor function on the base RTE */
 	Query *baseQuery = query;
 
-	query = MutateQueryWithPipeline(query, &pipelineValue, &context);
+	query = MutateQueryWithPipeline(query, aggregationStages, &context);
 
 	if (context.requiresTailableCursor)
 	{
@@ -5658,9 +5655,11 @@ RequiresPersistentCursorSkip(const bson_value_t *pipelineValue)
  */
 static MongoCollection *
 ExtractViewDefinitionAndPipeline(Datum databaseDatum, pgbson *viewDefinition,
-								 List **pipelineStages)
+								 List **pipelineStages,
+								 AggregationPipelineBuildContext *context)
 {
 	int viewDepth = 0;
+	bool canViewUseShardTable = context->allowShardBaseTable;
 	while (true)
 	{
 		CHECK_FOR_INTERRUPTS();
@@ -5680,7 +5679,15 @@ ExtractViewDefinitionAndPipeline(Datum databaseDatum, pgbson *viewDefinition,
 		{
 			bson_value_t *valueCopy = palloc(sizeof(bson_value_t));
 			*valueCopy = definition.pipeline;
-			*pipelineStages = lappend(*pipelineStages, valueCopy);
+			List *stages = ExtractAggregationStages(valueCopy, context);
+			if (!context->allowShardBaseTable)
+			{
+				/* If any nested view uses stage that can't use shard base table then
+				 * we will not use shard base tables.
+				 */
+				canViewUseShardTable = context->allowShardBaseTable;
+			}
+			*pipelineStages = lappend(*pipelineStages, stages);
 		}
 
 		MongoCollection *collection = GetMongoCollectionOrViewByNameDatum(
@@ -5694,6 +5701,7 @@ ExtractViewDefinitionAndPipeline(Datum databaseDatum, pgbson *viewDefinition,
 		{
 			/* It's a base table - lock the table and stop the search */
 			GetRelationIdForCollectionId(collection->collectionId, AccessShareLock);
+			context->allowShardBaseTable = canViewUseShardTable;
 			return collection;
 		}
 		else
@@ -5702,6 +5710,103 @@ ExtractViewDefinitionAndPipeline(Datum databaseDatum, pgbson *viewDefinition,
 			viewDefinition = collection->viewDefinition;
 		}
 	}
+}
+
+
+/*
+ * Given the pipeline definition extract the stages as a list of `AggregationStage`.
+ * Performs basic validation in the structure of the pipeline.
+ * If `context->optimizePipelines` is set to true, the function will optimize the pipelines.
+ */
+List *
+ExtractAggregationStages(const bson_value_t *pipelineValue,
+						 AggregationPipelineBuildContext *context)
+{
+	bson_iter_t pipelineIterator;
+	BsonValueInitIterator(pipelineValue, &pipelineIterator);
+
+	const char *lastEncounteredOutputStage = NULL;
+
+	List *aggregationStages = NIL;
+	while (bson_iter_next(&pipelineIterator))
+	{
+		bson_iter_t documentIterator;
+		if (!BSON_ITER_HOLDS_DOCUMENT(&pipelineIterator) ||
+			!bson_iter_recurse(&pipelineIterator, &documentIterator))
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
+							errmsg(
+								"Each element of the 'pipeline' array must be an object")));
+		}
+
+		pgbsonelement stageElement;
+		if (!TryGetSinglePgbsonElementFromBsonIterator(&documentIterator, &stageElement))
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40323),
+							errmsg(
+								"A pipeline stage specification object must contain exactly one field.")));
+		}
+
+		/* If lastEncounteredOutputStage isn't NULL, it means we've seen an output stage like $out or $merge before this.
+		 * Since the output stage was expected to be last, encountering it earlier leads to failure. */
+		if (lastEncounteredOutputStage != NULL)
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40601),
+							errmsg("%s can only be the final stage in the pipeline",
+								   lastEncounteredOutputStage),
+							errdetail_log(
+								"%s can only be the final stage in the pipeline",
+								lastEncounteredOutputStage)));
+		}
+
+		/* Get the definition of the stage */
+		AggregationStageDefinition *definition = (AggregationStageDefinition *) bsearch(
+			stageElement.path, StageDefinitions,
+			AggregationStageCount,
+			sizeof(AggregationStageDefinition),
+			CompareStageByStageName);
+		if (definition == NULL)
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNRECOGNIZEDCOMMAND),
+							errmsg("Unrecognized pipeline stage name: %s",
+								   stageElement.path),
+							errdetail_log("Unrecognized pipeline stage name: %s",
+										  stageElement.path)));
+		}
+		if (definition->pipelineCheckFunc != NULL)
+		{
+			definition->pipelineCheckFunc(pipelineValue, context);
+		}
+
+		if (definition->mutateFunc == NULL)
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+							errmsg(
+								"Stage %s is not supported yet in native pipeline",
+								definition->stage),
+							errdetail_log(
+								"Stage %s is not supported yet in native pipeline",
+								definition->stage)));
+		}
+
+		if (definition->isOutputStage)
+		{
+			lastEncounteredOutputStage = definition->stage;
+		}
+
+		AggregationStage *stage = palloc0(sizeof(AggregationStage));
+		stage->stageDefinition = definition;
+		stage->stageValue = stageElement.bsonValue;
+
+		aggregationStages = lappend(aggregationStages, stage);
+	}
+
+	if (context->optimizePipelineStages)
+	{
+		TryOptimizeAggregationPipelines(aggregationStages, context);
+	}
+
+	return aggregationStages;
 }
 
 
@@ -5751,7 +5856,8 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	{
 		collection = ExtractViewDefinitionAndPipeline(databaseDatum,
 													  collection->viewDefinition,
-													  &pipelineStages);
+													  &pipelineStages,
+													  context);
 	}
 
 	context->mongoCollection = collection;
@@ -5878,8 +5984,8 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	/* Now if there's pipeline stages, apply the stages in reverse (innermost first) */
 	for (int i = list_length(pipelineStages) - 1; i >= 0; i--)
 	{
-		bson_value_t *pipelineValue = list_nth(pipelineStages, i);
-		query = MutateQueryWithPipeline(query, pipelineValue, context);
+		List *stages = list_nth(pipelineStages, i);
+		query = MutateQueryWithPipeline(query, stages, context);
 	}
 
 	return query;
@@ -6778,4 +6884,40 @@ ParseAndGetTopLevelVariableSpec(const bson_value_t *varSpec)
 	pfree(emptyDoc);
 
 	return PgbsonWriterGetPgbson(&resultWriter);
+}
+
+
+/*
+ * We will try to optimize the aggregation stages here. Currently this method checks
+ * if all the stages are referring to a single collection that is not sharded then we
+ * can convert the query to push it down to the particular shard (single node)
+ * TODO: Other optimizations to be followed
+ * 1- Merge consecutive projection stages to be merged.
+ * 2- Improve match stage if preceded by a projection stage and the filter is on a renamed field which could
+ *    potentially use index.
+ */
+static void
+TryOptimizeAggregationPipelines(List *aggregationStages,
+								AggregationPipelineBuildContext *context)
+{
+	if (aggregationStages == NIL || list_length(aggregationStages) == 0)
+	{
+		return;
+	}
+
+	/* Whether or not we can safely push the aggregation pipeline query to the shard table directly depends on
+	 * if all the stages refer to a single collection and it is not sharded, only in this case it is feasible to push
+	 * these queries directly to shard table.
+	 */
+	ListCell *cell;
+	foreach(cell, aggregationStages)
+	{
+		AggregationStage *stage = (AggregationStage *) lfirst(cell);
+		const AggregationStageDefinition *definition = stage->stageDefinition;
+		context->allowShardBaseTable = definition->allowBaseShardTablePushdown;
+		if (!context->allowShardBaseTable)
+		{
+			break;
+		}
+	}
 }

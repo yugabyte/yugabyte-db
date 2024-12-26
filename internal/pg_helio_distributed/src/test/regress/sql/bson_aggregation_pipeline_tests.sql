@@ -438,3 +438,30 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeli
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeline_samplerate", "pipeline": [ { "$match": { "$sampleRate": 10 } }, { "$limit": 1 }, {"$count": "count"} ], "cursor": {} }');
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeline_samplerate", "pipeline": [ { "$match": { "$sampleRate": false } }, { "$limit": 1 }, {"$count": "count"} ], "cursor": {} }');
+
+-- Pipeline directly push to shards if all stages refer to same collection and that is not sharded and is present on the same node as coordinator.
+
+SELECT helio_api.insert_one('pipelineDB','agg_pipeline_optimizations','{ "_id": 1, "a": "RANDOM_A", "b": {"c": ["SAMPLE1", "SAMPLE2"], "d": [[1,2], [3, 4]]} }', NULL);
+SELECT helio_api.insert_one('pipelineDB','agg_pipeline_optimizations','{ "_id": 2, "a": "RANDOM_B", "b": {"c": ["SAMPLE3", "SAMPLE4"], "d": [[5,6], [7, 8]]} }', NULL);
+
+SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$match": { "a": "RANDOM_A" } } ] }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$match": { "a": "RANDOM_A" } } ] }');
+
+SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$project": { "a" : 1 } } ] }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$project": { "a" : 1 } } ] }');
+
+EXPLAIN (VERBOSE OFF, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$merge": "agg_pipeline_optimizations" } ] }');
+
+SELECT helio_api.create_collection('pipelineDB', 'agg_pipeline_optimizations_new');
+EXPLAIN (VERBOSE OFF, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$merge": "agg_pipeline_optimizations_new" } ] }');
+
+EXPLAIN (VERBOSE OFF, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$merge": "agg_pipeline_optimizations" } ] }');
+
+-- Shard the collection now
+SELECT helio_api.shard_collection('pipelineDB', 'agg_pipeline_optimizations', '{ "_id": "hashed" }', false);
+
+SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$match": { "a": "RANDOM_A" } } ] }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$match": { "a": "RANDOM_A" } } ] }');
+
+SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$project": { "a" : 1 } } ] }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$project": { "a" : 1 } } ] }');

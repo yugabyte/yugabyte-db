@@ -1777,3 +1777,173 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeli
 ERROR:  numeric argument to $sampleRate must be in [0, 1]
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeline_samplerate", "pipeline": [ { "$match": { "$sampleRate": false } }, { "$limit": 1 }, {"$count": "count"} ], "cursor": {} }');
 ERROR:  argument to $sampleRate must be a numeric type
+-- Pipeline directly push to shards if all stages refer to same collection and that is not sharded and is present on the same node as coordinator.
+SELECT helio_api.insert_one('pipelineDB','agg_pipeline_optimizations','{ "_id": 1, "a": "RANDOM_A", "b": {"c": ["SAMPLE1", "SAMPLE2"], "d": [[1,2], [3, 4]]} }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('pipelineDB','agg_pipeline_optimizations','{ "_id": 2, "a": "RANDOM_B", "b": {"c": ["SAMPLE3", "SAMPLE4"], "d": [[5,6], [7, 8]]} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$match": { "a": "RANDOM_A" } } ] }');
+                                                                                                     document                                                                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "RANDOM_A", "b" : { "c" : [ "SAMPLE1", "SAMPLE2" ], "d" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] ] } }
+(1 row)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$match": { "a": "RANDOM_A" } } ] }');
+                            QUERY PLAN                             
+---------------------------------------------------------------------
+ Bitmap Heap Scan on helio_data.documents_4115_411090 collection
+   Output: document
+   Recheck Cond: (collection.shard_key_value = '4115'::bigint)
+   Filter: (collection.document @= '{ "a" : "RANDOM_A" }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '4115'::bigint)
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$project": { "a" : 1 } } ] }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "RANDOM_A" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "RANDOM_B" }
+(2 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$project": { "a" : 1 } } ] }');
+                                    QUERY PLAN                                     
+---------------------------------------------------------------------
+ Bitmap Heap Scan on helio_data.documents_4115_411090 collection
+   Output: bson_dollar_project(document, '{ "a" : { "$numberInt" : "1" } }'::bson)
+   Recheck Cond: (collection.shard_key_value = '4115'::bigint)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '4115'::bigint)
+(5 rows)
+
+EXPLAIN (VERBOSE OFF, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$merge": "agg_pipeline_optimizations" } ] }');
+                                                                   QUERY PLAN                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Merge on documents_4115_411090 documents_4115
+               ->  Nested Loop Left Join
+                     Join Filter: (documents_4115.object_id OPERATOR(helio_core.=) helio_core.bson_get_value(collection.document, '_id'::text))
+                     ->  Bitmap Heap Scan on documents_4115_411090 collection
+                           Recheck Cond: (shard_key_value = '4115'::bigint)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (shard_key_value = '4115'::bigint)
+                     ->  Materialize
+                           ->  Bitmap Heap Scan on documents_4115_411090 documents_4115
+                                 Recheck Cond: (shard_key_value = '4115'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (shard_key_value = '4115'::bigint)
+(17 rows)
+
+SELECT helio_api.create_collection('pipelineDB', 'agg_pipeline_optimizations_new');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+EXPLAIN (VERBOSE OFF, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$merge": "agg_pipeline_optimizations_new" } ] }');
+                                                                   QUERY PLAN                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Merge on documents_4116_411092 documents_4116
+               ->  Nested Loop Left Join
+                     Join Filter: (documents_4116.object_id OPERATOR(helio_core.=) helio_core.bson_get_value(collection.document, '_id'::text))
+                     ->  Bitmap Heap Scan on documents_4115_411090 collection
+                           Recheck Cond: (shard_key_value = '4115'::bigint)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (shard_key_value = '4115'::bigint)
+                     ->  Materialize
+                           ->  Bitmap Heap Scan on documents_4116_411092 documents_4116
+                                 Recheck Cond: (shard_key_value = '4116'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (shard_key_value = '4116'::bigint)
+(17 rows)
+
+EXPLAIN (VERBOSE OFF, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$merge": "agg_pipeline_optimizations" } ] }');
+                                                                   QUERY PLAN                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Merge on documents_4115_411090 documents_4115
+               ->  Nested Loop Left Join
+                     Join Filter: (documents_4115.object_id OPERATOR(helio_core.=) helio_core.bson_get_value(collection.document, '_id'::text))
+                     ->  Bitmap Heap Scan on documents_4115_411090 collection
+                           Recheck Cond: (shard_key_value = '4115'::bigint)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (shard_key_value = '4115'::bigint)
+                     ->  Materialize
+                           ->  Bitmap Heap Scan on documents_4115_411090 documents_4115
+                                 Recheck Cond: (shard_key_value = '4115'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (shard_key_value = '4115'::bigint)
+(17 rows)
+
+-- Shard the collection now
+SELECT helio_api.shard_collection('pipelineDB', 'agg_pipeline_optimizations', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$match": { "a": "RANDOM_A" } } ] }');
+                                                                                                     document                                                                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "RANDOM_A", "b" : { "c" : [ "SAMPLE1", "SAMPLE2" ], "d" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] ] } }
+(1 row)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$match": { "a": "RANDOM_A" } } ] }');
+                                                                                  QUERY PLAN                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_4115_411094 collection WHERE (document OPERATOR(helio_api_catalog.#=) '{ "a" : "RANDOM_A" }'::helio_core.bsonquery)
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on helio_data.documents_4115_411094 collection
+               Output: document
+               Filter: (collection.document OPERATOR(helio_api_catalog.@=) '{ "a" : "RANDOM_A" }'::helio_core.bson)
+(10 rows)
+
+SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$project": { "a" : 1 } } ] }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "RANDOM_B" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "RANDOM_A" }
+(2 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('pipelineDB', '{ "aggregate": "agg_pipeline_optimizations", "pipeline": [ { "$project": { "a" : 1 } } ] }');
+                                                                                             QUERY PLAN                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Query: SELECT helio_api_catalog.bson_dollar_project(document, '{ "a" : { "$numberInt" : "1" } }'::helio_core.bson) AS document FROM helio_data.documents_4115_411094 collection WHERE true
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on helio_data.documents_4115_411094 collection
+               Output: helio_api_catalog.bson_dollar_project(document, '{ "a" : { "$numberInt" : "1" } }'::helio_core.bson)
+(9 rows)
+
