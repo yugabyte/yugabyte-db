@@ -69,14 +69,11 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("allowed_preview_flags_csv",
-        "cdcsdk_enable_dynamic_table_support");
     flagMap.put(
         "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
     flagMap.put("ysql_log_min_messages", "DEBUG2");
     flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
-    flagMap.put("cdcsdk_enable_dynamic_table_support", "true");
     return flagMap;
   }
 
