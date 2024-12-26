@@ -18,6 +18,7 @@
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_defaults.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/util/env_util.h"
 
@@ -260,6 +261,16 @@ Result<std::string> Pg15UpgradeTestBase::DumpYsqlCatalogConfig() {
   SCHECK_EQ(resp.entries_size(), 1, IllegalState, "Expected exactly one entry");
 
   return resp.entries(0).pb_debug_string();
+}
+
+Status Pg15UpgradeTestBase::WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::State state) {
+  auto state_str = master::YsqlMajorCatalogUpgradeInfoPB::State_Name(state);
+  return LoggedWaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(DumpYsqlCatalogConfig()).find(Format("state: $0", state_str)) !=
+               std::string::npos;
+      },
+      5min, "Waiting for upgrade to reach state " + state_str);
 }
 
 }  // namespace yb

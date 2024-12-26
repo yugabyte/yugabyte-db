@@ -599,6 +599,27 @@ Status XClusterTargetManager::ClearXClusterSourceTableId(
   return Status::OK();
 }
 
+bool XClusterTargetManager::IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const {
+  auto all_universe_replications = catalog_manager_.GetAllUniverseReplications();
+  if (all_universe_replications.empty()) {
+    return false;
+  }
+
+  bool namespace_found = false;
+  for (const auto& replication_info : all_universe_replications) {
+    if (!HasNamespace(*replication_info, namespace_id)) {
+      continue;
+    }
+    if (!replication_info->IsAutomaticDdlMode()) {
+      return false;
+    }
+    namespace_found = true;
+  }
+
+  // Return true only if the namespace was found in repl groups and all in automatic DDL mode.
+  return namespace_found;
+}
+
 void XClusterTargetManager::NotifyAutoFlagsConfigChanged() {
   auto_flags_revalidation_needed_ = true;
 }

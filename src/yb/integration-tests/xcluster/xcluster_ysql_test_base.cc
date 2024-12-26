@@ -574,41 +574,54 @@ Status XClusterYsqlTestBase::ValidateRows(
 
 Status XClusterYsqlTestBase::VerifyWrittenRecords(
     std::shared_ptr<client::YBTable> producer_table,
-    std::shared_ptr<client::YBTable> consumer_table) {
+    std::shared_ptr<client::YBTable> consumer_table,
+    bool verify_column_count_match) {
   if (!producer_table) {
     producer_table = producer_table_;
   }
   if (!consumer_table) {
     consumer_table = consumer_table_;
   }
-  return VerifyWrittenRecords(producer_table->name(), consumer_table->name());
+  return VerifyWrittenRecords(producer_table->name(), consumer_table->name(),
+      verify_column_count_match);
 }
 
 Status XClusterYsqlTestBase::VerifyWrittenRecords(
-    const YBTableName& producer_table_name, const YBTableName& consumer_table_name) {
-  int prod_count = 0, cons_count = 0;
+    const YBTableName& producer_table_name, const YBTableName& consumer_table_name,
+    bool verify_column_count_match) {
+  int prod_row_count, cons_row_count, prod_col_count, cons_col_count = 0;
   const Status s = LoggedWaitFor(
-      [this, producer_table_name, consumer_table_name, &prod_count, &cons_count]() -> Result<bool> {
+      [this, producer_table_name, consumer_table_name, &prod_row_count, &cons_row_count,
+          &prod_col_count, &cons_col_count]()-> Result<bool> {
         auto producer_results =
             VERIFY_RESULT(ScanToStrings(producer_table_name, &producer_cluster_));
         auto consumer_results =
             VERIFY_RESULT(ScanToStrings(consumer_table_name, &consumer_cluster_));
-        prod_count = PQntuples(producer_results.get());
-        cons_count = PQntuples(consumer_results.get());
-        if (prod_count != cons_count) {
+        prod_row_count = PQntuples(producer_results.get());
+        cons_row_count = PQntuples(consumer_results.get());
+        if (prod_row_count != cons_row_count) {
           return false;
         }
-        for (int i = 0; i < prod_count; ++i) {
-          auto prod_val = EXPECT_RESULT(pgwrapper::ToString(producer_results.get(), i, 0));
-          auto cons_val = EXPECT_RESULT(pgwrapper::ToString(consumer_results.get(), i, 0));
-          if (prod_val != cons_val) {
-            return false;
+        prod_col_count = PQnfields(producer_results.get());
+        cons_col_count = PQnfields(consumer_results.get());
+        int col_count = std::min(prod_col_count, cons_col_count);
+        for (int row = 0; row < prod_row_count; ++row) {
+          for (int col = 0; col < col_count; ++col) {
+            auto prod_val = EXPECT_RESULT(pgwrapper::ToString(producer_results.get(), row, col));
+            auto cons_val = EXPECT_RESULT(pgwrapper::ToString(consumer_results.get(), row, col));
+            if (prod_val != cons_val) {
+              LOG(INFO) << Format(
+                  "Mismatch at row $0, col $1: Producer: $2, Consumer: $3", row, col, prod_val,
+                  cons_val);
+              return false;
+            }
           }
         }
         return true;
       },
       MonoDelta::FromSeconds(kRpcTimeout), "Verify written records");
-  LOG(INFO) << "Row counts, Producer: " << prod_count << ", Consumer: " << cons_count;
+  LOG(INFO) << "Row counts, Producer: " << prod_row_count << ", Consumer: " << cons_row_count
+            << ". Column counts, Producer: " << prod_col_count << ", Consumer: " << cons_col_count;
   return s;
 }
 
@@ -863,7 +876,7 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
   ASSERT_OK(consumer_cluster()->FlushTablets());
 
   ASSERT_OK(InsertRowsInProducer(301, 350));
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(VerifyWrittenRecords(nullptr, nullptr, /*verify_column_count_match=*/false));
 }
 
 Status XClusterYsqlTestBase::SetUpWithParams(

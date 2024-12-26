@@ -77,7 +77,9 @@ class YsqlManager : public YsqlManagerIf {
       const IsYsqlMajorCatalogUpgradeDoneRequestPB* req,
       IsYsqlMajorCatalogUpgradeDoneResponsePB* resp, rpc::RpcContext* rpc);
 
-  bool IsCurrentVersionCatalogEstablished() const;
+  // Returns the prior version's table if we are in the middle of a ysql major upgrade.
+  // In all other cases, returns the current version.
+  Result<TableId> GetVersionSpecificCatalogTableId(const TableId& current_table_id) const override;
 
   Status FinalizeYsqlMajorCatalogUpgrade(
       const FinalizeYsqlMajorCatalogUpgradeRequestPB* req,
@@ -94,6 +96,8 @@ class YsqlManager : public YsqlManagerIf {
       const LeaderEpoch& epoch);
 
   Status CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch);
+
+  Status ValidateWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
 
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);

@@ -5024,7 +5024,7 @@ pg_tablegroup_aclmask(Oid grp_oid, Oid roleid,
 	if (!HeapTupleIsValid(tuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-		 			 errmsg("tablegroup with OID %u does not exist", grp_oid)));
+					 errmsg("tablegroup with OID %u does not exist", grp_oid)));
 
 	ownerId = ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->grpowner;
 

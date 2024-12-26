@@ -436,7 +436,8 @@ public class GCPUtil implements CloudUtil {
       String region,
       String commonDir,
       String previousBackupLocation,
-      CustomerConfigData configData) {
+      CustomerConfigData configData,
+      Universe universe) {
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
     CloudLocationInfo csInfo = getCloudLocationInfo(region, configData, "");
     String bucket = csInfo.bucket;
@@ -462,7 +463,11 @@ public class GCPUtil implements CloudUtil {
   // In case of Success marker download - cloud Dir is the location provided by user in API
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
-      String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+      String region,
+      String cloudDir,
+      CustomerConfigData configData,
+      boolean isDsm,
+      Universe universe) {
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
     CloudLocationInfo csInfo = getCloudLocationInfo(region, configData, "");
     String bucket = csInfo.bucket;

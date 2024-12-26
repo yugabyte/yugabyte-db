@@ -30,6 +30,7 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/env.h"
+#include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_trim.h"
 #include "yb/docdb/docdb_pgapi.h"
@@ -38,8 +39,7 @@ using std::string;
 using strings::Substitute;
 using std::vector;
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::DocPath;
 
@@ -77,7 +77,7 @@ rocksdb::DB* DocDBRocksDBUtil::intents_db() {
 }
 
 std::string DocDBRocksDBUtil::IntentsDBDir() {
-  return rocksdb_dir_ + ".intents";
+  return GetStorageDir(rocksdb_dir_, "intents");
 }
 
 Status DocDBRocksDBUtil::OpenRocksDB() {
@@ -581,5 +581,12 @@ Result<CompactionSchemaInfo> DocDBRocksDBUtil::ColocationPacking(
   return CotablePacking(Uuid::Nil(), schema_version, history_cutoff);
 }
 
-}  // namespace docdb
-}  // namespace yb
+std::string GetStorageDir(const std::string& data_dir, const std::string& storage) {
+  return Format("$0.$1", data_dir, storage);
+}
+
+std::string GetStorageCheckpointDir(const std::string& data_dir, const std::string& storage) {
+  return JoinPathSegments(data_dir, storage);
+}
+
+}  // namespace yb::docdb

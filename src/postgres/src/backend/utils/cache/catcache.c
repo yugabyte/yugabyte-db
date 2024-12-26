@@ -1084,8 +1084,8 @@ CatalogCacheInitializeCache(CatCache *cache)
  */
 void
 SetCatCacheList(CatCache *cache,
-                int nkeys,
-                List *current_list)
+				int nkeys,
+				List *current_list)
 {
 	ScanKeyData cur_skey[CATCACHE_MAXKEYS];
 	Datum		arguments[CATCACHE_MAXKEYS];
@@ -1115,9 +1115,9 @@ SetCatCacheList(CatCache *cache,
 			break;
 		bool is_null = false; /* Not needed as this is checked before */
 		cur_skey[i].sk_argument = heap_getattr(tup,
-		                                       cur_skey[i].sk_attno,
-		                                       cache->cc_tupdesc,
-		                                       &is_null);
+											   cur_skey[i].sk_attno,
+											   cache->cc_tupdesc,
+											   &is_null);
 	}
 	lHashValue = CatalogCacheComputeHashValue(cache,
 											  nkeys,
@@ -1452,10 +1452,10 @@ SetCatCacheTuple(CatCache *cache, HeapTuple tup, TupleDesc desc)
 			continue;
 		}
 		bool is_null;
-		key[i].sk_argument     = heap_getattr(tup,
-		                                      key[i].sk_attno,
-		                                      desc,
-		                                      &is_null);
+		key[i].sk_argument = heap_getattr(tup,
+										  key[i].sk_attno,
+										  desc,
+										  &is_null);
 		if (is_null)
 			key[i].sk_argument = (Datum) 0;
 	}
@@ -1687,9 +1687,10 @@ SearchCatCacheInternal(CatCache *cache,
 * Function returns true in some special cases where we allow negative caches:
 * 1. pg_cast (CASTSOURCETARGET) to avoid master lookups during parsing.
 *    TODO: reconsider this now that we support CREATE CAST.
-* 2. pg_statistic (STATRELATTINH) and pg_statistic_ext
-*    (STATEXTNAMENSP and STATEXTOID) since we do not support
-*    statistics in DocDB/YSQL yet.
+* 2. pg_statistic (STATRELATTINH), pg_statistic_ext
+*    (STATEXTNAMENSP and STATEXTOID) and pg_statistic_ext_data
+*    (STATEXTDATASTXOID) to avoid redundant lookups for the entries that may
+*    not exist during query planning.
 * 3. pg_class (RELNAMENSP), pg_type (TYPENAMENSP)
 *    but only for system tables since users cannot create system tables in YSQL.
 *    This is violated in YSQL upgrade, but doing so will force cache refresh.
@@ -1714,6 +1715,7 @@ YbAllowNegativeCacheEntries(int cache_id,
 	{
 		case CASTSOURCETARGET: switch_fallthrough();
 		case STATRELATTINH: switch_fallthrough();
+		case STATEXTDATASTXOID: switch_fallthrough();
 		case STATEXTNAMENSP: switch_fallthrough();
 		case STATEXTOID: switch_fallthrough();
 		case AMPROCNUM:

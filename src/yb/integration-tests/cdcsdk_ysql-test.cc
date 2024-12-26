@@ -1060,7 +1060,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTable)) {
     expected_tablet_ids.insert(tablets[idx].Get(0).tablet_id());
   }
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   std::unordered_set<TabletId> tablets_found;
   for (auto row_result : ASSERT_RESULT(
@@ -1148,7 +1148,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTableAndMast
     expected_tablet_ids.insert(tablets[idx].Get(0).tablet_id());
   }
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   std::unordered_set<TabletId> tablets_found;
   for (auto row_result : ASSERT_RESULT(
@@ -1539,7 +1539,7 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
 
   OpId min_checkpoint = OpId::Max();
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   for (auto row_result : ASSERT_RESULT(
            cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
@@ -1663,7 +1663,7 @@ void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType c
   OpId active_stream_checkpoint;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 100000;
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   for (auto row_result : ASSERT_RESULT(
            cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
@@ -3113,7 +3113,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupMultiTab
   for (const auto& tablet : tablets[2]) {
     table_3_tablet_ids.insert(tablet.tablet_id());
   }
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         Status s;
@@ -3372,7 +3372,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCreateStreamAfterSetCheckpoin
 
   // Forcefully update the checkpoint of the stream as MAX.
   auto max_commit_op_id = OpId::Max();
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   CDCStateTableEntry entry(tablets[0].tablet_id(), stream_id);
   entry.checkpoint = max_commit_op_id;
   ASSERT_OK(cdc_state_table.UpdateEntries({entry}));
@@ -5266,7 +5266,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
   // Here we are creating a scenario where active_time is not set in the cdc_state table because of
   // older server version, if we upgrade the server where active_time is part of cdc_state table,
   // GetChanges call should successful not intents GCed error.
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {tablets[0].tablet_id(), stream_id}, CDCStateTableEntrySelector().IncludeAll()));
   ASSERT_TRUE(entry_opt.has_value());
@@ -5326,7 +5326,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
   // Here we are creating a scenario where active_time is not set in the cdc_state table because of
   // older server version, if we upgrade the server where active_time is part of cdc_state table,
   // GetChanges call should successful not intents GCed error.
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
@@ -7756,7 +7756,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
 TEST_F(CDCSDKYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
-  const auto errstr = "cannot rewrite a table that is a part of CDC or XCluster replication";
+  const auto errstr =
+      "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication";
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
@@ -8298,7 +8299,7 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
 
   // cdc_state entry for the replication slot should only be seen when replication commands are
   // enabled and a consistent_snapshot stream is created.
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   auto stream_id_1 = ASSERT_RESULT(
       CreateConsistentSnapshotStreamWithReplicationSlot(CDCSDKSnapshotOption::USE_SNAPSHOT));
   auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id_1, tablets[0].tablet_id()));
@@ -8925,7 +8926,7 @@ void CDCSDKYsqlTest::TestNonEligibleTableShouldNotGetAddedToCDCStream(
 
   std::unordered_set<TabletId> actual_tablets;
   CdcStateTableRow expected_row;
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   auto table_range =
       ASSERT_RESULT(cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeAll(), &s));
@@ -9542,7 +9543,7 @@ void CDCSDKYsqlTest::TestChildTabletsOfNonEligibleTableDoNotGetAddedToCDCStream(
     tablets_not_expected_in_state_table.insert(tablet.tablet_id());
   }
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   bool seen_unexpected_tablets = false;
   Status s;
   auto table_range =
@@ -9681,8 +9682,8 @@ TEST_F(CDCSDKYsqlTest, TestUserTableCleanupWithDropTable) {
         stream_id, expected_tables, "Waiting for GetDBStreamInfo after drop table.",
         unqualified_table_ids);
     // Entries in cdc state table should not have changed as both the tasks - table removal & drop
-    // table cleanup havent progressed.
-    CDCStateTable cdc_state_table(test_client());
+    // table cleanup haven't progressed.
+    auto cdc_state_table = MakeCDCStateTable(test_client());
     Status s;
     auto table_range = ASSERT_RESULT(cdc_state_table.GetTableRange({}, &s));
 
@@ -9856,7 +9857,7 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDropTable) {
       /* expected_unqualified_table_ids */ {});
   // Entries in cdc state table should not have changed as both the tasks - table removal & drop
   // table cleanup havent progressed.
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   auto table_range = ASSERT_RESULT(cdc_state_table.GetTableRange({}, &s));
 
@@ -10016,7 +10017,7 @@ void CDCSDKYsqlTest::TestRemovalOfColocatedTableFromCDCStream(bool start_removal
   bool seen_streaming_entry = false;
   std::unordered_set<TableId> snapshot_entries_for_colocated_tables;
   int num_cdc_state_entries = 0;
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   auto table_range = ASSERT_RESULT(cdc_state_table.GetTableRange({}, &s));
   for (auto row_result : table_range) {

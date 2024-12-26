@@ -2932,12 +2932,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   bool IsYsqlMajorCatalogUpgradeInProgress() const;
 
-  // In the case of an online ysql major catalog upgrade, returns the current version only if the
-  // current version's catalog is valid, meaning in the MONITORING stage, or post-upgrade. If we are
-  // before the MONITORING stage, returns the prior version's table. In the case of a clean install,
-  // returns the current version.
-  Result<TableId> GetVersionSpecificCatalogTableId(const TableId& table_id) const override;
-
   bool SkipCatalogVersionChecks() override;
 
   // Should be bumped up when tablet locations are changed.

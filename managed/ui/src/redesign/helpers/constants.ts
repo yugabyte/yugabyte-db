@@ -75,7 +75,9 @@ export const RuntimeConfigKey = {
   ENABLE_ROLLBACK_SUPPORT: 'yb.upgrade.enable_rollback_support',
   PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics',
   ENABLE_CONNECTION_POOLING: 'yb.universe.allow_connection_pooling',
-  RF_CHANGE_FEATURE_FLAG: 'yb.ui.feature_flags.enable_rf_change'
+  RF_CHANGE_FEATURE_FLAG: 'yb.ui.feature_flags.enable_rf_change',
+  NODE_AGENT_CLIENT_ENABLE: 'yb.node_agent.client.enabled',
+  NODE_AGENT_ENABLER_SCAN_INTERVAL: 'yb.node_agent.enabler.scan_interval'
 } as const;
 
 /**
@@ -112,6 +114,7 @@ export const UNIVERSE_ACTION_TO_FROZEN_TASK_MAP = {
   DELETE_UNIVERSE: 'Delete_Universe',
   ENCRYPTION_AT_REST: 'EnableEncryptionAtRest_Universe',
   ENCRYPTION_IN_TRANSIT: 'TlsToggle_Universe',
+  INSTALL_NODE_AGENT: 'Install_NodeAgent',
 
   // xCluster replication Tab - refer to the button where you can disbale (check api is called from)
   CONFIGURE_REPLICATION: 'Create_XClusterConfig',
@@ -165,6 +168,7 @@ export const UNIVERSE_TASKS = {
   DELETE_UNIVERSE: 'DELETE_UNIVERSE',
   ENCRYPTION_AT_REST: 'ENCRYPTION_AT_REST',
   ENCRYPTION_IN_TRANSIT: 'ENCRYPTION_IN_TRANSIT',
+  INSTALL_NODE_AGENT: 'INSTALL_NODE_AGENT',
 
   // xCluster replication actions
   CONFIGURE_REPLICATION: 'CONFIGURE_REPLICATION',

@@ -255,6 +255,20 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
     }));
     ASSERT_EQ(master_rpc_count_for_select, expected_master_rpc_count);
   }
+
+  // Test to verify the number of RPCs sent to the master during the first SELECT statement
+  // execution on a table with a primary key and extended statistics after a cache refresh.
+  // Presence of extended statistics triggers lookup against `pg_statistic_ext_data`.
+  void TestAfterCacheRefreshRPCCountOnSelectWithExtStats(size_t expected_master_rpc_count) {
+    auto aux_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(aux_conn.Execute("CREATE STATISTICS extstats_t_k_v ON k, v FROM t"));
+    auto master_rpc_count_for_select = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+      VERIFY_RESULT(conn->Fetch("SELECT * FROM t"));
+      return static_cast<Status>(Status::OK());
+    }));
+    ASSERT_EQ(master_rpc_count_for_select, expected_master_rpc_count);
+  }
 };
 
 constexpr auto kResponseCacheSize5MB = 5 * 1024 * 1024;
@@ -263,6 +277,7 @@ constexpr auto kPreloadCatalogList =
 constexpr auto kExtendedTableList =
     "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger,pg_statistic,pg_invalid"sv;
 constexpr auto kShortTableList = "pg_inherits"sv;
+constexpr auto kStatsTableList = "pg_statistic,pg_statistic_ext,pg_statistic_ext_data"sv;
 
 constexpr Configuration kConfigDefault;
 
@@ -296,6 +311,9 @@ constexpr Configuration kConfigPredictableMemoryUsage{
 constexpr Configuration kConfigSmallPreload{
     .preload_additional_catalog_list = kShortTableList};
 
+constexpr Configuration kConfigStatsPreload{
+    .preload_additional_catalog_list = kStatsTableList};
+
 template<class Base, const Configuration& Config>
 class ConfigurableTest : public Base {
  private:
@@ -306,6 +324,7 @@ class ConfigurableTest : public Base {
 
 using PgCatalogPerfTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigDefault>;
 using PgCatalogMinPreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigMinPreload>;
+using PgStatsPreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigStatsPreload>;
 using PgCatalogWithUnlimitedCachePerfTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigWithUnlimitedCache>;
 using PgCatalogWithLimitedCachePerfTest =
@@ -440,13 +459,23 @@ TEST_F_EX(PgCatalogPerfTest,
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 3);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 4);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/12);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/13);
+}
+
+TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithExtStats) {
+  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 7);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          AfterCacheRefreshRPCCountOnSelectWithExtStatsPreload,
+          PgStatsPreloadTest) {
+  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 3);
 }
 
 // The test checks number of hits in response cache in case of multiple connections and aggressive
@@ -833,9 +862,9 @@ TEST_F_EX(PgCatalogPerfTest, ForeignKeyRelcachePreloadTest, PgPreloadAdditionalC
             "SELECT * FROM primary_table JOIN foreign_table ON primary_table.k = foreign_table.k"));
         return Status::OK();
       }));
-  // With yb_enable_fkey_catcache turned off, we would see more than 12 RPCs
+  // With yb_enable_fkey_catcache turned off, we would see more than 24 RPCs
   // because we have to look up the foreign keys from master.
-  ASSERT_EQ(select_rpc_count, 12);
+  ASSERT_EQ(select_rpc_count, 24);
 }
 
 } // namespace yb::pgwrapper

@@ -25,7 +25,7 @@ import {
   isDefinedNotNull
 } from '../../../utils/ObjectUtils';
 import {
-  isKubernetesUniverse,
+  getIsKubernetesUniverse,
   getPrimaryCluster,
   isDedicatedNodePlacement
 } from '../../../utils/UniverseUtils';
@@ -594,7 +594,7 @@ export default class UniverseOverviewNew extends Component {
 
   getDiskUsageWidget = (universeInfo) => {
     // For kubernetes the disk usage would be in container tab, rest it would be server tab.
-    const isKubernetes = isKubernetesUniverse(universeInfo);
+    const isKubernetes = getIsKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
     const subTab = isKubernetes ? 'container' : 'server';
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
@@ -649,7 +649,7 @@ export default class UniverseOverviewNew extends Component {
 
   getCPUWidget = (universeInfo, isRollBackFeatureEnabled) => {
     // For kubernetes the CPU usage would be in container tab, rest it would be server tab.
-    const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isItKubernetesUniverse = getIsKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
     const hasReadReplicaCluster = this.hasReadReplica(universeInfo);
     const subTab = isItKubernetesUniverse ? 'container' : 'server';
@@ -699,7 +699,7 @@ export default class UniverseOverviewNew extends Component {
   };
 
   getRegionMapWidget = (universeInfo) => {
-    const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isItKubernetesUniverse = getIsKubernetesUniverse(universeInfo);
     const {
       modal: { showModal, visibleModal },
       showUniverseOverviewMapModal,
@@ -848,7 +848,7 @@ export default class UniverseOverviewNew extends Component {
     } = this.props;
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
-    const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isItKubernetesUniverse = getIsKubernetesUniverse(universeInfo);
     const universeDetails = universeInfo.universeDetails;
     const clusters = universeDetails?.clusters;
     const primaryCluster = getPrimaryCluster(clusters);

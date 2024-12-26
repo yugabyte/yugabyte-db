@@ -16,8 +16,14 @@
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_state_table.h"
+
 #include "yb/client/xcluster_client.h"
+
 #include "yb/consensus/log.h"
+
+#include "yb/dockv/doc_key.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -31,10 +37,8 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
+#include "yb/util/std_util.h"
 #include "yb/util/test_macros.h"
-
-#include "yb/cdc/cdc_service.h"
-#include "yb/dockv/doc_key.h"
 
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 
@@ -177,5 +181,10 @@ Result<std::shared_ptr<xrepl::CDCSDKTabletMetrics>> GetCDCSDKTabletMetrics(
   SCHECK(tablet_peer, IllegalState, "Tablet not found", tablet_id);
   return cdc_service.GetCDCSDKTabletMetrics(*tablet_peer.get(), stream_id, create);
 }
+
+CDCStateTable MakeCDCStateTable(client::YBClient* client) {
+  return CDCStateTable(ValueAsFuture(client));
+}
+
 } // namespace cdc
 } // namespace yb

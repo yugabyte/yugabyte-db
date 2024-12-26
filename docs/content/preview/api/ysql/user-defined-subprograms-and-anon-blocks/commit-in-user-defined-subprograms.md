@@ -81,7 +81,7 @@ select k, v from s.t;
 Both the _create_ and the _call_ statements complete without error and the _select_ produces the expected result:
 
 ```output
- k | v  
+ k | v
 ---+----
  1 | 17
 ```
@@ -148,7 +148,7 @@ just as you'd hoped for this scenario. You get this outcome, of course, because 
 This limitation _does_ bring one serious practical consequence. Some errors are provoked only by _commit_. The canonical example is a serialization error. You might want to hide all the details of this behind a hard-shell API by implementing a retry loop within the _language plpgsql_ subprogram that does the operation that might cause the serialization error. But this is simply not possible. Rather, you must implement such retry logic in client code.
 
 {{< tip title="YugabyteDB will presently implement retry for serialization errors and similar transparently." >}}
-If you have this use-case, you should ask on the [YugabyteDB public Slack channel](https://communityinviter.com/apps/yugabyte-db/register) to find out the current status of the automatic retry feature.
+If you have this use-case, you should ask on the [YugabyteDB public Slack channel](https://inviter.co/yugabytedb) to find out the current status of the automatic retry feature.
 {{< /tip >}}
 
 ### Break "p_ok()" by including "set search_path" in its header

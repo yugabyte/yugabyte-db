@@ -1177,7 +1177,6 @@ CREATE TABLE non_col_table_partition PARTITION OF partitioned_table FOR VALUES I
 --------+---------+-----------+----------+---------
  k      | integer |           |          |
 Partition of: partitioned_table FOR VALUES IN (4)
-Colocation: true
 
 INSERT INTO partitioned_table VALUES (2), (4);
 SELECT * FROM col_table_partition;

@@ -52,7 +52,6 @@ NamespaceId GetPgsqlNamespaceId(uint32_t database_oid);
 
 // Get YB table id for a Postgres table.
 TableId GetPgsqlTableId(uint32_t database_oid, uint32_t table_oid);
-TableId GetPgsqlTableIdPriorVersion(uint32_t database_oid, uint32_t table_oid);
 
 // Get YB tablegroup id for a Postgres tablegroup.
 TablegroupId GetPgsqlTablegroupId(uint32_t database_oid, uint32_t tablegroup_oid);
@@ -72,12 +71,15 @@ Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTablegroupId(const TablegroupId& tablegroup_id);
 Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id);
 
-// Called with any table UUID, is it a catalog ID for the prior version (pre-ysql major catalog
-// upgrade)? All other cases return false.
-bool IsPriorVersionCatalogId(const TableId& id);
+// NOTE: Only catalog table oids are allowed.
+TableId GetPriorVersionYsqlCatalogTableId(uint32_t database_oid, uint32_t table_oid);
 
-// Called with any table UUID, is it a catalog ID for the current version? All other cases return
-// false.
-bool IsCurrentVersionCatalogId(const TableId& id);
+// If this is a YSQL catalog table, then is it the previous version?
+// Returns false for user tables.
+bool IsPriorVersionYsqlCatalogTable(const TableId& table_id);
+
+// If this is a YSQL catalog table, then is it the current version?
+// Returns false for user tables.
+bool IsCurrentVersionYsqlCatalogTable(const TableId& table_id);
 
 }  // namespace yb

@@ -192,7 +192,6 @@ client::TransactionPool& MasterTabletServer::TransactionPool() {
 }
 
 rpc::Messenger* MasterTabletServer::GetMessenger(ash::Component component) const {
-  LOG(WARNING) << "Unexpected call of GetMessenger()";
   return nullptr;
 }
 

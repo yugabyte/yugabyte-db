@@ -65,13 +65,14 @@ public class SupportBundleCleanup {
   public synchronized void deleteSupportBundleIfOld(SupportBundle supportBundle)
       throws ParseException {
     int default_delete_days = config.getInt("yb.support_bundle.retention_days");
-
-    if (supportBundle.getStatus() == SupportBundleStatusType.Failed) {
+    SupportBundleStatusType status = supportBundle.getStatus();
+    if (status == SupportBundleStatusType.Failed || status == SupportBundleStatusType.Aborted) {
       supportBundleUtil.deleteSupportBundle(supportBundle);
 
       log.info(
-          "Automatically deleted Support Bundle with UUID: {}, with status = Failed",
-          supportBundle.getBundleUUID());
+          "Automatically deleted Support Bundle with UUID: {}, with status = {}",
+          supportBundle.getBundleUUID(),
+          status);
     } else if (supportBundle.getStatus() == SupportBundleStatusType.Running) {
       return;
     } else {

@@ -52,8 +52,8 @@
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
-#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -406,7 +406,6 @@ Result<PgClientSessionOperations> PrepareOperations(
       auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, sidecars, &write);
       if (write_time) {
         write_op->SetWriteTime(write_time);
-        write_time = HybridTime::kInvalid;
       }
       ops.push_back(PgClientSessionOperation {
         .op = std::move(write_op),
@@ -900,19 +899,18 @@ void PgClientSession::ReadPointHistory::Clear() {
 
 PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder,
-    const YsqlAdvisoryLocksTableProvider& advisory_locks_table_provider,
     SharedThisSource shared_this_source, uint64_t id,
     client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
     const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
     PgSequenceCache* sequence_cache, PgSharedMemoryPool& shared_mem_pool,
-    const EventStatsPtr& stats_exchange_response_size, rpc::Scheduler& scheduler)
+    const EventStatsPtr& stats_exchange_response_size, rpc::Scheduler& scheduler,
+    YsqlAdvisoryLocksTable& advisory_locks_table)
     : shared_this_(std::shared_ptr<PgClientSession>(std::move(shared_this_source), this)),
       id_(id),
       client_(*client),
       clock_(clock),
       transaction_builder_(std::move(transaction_builder)),
-      advisory_locks_table_provider_(advisory_locks_table_provider),
       table_cache_(*table_cache),
       xcluster_context_(xcluster_context),
       pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
@@ -921,7 +919,8 @@ PgClientSession::PgClientSession(
       shared_mem_pool_(shared_mem_pool),
       big_shared_mem_expiration_task_(&scheduler),
       stats_exchange_response_size_(stats_exchange_response_size),
-      read_point_history_(PrefixLogger(id_)) {}
+      read_point_history_(PrefixLogger(id_)),
+      advisory_locks_table_(advisory_locks_table) {}
 
 Status PgClientSession::CreateTable(
     const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
@@ -2475,12 +2474,11 @@ Status PgClientSession::AcquireAdvisoryLock(
   VLOG(2) << "Servicing AcquireAdvisoryLock: " << req.ShortDebugString();
   SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
   SCHECK(!req.session(), NotSupported, "session-level advisory locks are not yet implemented");
-  auto& advisory_locks_table = advisory_locks_table_provider_();
   auto setup_session_result = VERIFY_RESULT(SetupSession(
       req.options(), context->GetClientDeadline(), HybridTime()));
   auto* session = setup_session_result.session_data.session.get();
   for (const auto& lock : req.locks()) {
-    auto lock_op = VERIFY_RESULT(advisory_locks_table.CreateLockOp(
+    auto lock_op = VERIFY_RESULT(advisory_locks_table_.CreateLockOp(
       req.db_oid(), lock.lock_id().classid(), lock.lock_id().objid(), lock.lock_id().objsubid(),
       lock.lock_mode() == AdvisoryLockMode::LOCK_SHARE
           ? PgsqlLockRequestPB::PG_LOCK_SHARE : PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,

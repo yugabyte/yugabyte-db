@@ -219,6 +219,10 @@ TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
   const auto cluster = external_mini_cluster();
   const auto num_ts = cluster->num_tablet_servers();
 
+  // This test pauses TServer process. Because of this stuck call detection mechanism detects
+  // running calls as stuck. So turning off detection in this test.
+  ASSERT_OK(cluster->SetFlagOnTServers("consensus_stuck_peer_call_threshold_ms", "0"));
+
   vector<string> tablet_ids;
   do {
     ASSERT_OK(itest::ListRunningTabletIds(

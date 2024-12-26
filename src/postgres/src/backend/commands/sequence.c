@@ -714,56 +714,54 @@ DeleteSequenceTuple(Oid relid)
 HeapTuple
 YBReadSequenceTuple(Relation seqrel)
 {
-  /* Get sequence OID */
-  Oid relid = seqrel->rd_id;
+	/* Get sequence OID */
+	Oid relid = seqrel->rd_id;
 
-  /* Read our data from YB's table of all sequences */
-  FormData_pg_sequence_data seqdataform;
-  if (IsYugaByteEnabled())
-  {
-    int64_t last_val;
-    bool is_called;
-    HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
-										relid,
-										YbGetCatalogCacheVersion(),
-										YBIsDBCatalogVersionMode(),
-										&last_val,
-										&is_called));
-    seqdataform.last_value = last_val;
-    seqdataform.is_called = is_called;
-    seqdataform.log_cnt = 0; /* not used by YugaByte, defaults to 0 */
-  }
-  else
-  {
-    ereport(ERROR,
-            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                errmsg("Should never reach here")));
-  }
+	/* Read our data from YB's table of all sequences */
+	FormData_pg_sequence_data seqdataform;
+	if (IsYugaByteEnabled())
+	{
+		int64_t last_val;
+		bool is_called;
+		HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
+											relid,
+											YbGetCatalogCacheVersion(),
+											YBIsDBCatalogVersionMode(),
+											&last_val,
+											&is_called));
+		seqdataform.last_value = last_val;
+		seqdataform.is_called = is_called;
+		seqdataform.log_cnt = 0; /* not used by YugaByte, defaults to 0 */
+	}
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Should never reach here")));
 
-  /* Set up the tuple */
-  Datum value[SEQ_COL_LASTCOL];
-  bool null[SEQ_COL_LASTCOL];
+	/* Set up the tuple */
+	Datum value[SEQ_COL_LASTCOL];
+	bool null[SEQ_COL_LASTCOL];
 
-  for (int i = SEQ_COL_FIRSTCOL; i <= SEQ_COL_LASTCOL; i++)
-  {
-    null[i - 1] = false;
+	for (int i = SEQ_COL_FIRSTCOL; i <= SEQ_COL_LASTCOL; i++)
+	{
+		null[i - 1] = false;
 
-    switch (i)
-    {
-      case SEQ_COL_LASTVAL:
-        value[i - 1] = Int64GetDatumFast(seqdataform.last_value);
-        break;
-      case SEQ_COL_LOG:
-        value[i - 1] = Int64GetDatum(seqdataform.log_cnt);
-        break;
-      case SEQ_COL_CALLED:
-        value[i - 1] = BoolGetDatum(seqdataform.is_called);
-        break;
-    }
-  }
+		switch (i)
+		{
+			case SEQ_COL_LASTVAL:
+				value[i - 1] = Int64GetDatumFast(seqdataform.last_value);
+				break;
+			case SEQ_COL_LOG:
+				value[i - 1] = Int64GetDatum(seqdataform.log_cnt);
+				break;
+			case SEQ_COL_CALLED:
+				value[i - 1] = BoolGetDatum(seqdataform.is_called);
+				break;
+		}
+	}
 
-  TupleDesc tupDesc = RelationGetDescr(seqrel);
-  return heap_form_tuple(tupDesc, value, null);
+	TupleDesc tupDesc = RelationGetDescr(seqrel);
+	return heap_form_tuple(tupDesc, value, null);
 }
 
 /*
@@ -1359,13 +1357,13 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	 */
 	if (IsYugaByteEnabled())
 	{
-    HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
-										  relid,
-										  YbGetCatalogCacheVersion(),
-										  YBIsDBCatalogVersionMode(),
-										  next,
-										  iscalled,
-										  NULL));
+		HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
+											  relid,
+											  YbGetCatalogCacheVersion(),
+											  YBIsDBCatalogVersionMode(),
+											  next,
+											  iscalled,
+											  NULL));
 		relation_close(seqrel, NoLock);
 		return;
 	}

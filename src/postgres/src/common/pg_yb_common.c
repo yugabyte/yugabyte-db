@@ -240,13 +240,6 @@ YBColocateDatabaseByDefault()
 	return cached_value;
 }
 
-bool
-YBIsMajorUpgradeInitDb()
-{
-	return YBCIsEnvVarTrueWithDefault("YB_PG_MAJOR_UPGRADE_INITDB",
-									  false /* default_value */);
-}
-
 Oid YBGetDatabaseOidFromEnv(const char *database_name)
 {
 	char *env_var = psprintf("YB_DATABASE_OID_%s", database_name);

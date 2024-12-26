@@ -1460,7 +1460,28 @@ TEST_F(PgMiniTest, AlterTableWithReplicaIdentity) {
   ASSERT_NOK(conn.Execute("CREATE TABLE t4 (a int primary key)"));
 }
 
-TEST_F(PgMiniTest, TestSkipTableTombstoneCheck) {
+TEST_F(PgMiniTest, TestNoStaleDataOnColocationIdReuse) {
+  const auto kColocatedTableName = "colo_test";
+  const auto kColocatedTableName2 = "colo_test2";
+  const auto kDatabaseName = "testdb";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (v1 int) WITH (colocation_id=20001);",
+      kColocatedTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (110), (111), (112);", kColocatedTableName));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0;", kColocatedTableName));
+
+  // Create colocated table with different table name and reuse the same colocation_id.
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (v1 int) WITH (colocation_id=20001);",
+      kColocatedTableName2));
+  // Verify read output is empty. This is to ensure that the tombstone is not being checked.
+  auto scan_result =
+      ASSERT_RESULT(conn.FetchAllAsString(Format("SELECT * FROM $0", kColocatedTableName2)));
+  ASSERT_TRUE(scan_result.empty());
+}
+
+TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
   // Setup test data.
   const auto kNonColocatedTableName = "test";
   const auto kColocatedTableName = "colo_test";
@@ -1494,39 +1515,6 @@ TEST_F(PgMiniTest, TestSkipTableTombstoneCheck) {
   ASSERT_TRUE(ASSERT_RESULT(
       colocated_tablet_peer->tablet_metadata()->GetTableInfo(table_id))
       ->skip_table_tombstone_check);
-
-  const auto kRowCount = 100;
-
-  for (int i = 0; i < kRowCount; ++i) {
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $1)", kColocatedTableName, i));
-  }
-
-  auto RunPointSelectQueriesOnColocatedTable = [&conn, &kColocatedTableName]() {
-    for (int i = 0; i < kRowCount; ++i) {
-      ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0 WHERE a = $1;", kColocatedTableName, i));
-    }
-  };
-
-  // Verify that read from the colocated table only does 100 seek.
-  auto num_seek_before_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
-      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
-
-  RunPointSelectQueriesOnColocatedTable();
-
-  auto num_seek_after_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
-      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
-  ASSERT_EQ(kRowCount, num_seek_after_read - num_seek_before_read);
-
-  // Verify that the number of seeks is still 100 even after a TRUNCATE
-  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", kColocatedTableName));
-  num_seek_before_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
-      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
-
-  RunPointSelectQueriesOnColocatedTable();
-
-  num_seek_after_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
-      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
-  ASSERT_EQ(kRowCount, num_seek_after_read - num_seek_before_read);
 
   // Verify that skip_table_tombstone_check=false for pg system tables.
   table_id = ASSERT_RESULT(GetTableIDFromTableName("pg_class"));
@@ -1744,7 +1732,7 @@ class PgMiniTabletSplitTest : public PgMiniTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 30_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 10_KB;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) =
         FLAGS_tablet_force_split_threshold_bytes / 4;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 2_KB;
@@ -1786,11 +1774,13 @@ void PgMiniTest::StartReadWriteThreads(const std::string table_name,
     TestThreadHolder *thread_holder) {
   // Writer thread that does parallel writes into table
   thread_holder->AddThread([this, table_name] {
+    LOG(INFO) << "Starting writes to " << table_name;
     auto conn = ASSERT_RESULT(Connect());
     for (int i = 501; i < 2000; i++) {
       ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2, $3, $4)",
                                    table_name, i, i, i, 1));
     }
+    LOG(INFO) << "Completed writes to " << table_name;
   });
 
   // Index read from the table

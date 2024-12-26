@@ -553,7 +553,8 @@ ApplyIntentsContext::ApplyIntentsContext(
     const KeyBounds* key_bounds,
     SchemaPackingProvider* schema_packing_provider,
     rocksdb::DB* intents_db,
-    const VectorIndexesPtr& vector_indexes)
+    const VectorIndexesPtr& vector_indexes,
+    const docdb::StorageSet& apply_to_storages)
     : IntentsWriterContext(transaction_id),
       FrontierSchemaVersionUpdater(schema_packing_provider),
       tablet_id_(tablet_id),
@@ -568,6 +569,7 @@ ApplyIntentsContext::ApplyIntentsContext(
       write_id_(apply_state ? apply_state->write_id : 0),
       key_bounds_(key_bounds),
       vector_indexes_(vector_indexes),
+      apply_to_storages_(apply_to_storages),
       intent_iter_(CreateRocksDBIterator(
           intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
           rocksdb::kDefaultQueryId, CreateIntentHybridTimeFileFilter(file_filter_ht),
@@ -659,16 +661,17 @@ Result<bool> ApplyIntentsContext::Entry(
       return false;
     }
 
-    // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
-    // Time will be added when writing batch to RocksDB.
-    std::array<Slice, 2> key_parts = {{
-        intent.doc_path,
-        doc_ht_buffer.EncodeWithValueType(commit_ht_, write_id_),
-    }};
-    std::array<Slice, 2> value_parts = {{
-        intent.doc_ht,
-        decoded_value.body,
-    }};
+    if (ApplyToRegularDB()) {
+      // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
+      // Time will be added when writing batch to RocksDB.
+      std::array<Slice, 2> key_parts = {{
+          intent.doc_path,
+          doc_ht_buffer.EncodeWithValueType(commit_ht_, write_id_),
+      }};
+      std::array<Slice, 2> value_parts = {{
+          intent.doc_ht,
+          decoded_value.body,
+      }};
 
     // Useful when debugging transaction failure.
 #if defined(DUMP_APPLY)
@@ -681,11 +684,13 @@ Result<bool> ApplyIntentsContext::Entry(
                 << ", value: " << intent_value.ToDebugString();
     }
 #endif
+      handler->Put(key_parts, value_parts);
+    }
+
     if (vector_indexes_) {
       RETURN_NOT_OK(ProcessVectorIndexes(intent.doc_path, decoded_value.body));
     }
 
-    handler->Put(key_parts, value_parts);
     ++write_id_;
     RegisterRecord();
 
@@ -708,6 +713,9 @@ Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
           key.WithoutPrefix(sizes.doc_key_size + 1)));
       // We expect small amount of vector indexes, usually 1. So it is faster to iterate over them.
       for (size_t i = 0; i != vector_indexes_->size(); ++i) {
+        if (!ApplyToVectorIndex(i)) {
+          continue;
+        }
         const auto& vector_index = *(*vector_indexes_)[i];
         auto table_key_prefix = vector_index.indexed_table_key_prefix();
         if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id) {
@@ -722,6 +730,9 @@ Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
           << "Unexpected entry type: " << entry_type << " in " << key.ToDebugHexString();
     }
   } else {
+    if (value.starts_with(ValueEntryTypeAsChar::kTombstone)) {
+      return Status::OK();
+    }
     auto packed_row_version = dockv::GetPackedRowVersion(value);
     RSTATUS_DCHECK(packed_row_version.has_value(), Corruption,
                    "Full row with non packed value: $0 -> $1",
@@ -761,6 +772,9 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
   Decoder decoder(*schema_packing_, value.data());
 
   for (size_t i = 0; i != vector_indexes_->size(); ++i) {
+    if (!ApplyToVectorIndex(i)) {
+      continue;
+    }
     const auto& vector_index = *(*vector_indexes_)[i];
     auto vector_index_table_key_prefix = vector_index.indexed_table_key_prefix();
     if (table_key_prefix != vector_index_table_key_prefix) {

@@ -1375,9 +1375,10 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 		Form_pg_depend depform = (Form_pg_depend) GETSTRUCT(tup);
 		CatalogTupleDelete(*depRel, tup);
 
-		if (MyDatabaseColocated && depform->refclassid == YbTablegroupRelationId && 
-      !tablegroupHasDependents(depform->refobjid)) 
-    {
+		if (MyDatabaseColocated &&
+			depform->refclassid == YbTablegroupRelationId &&
+			!tablegroupHasDependents(depform->refobjid))
+		{
 			implicit_tablegroup.classId = depform->refclassid;
 			implicit_tablegroup.objectId = depform->refobjid;
 			implicit_tablegroup.objectSubId = depform->refobjsubid;

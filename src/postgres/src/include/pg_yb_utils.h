@@ -595,6 +595,11 @@ extern bool yb_enable_fkey_catcache;
  */
 extern bool yb_enable_nop_alter_role_optimization;
 
+/*
+ * Compatibility option to ignore FREEZE with COPY FROM.
+ */
+extern bool yb_ignore_freeze_with_copy;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -729,6 +734,8 @@ extern YBUpdateOptimizationOptions yb_update_optimization_options;
  * supported.
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
+
+extern bool yb_skip_data_insert_for_table_rewrite;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for

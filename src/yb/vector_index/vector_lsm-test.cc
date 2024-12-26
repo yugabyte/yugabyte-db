@@ -290,7 +290,7 @@ void VectorLSMTest::CheckQueryVector(
   while (!stop) {
     stop = !lsm.TEST_HasBackgroundInserts();
 
-    FloatVectorLSM::SearchOptions options = {
+    SearchOptions options = {
       .max_num_results = max_num_results,
     };
     auto search_result = ASSERT_RESULT(lsm.Search(query_vector, options));

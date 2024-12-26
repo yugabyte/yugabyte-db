@@ -49,12 +49,12 @@ class VectorIndexReaderAdapter
 
   // Implementation of the Search function
   Result<typename Base::SearchResult> Search(
-      const DestinationVector& query_vector, size_t max_num_results) const override {
+      const DestinationVector& query_vector, const SearchOptions& options) const override {
     // Cast the query_vector to the SourceVector type
     SourceVector cast_query_vector = vector_cast<SourceVector>(query_vector);
 
     // Perform the search using the underlying source_reader
-    auto source_results = VERIFY_RESULT(source_reader_.Search(cast_query_vector, max_num_results));
+    auto source_results = VERIFY_RESULT(source_reader_.Search(cast_query_vector, options));
 
     // Prepare to convert results to the DestinationDistanceResult type
     typename Base::SearchResult destination_results;

@@ -41,6 +41,9 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/retryable_requests.h"
 
+#include "yb/docdb/docdb_util.h"
+#include "yb/docdb/vector_index.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/strings/substitute.h"
@@ -629,15 +632,23 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
         << " in " << elapsed.ToSeconds() << " seconds";
   }
   // To avoid adding new file type to remote bootstrap we move intents as subdir of regular DB.
-  auto intents_tmp_dir = JoinPathSegments(rocksdb_dir, tablet::kIntentsSubdir);
-  if (env().FileExists(intents_tmp_dir)) {
-    auto intents_dir = rocksdb_dir + tablet::kIntentsDBSuffix;
-    LOG_WITH_PREFIX(INFO) << "Moving intents DB: " << intents_tmp_dir << " => " << intents_dir;
-    RETURN_NOT_OK(env().RenameFile(intents_tmp_dir, intents_dir));
+  auto& env = this->env();
+  auto children = VERIFY_RESULT(env.GetChildren(rocksdb_dir, ExcludeDots::kTrue));
+  for (const auto& child : children) {
+    if (!child.starts_with(docdb::kVectorIndexDirPrefix) && child != tablet::kIntentsDirName) {
+      continue;
+    }
+    auto source_dir = JoinPathSegments(rocksdb_dir, child);
+    if (!env.DirExists(source_dir)) {
+      continue;
+    }
+    auto dest_dir = docdb::GetStorageDir(rocksdb_dir, child);
+    LOG_WITH_PREFIX(INFO) << "Moving " << source_dir << " => " << dest_dir;
+    RETURN_NOT_OK(env.RenameFile(source_dir, dest_dir));
   }
   if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
     // Persist directory so that recently downloaded files are accessible.
-    RETURN_NOT_OK(env().SyncDir(rocksdb_dir));
+    RETURN_NOT_OK(env.SyncDir(rocksdb_dir));
   }
   downloaded_rocksdb_files_ = true;
   return Status::OK();

@@ -67,7 +67,7 @@ typedef IndexAttributeBitMapData * IndexAttributeBitMap;
 #define INDEX_SIZE_MASK 0x1FFF	/* 8 KB */
 #define YB_INDEX_SIZE_MASK 0x1FFFFFF	/* 32 MB */
 #define INDEX_AM_RESERVED_BIT 0x20000000	/* reserved for index-AM specific
-										 	 * usage */
+											 * usage */
 #define INDEX_VAR_MASK	0x40000000
 #define INDEX_NULL_MASK 0x80000000
 

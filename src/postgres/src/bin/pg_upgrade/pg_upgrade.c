@@ -159,10 +159,8 @@ main(int argc, char **argv)
 	if (!is_yugabyte_enabled())
 		start_postmaster(&new_cluster, true);
 
-#ifdef YB_TODO
-	/* Investigate relevant checks within check_new_cluster */
 	check_new_cluster();
-#endif
+
 	report_clusters_compatible();
 
 	pg_log(PG_REPORT,

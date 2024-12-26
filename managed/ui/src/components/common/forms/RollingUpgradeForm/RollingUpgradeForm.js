@@ -18,7 +18,7 @@ import {
 } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import {
-  isKubernetesUniverse,
+  getIsKubernetesUniverse,
   getPrimaryCluster,
   getReadOnlyCluster,
   getUniverseRegions
@@ -140,7 +140,7 @@ export default class RollingUpgradeForm extends Component {
         payload.upgradeOption = 'Rolling';
         //send read replica clsuter details in payload only for k8s universe
         if (
-          isKubernetesUniverse(this.props.universe.currentUniverse.data) &&
+          getIsKubernetesUniverse(this.props.universe.currentUniverse.data) &&
           isNonEmptyObject(asyncCluster)
         )
           payload.clusters.push(asyncCluster);
@@ -540,7 +540,7 @@ export default class RollingUpgradeForm extends Component {
       case 'tlsConfigurationModal': {
         if (
           this.props.enableNewEncryptionInTransitModal &&
-          !isKubernetesUniverse(universe.currentUniverse.data)
+          !getIsKubernetesUniverse(universe.currentUniverse.data)
         ) {
           return (
             <EncryptionInTransit
@@ -589,7 +589,7 @@ export default class RollingUpgradeForm extends Component {
               })
             }
           >
-            {universeHasXClusterConfig && isKubernetesUniverse(universe.currentUniverse.data) && (
+            {universeHasXClusterConfig && getIsKubernetesUniverse(universe.currentUniverse.data) && (
               <YBBanner variant={YBBannerVariant.WARNING} showBannerIcon={false}>
                 <b>{`Warning! `}</b>
                 <p>

@@ -57,6 +57,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
@@ -121,6 +122,7 @@ public class AWSUtil implements CloudUtil {
   public static final String YBC_AWS_ENDPOINT_FIELDNAME = "AWS_ENDPOINT";
   public static final String YBC_AWS_DEFAULT_REGION_FIELDNAME = "AWS_DEFAULT_REGION";
   public static final String YBC_AWS_ACCESS_TOKEN_FIELDNAME = "AWS_ACCESS_TOKEN";
+  public static final String YBC_USE_AWS_IAM_FIELDNAME = "USE_AWS_IAM";
   private static final Pattern standardHostBaseCompiled =
       Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
 
@@ -905,7 +907,8 @@ public class AWSUtil implements CloudUtil {
       String region,
       String commonDir,
       String previousBackupLocation,
-      CustomerConfigData configData) {
+      CustomerConfigData configData,
+      Universe universe) {
     CloudStoreSpec.Builder cloudStoreSpecBuilder =
         CloudStoreSpec.newBuilder().setType(CloudType.S3);
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
@@ -924,7 +927,7 @@ public class AWSUtil implements CloudUtil {
               ? BackupUtil.appendSlash(csInfo.cloudPath)
               : previousCloudDir;
     }
-    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket, region);
+    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket, region, universe);
     cloudStoreSpecBuilder
         .setBucket(bucket)
         .setPrevCloudDir(previousCloudDir)
@@ -937,13 +940,17 @@ public class AWSUtil implements CloudUtil {
   // In case of Success marker download - cloud Dir is the location provided by user in API
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
-      String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+      String region,
+      String cloudDir,
+      CustomerConfigData configData,
+      boolean isDsm,
+      Universe universe) {
     CloudStoreSpec.Builder cloudStoreSpecBuilder =
         CloudStoreSpec.newBuilder().setType(CloudType.S3);
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     CloudLocationInfo csInfo = getCloudLocationInfo(region, configData, "");
     String bucket = csInfo.bucket;
-    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket, region);
+    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket, region, universe);
     cloudStoreSpecBuilder.setBucket(bucket).setPrevCloudDir("").putAllCreds(s3CredsMap);
     if (isDsm) {
       String location = getCloudLocationInfo(region, configData, cloudDir).cloudPath;
@@ -955,11 +962,17 @@ public class AWSUtil implements CloudUtil {
   }
 
   private Map<String, String> createCredsMapYbc(
-      CustomerConfigData configData, String bucket, String region) {
+      CustomerConfigData configData, String bucket, String region, Universe universe) {
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     Map<String, String> s3CredsMap = new HashMap<>();
     if (s3Data.isIAMInstanceProfile) {
-      fillMapWithIAMCreds(s3CredsMap, s3Data);
+      boolean useDbIAM =
+          runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.useDBNodesIAMRoleForBackup);
+      if (useDbIAM) {
+        s3CredsMap.put(YBC_USE_AWS_IAM_FIELDNAME, "true");
+      } else {
+        fillMapWithIAMCreds(s3CredsMap, s3Data);
+      }
     } else {
       s3CredsMap.put(YBC_AWS_ACCESS_KEY_ID_FIELDNAME, s3Data.awsAccessKeyId);
       s3CredsMap.put(YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME, s3Data.awsSecretAccessKey);

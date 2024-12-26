@@ -163,6 +163,10 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterPgOnlyDdls) {
   ASSERT_OK(TestPgRegress("pgonly_ddls_create.sql", "pgonly_ddls_alter.sql"));
 }
 
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressTableRewrite) {
+  ASSERT_OK(TestPgRegress("table_rewrite.sql", "table_rewrite2.sql"));
+}
+
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropExtensions) {
   // Tests create and drops of the extensions supported by YB
   ASSERT_OK(TestPgRegress("pgonly_extensions_create.sql", "pgonly_extensions_drop.sql"));

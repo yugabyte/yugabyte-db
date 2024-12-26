@@ -51,6 +51,7 @@ DECLARE_uint64(force_single_shard_waiter_retry_ms);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transactions_status_poll_interval_ms);
+DECLARE_int32(ysql_yb_ash_sampling_interval_ms);
 
 namespace yb {
 
@@ -1027,14 +1028,18 @@ TEST_F(GeoPartitionedDeadlockTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockAcrossTab
   thread_holder.WaitAndStop(35s * kTimeMultiplier);
 }
 
-class GeoPartitionedReadCommiittedTest : public GeoTransactionsTestBase {
+class GeoPartitionedReadCommittedTest : public GeoTransactionsTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = EnableWaitQueues();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
     GeoTransactionsTestBase::SetUp();
     SetupTablespaces();
+  }
+
+  virtual bool EnableWaitQueues() {
+    return false;
   }
 
   // Sets up a partitioned table with primary key(state, country) partitioned on state into 3
@@ -1073,37 +1078,86 @@ class GeoPartitionedReadCommiittedTest : public GeoTransactionsTestBase {
       }
     }
   }
+
+  void RunConflictingTransactions(
+      const std::string& table_name, int num_sessions, int num_iterations) {
+    TestThreadHolder thread_holder;
+    for (int i = 1; i <= num_sessions; i++) {
+      thread_holder.AddThreadFunctor([this, i, table_name, num_iterations] {
+        for (int j = 1; j <= num_iterations; j++) {
+          auto conn = ASSERT_RESULT(Connect());
+          ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+          ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+          // Start off as a local txn, hitting just one tablet of the local partition.
+          ASSERT_OK(conn.ExecuteFormat(
+              "UPDATE $0 SET people=people+1 WHERE country='C0' AND state='S$1'",
+              table_name, i%2 + 1));
+          // The below would trigger transaction promotion since it would launch read ops across all
+          // tablets. This would lead to transaction promotion amidst conflicting writes.
+          ASSERT_OK(conn.ExecuteFormat(
+              "UPDATE $0 SET people=people+1 WHERE country='C$1'", table_name, (j + 1)/2));
+          ASSERT_OK(conn.CommitTransaction());
+        }
+      });
+    }
+    thread_holder.WaitAndStop(60s * kTimeMultiplier);
+  }
 };
 
-// The below test helps assert that transaction promotion requests are sent only to involved
-// tablets that have already processed a write of the transaction (explicit write/read with locks).
-TEST_F(GeoPartitionedReadCommiittedTest, TestPromotionAmidstConflicts) {
+class AshGeoPartitionedTransactionTest : public GeoPartitionedReadCommittedTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ash_sampling_interval_ms) = 50;
+    GeoPartitionedReadCommittedTest::SetUp();
+  }
+
+  bool EnableWaitQueues() override {
+    return true;
+  }
+};
+
+// This tests that geo promoted txns also have ASH metadata
+// TSAN reports data races and a DCHECK failure, GHI #25308 and #25309
+// Disabling this test in TSAN now, as the primary need for this test was to
+// make sure the Batcher::TransactionReady code is called.
+TEST_F(AshGeoPartitionedTransactionTest, YB_DISABLE_TEST_IN_TSAN(TestNonEmptyAshMetadata)) {
   auto table_name = "foo";
   SetUpPartitionedTable(table_name);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
 
-  TestThreadHolder thread_holder;
   const auto num_sessions = 5;
   const auto num_iterations = 20;
-  for (int i = 1; i <= num_sessions; i++) {
-    thread_holder.AddThreadFunctor([this, i, table_name] {
-      for (int j = 1; j <= num_iterations; j++) {
-        auto conn = ASSERT_RESULT(Connect());
-        ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
-        ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
-        // Start off as a local txn, hitting just one tablet of the local partition.
-        ASSERT_OK(conn.ExecuteFormat(
-            "UPDATE $0 SET people=people+1 WHERE country='C0' AND state='S$1'",
-            table_name, i%2 + 1));
-        // The below would trigger transaction promotion since it would launch read ops across all
-        // tablets. This would lead to transaction promotion amidst conflicting writes.
-        ASSERT_OK(conn.ExecuteFormat(
-            "UPDATE $0 SET people=people+1 WHERE country='C$1'", table_name, (j + 1)/2));
-        ASSERT_OK(conn.CommitTransaction());
-      }
-    });
+
+  RunConflictingTransactions(table_name, num_sessions, num_iterations);
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  static constexpr auto cols = "query_id, top_level_node_id, root_request_id";
+  auto rows = ASSERT_RESULT((conn.FetchRows<int64_t, Uuid, Uuid, int64_t>(Format(
+      "SELECT $0, COUNT(*) FROM yb_active_session_history "
+      "WHERE wait_event = 'ConflictResolution_WaitOnConflictingTxns' OR "
+      "wait_event = 'LockedBatchEntry_Lock' GROUP BY $1",
+      cols, cols))));
+
+  for (const auto& [query_id, top_level_node_id, root_request_id, count] : rows) {
+    static constexpr auto empty_uuid = "00000000-0000-0000-0000-000000000000";
+    ASSERT_NE(query_id, 0);
+    ASSERT_STR_NOT_CONTAINS(top_level_node_id.ToString(), empty_uuid);
+    ASSERT_STR_NOT_CONTAINS(root_request_id.ToString(), empty_uuid);
   }
-  thread_holder.WaitAndStop(60s * kTimeMultiplier);
+}
+
+// The below test helps assert that transaction promotion requests are sent only to involved
+// tablets that have already processed a write of the transaction (explicit write/read with locks).
+TEST_F(GeoPartitionedReadCommittedTest, TestPromotionAmidstConflicts) {
+  auto table_name = "foo";
+  SetUpPartitionedTable(table_name);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+  const auto num_sessions = 5;
+  const auto num_iterations = 20;
+
+  RunConflictingTransactions(table_name, num_sessions, num_iterations);
 
   // Assert that the conflicting updates above go through successfully.
   auto conn = ASSERT_RESULT(Connect());
@@ -1120,7 +1174,7 @@ TEST_F(GeoPartitionedReadCommiittedTest, TestPromotionAmidstConflicts) {
 // for transactions that underwent promotion. If not, the participant could end up cleaning intents
 // and silently let the commit go through, thus leading to data loss/inconsistency in case of
 // promoted transactions. Refer #19535 for details.
-TEST_F(GeoPartitionedReadCommiittedTest,
+TEST_F(GeoPartitionedReadCommittedTest,
        YB_DISABLE_TEST_IN_TSAN(TestParticipantIgnoresAbortFromOldStatusTablet)) {
   auto table_name = "foo";
   const auto kLocalState = "S1";

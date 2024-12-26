@@ -1,0 +1,63 @@
+export PATH="/usr/local/bin:/usr/bin:$PATH"
+
+# Define necessary variables
+setuptools_package_path="/usr/local/setuptools-44.1.1"
+python_magic_package_path="/usr/local/python-magic-0.4.18"
+python_dateutil_package_path="/usr/local/python-dateutil-2.8.2"
+s3cmd_package_name="s3cmd-2.3.0"
+s3cmd_package_path="/usr/local/$s3cmd_package_name"
+setuptools_scm_package_path="/usr/local/setuptools_scm-1.17.0"
+azcopy_package="azcopy_linux_amd64_10.25.0"
+gsutil_package="gsutil_4.60"
+python_interpreter="python3.11"
+prefix=""
+bin_path="/usr/local/bin"
+
+# Determine prefix based on OS family
+if [[ "{{ ansible_os_family }}" != "Debian" ]]; then
+  prefix="--prefix /usr"
+fi
+
+# Extract current Python version
+py_version=$($python_interpreter --version 2>&1)
+
+# Download python3-distutils if required
+if [[ ! "{{ is_airgap }}" == "true" && "$py_version" == "Python 3."* && "{{ ansible_os_family }}" == "Debian" ]]; then
+  apt-get update
+  apt-get install -y python3-distutils
+fi
+
+# List of required packages
+packages=("setuptools-44.1.1" "python-magic-0.4.18" "python-dateutil-2.8.2" "$s3cmd_package_name" "setuptools_scm-1.17.0")
+
+# Copy and unarchive required packages
+for package in "${packages[@]}"; do
+  tar -xzvf "{{ package_path }}/$package.tar.gz" -C "/usr/local/"
+done
+
+# Install packages using setup.py
+for package in "${packages[@]}"; do
+  cd "/usr/local/$package"
+  PYTHONPATH="$setuptools_package_path:$python_magic_package_path:$setuptools_scm_package_path:$python_dateutil_package_path" $python_interpreter setup.py install $prefix
+done
+
+echo "s3cmd version: $($python_interpreter $s3cmd_package_path/s3cmd --version)"
+if [[ ! -f $bin_path/s3cmd ]]; then
+  ln -s $s3cmd_package_path/s3cmd $bin_path/s3cmd
+fi
+
+# Extract and install the new azcopy version
+echo "Extracting azcopy package from {{ package_path }}/{{ azcopy_package }}."
+/usr/bin/tar --strip-components=1 --exclude="ThirdPartyNotice.txt" -xzf {{ package_path }}/"$azcopy_package".tar.gz -C "/usr/local/bin"
+chmod 0755 "$bin_path/azcopy"
+
+# Define gsutil package path
+gsutil_package_path="/usr/local/gsutil"
+
+echo "Extracting gsutil package from {{ package_path }}/{{ gsutil_package }}"
+tar -xzvf {{ package_path }}/"$gsutil_package".tar.gz -C "/usr/local"
+# Create symlink to the bin_path
+if [[ ! -f $bin_path/gsutil ]]; then
+  ln -sf "$gsutil_package_path/gsutil" "$bin_path/gsutil"
+fi
+echo "gsutil installed and symlinked to $bin_path/gsutil"

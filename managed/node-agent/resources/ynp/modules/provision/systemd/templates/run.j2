@@ -14,7 +14,7 @@ systemd_dir="/etc/systemd/system"
 # Configure the systemd unit files
 {% for service_file in service_files | split_servers %}
    tmp_file=$(mktemp)
-   echo "{% include service_file %}" > $tmp_file
+   echo '{% include service_file %}' > $tmp_file
    chown {{ yb_user }}:{{ yb_user }} $tmp_file
    su - {{ yb_user }} -c "mv $tmp_file ${systemd_dir}/{{ service_file }}"
    su - {{ yb_user }} -c "chmod 755 ${systemd_dir}/{{ service_file }}"

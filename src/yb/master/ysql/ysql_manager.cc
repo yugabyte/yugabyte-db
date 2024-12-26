@@ -53,11 +53,12 @@ Status YsqlManager::PrepareDefaultSysConfig(const LeaderEpoch& epoch) {
 }
 
 void YsqlManager::LoadConfig(scoped_refptr<SysConfigInfo> config) {
-  return ysql_catalog_config_.SetConfig(config);
+  ysql_initdb_and_major_upgrade_helper_->Load(config);
+  ysql_catalog_config_.SetConfig(config);
 }
 
 void YsqlManager::SysCatalogLoaded(const LeaderEpoch& epoch) {
-  ysql_catalog_config_.SysCatalogLoaded(epoch);
+  ysql_initdb_and_major_upgrade_helper_->SysCatalogLoaded(epoch);
 }
 
 Result<bool> YsqlManager::StartRunningInitDbIfNeeded(const LeaderEpoch& epoch) {
@@ -106,7 +107,7 @@ Status YsqlManager::SetInitDbDone(const LeaderEpoch& epoch) {
 }
 
 bool YsqlManager::IsYsqlMajorCatalogUpgradeInProgress() const {
-  return !ysql_catalog_config_.IsYsqlMajorCatalogUpgradeDone().done();
+  return ysql_initdb_and_major_upgrade_helper_->IsYsqlMajorCatalogUpgradeInProgress();
 }
 
 uint64_t YsqlManager::GetYsqlCatalogVersion() const { return ysql_catalog_config_.GetVersion(); }
@@ -147,8 +148,20 @@ Status YsqlManager::IsYsqlMajorCatalogUpgradeDone(
   return Status::OK();
 }
 
-bool YsqlManager::IsCurrentVersionCatalogEstablished() const {
-  return ysql_catalog_config_.IsCurrentVersionCatalogEstablished();
+Result<TableId> YsqlManager::GetVersionSpecificCatalogTableId(
+    const TableId& current_table_id) const {
+  DCHECK(IsCurrentVersionYsqlCatalogTable(current_table_id))
+      << "Table id " << current_table_id << " is not a current version YSQL catalog table";
+
+  // Use the current version of the catalog if it is updatable, since if the current version is
+  // available in the MONITORING phase, it can be deleted by a Rollback.
+  if (!ysql_initdb_and_major_upgrade_helper_->IsYsqlMajorUpgradeInProgress()) {
+    return current_table_id;
+  }
+
+  uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(current_table_id));
+  uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(current_table_id));
+  return GetPriorVersionYsqlCatalogTableId(database_oid, table_oid);
 }
 
 Status YsqlManager::FinalizeYsqlMajorCatalogUpgrade(
@@ -190,7 +203,7 @@ Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch)
 
   CreateTableRequestPB req;
   CreateTableResponsePB resp;
-  req.set_name(kPgAdvisoryLocksTableName);
+  req.set_name(std::string(tserver::kPgAdvisoryLocksTableName));
   req.mutable_namespace_()->set_name(kSystemNamespaceName);
   req.set_table_type(TableType::YQL_TABLE_TYPE);
   req.set_num_tablets(FLAGS_num_advisory_locks_tablets);
@@ -204,6 +217,17 @@ Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch)
     return s;
   }
   advisory_locks_table_created_ = true;
+  return Status::OK();
+}
+
+Status YsqlManager::ValidateWriteToCatalogTableAllowed(
+    const TableId& table_id, bool is_forced_update) const {
+  SCHECK(
+      ysql_initdb_and_major_upgrade_helper_->IsWriteToCatalogTableAllowed(
+          table_id, is_forced_update),
+      InternalError,
+      "YSQL DDLs, and catalog modifications are not allowed during a major YSQL upgrade");
+
   return Status::OK();
 }
 

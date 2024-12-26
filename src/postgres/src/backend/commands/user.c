@@ -274,7 +274,7 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("must be superuser or a member of the yb_db_admin "
-					 		"role to create bypassrls users")));
+							"role to create bypassrls users")));
 	}
 	else
 	{
@@ -749,7 +749,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("must be superuser or a member of the yb_db_admin "
-					 		"role to change bypassrls attribute")));
+							"role to change bypassrls attribute")));
 	}
 	else if (profile != NULL || dnoprofile != NULL || dunlocked != NULL)
 	{
@@ -1495,7 +1495,7 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("non-superuser cannot reassign objects "
-					 		"from superuser")));
+							"from superuser")));
 	}
 
 	/* Must have privileges on the receiving side too */

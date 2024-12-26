@@ -1044,9 +1044,8 @@ yb_get_actual_batched_clauses(PlannerInfo *root,
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
 		RestrictInfo *tmp_batched =
-			yb_get_batched_restrictinfo(rinfo,
-											 	 root->yb_cur_batched_relids,
-												 inner_path->parent->relids);
+			yb_get_batched_restrictinfo(rinfo, root->yb_cur_batched_relids,
+										inner_path->parent->relids);
 
 		if (tmp_batched)
 		{
@@ -1613,12 +1612,11 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 		{
 			List	   *prmquals = best_path->path.param_info->ppi_clauses;
 
-			prmquals =
-				!bms_is_empty(root->yb_cur_batched_relids) && IsYugaByteEnabled()
-					? yb_get_actual_batched_clauses(root,
-															  prmquals,
-															  (Path *) best_path)
-          : get_actual_clauses(prmquals);
+			prmquals = ((!bms_is_empty(root->yb_cur_batched_relids) &&
+						 IsYugaByteEnabled()) ?
+						yb_get_actual_batched_clauses(root, prmquals,
+													  (Path *) best_path) :
+						get_actual_clauses(prmquals));
 
 			prmquals = (List *) replace_nestloop_params(root,
 														(Node *) prmquals);
@@ -3062,19 +3060,20 @@ static TargetEntry *make_dummy_tle(AttrNumber attr_num, bool is_null)
 	dummy_tle = makeNode(TargetEntry);
 	dummy_tle->resno = attr_num;
 	dummy_tle->expr = (Expr *) makeConst(INT4OID /* consttype */,
-	                                    -1 /* consttypmod */,
-	                                    InvalidOid /* constcollid */,
-	                                    sizeof(int32) /* constlen */,
-	                                    (Datum) 0 /* constvalue */,
-	                                    is_null /* constisnull */,
-	                                    true /* constbyval */);
+										 -1 /* consttypmod */,
+										 InvalidOid /* constcollid */,
+										 sizeof(int32) /* constlen */,
+										 (Datum) 0 /* constvalue */,
+										 is_null /* constisnull */,
+										 true /* constbyval */);
 
 	return dummy_tle;
 }
 
-static bool has_applicable_indices(Relation relation,
-                                   Bitmapset *updated_attrs,
-                                   List **no_update_index_list)
+static bool
+has_applicable_indices(Relation relation,
+					   Bitmapset *updated_attrs,
+					   List **no_update_index_list)
 {
 	if (!relation->rd_rel->relhasindex)
 		return false;
@@ -3158,7 +3157,7 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
 			for (int j = 0; j < numfks; j++)
 			{
 				if ((con_is_base_rel && bms_is_member(conkey[j] - attr_offset, updated_attrs)) ||
-				    (!con_is_base_rel && bms_is_member(confkey[j] - attr_offset, updated_attrs)))
+					(!con_is_base_rel && bms_is_member(confkey[j] - attr_offset, updated_attrs)))
 				{
 					ReleaseSysCache(tp);
 					return true;
@@ -4693,7 +4692,7 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 		if (!contain_mutable_functions(clause) &&
 			predicate_implied_by(list_make1(clause), allindexquals, false))
 			continue;			/* provably implied by indexquals or
-			                     * indexpushdownquals */
+								 * indexpushdownquals */
 		qpqual = lappend(qpqual, rinfo);
 	}
 
@@ -5861,7 +5860,7 @@ create_nestloop_plan(PlannerInfo *root,
 	Relids batched_relids = yb_get_batched_relids(best_path);
 
 	root->yb_cur_batched_relids = bms_union(root->yb_cur_batched_relids,
-										    batched_relids);
+											batched_relids);
 
 	yb_is_batched = yb_is_nestloop_batched(best_path);
 
@@ -5934,7 +5933,7 @@ create_nestloop_plan(PlannerInfo *root,
 				Assert(is_opclause(rinfo->clause));
 				RestrictInfo *batched_rinfo =
 					yb_get_batched_restrictinfo(rinfo, batched_outerrelids,
-											 	inner_relids);
+												inner_relids);
 				hashOpno = ((OpExpr *) rinfo->clause)->opno;
 				if (!bms_equal(batched_rinfo->left_relids, rinfo->left_relids))
 					hashOpno = get_commutator(hashOpno);

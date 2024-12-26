@@ -130,7 +130,7 @@ BuildEventTriggerCache(void)
 	 */
 	rel  = relation_open(EventTriggerRelationId, AccessShareLock);
 	scan = systable_beginscan(rel, EventTriggerNameIndexId, true /* indexOK */,
-	                          NULL, 0, NULL);
+							  NULL, 0, NULL);
 
 	/*
 	 * Build a cache item for each pg_event_trigger tuple, and append each one

@@ -120,13 +120,13 @@ YbGetParentRelid(Oid relid)
 	 * First find the parent of the given child.
 	*/
 	ScanKeyInit(&key[0],
-                Anum_pg_inherits_inhrelid,
-                BTEqualStrategyNumber, F_OIDEQ,
-                ObjectIdGetDatum(relid));
-    ScanKeyInit(&key[1],
-                Anum_pg_inherits_inhseqno,
-                BTEqualStrategyNumber, F_INT4EQ,
-                Int32GetDatum(1));
+				Anum_pg_inherits_inhrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+	ScanKeyInit(&key[1],
+				Anum_pg_inherits_inhseqno,
+				BTEqualStrategyNumber, F_INT4EQ,
+				Int32GetDatum(1));
 	SysScanDesc scan = ybc_systable_begin_default_scan(
 		relation, InheritsRelidSeqnoIndexId, true, NULL, 2, key);
 

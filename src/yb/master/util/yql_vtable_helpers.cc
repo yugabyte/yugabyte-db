@@ -13,7 +13,7 @@
 
 #include "yb/master/util/yql_vtable_helpers.h"
 
-#include <future>
+#include <algorithm>
 
 #include <boost/container/small_vector.hpp>
 
@@ -25,11 +25,10 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/std_util.h"
 #include "yb/util/yb_partition.h"
 
-namespace yb {
-namespace master {
-namespace util {
+namespace yb::master::util {
 
 // Ideally, we want clients to use YB's own load-balancing policy for Cassandra to route the
 // requests to the respective nodes hosting the partition keys. But for clients using vanilla
@@ -101,11 +100,9 @@ PublicPrivateIPFutures GetPublicPrivateIPFutures(
 
   const auto& private_host = common.private_rpc_addresses()[0].host();
   if (private_host.empty()) {
-    std::promise<Result<IpAddress>> promise;
-    result.private_ip_future = promise.get_future();
-    promise.set_value(STATUS_FORMAT(
+    result.private_ip_future = ValueAsFuture(Result<IpAddress>(STATUS_FORMAT(
         IllegalState, "Tablet server $0 doesn't have any rpc addresses registered",
-        ts_info.tserver_instance().permanent_uuid()));
+        ts_info.tserver_instance().permanent_uuid())));
     return result;
   }
 
@@ -199,6 +196,4 @@ QLValuePB GetValueHelper<bool>::Apply(const bool bool_val, const DataType data_t
   return value_pb;
 }
 
-}  // namespace util
-}  // namespace master
-}  // namespace yb
+}  // namespace yb::master::util

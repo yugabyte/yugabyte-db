@@ -330,7 +330,7 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   // They should have the checkpoint set to the split_op, but not have any replication times yet as
   // they have not been polled for yet.
   const auto child_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
-  cdc::CDCStateTable cdc_state_table(client_.get());
+  auto cdc_state_table = cdc::MakeCDCStateTable(client_.get());
   Status s;
   int children_found = 0;
   OpId split_op_checkpoint;
@@ -1097,13 +1097,12 @@ TEST_F(XClusterExternalTabletSplitITest, MasterFailoverDuringProducerPostSplitOp
   auto tablet_ids = ASSERT_RESULT(GetTestTableTabletIds(0));
   tablet_ids.erase(parent_tablet);
 
-  client::YBClient* producer_client(
-      producer_cluster_ ? producer_client_.get() : client_.get());
+  auto* producer_client = producer_cluster_ ? producer_client_.get() : client_.get();
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         std::unordered_set<TabletId> tablet_ids_map(tablet_ids.begin(), tablet_ids.end());
-        cdc::CDCStateTable cdc_state_table(producer_client);
+        auto cdc_state_table = cdc::MakeCDCStateTable(producer_client);
         Status s;
         for (auto row_result :
              VERIFY_RESULT(cdc_state_table.GetTableRange({} /* just key columns */, &s))) {

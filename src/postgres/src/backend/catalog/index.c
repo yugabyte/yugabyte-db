@@ -1077,7 +1077,7 @@ index_create(Relation heapRelation,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("unsuppored reloptions were used for a system index "
-				        "during YSQL upgrade"),
+						"during YSQL upgrade"),
 				 errhint("Only a small subset is allowed due to BKI restrictions.")));
 	}
 
@@ -4039,8 +4039,10 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 
 	/* Initialize the index and rebuild */
 	/* Note: we do not need to re-establish pkey setting */
-	index_build(heapRelation, iRel, indexInfo, true, true);
-
+	if (!is_yb_table_rewrite || !yb_skip_data_insert_for_table_rewrite)
+	{
+		index_build(heapRelation, iRel, indexInfo, true, true);
+	}
 	/* Re-allow use of target index */
 	ResetReindexProcessing();
 

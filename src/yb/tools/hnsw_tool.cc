@@ -36,7 +36,7 @@
 #include "yb/vector_index/hnswlib_wrapper.h"
 #include "yb/vector_index/sharded_index.h"
 #include "yb/vector_index/usearch_wrapper.h"
-#include "yb/vector_index/vector_id.h"
+#include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_wrapper_util.h"
 
 #include "yb/tools/tool_arguments.h"

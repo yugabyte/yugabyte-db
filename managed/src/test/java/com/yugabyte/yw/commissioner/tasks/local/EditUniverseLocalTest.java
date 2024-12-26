@@ -416,6 +416,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     newPorts.masterRpcPort = 11011;
     newPorts.tserverHttpPort = 11050;
     newPorts.tserverRpcPort = 11051;
+    newPorts.nodeExporterPort = 12555;
     taskParams.communicationPorts = newPorts;
 
     PlacementInfoUtil.updateUniverseDefinition(
@@ -434,6 +435,9 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyUniverseState(universe);
     assertEquals(newPorts, universe.getUniverseDetails().communicationPorts);
     for (NodeDetails nodeDetails : universe.getNodes()) {
+      Map<String, String> provisionArgs =
+          localNodeManager.getProvisionedArgs(nodeDetails.getNodeName());
+      assertEquals("12555", provisionArgs.get("--node_exporter_port"));
       if (nodeDetails.isMaster) {
         verifyListeningPort(nodeDetails, newPorts.masterHttpPort);
         verifyListeningPort(nodeDetails, newPorts.masterRpcPort);

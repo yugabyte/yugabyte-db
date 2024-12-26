@@ -934,15 +934,15 @@ CheckpointerShmemInit(void)
 void
 RequestCheckpoint(int flags)
 {
-  /*
-   * YB: ignoring user requested checkpoints for now
-   */
-  if(flags & CHECKPOINT_CAUSE_CLIENT)
-  {
-    ereport(WARNING,
-            (errmsg("CHECKPOINT will be ignored")));
-     return;
-  }
+	/*
+	 * YB: ignoring user requested checkpoints for now
+	 */
+	if (flags & CHECKPOINT_CAUSE_CLIENT)
+	{
+		ereport(WARNING,
+				(errmsg("CHECKPOINT will be ignored")));
+		return;
+	}
 
 
 	int			ntries;

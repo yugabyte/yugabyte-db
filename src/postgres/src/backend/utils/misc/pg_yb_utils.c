@@ -71,6 +71,8 @@
 #include "catalog/pg_range_d.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_d.h"
+#include "catalog/pg_statistic_ext_d.h"
+#include "catalog/pg_statistic_ext_data_d.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
@@ -1591,6 +1593,7 @@ bool yb_enable_fkey_catcache = true;
 bool yb_enable_nop_alter_role_optimization = true;
 bool yb_enable_inplace_index_update = true;
 bool yb_enable_advisory_locks = false;
+bool yb_ignore_freeze_with_copy = true;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,
@@ -1643,6 +1646,8 @@ bool yb_ddl_rollback_enabled = false;
 bool yb_silence_advisory_locks_not_supported_error = false;
 
 bool yb_use_hash_splitting_by_default = true;
+
+bool yb_skip_data_insert_for_table_rewrite = false;
 
 const char*
 YBDatumToString(Datum datum, Oid typid)
@@ -2393,6 +2398,7 @@ YbDdlModeOptional YbGetDdlMode(
 		case T_AlterPublicationStmt:
 		case T_AlterRoleSetStmt:
 		case T_AlterSeqStmt:
+		case T_AlterStatsStmt:
 		case T_AlterSubscriptionStmt:
 		case T_AlterSystemStmt:
 		case T_AlterTSConfigurationStmt:
@@ -4584,6 +4590,13 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case StatisticRelationId:                         // pg_statistic
 			sys_only_filter_attr = Anum_pg_statistic_starelid;
 			break;
+		case StatisticExtRelationId:					  // pg_statistic_ext
+			sys_table_index_id = StatisticExtNameIndexId;
+			sys_only_filter_attr = Anum_pg_statistic_ext_oid;
+			break;
+		case StatisticExtDataRelationId:				  // pg_statistic_ext_data
+			sys_only_filter_attr = Anum_pg_statistic_ext_data_stxoid;
+			break;
 		case TriggerRelationId:                           // pg_trigger
 			sys_table_index_id = TriggerRelidNameIndexId;
 			sys_only_filter_attr = Anum_pg_trigger_oid;
@@ -5491,8 +5504,11 @@ void
 YbGetRedactedQueryString(const char* query, int query_len,
 						 const char** redacted_query, int* redacted_query_len)
 {
+	CommandTag command_tag;
+
 	*redacted_query = pnstrdup(query, query_len);
-	*redacted_query = RedactPasswordIfExists(*redacted_query);
+	command_tag = YbParseCommandTag(*redacted_query);
+	*redacted_query = YbRedactPasswordIfExists(*redacted_query, command_tag);
 	*redacted_query_len = strlen(*redacted_query);
 }
 

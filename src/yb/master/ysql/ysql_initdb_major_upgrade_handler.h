@@ -37,6 +37,10 @@ class YsqlInitDBAndMajorUpgradeHandler {
 
   ~YsqlInitDBAndMajorUpgradeHandler() = default;
 
+  void Load(scoped_refptr<SysConfigInfo> config);
+
+  void SysCatalogLoaded(const LeaderEpoch& epoch);
+
   // Starts the global initdb procedure to create the initial universe level ysql sys catalog using
   // the initdb process.
   Status StartNewClusterGlobalInitDB(const LeaderEpoch& epoch);
@@ -53,7 +57,21 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // to a clean state.
   Status RollbackYsqlMajorCatalogVersion(const LeaderEpoch& epoch);
 
+  // Are we in a ysql major upgrade?
+  // The upgrade is considered to have started when the yb-master leader has upgraded to a new major
+  // catalog version.
+  // The upgrade is completed after it has been finalized.
+  bool IsYsqlMajorUpgradeInProgress() const { return ysql_major_upgrade_in_progress_; }
+
   bool IsYsqlMajorCatalogUpgradeInProgress() const;
+
+  // Are we allowed to perform updates to the ysql catalog?
+  // True for the current version if the ysql major upgrade completed.
+  // The upgrade is considered to have started when the yb-master leader has upgraded to a new major
+  // catalog version.
+  // The upgrade is completed after it has been finalized.
+  // During the upgrade only is_forced_update operations are allowed.
+  bool IsWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
 
  private:
   using DbNameToOidList = std::vector<std::pair<std::string, YBCPgOid>>;
@@ -94,6 +112,13 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // Get the address to a live tserver process that is closest to the master.
   Result<std::string> GetClosestLiveTserverAddress();
 
+  // Transition the ysql major catalog upgrade to a new state if allowed.
+  // failed_status must be set to a NonOk status if and only if transitioning to FAILED state.
+  // Check kAllowedTransitions for list of allowed transitions.
+  Status TransitionMajorCatalogUpgradeState(
+      const YsqlMajorCatalogUpgradeInfoPB::State new_state, const LeaderEpoch& epoch,
+      const Status& failed_status = Status::OK());
+
   Master& master_;
   YsqlCatalogConfig& ysql_catalog_config_;
   CatalogManager& catalog_manager_;
@@ -103,6 +128,9 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // Indicates a global initdb, ysql major catalog upgrade, or ysql major catalog rollback is in
   // progress.
   std::atomic<bool> is_running_{false};
+
+  std::atomic<bool> restarted_during_major_upgrade_ = false;
+  std::atomic<bool> ysql_major_upgrade_in_progress_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(YsqlInitDBAndMajorUpgradeHandler);
 };

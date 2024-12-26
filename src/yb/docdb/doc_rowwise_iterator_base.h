@@ -104,10 +104,6 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   const dockv::SchemaPackingStorage& schema_packing_storage();
 
-  SkipTableTombstoneCheck skip_table_tombstone_check() const {
-    return doc_read_context_.skip_table_tombstone_check();
-  }
-
  private:
   virtual void InitIterator(
       BloomFilterMode bloom_filter_mode = BloomFilterMode::DONT_USE_BLOOM_FILTER,

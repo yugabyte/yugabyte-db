@@ -404,7 +404,8 @@ Status PgDmlRead::Exec(const PgExecParameters* exec_params) {
 
   SetColumnRefs();
 
-  if (doc_op_ && !ybctid_provider() && IsAllPrimaryKeysBound()) {
+  if (doc_op_ && !ybctid_provider() && IsAllPrimaryKeysBound() &&
+      !(read_req_->has_lower_bound() || read_req_->has_upper_bound())) {
     RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(doc_op_init_params));
   } else {
     RETURN_NOT_OK(ProcessEmptyPrimaryBinds());

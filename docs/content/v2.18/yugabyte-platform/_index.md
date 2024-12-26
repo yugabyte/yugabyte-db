@@ -90,7 +90,7 @@ YugabyteDB Anywhere offers the following levels of [user accounts](security/auth
   linkUrl1="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360001955891"
   linkTarget1="_blank"
   linkText2="Join our community"
-  linkUrl2="https://communityinviter.com/apps/yugabyte-db/register"
+  linkUrl2="https://inviter.co/yugabytedb"
   linkTarget2="_blank"
   >}}
 

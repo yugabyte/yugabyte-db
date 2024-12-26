@@ -320,10 +320,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
           db_iter_.get(), deadline_info_, &projection_, table_type_,
           schema_packing_storage(), schema(), use_fast_backward_scan_);
-      if (!skip_table_tombstone_check()) {
-        RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
-            VERIFY_RESULT(GetTableTombstoneTime(row_key))));
-      }
+      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
+          VERIFY_RESULT(GetTableTombstoneTime(row_key))));
       if (!ignore_ttl_) {
         doc_reader_->SetTableTtl(schema());
       }
@@ -439,6 +437,12 @@ bool DocRowwiseIterator::LivenessColumnExists() const {
   CHECK_NE(doc_mode_, DocMode::kFlat) << "Flat doc mode not supported yet";
   const auto* subdoc = row_->GetChild(dockv::KeyEntryValue::kLivenessColumn);
   return subdoc != nullptr && subdoc->value_type() != dockv::ValueEntryType::kInvalid;
+}
+
+Result<Slice> DocRowwiseIterator::FetchDirect(Slice key) {
+  db_iter_->Seek(key, SeekFilter::kAll, Full::kTrue);
+  auto fetch_result = VERIFY_RESULT_REF(db_iter_->Fetch());
+  return fetch_result.key == key ? fetch_result.value : Slice();
 }
 
 }  // namespace yb::docdb

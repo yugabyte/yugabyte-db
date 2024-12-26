@@ -107,6 +107,7 @@ public class LocalNodeManager {
 
   private Map<String, NodeInfo> nodesByNameMap = new ConcurrentHashMap<>();
   private Map<String, String> nodeFSByNameMap = new ConcurrentHashMap<>();
+  private Map<String, Map<String, String>> provisionArgs = new ConcurrentHashMap<>();
 
   private SpecificGFlags additionalGFlags;
 
@@ -346,6 +347,10 @@ public class LocalNodeManager {
     return result;
   }
 
+  public Map<String, String> getProvisionedArgs(String nodeName) {
+    return provisionArgs.get(nodeName);
+  }
+
   public static String getRawCommandOutput(String str) {
     String result = str.replaceFirst(COMMAND_OUTPUT_PREFIX, "");
     return result.strip();
@@ -399,6 +404,7 @@ public class LocalNodeManager {
           log.debug("No node found for " + nodeTaskParam.nodeName);
         } else {
           nodeInfo.setState(NodeState.PROVISIONED);
+          provisionArgs.put(nodeInfo.name, args);
         }
         break;
       case List:

@@ -49,7 +49,9 @@
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/key_bounds.h"
 
 #include "yb/dockv/reader_projection.h"
@@ -115,7 +117,6 @@ using util::DereferencedEqual;
 using util::MapsEqual;
 using qlexpr::IndexInfo;
 using qlexpr::IndexMap;
-using docdb::SkipTableTombstoneCheck;
 
 namespace {
 
@@ -133,7 +134,7 @@ std::vector<ColumnId> GetVectorIndexedColumns(const qlexpr::IndexMap& index_map)
   result.reserve(1); // It is expected to have only 1 vector-indexed column.
   for (const auto& it : index_map) {
     const auto& index = it.second;
-    if (!index.is_vector_idx()) {
+    if (!index.is_vector_index()) {
       continue;
     }
     const auto& vector_options = index.vector_idx_options();
@@ -150,9 +151,8 @@ std::vector<ColumnId> GetVectorIndexedColumns(const qlexpr::IndexMap& index_map)
 } // namespace
 
 const int64 kNoDurableMemStore = -1;
-const std::string kIntentsSubdir = "intents";
-const std::string kIntentsDBSuffix = ".intents";
-const std::string kSnapshotsDirSuffix = ".snapshots";
+const std::string kIntentsDirName = "intents";
+const std::string kSnapshotsDirName = "snapshots";
 
 // ============================================================================
 //  Raft group metadata
@@ -163,8 +163,7 @@ TableInfo::TableInfo(const std::string& log_prefix_,
                      SkipTableTombstoneCheck skip_table_tombstone_check,
                      PrivateTag)
     : log_prefix(log_prefix_),
-      doc_read_context(new docdb::DocReadContext(
-          log_prefix, table_type, docdb::Index::kFalse, skip_table_tombstone_check)),
+      doc_read_context(new docdb::DocReadContext(log_prefix, table_type, docdb::Index::kFalse)),
       index_map(std::make_shared<IndexMap>()),
       skip_table_tombstone_check(skip_table_tombstone_check) {
   CompleteInit();
@@ -191,7 +190,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
       doc_read_context(std::make_shared<docdb::DocReadContext>(
           log_prefix, table_type, docdb::Index(index_info.has_value()), schema,
-          schema_version, skip_table_tombstone_check_)),
+          schema_version)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
@@ -215,8 +214,7 @@ TableInfo::TableInfo(const TableInfo& other,
       doc_read_context(schema_version != other.schema_version
           ? std::make_shared<docdb::DocReadContext>(
               *other.doc_read_context, schema, schema_version)
-          : std::make_shared<docdb::DocReadContext>(
-              *other.doc_read_context)),
+          : std::make_shared<docdb::DocReadContext>(*other.doc_read_context)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
@@ -238,8 +236,7 @@ TableInfo::TableInfo(const TableInfo& other,
       table_type(other.table_type),
       cotable_id(other.cotable_id),
       log_prefix(other.log_prefix),
-      doc_read_context(std::make_shared<docdb::DocReadContext>(
-          *other.doc_read_context, schema)),
+      doc_read_context(std::make_shared<docdb::DocReadContext>(*other.doc_read_context, schema)),
       index_map(std::make_shared<IndexMap>(*other.index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
@@ -272,7 +269,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
-  if (index_info && index_info->is_vector_idx()) {
+  if (index_info && index_info->is_vector_index()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
 
     // TODO(vector-index) could be removed if PG uses DataType::VECTOR for a column.
@@ -319,8 +316,6 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   skip_table_tombstone_check = SkipTableTombstoneCheck(pb.skip_table_tombstone_check());
 
   RETURN_NOT_OK(doc_read_context->LoadFromPB(pb));
-  doc_read_context->set_skip_table_tombstone_check(skip_table_tombstone_check);
-
   if (pb.has_index_info()) {
     index_info.reset(new IndexInfo(pb.index_info()));
   }
@@ -475,7 +470,7 @@ bool TableInfo::TEST_Equals(const TableInfo& lhs, const TableInfo& rhs) {
 }
 
 bool TableInfo::NeedVectorIndex() const {
-  return index_info && index_info->is_vector_idx() &&
+  return index_info && index_info->is_vector_index() &&
          index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY;
 }
 
@@ -551,18 +546,34 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
     dockv::OverwriteSchemaPacking overwrite) {
   if (!colocated) {
-    SCHECK(
-        snapshot_kvstoreinfo.tables_size() == 1 && tables.size() == 1, Corruption,
-        Format(
-            "Unexpected table counts during schema merge. Snapshot tables and restored tables "
-            "should both be non-colocated (singular). Snapshot table count: $0, restored table "
-            "count: $1",
-            snapshot_kvstoreinfo.tables_size(), tables.size()));
-    auto schema = tables.begin()->second->doc_read_context->mutable_schema();
-    if (overwrite) {
-      schema->UpdateMissingValuesFrom(snapshot_kvstoreinfo.tables(0).schema().columns());
+    RSTATUS_DCHECK_GE(
+        snapshot_kvstoreinfo.tables_size(), 1, Corruption, "Unexpected snapshot tables count");
+    const TableInfoPB* primary_table_info = nullptr;
+    for (const auto& table_info : snapshot_kvstoreinfo.tables()) {
+      if (table_info.index_info().has_vector_idx_options()) {
+        continue;
+      }
+      RSTATUS_DCHECK(
+          !primary_table_info, Corruption,
+          "Only vector indexes could be colocated to the non colocated table");
+      primary_table_info = &table_info;
     }
-    return tables.begin()->second->MergeSchemaPackings(snapshot_kvstoreinfo.tables(0), overwrite);
+    RSTATUS_DCHECK(primary_table_info != nullptr, Corruption, "Primary table info is missing");
+    RSTATUS_DCHECK_GE(tables.size(), 1ULL, Corruption, "Unexpected restored tables count");
+    for (const auto& [table_id, table_info] : tables) {
+      if (table_id == primary_table_id) {
+        RETURN_NOT_OK(table_info->MergeSchemaPackings(*primary_table_info, overwrite));
+        continue;
+      }
+      RSTATUS_DCHECK(
+          table_info->index_info && table_info->index_info->is_vector_index(), Corruption,
+          "Only vector indexes could be colocated to the non colocated table");
+    }
+    if (overwrite) {
+      auto schema = tables.begin()->second->doc_read_context->mutable_schema();
+      schema->UpdateMissingValuesFrom(primary_table_info->schema().columns());
+    }
+    return Status::OK();
   }
 
   for (const auto& snapshot_table_pb : snapshot_kvstoreinfo.tables()) {
@@ -926,7 +937,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 bool RaftGroupMetadata::IsTombstonedWithNoRocksDBData() const {
   std::lock_guard lock(data_mutex_);
   const auto& rocksdb_dir = kv_store_.rocksdb_dir;
-  const auto intents_dir = rocksdb_dir + kIntentsDBSuffix;
+  const auto intents_dir = docdb::GetStorageDir(rocksdb_dir, kIntentsDirName);
   return tablet_data_state_ == TABLET_DATA_TOMBSTONED &&
       !fs_manager_->env()->FileExists(rocksdb_dir) &&
       !fs_manager_->env()->FileExists(intents_dir);
@@ -2420,6 +2431,14 @@ bool RaftGroupMetadata::OnPostSplitCompactionDone() {
   }
 
   return updated;
+}
+
+std::string RaftGroupMetadata::intents_rocksdb_dir() const {
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kIntentsDirName);
+}
+
+std::string RaftGroupMetadata::snapshots_dir() const {
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kSnapshotsDirName);
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

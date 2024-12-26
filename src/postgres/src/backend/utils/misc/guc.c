@@ -2598,6 +2598,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_skip_data_insert_for_table_rewrite", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("If enabled, any DDL operations that cause a table rewrite "
+						 "will skip the data loading phase. "
+						 "WARNING: Incorrect usage will result in data loss."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_skip_data_insert_for_table_rewrite,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_fail_all_drops", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set, all drops will fail"),
 			NULL,
@@ -3057,6 +3070,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_advisory_locks,
 		false,
+	},
+
+	{
+		{"yb_ignore_freeze_with_copy", PGC_USERSET, ERROR_HANDLING_OPTIONS,
+			gettext_noop("Ignore the FREEZE flag on COPY FROM command."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ignore_freeze_with_copy,
+		true,
 		NULL, NULL, NULL
 	},
 

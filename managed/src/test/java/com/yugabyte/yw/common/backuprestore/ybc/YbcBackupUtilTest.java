@@ -371,7 +371,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     UUID uniUUID = UUID.randomUUID();
     String commonDir = "univ-" + uniUUID + "/backup-timestamp/keyspace-foo";
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
-    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
+    when(mockAWSUtil.createCloudStoreSpec(
+            anyString(), anyString(), nullable(String.class), any(), any()))
         .thenCallRealMethod();
     when(mockAWSUtil.getOrCreateHostBase(any(), eq("foo"), eq("us-east-1"), anyString()))
         .thenReturn("s3.us-east-1.amazonaws.com");

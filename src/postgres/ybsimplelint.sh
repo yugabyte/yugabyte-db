@@ -19,8 +19,13 @@
 # Whitespace
 grep -nE '\s+$' "$1" \
   | sed 's/^/error:trailing_whitespace:/'
-grep -nvE '^(	* {0,3}\S|$)' "$1" \
-  | sed 's/^/error:leading_whitespace:/'
+if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
+        "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ||
+        "$1" == src/postgres/src/include/snowball/libstemmer/* ||
+        "$1" == src/postgres/src/pl/plperl/ppport.h ]]; then
+  grep -nvE '^(	* {0,3}\S|$)' "$1" \
+    | sed 's/^/error:leading_whitespace:/'
+fi
 grep -nE '/\*(\w+|\s\w+|\w+\s)\*/' "$1" \
   | sed 's/^/error:bad_parameter_comment_spacing:/'
 grep -nE '\s(if|else if|for|while)\(' "$1" \

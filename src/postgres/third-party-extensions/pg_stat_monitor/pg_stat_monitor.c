@@ -1768,13 +1768,14 @@ pgsm_store(pgsmEntry * entry)
 	uint64		bucketid;
 	uint64		prev_bucket_id;
 	bool		reset = false;	/* Only used in update function - HAMID */
-	const char *query;	/* YB: changed to const for RedactPasswordIfExists */
+	const char *query;	/* YB: changed to const for YbRedactPasswordIfExists */
 	int			query_len;
 	BufferUsage bufusage;
 	WalUsage	walusage;
 	JitInstrumentation jitusage;
 	char		comments[COMMENTS_LEN] = {0};
 	int			comments_len;
+	CommandTag command_tag;
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
@@ -1790,10 +1791,11 @@ pgsm_store(pgsmEntry * entry)
 
 	entry->key.bucket_id = bucketid;
 	/*
-	 * TODO(jason): RedactPasswordIfExists is not designed in a
+	 * TODO(jason): YbRedactPasswordIfExists is not designed in a
 	 * memory-conscious way.
 	 */
-	query = RedactPasswordIfExists(entry->query_text.query_pointer);
+	command_tag = YbParseCommandTag(entry->query_text.query_pointer);
+	query = YbRedactPasswordIfExists(entry->query_text.query_pointer, command_tag);
 	query_len = strlen(query);
 
 	/* Let's do all the leg work here before we acquire any locks */

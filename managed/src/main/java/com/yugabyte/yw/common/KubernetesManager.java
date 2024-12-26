@@ -10,6 +10,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
@@ -529,7 +530,8 @@ public abstract class KubernetesManager {
   private ShellResponse execCommand(
       Map<String, String> config, List<String> command, boolean logCmdOutput) {
     String description = String.join(" ", command);
-    return shellProcessHandler.run(command, config, logCmdOutput, description);
+    RedactionTarget target = RedactionTarget.HELM_VALUES;
+    return shellProcessHandler.run(command, config, logCmdOutput, description, target);
   }
 
   private ShellResponse execCommand(Map<String, String> config, List<String> command) {

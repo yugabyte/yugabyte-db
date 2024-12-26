@@ -125,9 +125,6 @@ using pgwrapper::PGConn;
 using pgwrapper::PGResultPtr;
 using pgwrapper::ToString;
 
-const auto kMaxAsyncTaskWait =
-    3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
-
 static const client::YBTableName producer_transaction_table_name(
     YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
 
@@ -162,6 +159,10 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
 
   void TestDropTableOnConsumerThenProducer(bool restart_master);
   void TestDropTableOnProducerThenConsumer(bool restart_master);
+
+  MonoDelta MaxAsyncTaskWaitDuration() {
+    return 3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
+  }
 
  private:
 };
@@ -261,8 +262,8 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
       auto now = CoarseMonoClock::Now();
       while (CoarseMonoClock::Now() < now + duration) {
         ASSERT_OK(producer_conn.ExecuteFormat(
-            "insert into $0 values(generate_series($1, $2))", GetCompleteTableName(producer_table),
-            key, key + transaction_size - 1));
+            "BEGIN; insert into $0 values(generate_series($1, $2)); COMMIT;",
+            GetCompleteTableName(producer_table), key, key + transaction_size - 1));
         key += transaction_size;
       }
       // Assert at least 100 transactions were written.
@@ -1561,7 +1562,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
-  cdc::CDCStateTable cdc_state_table(producer_client());
+  auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
   Status s;
   auto table_range = ASSERT_RESULT(
       cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
@@ -2062,7 +2063,8 @@ TEST_F(XClusterYsqlTest, ValidateSchemaPackingGCDuringNetworkPartition) {
     }
   }
 
-  ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
+  ASSERT_OK(VerifyWrittenRecords(
+      producer_table_, consumer_table_, /*verify_column_count_match=*/false));
 }
 
 void PrepareChangeRequest(
@@ -2651,7 +2653,8 @@ TEST_F_EX(XClusterYsqlTest, DdlAndReadOperationsAllowedOnStandbyCluster, XCluste
 TEST_F(XClusterYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams({1}, {1}, 3, 1));
   constexpr auto kColumnName = "c1";
-  const auto errstr = "cannot rewrite a table that is a part of CDC or XCluster replication";
+  const auto errstr =
+      "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication";
   ASSERT_OK(SetupUniverseReplication(producer_tables_));
   for (int i = 0; i <= 1; ++i) {
     auto conn = i == 0 ? EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name))
@@ -2991,7 +2994,7 @@ void XClusterYsqlTest::TestDropTableOnProducerThenConsumer(bool restart_master) 
   }
 
   // Table should exist even after async tasks have run.
-  SleepFor(kMaxAsyncTaskWait);
+  SleepFor(MaxAsyncTaskWaitDuration());
 
   auto producer_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
 
@@ -3012,7 +3015,7 @@ void XClusterYsqlTest::TestDropTableOnProducerThenConsumer(bool restart_master) 
 
   ASSERT_OK(LoggedWaitFor(
       [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
-      kMaxAsyncTaskWait, "Waiting for table to get delete"));
+      MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
 }
 
 // Drop table on producer should hide the table until the consumer table is also dropped.
@@ -3072,7 +3075,7 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   }
   auto& tablet_id = tablet_ids.front();
 
-  cdc::CDCStateTable cdc_state_table(producer_client());
+  auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
   auto key = cdc::CDCStateTableKey(tablet_id, stream_id);
   auto cdc_row = ASSERT_RESULT(
       cdc_state_table.TryFetchEntry(key, cdc::CDCStateTableEntrySelector().IncludeAll()));
@@ -3082,7 +3085,7 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_table_));
 
   // Table should exist even after async tasks have run.
-  SleepFor(kMaxAsyncTaskWait);
+  SleepFor(MaxAsyncTaskWaitDuration());
 
   auto producer_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
 
@@ -3093,7 +3096,7 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   // Table should remain hidden.
   ASSERT_NOK(LoggedWaitFor(
       [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
-      kMaxAsyncTaskWait, "Waiting for table to get delete"));
+      MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
   ASSERT_TRUE(producer_table_info->IsHiddenButNotDeleting());
 
   // Reduce retention and make sure table drops.
@@ -3101,7 +3104,7 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
 
   ASSERT_OK(LoggedWaitFor(
       [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
-      kMaxAsyncTaskWait, "Waiting for table to get delete"));
+      MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
 
   // Make sure stream is deleted from producer.
   ASSERT_NOK(GetCDCStreamID(producer_table_->id()));

@@ -367,11 +367,11 @@ shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId)
 
 	scan = systable_beginscan(sdepRel, SharedDependDependerIndexId, true, NULL, 2, key);
 
-	while (HeapTupleIsValid(tup = systable_getnext(scan))) 
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
 		Form_pg_shdepend shdepForm = (Form_pg_shdepend) GETSTRUCT(tup);
-		if (shdepForm->refobjid == tablespaceId) 
-    {
+		if (shdepForm->refobjid == tablespaceId)
+		{
 			*tablegroupId = shdepForm->objid;
 			break;
 		}
@@ -1378,19 +1378,17 @@ storeObjectDescription(StringInfo descs,
 			else if (deptype == SHARED_DEPENDENCY_POLICY)
 				appendStringInfo(descs, _("target of %s"), objdesc);
 			else if (deptype == SHARED_DEPENDENCY_TABLESPACE) 
-      {
+			{
 				char implicit_tablegroup_name[33];
 				sprintf(implicit_tablegroup_name, "tablegroup colocation_%u", refobjid);
-				
+
 				/*
 				 * Do not report dependency from implicit tablegroup to tablespace.
 				 * This would be fine since implicit tablegroup will be dropped if no tables
 				 * are present in it.
 				 */
-				if (strcmp(implicit_tablegroup_name, objdesc) != 0) 
-        {
+				if (strcmp(implicit_tablegroup_name, objdesc) != 0)
 					appendStringInfo(descs, _("tablespace for %s"), objdesc);
-				}
 			}
 			else if (deptype == SHARED_DEPENDENCY_PROFILE)
 				appendStringInfo(descs, _("profile of %s"), objdesc);

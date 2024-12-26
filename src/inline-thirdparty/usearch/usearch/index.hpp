@@ -4174,9 +4174,10 @@ class index_gt {
                     // This can substantially grow our priority queue:
                     next.insert({-successor_dist, successor_slot});
                     if (is_dummy<predicate_at>() ||
-                        predicate(member_cref_t{node_at_(successor_slot).ckey(), successor_slot}))
-                        top.insert({successor_dist, successor_slot}, top_limit);
-                    radius = top.top().distance;
+                        predicate(member_cref_t{node_at_(successor_slot).ckey(), successor_slot})) {
+                      top.insert({successor_dist, successor_slot}, top_limit);
+                      radius = top.top().distance;
+                    }
                 }
             }
         }

@@ -115,8 +115,8 @@ struct ExternalUDTypeSnapshotData {
 typedef std::unordered_map<UDTypeId, ExternalUDTypeSnapshotData> UDTypeMap;
 
 struct TableDescription {
-  scoped_refptr<NamespaceInfo> namespace_info;
-  scoped_refptr<TableInfo> table_info;
+  NamespaceInfoPtr namespace_info;
+  TableInfoPtr table_info;
   TabletInfos tablet_infos;
 };
 
@@ -452,9 +452,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.schema();
   }
 
-  const std::string& indexed_table_id() const;
+  const TableId& indexed_table_id() const;
 
   bool is_index() const;
+  bool is_vector_index() const;
 
   SchemaPB* mutable_schema() {
     return pb.mutable_schema();

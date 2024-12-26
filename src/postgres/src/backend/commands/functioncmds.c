@@ -2445,7 +2445,7 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 
 	proc = (Form_pg_proc) GETSTRUCT(tup);
 	procId = proc->oid;
-	
+
 	/* Assigning a function to the same owner is a no-op */
 	if (proc->proowner == newOwnerId)
 		return;
@@ -2472,7 +2472,7 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 												  ACL_CREATE);
 			if (aclresult != ACLCHECK_OK)
 				aclcheck_error(aclresult, OBJECT_SCHEMA,
-								get_namespace_name(namespaceId));
+							   get_namespace_name(namespaceId));
 		}
 	}
 
@@ -2513,11 +2513,11 @@ RenameFunction(RenameStmt *stmt, const char *newname)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("function with OID %u does not exist", address.objectId)));
-	
+
 	Form_pg_proc proc;
 
 	proc = (Form_pg_proc) GETSTRUCT(tup);
-	
+
 	/* Superusers and yb_db_admin role can bypass permission checks */
 	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 	{
@@ -2525,11 +2525,11 @@ RenameFunction(RenameStmt *stmt, const char *newname)
 		if (!has_privs_of_role(GetUserId(),proc->proowner))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,  NameStr(proc->proname));
 	}
-	
+
 	/* Make sure function with new name doesn't exist */
 	IsThereFunctionInNamespace(newname, proc->pronargs,
-								   &proc->proargtypes, proc->pronamespace);
-	
+							   &proc->proargtypes, proc->pronamespace);
+
 	/* Rename */
 	namestrcpy(&(((Form_pg_proc) GETSTRUCT(tup))->proname), newname);
 	CatalogTupleUpdate(relation, &tup->t_self, tup);

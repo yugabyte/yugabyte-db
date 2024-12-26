@@ -941,7 +941,7 @@ TEST_F(MasterTest, TestListTablesIncludesIndexedTableId) {
   NamespaceName test_name = "test_pgsql";
   CreateNamespaceResponsePB resp;
   NamespaceId nsid;
-  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  ASSERT_OK(CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
   nsid = resp.id();
 
   const Schema kTableSchema({

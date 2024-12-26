@@ -533,9 +533,6 @@ WaitForOlderSnapshots(TransactionId limitXmin, bool progress)
  * 'quiet': suppress the NOTICE chatter ordinarily provided for constraints.
  *
  * Returns the object address of the created index.
- *
- * YB_TODO(later): "safe_index" and calls to "pgstat_*()" are new in PG13.
- * Need to check if these changes are also necessary for Yugabyte.
  */
 ObjectAddress
 DefineIndex(Oid relationId,

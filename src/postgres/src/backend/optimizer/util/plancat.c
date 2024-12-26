@@ -1423,10 +1423,6 @@ get_relation_statistics(RelOptInfo *rel, Relation relation)
 	List	   *stainfos = NIL;
 	ListCell   *l;
 
-	/* YugaByte does not support forwarding statistics to Postgres yet */
-	if (IsYugaByteEnabled())
-		return NIL;
-
 	statoidlist = RelationGetStatExtList(relation);
 
 	foreach(l, statoidlist)

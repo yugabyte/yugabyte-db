@@ -37,8 +37,6 @@ class YsqlCatalogConfig {
   void SetConfig(scoped_refptr<SysConfigInfo> config) EXCLUDES(mutex_);
   void Reset() EXCLUDES(mutex_);
 
-  void SysCatalogLoaded(const LeaderEpoch& epoch);
-
   uint64 GetVersion() const EXCLUDES(mutex_);
 
   // Increments and return the new version.
@@ -51,18 +49,15 @@ class YsqlCatalogConfig {
   bool IsTransactionalSysCatalogEnabled() const EXCLUDES(mutex_);
   Status SetTransactionalSysCatalogEnabled(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
+  // Are we running a major catalog upgrade or rollback?
   IsOperationDoneResult IsYsqlMajorCatalogUpgradeDone() const EXCLUDES(mutex_);
 
   YsqlMajorCatalogUpgradeInfoPB::State GetMajorCatalogUpgradeState() const EXCLUDES(mutex_);
+  Status GetMajorCatalogUpgradePreviousError() const EXCLUDES(mutex_);
 
-  bool IsCurrentVersionCatalogEstablished() const EXCLUDES(mutex_);
-
-  // Transition the ysql major catalog upgrade to a new state if allowed.
-  // failed_status must be set to a NonOk status if and only if transitioning to FAILED state.
-  // Check kAllowedTransitions for list of allowed transitions.
-  Status TransitionMajorCatalogUpgradeState(
-      const YsqlMajorCatalogUpgradeInfoPB::State new_state, const LeaderEpoch& epoch,
-      const Status& failed_status = Status::OK()) EXCLUDES(mutex_);
+  Status Update(
+      const LeaderEpoch& epoch, std::function<Status(SysYSQLCatalogConfigEntryPB&)> update_function)
+      EXCLUDES(mutex_);
 
  private:
   std::pair<CowReadLock<PersistentSysConfigInfo>, const SysYSQLCatalogConfigEntryPB&> LockForRead()
@@ -74,8 +69,6 @@ class YsqlCatalogConfig {
   SysCatalogTable& sys_catalog_;
   mutable std::shared_mutex mutex_;
   scoped_refptr<SysConfigInfo> config_ GUARDED_BY(mutex_);
-
-  std::atomic<bool> restarted_during_major_upgrade_ = false;
 };
 
 }  // namespace master

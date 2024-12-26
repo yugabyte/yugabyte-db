@@ -59,6 +59,82 @@ INSERT INTO ab_tab VALUES (2, 2) ON CONFLICT (a) DO NOTHING;
 INSERT INTO ab_tab VALUES (2, 2) ON CONFLICT (b) DO NOTHING;
 SELECT * FROM ab_tab WHERE a < 1 OR a > 10 ORDER BY a, b;
 
+--- GH-25240 (multiple arbiter indexes)
+CREATE TABLE t_multiple (c CHAR, n NUMERIC);
+CREATE UNIQUE INDEX NONCONCURRENTLY i1 ON t_multiple (c) WHERE n % 2 = 0;
+CREATE UNIQUE INDEX NONCONCURRENTLY i2 ON t_multiple (c) WHERE n < 10;
+INSERT INTO t_multiple VALUES ('a', 1), ('b', 2);
+-- ('c', false::INT::NUMERIC): not found in either index and satisfies predicate of both indexes.
+-- Result: inserted in main table and both indexes.
+-- ('d', 7), ('e', 14): not found in either index and satisfies predicate of only one index.
+-- Result: inserted in main table and only one index.
+INSERT INTO t_multiple VALUES ('c', false::INT::NUMERIC), ('d', 7), ('e', 14) ON CONFLICT DO NOTHING;
+-- ('d', 6), ('e', 4): found in one index and satisfies predicate of both indexes.
+-- Result: not inserted.
+INSERT INTO t_multiple VALUES ('d', 6), ('e', 4) ON CONFLICT DO NOTHING;
+-- ('d', 13), ('e', 15): found in one index and satisfies predicate of neither index.
+-- Result: inserted into main table, but not indexes.
+INSERT INTO t_multiple VALUES ('d', 13), ('e', 15) ON CONFLICT DO NOTHING;
+-- ('b', 4): found in both indexes and satisfies predicate of both indexes.
+-- Result: not inserted.
+-- ('b', 12), ('b', 1): found in both indexes and satisfies predicate of one index.
+-- Result: not inserted.
+-- ('b', 13): found in both indexes and satisfies predicate of neither index.
+-- Result: inserted into main table, but not indexes.
+INSERT INTO t_multiple VALUES ('b', 4), ('b', 12), ('b', 1), ('b', 13) ON CONFLICT DO NOTHING;
+-- ('a', 12), ('e', 7): found in one index and satisfies predicate of other index.
+-- Result: inserted into main table and 'other' index.
+INSERT INTO t_multiple VALUES ('a', 12), ('e', 7) ON CONFLICT DO NOTHING;
+-- ('f', 7), ('g', 12): satisfies predicate of only one index.
+-- Result: inserted in main table and only one index.
+-- ('f', 8), ('g', 8): found in one index and satisfies predicate of both indexes.
+-- Result: not inserted.
+-- ('f', 5), ('g', 14): found in one index and satisfies predicate of same index.
+-- Result: not inserted.
+-- ('f', 16), ('g', 7): found in one index and satisfies predicate of other index.
+-- Result: inserted in main table and 'other' index.
+-- ('f', 13), ('g', 13): found in both indexes and satisfies predicate of neither index.
+-- Result: inserted into main table, but not indexes.
+-- ('f', 2), ('g', 2): found in both indexes and satisfies predicate of both indexes.
+-- Result: not inserted.
+INSERT INTO t_multiple VALUES
+	('f', 7), ('g', 12),
+	('f', 8), ('g', 8),
+	('f', 5), ('g', 14),
+	('f', 16), ('g', 7),
+	('f', 13), ('g', 13),
+	('f', 2), ('g', 2)
+	ON CONFLICT DO NOTHING;
+SELECT * FROM t_multiple WHERE n % 2 = 0 ORDER BY c, n;
+SELECT * FROM t_multiple WHERE n < 10 ORDER BY c, n;
+SELECT * FROM t_multiple ORDER BY c, n;
+TRUNCATE t_multiple;
+DROP INDEX i2;
+-- Create a duplicate index to exercise the multiple arbiter index code path for
+-- DO UPDATE in the context of unique indexes.
+CREATE UNIQUE INDEX NONCONCURRENTLY i1_copy ON t_multiple (c) WHERE n % 2 = 0;
+INSERT INTO t_multiple VALUES ('a', 1), ('b', 2);
+-- ('a', 1): not found in the indexes, and proposed updated value into does not satisfy the predicate.
+-- Result: inserted into main table, but not the indexes.
+-- ('b', 2): found in the indexes, and updated value satisfies the predicate.
+-- Result: updated in main table and indexes.
+EXPLAIN (COSTS OFF) INSERT INTO t_multiple VALUES ('a', 1), ('b', 2) ON CONFLICT (c) WHERE n % 2 = 0 DO UPDATE SET n = EXCLUDED.n + 2;
+INSERT INTO t_multiple VALUES ('a', 1), ('b', 2) ON CONFLICT (c) WHERE n % 2 = 0 DO UPDATE SET n = EXCLUDED.n + 2;
+SELECT * FROM t_multiple WHERE n % 2 = 0 ORDER BY c, n;
+-- ('a', 1): not found in the indexes, and proposed updated value satisfies the predicate.
+-- Result: inserted in main table, but not the indexes.
+-- ('b', 2): found in the indexes, and updated value does not satisfy the predicate.
+-- Result: updated in main table and deleted from the indexes.
+INSERT INTO t_multiple VALUES ('a', 1), ('b', 2) ON CONFLICT (c) WHERE n % 2 = 0 DO UPDATE SET n = EXCLUDED.n + 3;
+-- first ('b', 2): not found in the indexes.
+-- Result: inserted into main table and indexes.
+-- second ('b', 2): found in the indexes, and contains same index key as the first row.
+-- Result: not inserted.
+INSERT INTO t_multiple VALUES ('b', 2), ('b', 2) ON CONFLICT (c) WHERE n % 2 = 0 DO UPDATE SET n = EXCLUDED.n + 3;
+SELECT * FROM t_multiple WHERE n % 2 = 0 ORDER BY c, n;
+SELECT * FROM t_multiple ORDER BY c, n;
+DROP TABLE t_multiple;
+
 --- Multiple unique indexes but single arbiter index
 INSERT INTO ab_tab VALUES (21, 21), (22, 23);
 -- (24, 21) conflicts on b but not a and should produce a unique constraint violation.
@@ -155,8 +231,7 @@ SELECT * FROM ioc_defaults ORDER BY b, c;
 DROP INDEX ioc_defaults_b_idx;
 TRUNCATE ioc_defaults;
 
---- Nulls
--- NULLS DISTINCT
+--- NULLS DISTINCT
 CREATE UNIQUE INDEX NONCONCURRENTLY ah_idx ON ab_tab (a HASH);
 INSERT INTO ab_tab VALUES (null, null);
 INSERT INTO ab_tab VALUES (null, null) ON CONFLICT DO NOTHING;
@@ -174,34 +249,41 @@ DELETE FROM ab_tab WHERE a IS null;
 DROP INDEX ioc_defaults_bc_idx;
 TRUNCATE ioc_defaults;
 
--- NULLS NOT DISTINCT
-DROP INDEX ah_idx;
-CREATE UNIQUE INDEX NONCONCURRENTLY ah_idx ON ab_tab (a HASH) NULLS NOT DISTINCT;
-INSERT INTO ab_tab VALUES (123, null), (456, null) ON CONFLICT DO NOTHING;
-INSERT INTO ab_tab VALUES (null, null);
-INSERT INTO ab_tab VALUES (null, null) ON CONFLICT DO NOTHING;
--- Multiple rows with NULL values should semantically be treated as the same logical row.
-INSERT INTO ab_tab VALUES (null, 1), (null, 2) ON CONFLICT DO NOTHING;
-INSERT INTO ab_tab VALUES (null, 1), (null, 2) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
-SELECT * FROM ab_tab WHERE a IS NULL ORDER BY b;
-DELETE FROM ab_tab;
--- Similarly, columns with default NULL values should be treated as the same logical row.
+--- NULLS NOT DISTINCT
+CREATE TABLE ab_tab2 (a int, b int);
+CREATE UNIQUE INDEX NONCONCURRENTLY ah_idx2 ON ab_tab2 (a HASH) NULLS NOT DISTINCT;
+INSERT INTO ab_tab2 VALUES (null, 1);
+INSERT INTO ab_tab2 VALUES (null, 2) ON CONFLICT DO NOTHING;
+SELECT * FROM ab_tab2;
+INSERT INTO ab_tab2 VALUES (null, 3) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
+SELECT * FROM ab_tab2;
+INSERT INTO ab_tab2 VALUES (null, 4), (null, 5) ON CONFLICT DO NOTHING;
+SELECT * FROM ab_tab2;
+INSERT INTO ab_tab2 VALUES (null, 6), (null, 7) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
+SELECT * FROM ab_tab2 ORDER BY a, b;
+INSERT INTO ab_tab2 VALUES (null, 8), (null, 9) ON CONFLICT (a) DO UPDATE SET a = EXCLUDED.b;
+SELECT * FROM ab_tab2 ORDER BY a, b;
+INSERT INTO ab_tab2 VALUES (null, 10), (null, 11), (null, 12) ON CONFLICT (a) DO UPDATE SET a = EXCLUDED.b;
+SELECT * FROM ab_tab2 ORDER BY a, b;
+DROP TABLE ab_tab2;
+-- Index key attributes > 1
+CREATE TABLE abc_tab (a int, b int, c int);
+CREATE UNIQUE INDEX NONCONCURRENTLY abh_idx ON abc_tab ((a, b) HASH) NULLS NOT DISTINCT;
+INSERT INTO abc_tab VALUES (123, null, 1), (456, null, 1), (null, null, 1);
+INSERT INTO abc_tab VALUES (123, null, 2), (456, null, 2), (null, null, 2) ON CONFLICT DO NOTHING;
+SELECT * FROM abc_tab ORDER BY a, b;
+INSERT INTO abc_tab VALUES (123, null, 2), (456, null, 2), (null, null, 2) ON CONFLICT (a, b) DO UPDATE SET c = EXCLUDED.c;
+SELECT * FROM abc_tab ORDER BY a, b;
+DROP TABLE abc_tab;
+-- Default NULL values
 CREATE UNIQUE INDEX NONCONCURRENTLY ioc_defaults_bc_idx ON ioc_defaults (b, c) NULLS NOT DISTINCT;
 INSERT INTO ioc_defaults VALUES (1);
-INSERT INTO ioc_defaults VALUES (2), (3) ON CONFLICT (b, c) DO UPDATE SET a = EXCLUDED.a;
-SELECT * FROM ioc_defaults ORDER BY b, c;
--- Reset.
+INSERT INTO ioc_defaults VALUES (2) ON CONFLICT (b, c) DO UPDATE SET a = EXCLUDED.a;
+SELECT * FROM ioc_defaults;
+INSERT INTO ioc_defaults VALUES (3), (4) ON CONFLICT (b, c) DO UPDATE SET a = EXCLUDED.a;
+SELECT * FROM ioc_defaults ORDER BY a;
 DROP INDEX ioc_defaults_bc_idx;
 TRUNCATE ioc_defaults;
-
--- Index key attributes > 1
-CREATE TABLE ab_tab2 (a int, b int);
-CREATE UNIQUE INDEX NONCONCURRENTLY ah_idx2 ON ab_tab2 ((a, b) HASH) NULLS NOT DISTINCT;
-INSERT INTO ab_tab2 VALUES (123, null), (456, null) ON CONFLICT DO NOTHING;
-INSERT INTO ab_tab2 VALUES (null, null);
-INSERT INTO ab_tab2 VALUES (123, null), (456, null), (null, 5), (null, null) ON CONFLICT DO NOTHING;
-SELECT * FROM ab_tab2 ORDER BY a, b;
-DELETE FROM ab_tab2;
 
 --- Partitioned table
 CREATE TABLE pp (i serial, j int, UNIQUE (j)) PARTITION BY RANGE (j);
@@ -477,3 +559,17 @@ INSERT INTO copy (SELECT a, b FROM main) ON CONFLICT DO NOTHING;
 TABLE copy ORDER BY a;
 INSERT INTO copy (SELECT a, b FROM main) ON CONFLICT (b, a) DO UPDATE SET b = 'replaced_' || EXCLUDED.b;
 TABLE copy ORDER BY a;
+
+--- GH-25296
+CREATE TABLE dupidx (a int);
+CREATE UNIQUE INDEX ON dupidx (a);
+CREATE UNIQUE INDEX ON dupidx (a);
+INSERT INTO dupidx VALUES (1);
+INSERT INTO dupidx VALUES (1) ON CONFLICT DO NOTHING;
+TABLE dupidx;
+CREATE TABLE multidx (a int, b int);
+CREATE UNIQUE INDEX ON multidx (a);
+CREATE UNIQUE INDEX ON multidx (b);
+INSERT INTO multidx VALUES (1, 2);
+INSERT INTO multidx VALUES (1, 2) ON CONFLICT DO NOTHING;
+TABLE multidx;

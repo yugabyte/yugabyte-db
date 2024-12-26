@@ -152,11 +152,6 @@ extern const bool kTestOnlyUseOSDefaultCollation;
 extern bool YBColocateDatabaseByDefault();
 
 /**
- * Returns whether we're doing an initdb for a ysql major upgrade.
- */
-extern bool YBIsMajorUpgradeInitDb();
-
-/**
  * Returns the OID for database_name from the environment, if it exists and is
  * valid. Otherwise, returns InvalidOid.
  * Used for online upgrades.

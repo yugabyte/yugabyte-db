@@ -2494,6 +2494,7 @@ def main():
                 coordinator.add_check(checker,
                     "check_uptime_for_process",
                     CONNECTION_POOLING_MANAGER)
+                coordinator.add_check(checker, "check_process_stats", CONNECTION_POOLING_MANAGER)
                 if n.test_ysqlsh_connectivity:
                     # Always check for the ysqlsh connectivity on the internal postgres port when
                     # CP is enabled.

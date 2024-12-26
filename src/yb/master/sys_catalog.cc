@@ -42,6 +42,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/pg_catversions.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
@@ -2068,8 +2069,8 @@ Result<tablet::TabletPtr> SysCatalogTable::Tablet() const {
 Result<PgTableReadData> SysCatalogTable::TableReadData(
     const TableId& original_table_id, const ReadHybridTime& read_ht) const {
   PgTableReadData result;
-  const TableId table_id = VERIFY_RESULT(
-      master_->catalog_manager()->GetVersionSpecificCatalogTableId(original_table_id));
+  const TableId table_id =
+      VERIFY_RESULT(master_->ysql_manager().GetVersionSpecificCatalogTableId(original_table_id));
   result.table_id = table_id;
   result.tablet = VERIFY_RESULT(Tablet());
   result.table_info = VERIFY_RESULT(result.tablet->metadata()->GetTableInfo(table_id));

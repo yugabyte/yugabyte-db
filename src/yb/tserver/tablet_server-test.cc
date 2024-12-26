@@ -151,7 +151,7 @@ TEST_F(TabletServerTest, TestServerClock) {
   RpcController controller;
 
   ASSERT_OK(generic_proxy_->ServerClock(req, &resp, &controller));
-  ASSERT_GT(mini_server_->server()->clock()->Now().ToUint64(), resp.hybrid_time());
+  ASSERT_GT(mini_server_->Now().ToUint64(), resp.hybrid_time());
 }
 
 TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
@@ -412,14 +412,14 @@ TEST_F(TabletServerTest, TestInsert) {
   }
 
   // get the clock's current hybrid_time
-  HybridTime now_before = mini_server_->server()->clock()->Now();
+  HybridTime now_before = mini_server_->Now();
 
   rows_inserted = nullptr;
   ASSERT_OK(ShutdownAndRebuildTablet());
   VerifyRows(schema_, { KeyValue(1, 1), KeyValue(2, 1), KeyValue(1234, 5678) });
 
   // get the clock's hybrid_time after replay
-  HybridTime now_after = mini_server_->server()->clock()->Now();
+  HybridTime now_after = mini_server_->Now();
 
   // make sure 'now_after' is greater than or equal to 'now_before'
   ASSERT_GE(now_after.value(), now_before.value());
@@ -435,7 +435,7 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   // Advance current to some time in the future. we do 5 secs to make
   // sure this hybrid_time will still be in the future when it reaches the
   // server.
-  HybridTime current = mini_server_->server()->clock()->Now().AddMicroseconds(5000000);
+  HybridTime current = mini_server_->Now().AddMicroseconds(5000000);
 
   AddTestRowInsert(1234, 5678, "hello world via RPC", &req);
 
@@ -561,7 +561,7 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
   }
 
   // get the clock's current hybrid_time
-  HybridTime now_before = mini_server_->server()->clock()->Now();
+  HybridTime now_before = mini_server_->Now();
 
   ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(schema_,
@@ -569,7 +569,7 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
         KeyValue(1234, 2) });
 
   // get the clock's hybrid_time after replay
-  HybridTime now_after = mini_server_->server()->clock()->Now();
+  HybridTime now_after = mini_server_->Now();
 
   // make sure 'now_after' is greater that or equal to 'now_before'
   ASSERT_GE(now_after.value(), now_before.value());

@@ -523,9 +523,16 @@ public class NodeManager extends DevopsBase {
       }
 
       if (providerDetails.installNodeExporter) {
+        Universe universe = Universe.getOrBadRequest(setupServerParams.getUniverseUUID());
+        NodeDetails node = universe.getNode(setupServerParams.nodeName);
+        int nodeExporterPort =
+            node != null
+                ? node.nodeExporterPort
+                : setupServerParams.communicationPorts.nodeExporterPort;
+
         subCommand.add("--install_node_exporter");
         subCommand.add("--node_exporter_port");
-        subCommand.add(Integer.toString(setupServerParams.communicationPorts.nodeExporterPort));
+        subCommand.add(Integer.toString(nodeExporterPort));
         subCommand.add("--node_exporter_user");
         subCommand.add(providerDetails.nodeExporterUser);
       }
@@ -2306,8 +2313,13 @@ public class NodeManager extends DevopsBase {
                   String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
             }
           }
-          if ("stop".equalsIgnoreCase(taskParam.command) && taskParam.deconfigure) {
-            commandArgs.add("--deconfigure");
+          if ("stop".equalsIgnoreCase(taskParam.command)) {
+            if (taskParam.deconfigure) {
+              commandArgs.add("--deconfigure");
+            }
+            if (taskParam.skipStopForPausedVM) {
+              commandArgs.add("--skip_stop_for_paused_vm");
+            }
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;

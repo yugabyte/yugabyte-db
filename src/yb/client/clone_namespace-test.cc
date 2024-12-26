@@ -17,8 +17,6 @@
 
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/master.h"
-
 #include "yb/util/backoff_waiter.h"
 
 DECLARE_bool(enable_db_clone);
@@ -88,10 +86,10 @@ TEST_F(CloneNamespaceTest, Clone) {
   // Write two sets of rows.
   ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 0 /* transaction */));
   auto row_count1 = CountTableRows(table_);
-  auto ht1 = cluster_->mini_master()->master()->clock()->Now();
+  auto ht1 = cluster_->mini_master()->Now();
   ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 1) /* transaction */);
   auto row_count2 = CountTableRows(table_);
-  auto ht2 = cluster_->mini_master()->master()->clock()->Now();
+  auto ht2 = cluster_->mini_master()->Now();
 
   ASSERT_OK(CloneAndWait(
       kTableName.namespace_name(), YQLDatabase::YQL_DATABASE_CQL, ht1, kTargetNamespaceName));
@@ -114,7 +112,7 @@ TEST_F(CloneNamespaceTest, Clone) {
 TEST_F(CloneNamespaceTest, CloneWithNoSchedule) {
   // Write one row.
   ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 0 /* transaction */));
-  auto ht = cluster_->mini_master()->master()->clock()->Now();
+  auto ht = cluster_->mini_master()->Now();
 
   auto status = CloneAndWait(
       kTableName.namespace_name(), YQLDatabase::YQL_DATABASE_CQL, ht, kTargetNamespaceName);
@@ -129,7 +127,7 @@ TEST_F(CloneNamespaceTest, CloneAfterDrop) {
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
 
   ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 0 /* transaction */));
-  auto ht = cluster_->mini_master()->master()->clock()->Now();
+  auto ht = cluster_->mini_master()->Now();
 
   ASSERT_OK(client_->DeleteTable(kTableName));
 
@@ -147,7 +145,7 @@ TEST_F(CloneNamespaceTest, DropClonedNamespace) {
     snapshot_util_->CreateSchedule(table_, kTableName.namespace_type(),
                                    kTableName.namespace_name()));
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
-  auto ht = cluster_->mini_master()->master()->clock()->Now();
+  auto ht = cluster_->mini_master()->Now();
 
   ASSERT_OK(CloneAndWait(
       kTableName.namespace_name(), YQLDatabase::YQL_DATABASE_CQL, ht, kTargetNamespaceName));
@@ -171,7 +169,7 @@ TEST_F(CloneNamespaceTest, CloneFromOldestSnapshot) {
 
   auto first_snapshot = ASSERT_RESULT(snapshot_util_->WaitScheduleSnapshot(schedule_id));
   ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 0 /* transaction */));
-  auto ht = cluster_->mini_master()->master()->clock()->Now();
+  auto ht = cluster_->mini_master()->Now();
 
   // Wait for the first snapshot to be deleted and check that we can clone to a time between the
   // first and the second snapshot's hybrid times.
