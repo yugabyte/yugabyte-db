@@ -2159,7 +2159,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Is this table part of xCluster or CDCSDK?
   bool IsTablePartOfXRepl(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
-  bool IsTablePartOfCDCSDK(const TableId& table_id) const REQUIRES_SHARED(mutex_);
+  bool IsTablePartOfCDCSDK(const TableId& table_id, bool require_replication_slot = false) const
+      REQUIRES_SHARED(mutex_);
 
   bool IsPitrActive();
 
