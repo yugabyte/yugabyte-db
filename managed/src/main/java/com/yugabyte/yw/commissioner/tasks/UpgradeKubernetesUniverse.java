@@ -192,7 +192,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       case GFlags:
         return SubTaskGroupType.UpdatingGFlags;
       default:
-        return SubTaskGroupType.Invalid;
+        return SubTaskGroupType.Configuring;
     }
   }
 
