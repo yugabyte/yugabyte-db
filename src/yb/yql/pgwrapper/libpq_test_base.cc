@@ -67,6 +67,15 @@ Result<PGConn> LibPqTestBase::ConnectUsingString(
     conn_str, deadline, simple_query_protocol, std::string() /* conn_str_for_log */);
 }
 
+Result<PGConn> LibPqTestBase::ConnectToDBWithReplication(const std::string& db_name) {
+  return PGConnBuilder({
+    .host = pg_ts->bind_host(),
+    .port = pg_ts->pgsql_rpc_port(),
+    .dbname = db_name,
+    .replication = "database"
+  }).Connect(true /* simple_query_protocol */);
+}
+
 bool LibPqTestBase::TransactionalFailure(const Status& status) {
   const uint8_t* pgerr = status.ErrorData(PgsqlErrorTag::kCategory);
   if (pgerr == nullptr) {

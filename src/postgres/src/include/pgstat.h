@@ -1449,25 +1449,28 @@ pgstat_report_wait_end(void)
  * initialized.
  * ----------
  */
-static inline uint32
-yb_pgstat_report_wait_start(uint32 wait_event_info)
+static inline YBCWaitEventInfo
+yb_pgstat_report_wait_start(YBCWaitEventInfo info)
 {
-	/* If ASH is disabled, do nothing */
-	if (!yb_enable_ash)
-		return wait_event_info;
-
-	uint32 prev_wait_event_info = 0;
+	YBCWaitEventInfo prev_wait_event_info = info;
 	volatile PGPROC *proc = MyProc;
 
-	if (pgstat_track_activities && proc)
+	if (yb_enable_ash)
 	{
 		/*
 		 * Since this is a four-byte field which is always read and written as
 		 * four-bytes, updates are atomic.
+		 * The reader copy_pgproc_sample_fields() is aware if it's reading
+		 * inconsistent data and will retry to read the values.
 		 */
-		prev_wait_event_info = proc->wait_event_info;
-		proc->wait_event_info = wait_event_info;
+		prev_wait_event_info = (YBCWaitEventInfo){
+			proc->wait_event_info,
+			proc->yb_rpc_code};
+
+		proc->wait_event_info = info.wait_event;
+		proc->yb_rpc_code = info.rpc_code;
 	}
+
 	return prev_wait_event_info;
 }
 

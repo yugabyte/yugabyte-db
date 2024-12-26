@@ -34,6 +34,7 @@
 
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
+DECLARE_string(TEST_yb_test_wait_event_aux_to_sleep_at_csv);
 
 namespace yb::pggate {
 namespace {
@@ -142,6 +143,44 @@ class PrecastRequestSender {
   boost::container::small_vector<OperationInfo, 16> ops_;
 };
 
+const std::locale& CSVLocale() {
+  using ctype = std::ctype<char>;
+  static const auto mask = [] {
+    const auto* classic_table = ctype::classic_table();
+    std::vector<ctype::mask> v(classic_table, classic_table + ctype::table_size);
+    v[','] |= ctype::space;
+    v[' '] &= ~ctype::space;
+    return v;
+  }();
+  static std::locale locale({}, new ctype(mask.data()));
+  return locale;
+}
+
+std::unordered_set<ash::PggateRPC> ParseRPCsFromCSV(const std::string& csv) {
+  std::unordered_set<ash::PggateRPC> rpcs;
+  std::istringstream csv_stream(csv);
+  csv_stream.imbue(CSVLocale());
+  ash::PggateRPC rpc;
+
+  while (csv_stream >> rpc) {
+    rpcs.insert(rpc);
+  }
+
+  return rpcs;
+}
+
+bool IsSleepRequired(ash::PggateRPC rpc) {
+  static std::unordered_set<ash::PggateRPC> rpcs =
+      ParseRPCsFromCSV(FLAGS_TEST_yb_test_wait_event_aux_to_sleep_at_csv);
+  return rpcs.contains(rpc);
+}
+
+inline bool MaybeSleepForTests(ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
+  return FLAGS_TEST_yb_ash_sleep_at_wait_state_ms > 0 && (
+      FLAGS_TEST_yb_ash_wait_code_to_sleep_at == to_underlying(wait_event) ||
+      IsSleepRequired(pggate_rpc));
+}
+
 } // namespace
 
 RowMarkType GetRowMarkType(const PgExecParameters* exec_params) {
@@ -151,11 +190,10 @@ RowMarkType GetRowMarkType(const PgExecParameters* exec_params) {
 }
 
 PgWaitEventWatcher::PgWaitEventWatcher(
-    Starter starter, ash::WaitStateCode wait_event)
+    Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc)
     : starter_(starter),
-      prev_wait_event_(starter_(yb::to_underlying(wait_event))) {
-  if (PREDICT_FALSE(FLAGS_TEST_yb_ash_wait_code_to_sleep_at == to_underlying(wait_event) &&
-      PREDICT_FALSE(FLAGS_TEST_yb_ash_sleep_at_wait_state_ms > 0))) {
+      prev_wait_event_(starter_({yb::to_underlying(wait_event), yb::to_underlying(pggate_rpc)})) {
+  if (PREDICT_FALSE(MaybeSleepForTests(wait_event, pggate_rpc))) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_yb_ash_sleep_at_wait_state_ms));
   }
 }

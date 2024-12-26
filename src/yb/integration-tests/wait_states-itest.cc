@@ -1062,7 +1062,8 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kStorageFlush,
       ash::WaitStateCode::kCatalogWrite,
       ash::WaitStateCode::kIndexWrite,
-      ash::WaitStateCode::kTableWrite
+      ash::WaitStateCode::kTableWrite,
+      ash::WaitStateCode::kWaitingOnTServer
       ), WaitStateCodeToString);
 
 TEST_P(AshTestVerifyPgOccurrence, VerifyWaitStateEntered) {

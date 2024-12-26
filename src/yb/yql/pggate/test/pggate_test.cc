@@ -73,8 +73,8 @@ const char* GetDebugQueryStringStub() {
   return "GetDebugQueryString not implemented in test";
 }
 
-uint32_t PgstatReportWaitStartNoOp(uint32_t wait_event) {
-  return wait_event;
+YBCWaitEventInfo PgstatReportWaitStartNoOp(YBCWaitEventInfo info) {
+  return info;
 }
 
 // Not defined locally in PggateTest::Init to avoid asan use-after-return error

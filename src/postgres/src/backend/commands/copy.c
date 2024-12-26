@@ -480,7 +480,6 @@ static void
 CopySendEndOfRow(CopyState cstate)
 {
 	StringInfo	fe_msgbuf = cstate->fe_msgbuf;
-	uint32		yb_old_wait_event;
 
 	switch (cstate->copy_dest)
 	{
@@ -496,14 +495,15 @@ CopySendEndOfRow(CopyState cstate)
 			}
 
 			if (IsYugaByteEnabled())
-				yb_old_wait_event = yb_pgstat_report_wait_start(WAIT_EVENT_YB_COPY_COMMAND_STREAM_WRITE);
+				pgstat_report_wait_start(WAIT_EVENT_YB_COPY_COMMAND_STREAM_WRITE);
 
 			if (fwrite(fe_msgbuf->data, fe_msgbuf->len, 1,
 					   cstate->copy_file) != 1 ||
 				ferror(cstate->copy_file))
 			{
 				if (IsYugaByteEnabled())
-					pgstat_report_wait_start(yb_old_wait_event);
+					pgstat_report_wait_end();
+
 				if (cstate->is_program)
 				{
 					if (errno == EPIPE)
@@ -533,7 +533,7 @@ CopySendEndOfRow(CopyState cstate)
 							 errmsg("could not write to COPY file: %m")));
 			}
 			if (IsYugaByteEnabled())
-				pgstat_report_wait_start(yb_old_wait_event);
+				pgstat_report_wait_end();
 			break;
 		case COPY_OLD_FE:
 			/* The FE/BE protocol uses \n as newline for all platforms */
@@ -585,18 +585,17 @@ static int
 CopyGetData(CopyState cstate, void *databuf, int minread, int maxread)
 {
 	int			bytesread = 0;
-	uint32		yb_old_wait_event;
 
 	switch (cstate->copy_dest)
 	{
 		case COPY_FILE:
 			if (IsYugaByteEnabled())
-				yb_old_wait_event = yb_pgstat_report_wait_start(WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ);
+				pgstat_report_wait_start(WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ);
 
 			bytesread = fread(databuf, 1, maxread, cstate->copy_file);
 
 			if (IsYugaByteEnabled())
-				pgstat_report_wait_start(yb_old_wait_event);
+				pgstat_report_wait_end();
 
 			if (ferror(cstate->copy_file))
 				ereport(ERROR,

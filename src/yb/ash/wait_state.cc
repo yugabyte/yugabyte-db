@@ -52,6 +52,8 @@ DEFINE_test_flag(bool, ash_fetch_wait_states_for_raft_log, true, "Should ASH fet
       "background task states, such as raft log sync/append.");
 DEFINE_test_flag(bool, ash_fetch_wait_states_for_rocksdb_flush_and_compaction, true,
       "Should ASH fetch background task states, such as rocksdb flush and compaction.");
+DEFINE_test_flag(string, yb_test_wait_event_aux_to_sleep_at_csv, "",
+    "If enabled, add a sleep/delay when we enter any one of the specified wait event aux.");
 
 namespace yb::ash {
 
@@ -100,6 +102,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "A YSQL backend is waiting for a secondary index write from DocDB.";
     case WaitStateCode::kTableWrite:
       return "A YSQL backend is waiting for a table write from DocDB.";
+    case WaitStateCode::kWaitingOnTServer:
+      return "A YSQL backend is waiting on TServer, check wait_event_aux for the RPC.";
     case WaitStateCode::kOnCpu_Active:
       return "A rpc/task is being actively processed on a thread.";
     case WaitStateCode::kOnCpu_Passive:
@@ -478,6 +482,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kCatalogWrite:
     case WaitStateCode::kIndexWrite:
     case WaitStateCode::kTableWrite:
+    case WaitStateCode::kWaitingOnTServer:
       return WaitStateType::kNetwork;
 
     case WaitStateCode::kOnCpu_Active:

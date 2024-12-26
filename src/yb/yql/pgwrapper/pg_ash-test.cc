@@ -10,6 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/ash/wait_state.h"
+
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -21,18 +24,32 @@ using namespace std::literals;
 
 namespace yb::pgwrapper {
 
+using RPCs = std::vector<ash::PggateRPC>;
+
 namespace {
 
 const auto kDatabaseName = "yugabyte"s;
 
-}  // namespace
+// Convert list of rpcs to csv
+std::string ConvertToCSV(const RPCs& rpcs) {
+  std::ostringstream oss;
+  for (const auto& rpc : rpcs) {
+    if (oss.tellp()) {
+        oss << ",";
+    }
+    oss << rpc;
+  }
+  return oss.str();
+}
 
 class PgAshTest : public LibPqTestBase {
  public:
+  virtual ~PgAshTest() = default;
+
   void SetUp() override {
     LibPqTestBase::SetUp();
 
-    conn_ = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
+    conn_ = ASSERT_RESULT(ConnectToDB(kDatabaseName));
   }
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -41,16 +58,205 @@ class PgAshTest : public LibPqTestBase {
     options->extra_tserver_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
     options->extra_tserver_flags.push_back("--ysql_yb_enable_ash=true");
-    options->extra_tserver_flags.push_back("--ysql_yb_ash_sampling_interval_ms=50");
+    options->extra_tserver_flags.push_back(Format("--ysql_yb_ash_sampling_interval_ms=$0",
+        kSamplingIntervalMs));
   }
 
  protected:
-  std::unique_ptr<PGConn> conn_;
+  std::optional<PGConn> conn_;
   TestThreadHolder thread_holder_;
-  const int kTabletsPerServer = 1;
+  static constexpr int kTabletsPerServer = 1;
+  static constexpr int kSamplingIntervalMs = 50;
 };
 
-TEST_F(PgAshTest, NoMemoryLeaks) {
+class PgWaitEventAuxTest : public PgAshTest {
+ public:
+  explicit PgWaitEventAuxTest(std::reference_wrapper<const RPCs> rpc_list)
+      : rpc_list_(rpc_list) {}
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back("--replication_factor=1");
+    options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
+        4 * kTimeMultiplier * kSamplingIntervalMs));
+
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_yb_test_wait_event_aux_to_sleep_at_csv=$0", ConvertToCSV(rpc_list_)));
+
+    PgAshTest::UpdateMiniClusterOptions(options);
+  }
+
+  int GetNumMasters() const override {
+    return 1;
+  }
+
+  int GetNumTabletServers() const override {
+    return 1;
+  }
+
+ protected:
+  Status CheckWaitEventAux() {
+    const auto rows = VERIFY_RESULT(conn_->FetchRows<std::string>(
+        "SELECT DISTINCT(wait_event_aux) FROM yb_active_session_history WHERE "
+        "wait_event_aux IS NOT NULL"));
+    SCHECK(!rows.empty(), IllegalState, "No RPC found in ASH");
+    for (const auto& rpc : rpc_list_) {
+      const auto rpc_name = ToString(rpc).erase(0, 1);
+      const auto rpc_found = std::find(rows.begin(), rows.end(), rpc_name) != rows.end();
+      SCHECK(rpc_found, IllegalState, Format("The RPC $0 is not found in ASH", rpc_name));
+    }
+    return Status::OK();
+  }
+
+ private:
+  const RPCs& rpc_list_;
+};
+
+struct Configuration {
+  const RPCs rpc_list = {};
+  const std::vector<std::string> tserver_flags = {};
+  const std::vector<std::string> master_flags = {};
+};
+
+// Test for RPCs that are fired during database related queries
+const Configuration kNewDatabaseRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kCreateDatabase,
+    ash::PggateRPC::kGetNewObjectId,
+    ash::PggateRPC::kAlterDatabase,
+    ash::PggateRPC::kDeleteDBSequences,
+    ash::PggateRPC::kDropDatabase,
+    ash::PggateRPC::kGetTserverCatalogVersionInfo}};
+
+// Test for ReserveOids RPC which is only fired when the gflag
+// ysql_enable_pg_per_database_oid_allocator is false
+const Configuration kOldDatabaseRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kReserveOids},
+  .tserver_flags = {"--ysql_enable_pg_per_database_oid_allocator=false"},
+  .master_flags = {"--ysql_enable_pg_per_database_oid_allocator=false"}};
+
+// Test for RPCs which are fired with DDL queries related to a table
+const Configuration kTableRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kCreateTable,
+    ash::PggateRPC::kOpenTable,
+    ash::PggateRPC::kAlterTable,
+    ash::PggateRPC::kIsObjectPartOfXRepl,
+    ash::PggateRPC::kTruncateTable,
+    ash::PggateRPC::kDropTable}};
+
+// Test for RPCs which are fired with queries related to an index
+const Configuration kIndexRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kBackfillIndex,
+    ash::PggateRPC::kGetIndexBackfillProgress,
+    ash::PggateRPC::kWaitForBackendsCatalogVersion},
+  .tserver_flags = {
+    "--ysql_yb_test_block_index_phase=postbackfill",
+    "--ysql_disable_index_backfill=false"}};
+
+// Test for RPCs which are fired with queries related to replication slots
+const Configuration kReplicationRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kCreateReplicationSlot,
+    ash::PggateRPC::kDropReplicationSlot,
+    ash::PggateRPC::kGetReplicationSlot,
+    ash::PggateRPC::kListReplicationSlots},
+  .tserver_flags = {"--ysql_cdc_active_replication_slot_window_ms=0"}};
+
+// Test for RPCs which are fired with queries related to tablegroups
+const Configuration kTablegroupRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kCreateTablegroup,
+    ash::PggateRPC::kDropTablegroup}};
+
+// Test for RPCs which are fired with queries related to tablespace
+const Configuration kTablespaceRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kValidatePlacement}};
+
+// Test for RPCs which are fired with queries related to sequences
+const Configuration kSequenceRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kInsertSequenceTuple,
+    ash::PggateRPC::kUpdateSequenceTuple,
+    ash::PggateRPC::kFetchSequenceTuple,
+    ash::PggateRPC::kReadSequenceTuple,
+    ash::PggateRPC::kDeleteSequenceTuple}};
+
+// Test for RPCs which are fired with queries related to profiles
+const Configuration kProfileRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kCheckIfPitrActive},
+  .tserver_flags = {"--ysql_enable_profile=true"}};
+
+// Test for RPCs which are fired with queries related to transactions
+const Configuration kTransactionRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kFinishTransaction,
+    ash::PggateRPC::kRollbackToSubTransaction,
+    ash::PggateRPC::kCancelTransaction,
+    ash::PggateRPC::kGetActiveTransactionList}};
+
+// Test for RPCs which are fired with misc queries, these are mostly callable PG functions
+const Configuration kMiscRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kGetLockStatus,
+    ash::PggateRPC::kListLiveTabletServers,
+    ash::PggateRPC::kGetTableDiskSize,
+    ash::PggateRPC::kTabletsMetadata,
+    ash::PggateRPC::kYCQLStatementStats,
+    ash::PggateRPC::kServersMetrics,
+    ash::PggateRPC::kListClones}};
+
+// Test for RPCs which are related to parallel query execution
+const Configuration kParallelRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kTabletServerCount,
+    ash::PggateRPC::kGetTableKeyRanges}};
+
+// Test for RPCs which are related to tablet splitting
+const Configuration kTabletSplitRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kGetTablePartitionList},
+  .master_flags = {
+    "--enable_automatic_tablet_splitting=true",
+    "--tablet_split_low_phase_shard_count_per_node=2",
+    "--tablet_split_low_phase_size_threshold_bytes=0"}};
+
+template <const Configuration& Config>
+class ConfigurableTest : public PgWaitEventAuxTest {
+ public:
+  ConfigurableTest() : PgWaitEventAuxTest(Config.rpc_list) {}
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    for (const auto& flag : Config.tserver_flags) {
+      options->extra_tserver_flags.push_back(flag);
+    }
+    for (const auto& flag : Config.master_flags) {
+      options->extra_master_flags.push_back(flag);
+    }
+    PgWaitEventAuxTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+using PgNewDatabaseWaitEventAux = ConfigurableTest<kNewDatabaseRPCs>;
+using PgOldDatabaseWaitEventAux = ConfigurableTest<kOldDatabaseRPCs>;
+using PgTableWaitEventAux = ConfigurableTest<kTableRPCs>;
+using PgIndexWaitEventAux = ConfigurableTest<kIndexRPCs>;
+using PgReplicationWaitEventAux = ConfigurableTest<kReplicationRPCs>;
+using PgTablegroupWaitEventAux = ConfigurableTest<kTablegroupRPCs>;
+using PgTablespaceWaitEventAux = ConfigurableTest<kTablespaceRPCs>;
+using PgSequenceWaitEventAux = ConfigurableTest<kSequenceRPCs>;
+using PgProfileWaitEventAux = ConfigurableTest<kProfileRPCs>;
+using PgTransactionWaitEventAux = ConfigurableTest<kTransactionRPCs>;
+using PgMiscWaitEventAux = ConfigurableTest<kMiscRPCs>;
+using PgParallelWaitEventAux = ConfigurableTest<kParallelRPCs>;
+using PgTabletSplitWaitEventAux = ConfigurableTest<kTabletSplitRPCs>;
+
+}  // namespace
+
+TEST_F(PgAshTest, YB_DISABLE_TEST_IN_TSAN(NoMemoryLeaks)) {
   ASSERT_OK(conn_->Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
 
   thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
@@ -78,6 +284,199 @@ TEST_F(PgAshTest, NoMemoryLeaks) {
       SleepFor(10ms);
     }
   }
+}
+
+TEST_F_EX(PgWaitEventAuxTest, NewDatabaseRPCs, PgNewDatabaseWaitEventAux) {
+  ASSERT_OK(conn_->Execute("CREATE DATABASE db1"));
+  ASSERT_OK(conn_->Execute("ALTER DATABASE db1 RENAME TO db2"));
+  ASSERT_OK(conn_->Execute("DROP DATABASE db2"));
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+TEST_F_EX(PgWaitEventAuxTest, OldDatabaseRPCs, PgOldDatabaseWaitEventAux) {
+  ASSERT_OK(conn_->Execute("CREATE DATABASE db1"));
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+TEST_F_EX(PgWaitEventAuxTest, TableRPCs, PgTableWaitEventAux) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE test (k INT, v INT)"));
+  ASSERT_OK(conn_->Execute("ALTER TABLE test RENAME COLUMN v TO value"));
+  // Needed to check for kIsObjectPartOfXRepl and kTruncateTable
+  ASSERT_OK(conn_->Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn_->Execute("ALTER TABLE test ADD PRIMARY KEY (k)"));
+  ASSERT_OK(conn_->Execute("TRUNCATE TABLE test"));
+  ASSERT_OK(conn_->Execute("DROP TABLE test"));
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+// Disabled in TSAN until #16055 is fixed
+TEST_F_EX(PgWaitEventAuxTest, YB_DISABLE_TEST_IN_TSAN(IndexRPCs), PgIndexWaitEventAux) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE test (k INT, v INT)"));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this]() {
+    // This will be stuck until ysql_yb_test_block_index_phase is reset
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE INDEX CONCURRENTLY idx ON test (k)"));
+  });
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto rows = VERIFY_RESULT(conn_->FetchRows<std::string>(
+        "SELECT phase FROM pg_stat_progress_create_index"));
+    return rows.size() == 1 && rows[0] == "backfilling";
+  }, 30s, "Wait for index progress"));
+
+  ASSERT_OK(CheckWaitEventAux());
+
+  // Let the index creation finish
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+}
+
+TEST_F_EX(PgWaitEventAuxTest, ReplicationRPCs, PgReplicationWaitEventAux) {
+  static const std::string kSlotName = "test_slot";
+  auto conn = ASSERT_RESULT(ConnectToDBWithReplication("yugabyte"));
+  ASSERT_OK(conn.FetchFormat("CREATE_REPLICATION_SLOT $0 LOGICAL yboutput", kSlotName));
+  ASSERT_OK(conn.Fetch("SELECT COUNT(*) FROM pg_get_replication_slots()"));
+  ASSERT_OK(conn.ExecuteFormat("DROP_REPLICATION_SLOT $0", kSlotName));
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+
+TEST_F_EX(PgWaitEventAuxTest, TablegroupRPCs, PgTablegroupWaitEventAux) {
+  static const std::string kTablegroupName = "test";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupName));
+  ASSERT_OK(conn_->ExecuteFormat("DROP TABLEGROUP $0", kTablegroupName));
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+TEST_F_EX(PgWaitEventAuxTest, TablespaceRPCs, PgTablespaceWaitEventAux) {
+  static const std::string kTableName = "test_table";
+  static const std::string kTablespaceName = "test_tablespace";
+  static const std::string kPlacementInfo = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+        {
+          "cloud"            : "cloud1",
+          "region"           : "datacenter1",
+          "zone"             : "rack1",
+          "min_num_replicas" : 1
+        }
+      ]
+    }'
+  )#";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT, v INT)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat( "CREATE TABLESPACE $0 WITH (replica_placement = $1)",
+      kTablespaceName, kPlacementInfo));
+  ASSERT_OK(conn_->ExecuteFormat("ALTER TABLE $0 SET TABLESPACE $1",
+      kTableName, kTablespaceName));
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+TEST_F_EX(PgWaitEventAuxTest, SequenceRPCs, PgSequenceWaitEventAux) {
+  static const std::string kSequenceName = "seq";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE SEQUENCE $0", kSequenceName));
+  ASSERT_OK(conn_->FetchFormat("SELECT nextval('$0')", kSequenceName));
+  ASSERT_OK(conn_->ExecuteFormat("ALTER SEQUENCE $0 RESTART WITH 100", kSequenceName));
+  ASSERT_OK(conn_->ExecuteFormat("DROP SEQUENCE $0", kSequenceName));
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+
+TEST_F_EX(PgWaitEventAuxTest, ProfileRPCs, PgProfileWaitEventAux) {
+  static const std::string kRoleName = "test";
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE PROFILE $0 LIMIT FAILED_LOGIN_ATTEMPTS 1", kRoleName));
+  ASSERT_OK(conn_->ExecuteFormat("DROP PROFILE $0", kRoleName));
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+
+TEST_F_EX(PgWaitEventAuxTest, TransactionRPCs, PgTransactionWaitEventAux) {
+  static const std::string kTableName = "test";
+  static const std::string kSavepoint = "test_savepoint";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->ExecuteFormat("SAVEPOINT $0", kSavepoint));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("ROLLBACK TO SAVEPOINT $0", kSavepoint));
+  // Call yb_cancel_transaction for a random txn id
+  ASSERT_OK(conn_->Fetch(
+      "SELECT yb_cancel_transaction('abcdabcd-abcd-abcd-abcd-abcd00000075')"));
+  ASSERT_OK(conn_->Fetch("SELECT yb_get_current_transaction()"));
+  ASSERT_OK(conn_->CommitTransaction());
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+TEST_F_EX(PgWaitEventAuxTest, MiscRPCs, PgMiscWaitEventAux) {
+  static const std::string kTableName = "test";
+
+  ASSERT_OK(conn_->Fetch(
+      "SELECT COUNT(*) FROM yb_lock_status(NULL, NULL)"));
+  ASSERT_OK(conn_->Fetch("SELECT COUNT(*) FROM yb_servers()"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+
+  auto table_oid = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(Format(
+      "SELECT oid FROM pg_class WHERE relname = '$0'", kTableName)));
+  ASSERT_OK(conn_->FetchFormat("SELECT COUNT(*) FROM pg_table_size($0)",
+      table_oid));
+  ASSERT_OK(conn_->Fetch("SELECT COUNT(*) FROM yb_local_tablets"));
+  ASSERT_OK(conn_->Execute("CREATE EXTENSION yb_ycql_utils"));
+  ASSERT_OK(conn_->Fetch("SELECT COUNT(*) FROM ycql_stat_statements"));
+  ASSERT_OK(conn_->Fetch("SELECT COUNT(*) FROM yb_servers_metrics"));
+  ASSERT_OK(conn_->Fetch("SELECT COUNT(*) FROM yb_database_clones()"));
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+TEST_F_EX(PgWaitEventAuxTest, ParallelRPCs, PgParallelWaitEventAux) {
+  static const std::string kColocatedDB = "cdb";
+  static const std::string kTableName = "test";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0 COLOCATED = TRUE",
+      kColocatedDB));
+  auto conn = ASSERT_RESULT(ConnectToDB(kColocatedDB));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, 100))",
+      kTableName));
+
+  // Enable parallel queries
+  ASSERT_OK(conn.Execute("SET yb_parallel_range_rows to 1"));
+  ASSERT_OK(conn.Execute("SET yb_enable_base_scans_cost_model to true"));
+
+  // Encourage use of parallel plans
+  ASSERT_OK(conn.Execute("SET parallel_setup_cost = 0"));
+  ASSERT_OK(conn.Execute("SET parallel_tuple_cost = 0"));
+  ASSERT_OK(conn.FetchFormat("SELECT COUNT(*) FROM $0", kTableName));
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+
+TEST_F_EX(PgWaitEventAuxTest, YB_DISABLE_TEST_IN_TSAN(TabletSplitRPCs), PgTabletSplitWaitEventAux) {
+  static const std::string kTableName = "test";
+  static const std::string kIsGetTablePartitionListRPCFound = Format(
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE wait_event_aux = '$0'",
+      ToString(ash::PggateRPC::kGetTablePartitionList).erase(0, 1));
+  static const std::string kSelectQuery = Format("SELECT COUNT(*) FROM $0", kTableName);
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k INT, v INT, PRIMARY KEY (k ASC))", kTableName));
+
+  auto tablet_id = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT tablet_id FROM yb_local_tablets WHERE table_name = '$0'", kTableName)));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 100) AS i", kTableName));
+
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {tablet_id},
+      tserver::FlushTabletsRequestPB_Operation::FlushTabletsRequestPB_Operation_FLUSH));
+
+  // keep running selects until GetTablePartitionList RPC is found
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    RETURN_NOT_OK(conn_->Fetch(kSelectQuery));
+    return VERIFY_RESULT(conn_->FetchRow<int64_t>(kIsGetTablePartitionListRPCFound)) > 0;
+  }, 30s, "Wait for GetTablePartitionList RPC"));
+
+  ASSERT_OK(CheckWaitEventAux());
 }
 
 }  // namespace yb::pgwrapper

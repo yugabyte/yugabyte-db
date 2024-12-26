@@ -250,6 +250,15 @@ struct PGPROC
 	LWLock		yb_ash_metadata_lock;
 	YBCAshMetadata yb_ash_metadata;
 	bool		yb_is_ash_metadata_set;
+
+	/*
+	 * The sync RPCs in pg_client.cc have a common wait event - WaitingOnTServer
+	 * and have the wait event aux set as the RPC name. Instead of storing the
+	 * RPC name as a string, we store an int because it's faster to set an
+	 * int than a string, and we only have 16 bytes for wait event aux and some
+	 * RPC names cannot fully fit into it. The enum list is in wait_state.h (PggateRPC)
+	 */
+	uint16		yb_rpc_code;
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */

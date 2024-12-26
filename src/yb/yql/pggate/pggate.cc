@@ -337,16 +337,22 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 PgApiImpl::PgApiImpl(
     PgApiContext context, const YBCPgTypeEntity *YBCDataTypeArray, int count,
     YBCPgCallbacks callbacks, std::optional<uint64_t> session_id,
-    const YBCPgAshConfig* ash_config)
+    const YBCPgAshConfig& ash_config)
     : metric_registry_(std::move(context.metric_registry)),
       metric_entity_(std::move(context.metric_entity)),
       mem_tracker_(std::move(context.mem_tracker)),
       messenger_holder_(std::move(context.messenger_holder)),
       interrupter_(new Interrupter(messenger_holder_.messenger.get())),
       proxy_cache_(std::move(context.proxy_cache)),
+      pg_callbacks_(callbacks),
+      wait_event_watcher_(
+          [starter = pg_callbacks_.PgstatReportWaitStart](
+              ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
+            return PgWaitEventWatcher{starter, wait_event, pggate_rpc};
+      }),
+      pg_client_(ash_config, wait_event_watcher_),
       clock_(new server::HybridClock()),
       tserver_shared_object_(BuildTServerSharedObject()),
-      pg_callbacks_(callbacks),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_)) {
   CHECK_OK(interrupter_->Start());
   CHECK_OK(clock_->Init());
@@ -359,7 +365,7 @@ PgApiImpl::PgApiImpl(
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
-      tserver_shared_object_, session_id, ash_config));
+      tserver_shared_object_, session_id));
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -393,7 +399,7 @@ Status PgApiImpl::InitSession(YBCPgExecStatsState& session_stats) {
           PgOid database_id, TableYbctidVector& ybctids, const OidSet& region_local_tables,
           const ExecParametersMutator& mutator) {
         return FetchExistingYbctids(pg_session, database_id, ybctids, region_local_tables, mutator);
-      });
+      }, wait_event_watcher_);
 
   pg_session_.swap(session);
   return Status::OK();

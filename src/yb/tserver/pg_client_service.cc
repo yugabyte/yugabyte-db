@@ -2203,6 +2203,7 @@ void PgClientServiceImpl::method( \
     const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
     BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
     rpc::RpcContext context) { \
+  TryUpdateAshWaitState(*req); \
   Respond(impl_->method(*req, resp, &context), resp, &context); \
 }
 
@@ -2211,6 +2212,7 @@ void PgClientServiceImpl::method( \
     const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
     BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
     rpc::RpcContext context) { \
+  TryUpdateAshWaitState(*req); \
   impl_->method(*req, resp, std::move(context)); \
 }
 

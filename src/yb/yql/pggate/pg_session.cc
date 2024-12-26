@@ -393,7 +393,8 @@ PgSession::PgSession(
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YBCPgCallbacks& pg_callbacks,
     YBCPgExecStatsState& stats_state,
-    YbctidReader&& ybctid_reader)
+    YbctidReader&& ybctid_reader,
+    std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       ybctid_reader_(std::move(ybctid_reader)),
@@ -407,7 +408,8 @@ PgSession::PgSession(
             return PgOperationBuffer::PerformFutureEx{
                 VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
           },
-          metrics_, buffering_settings_) {
+          metrics_, buffering_settings_),
+          wait_event_watcher_(wait_event_watcher) {
   Update(&buffering_settings_);
 }
 
@@ -1044,7 +1046,8 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
 }
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
-  return {pg_callbacks_.PgstatReportWaitStart, wait_event};
+  DCHECK_NE(wait_event, ash::WaitStateCode::kWaitingOnTServer);
+  return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC);
 }
 
 Result<tserver::PgYCQLStatementStatsResponsePB> PgSession::YCQLStatementStats() {

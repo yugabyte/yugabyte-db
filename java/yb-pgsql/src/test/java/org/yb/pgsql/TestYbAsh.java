@@ -245,25 +245,6 @@ public class TestYbAsh extends BasePgSQLTest {
   }
 
   /**
-   * Aux info of samples from postgres should be null.
-   */
-  @Test
-  public void testPgAuxInfo() throws Exception {
-    setAshConfigAndRestartCluster(10, ASH_SAMPLE_SIZE);
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
-      for (int i = 0; i < 10000; ++i) {
-        statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')", i, i));
-        statement.execute(String.format("SELECT v FROM test_table WHERE k=%d", i));
-      }
-      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
-          " WHERE wait_event_component='YSQL' AND wait_event_aux IS NOT NULL")
-          .getLong(0).intValue();
-      assertEquals(res, 0);
-    }
-  }
-
-  /**
    * Test that we don't capture more than 'ysql_yb_ash_sample_size' number of samples
    */
   @Test

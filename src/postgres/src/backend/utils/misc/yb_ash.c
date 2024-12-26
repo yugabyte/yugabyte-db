@@ -131,6 +131,7 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static const unsigned char *get_top_level_node_id();
 static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 									int samples_considered);
+static YBCWaitEventInfo YbGetWaitEventInfo(const PGPROC *proc);
 static void copy_pgproc_sample_fields(PGPROC *proc, int index);
 static void copy_non_pgproc_sample_fields(TimestampTz sample_time, int index);
 static void YbAshIncrementCircularBufferIndex(void);
@@ -806,6 +807,37 @@ YbAshStoreSample(PGPROC *proc, int num_procs, TimestampTz sample_time, int index
 	YbAshIncrementCircularBufferIndex();
 }
 
+static YBCWaitEventInfo
+YbGetWaitEventInfo(const PGPROC *proc)
+{
+	static uint32 waiting_on_tserver_code = -1;
+
+	if (waiting_on_tserver_code == -1)
+		waiting_on_tserver_code = YBCWaitEventForWaitingOnTServer();
+
+	YBCWaitEventInfo info = {waiting_on_tserver_code, 0};
+
+	for (size_t attempt = 0; attempt < 32; ++attempt)
+	{
+		const uint32 wait_event = proc->wait_event_info;
+		const uint16 rpc_code = proc->yb_rpc_code;
+
+		if (wait_event != waiting_on_tserver_code)
+		{
+			info.wait_event = wait_event;
+			break;
+		}
+
+		if (rpc_code != 0)
+		{
+			info.rpc_code = rpc_code;
+			break;
+		}
+	}
+
+	return info;
+}
+
 static void
 copy_pgproc_sample_fields(PGPROC *proc, int index)
 {
@@ -815,7 +847,10 @@ copy_pgproc_sample_fields(PGPROC *proc, int index)
 	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YBCAshMetadata));
 	LWLockRelease(&proc->yb_ash_metadata_lock);
 
-	cb_sample->encoded_wait_event_code = proc->wait_event_info;
+	YBCWaitEventInfo info = YbGetWaitEventInfo(proc);
+	cb_sample->encoded_wait_event_code = info.wait_event;
+	cb_sample->aux_info[0] = info.rpc_code;
+	cb_sample->aux_info[1] = '\0';
 }
 
 /* We don't fill the sample weight here. Check YbAshFillSampleWeight */
@@ -832,8 +867,6 @@ copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 
 	/* rpc_request_id is 0 for PG samples */
 	cb_sample->rpc_request_id = 0;
-	/* TODO(asaha): Add aux info to circular buffer once it's available */
-	cb_sample->aux_info[0] = '\0';
 	cb_sample->sample_time = sample_time;
 }
 
@@ -983,7 +1016,15 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		}
 
 		if (sample->aux_info[0] != '\0')
-			values[j++] = CStringGetTextDatum(sample->aux_info);
+		{
+			/*
+			 * In PG samples, the wait event aux buffer will be [ash::PggateRPC, 0, ...],
+			 * the 0-th index contains the rpc enum value, the 1-st and subsequent indexes contains 0.
+			 */
+			values[j++] = sample->aux_info[0] != 0 && sample->aux_info[1] == 0
+				? CStringGetTextDatum(YBCGetPggateRPCName(sample->aux_info[0]))
+				: CStringGetTextDatum(sample->aux_info);
+		}
 		else
 			nulls[j++] = true;
 

@@ -42,7 +42,6 @@
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 namespace yb::pggate {
@@ -65,7 +64,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       scoped_refptr<PgTxnManager> pg_txn_manager,
       const YBCPgCallbacks& pg_callbacks,
       YBCPgExecStatsState& stats_state,
-      YbctidReader&& ybctid_reader);
+      YbctidReader&& ybctid_reader,
+      std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
   ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -364,6 +364,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   bool has_write_ops_in_ddl_mode_ = false;
 
   bool force_allow_catalog_modifications_ = false;
+
+  const WaitEventWatcher& wait_event_watcher_;
 };
 
 }  // namespace yb::pggate

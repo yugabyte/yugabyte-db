@@ -37,6 +37,8 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 struct PgExecParameters;
 
 namespace yb::pggate {
@@ -55,14 +57,15 @@ struct Bound {
 // when it goes out of scope.
 class PgWaitEventWatcher {
  public:
-  using Starter = uint32_t (*)(uint32_t wait_event);
+  using Starter = YBCWaitEventInfo (*)(YBCWaitEventInfo info);
 
-  PgWaitEventWatcher(Starter starter, ash::WaitStateCode wait_event);
+  PgWaitEventWatcher(
+      Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc);
   ~PgWaitEventWatcher();
 
  private:
   const Starter starter_;
-  const uint32_t prev_wait_event_;
+  const YBCWaitEventInfo prev_wait_event_;
 
   DISALLOW_COPY_AND_ASSIGN(PgWaitEventWatcher);
 };
