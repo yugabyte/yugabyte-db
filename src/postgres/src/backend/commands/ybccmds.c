@@ -597,7 +597,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		Oid	parentOid = RangeVarGetRelid(rv, NoLock, false);
 
 		Relation parentRel = table_open(parentOid, NoLock);
-		if(!MyDatabaseColocated || MyColocatedDatabaseLegacy)
+		if (!MyDatabaseColocated || MyColocatedDatabaseLegacy)
 		{
 			Assert(!OidIsValid(tablegroupId));
 			tablegroupId = YbGetTableProperties(parentRel)->tablegroup_oid;

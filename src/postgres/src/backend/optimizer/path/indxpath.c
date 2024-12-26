@@ -3177,7 +3177,7 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		if (is_yb_hash_code_call(leftop) &&
 			!yb_hash_code_call_matches_indexcol(leftop, index, indexcol))
 		{
-			if(!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause))
+			if (!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause))
 				return NULL;
 
 			iclause = makeNode(IndexClause);

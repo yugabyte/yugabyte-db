@@ -1881,9 +1881,8 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 									 O_RDWR | O_CREAT | O_APPEND)) < 0)
 			snprintf(description, YB_QD_DESCRIPTION_LEN,
 					 "out of file descriptors: %s; release and retry", strerror(errno));
-
-		else if(FileWrite(file, (char *)data, strlen(data), FileSize(file),
-						  WAIT_EVENT_DATA_FILE_WRITE) < 0)
+		else if (FileWrite(file, (char *)data, strlen(data), FileSize(file),
+						   WAIT_EVENT_DATA_FILE_WRITE) < 0)
 			snprintf(description, YB_QD_DESCRIPTION_LEN, "Error writing to file; %s",
 					 strerror(errno));
 

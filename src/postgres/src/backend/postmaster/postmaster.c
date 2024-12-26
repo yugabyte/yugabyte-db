@@ -4570,7 +4570,7 @@ SetOomScoreAdjForPid(pid_t pid, char *oom_score_adj)
 	FILE * fPtr;
 	fPtr = fopen(file_name, "w");
 
-	if(fPtr == NULL)
+	if (fPtr == NULL)
 	{
 		int saved_errno = errno;
 		ereport(LOG,

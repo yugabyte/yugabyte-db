@@ -229,7 +229,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 			case BNL_MATCHING:
 				Assert(!TupIsNull(econtext->ecxt_innertuple));
 
-				if(!LOCAL_JOIN_FN(GetNewOuterTuple, bnlstate, econtext))
+				if (!LOCAL_JOIN_FN(GetNewOuterTuple, bnlstate, econtext))
 				{
 					bnlstate->bnl_currentstatus = BNL_NEWINNER;
 					continue;
@@ -588,7 +588,7 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 							  eq,
 							  bnlstate->innerHashFunctions,
 							  bnlstate->innerAttrs);
-	if(data == NULL)
+	if (data == NULL)
 	{
 		/* Inner plan returned a tuple that doesn't match with anything. */
 		InstrCountFiltered1(bnlstate, 1);

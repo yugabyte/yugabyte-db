@@ -2454,7 +2454,7 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 	{
 		/* Must be owner */
-		if(!has_privs_of_role(GetUserId(), proc->proowner))
+		if (!has_privs_of_role(GetUserId(), proc->proowner))
 		{
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION, NameStr(proc->proname));
 		}

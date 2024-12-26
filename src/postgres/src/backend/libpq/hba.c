@@ -1769,7 +1769,7 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 
 	if (parsedline->auth_method == uaYbJWT)
 	{
-		if(!(parsedline->yb_jwt_jwks_url || parsedline->yb_jwt_jwks_path))
+		if (!(parsedline->yb_jwt_jwks_url || parsedline->yb_jwt_jwks_path))
 		{
 			ereport(elevel,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),

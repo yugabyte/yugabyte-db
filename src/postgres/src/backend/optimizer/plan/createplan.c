@@ -6623,7 +6623,7 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 	if (IsA(node, RowCompareExpr))
 	{
 		RowCompareExpr *rcexpr = (RowCompareExpr *) node;
-		if(rcexpr->rctype == ROWCOMPARE_EQ)
+		if (rcexpr->rctype == ROWCOMPARE_EQ)
 		{
 			RowCompareExpr *rcexpr_new = copyObject(rcexpr);
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
@@ -6648,8 +6648,8 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 	if (IsA(node, OpExpr))
 	{
 		OpExpr *opexpr = (OpExpr*) node;
-		if(list_length(opexpr->args) >= 2 &&
-		   IsA(lsecond(opexpr->args), YbBatchedExpr))
+		if (list_length(opexpr->args) >= 2 &&
+			IsA(lsecond(opexpr->args), YbBatchedExpr))
 		{
 			ScalarArrayOpExpr *saop = makeNode(ScalarArrayOpExpr);
 			saop->opno = opexpr->opno;

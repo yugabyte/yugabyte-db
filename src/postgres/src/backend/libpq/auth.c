@@ -3613,7 +3613,7 @@ YbCheckJwtAuth(Port *port)
 	 * fail to read the jwks file or the content is invalid.
 	 * Check if jwt_jwks_url is provided then use that otherwise use jwt_jwks_path
 	 */
-	if(port->hba->yb_jwt_jwks_url)
+	if (port->hba->yb_jwt_jwks_url)
 		jwks = ybReadFromUrl(port->hba->yb_jwt_jwks_url);
 	else
 		jwks = ybReadFile(HbaFileName, port->hba->yb_jwt_jwks_path, LOG);
@@ -3733,11 +3733,11 @@ ybReadFromUrl(const char *url)
 		YBCFreeStatus(status);
 		return NULL;
 	}
-	if(!url_contents)
+	if (!url_contents)
 		return NULL;
 
 	len = strlen(url_contents);
-	if(!pg_verifymbstr(url_contents, len, true))
+	if (!pg_verifymbstr(url_contents, len, true))
 	{
 		ereport(LOG,
 				(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),

@@ -15713,7 +15713,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 							  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
 							  yb_properties->tablegroup_oid);
 
-			if(strcmp(yb_properties->tablegroup_name, "default") == 0)
+			if (strcmp(yb_properties->tablegroup_name, "default") == 0)
 			{
 				appendPQExpBufferStr(q,
 									 "\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
@@ -16683,13 +16683,13 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 			getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
 				indxinfo->dobj.catId.oid, indxinfo->dobj.name, tbinfo->relkind);
 
-			if(yb_properties && yb_properties->is_colocated){
+			if (yb_properties && yb_properties->is_colocated){
 				appendPQExpBufferStr(q,
 								 "\n-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid\n");
 				appendPQExpBuffer(q,
 								 "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
 								 yb_properties->tablegroup_oid);
-				if(strcmp(yb_properties->tablegroup_name, "default") == 0)
+				if (strcmp(yb_properties->tablegroup_name, "default") == 0)
 				{
 					appendPQExpBufferStr(q,
 									"\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");

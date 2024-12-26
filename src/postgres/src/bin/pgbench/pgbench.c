@@ -8747,7 +8747,7 @@ main(int argc, char **argv)
 	initStats(&stats, 0);
 
 	/* Start metrics webserver if any metrics args are set */
-	if(yb_metrics_arg_set)
+	if (yb_metrics_arg_set)
 	{
 		YbInitMetricsWebserver(argv[0]);
 	}
