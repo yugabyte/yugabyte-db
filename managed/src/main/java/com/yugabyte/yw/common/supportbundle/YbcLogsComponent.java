@@ -9,16 +9,18 @@ import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
@@ -92,26 +94,18 @@ class YbcLogsComponent implements SupportBundleComponent {
         startDate,
         endDate);
 
-    String ybcLogsRegexPattern = config.getString("yb.support_bundle.ybc_logs_regex_pattern");
+    List<String> filteredPaths =
+        getFilesListWithSizes(customer, null, universe, startDate, endDate, node).keySet().stream()
+            .collect(Collectors.toList());
 
-    // Get and filter YB-Controller log files that fall within given dates
-    String ybcLogsPath = nodeHomeDir + "/controller/logs";
-    List<Path> ybcLogFilePaths = new ArrayList<>();
-    if (nodeUniverseManager.checkNodeIfFileExists(node, universe, ybcLogsPath)) {
-      // Gets the absolute paths of the ybc logs
-      ybcLogFilePaths =
-          nodeUniverseManager.getNodeFilePaths(
-              node, universe, ybcLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
-      ybcLogFilePaths =
-          supportBundleUtil.filterFilePathsBetweenDates(
-              ybcLogFilePaths, Arrays.asList(ybcLogsRegexPattern), startDate, endDate);
-    }
+    if (filteredPaths.size() > 0) {
 
-    if (ybcLogFilePaths.size() > 0) {
-      List<String> ybcLogFilePathString =
-          ybcLogFilePaths.stream()
-              .map(filePath -> Paths.get(nodeHomeDir).relativize(filePath))
+      filteredPaths =
+          filteredPaths.stream()
+              .peek(s -> log.error("file path before relativing = {}", s))
+              .map(filePath -> Paths.get(nodeHomeDir).relativize(Paths.get(filePath)))
               .map(Path::toString)
+              .peek(s -> log.error("file path after relativing = {}", s))
               .collect(Collectors.toList());
 
       // Download all logs batch wise
@@ -123,7 +117,7 @@ class YbcLogsComponent implements SupportBundleComponent {
           node,
           nodeTargetFile,
           nodeHomeDir,
-          ybcLogFilePathString,
+          filteredPaths,
           this.getClass().getSimpleName(),
           false);
 
@@ -158,5 +152,40 @@ class YbcLogsComponent implements SupportBundleComponent {
           startDate,
           endDate);
     }
+  }
+
+  public Map<String, Long> getFilesListWithSizes(
+      Customer customer,
+      SupportBundleFormData bundleData,
+      Universe universe,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
+    Map<String, Long> res = new HashMap<>();
+
+    String mountPath =
+        supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
+    String nodeHomeDir = mountPath + "/ybc-data";
+    String ybcLogsRegexPattern = config.getString("yb.support_bundle.ybc_logs_regex_pattern");
+
+    // Get and filter YB-Controller log files that fall within given dates
+    String ybcLogsPath = nodeHomeDir + "/controller/logs";
+    if (nodeUniverseManager.checkNodeIfFileExists(node, universe, ybcLogsPath)) {
+      // Gets the absolute paths and sizes of the ybc logs
+      Map<String, Long> ybcLogPathSizeMap =
+          nodeUniverseManager.getNodeFilePathAndSizes(
+              node, universe, ybcLogsPath, /* maxDepth */ 1, /* fileType */ "f");
+      List<String> filteredPaths =
+          supportBundleUtil.filterFilePathsBetweenDates(
+              ybcLogPathSizeMap.keySet().stream().collect(Collectors.toList()),
+              Arrays.asList(ybcLogsRegexPattern),
+              startDate,
+              endDate);
+      for (String path : filteredPaths) {
+        res.put(path, ybcLogPathSizeMap.get(path));
+      }
+    }
+    return res;
   }
 }

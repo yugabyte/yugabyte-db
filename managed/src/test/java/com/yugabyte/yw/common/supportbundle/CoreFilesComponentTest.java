@@ -21,7 +21,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -37,7 +36,9 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -99,15 +100,14 @@ public class CoreFilesComponentTest extends FakeDBApplication {
     doCallRealMethod()
         .when(mockSupportBundleUtil)
         .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(true));
-    List<Pair<Long, String>> fileSizeNameList =
-        Arrays.asList(
-            new Pair<>(101L, "core_test.2"),
-            new Pair<>(15L, "core_test.3"),
-            new Pair<>(100L, "core_test.1"),
-            new Pair<>(10L, "core_test.4"));
-    doReturn(fileSizeNameList)
+    Map<String, Long> fileNameSizeMap = new LinkedHashMap<>();
+    fileNameSizeMap.put("core_test.2", 101L);
+    fileNameSizeMap.put("core_test.3", 15L);
+    fileNameSizeMap.put("core_test.1", 100L);
+    fileNameSizeMap.put("core_test.4", 10L);
+    doReturn(fileNameSizeMap)
         .when(mockNodeUniverseManager)
-        .getNodeFilePathsAndSize(any(), any(), any(), any(), any());
+        .getNodeFilePathsAndSizeWithinDates(any(), any(), any(), any(), any());
 
     when(mockUniverseInfoHandler.downloadNodeFile(any(), any(), any(), any(), any(), any()))
         .thenAnswer(
@@ -195,7 +195,8 @@ public class CoreFilesComponentTest extends FakeDBApplication {
             captorSourceNodeFiles.capture(),
             any(),
             eq(true));
-    List<String> expectedSourceNodeFiles = Arrays.asList("core_test.3", "core_test.1");
+    List<String> expectedSourceNodeFiles =
+        Arrays.asList("core_test.3", "core_test.1", "core_test.4");
     System.out.println("CAPTOR: " + captorSourceNodeFiles.getValue().toString());
     assertEquals(expectedSourceNodeFiles, captorSourceNodeFiles.getValue());
 

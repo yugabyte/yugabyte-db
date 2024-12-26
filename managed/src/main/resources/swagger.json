@@ -13021,6 +13021,22 @@
       "required" : [ "components", "endDate", "startDate" ],
       "type" : "object"
     },
+    "SupportBundleSizeEstimateResponse" : {
+      "properties" : {
+        "data" : {
+          "additionalProperties" : {
+            "additionalProperties" : {
+              "format" : "int64",
+              "type" : "integer"
+            },
+            "type" : "object"
+          },
+          "description" : "A map of universe node names to component sizes for the given support bundle payload. Global component sizes are mapped to \"YBA\" node.",
+          "type" : "object"
+        }
+      },
+      "type" : "object"
+    },
     "SuppressHealthCheckNotificationsConfig" : {
       "properties" : {
         "suppressAllUniverses" : {
@@ -28674,6 +28690,58 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Create support bundle for specific universe",
+        "tags" : [ "Support Bundle management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle/estimate_size" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "estimateSupportBundleSize",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "support bundle info",
+          "in" : "body",
+          "name" : "supportBundle",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/SupportBundleFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SupportBundleSizeEstimateResponse"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SupportBundleSizeEstimateResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Estimate support bundle size for specific universe",
         "tags" : [ "Support Bundle management" ]
       }
     },

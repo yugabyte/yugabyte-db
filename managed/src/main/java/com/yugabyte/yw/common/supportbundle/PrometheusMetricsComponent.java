@@ -23,6 +23,8 @@ import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import play.libs.Json;
@@ -201,21 +203,7 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
 
     log.debug("Collecting the following Prometheus metrics: {}", data.prometheusMetricsTypes);
 
-    // validate the start & end dates of prometheus metrics dump
-    // 1. If both the dates are given; Continue
-    // 2. If no dates are specified, download all the exports from last 'x' duration
-    boolean startDateIsValid = supportBundleUtil.isValidDate(data.promDumpStartDate);
-    boolean endDateIsValid = supportBundleUtil.isValidDate(data.promDumpEndDate);
-    if (!startDateIsValid && !endDateIsValid) {
-      int defaultPromDumpRange =
-          confGetter.getGlobalConf(GlobalConfKeys.supportBundleDefaultPromDumpRange);
-      log.debug(
-          "'promDumpStartDate' and 'promDumpEndDate' are not valid. Defaulting the duration to {}",
-          defaultPromDumpRange);
-      data.promDumpEndDate = data.endDate;
-      data.promDumpStartDate =
-          supportBundleUtil.getDateNMinutesAgo(data.promDumpEndDate, defaultPromDumpRange);
-    }
+    dateValidation(data);
 
     // loop through the requested metric types
     for (PrometheusMetricsType type : data.prometheusMetricsTypes) {
@@ -253,5 +241,77 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
       NodeDetails node)
       throws Exception {
     this.downloadComponent(supportBundleTaskParams, customer, universe, bundlePath, node);
+  }
+
+  // It's hard to know exact sizes before actually collecting the data.
+  // So we add estimates based on date collected from various dev portal LRUs with varying node
+  // numbers.
+  // Can adjust the estimates later if they are too off.
+  public Map<String, Long> getFilesListWithSizes(
+      Customer customer,
+      SupportBundleFormData bundleData,
+      Universe universe,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
+
+    dateValidation(bundleData);
+    Long totalMins =
+        TimeUnit.MILLISECONDS.toMinutes(
+            bundleData.promDumpEndDate.getTime() - bundleData.promDumpStartDate.getTime());
+    // By default we collect prom metrics in 15 min batches.
+    Long timeMultiplier = (totalMins + 14) / 15;
+    Map<String, Long> res = new HashMap<String, Long>();
+    Long sum = 0L, numNodes = 1L * universe.getNodes().size();
+    for (PrometheusMetricsType type : bundleData.prometheusMetricsTypes) {
+      switch (type) {
+          // 600KB per db node per 15 mins
+        case NODE_EXPORT:
+          sum += 600000 * numNodes * timeMultiplier;
+          break;
+          // 3MB per master per 15 mins
+        case MASTER_EXPORT:
+          sum += 3000000L * universe.getMasters().size() * timeMultiplier;
+          break;
+          // 110KB per 15 mins
+        case PLATFORM:
+          sum += 110000L * timeMultiplier;
+          break;
+          // 400KB per universe per 15 mins
+        case PROMETHEUS:
+          sum += 400000L * Universe.find.all().size() * timeMultiplier;
+          break;
+          // 3MB per tserver per 15 mins
+        case TSERVER_EXPORT:
+          sum += 3000000L * universe.getTServers().size() * timeMultiplier;
+          break;
+          // 300KB per node per 15 mins
+        case YSQL_EXPORT:
+          // Intentional fallthrough
+        case CQL_EXPORT:
+          sum += 300000L * numNodes * timeMultiplier;
+      }
+    }
+    res.put("promSizeEstimate", sum);
+    return res;
+  }
+
+  // validate the start & end dates of prometheus metrics dump
+  // 1. If both the dates are given; Continue
+  // 2. If no dates are specified, download all the exports from last 'x' duration
+  private void dateValidation(SupportBundleFormData data) {
+    boolean startDateIsValid = supportBundleUtil.isValidDate(data.promDumpStartDate);
+    boolean endDateIsValid = supportBundleUtil.isValidDate(data.promDumpEndDate);
+    if (!startDateIsValid && !endDateIsValid) {
+      int defaultPromDumpRange =
+          confGetter.getGlobalConf(GlobalConfKeys.supportBundleDefaultPromDumpRange);
+      log.debug(
+          "'promDumpStartDate' and 'promDumpEndDate' are not valid. Defaulting the duration to {}",
+          defaultPromDumpRange);
+      data.promDumpEndDate = data.endDate;
+      data.promDumpStartDate =
+          supportBundleUtil.getDateNMinutesAgo(data.promDumpEndDate, defaultPromDumpRange);
+    }
   }
 }
