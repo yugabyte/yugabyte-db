@@ -1077,12 +1077,12 @@ Status CatalogManager::CreateNewXReplStream(
   // that all of the ALTER TABLE operations have completed.
 
   uint64 consistent_snapshot_time = 0;
-  bool record_type_option_all = false;
+  bool is_history_required_for_record_type = false;
   if (mode == CreateNewCDCStreamMode::kCdcsdkNamespaceAndTableIds) {
     for (auto option : req.options()) {
       if (option.key() == cdc::kRecordType) {
-        record_type_option_all =
-          option.value() == CDCRecordType_Name(cdc::CDCRecordType::ALL);
+        is_history_required_for_record_type =
+            option.value() != CDCRecordType_Name(cdc::CDCRecordType::CHANGE);
       }
     }
 
@@ -1099,7 +1099,8 @@ Status CatalogManager::CreateNewXReplStream(
         "CreateCDCSDKStream::kAfterDummyCDCStateEntries"));
 
     // Step 2: Set retention barriers for all tables.
-    auto require_history_cutoff = consistent_snapshot_option_use || record_type_option_all;
+    auto require_history_cutoff =
+        consistent_snapshot_option_use || is_history_required_for_record_type;
     RETURN_NOT_OK(SetAllCDCSDKRetentionBarriers(
         req, rpc, epoch, table_ids, stream->StreamId(), has_consistent_snapshot_option,
         require_history_cutoff));

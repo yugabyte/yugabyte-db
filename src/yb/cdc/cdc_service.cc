@@ -1819,13 +1819,18 @@ void CDCServiceImpl::GetChanges(
 
     // If snapshot operation or before image is enabled, don't allow compaction.
     std::optional<HybridTime> cdc_sdk_safe_time;
-    if (record.GetCheckpointType() == EXPLICIT ) {
+    if (record.GetCheckpointType() == EXPLICIT) {
       if (snapshot_bootstrap) {
-        cdc_sdk_safe_time = HybridTime::FromPB(resp->safe_hybrid_time());
-      } else {
-        if (cdc_sdk_explicit_safe_time != 0) {
-          cdc_sdk_safe_time = HybridTime::FromPB(cdc_sdk_explicit_safe_time);
+        if (resp->safe_hybrid_time() == 0) {
+          LOG(WARNING) << "Response safe time is 0 for tablet " << tablet_peer->tablet_id()
+                       << ", stream: " << stream_id
+                       << ", setting cdc_sdk_safe_time to HybridTime::kInitial";
         }
+        cdc_sdk_safe_time = (resp->safe_hybrid_time() == 0)
+                                ? HybridTime::kInitial
+                                : HybridTime::FromPB(resp->safe_hybrid_time());
+      } else if (cdc_sdk_explicit_safe_time != 0) {
+        cdc_sdk_safe_time = HybridTime::FromPB(cdc_sdk_explicit_safe_time);
       }
     } else if (req->safe_hybrid_time() != -1) {
       cdc_sdk_safe_time = HybridTime::FromPB(req->safe_hybrid_time());
@@ -2495,7 +2500,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
     // taking the snapshot of any table.
     if (entry.cdc_sdk_safe_time &&
-        (record.GetRecordType() == CDCRecordType::ALL || entry.snapshot_key.has_value())) {
+        (record.GetRecordType() != CDCRecordType::CHANGE || entry.snapshot_key.has_value())) {
       cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
     }
 

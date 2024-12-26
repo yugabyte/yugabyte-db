@@ -589,7 +589,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void CDCSDKIntentsBatchReadWithAlterAndTabletLeaderSwitch(bool packed_row);
   void EnableVerboseLoggingForModule(const std::string& module, int level);
 
-  void WaitForCompaction(YBTableName table);
+  void WaitForCompaction(YBTableName table, bool expect_equal_entries_after_compaction = false);
   void VerifySnapshotOnColocatedTables(
       xrepl::StreamId stream_id,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,

@@ -17,7 +17,10 @@ namespace cdc {
 
 class CDCSDKBeforeImageTest : public CDCSDKYsqlTest {
  public:
-  void SetUp() override { CDCSDKYsqlTest::SetUp(); }
+  void SetUp() override {
+    CDCSDKYsqlTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  }
 };
 
 TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage)) {
@@ -251,6 +254,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBefor
 // For CHANGE mode
 TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageChangeMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -305,6 +309,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBefor
 // For ALL mode (Backward compatibility)
 TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageAllMode)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -323,6 +328,15 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBefor
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 2, 3)"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 3 WHERE key = 1"));
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 1"));
+
+  // Wait for sometime for UpdatePeersAndMetrics to move the barriers.
+  SleepFor(MonoDelta::FromSeconds(3 * FLAGS_update_min_cdc_indices_interval_secs));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ 30, /* is_compaction = */ false));
+  // The DocDB entry count shouldnt change after compaction as CDC is holding the history barrier
+  // due to before image mode ALL.
+  WaitForCompaction(table, true /* expect_equal_entries_after_compaction */);
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 1, 1, 1, 0, 0};
@@ -1072,8 +1086,9 @@ TEST_F(
       first_get_changes = false;
 
     } else {
-      change_resp =
-          ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+      change_resp = ASSERT_RESULT(GetChangesFromCDC(
+          stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), 0 /* tablet_idx */,
+          change_resp.safe_hybrid_time()));
     }
 
     if (change_resp.cdc_sdk_proto_records_size() == 0) {
@@ -1166,8 +1181,9 @@ TEST_F(
       first_get_changes = false;
 
     } else {
-      change_resp =
-          ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+      change_resp = ASSERT_RESULT(GetChangesFromCDC(
+          stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), 0 /* tablet_idx */,
+          change_resp.safe_hybrid_time()));
     }
 
     if (change_resp.cdc_sdk_proto_records_size() == 0) {
