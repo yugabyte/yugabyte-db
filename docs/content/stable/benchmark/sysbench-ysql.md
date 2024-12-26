@@ -65,8 +65,6 @@ $ cd sysbench
 $ ./autogen.sh && ./configure --with-pgsql && make -j && sudo make install
 ```
 
-This installs the sysbench utility in `/usr/local/bin`.
-
   </div>
 
   <div id="rhel" class="tab-pane fade" role="tabpanel" aria-labelledby="rhel-tab">
@@ -148,7 +146,7 @@ $ sysbench <workload>               \
 
 ## Expected results
 
-The following results are for a 3-node cluster, with each node running on a c5.2xlarge AWS instance (8 cores, 16 GiB of RAM), all in the same AZ, with a replication factor of 3 and TLS enabled.
+The following results are for a 3-node cluster running YBDB version {{< yb-version version="stable" format="build">}}, with each node running on a c5.2xlarge AWS instance (8 cores, 16 GiB of RAM), all in the same AZ, with a replication factor of 3 and TLS enabled.
 
 ### 10 tables each with 100k rows
 
