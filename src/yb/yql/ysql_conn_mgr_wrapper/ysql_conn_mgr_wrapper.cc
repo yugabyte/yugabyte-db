@@ -101,6 +101,34 @@ DEFINE_NON_RUNTIME_uint64(ysql_conn_mgr_log_max_size, 0,
 DEFINE_NON_RUNTIME_uint64(ysql_conn_mgr_log_rotate_interval, 0,
     "Duration(in secs) after which ysql connection manager log will get rolled over");
 
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_readahead_buffer_size, 8192,
+    "Set size of per-connection buffer used for io readahead operations in "
+    "Ysql Connection Manager");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive, 15,
+    "TCP keepalive time in Ysql Connection Manager. Set to zero, to disable keepalive");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval, 75,
+    "TCP keepalive interval in Ysql Connection Manager. This is applicable if "
+    "'ysql_conn_mgr_tcp_keepalive' is enabled.");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_probes, 9,
+    "TCP keepalive probes in Ysql Connection Manager. This is applicable if "
+    "'ysql_conn_mgr_tcp_keepalive' is enabled.");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout, 0,
+    "TCP user timeout in Ysql Connection Manager. This is applicable if "
+    "'ysql_conn_mgr_tcp_keepalive' is enabled.");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_control_connection_pool_size, 0,
+    "Maximum number of concurrent control connections in Ysql Connection Manager. "
+    "If the value is zero, the default value is 0.1 * ysql_max_connections");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_timeout, 0,
+    "Server pool wait timeout(in ms) in Ysql Connection Manager. Time to wait in "
+    "milliseconds for an available server. Disconnect client on timeout reach. "
+    "If the value is set to zero, the client waits for the server connection indefinitely");
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
