@@ -254,23 +254,33 @@ public abstract class AbstractTaskBase implements ITask {
     getRunnableTask().runSubTasks();
   }
 
+  /**
+   * @deprecated Use {@link #createSubTaskGroup(String, SubTaskGroupType)} instead to set a default
+   *     SubTaskGroupType. This will be removed.
+   */
+  @Deprecated
   protected SubTaskGroup createSubTaskGroup(String name) {
-    return createSubTaskGroup(name, SubTaskGroupType.Invalid);
+    return createSubTaskGroup(name, SubTaskGroupType.Configuring);
   }
 
+  /**
+   * @deprecated Use {@link #createSubTaskGroup(String, SubTaskGroupType, boolean)} instead to set a
+   *     default SubTaskGroupType. This will be removed.
+   */
+  @Deprecated
   protected SubTaskGroup createSubTaskGroup(String name, boolean ignoreErrors) {
-    return createSubTaskGroup(name, SubTaskGroupType.Invalid, ignoreErrors);
+    return createSubTaskGroup(name, SubTaskGroupType.Configuring, ignoreErrors);
   }
 
-  protected SubTaskGroup createSubTaskGroup(String name, SubTaskGroupType subTaskGroupType) {
-    return createSubTaskGroup(name, subTaskGroupType, false);
+  protected SubTaskGroup createSubTaskGroup(String name, SubTaskGroupType defaultSubTaskGroupType) {
+    return createSubTaskGroup(name, defaultSubTaskGroupType, false);
   }
 
   // Returns a SubTaskGroup to which subtasks can be added.
   protected SubTaskGroup createSubTaskGroup(
-      String name, SubTaskGroupType subTaskGroupType, boolean ignoreErrors) {
+      String name, SubTaskGroupType defaultSubTaskGroupType, boolean ignoreErrors) {
     SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup(name, subTaskGroupType, ignoreErrors);
+        getTaskExecutor().createSubTaskGroup(name, defaultSubTaskGroupType, ignoreErrors);
     subTaskGroup.setSubTaskExecutor(getOrCreateExecutorService());
     return subTaskGroup;
   }

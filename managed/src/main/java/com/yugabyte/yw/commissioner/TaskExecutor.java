@@ -471,7 +471,7 @@ public class TaskExecutor {
    * @return SubTaskGroup
    */
   public SubTaskGroup createSubTaskGroup(String name) {
-    return createSubTaskGroup(name, SubTaskGroupType.Invalid, false);
+    return createSubTaskGroup(name, SubTaskGroupType.Configuring, false);
   }
 
   /**
@@ -494,7 +494,8 @@ public class TaskExecutor {
    */
   public SubTaskGroup createSubTaskGroup(
       String name, ExecutorService executorService, boolean ignoreErrors) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup(name, SubTaskGroupType.Invalid, ignoreErrors);
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(name, SubTaskGroupType.Configuring, ignoreErrors);
     subTaskGroup.setSubTaskExecutor(executorService);
     return subTaskGroup;
   }
@@ -588,7 +589,7 @@ public class TaskExecutor {
     private int position;
     // Optional executor service for the subtasks.
     private ExecutorService executorService;
-    private SubTaskGroupType subTaskGroupType = SubTaskGroupType.Invalid;
+    private SubTaskGroupType subTaskGroupType = SubTaskGroupType.Configuring;
 
     // It is instantiated internally.
     private SubTaskGroup(String name, SubTaskGroupType subTaskGroupType, boolean ignoreErrors) {
@@ -633,6 +634,10 @@ public class TaskExecutor {
 
     public String getName() {
       return name;
+    }
+
+    public SubTaskGroupType getSubTaskGroupType() {
+      return subTaskGroupType;
     }
 
     /** Returns the optional ExecutorService for the subtasks in this group. */
@@ -1249,6 +1254,31 @@ public class TaskExecutor {
       return getTaskUUID();
     }
 
+    // Fix the SubTaskGroupType by replacing the default 'Configuring' with the last non-default
+    // type if possible. Similar logic is done on serving the API response for task details.
+    private void fixSubTaskGroupType() {
+      SubTaskGroupType lastNonDefaultGroupType = SubTaskGroupType.Configuring;
+      for (SubTaskGroup subTaskGroup : subTaskGroups) {
+        if (subTaskGroup.getSubTaskCount() == 0) {
+          continue;
+        }
+        if (subTaskGroup.getSubTaskGroupType() == SubTaskGroupType.Configuring) {
+          log.warn(
+              "SubTaskGroupType is set to default '{}' for {}",
+              SubTaskGroupType.Configuring,
+              subTaskGroup.getName());
+        } else {
+          // Update it to the non default SubTaskGroupType.
+          lastNonDefaultGroupType = subTaskGroup.getSubTaskGroupType();
+        }
+        if (lastNonDefaultGroupType != subTaskGroup.getSubTaskGroupType()) {
+          // Current SubTaskGroupType is the default type which needs to be overridden.
+          log.info("Using the last SubTaskGroupType {}", lastNonDefaultGroupType);
+          subTaskGroup.setSubTaskGroupType(lastNonDefaultGroupType);
+        }
+      }
+    }
+
     /**
      * Adds the SubTaskGroup instance containing the subtasks which are to be executed concurrently.
      *
@@ -1284,11 +1314,9 @@ public class TaskExecutor {
     public void runSubTasks(boolean abortOnFailure) {
       Throwable anyThrowable = null;
       try {
+        fixSubTaskGroupType();
         for (SubTaskGroup subTaskGroup : subTaskGroups) {
           if (subTaskGroup.getSubTaskCount() == 0) {
-            // TODO Some groups are added without any subtasks in a task like
-            // CreateKubernetesUniverse.
-            // It needs to be fixed first before this can prevent empty groups from getting added.
             continue;
           }
           ExecutorService executorService = subTaskGroup.getSubTaskExecutorService();

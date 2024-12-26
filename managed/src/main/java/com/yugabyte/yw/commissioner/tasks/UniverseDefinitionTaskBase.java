@@ -2938,7 +2938,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UUID universeUuid,
       UniverseDefinitionTaskParams parentTaskParams,
       Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceExistsCheck");
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("InstanceExistsCheck", SubTaskGroupType.PreflightChecks);
     for (NodeDetails node : nodes) {
       if (node.placementUuid == null) {
         String errMsg = String.format("Node %s does not have placement.", node.nodeName);
@@ -3537,7 +3538,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       String subTaskGroupName,
       UserTaskDetails.SubTaskGroupType subTaskGroupType,
       boolean ignoreErrors) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup(subTaskGroupName, ignoreErrors);
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(subTaskGroupName, subTaskGroupType, ignoreErrors);
     vals.forEach(
         value -> {
           subTaskGroup.addSubTask(taskInitializer.apply(value));
