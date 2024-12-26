@@ -1244,6 +1244,8 @@ class Tablet : public AbstractTablet,
       REQUIRES(vector_indexes_mutex_);
   docdb::VectorIndexesPtr VectorIndexesList() const EXCLUDES(vector_indexes_mutex_);
 
+  docdb::HistoryCutoff AllowedHistoryCutoff();
+
   mutable std::mutex flush_filter_mutex_;
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_
       GUARDED_BY(flush_filter_mutex_);
@@ -1274,6 +1276,7 @@ class Tablet : public AbstractTablet,
   std::function<void()> num_sst_files_changed_listener_
       GUARDED_BY(num_sst_files_changed_listener_mutex_);
 
+  AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;
 
   std::mutex full_compaction_token_mutex_;

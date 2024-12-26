@@ -308,8 +308,7 @@ using namespace std::literals;  // NOLINT
 
 using rocksdb::SequenceNumber;
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 using strings::Substitute;
 
@@ -647,8 +646,9 @@ Tablet::Tablet(const TabletInitData& data)
       log_prefix_suffix_(data.log_prefix_suffix),
       is_sys_catalog_(data.is_sys_catalog),
       txns_enabled_(data.txns_enabled),
+      allowed_history_cutoff_provider_(data.allowed_history_cutoff_provider),
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
-          clock_, data.allowed_history_cutoff_provider, metadata_.get())),
+          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get())),
       full_compaction_pool_(data.full_compaction_pool),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
@@ -976,6 +976,7 @@ std::string Tablet::LogPrefix(docdb::StorageDbType db_type) const {
 Status Tablet::OpenKeyValueTablet() {
   auto common_options = VERIFY_RESULT(CommonRocksDBOptions());
 
+  RETURN_NOT_OK(snapshots_->Open());
   RETURN_NOT_OK(OpenRegularDB(common_options));
   RETURN_NOT_OK(OpenIntentsDB(common_options));
 
@@ -5564,6 +5565,18 @@ Status Tablet::GetTabletKeyRanges(
   FATAL_INVALID_ENUM_VALUE(Direction, direction);
 }
 
+docdb::HistoryCutoff Tablet::AllowedHistoryCutoff() {
+  docdb::HistoryCutoff result = {
+    .cotables_cutoff_ht = HybridTime::kInvalid,
+    .primary_cutoff_ht = HybridTime::kMax,
+  };
+  if (allowed_history_cutoff_provider_) {
+    result.MakeAtMost(allowed_history_cutoff_provider_(metadata_.get()));
+  }
+  result.primary_cutoff_ht.MakeAtMost(snapshots_->AllowedHistoryCutoff());
+  return result;
+}
+
 // ------------------------------------------------------------------------------------------------
 
 Result<ScopedReadOperation> ScopedReadOperation::Create(
@@ -5635,5 +5648,4 @@ Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::
   return result;
 }
 
-}  // namespace tablet
-}  // namespace yb
+}  // namespace yb::tablet

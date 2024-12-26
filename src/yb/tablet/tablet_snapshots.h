@@ -56,6 +56,8 @@ class TabletSnapshots : public TabletComponent {
  public:
   explicit TabletSnapshots(Tablet* tablet);
 
+  Status Open();
+
   // Create snapshot for this tablet.
   Status Create(SnapshotOperation* operation);
 
@@ -90,6 +92,8 @@ class TabletSnapshots : public TabletComponent {
 
   Status CreateDirectories(const std::string& rocksdb_dir, FsManager* fs);
 
+  HybridTime AllowedHistoryCutoff();
+
   static std::string SnapshotsDirName(const std::string& rocksdb_dir);
 
   static bool IsTempSnapshotDir(const std::string& dir);
@@ -122,6 +126,10 @@ class TabletSnapshots : public TabletComponent {
       const std::string& dir, CreateIntentsCheckpointIn create_intents_checkpoint_in);
 
   std::string TEST_last_rocksdb_checkpoint_dir_;
+
+  std::mutex last_snapshot_ht_mutex_;
+  std::unordered_map<SnapshotScheduleId, HybridTime> last_snapshot_ht_
+      GUARDED_BY(last_snapshot_ht_mutex_);
 };
 
 struct SequencesDataInfo {
