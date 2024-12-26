@@ -466,13 +466,14 @@ class AbstractCloud(AbstractCommandParser):
         if perform_extended_validation:
             # Verify both certificates are RSA
             for crt_path, cert_name in [(root_crt_path, "Root"), (server_crt_path, "Server")]:
-                output = remote_shell.run_command_raw(f"openssl x509 -in {crt_path} -noout -text")
+                output = remote_shell.run_command_raw(
+                    f"openssl x509 -in {crt_path} -noout -text | grep -i 'Signature Algorithm'")
                 if output.exited != 0:
                     raise YBOpsRuntimeError(
                         f"Failed to read {cert_name.lower()} certificate - {crt_path}.")
-                if "RSA Public-Key" not in output.stdout:
+                if "rsa" not in output.stdout.lower():
                     raise YBOpsRuntimeError(
-                        f"{cert_name} certificate - {crt_path} is not of RSA algorithm.")
+                        f"{cert_name} certificate - {crt_path} is not using RSA algorithm.")
 
             # Verify server key is RSA and at least 2048 bits
             key_info = remote_shell.run_command_raw(
