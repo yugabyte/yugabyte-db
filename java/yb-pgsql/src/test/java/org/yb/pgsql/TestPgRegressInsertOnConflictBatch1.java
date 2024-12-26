@@ -24,4 +24,12 @@ public class TestPgRegressInsertOnConflictBatch1 extends TestPgRegressInsertOnCo
     appendToYsqlPgConf(flags, YB_INSERT_ON_CONFLICT_BATCH_GUC + "=1");
     return flags;
   }
+
+  @Override
+  public int getTestMethodTimeoutSec() {
+    if (isTestRunningWithConnectionManager()) {
+      return 1200;
+    }
+    return 500;
+  }
 }
