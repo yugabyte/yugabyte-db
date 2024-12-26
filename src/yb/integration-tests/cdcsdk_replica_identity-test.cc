@@ -35,6 +35,7 @@ class CDCSDKReplicaIdentityTest : public CDCSDKYsqlTest {
     // and don't have to do cleanups after every test case.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
     // TODO(#23000) Rationalize the tests to run with consistent / non-consistent snapshot streams.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = false;
