@@ -324,12 +324,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // Increases consumption of this tracker and its ancestors by 'bytes'.
   void Consume(int64_t bytes);
 
-  // Try to expand the limit (by asking the resource broker for more memory) by at least
-  // 'bytes'. Returns false if not possible, true if the request succeeded. May allocate
-  // more memory than was requested.
-  // TODO: always returns false for now, not yet implemented.
-  bool ExpandLimit(int64_t /* unused: bytes */) { return false; }
-
   // Increases consumption of this tracker and its ancestors by 'bytes' only if
   // they can all consume 'bytes'. If this brings any of them over, none of them
   // are updated.
