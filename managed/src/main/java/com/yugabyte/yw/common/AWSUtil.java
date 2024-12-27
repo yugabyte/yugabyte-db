@@ -373,16 +373,6 @@ public class AWSUtil implements CloudUtil {
     return new HashSet<>();
   }
 
-  private String extractReleaseVersion(String key, String backupDir) {
-    String regex = String.format("%s/%s/([^/]+)/([^/]+)$", backupDir, YBDB_RELEASES);
-    Pattern pattern = Pattern.compile(regex);
-    Matcher matcher = pattern.matcher(key);
-    if (matcher.matches()) {
-      return matcher.group(1);
-    }
-    return null;
-  }
-
   @Override
   public File downloadYbaBackup(CustomerConfigData configData, String backupDir, Path localDir) {
     try {
