@@ -373,6 +373,102 @@ public class AWSUtil implements CloudUtil {
     return new HashSet<>();
   }
 
+  // Best effort to download YBDB releases matching releaseVersions specified. Downloads both x86
+  // and aarch64 releases. false only if Exception, true even if release version not found
+  @Override
+  public boolean downloadRemoteReleases(
+      CustomerConfigData configData,
+      Set<String> releaseVersions,
+      String releasesPath,
+      String backupDir) {
+
+    for (String version : releaseVersions) {
+      // Create the local directory if necessary inside of yb.storage.path/releases
+      Path versionPath;
+      try {
+        versionPath = Files.createDirectories(Path.of(releasesPath, version));
+      } catch (Exception e) {
+        log.error(
+            "Error creating local releases directory for version {}: {}", version, e.getMessage());
+        return false;
+      }
+
+      // Find the exact S3 file paths (x86 and aarch64) matching the version
+      try {
+        maybeDisableCertVerification();
+        CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+        AmazonS3 client = createS3Client(s3Data);
+        CloudLocationInfo cLInfo =
+            getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
+
+        // Get all the backups in the specified bucket/directory
+        String nextContinuationToken = null;
+
+        do {
+          ListObjectsV2Result listObjectsResult;
+          // List objects with prefix matching version number
+          ListObjectsV2Request request =
+              new ListObjectsV2Request()
+                  .withBucketName(cLInfo.bucket)
+                  .withPrefix(backupDir + "/" + YBDB_RELEASES + "/" + version);
+
+          if (StringUtils.isNotBlank(nextContinuationToken)) {
+            request.withContinuationToken(nextContinuationToken);
+          }
+
+          listObjectsResult = client.listObjectsV2(request);
+
+          if (listObjectsResult.getKeyCount() == 0) {
+            // No releases found for a specified version (best effort, might work later)
+            break;
+          }
+
+          nextContinuationToken =
+              listObjectsResult.isTruncated() ? listObjectsResult.getNextContinuationToken() : null;
+
+          List<S3ObjectSummary> releases = listObjectsResult.getObjectSummaries();
+          // Download found releases individually (same version, different arch)
+          for (S3ObjectSummary release : releases) {
+
+            // Name the local file same as S3 key basename (yugabyte-version-arch.tar.gz)
+            File localRelease =
+                versionPath
+                    .resolve(release.getKey().substring(release.getKey().lastIndexOf('/') + 1))
+                    .toFile();
+
+            log.info("Attempting to download from S3 {} to {}", release.getKey(), localRelease);
+
+            GetObjectRequest getRequest = new GetObjectRequest(cLInfo.bucket, release.getKey());
+            try (S3Object releaseObject = client.getObject(getRequest);
+                InputStream inputStream = releaseObject.getObjectContent();
+                FileOutputStream outputStream = new FileOutputStream(localRelease)) {
+              byte[] buffer = new byte[1024];
+              int bytesRead;
+              while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+              }
+
+            } catch (Exception e) {
+              log.error(
+                  "Error downloading {} to {}: {}", release.getKey(), localRelease, e.getMessage());
+              return false;
+            }
+          }
+        } while (nextContinuationToken != null);
+
+      } catch (AmazonS3Exception e) {
+        log.error("AWS Error occurred while downloading releases from S3: {}", e.getErrorMessage());
+        return false;
+      } catch (Exception e) {
+        log.error("Unexpected exception while downloading releases from S3: {}", e.getMessage());
+        return false;
+      } finally {
+        maybeEnableCertVerification();
+      }
+    }
+    return true;
+  }
+
   @Override
   public File downloadYbaBackup(CustomerConfigData configData, String backupDir, Path localDir) {
     try {

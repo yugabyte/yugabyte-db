@@ -140,6 +140,14 @@ public interface CloudUtil extends StorageUtil {
     return new HashSet<>();
   }
 
+  public default boolean downloadRemoteReleases(
+      CustomerConfigData configData,
+      Set<String> releaseVersions,
+      String releasesPath,
+      String backupDir) {
+    return false;
+  }
+
   public default RestorePreflightResponse
       generateYBBackupRestorePreflightResponseWithoutBackupObject(
           AdvancedRestorePreflightParams preflightParams, CustomerConfigData configData) {

@@ -13,17 +13,22 @@ package com.yugabyte.yw.commissioner.tasks;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseContainer;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.io.File;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -33,17 +38,23 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
   private final CloudUtilFactory cloudUtilFactory;
   private final PlatformReplicationHelper replicationHelper;
   private final PlatformReplicationManager replicationManager;
+  private final Config appConfig;
+  private final ReleaseManager releaseManager;
 
   @Inject
   protected RestoreContinuousBackup(
       BaseTaskDependencies baseTaskDependencies,
       PlatformReplicationHelper replicationHelper,
       PlatformReplicationManager replicationManager,
-      CloudUtilFactory cloudUtilFactory) {
+      CloudUtilFactory cloudUtilFactory,
+      Config appConfig,
+      ReleaseManager releaseManager) {
     super(baseTaskDependencies);
     this.replicationHelper = replicationHelper;
     this.replicationManager = replicationManager;
     this.cloudUtilFactory = cloudUtilFactory;
+    this.appConfig = appConfig;
+    this.releaseManager = releaseManager;
   }
 
   public static class Params extends AbstractTaskParams {
@@ -80,6 +91,23 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Could not download YBA backup from cloud storage.");
     }
+
+    // Restore any missing YBDB releases from remote storage
+    Set<String> toDownloadReleases =
+        cloudUtil.getRemoteReleaseVersions(customerConfig.getDataObject(), taskParams.backupDir);
+    Map<String, ReleaseContainer> localReleaseContainers =
+        releaseManager.getAllLocalReleaseContainersByVersion();
+    toDownloadReleases.removeAll(localReleaseContainers.keySet());
+    if (!cloudUtil.downloadRemoteReleases(
+        customerConfig.getDataObject(),
+        toDownloadReleases,
+        appConfig.getString(Util.YB_RELEASES_PATH),
+        taskParams.backupDir)) {
+      log.warn(
+          "Error downloading YBDB releases from remote storage location, some universe operations"
+              + " may not be permitted.");
+    }
+
     if (!replicationManager.restoreBackup(backup)) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error restoring backup to YBA");
     }
