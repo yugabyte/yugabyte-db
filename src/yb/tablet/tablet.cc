@@ -1925,7 +1925,7 @@ Status Tablet::HandleQLReadRequest(
   ScopedTabletMetricsLatencyTracker metrics_tracker(
       metrics_scope.metrics(), TabletEventStats::kQlReadLatency);
 
-  docdb::QLRocksDBStorage storage{doc_db(metrics_scope.metrics())};
+  docdb::QLRocksDBStorage storage{LogPrefix(), doc_db(metrics_scope.metrics())};
 
   bool schema_version_compatible = IsSchemaVersionCompatible(
       metadata()->primary_table_schema_version(), ql_read_request.schema_version(),
@@ -2044,7 +2044,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
   ScopedTabletMetricsLatencyTracker metrics_tracker(
       metrics, TabletEventStats::kQlReadLatency);
 
-  docdb::QLRocksDBStorage storage{doc_db(metrics)};
+  docdb::QLRocksDBStorage storage{LogPrefix(), doc_db(metrics)};
 
   const shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
@@ -5370,6 +5370,7 @@ Status DoGetTabletKeyRanges<Direction::kForward>(
   } else {
     index_iter->Seek(lower_bound_key);
     if (index_iter->Valid() && index_iter->key() == lower_bound_key) {
+      // Index iterator points to data block with keys <= lower_bound_key, skip it.
       index_iter->Next();
     }
   }

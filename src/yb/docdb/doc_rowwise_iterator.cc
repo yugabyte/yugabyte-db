@@ -185,6 +185,13 @@ inline void DocRowwiseIterator::Seek(Slice key) {
   db_iter_->Seek(Slice(&null_low, 1), seek_filter_, Full::kFalse);
 }
 
+inline void DocRowwiseIterator::SeekToDocKeyPrefix(Slice doc_key_prefix) {
+  VLOG_WITH_FUNC(3) << "Seeking to " << doc_key_prefix.ToDebugHexString();
+  prev_doc_found_ = DocReaderResult::kNotFound;
+  db_iter_->Seek(doc_key_prefix, SeekFilter::kAll, Full::kFalse);
+  row_key_.Clear();
+}
+
 inline void DocRowwiseIterator::SeekPrevDocKey(Slice key) {
   // TODO consider adding an operator bool to DocKey to use instead of empty() here.
   // TODO(fast-backward-scan) do we need to play with prev_doc_found_?

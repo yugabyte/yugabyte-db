@@ -74,8 +74,16 @@ class YQLRowwiseIteratorIf {
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
   virtual Slice GetTupleId() const;
 
+  virtual Slice GetRowKey() const;
+
   // Seeks to the given tuple by its id. See DocRowwiseIterator for details.
   virtual void SeekTuple(Slice tuple_id);
+
+  // Seeks to first record after specified doc_key_prefix. Also accepts RocksDB-shortened doc key
+  // (which could have last byte incremented, see rocksdb::ShortenedIndexBuilder).
+  // Requirement is that doc_key_prefix could not be in the middle of rocksdb records belonging
+  // to the same DocDB row.
+  virtual void SeekToDocKeyPrefix(Slice doc_key_prefix);
 
   virtual Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row);
 

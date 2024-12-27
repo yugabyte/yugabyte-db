@@ -116,6 +116,13 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
     return nullptr;
   }
 
+  Result<SampleBlocksData> GetSampleBlocks(
+      std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
+      DocDbBlocksSamplingMethod blocks_sampling_method,
+      size_t num_blocks_for_sample) const override {
+    return STATUS(NotSupported, "GetSampleBlocks is not implemented for virtual tables");
+  }
+
   std::string ToString() const override { return Format("YQLVirtualTable $0", table_name_); }
 
  protected:

@@ -725,3 +725,16 @@ message TserverMetricsInfoPB {
   required string name = 1;
   required string value = 2;
 }
+
+// See ql_rocksdb_storage.cc for details on each method.
+enum DocDbBlocksSamplingMethod {
+  SPLIT_INTERSECTING_BLOCKS = 0;
+  SPLIT_INTERSECTING_BLOCKS_V3 = 1;
+  COMBINE_INTERSECTING_BLOCKS = 2;
+}
+
+// See ysql_sampling_algorithm flag description.
+enum YsqlSamplingAlgorithm {
+  FULL_TABLE_SCAN = 0;
+  BLOCK_BASED_SAMPLING = 1;
+}

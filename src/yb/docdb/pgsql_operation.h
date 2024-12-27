@@ -208,6 +208,8 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Result<std::tuple<size_t, bool>> ExecuteSample();
 
+  Result<std::tuple<size_t, bool>> ExecuteSampleBlockBased();
+
   void BindReadTimeToPagingState(const ReadHybridTime& read_time);
 
   Status PopulateResultSet(const dockv::PgTableRow& table_row,

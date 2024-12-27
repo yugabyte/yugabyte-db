@@ -91,6 +91,8 @@ struct DocReadContext {
     return Slice(shared_key_prefix_buffer_.data(), table_key_prefix_len_);
   }
 
+  Index is_index() const { return is_index_; }
+
   void TEST_SetDefaultTimeToLive(uint64_t ttl_msec) {
     schema_.SetDefaultTimeToLive(ttl_msec);
   }
