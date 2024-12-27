@@ -732,8 +732,6 @@ od_router_status_t od_router_attach(od_router_t *router,
 		od_route_lock(route);
 	}
 
-	od_route_unlock(route);
-
 	/* create new server object */
 	bool created_atleast_one = false;
 	while (is_warmup_needed &&
@@ -752,6 +750,8 @@ od_router_status_t od_router_attach(od_router_t *router,
 		created_atleast_one = true;
 	}
 
+	od_route_unlock(route);
+	
 	if (!created_atleast_one)
 	{
 		server = od_server_allocate(
