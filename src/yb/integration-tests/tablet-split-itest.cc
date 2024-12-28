@@ -2894,7 +2894,8 @@ TEST_F(TabletSplitRemoteBootstrapEnabledTest, TestSplitAfterFailedRbsCreatesDire
   const auto get_tablet_meta_dirs =
       [this](ExternalTabletServer* node) -> Result<std::vector<string>> {
     auto tablet_meta_dirs = VERIFY_RESULT(env_->GetChildren(
-        JoinPathSegments(node->GetRootDir(), "yb-data", "tserver", "tablet-meta")));
+        JoinPathSegments(node->GetRootDir(), "yb-data", "tserver", "tablet-meta"),
+        ExcludeDots::kTrue));
     std::sort(tablet_meta_dirs.begin(), tablet_meta_dirs.end());
     return tablet_meta_dirs;
   };
@@ -2905,6 +2906,8 @@ TEST_F(TabletSplitRemoteBootstrapEnabledTest, TestSplitAfterFailedRbsCreatesDire
     return WaitFor([node_1, node_2, &get_tablet_meta_dirs]() -> Result<bool> {
       auto node_1_metas = VERIFY_RESULT(get_tablet_meta_dirs(node_1));
       auto node_2_metas = VERIFY_RESULT(get_tablet_meta_dirs(node_2));
+      LOG(INFO) << "node_1_metas: " << AsString(node_1_metas);
+      LOG(INFO) << "node_2_metas: " << AsString(node_2_metas);
       if (node_1_metas.size() != node_2_metas.size()) {
         return false;
       }

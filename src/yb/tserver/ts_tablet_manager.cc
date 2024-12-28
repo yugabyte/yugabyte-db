@@ -656,7 +656,7 @@ Status TSTabletManager::Init() {
   CleanupCheckpoints();
 
   // Search for tablets in the metadata dir.
-  vector<string> tablet_ids = VERIFY_RESULT(fs_manager_->ListTabletIds());
+  auto tablet_ids = VERIFY_RESULT(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
 
   InitLocalRaftPeerPB();
 
