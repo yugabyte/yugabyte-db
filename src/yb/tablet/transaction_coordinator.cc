@@ -1261,19 +1261,30 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       postponed_leader_actions_.leader_term = leader_term;
       for (const auto& transaction_id : transaction_ids) {
         auto id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_id));
-        auto it = managed_transactions_.find(id);
-        std::vector<ExpectedTabletBatches> expected_tablet_batches;
-        bool known_txn = it != managed_transactions_.end();
-        auto txn_status_with_ht = known_txn
-            ? VERIFY_RESULT(it->GetStatus(&expected_tablet_batches))
-            : TransactionStatusResult(TransactionStatus::ABORTED, HybridTime::kMax);
-        VLOG_WITH_PREFIX(4) << __func__ << ": " << id << " => " << txn_status_with_ht
-                            << ", last touch: " << it->last_touch();
-        if (txn_status_with_ht.status == TransactionStatus::SEALED) {
-          // TODO(dtxn) Avoid concurrent resolve
-          txn_status_with_ht = VERIFY_RESULT(ResolveSealedStatus(
-              id, txn_status_with_ht.status_time, expected_tablet_batches,
-              /* abort_if_not_replicated = */ false, &lock));
+        bool known_txn = false;
+        TransactionStatusResult txn_status_with_ht;
+        {
+          auto it = managed_transactions_.find(id);
+          std::vector<ExpectedTabletBatches> expected_tablet_batches;
+          known_txn = it != managed_transactions_.end();
+          txn_status_with_ht = known_txn
+              ? VERIFY_RESULT(it->GetStatus(&expected_tablet_batches))
+              : TransactionStatusResult(TransactionStatus::ABORTED, HybridTime::kMax);
+          VLOG_WITH_PREFIX_AND_FUNC(4)
+              << id << " => " << txn_status_with_ht
+              << ", last touch: " << (known_txn ? it->last_touch() : HybridTime::kInvalid);
+          auto mutable_aborted_set_pb = response->add_aborted_subtxn_set();
+          if (txn_status_with_ht.status == TransactionStatus::COMMITTED ||
+              txn_status_with_ht.status == TransactionStatus::PENDING) {
+            *mutable_aborted_set_pb = it->GetAbortedSubtxnInfo()->pb();
+            response->add_min_active_txn_reuse_version(it->min_active_txn_reuse_version());
+          }
+          if (txn_status_with_ht.status == TransactionStatus::SEALED) {
+            // TODO(dtxn) Avoid concurrent resolve
+            txn_status_with_ht = VERIFY_RESULT(ResolveSealedStatus(
+                id, txn_status_with_ht.status_time, expected_tablet_batches,
+                /* abort_if_not_replicated = */ false, &lock));
+          }
         }
         if (!known_txn) {
           if (!leader_safe_time) {
@@ -1293,14 +1304,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         response->add_status(txn_status_with_ht.status);
         response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
         StatusToPB(txn_status_with_ht.expected_deadlock_status, response->add_deadlock_reason());
-
-        auto mutable_aborted_set_pb = response->add_aborted_subtxn_set();
-        if (it != managed_transactions_.end() &&
-            (txn_status_with_ht.status == TransactionStatus::COMMITTED ||
-             txn_status_with_ht.status == TransactionStatus::PENDING)) {
-          *mutable_aborted_set_pb = it->GetAbortedSubtxnInfo()->pb();
-          response->add_min_active_txn_reuse_version(it->min_active_txn_reuse_version());
-        }
       }
       postponed_leader_actions.Swap(&postponed_leader_actions_);
     }
