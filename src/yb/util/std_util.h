@@ -128,4 +128,7 @@ auto ValueAsFuture(T&& value) {
   return promise.get_future();
 }
 
+template <class T>
+using optional_ref = std::optional<std::reference_wrapper<T>>;
+
 } // namespace yb

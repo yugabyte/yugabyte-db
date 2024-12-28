@@ -280,8 +280,8 @@ class ClusterLoadBalancer {
       TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
-  Result<bool> GetTabletToMove(
-      const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id)
+  Result<std::optional<TabletId>> GetTabletToMove(
+      const TabletServerId& from_ts, const TabletServerId& to_ts)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Issue the change config and modify the in-memory state for moving a replica from one tablet
