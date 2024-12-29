@@ -410,6 +410,8 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_conn_mgr_version_matching;
   const bool*     ysql_conn_mgr_version_matching_connect_higher_version;
   const bool*     ysql_block_dangerous_roles;
+  const char*     ysql_sequence_cache_method;
+  const char*     ysql_conn_mgr_sequence_support_mode;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

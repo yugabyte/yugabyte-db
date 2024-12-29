@@ -2071,6 +2071,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_version_matching_connect_higher_version =
           &FLAGS_ysql_conn_mgr_version_matching_connect_higher_version,
       .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
+      .ysql_sequence_cache_method = FLAGS_ysql_sequence_cache_method.c_str(),
+      .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
   };
   // clang-format on
   return &accessor;

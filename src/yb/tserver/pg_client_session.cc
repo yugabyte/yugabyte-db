@@ -84,10 +84,6 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_table_mutation_counter, false,
                     "ysql_auto_analyze_scale_factor).");
 TAG_FLAG(ysql_enable_table_mutation_counter, experimental);
 
-DEFINE_RUNTIME_string(ysql_sequence_cache_method, "connection",
-    "Where sequence values are cached for both existing and new sequences. Valid values are "
-    "\"connection\" and \"server\"");
-
 DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
                     "If set, DDL transactions will wait for DDL verification to complete before "
                     "returning to the client. ");
@@ -100,6 +96,7 @@ DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
+DECLARE_string(ysql_sequence_cache_method);
 
 DECLARE_uint64(rpc_max_message_size);
 

@@ -16,6 +16,7 @@ package org.yb.ysqlconnmgr;
 import static com.google.common.base.Preconditions.checkArgument;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertTrue;
 
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -25,6 +26,7 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -476,5 +478,31 @@ protected void enableVersionMatchingAndRestartCluster(boolean higher_version_mat
       this.dbName = dbName;
       this.testSuccess = false;
     }
+  }
+
+  protected void assertConnectionStickyState(Statement stmt,
+                                           boolean expectedSticky)
+                                           throws Exception {
+    HashSet<Integer> pids = new HashSet<>();
+    ResultSet rs;
+    for (int i = 0; i < 10; i++) {
+      rs = stmt.executeQuery("SELECT pg_backend_pid()");
+      assertTrue(rs.next());
+      pids.add(rs.getInt(1));
+    }
+   if (expectedSticky)
+    assertTrue(pids.size() == 1);
+   else
+    assertTrue(pids.size() > 1);
+  }
+
+  protected void restartClusterWithFlags(
+      Map<String, String> additionalMasterFlags,
+      Map<String, String> additionalTserverFlags) throws Exception {
+    destroyMiniCluster();
+    waitForProperShutdown();
+
+    createMiniCluster(additionalMasterFlags, additionalTserverFlags);
+    waitForDatabaseToStart();
   }
 }
