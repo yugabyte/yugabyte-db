@@ -1568,4 +1568,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If enabled use YNP for provisioning",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableMetricsTimezone =
+      new ConfKeyInfo<>(
+          "yb.ui.metrics.enable_timezone",
+          ScopeType.GLOBAL,
+          "Enable viewing metrics in timezone selected at the metrics page",
+          "Enable viewing metrics in timezone selected at the metrics page and will be preserved at"
+              + " session level",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

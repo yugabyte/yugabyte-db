@@ -1,4 +1,5 @@
 import { UniverseState } from '../../components/universes/helpers/universeHelpers';
+import { getBrowserTimezoneOffset } from './DateUtils';
 
 export const QueryApi = {
   YSQL: 'ysql',
@@ -71,6 +72,7 @@ export const RuntimeConfigKey = {
   AZURE_DEFAULT_STORAGE_TYPE: 'yb.azure.storage.default_storage_type',
   AZURE_PREMIUM_V2_STORAGE_TYPE: 'yb.azure.show_premiumv2_storage_type',
   DOWNLOAD_METRICS_PDF: 'yb.ui.metrics.enable_download_pdf',
+  ENABLE_METRICS_TZ: 'yb.ui.metrics.enable_timezone',
   ENABLE_AUTO_MASTER_FAILOVER: 'yb.auto_master_failover.enabled',
   ENABLE_ROLLBACK_SUPPORT: 'yb.upgrade.enable_rollback_support',
   PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics',
@@ -211,3 +213,5 @@ export const GFLAG_GROUPS = {
 };
 
 export const I18N_DURATION_KEY_PREFIX = 'common.duration';
+
+export const DEFAULT_TIMEZONE = { value: 'Default', label: `${getBrowserTimezoneOffset()}` };

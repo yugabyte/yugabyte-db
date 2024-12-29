@@ -49,6 +49,8 @@ export const SlotDetail: FC<RouteComponentProps<{}, SlotDetailProps>> = ({ locat
   const [startMoment, setStartMoment] = useState<any>(moment().subtract('1', 'hour'));
   const [endMoment, setEndMoment] = useState<any>(moment());
   const { t } = useTranslation();
+
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   //fetch Universe details to get nodePrefix details
   const { data: universeData, isLoading: isUniverseDataLoading } = useQuery([uuid], () =>
     api.fetchUniverse(uuid)
@@ -344,6 +346,7 @@ export const SlotDetail: FC<RouteComponentProps<{}, SlotDetailProps>> = ({ locat
                   handleTimeframeChange={applyCustomFilter}
                   setStartMoment={handleStartDateChange}
                   setEndMoment={handleEndDateChange}
+                  timezone={currentUserTimezone}
                 />
               )}
               <Dropdown id="graphFilterDropdown" pullRight>
