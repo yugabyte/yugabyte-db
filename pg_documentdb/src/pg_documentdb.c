@@ -46,7 +46,7 @@ _PG_init(void)
 	}
 
 	InstallBsonMemVTables();
-	InitApiConfigurations("documentdb");
+	InitApiConfigurations("documentdb", "documentdb");
 	InitializeExtensionExternalConfigs("documentdb");
 	InitializeSharedMemoryHooks();
 	MarkGUCPrefixReserved("documentdb");

@@ -10,9 +10,9 @@
 #ifndef HELIO_API_INIT_H
 #define HELIO_API_INIT_H
 
-void InitApiConfigurations(char *prefix);
+void InitApiConfigurations(char *prefix, char *newGucPrefix);
 void InstallHelioApiPostgresHooks(void);
 void UninstallHelioApiPostgresHooks(void);
-void InitializeHelioBackgroundWorker(char *libraryName);
+void InitializeHelioBackgroundWorker(char *libraryName, char *gucPrefix);
 void InitializeSharedMemoryHooks(void);
 #endif

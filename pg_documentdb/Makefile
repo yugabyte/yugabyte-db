@@ -91,4 +91,4 @@ $(generated_sql_files): build/%: %
 
 include $(OSS_SRC_DIR)/Makefile.versions
 
-src/documentdb_extension_version.o : build/include/metadata/extension_version.h
+src/documentdb_extension_version.o : build/include/metadata/documentdb_extension_version.h

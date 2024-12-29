@@ -10,6 +10,6 @@
 #ifndef HELIO_DISTRIBUTED_INIT_H
 #define HELIO_DISTRIBUTED_INIT_H
 
-void InitHelioDistributedConfigurations(void);
+void InitHelioDistributedConfigurations(const char *prefix);
 
 #endif

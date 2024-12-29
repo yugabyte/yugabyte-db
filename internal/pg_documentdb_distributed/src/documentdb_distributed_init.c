@@ -31,17 +31,17 @@ bool EnableShardRebalancer = DEFAULT_ENABLE_SHARD_REBALANCER;
  * Initializes core configurations pertaining to helio core.
  */
 void
-InitHelioDistributedConfigurations(void)
+InitHelioDistributedConfigurations(const char *prefix)
 {
 	DefineCustomBoolVariable(
-		"helio_api_distributed.enable_metadata_reference_table_sync",
+		psprintf("%s.enable_metadata_reference_table_sync", prefix),
 		gettext_noop(
 			"Determines whether or not to enable metadata reference table syncs."),
 		NULL, &EnableMetadataReferenceTableSync, DEFAULT_ENABLE_METADATA_REFERENCE_SYNC,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api_distributed.enable_shard_rebalancer_apis",
+		psprintf("%s.enable_shard_rebalancer_apis", prefix),
 		gettext_noop(
 			"Determines whether or not to enable shard rebalancer APIs."),
 		NULL, &EnableShardRebalancer, DEFAULT_ENABLE_SHARD_REBALANCER,

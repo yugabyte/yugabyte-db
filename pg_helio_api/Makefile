@@ -98,3 +98,5 @@ $(generated_sql_files): build/%: %
 include $(OSS_SRC_DIR)/Makefile.versions
 
 include $(OSS_SRC_DIR)/Makefile.docdb
+
+src/helio_api_extension_version.o : build/include/metadata/helio_extension_version.h

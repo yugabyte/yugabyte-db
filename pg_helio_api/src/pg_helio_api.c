@@ -48,11 +48,11 @@ _PG_init(void)
 
 	SkipDocumentDBLoad = true;
 	InstallBsonMemVTables();
-	InitApiConfigurations("helio_api");
+	InitApiConfigurations("helio_api", "helio_api");
 	InitializeExtensionExternalConfigs("helio_api");
 	InitializeSharedMemoryHooks();
 	MarkGUCPrefixReserved("helio_api");
-	InitializeHelioBackgroundWorker("pg_helio_api");
+	InitializeHelioBackgroundWorker("pg_helio_api", "helio_api");
 
 	InstallHelioApiPostgresHooks();
 

@@ -45,7 +45,7 @@ _PG_init(void)
 	}
 
 	InitializeHelioDistributedHooks();
-	InitHelioDistributedConfigurations();
+	InitHelioDistributedConfigurations("helio_api_distributed");
 	MarkGUCPrefixReserved("helio_api_distributed");
 }
 

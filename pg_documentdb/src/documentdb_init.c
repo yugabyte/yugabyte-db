@@ -66,7 +66,7 @@ bool RecreateRetryTableOnSharding = DEFAULT_RECREATE_RETRY_TABLE_ON_SHARDING;
 static void HelioTransactionCallback(XactEvent event, void *arg);
 static void HelioSubTransactionCallback(SubXactEvent event, SubTransactionId mySubid,
 										SubTransactionId parentSubid, void *arg);
-static void InitHelioBackgroundWorkerGucs(void);
+static void InitHelioBackgroundWorkerGucs(const char *prefix);
 
 static void HelioSharedMemoryInit(void);
 
@@ -299,7 +299,7 @@ int MaxUserLimit = MAX_USER_LIMIT;
  * Initializes core configurations pertaining to the bson type management.
  */
 void
-InitApiConfigurations(char *prefix)
+InitApiConfigurations(char *prefix, char *newGucPrefix)
 {
 	DefineCustomStringVariable(
 		psprintf("%s.localhost_connection_string", prefix),
@@ -335,7 +335,7 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
-		"helio_api.next_collection_id",
+		psprintf("%s.next_collection_id", newGucPrefix),
 		gettext_noop("Set the next collection id to use when creationing a collection."),
 		gettext_noop("Collection ids are normally generated using a sequence. If "
 					 "next_collection_id is set to a value different than "
@@ -350,7 +350,7 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
-		"helio_api.next_collection_index_id",
+		psprintf("%s.next_collection_index_id", newGucPrefix),
 		gettext_noop("Set the next collection index id to use when creating a "
 					 "collection index."),
 		gettext_noop("Collection index ids are normally generated using a sequence. "
@@ -377,7 +377,7 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.mongoEnableInQueryOptimization",
+		psprintf("%s.mongoEnableInQueryOptimization", newGucPrefix),
 		gettext_noop("Determines whether in queries are rewritten to equality"),
 		NULL,
 		&EnableInQueryOptimization,
@@ -493,14 +493,14 @@ InitApiConfigurations(char *prefix)
 	DefineCustomBoolVariable(
 		psprintf("%s.enableVectorHNSWIndex", prefix),
 		gettext_noop(
-			"Enables support for HNSW index type and query for vector search in pg_helio_api."),
+			"Enables support for HNSW index type and query for vector search in bson documents index."),
 		NULL, &EnableVectorHNSWIndex, DEFAULT_ENABLE_VECTOR_HNSW_INDEX,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		psprintf("%s.enableVectorPreFilter", prefix),
 		gettext_noop(
-			"Enables support for vector pre-filtering feature for vector search in pg_helio_api."),
+			"Enables support for vector pre-filtering feature for vector search in bson documents index."),
 		NULL, &EnableVectorPreFilter, DEFAULT_ENABLE_VECTOR_PRE_FILTER,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
@@ -527,7 +527,7 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableGenerateNonExistsTerm",
+		psprintf("%s.enableGenerateNonExistsTerm", newGucPrefix),
 		gettext_noop(
 			"Enables generating the non exists term for new documents in a collection."),
 		NULL, &EnableGenerateNonExistsTerm, DEFAULT_ENABLE_GENERATE_NON_EXISTS_TERM,
@@ -570,14 +570,14 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enable_large_unique_index_keys",
+		psprintf("%s.enable_large_unique_index_keys", newGucPrefix),
 		gettext_noop("Whether or not to enable large index keys on unique indexes."),
 		NULL, &DefaultEnableLargeUniqueIndexKeys, DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	/* Deprecated, test only. Do not use in prod. */
 	DefineCustomBoolVariable(
-		"helio_api.force_enable_new_unique_opclass",
+		psprintf("%s.force_enable_new_unique_opclass", newGucPrefix),
 		gettext_noop(
 			"Testing GUC on Whether or not to enable the new opclass for large index keys on unique indexes."),
 		NULL, &ForceEnableNewUniqueOpClass, FORCE_ENABLE_NEW_UNIQUE_OPCLASS,
@@ -615,14 +615,14 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.useLocalExecutionShardQueries",
+		psprintf("%s.useLocalExecutionShardQueries", newGucPrefix),
 		gettext_noop(
 			"Determines whether or not to push local shard queries to the shard directly."),
 		NULL, &UseLocalExecutionShardQueries, DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableNewSelectivityMode",
+		psprintf("%s.enableNewSelectivityMode", newGucPrefix),
 		gettext_noop(
 			"Determines whether to use the new selectivity logic."),
 		NULL, &EnableNewOperatorSelectivityMode,
@@ -630,7 +630,7 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableRumIndexScan",
+		psprintf("%s.enableRumIndexScan", newGucPrefix),
 		gettext_noop(
 			"Allow rum index scans."),
 		NULL,
@@ -641,21 +641,21 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableMergeTargetCreation",
+		psprintf("%s.enableMergeTargetCreation", newGucPrefix),
 		gettext_noop(
 			"Enables support for target collection creation in pg_helio_api."),
 		NULL, &EnableMergeTargetCreation, DEFAULT_ENABLE_MERGE_TARGET_CREATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableMergeAcrossDB",
+		psprintf("%s.enableMergeAcrossDB", newGucPrefix),
 		gettext_noop(
 			"Enables support for merge stage in pg_helio_api."),
 		NULL, &EnableMergeAcrossDB, DEFAULT_ENABLE_MERGE_ACROSS_DB,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableCursorsOnAggregationQueryRewrite",
+		psprintf("%s.enableCursorsOnAggregationQueryRewrite", newGucPrefix),
 		gettext_noop(
 			"Whether or not to add the cursors on aggregation style queries."),
 		NULL,
@@ -666,7 +666,7 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
-		"helio_api.maxWildcardIndexKeySize",
+		psprintf("%s.maxWildcardIndexKeySize", newGucPrefix),
 		gettext_noop("GUC for the max wildcard index key size."),
 		NULL, &MaxWildcardIndexKeySize,
 		DEFAULT_MAX_WILDCARD_INDEX_KEY_SIZE, 1, INT32_MAX,
@@ -708,7 +708,7 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableMultiIndexRumJoin",
+		psprintf("%s.enableMultiIndexRumJoin", newGucPrefix),
 		gettext_noop(
 			"Whether or not to add the cursors on aggregation style queries."),
 		NULL,
@@ -719,7 +719,7 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableHelioBackgroundWorker",
+		psprintf("%s.enableHelioBackgroundWorker", newGucPrefix),
 		gettext_noop("Enable Helio Background worker."),
 		NULL, &EnableBackgroundWorker, DEFAULT_ENABLE_BG_WORKER,
 		PGC_SUSET, 0, NULL, NULL, NULL);
@@ -754,35 +754,35 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableLetSupport",
+		psprintf("%s.enableLetSupport", newGucPrefix),
 		gettext_noop(
 			"Determines whether to enable support for the let in commands and $lookup"),
 		NULL, &EnableLetSupport, DEFAULT_ENABLE_LET_SUPPORT,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableLookupLetSupport",
+		psprintf("%s.enableLookupLetSupport", newGucPrefix),
 		gettext_noop(
 			"Determines whether to enable support for the let in commands and $lookup"),
 		NULL, &EnableLookupLetSupport, DEFAULT_ENABLE_LOOKUP_LET_SUPPORT,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableLookupUnwindOptimization",
+		psprintf("%s.enableLookupUnwindOptimization", newGucPrefix),
 		gettext_noop(
 			"Determines whether to enable support for the optimizing $unwind with $lookup prefix"),
 		NULL, &EnableLookupUnwindSupport, DEFAULT_ENABLE_LOOKUP_UNWIND_OPTIMIZATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.ignoreLetOnQuerySpec",
+		psprintf("%s.ignoreLetOnQuerySpec", newGucPrefix),
 		gettext_noop(
 			"Determines whether to ignore the spec let in commands and $lookup"),
 		NULL, &IgnoreLetOnQuerySupport, DEFAULT_IGNORE_LET_ON_QUERY,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableIndexTermTruncationOnNestedObjects",
+		psprintf("%s.enableIndexTermTruncationOnNestedObjects", newGucPrefix),
 		gettext_noop(
 			"Determines whether to truncate index terms with nested objects (arrays/objects of arrays/objects)"),
 		NULL, &EnableIndexTermTruncationOnNestedObjects,
@@ -790,14 +790,14 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.skipFailOnCollation",
+		psprintf("%s.skipFailOnCollation", newGucPrefix),
 		gettext_noop(
 			"Determines whether we can skip failing when collation is specified but collation is not supported"),
 		NULL, &SkipFailOnCollation, DEFAULT_SKIP_FAIL_ON_COLLATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableLookupIdJoinOptimizationOnCollation",
+		psprintf("%s.enableLookupIdJoinOptimizationOnCollation", newGucPrefix),
 		gettext_noop(
 			"Determines whether we can perform _id join opetimization on collation. It would be a customer input confiriming that _id does not contain collation aware data types (i.e., UTF8 and DOCUMENT)."),
 		NULL, &EnableLookupIdJoinOptimizationOnCollation,
@@ -805,28 +805,28 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableUserCrud",
+		psprintf("%s.enableUserCrud", newGucPrefix),
 		gettext_noop(
 			"Enables user crud through the data plane."),
 		NULL, &EnableUserCrud, DEFAULT_ENABLE_USER_CRUD,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableDensifyStage",
+		psprintf("%s.enableDensifyStage", newGucPrefix),
 		gettext_noop(
 			"Enables $densify aggregation stage."),
 		NULL, &EnableDensifyStage, DEFAULT_ENABLE_DENSIFY_STAGE,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomStringVariable(
-		"helio_api.clusterAdminRole",
+		psprintf("%s.clusterAdminRole", newGucPrefix),
 		gettext_noop(
 			"The cluster admin role."),
 		NULL, &ClusterAdminRole, DEFAULT_CLUSTER_ADMIN_ROLE,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
-		"helio_api.scramDefaultSaltLen",
+		psprintf("%s.scramDefaultSaltLen", newGucPrefix),
 		gettext_noop("The default scram salt length."),
 		NULL, &ScramDefaultSaltLen,
 		SCRAM_DEFAULT_SALT_LEN, 1, 64,
@@ -835,7 +835,7 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
-		"helio_api.defaultUniqueIndexKeyhashOverride",
+		psprintf("%s.defaultUniqueIndexKeyhashOverride", newGucPrefix),
 		gettext_noop(
 			"Do not set this in production. GUC used to force a single keyhash result value for testing hash conflicts on unique indexes that require a runtime recheck."),
 		NULL, &DefaultUniqueIndexKeyhashOverride,
@@ -845,14 +845,14 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableShardingOrFilters",
+		psprintf("%s.enableShardingOrFilters", newGucPrefix),
 		gettext_noop(
 			"Whether to enable OR filter based detection for the shard key."),
 		NULL, &EnableShardingOrFilters, DEFAULT_ENABLE_SHARDING_OR_FILTERS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.throwDeadlockOnCRUD",
+		psprintf("%s.throwDeadlockOnCRUD", newGucPrefix),
 		gettext_noop(
 			"Determines whether a deadlock on CRUD operations should be thrown as an exception rather than catching it and writing it to the operation result bson."),
 		NULL,
@@ -861,7 +861,7 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
-		"helio_api.maxUserLimit",
+		psprintf("%s.maxUserLimit", newGucPrefix),
 		gettext_noop("The default number of users allowed."),
 		NULL, &MaxUserLimit,
 		MAX_USER_LIMIT, 1, 100,
@@ -899,10 +899,10 @@ InstallHelioApiPostgresHooks(void)
 
 /* Initialized the background worker */
 void
-InitializeHelioBackgroundWorker(char *libraryName)
+InitializeHelioBackgroundWorker(char *libraryName, char *gucPrefix)
 {
 	/* Initialize GUCs */
-	InitHelioBackgroundWorkerGucs();
+	InitHelioBackgroundWorkerGucs(gucPrefix);
 
 	if (!EnableBackgroundWorker)
 	{
@@ -1015,10 +1015,10 @@ HelioSubTransactionCallback(SubXactEvent event, SubTransactionId mySubid,
 
 
 static void
-InitHelioBackgroundWorkerGucs(void)
+InitHelioBackgroundWorkerGucs(const char *prefix)
 {
 	DefineCustomStringVariable(
-		"helio_bg_worker.database_name",
+		psprintf("%s_bg_worker_database_name", prefix),
 		gettext_noop("Database to which background worker will connect."),
 		NULL,
 		&BackgroundWorkerDatabaseName,
@@ -1028,7 +1028,7 @@ InitHelioBackgroundWorkerGucs(void)
 		NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
-		"helio_bg_worker.latch_timeout",
+		psprintf("%s.bg_worker_latch_timeout", prefix),
 		gettext_noop("Latch timeout inside main thread of helio_bg worker leader."),
 		NULL,
 		&LatchTimeOutSec,

@@ -45,7 +45,7 @@ _PG_init(void)
 	}
 
 	InitializeHelioDistributedHooks();
-	InitHelioDistributedConfigurations();
+	InitHelioDistributedConfigurations("documentdb_distributed");
 	MarkGUCPrefixReserved("documentdb_distributed");
 }
 
