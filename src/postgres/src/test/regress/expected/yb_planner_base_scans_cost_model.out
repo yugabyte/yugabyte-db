@@ -23,23 +23,23 @@ CREATE TABLE t1 (k1 INT, v1 INT, PRIMARY KEY (k1 ASC));
 INSERT INTO t1 (SELECT s, s FROM generate_series(1, 100000) s);
 CREATE INDEX t1_v1 ON t1 (v1 ASC);
 SET yb_enable_base_scans_cost_model = ON;
-/*+ IndexScan(t1) */ EXPLAIN SELECT * FROM t1 WHERE k1 > 80000;
-                               QUERY PLAN
-------------------------------------------------------------------------
- Index Scan using t1_pkey on t1  (cost=180.00..622.71 rows=333 width=8)
+/*+ IndexScan(t1) */ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 > 80000;
+           QUERY PLAN
+--------------------------------
+ Index Scan using t1_pkey on t1
    Index Cond: (k1 > 80000)
 (2 rows)
 
-/*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN SELECT v1 FROM t1;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
- Index Only Scan using t1_v1 on t1  (cost=180.00..680.71 rows=1000 width=4)
+/*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN (COSTS OFF) SELECT v1 FROM t1;
+            QUERY PLAN
+-----------------------------------
+ Index Only Scan using t1_v1 on t1
 (1 row)
 
-/*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN SELECT v1 FROM t1 WHERE v1 < 50000;
-                                QUERY PLAN
----------------------------------------------------------------------------
- Index Only Scan using t1_v1 on t1  (cost=180.00..597.30 rows=333 width=4)
+/*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN (COSTS OFF) SELECT v1 FROM t1 WHERE v1 < 50000;
+            QUERY PLAN
+-----------------------------------
+ Index Only Scan using t1_v1 on t1
    Index Cond: (v1 < 50000)
 (2 rows)
 
@@ -59,23 +59,23 @@ SELECT reltuples FROM pg_class where relname LIKE 't1%';
 (3 rows)
 
 SET yb_enable_base_scans_cost_model = ON;
-/*+ IndexScan(t1) */ EXPLAIN SELECT * FROM t1 WHERE k1 > 80000;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
- Index Scan using t1_pkey on t1  (cost=180.00..35945.96 rows=33333 width=8)
+/*+ IndexScan(t1) */ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 > 80000;
+           QUERY PLAN
+--------------------------------
+ Index Scan using t1_pkey on t1
    Index Cond: (k1 > 80000)
 (2 rows)
 
-/*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN SELECT v1 FROM t1;
-                                   QUERY PLAN
---------------------------------------------------------------------------------
- Index Only Scan using t1_v1 on t1  (cost=180.00..98977.85 rows=100000 width=4)
+/*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN (COSTS OFF) SELECT v1 FROM t1;
+            QUERY PLAN
+-----------------------------------
+ Index Only Scan using t1_v1 on t1
 (1 row)
 
-/*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN SELECT v1 FROM t1 WHERE v1 < 50000;
-                                  QUERY PLAN
--------------------------------------------------------------------------------
- Index Only Scan using t1_v1 on t1  (cost=180.00..33347.84 rows=33333 width=4)
+/*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN (COSTS OFF) SELECT v1 FROM t1 WHERE v1 < 50000;
+            QUERY PLAN
+-----------------------------------
+ Index Only Scan using t1_v1 on t1
    Index Cond: (v1 < 50000)
 (2 rows)
 
@@ -122,8 +122,8 @@ SET yb_enable_base_scans_cost_model = ON;
 ------------------------------------------
  Index Scan using t_25682_pkey on t_25682
    Index Cond: (k1 > 0)
-   Estimated Seeks: 1302085
-   Estimated Nexts: 1334635417
+   Estimated Seeks: 1302084
+   Estimated Nexts: 1333333334
    Estimated Docdb Result Width: 2
 (5 rows)
 
@@ -142,7 +142,7 @@ SET yb_enable_base_scans_cost_model = ON;
 ----------------------------------------------
  Index Only Scan using t_25682_idx on t_25682
    Index Cond: (v1 > 0)
-   Estimated Seeks: 1302085
-   Estimated Nexts: 1334635417
+   Estimated Seeks: 1302084
+   Estimated Nexts: 1333333334
    Estimated Docdb Result Width: 1
 (5 rows)
