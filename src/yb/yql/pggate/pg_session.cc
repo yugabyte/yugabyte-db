@@ -165,12 +165,22 @@ bool Empty(const PgOperationBuffer& buffer) {
   return !buffer.Size();
 }
 
-void Update(BufferingSettings* buffering_settings) {
+// Update the buffer setting. 'max_batch_size' will be adjusted to multiple of 'multiple'
+void Update(BufferingSettings* buffering_settings, int multiple = 1) {
   /* Use the gflag value if the session variable is unset for batch size. */
-  buffering_settings->max_batch_size = ysql_session_max_batch_size <= 0
+  uint64_t max_batch_size = ysql_session_max_batch_size <= 0
     ? FLAGS_ysql_session_max_batch_size
     : static_cast<uint64_t>(ysql_session_max_batch_size);
+  buffering_settings->max_batch_size = ((max_batch_size + multiple - 1) / multiple) * multiple;
   buffering_settings->max_in_flight_operations = static_cast<uint64_t>(ysql_max_in_flight_ops);
+  buffering_settings->multiple = multiple;
+  auto msg = Format("Adjust max_batch_size from $0 to $1", max_batch_size,
+      buffering_settings->max_batch_size);
+  if (multiple > 1) {
+    LOG(INFO) << msg;
+  } else {
+    VLOG(3) << msg;
+  }
 }
 
 RowMarkType GetRowMarkType(const PgsqlOp& op) {
@@ -663,7 +673,7 @@ Status PgSession::StartOperationsBuffering() {
                 << buffer_.Size()
                 << " buffered operations found";
   }
-  Update(&buffering_settings_);
+  Update(&buffering_settings_, 1 /* multiple */);
   buffering_enabled_ = true;
   return Status::OK();
 }
@@ -685,6 +695,17 @@ Status PgSession::FlushBufferedOperations() {
 
 void PgSession::DropBufferedOperations() {
   buffer_.Clear();
+}
+
+Status PgSession::AdjustOperationsBuffering(int multiple) {
+  SCHECK(buffering_enabled_, IllegalState, "Buffering has not started yet");
+  if (PREDICT_FALSE(!Empty(buffer_))) {
+    LOG(DFATAL) << "Buffer should be empty, but "
+                << buffer_.Size()
+                << " buffered operations found";
+  }
+  Update(&buffering_settings_, multiple);
+  return Status::OK();
 }
 
 PgIsolationLevel PgSession::GetIsolationLevel() {

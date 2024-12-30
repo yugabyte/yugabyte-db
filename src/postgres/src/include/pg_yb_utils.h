@@ -846,6 +846,7 @@ extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations();
+extern void YBAdjustOperationsBuffering(int multiple);
 
 bool		YBEnableTracing();
 bool		YBReadFromFollowersEnabled();

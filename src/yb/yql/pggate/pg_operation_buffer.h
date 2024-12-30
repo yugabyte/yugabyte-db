@@ -38,6 +38,7 @@ class PgTableDesc;
 struct BufferingSettings {
   size_t max_batch_size;
   size_t max_in_flight_operations;
+  int multiple;
 };
 
 class BufferableOperations {

@@ -1546,6 +1546,24 @@ YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 			 !resultRelInfo->ri_IndexRelationDescs[0]->rd_index->indisprimary));
 }
 
+int
+YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo)
+{
+	int count = 0;
+	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
+	{
+		Relation index = resultRelInfo->ri_IndexRelationDescs[i];
+		if (index->rd_index->indisprimary)
+		{
+			continue;
+		}
+
+		++count;
+	}
+
+	return count;
+}
+
 /*
  * This code is authored by upstream PG and moved from ExecInsertIndexTuples in
  * order to be reused in various other places by YB.

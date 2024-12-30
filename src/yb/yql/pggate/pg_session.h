@@ -155,6 +155,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status StopOperationsBuffering();
   // Drop all pending buffered operations and stop further buffering. Buffering may be in any state.
   void ResetOperationsBuffering();
+  // Adjust buffer batch size.
+  Status AdjustOperationsBuffering(int multiple = 1);
 
   // Flush all pending buffered operations. Buffering mode remain unchanged.
   Status FlushBufferedOperations();

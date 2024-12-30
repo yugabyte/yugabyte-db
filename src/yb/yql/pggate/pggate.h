@@ -519,6 +519,7 @@ class PgApiImpl {
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
   Status FlushBufferedOperations();
+  Status AdjustOperationsBuffering(int multiple = 1);
 
   //------------------------------------------------------------------------------------------------
   // Insert.

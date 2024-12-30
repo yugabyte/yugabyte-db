@@ -3383,6 +3383,12 @@ YBEnableTracing()
 	return yb_enable_docdb_tracing;
 }
 
+void
+YBAdjustOperationsBuffering(int multiple)
+{
+	HandleYBStatus(YBCPgAdjustOperationsBuffering(multiple));
+}
+
 bool
 YBReadFromFollowersEnabled()
 {

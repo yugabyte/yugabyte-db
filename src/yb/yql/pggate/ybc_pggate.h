@@ -577,6 +577,7 @@ YbcStatus YBCPgStartOperationsBuffering();
 YbcStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
 YbcStatus YBCPgFlushBufferedOperations();
+YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,

@@ -161,3 +161,6 @@ DEFINE_NON_RUNTIME_bool(ysql_use_relcache_file, true, "Use relcache init file");
 
 DEFINE_NON_RUNTIME_bool(ysql_use_optimized_relcache_update, true,
     "Use optimized relcache update during connection startup and cache refresh.");
+
+DEFINE_RUNTIME_double(max_buffer_size_to_rpc_limit_ratio, 0.9, "the max buffer size is set to "
+                      "max_buffer_size_to_rpc_limit_ratio*FLAGS_rpc_max_message_size.");
