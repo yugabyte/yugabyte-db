@@ -362,6 +362,10 @@ class UniverseDetail extends Component {
     );
     const useSystemd = primaryCluster?.userIntent?.useSystemd;
     const isYSQLEnabledInUniverse = primaryCluster?.userIntent?.enableYSQL;
+    const isEncryptionAtTransitEnabled = !!(
+      primaryCluster?.userIntent?.enableNodeToNodeEncrypt ||
+      primaryCluster?.userIntent.enableClientToNodeEncrypt
+    );
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -1540,12 +1544,13 @@ class UniverseDetail extends Component {
                   <>
                     <SecurityMenu
                       backToMainMenu={() => setActiveSubmenu(ActionMenu.MORE)}
-                      isItKubernetesUniverse={isKubernetesUniverse}
                       allowedTasks={allowedTasks}
                       showTLSConfigurationModal={showTLSConfigurationModal}
                       editTLSAvailability={editTLSAvailability}
                       showManageKeyModal={showManageKeyModal}
                       manageKeyAvailability={manageKeyAvailability}
+                      isEncryptionAtTransitEnabled={isEncryptionAtTransitEnabled}
+                      isItKubernetesUniverse={isKubernetesUniverse}
                     />
                   </>
                 )
