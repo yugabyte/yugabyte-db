@@ -995,7 +995,7 @@ See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-servic
 
 ##### ysql_enable_auto_analyze_service
 
-Enable the Auto Analyze service which automatically runs ANALYZEs to update table statistics for tables which have changed more than a configurable threshold.
+Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
 Default: false
 
