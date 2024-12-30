@@ -37,10 +37,9 @@ YbRaiseAdvisoryLocksNotSupported(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("advisory locks are not yet implemented"),
-				 errhint(
-					"If the app doesn't need strict functionality, this error can be silenced "
-					"by using the GFlag yb_silence_advisory_locks_not_supported_error. "
-					"See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.")));
+				 errhint("If the app doesn't need strict functionality, this error can be silenced "
+						 "by using the GFlag yb_silence_advisory_locks_not_supported_error. "
+						 "See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.")));
 }
 
 YBAdvisoryLockId
@@ -842,8 +841,8 @@ pg_try_advisory_lock_int8(PG_FUNCTION_ARGS)
 	LockAcquireResult res;
 
 	SET_LOCKTAG_INT64(tag, key);
-	TryAcquireYBAdvisoryLock(
-		tag, YB_ADVISORY_LOCK_EXCLUSIVE, /* session_level= */ true);
+	TryAcquireYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE,
+							 /* session_level= */ true);
 
 	res = LockAcquire(&tag, ExclusiveLock, true, true);
 
@@ -864,8 +863,8 @@ pg_try_advisory_xact_lock_int8(PG_FUNCTION_ARGS)
 	LockAcquireResult res;
 
 	SET_LOCKTAG_INT64(tag, key);
-	TryAcquireYBAdvisoryLock(
-		tag, YB_ADVISORY_LOCK_EXCLUSIVE, /* session_level= */ false);
+	TryAcquireYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE,
+							 /* session_level= */ false);
 
 	res = LockAcquire(&tag, ExclusiveLock, false, true);
 
@@ -1042,8 +1041,8 @@ pg_try_advisory_lock_int4(PG_FUNCTION_ARGS)
 	LockAcquireResult res;
 
 	SET_LOCKTAG_INT32(tag, key1, key2);
-	TryAcquireYBAdvisoryLock(
-		tag, YB_ADVISORY_LOCK_EXCLUSIVE, /* session_level= */ true);
+	TryAcquireYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE,
+							 /* session_level= */ true);
 
 	res = LockAcquire(&tag, ExclusiveLock, true, true);
 
@@ -1065,8 +1064,8 @@ pg_try_advisory_xact_lock_int4(PG_FUNCTION_ARGS)
 	LockAcquireResult res;
 
 	SET_LOCKTAG_INT32(tag, key1, key2);
-	TryAcquireYBAdvisoryLock(
-		tag, YB_ADVISORY_LOCK_EXCLUSIVE, /* session_level= */ false);
+	TryAcquireYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE,
+							 /* session_level= */ false);
 
 	res = LockAcquire(&tag, ExclusiveLock, false, true);
 

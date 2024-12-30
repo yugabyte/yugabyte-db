@@ -1002,9 +1002,9 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	COPY_SCALAR_FIELD(num_hashClauseInfos);
 
 	if (from->num_hashClauseInfos > 0)
-		COPY_POINTER_FIELD(
-			hashClauseInfos,
-			from->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
+		COPY_POINTER_FIELD(hashClauseInfos,
+						   (from->num_hashClauseInfos *
+							sizeof(YbBNLHashClauseInfo)));
 
 	for (int i = 0; i < from->num_hashClauseInfos; i++)
 		newnode->hashClauseInfos[i].outerParamExpr = (Expr *)

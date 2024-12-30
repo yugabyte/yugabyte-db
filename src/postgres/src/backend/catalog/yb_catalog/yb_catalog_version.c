@@ -46,8 +46,8 @@ static FormData_pg_attribute Desc_pg_yb_catalog_version[Natts_pg_yb_catalog_vers
 };
 
 static bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version);
-static Datum YbGetMasterCatalogVersionTableEntryYbctid(
-	Relation catalog_version_rel, Oid db_oid);
+static Datum YbGetMasterCatalogVersionTableEntryYbctid(Relation catalog_version_rel,
+													   Oid db_oid);
 
 /* Retrieve Catalog Version */
 
@@ -57,8 +57,8 @@ uint64_t YbGetMasterCatalogVersion()
 	switch (YbGetCatalogVersionType())
 	{
 		case CATALOG_VERSION_CATALOG_TABLE:
-			if (YbGetMasterCatalogVersionFromTable(
-					YbMasterCatalogVersionTableDBOid(), &version))
+			if (YbGetMasterCatalogVersionFromTable(YbMasterCatalogVersionTableDBOid(),
+												   &version))
 				return version;
 			/*
 			 * In spite of the fact the pg_yb_catalog_version table exists it has no actual
@@ -145,14 +145,13 @@ YbGetSQLIncrementCatalogVersionsFunctionOid() {
 	List* names =
 		list_make2(makeString("pg_catalog"),
 				   makeString("yb_increment_all_db_catalog_versions"));
-	FuncCandidateList clist = FuncnameGetCandidates(
-		names,
-		-1 /* nargs */,
-		NIL /* argnames */,
-		false /* expand_variadic */,
-		false /* expand_defaults */,
-		false /* include_out_arguments */,
-		false /* missing_ok */);
+	FuncCandidateList clist = FuncnameGetCandidates(names,
+													-1 /* nargs */,
+													NIL /* argnames */,
+													false /* expand_variadic */,
+													false /* expand_defaults */,
+													false /* include_out_arguments */,
+													false /* missing_ok */);
 	/* We expect exactly one candidate. */
 	if (clist && clist->next == NULL)
 		return clist->oid;
@@ -162,9 +161,10 @@ YbGetSQLIncrementCatalogVersionsFunctionOid() {
 }
 
 static void
-YbIncrementMasterDBCatalogVersionTableEntryImpl(
-	Oid db_oid, bool is_breaking_change, bool is_global_ddl,
-	const char *command_tag)
+YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
+												bool is_breaking_change,
+												bool is_global_ddl,
+												const char *command_tag)
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 
@@ -270,8 +270,8 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 	YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
-	yb_expr = YBCNewColumnRef(
-		update_stmt, attnum, INT8OID, InvalidOid, &type_attrs);
+	yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid,
+							  &type_attrs);
 	YbAppendPrimaryColumnRef(update_stmt, yb_expr);
 
 	/* If breaking change set the latest breaking version to the same expression. */
@@ -329,9 +329,9 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 	/*
 	 * Template1DbOid row is for global catalog version when not in per-db mode.
 	 */
-	YbIncrementMasterDBCatalogVersionTableEntryImpl(
-		YBIsDBCatalogVersionMode() ? MyDatabaseId : Template1DbOid,
-		is_breaking_change, is_global_ddl, command_tag);
+	Oid db_oid = YBIsDBCatalogVersionMode() ? MyDatabaseId : Template1DbOid;
+	YbIncrementMasterDBCatalogVersionTableEntryImpl(db_oid, is_breaking_change,
+													is_global_ddl, command_tag);
 
 	if (yb_test_fail_next_inc_catalog_version)
 	{
@@ -479,9 +479,9 @@ YbCatalogVersionType YbGetCatalogVersionType()
 	else if (yb_catalog_version_type == CATALOG_VERSION_UNSET)
 	{
 		bool catalog_version_table_exists = false;
-		HandleYBStatus(YBCPgTableExists(
-			Template1DbOid, YBCatalogVersionRelationId,
-			&catalog_version_table_exists));
+		HandleYBStatus(YBCPgTableExists(Template1DbOid,
+										YBCatalogVersionRelationId,
+										&catalog_version_table_exists));
 		yb_catalog_version_type = (catalog_version_table_exists ?
 								   CATALOG_VERSION_CATALOG_TABLE :
 								   CATALOG_VERSION_PROTOBUF_ENTRY);
@@ -522,15 +522,15 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 								  &ybc_stmt));
 
 	Datum oid_datum = Int32GetDatum(db_oid);
-	YBCPgExpr pkey_expr = YBCNewConstant(
-		ybc_stmt, oid_attrdesc->atttypid, oid_attrdesc->attcollation, oid_datum,
-		false /* is_null */);
+	YBCPgExpr pkey_expr = YBCNewConstant(ybc_stmt, oid_attrdesc->atttypid,
+										 oid_attrdesc->attcollation, oid_datum,
+										 false /* is_null */);
 
 	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, 1, pkey_expr));
 
 	for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
-		YbDmlAppendTargetRegularAttr(
-			&Desc_pg_yb_catalog_version[attnum - 1], ybc_stmt);
+		YbDmlAppendTargetRegularAttr(&Desc_pg_yb_catalog_version[attnum - 1],
+									 ybc_stmt);
 
 
 	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */));
@@ -605,8 +605,8 @@ Datum YbGetMasterCatalogVersionTableEntryYbctid(Relation catalog_version_rel,
 	 * YBCComputeYBTupleIdFromSlot. Note that db_oid is the primary key so we
 	 * can use null for other columns for simplicity.
 	 */
-	TupleTableSlot *slot = MakeSingleTupleTableSlot(
-		RelationGetDescr(catalog_version_rel), &TTSOpsVirtual);
+	TupleTableSlot *slot = MakeSingleTupleTableSlot(RelationGetDescr(catalog_version_rel),
+													&TTSOpsVirtual);
 
 	slot->tts_values[0] = db_oid;
 	slot->tts_isnull[0] = false;

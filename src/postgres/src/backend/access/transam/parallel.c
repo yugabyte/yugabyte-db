@@ -1422,10 +1422,12 @@ ParallelWorkerMain(Datum main_arg)
 	entrypt = LookupParallelWorkerFunction(library_name, function_name);
 
 	/* Restore database connection. */
-	YbBackgroundWorkerInitializeConnectionByOid(
-		fps->database_id, fps->authenticated_user_id,
-		fps->parallel_master_is_yb_session ?
-			&fps->parallel_master_yb_session_state.session_id : NULL, 0);
+	YbBackgroundWorkerInitializeConnectionByOid(fps->database_id,
+												fps->authenticated_user_id,
+												(fps->parallel_master_is_yb_session ?
+												 &fps->parallel_master_yb_session_state.session_id :
+												 NULL),
+												0);
 
 	/*
 	 * Set the client encoding to the database encoding, since that is what

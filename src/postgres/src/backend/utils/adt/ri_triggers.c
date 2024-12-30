@@ -363,8 +363,7 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
 		{
 			/* Find the partition's index supporting the FK constraint. */
 			ListCell *lc;
-			foreach (lc, YbRelationGetFKeyReferencedByList(
-							 pk_part_rri->ri_RelationDesc))
+			foreach (lc, YbRelationGetFKeyReferencedByList(pk_part_rri->ri_RelationDesc))
 			{
 				ForeignKeyCacheInfo *info =
 					lfirst_node(ForeignKeyCacheInfo, lc);
@@ -432,9 +431,10 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 	TupleConversionMap *leaf_root_conversion_map = NULL;
 	if (pk_rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 	{
-		if (!(referenced_rel = YbFindReferencedPartition(
-				  estate, riinfo, fkslot, pk_rel, using_index,
-				  &leaf_root_conversion_map)))
+		if (!(referenced_rel = YbFindReferencedPartition(estate, riinfo,
+														 fkslot, pk_rel,
+														 using_index,
+														 &leaf_root_conversion_map)))
 		{
 			/*
 			 * Could not find partition. It is best to not use the batched
@@ -446,14 +446,16 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 		}
 	}
 
-	Assert(!using_index || IndexRelationGetNumberOfKeyAttributes(
-							   referenced_rel) == riinfo->nkeys);
+	Assert(!using_index ||
+		   IndexRelationGetNumberOfKeyAttributes(referenced_rel) == riinfo->nkeys);
 
 	Oid referenced_rel_relfilenode_oid = YbGetRelfileNodeId(referenced_rel);
 	Oid referenced_dboid = YBCGetDatabaseOid(referenced_rel);
-	YBCPgYBTupleIdDescriptor *result = YBCCreateYBTupleIdDescriptor(
-		referenced_dboid, referenced_rel_relfilenode_oid,
-		riinfo->nkeys + (using_index ? 1 : 0));
+	YBCPgYBTupleIdDescriptor *result;
+	result =
+		YBCCreateYBTupleIdDescriptor(referenced_dboid,
+									 referenced_rel_relfilenode_oid,
+									 riinfo->nkeys + (using_index ? 1 : 0));
 	YBCPgAttrValueDescriptor *next_attr = result->attrs;
 
 	YBCPgTableDesc ybc_referenced_table_desc = NULL;
@@ -477,8 +479,8 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 		const FormData_pg_attribute *referenced_attr =
 			TupleDescAttr(referenced_tupdesc, next_attr->attr_num - 1);
 
-		next_attr->type_entity = YbDataTypeFromOidMod(
-			next_attr->attr_num, referenced_attr->atttypid);
+		next_attr->type_entity = YbDataTypeFromOidMod(next_attr->attr_num,
+													  referenced_attr->atttypid);
 
 		/*
 		 * The foreign key search will happen on referenced_rel so we need to
@@ -3356,9 +3358,13 @@ void
 YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 							  TupleTableSlot *new_slot, EState *estate)
 {
-	YBCPgYBTupleIdDescriptor *descr = YBCBuildYBTupleIdDescriptor(
-		ri_FetchConstraintInfo(trigger, fk_rel, false /* rel_is_pk */),
-		new_slot, estate);
+	YBCPgYBTupleIdDescriptor *descr;
+
+	descr =
+		YBCBuildYBTupleIdDescriptor(ri_FetchConstraintInfo(trigger,
+														   fk_rel,
+														   false /* rel_is_pk */),
+									new_slot, estate);
 	/*
 	 * Check that ybctid for row in source table can be build from referenced table tuple
 	 * (i.e. no type casting is required)

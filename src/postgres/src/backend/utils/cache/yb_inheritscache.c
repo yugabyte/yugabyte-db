@@ -57,8 +57,9 @@ FindChildren(Oid parentOid, List **childTuples)
 				ObjectIdGetDatum(parentOid));
 
 	elog(DEBUG3, "FindChildren for parentOid %d", parentOid);
-	SysScanDesc scan = ybc_systable_begin_default_scan(
-		relation, InheritsParentIndexId, true, NULL, 1, key);
+	SysScanDesc scan = ybc_systable_begin_default_scan(relation,
+													   InheritsParentIndexId,
+													   true, NULL, 1, key);
 
 	HeapTuple inheritsTuple = NULL;
 	while ((inheritsTuple = systable_getnext(scan)) != NULL)
@@ -127,8 +128,9 @@ YbGetParentRelid(Oid relid)
 				Anum_pg_inherits_inhseqno,
 				BTEqualStrategyNumber, F_INT4EQ,
 				Int32GetDatum(1));
-	SysScanDesc scan = ybc_systable_begin_default_scan(
-		relation, InheritsRelidSeqnoIndexId, true, NULL, 2, key);
+	SysScanDesc scan = ybc_systable_begin_default_scan(relation,
+													   InheritsRelidSeqnoIndexId,
+													   true, NULL, 2, key);
 
 	HeapTuple inheritsTuple = NULL;
 	Oid result = InvalidOid;
@@ -230,8 +232,9 @@ YbPreloadPgInheritsCache()
 	Relation relation = table_open(InheritsRelationId, AccessShareLock);
 	HeapTuple	inheritsTuple;
 
-	SysScanDesc scan = ybc_systable_begin_default_scan(
-		relation, InheritsParentIndexId, true, NULL, 0, NULL);
+	SysScanDesc scan = ybc_systable_begin_default_scan(relation,
+													   InheritsParentIndexId,
+													   true, NULL, 0, NULL);
 
 	YbPgInheritsCacheEntry entry = NULL;
 	Oid parentOid = InvalidOid;
@@ -246,8 +249,8 @@ YbPreloadPgInheritsCache()
 		{
 			parentOid = form->inhparent;
 			bool found = false;
-			entry = hash_search(
-				YbPgInheritsCache, (void *)&parentOid, HASH_ENTER, &found);
+			entry = hash_search(YbPgInheritsCache, (void *) &parentOid,
+								HASH_ENTER, &found);
 			Assert(!found);
 			entry->childTuples = NIL;
 			entry->refcount = 1;
@@ -267,8 +270,9 @@ GetYbPgInheritsCacheEntry(Oid parentOid)
 {
 	Assert(YbPgInheritsCache);
 	bool found = false;
-	YbPgInheritsCacheEntry entry = hash_search(
-		YbPgInheritsCache, (void *)&parentOid, HASH_ENTER, &found);
+	YbPgInheritsCacheEntry entry = hash_search(YbPgInheritsCache,
+											   (void *) &parentOid, HASH_ENTER,
+											   &found);
 	if (!found)
 	{
 		elog(DEBUG3, "YbPgInheritsCache miss for parent %d", parentOid);

@@ -162,8 +162,8 @@ Oid
 SPI_GetOid(HeapTuple spi_tuple, int column_id)
 {
 	bool is_null;
-	Oid oid = DatumGetObjectId(
-		SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc, column_id, &is_null));
+	Oid oid = DatumGetObjectId(SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc,
+											 column_id, &is_null));
 	if (is_null)
 		elog(ERROR, "Found NULL value when parsing oid (column %d)", column_id);
 	return oid;
@@ -179,8 +179,8 @@ bool
 SPI_GetBool(HeapTuple spi_tuple, int column_id)
 {
 	bool is_null;
-	bool val = DatumGetBool(
-		SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc, column_id, &is_null));
+	bool val = DatumGetBool(SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc,
+							column_id, &is_null));
 	if (is_null)
 		elog(ERROR, "Found NULL value when parsing bool (column %d)", column_id);
 	return val;
@@ -190,8 +190,9 @@ CollectedCommand *
 GetCollectedCommand(HeapTuple spi_tuple, int column_id)
 {
 	bool isnull;
-	Pointer command_datum = DatumGetPointer(
-		SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc, column_id, &isnull));
+	Pointer command_datum = DatumGetPointer(SPI_getbinval(spi_tuple,
+											SPI_tuptable->tupdesc, column_id,
+											&isnull));
 	if (isnull)
 		elog(ERROR, "Found NULL value when parsing command (column %d)", column_id);
 	return (CollectedCommand *) command_datum;
@@ -205,8 +206,8 @@ CheckAlterColumnTypeDDL(CollectedCommand *cmd)
 		ListCell *cell;
 		foreach(cell, cmd->d.alterTable.subcmds)
 		{
-			AlterTableCmd *subcmd = castNode(
-				AlterTableCmd, ((CollectedATSubcmd *) lfirst(cell))->parsetree);
+			AlterTableCmd *subcmd = castNode(AlterTableCmd,
+											 ((CollectedATSubcmd *) lfirst(cell))->parsetree);
 			if (subcmd->subtype == AT_AlterColumnType)
 			{
 				elog(ERROR, "Table Rewrite ALTER COLUMN TYPE is not supported\n");

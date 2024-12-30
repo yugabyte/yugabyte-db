@@ -402,8 +402,8 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 		bnlstate->bnl_is_sorted = true;
 
 		/* Flush sorter. */
-		bool result = tuplesort_gettupleslot(
-			sorter, true,  false, result_slot, NULL);
+		bool result = tuplesort_gettupleslot(sorter, true, false, result_slot,
+											 NULL);
 		Assert(!result || !TTS_EMPTY(result_slot));
 		if (result)
 			return result_slot;
@@ -1040,10 +1040,9 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 		case JOIN_LEFT:
 		case JOIN_ANTI:
 			bnlstate->nl_NullInnerTupleSlot =
-				ExecInitNullTupleSlot(
-					estate,
-					ExecGetResultType(innerPlanState(bnlstate)),
-					&TTSOpsVirtual);
+				ExecInitNullTupleSlot(estate,
+									  ExecGetResultType(innerPlanState(bnlstate)),
+									  &TTSOpsVirtual);
 			break;
 		default:
 			elog(ERROR, "unrecognized join type: %d",

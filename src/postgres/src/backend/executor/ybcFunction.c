@@ -33,13 +33,15 @@ YbFuncCallContext
 YbNewFuncCallContext(FuncCallContext *funcctx)
 {
 	MemoryContext per_call_ctx;
+	YbFuncCallContext yb_funcctx;
 
 	per_call_ctx = AllocSetContextCreate(funcctx->multi_call_memory_ctx,
 										 "YB SRF per-call context",
 										 ALLOCSET_SMALL_SIZES);
 
-	YbFuncCallContext yb_funcctx = (YbFuncCallContext) MemoryContextAllocZero(
-		funcctx->multi_call_memory_ctx, sizeof(FuncCallContext));
+	yb_funcctx = (YbFuncCallContext)
+		MemoryContextAllocZero(funcctx->multi_call_memory_ctx,
+							   sizeof(FuncCallContext));
 
 	yb_funcctx->per_call_ctx = per_call_ctx;
 
@@ -50,10 +52,10 @@ void
 YbSetFunctionParam(YBCPgFunction handle, const char *name, int attr_typid,
 				   uint64_t datum, bool is_null)
 {
-	const YBCPgTypeEntity *type_entity =
-		YbDataTypeFromOidMod(InvalidAttrNumber, attr_typid);
-	HandleYBStatus(
-		YBCAddFunctionParam(handle, name, type_entity, datum, is_null));
+	const YBCPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber,
+															  attr_typid);
+	HandleYBStatus(YBCAddFunctionParam(handle, name, type_entity, datum,
+				   is_null));
 }
 
 void

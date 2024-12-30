@@ -274,8 +274,8 @@ yb_test(YbGateTestCase case_no)
 			/* Nested PG_TRY/PG_CATCH in PG_TRY block, either rethrow or not */
 			PG_TRY();
 			{
-				yb_try_or_fail(
-					case_no == YBGATE_TEST_NESTED_TRY_TRY_CATCH_RETHROW);
+				yb_try_or_fail(case_no ==
+							   YBGATE_TEST_NESTED_TRY_TRY_CATCH_RETHROW);
 				ereport(ERROR, (errmsg("Direct error")));
 			}
 			PG_CATCH();
@@ -296,8 +296,8 @@ yb_test(YbGateTestCase case_no)
 			}
 			PG_CATCH();
 			{
-				yb_try_or_fail(
-					case_no == YBGATE_TEST_NESTED_CATCH_TRY_CATCH_RETHROW);
+				yb_try_or_fail(case_no ==
+							   YBGATE_TEST_NESTED_CATCH_TRY_CATCH_RETHROW);
 			}
 			PG_END_TRY();
 			break;
@@ -351,8 +351,9 @@ void YbgTestNoReporting(YbGateTestCase case_no)
 	yb_test(case_no);
 }
 
-bool YbTypeDetailsTest(
-	unsigned int elmtype, int16_t *elmlen, bool *elmbyval, char *elmalign)
+bool
+YbTypeDetailsTest(unsigned int elmtype, int16_t *elmlen, bool *elmbyval,
+				  char *elmalign)
 {
 	return YbTypeDetails(elmtype, elmlen, elmbyval, elmalign);
 }

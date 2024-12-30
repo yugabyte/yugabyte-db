@@ -2121,10 +2121,9 @@ YBInitializeTransaction(void)
 	{
 		HandleYBStatus(YBCPgBeginTransaction(xactStartTimestamp));
 
-		HandleYBStatus(
-			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
-		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
-			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
+		HandleYBStatus(YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(YBReadFromFollowersEnabled(),
+													  YBFollowerReadStalenessMs()));
 		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
 		HandleYBStatus(YBCPgSetEnableTracing(YBEnableTracing()));
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));

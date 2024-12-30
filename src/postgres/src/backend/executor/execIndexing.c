@@ -787,12 +787,10 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 	 * Arrange for econtext's scan tuple to be the tuple under test using
 	 * a temporary slot.
 	 */
-	deleteSlot = ExecStoreHeapTuple(
-		oldtuple,
-		MakeSingleTupleTableSlot(
-			RelationGetDescr(resultRelInfo->ri_RelationDesc),
-			&TTSOpsHeapTuple),
-		false);
+	deleteSlot = ExecStoreHeapTuple(oldtuple,
+									MakeSingleTupleTableSlot(RelationGetDescr(resultRelInfo->ri_RelationDesc),
+															 &TTSOpsHeapTuple),
+									false);
 
 	for (i = 0; i < numIndices; i++)
 	{

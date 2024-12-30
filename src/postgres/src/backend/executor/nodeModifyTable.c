@@ -2586,9 +2586,11 @@ yb_lreplace:;
 	 */
 	if (!estate->yb_es_is_single_row_modify_txn)
 	{
-		YbComputeModifiedColumnsAndSkippableEntities(
-			context->mtstate, resultRelInfo, estate, oldtuple, tuple,
-			cols_marked_for_update, beforeRowUpdateTriggerFired);
+		YbComputeModifiedColumnsAndSkippableEntities(context->mtstate,
+													 resultRelInfo, estate,
+													 oldtuple, tuple,
+													 cols_marked_for_update,
+													 beforeRowUpdateTriggerFired);
 	}
 
 	/*
@@ -2642,10 +2644,13 @@ ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 			 YbIsInsertOnConflictReadBatchingEnabled(resultRelInfo)) &&
 			mtstate->yb_fetch_target_tuple)
 		{
-			recheckIndexes =  YbExecUpdateIndexTuples(
-				resultRelInfo, slot, YBCGetYBTupleIdFromSlot(context->planSlot),
-				oldtuple, tupleid, context->estate, yb_cols_marked_for_update,
-				yb_is_pk_updated, mtstate->yb_is_inplace_index_update_enabled);
+			recheckIndexes =  YbExecUpdateIndexTuples(resultRelInfo, slot,
+													  YBCGetYBTupleIdFromSlot(context->planSlot),
+													  oldtuple, tupleid,
+													  context->estate,
+													  yb_cols_marked_for_update,
+													  yb_is_pk_updated,
+													  mtstate->yb_is_inplace_index_update_enabled);
 		}
 	}
 	else
@@ -4259,11 +4264,13 @@ ExecModifyTable(PlanState *pstate)
 	bool hasInserts = false;
 	Relation relation = resultRelInfo->ri_RelationDesc;
 	if (IsYBRelation(relation) && operation == CMD_INSERT) {
-		HandleYBStatus(YBCPgNewInsertBlock(
-			YBCGetDatabaseOid(relation), YbGetRelfileNodeId(relation),
-			YBCIsRegionLocal(relation),
-			estate->yb_es_is_single_row_modify_txn ? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
-			&blockInsertStmt));
+		HandleYBStatus(YBCPgNewInsertBlock(YBCGetDatabaseOid(relation),
+										   YbGetRelfileNodeId(relation),
+										   YBCIsRegionLocal(relation),
+										   (estate->yb_es_is_single_row_modify_txn ?
+											YB_SINGLE_SHARD_TRANSACTION :
+											YB_TRANSACTIONAL),
+										   &blockInsertStmt));
 	}
 
 	TupleTableSlot *ybReturnSlot = NULL;
@@ -4426,8 +4433,9 @@ ExecModifyTable(PlanState *pstate)
 				if (AttributeNumberIsValid(resultRelInfo->ri_YbWholeRowAttNo))
 				{
 					/* Extract the old row from wholerow junk attribute. */
-					Datum wholerow = ExecGetJunkAttribute(
-						slot, resultRelInfo->ri_YbWholeRowAttNo, &isNull);
+					Datum wholerow = ExecGetJunkAttribute(slot,
+														  resultRelInfo->ri_YbWholeRowAttNo,
+														  &isNull);
 
 					/* shouldn't ever get a null result... */
 					if (isNull)
@@ -4880,10 +4888,9 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 					resultRelInfo->ri_YbWholeRowAttNo =
 						ExecFindJunkAttributeInTlist(subplan->targetlist, "wholerow");
 
-					Assert(!YbWholeRowAttrRequired(
-							   resultRelInfo->ri_RelationDesc, operation) ||
-						   AttributeNumberIsValid(
-							   resultRelInfo->ri_YbWholeRowAttNo));
+					Assert(!YbWholeRowAttrRequired(resultRelInfo->ri_RelationDesc,
+												   operation) ||
+						   AttributeNumberIsValid(resultRelInfo->ri_YbWholeRowAttNo));
 
 				}
 			}

@@ -56,8 +56,9 @@ XClusterExtensionOwner(void)
 	ScanKeyInit(&entry[0], Anum_pg_extension_extname, BTEqualStrategyNumber,
 				F_NAMEEQ, CStringGetDatum(EXTENSION_NAME));
 
-	SysScanDesc scanDescriptor = systable_beginscan(
-		extensionRelation, ExtensionNameIndexId, true, NULL, 1, entry);
+	SysScanDesc scanDescriptor = systable_beginscan(extensionRelation,
+													ExtensionNameIndexId, true,
+													NULL, 1, entry);
 
 	HeapTuple extensionTuple = systable_getnext(scanDescriptor);
 	if (!HeapTupleIsValid(extensionTuple))

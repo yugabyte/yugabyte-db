@@ -157,8 +157,9 @@ YbDataTypeFromOidMod(int attnum, Oid type_id)
 						break;
 					default:;
 						/* fixed-length, pass-by-reference base type */
-						YBCPgTypeEntity *fixed_ref_type_entity = (YBCPgTypeEntity *)palloc(
-								sizeof(YBCPgTypeEntity));
+						YBCPgTypeEntity *fixed_ref_type_entity;
+						fixed_ref_type_entity =
+							(YBCPgTypeEntity *) palloc(sizeof(YBCPgTypeEntity));
 						fixed_ref_type_entity->type_oid = InvalidOid;
 						fixed_ref_type_entity->yb_type = YB_YQL_DATA_TYPE_BINARY;
 						fixed_ref_type_entity->allow_for_primary_key = false;

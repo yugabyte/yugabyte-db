@@ -214,8 +214,7 @@ IndexNext(IndexScanState *node)
 	 * in per-tuple memory context.
 	 */
 	if (IsYBRelation(node->ss.ss_currentRelation))
-		oldcontext = MemoryContextSwitchTo(
-			node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
+		oldcontext = MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
 
 	while (index_getnext_slot(scandesc, direction, slot))
 	{

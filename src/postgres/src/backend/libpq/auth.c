@@ -3594,11 +3594,13 @@ ybGetJwtAuthOptionsFromPortAndJwks(Port *port, char *jwks,
 	/* Use "sub" as the default matching claim key */
 	opt->matching_claim_key = hba_line->yb_jwt_matching_claim_key ?: "sub";
 
-	opt->allowed_issuers = (char **) YbPtrListToArray(
-		hba_line->yb_jwt_issuers, &opt->allowed_issuers_length);
+	opt->allowed_issuers = (char **)
+		YbPtrListToArray(hba_line->yb_jwt_issuers,
+						 &opt->allowed_issuers_length);
 
-	opt->allowed_audiences = (char **) YbPtrListToArray(
-		hba_line->yb_jwt_audiences, &opt->allowed_audiences_length);
+	opt->allowed_audiences = (char **)
+		YbPtrListToArray(hba_line->yb_jwt_audiences,
+						 &opt->allowed_audiences_length);
 }
 
 static int

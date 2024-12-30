@@ -10917,8 +10917,8 @@ get_sublink_expr(SubLink *sublink, deparse_context *context)
 			get_rule_expr((Node *) rcexpr->largs, context, true);
 			opname = generate_operator_name(linitial_oid(rcexpr->opnos),
 											exprType(linitial(rcexpr->largs)),
-											exprType(linitial(
-													castNode(List, rcexpr->rargs))));
+											exprType(linitial(castNode(List,
+																	   rcexpr->rargs))));
 			appendStringInfoChar(buf, ')');
 		}
 		else

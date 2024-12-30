@@ -1433,8 +1433,9 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 					List *fnlist = lfirst(lc);
 					HeapTuple otp = linitial(fnlist);
 					Datum odt = heap_getattr(otp, key.sk_attno, tupdesc, &is_null);
-					Datum key_matches = FunctionCall2Coll(
-						&key.sk_func, key.sk_collation, ndt, odt);
+					Datum key_matches = FunctionCall2Coll(&key.sk_func,
+														  key.sk_collation,
+														  ndt, odt);
 					if (DatumGetBool(key_matches))
 					{
 						dest_list = fnlist;
@@ -1545,9 +1546,8 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 
 	/* Done: mark cache(s) as loaded. */
 	if (!YBCIsInitDbModeEnvVarSet() &&
-		(IS_NON_EMPTY_STR_FLAG(
-			YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
-			*YBCGetGFlags()->ysql_catalog_preload_additional_tables))
+		(IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
+		 *YBCGetGFlags()->ysql_catalog_preload_additional_tables))
 	{
 		cache->yb_cc_is_fully_loaded = true;
 		if (idx_cache)

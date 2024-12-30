@@ -733,10 +733,10 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			 * will be colocation_restore_tablegroupId, while default tablegroup's
 			 * name would still be default.
 			 */
-			tablegroup_name = binary_upgrade_next_tablegroup_default ?
-								DEFAULT_TABLEGROUP_NAME :
-								get_restore_tablegroup_name(
-									binary_upgrade_next_tablegroup_oid);
+			tablegroup_name =
+				(binary_upgrade_next_tablegroup_default ?
+				 DEFAULT_TABLEGROUP_NAME :
+				 get_restore_tablegroup_name(binary_upgrade_next_tablegroup_oid));
 			binary_upgrade_next_tablegroup_default = false;
 			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
 		}
@@ -844,9 +844,9 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot create colocated table with split option")));
-		CreateTableHandleSplitOptions(
-			handle, desc, split_options, primary_key,
-			is_colocated_via_database, is_tablegroup, ybrowid_mode);
+		CreateTableHandleSplitOptions(handle, desc, split_options, primary_key,
+									  is_colocated_via_database, is_tablegroup,
+									  ybrowid_mode);
 	}
 	/* Create the table. */
 	HandleYBStatus(YBCPgExecCreateTable(handle));
@@ -874,10 +874,11 @@ YBCDropTable(Relation relation)
 	if (yb_props->is_colocated)
 	{
 		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(
-				databaseId, YbGetRelfileNodeId(relation), false, &handle,
-				YB_TRANSACTIONAL),
-			&not_found);
+		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
+															   YbGetRelfileNodeId(relation),
+															   false, &handle,
+															   YB_TRANSACTIONAL),
+									 &not_found);
 		/*
 		 * Since the creation of the handle could return a 'NotFound' error,
 		 * execute the statement only if the handle is valid.
@@ -895,10 +896,11 @@ YBCDropTable(Relation relation)
 	/* Drop the table */
 	{
 		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(
-				databaseId, YbGetRelfileNodeId(relation),
-				false /* if_exists */, &handle),
-			&not_found);
+		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(databaseId,
+													   YbGetRelfileNodeId(relation),
+													   false /* if_exists */,
+													   &handle),
+									 &not_found);
 		if (not_found)
 		{
 			return;
@@ -1186,8 +1188,7 @@ YBCCreateIndex(const char *indexName,
 	IndexAmRoutine *amroutine =
 		GetIndexAmRoutineByAmId(indexInfo->ii_Am, true);
 	Assert(amroutine != NULL && amroutine->yb_ambindschema != NULL);
-	amroutine->yb_ambindschema(
-		handle, indexInfo, indexTupleDesc, coloptions);
+	amroutine->yb_ambindschema(handle, indexInfo, indexTupleDesc, coloptions);
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
@@ -1456,9 +1457,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			{
 				YBCPgStatement increment_schema_handle =
 					(YBCPgStatement) lfirst(handle);
-				HandleYBStatus(
-					YBCPgAlterTableIncrementSchemaVersion(
-						increment_schema_handle));
+				HandleYBStatus(YBCPgAlterTableIncrementSchemaVersion(increment_schema_handle));
 			}
 			List* dependent_rels = NIL;
 			/*
@@ -1559,8 +1558,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					{
 						return handles;
 					}
-					HeapTuple tuple = SearchSysCache1(
-						CONSTROID, ObjectIdGetDatum(constraint_oid));
+					HeapTuple tuple = SearchSysCache1(CONSTROID,
+													  ObjectIdGetDatum(constraint_oid));
 					if (!HeapTupleIsValid(tuple))
 					{
 						ereport(ERROR,
@@ -1611,13 +1610,10 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				Assert(dependent_rel != NULL);
 				Oid relationId = RelationGetRelid(dependent_rel);
 				YBCPgStatement alter_cmd_handle = NULL;
-				HandleYBStatus(
-					YBCPgNewAlterTable(
-						YBCGetDatabaseOidByRelid(relationId),
-						YbGetRelfileNodeId(dependent_rel),
-						&alter_cmd_handle));
-				HandleYBStatus(
-					YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
+				HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOidByRelid(relationId),
+												  YbGetRelfileNodeId(dependent_rel),
+												  &alter_cmd_handle));
+				HandleYBStatus(YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
 				handles = lappend(handles, alter_cmd_handle);
 				*ybAlteredTableIds = lappend_oid(*ybAlteredTableIds, relationId);
 				table_close(dependent_rel, AccessExclusiveLock);
@@ -1638,8 +1634,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			YBCPgStatement replica_identity_handle =
 				(YBCPgStatement) lfirst(list_head(handles));
 			ReplicaIdentityStmt* stmt = (ReplicaIdentityStmt *) cmd->def;
-			HandleYBStatus(YBCPgAlterTableSetReplicaIdentity(
-			  replica_identity_handle, stmt->identity_type));
+			HandleYBStatus(YBCPgAlterTableSetReplicaIdentity(replica_identity_handle,
+															 stmt->identity_type));
 			*needsYBAlter = true;
 			break;
 		}
@@ -1702,11 +1698,11 @@ YBCPrepareAlterTable(List** subcmds,
 	{
 		foreach(lcmd, subcmds[cmd_idx])
 		{
-			handles = YBCPrepareAlterTableCmd(
-						(AlterTableCmd *) lfirst(lcmd), rel, handles,
-						&col, &needsYBAlter, rollbackHandle,
-						isPartitionOfAlteredTable,
-						ybAlteredTableIds);
+			handles = YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd),
+											  rel, handles, &col,
+											  &needsYBAlter, rollbackHandle,
+											  isPartitionOfAlteredTable,
+											  ybAlteredTableIds);
 		}
 	}
 	relation_close(rel, NoLock);
@@ -1776,10 +1772,11 @@ YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId)
 		case RELKIND_INDEX:             /* secondary index */
 		case RELKIND_PARTITIONED_TABLE: /* partitioned table */
 		case RELKIND_PARTITIONED_INDEX: /* partitioned index */
-			HandleYBStatus(
-				YBCPgNewAlterTable(databaseId, YbGetRelfileNodeIdFromRelId(relationId), &handle));
-			HandleYBStatus(
-				YBCPgAlterTableSetSchema(handle, get_namespace_name(classForm->relnamespace)));
+			HandleYBStatus(YBCPgNewAlterTable(databaseId,
+											  YbGetRelfileNodeIdFromRelId(relationId),
+											  &handle));
+			HandleYBStatus(YBCPgAlterTableSetSchema(handle,
+													get_namespace_name(classForm->relnamespace)));
 			break;
 
 		default:
@@ -2076,8 +2073,8 @@ void
 YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
 						size_t* numreplicationslots)
 {
-	HandleYBStatus(
-		YBCPgListReplicationSlots(replication_slots, numreplicationslots));
+	HandleYBStatus(YBCPgListReplicationSlots(replication_slots,
+											 numreplicationslots));
 }
 
 void
@@ -2088,8 +2085,9 @@ YBCGetReplicationSlot(const char *slot_name,
 	snprintf(error_message, sizeof(error_message),
 			 "replication slot \"%s\" does not exist", slot_name);
 
-	HandleYBStatusWithCustomErrorForNotFound(
-		YBCPgGetReplicationSlot(slot_name, replication_slot), error_message);
+	HandleYBStatusWithCustomErrorForNotFound(YBCPgGetReplicationSlot(slot_name,
+																	 replication_slot),
+											 error_message);
 }
 
 void
@@ -2102,8 +2100,8 @@ YBCDropReplicationSlot(const char *slot_name)
 
 	HandleYBStatus(YBCPgNewDropReplicationSlot(slot_name,
 											   &handle));
-	HandleYBStatusWithCustomErrorForNotFound(
-		YBCPgExecDropReplicationSlot(handle), error_message);
+	HandleYBStatusWithCustomErrorForNotFound(YBCPgExecDropReplicationSlot(handle),
+											 error_message);
 }
 
 /*
@@ -2192,9 +2190,8 @@ YBCDropColumn(Relation rel, AttrNumber attnum)
 
 		/* Construct a dummy query, as we don't have the original query. */
 		char *query_str = psprintf("ALTER TABLE %s DROP COLUMN %s",
-			quote_qualified_identifier(
-				get_namespace_name(rel->rd_rel->relnamespace),
-				RelationGetRelationName(rel)),
+			quote_qualified_identifier(get_namespace_name(rel->rd_rel->relnamespace),
+									   RelationGetRelationName(rel)),
 			attr->attname.data);
 		RawStmt *rawstmt =
 			(RawStmt *) linitial(raw_parser(query_str, RAW_PARSE_DEFAULT));
@@ -2214,13 +2211,10 @@ YBCDropColumn(Relation rel, AttrNumber attnum)
 	else
 	{
 		YBCPgStatement handle = NULL;
-		HandleYBStatus(YBCPgNewAlterTable(
-			YBCGetDatabaseOidByRelid(RelationGetRelid(rel)),
-			YbGetRelfileNodeId(rel),
-			&handle));
-		HandleYBStatus(YBCPgAlterTableDropColumn(
-			handle,
-			attr->attname.data));
+		HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOidByRelid(RelationGetRelid(rel)),
+										  YbGetRelfileNodeId(rel),
+										  &handle));
+		HandleYBStatus(YBCPgAlterTableDropColumn(handle, attr->attname.data));
 		HandleYBStatus(YBCPgExecAlterTable(handle));
 	}
 }

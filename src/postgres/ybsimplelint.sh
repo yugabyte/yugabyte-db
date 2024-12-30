@@ -123,6 +123,20 @@ grep -nE '(\)|else)\s+{$' "$1" \
   | sed 's/^/warning:likely_bad_opening_brace:/'
 grep -nE '}\s+else' "$1" \
   | sed 's/^/warning:likely_bad_closing_brace:/'
+if ! [[ "$1" == src/postgres/contrib/bloom/bloom.h ||
+        "$1" == src/postgres/src/include/replication/reorderbuffer.h ||
+        "$1" == src/postgres/src/pl/plperl/ppport.h ||
+        "$1" == src/postgres/src/timezone/zic.c ]]; then
+  # - Exclude cases where ( is followed by a line starting with '#' (for #ifdef,
+  #   #ifndef, etc.)
+  # - Exclude comments
+  grep -nA1 '($' "$1" \
+    | vi -es +'g/^\d\+-#/.-1,.d' +'%write! /dev/stdout' +'q' /dev/stdin \
+    | grep '($' \
+    | grep -Ev '^[0-9]+:\s*\*\s' \
+    | grep -Ev '__asm__\s__volatile__\(' \
+    | sed 's/^/error:bad_opening_paren:/'
+fi
 
 # Logging
 grep -nE ',\s*errmsg(_plural)?\(' "$1" \

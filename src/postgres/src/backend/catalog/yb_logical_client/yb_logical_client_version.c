@@ -41,8 +41,8 @@ static FormData_pg_attribute Desc_pg_yb_logical_client_version[Natts_pg_yb_logic
 };
 
 static bool YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version);
-static Datum YbGetMasterLogicalClientVersionTableEntryYbctid(
-	Relation logical_client_version_rel, Oid db_oid);
+static Datum YbGetMasterLogicalClientVersionTableEntryYbctid(Relation logical_client_version_rel,
+															 Oid db_oid);
 
 uint64_t YbGetMasterLogicalClientVersion()
 {
@@ -140,8 +140,7 @@ bool YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 }
 
 static void
-YbIncrementMasterDBLogicalClientVersionTableEntryImpl(
-	Oid db_oid)
+YbIncrementMasterDBLogicalClientVersionTableEntryImpl(Oid db_oid)
 {
 	Assert(YbGetLogicalClientVersionType() == LOGICAL_CLIENT_VERSION_CATALOG_TABLE);
 
@@ -195,8 +194,8 @@ YbIncrementMasterDBLogicalClientVersionTableEntryImpl(
 	YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
-	yb_expr = YBCNewColumnRef(
-		update_stmt, attnum, INT8OID, InvalidOid, &type_attrs);
+	yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid,
+							  &type_attrs);
 	YbAppendPrimaryColumnRef(update_stmt, yb_expr);
 
 	int rows_affected_count = 0;
@@ -225,8 +224,8 @@ Datum YbGetMasterLogicalClientVersionTableEntryYbctid(Relation logical_client_ve
 	 * YBCComputeYBTupleIdFromSlot. Note that db_oid is the primary key so we
 	 * can use null for other columns for simplicity.
 	 */
-	TupleTableSlot *slot = MakeSingleTupleTableSlot(
-		RelationGetDescr(logical_client_version_rel), &TTSOpsVirtual);
+	TupleTableSlot *slot = MakeSingleTupleTableSlot(RelationGetDescr(logical_client_version_rel),
+													&TTSOpsVirtual);
 
 	slot->tts_values[0] = db_oid;
 	slot->tts_isnull[0] = false;

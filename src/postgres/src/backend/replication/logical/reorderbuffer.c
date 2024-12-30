@@ -2227,8 +2227,9 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 						 * creation. So we overwrite the replica identity of the
 						 * relation to what it existed at that time.
 						 */
-						relation = YbGetRelationWithOverwrittenReplicaIdentity(
-							reloid, YBCGetReplicaIdentityForRelation(reloid));
+						relation =
+							YbGetRelationWithOverwrittenReplicaIdentity(reloid,
+																		YBCGetReplicaIdentityForRelation(reloid));
 					}
 					else
 					{

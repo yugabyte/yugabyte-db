@@ -713,10 +713,10 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	bool sys_table_prefetching_started = false;
 	PG_TRY();
 	{
-		InitPostgresImpl(
-			in_dbname, dboid, username, useroid, load_session_libraries,
-			override_allow_connections, out_dbname, session_id,
-			&sys_table_prefetching_started);
+		InitPostgresImpl(in_dbname, dboid, username, useroid,
+						 load_session_libraries, override_allow_connections,
+						 out_dbname, session_id,
+						 &sys_table_prefetching_started);
 	}
 	PG_CATCH();
 	{
@@ -865,10 +865,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
-			YbRegisterSysTableForPrefetching(
-				YbProfileRelationId);     // pg_yb_profile
-			YbRegisterSysTableForPrefetching(
-				YbRoleProfileRelationId); // pg_yb_role_profile
+			YbRegisterSysTableForPrefetching(YbProfileRelationId);	// pg_yb_profile
+			YbRegisterSysTableForPrefetching(YbRoleProfileRelationId);	// pg_yb_role_profile
 		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 
@@ -1254,8 +1252,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 */
 	// See if tablegroup catalog exists - needs to happen before cache fully initialized.
 	if (IsYugaByteEnabled() && !bootstrap)
-		HandleYBStatus(YBCPgTableExists(
-			MyDatabaseId, YbTablegroupRelationId, &YbTablegroupCatalogExists));
+		HandleYBStatus(YBCPgTableExists(MyDatabaseId, YbTablegroupRelationId,
+										&YbTablegroupCatalogExists));
 
 	RelationCacheInitializePhase3();
 

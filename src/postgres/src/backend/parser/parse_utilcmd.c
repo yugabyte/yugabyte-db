@@ -2508,10 +2508,9 @@ transformIndexConstraints(CreateStmtContext *cxt)
 			 * Even though index creation would do that anyway, we do this ahead
 			 * to spare DocDB from rolling back table creation.
 			 */
-			Oid oid = GetTableOidFromRelOptions(
-				index->options,
-				cxt->yb_tablespaceOid,
-				cxt->relation->relpersistence);
+			Oid oid = GetTableOidFromRelOptions(index->options,
+												cxt->yb_tablespaceOid,
+												cxt->relation->relpersistence);
 
 			if (!OidIsValid(oid))
 				elog(ERROR, "system indexes must specify table_oid "
@@ -3917,8 +3916,7 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 								 */
 								if (!YbDdlRollbackEnabled())
 									ereport(ERROR,
-											(errcode(
-												ERRCODE_FEATURE_NOT_SUPPORTED),
+											(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 											errmsg("This ALTER TABLE command is"
 												   " not yet supported.")));
 								break;

@@ -583,10 +583,7 @@ yb_assign_XactIsoLevel(int newval, void *extra)
 {
 	XactIsoLevel = newval;
 	if (YBTransactionsEnabled())
-	{
-		HandleYBStatus(
-			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
-	}
+		HandleYBStatus(YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
 }
 
 bool
@@ -680,10 +677,8 @@ assign_follower_reads(bool newval, void *extra)
 
 	yb_read_from_followers = newval;
 	if (YBTransactionsEnabled())
-	{
-		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
-			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
-	}
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(YBReadFromFollowersEnabled(),
+													  YBFollowerReadStalenessMs()));
 }
 
 bool
@@ -724,10 +719,8 @@ void assign_follower_read_staleness_ms(int32_t newval, void *extra)
 {
 	yb_follower_read_staleness_ms = newval;
 	if (YBTransactionsEnabled() && !YBFollowerReadsBehaviorBefore20482())
-	{
-		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
-			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
-	}
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(YBReadFromFollowersEnabled(),
+													  YBFollowerReadStalenessMs()));
 }
 
 /*

@@ -145,9 +145,9 @@ YbGetReCacheInfo()
 		YBCPgThreadLocalRegexpCache* cache = YBCPgGetThreadLocalRegexpCache();
 		if (!cache)
 		{
-			cache = YBCPgInitThreadLocalRegexpCache(
-				sizeof(cached_re_str) * MAX_CACHED_RES,
-				&YbFreeReCache);
+			cache = YBCPgInitThreadLocalRegexpCache((sizeof(cached_re_str) *
+													 MAX_CACHED_RES),
+													&YbFreeReCache);
 			Assert(cache && cache->array);
 		}
 

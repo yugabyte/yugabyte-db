@@ -1970,9 +1970,8 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 										 ExecGetUpdatedCols(resultRelInfo, estate));
 			}
 
-			bool att_in_modified_cols = bms_is_member(
-				att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
-				modifiedCols);
+			bool att_in_modified_cols = bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
+													  modifiedCols);
 
 			if (mtstate && !mtstate->yb_fetch_target_tuple && !att_in_modified_cols)
 			{

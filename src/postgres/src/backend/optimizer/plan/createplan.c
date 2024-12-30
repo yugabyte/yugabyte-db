@@ -3608,8 +3608,9 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 			/* indexcols is only set for RowCompareExpr. */
 			Assert(iclause->indexcols == NULL);
-			op_strategy = get_op_opfamily_strategy(
-				clause_op, index_path->indexinfo->opfamily[iclause->indexcol]);
+			op_strategy =
+				get_op_opfamily_strategy(clause_op,
+										 index_path->indexinfo->opfamily[iclause->indexcol]);
 			Assert(op_strategy != 0);  /* not a member of opfamily?? */
 			/* Only pushdown equal operators. */
 			if (op_strategy != BTEqualStrategyNumber)
@@ -3858,10 +3859,13 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	 * running outside of a transaction and thus cannot rely on the results from a
 	 * separately executed operation.
 	 */
-	yb_is_single_row_update_or_delete = yb_single_row_update_or_delete_path(
-		root, best_path, &modify_tlist, &column_refs, &result_tlist,
-		&returning_cols, &no_row_trigger,
-		best_path->operation == CMD_UPDATE ? &no_update_index_list : NULL);
+	yb_is_single_row_update_or_delete =
+		yb_single_row_update_or_delete_path(root, best_path, &modify_tlist,
+											&column_refs, &result_tlist,
+											&returning_cols, &no_row_trigger,
+											(best_path->operation == CMD_UPDATE ?
+											 &no_update_index_list :
+											 NULL));
 	if (yb_is_single_row_update_or_delete)
 	{
 		subplan = (Plan *) make_result(result_tlist, NULL, NULL);
@@ -3953,9 +3957,10 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 		 */
 		if (rel->rd_rel->relkind == RELKIND_RELATION)
 		{
-			updatedCols = bms_add_members(
-				get_dependent_generated_columns(root, rt_index, rte->updatedCols),
-				rte->updatedCols);
+			updatedCols =
+				bms_add_members(get_dependent_generated_columns(root, rt_index,
+																rte->updatedCols),
+								rte->updatedCols);
 			plan->yb_update_affected_entities =
 				YbComputeAffectedEntitiesForRelation(plan, rel, updatedCols);
 			bms_free(updatedCols);
@@ -4190,8 +4195,8 @@ YbFixHashCodeFuncArgsWalker(Node *node, IndexOptInfo* indexinfo)
 			return false;
 		}
 	}
-	return expression_tree_walker(
-		node, &YbFixHashCodeFuncArgsWalker, (void *) indexinfo);
+	return expression_tree_walker(node, &YbFixHashCodeFuncArgsWalker,
+								  (void *) indexinfo);
 }
 
 static bool
@@ -4212,12 +4217,12 @@ YbHasHashCodeFuncWalker(Node *node, void *context)
 static List*
 YbBuildIndexqualForRecheck(List *indexquals, IndexOptInfo* indexinfo)
 {
-	if (expression_tree_walker(
-		(Node *) indexquals, YbHasHashCodeFuncWalker, NULL))
+	if (expression_tree_walker((Node *) indexquals, YbHasHashCodeFuncWalker,
+							   NULL))
 	{
 		List *result = copyObject(indexquals);
-		expression_tree_walker(
-			(Node *) result, YbFixHashCodeFuncArgsWalker, indexinfo);
+		expression_tree_walker((Node *) result, YbFixHashCodeFuncArgsWalker,
+							   indexinfo);
 		return result;
 	}
 	return NIL;
@@ -6564,8 +6569,8 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 		for (size_t i = 0; i < yb_bnl_batch_size; i++)
 		{
 			root->yb_cur_batch_no = i;
-			Node *elem = replace_nestloop_params_mutator(
-				(Node *) copyObject(bexpr->orig_expr), root);
+			Node *elem = replace_nestloop_params_mutator((Node *) copyObject(bexpr->orig_expr),
+														 root);
 			batched_elems = lappend(batched_elems, elem);
 		}
 		root->yb_cur_batch_no = -1;
@@ -6727,9 +6732,10 @@ yb_get_batched_indexquals(PlannerInfo *root, IndexPath *index_path,
 
 					stripped_indexquals = lappend(stripped_indexquals, op);
 					op = copyObject(op);
-					linitial(op->args) = fix_indexqual_operand(
-						linitial(op->args), index_path->indexinfo,
-						iclause->indexcol);
+					linitial(op->args) =
+						fix_indexqual_operand(linitial(op->args),
+											  index_path->indexinfo,
+											  iclause->indexcol);
 					fixed_indexquals = lappend(fixed_indexquals, op);
 				}
 			}

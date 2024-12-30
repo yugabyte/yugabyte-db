@@ -2299,8 +2299,8 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 							val),
 					 errcontext("line %d of configuration file \"%s\"",
 								line_num, HbaFileName)));
-			*err_msg = psprintf(
-				"could not parse JWT audience list: \"%s\"", val);
+			*err_msg = psprintf("could not parse JWT audience list: \"%s\"",
+								val);
 			return false;
 		}
 
@@ -2323,8 +2323,8 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 							val),
 					 errcontext("line %d of configuration file \"%s\"",
 								line_num, HbaFileName)));
-			*err_msg = psprintf(
-				"could not parse JWT issuer list: \"%s\"", val);
+			*err_msg = psprintf("could not parse JWT issuer list: \"%s\"",
+								val);
 			return false;
 		}
 

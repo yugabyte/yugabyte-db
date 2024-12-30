@@ -1078,9 +1078,9 @@ yb_propagate_fields2(YbPathInfo *parent_fields, YbPathInfo *child1_fields,
 	 * uniqkeys in such a case.
 	 */
 	if (child1_fields->yb_uniqkeys && child2_fields->yb_uniqkeys)
-		parent_fields->yb_uniqkeys = list_concat(
-			list_copy(child1_fields->yb_uniqkeys),
-			list_copy(child2_fields->yb_uniqkeys));
+		parent_fields->yb_uniqkeys =
+			list_concat(list_copy(child1_fields->yb_uniqkeys),
+						list_copy(child2_fields->yb_uniqkeys));
 }
 
 /*
@@ -4901,8 +4901,9 @@ yb_create_distinct_index_path(PlannerInfo *root,
 	 * Compute the set of uniqkeys.
 	 * Ignore prefix when all columns are constant.
 	 */
-	pathnode->path.yb_path_info.yb_uniqkeys = yb_get_uniqkeys(
-		index, ignore_prefix_for_uniqkeys ? 0 : yb_distinct_prefixlen);
+	pathnode->path.yb_path_info.yb_uniqkeys =
+		yb_get_uniqkeys(index,
+						ignore_prefix_for_uniqkeys ? 0 : yb_distinct_prefixlen);
 
 	/* Estimate cost. */
 	prefixExprs = NIL;

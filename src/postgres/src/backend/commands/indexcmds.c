@@ -1057,10 +1057,9 @@ DefineIndex(Oid relationId,
 				 * will be colocation_restore_tablegroupId, while default tablegroup's
 				 * name would still be default.
 				 */
-				tablegroup_name = binary_upgrade_next_tablegroup_default ?
-									DEFAULT_TABLEGROUP_NAME :
-									get_restore_tablegroup_name(
-										binary_upgrade_next_tablegroup_oid);
+				tablegroup_name = (binary_upgrade_next_tablegroup_default ?
+								   DEFAULT_TABLEGROUP_NAME :
+								   get_restore_tablegroup_name(binary_upgrade_next_tablegroup_oid));
 				binary_upgrade_next_tablegroup_default = false;
 				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
 			}
@@ -1586,8 +1585,8 @@ DefineIndex(Oid relationId,
 	/* Check for WITH (table_oid = x). */
 	if (!OidIsValid(indexRelationId) && stmt->relation)
 	{
-		indexRelationId = GetTableOidFromRelOptions(
-			stmt->options, tablespaceId, stmt->relation->relpersistence);
+		indexRelationId = GetTableOidFromRelOptions(stmt->options, tablespaceId,
+													stmt->relation->relpersistence);
 	}
 
 	if (IsYugaByteEnabled() &&
@@ -4920,8 +4919,7 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 			* child. If clearing the entry for the child, then invalidate the
 			* entry in the cache pertaining to the child and its old parent.
 			*/
-			YbPgInheritsCacheInvalidate(
-				OidIsValid(parentOid) ? parentOid : partRelid);
+			YbPgInheritsCacheInvalidate(OidIsValid(parentOid) ? parentOid : partRelid);
 		}
 
 		/*

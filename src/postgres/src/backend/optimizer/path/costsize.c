@@ -7659,13 +7659,15 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		{
 			Oid rel_oid = is_primary_index ? baserel_oid :
 											 path->indexinfo->indexoid;
-			path->path.parallel_workers = yb_compute_parallel_worker(
-				baserel, YbGetTableDistribution(rel_oid),
-				max_parallel_workers_per_gather);
+			path->path.parallel_workers =
+				yb_compute_parallel_worker(baserel,
+										   YbGetTableDistribution(rel_oid),
+										   max_parallel_workers_per_gather);
 		}
 		else
-			path->path.parallel_workers = compute_parallel_worker(
-				baserel, -1, -1, max_parallel_workers_per_gather);
+			path->path.parallel_workers =
+				compute_parallel_worker(baserel, -1, -1,
+										max_parallel_workers_per_gather);
 
 		/*
 		 * Fall out if workers can't be assigned for parallel scan, because in
@@ -7745,8 +7747,10 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			if (path->path.param_info)
 			{
 				Relids batched = YB_PATH_REQ_OUTER_BATCHED(&path->path);
-				RestrictInfo *batched_rinfo = yb_get_batched_restrictinfo(
-				rinfo, batched, path->path.parent->relids);
+				RestrictInfo *batched_rinfo;
+				batched_rinfo =
+					yb_get_batched_restrictinfo(rinfo, batched,
+												path->path.parent->relids);
 				if (batched_rinfo)
 				rinfo = batched_rinfo;
 			}
@@ -8017,8 +8021,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	else
 		all_conditions_and_remote_filters_selectivity = 1.0;
 
-	double num_docdb_result_rows = clamp_row_est(
-		index->rel->tuples * all_conditions_and_remote_filters_selectivity);
+	double num_docdb_result_rows = clamp_row_est(index->rel->tuples *
+												 all_conditions_and_remote_filters_selectivity);
 
 	/*
 	 * Each result page causes one additional seek and next. Estimate the
@@ -8177,8 +8181,9 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 
 		foreach(l, apath->bitmapquals)
 		{
-			List *subindexqual = yb_get_bitmap_index_quals(
-				root, (Path *) lfirst(l), scan_clauses);
+			List *subindexqual = yb_get_bitmap_index_quals(root,
+														   (Path *) lfirst(l),
+														   scan_clauses);
 
 			subindexquals = list_concat_unique(subindexquals, subindexqual);
 		}
@@ -8193,8 +8198,9 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 
 		foreach(l, opath->bitmapquals)
 		{
-			List *subindexqual = yb_get_bitmap_index_quals(
-				root, (Path *) lfirst(l), scan_clauses);
+			List *subindexqual = yb_get_bitmap_index_quals(root,
+														   (Path *) lfirst(l),
+														   scan_clauses);
 
 			subindexquals = lappend(subindexquals,
 									make_ands_explicit(subindexqual));

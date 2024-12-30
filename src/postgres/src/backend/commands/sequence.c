@@ -948,9 +948,8 @@ nextval_internal(Oid relid, bool check_permissions)
 							(maxv < 0 && last + incby > maxv)) {
 							if (!cycle)
 							{
-								yb_sequence_limit_reached(
-									RelationGetRelationName(seqrel),
-									true, maxv);
+								yb_sequence_limit_reached(RelationGetRelationName(seqrel),
+														  true, maxv);
 								pg_unreachable();
 							}
 							first_val = minv;
@@ -976,9 +975,8 @@ nextval_internal(Oid relid, bool check_permissions)
 							(minv > 0 && last + incby < minv)) {
 							if (!cycle)
 							{
-								yb_sequence_limit_reached(
-									RelationGetRelationName(seqrel),
-									false, minv);
+								yb_sequence_limit_reached(RelationGetRelationName(seqrel),
+														  false, minv);
 								pg_unreachable();
 							}
 							first_val = maxv;
@@ -999,16 +997,15 @@ nextval_internal(Oid relid, bool check_permissions)
 				 * Try to update the sequence. If the sequence has been
 				 * modified concurrently we would have to try again.
 				 */
-				HandleYBStatus(YBCUpdateSequenceTupleConditionally(
-					MyDatabaseId,
-					relid,
-					YbGetCatalogCacheVersion(),
-					YBIsDBCatalogVersionMode(),
-					last_val,
-					true /* is_called */,
-					last,
-					is_called,
-					&skipped));
+				HandleYBStatus(YBCUpdateSequenceTupleConditionally(MyDatabaseId,
+																   relid,
+																   YbGetCatalogCacheVersion(),
+																   YBIsDBCatalogVersionMode(),
+																   last_val,
+																   true /* is_called */,
+																   last,
+																   is_called,
+																   &skipped));
 			}
 		}
 		/* save info in local cache */

@@ -489,8 +489,8 @@ ybcUpdateFKCache(YbScanDesc ybScan, Datum ybctid)
 		case ROW_MARK_NOKEYEXCLUSIVE:
 		case ROW_MARK_SHARE:
 		case ROW_MARK_KEYSHARE:
-			YBCPgAddIntoForeignKeyReferenceCache(
-				YbGetRelfileNodeId(ybScan->rs_base.rs_rd), ybctid);
+			YBCPgAddIntoForeignKeyReferenceCache(YbGetRelfileNodeId(ybScan->rs_base.rs_rd),
+												 ybctid);
 			break;
 		case ROW_MARK_REFERENCE:
 		case ROW_MARK_COPY:
@@ -672,9 +672,9 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 										&low_bound, &low_bound_size,
 										&high_bound, &high_bound_size))
 				{
-					HandleYBStatus(YBCPgDmlBindRange(
-						ybScan->handle, low_bound, low_bound_size, high_bound,
-						high_bound_size));
+					HandleYBStatus(YBCPgDmlBindRange(ybScan->handle, low_bound,
+													 low_bound_size, high_bound,
+													 high_bound_size));
 					if (low_bound)
 						pfree((void *) low_bound);
 					if (high_bound)
@@ -760,8 +760,8 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 }
 
 static Oid
-ybcCalculateIndexRelfileNodeId(
-	Relation rel, Relation index, const YBCPgPrepareParameters *params)
+ybcCalculateIndexRelfileNodeId(Relation rel, Relation index,
+							   const YBCPgPrepareParameters *params)
 {
 	Assert(index);
 	if (!index->rd_index->indisprimary)
@@ -1814,8 +1814,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 		if (is_row)
 		{
 			if (!retain_nulls &&
-				HeapTupleHeaderHasNulls(
-					DatumGetHeapTupleHeader(elem_values[j])))
+				HeapTupleHeaderHasNulls(DatumGetHeapTupleHeader(elem_values[j])))
 				continue;
 
 			if (should_check_row_range)
@@ -1825,8 +1824,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 				 * YB_SK_SEARCHARRAY_RETAIN_NULLS. If the row had nulls, it
 				 * should have been skipped already.
 				 */
-				Assert(!HeapTupleHeaderHasNulls(
-					DatumGetHeapTupleHeader(elem_values[j])));
+				Assert(!HeapTupleHeaderHasNulls(DatumGetHeapTupleHeader(elem_values[j])));
 				if (!YbIsTupleInRange(elem_values[j],
 									  scan_plan->bind_desc,
 									  length_of_key,
@@ -2860,8 +2858,8 @@ YbDmlAppendTargets(List *colrefs, YBCPgStatement handle)
 void
 YbAppendPrimaryColumnRef(YBCPgStatement dml, YBCPgExpr colref)
 {
-	HandleYBStatus(YbPgDmlAppendColumnRef(
-		dml, colref, false /* is_for_secondary_index */));
+	HandleYBStatus(YbPgDmlAppendColumnRef(dml, colref,
+										  false /* is_for_secondary_index */));
 }
 
 /*
@@ -2872,8 +2870,8 @@ YbAppendPrimaryColumnRef(YBCPgStatement dml, YBCPgExpr colref)
  * The colref list is expected to be the list of YbExprColrefDesc nodes.
  */
 static void
-YbAppendColumnRefsImpl(
-	YBCPgStatement dml, List *colrefs, bool is_for_secondary_index)
+YbAppendColumnRefsImpl(YBCPgStatement dml, List *colrefs,
+					   bool is_for_secondary_index)
 {
 	ListCell   *lc;
 
@@ -2881,11 +2879,13 @@ YbAppendColumnRefsImpl(
 	{
 		YbExprColrefDesc *param = lfirst_node(YbExprColrefDesc, lc);
 		YBCPgTypeAttrs type_attrs = { param->typmod };
-		HandleYBStatus(YbPgDmlAppendColumnRef(
-			dml,
-			YBCNewColumnRef(
-				dml, param->attno, param->typid, param->collid, &type_attrs),
-			is_for_secondary_index));
+		HandleYBStatus(YbPgDmlAppendColumnRef(dml,
+											  YBCNewColumnRef(dml,
+															  param->attno,
+															  param->typid,
+															  param->collid,
+															  &type_attrs),
+											  is_for_secondary_index));
 	}
 }
 
@@ -2896,9 +2896,8 @@ YbAppendPrimaryColumnRefs(YBCPgStatement dml, List *colrefs)
 }
 
 static void
-YbApplyPushdownImpl(
-	YBCPgStatement dml, const PushdownExprs *pushdown,
-	bool is_for_secondary_index)
+YbApplyPushdownImpl(YBCPgStatement dml, const PushdownExprs *pushdown,
+					bool is_for_secondary_index)
 {
 	if (!pushdown)
 		return;
@@ -2909,8 +2908,8 @@ YbApplyPushdownImpl(
 	foreach(lc, pushdown->quals)
 	{
 		Expr *expr = lfirst(lc);
-		HandleYBStatus(YbPgDmlAppendQual(
-			dml, YBCNewEvalExprCall(dml, expr), is_for_secondary_index));
+		HandleYBStatus(YbPgDmlAppendQual(dml, YBCNewEvalExprCall(dml, expr),
+										 is_for_secondary_index));
 	}
 }
 
@@ -3874,11 +3873,10 @@ HandleExplicitRowLockStatus(YBCPgExplicitRowLockStatus status)
 	if (status.error_info.is_initialized &&
 		YBCIsExplicitRowLockConflictStatus(status.ybc_status))
 	{
-		YBCHandleConflictError(
-			OidIsValid(status.error_info.conflicting_table_id)
-				? RelationIdGetRelation(status.error_info.conflicting_table_id)
-				: NULL,
-			status.error_info.pg_wait_policy);
+		YBCHandleConflictError((OidIsValid(status.error_info.conflicting_table_id) ?
+								RelationIdGetRelation(status.error_info.conflicting_table_id) :
+								NULL),
+							   status.error_info.pg_wait_policy);
 	}
 	HandleYBStatus(status.ybc_status);
 }
@@ -3892,9 +3890,8 @@ HandleExplicitRowLockStatus(YBCPgExplicitRowLockStatus status)
  * Otherwise, the returned TM_Result is adjusted in case of an error in acquiring the lock.
  */
 TM_Result
-YBCLockTuple(
-	Relation relation, Datum ybctid, RowMarkType mode,
-	LockWaitPolicy pg_wait_policy, EState *estate)
+YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
+			 LockWaitPolicy pg_wait_policy, EState *estate)
 {
 	const YBCPgExplicitRowLockParams lock_params = {
 		.rowmark = mode,
@@ -4514,15 +4511,15 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 	 * calculate fetch sizes and will take the lock, and capture
 	 * ppk->key_data_capacity under that lock.
 	 */
-	HandleYBStatus(YBCGetTableKeyRanges(
-		ppk->database_oid, ppk->table_relfilenode_oid,
-		ppk->is_forward ? latest_key : NULL /* lower_bound_key */,
-		ppk->is_forward ? latest_key_size : 0 /* lower_bound_key_size */,
-		ppk->is_forward ? NULL : latest_key /* upper_bound_key */,
-		ppk->is_forward ? 0 : latest_key_size /* upper_bound_key_size */,
-		max_num_ranges,  yb_parallel_range_size, ppk->is_forward,
-		(ppk->key_data_capacity / 3) - sizeof(keylen_t) /* max_key_length */,
-		ppk_buffer_fetch_callback, &fkp));
+	HandleYBStatus(YBCGetTableKeyRanges(ppk->database_oid,
+										ppk->table_relfilenode_oid,
+										ppk->is_forward ? latest_key : NULL /* lower_bound_key */,
+										ppk->is_forward ? latest_key_size : 0 /* lower_bound_key_size */,
+										ppk->is_forward ? NULL : latest_key /* upper_bound_key */,
+										ppk->is_forward ? 0 : latest_key_size /* upper_bound_key_size */,
+										max_num_ranges,  yb_parallel_range_size, ppk->is_forward,
+										(ppk->key_data_capacity / 3) - sizeof(keylen_t) /* max_key_length */,
+										ppk_buffer_fetch_callback, &fkp));
 	SpinLockAcquire(&ppk->mutex);
 	/* Update fetch status */
 	if (ppk->fetch_status == FETCH_STATUS_WORKING)
@@ -4617,14 +4614,14 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 	yb_add_key_unsynchronized(ppk, NULL, 0);
 	/* Fetch the first set of keys */
 	ppk->fetch_status = FETCH_STATUS_WORKING;
-	HandleYBStatus(YBCGetTableKeyRanges(
-		ppk->database_oid, ppk->table_relfilenode_oid,
-		NULL /* lower_bound_key */, 0 /* lower_bound_key_size */,
-		NULL /* upper_bound_key */, 0 /* upper_bound_key_size */,
-		YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE,
-		yb_parallel_range_size, is_forward,
-		(ppk->key_data_capacity / 3) - sizeof(keylen_t),
-		ppk_buffer_initialize_callback, ppk));
+	HandleYBStatus(YBCGetTableKeyRanges(ppk->database_oid,
+										ppk->table_relfilenode_oid,
+										NULL /* lower_bound_key */, 0 /* lower_bound_key_size */,
+										NULL /* upper_bound_key */, 0 /* upper_bound_key_size */,
+										YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE,
+										yb_parallel_range_size, is_forward,
+										(ppk->key_data_capacity / 3) - sizeof(keylen_t),
+										ppk_buffer_initialize_callback, ppk));
 	/* Update fetch status, unless updated by the callback */
 	if (ppk->fetch_status == FETCH_STATUS_WORKING)
 		ppk->fetch_status = FETCH_STATUS_IDLE;

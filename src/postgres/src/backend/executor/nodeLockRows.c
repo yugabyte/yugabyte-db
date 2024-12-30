@@ -194,12 +194,12 @@ lnext:
 		if (!IsolationUsesXactSnapshot())
 			lockflags |= TUPLE_LOCK_FLAG_FIND_LAST_VERSION;
 
-		Assert(
-			IsYBBackedRelation(erm->relation) == node->yb_are_row_marks_for_yb_rels);
+		Assert(IsYBBackedRelation(erm->relation) ==
+			   node->yb_are_row_marks_for_yb_rels);
 		if (node->yb_are_row_marks_for_yb_rels)
 		{
-			test = YBCLockTuple(
-				erm->relation, datum, erm->markType, erm->waitPolicy, estate);
+			test = YBCLockTuple(erm->relation, datum, erm->markType,
+								erm->waitPolicy, estate);
 		}
 		else
 		{

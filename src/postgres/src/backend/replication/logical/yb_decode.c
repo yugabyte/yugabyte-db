@@ -218,9 +218,9 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->lsn = yb_record->lsn;
 	change->origin_id = yb_record->lsn;
 
-	relation = YbGetRelationWithOverwrittenReplicaIdentity(
-		yb_record->table_oid,
-		YBCGetReplicaIdentityForRelation(yb_record->table_oid));
+	relation =
+		YbGetRelationWithOverwrittenReplicaIdentity(yb_record->table_oid,
+													YBCGetReplicaIdentityForRelation(yb_record->table_oid));
 	tupdesc = RelationGetDescr(relation);
 	nattrs = tupdesc->natts;
 	YBLogTupleDescIfRequested(yb_record, tupdesc);
@@ -287,8 +287,9 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	/* See the comment in YBDecodeInsert on why we create tuples twice. */
 	after_op_tuple =
 		heap_form_tuple(tupdesc, after_op_datums, after_op_is_nulls);
-	after_op_tuple_buf = ReorderBufferGetTupleBuf(
-		ctx->reorder, after_op_tuple->t_len + HEAPTUPLESIZE);
+	after_op_tuple_buf =
+		ReorderBufferGetTupleBuf(ctx->reorder,
+								 after_op_tuple->t_len + HEAPTUPLESIZE);
 	yb_heap_copytuple_with_tuple(after_op_tuple, &after_op_tuple_buf->tuple);
 	pfree(after_op_tuple);
 	after_op_tuple_buf->yb_is_omitted = after_op_is_omitted;
@@ -305,8 +306,9 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	{
 		before_op_tuple =
 			heap_form_tuple(tupdesc, before_op_datums, before_op_is_nulls);
-		before_op_tuple_buf = ReorderBufferGetTupleBuf(
-			ctx->reorder, before_op_tuple->t_len + HEAPTUPLESIZE);
+		before_op_tuple_buf =
+			ReorderBufferGetTupleBuf(ctx->reorder,
+									 before_op_tuple->t_len + HEAPTUPLESIZE);
 		yb_heap_copytuple_with_tuple(before_op_tuple,
 									 &before_op_tuple_buf->tuple);
 		pfree(before_op_tuple);
@@ -323,13 +325,21 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 	if (log_min_messages <= DEBUG2)
 	{
-		const char *new_tuple_string = YbHeapTupleToStringWithIsOmitted(
-			&after_op_tuple_buf->tuple, tupdesc, after_op_is_omitted);
+		const char *new_tuple_string;
+
+		new_tuple_string =
+			YbHeapTupleToStringWithIsOmitted(&after_op_tuple_buf->tuple,
+											 tupdesc,
+											 after_op_is_omitted);
 
 		if (before_op_tuple_buf)
 		{
-			const char *old_tuple_string = YbHeapTupleToStringWithIsOmitted(
-				&before_op_tuple_buf->tuple, tupdesc, before_op_is_omitted);
+			const char *old_tuple_string;
+
+			old_tuple_string =
+				YbHeapTupleToStringWithIsOmitted(&before_op_tuple_buf->tuple,
+												 tupdesc,
+												 before_op_is_omitted);
 			elog(DEBUG2,
 				 "yb_decode: before_op heap tuple: %s, after_op heap tuple: %s",
 				 old_tuple_string, new_tuple_string);
@@ -460,9 +470,9 @@ YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
 	 * so that we don't end up with conflicting pieces of information about the
 	 * replica identity in two different files that can lead to confusion.
 	 */
-	relation = YbGetRelationWithOverwrittenReplicaIdentity(
-		yb_record->table_oid,
-		YBCGetReplicaIdentityForRelation(yb_record->table_oid));
+	relation =
+		YbGetRelationWithOverwrittenReplicaIdentity(yb_record->table_oid,
+													YBCGetReplicaIdentityForRelation(yb_record->table_oid));
 
 	tupdesc = RelationGetDescr(relation);
 	nattrs = tupdesc->natts;

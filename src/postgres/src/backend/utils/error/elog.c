@@ -883,10 +883,9 @@ errfinish(const char *filename, int lineno, const char *funcname)
 	/* YB_TODO(neil@yugabyte) Check if this is still needed and the right place for reporting */
 	if (YBShouldLogStackTraceOnError() && elevel >= ERROR)
 	{
-		YBCLogImpl(
-			/* severity (2=ERROR) */ 2,
-			filename, lineno, /* stack_trace */ true,
-			"Postgres error: %s", YBPgErrorLevelToString(elevel));
+		YBCLogImpl(/* severity (2=ERROR) */ 2, filename, lineno,
+				   /* stack_trace */ true, "Postgres error: %s",
+				   YBPgErrorLevelToString(elevel));
 	}
 
 	/* Emit the message to the right places */

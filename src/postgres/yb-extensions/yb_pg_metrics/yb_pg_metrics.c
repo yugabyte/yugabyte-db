@@ -555,12 +555,11 @@ pullRpczEntries(void)
 
 			remote_host[0] = '\0';
 			remote_port[0] = '\0';
-			ret = pg_getnameinfo_all(
-				(struct sockaddr_storage *) &beentry->st_clientaddr.addr,
-				beentry->st_clientaddr.salen,
-				remote_host, sizeof(remote_host),
-				remote_port, sizeof(remote_port),
-				NI_NUMERICHOST | NI_NUMERICSERV);
+			ret = pg_getnameinfo_all((struct sockaddr_storage *) &beentry->st_clientaddr.addr,
+									 beentry->st_clientaddr.salen,
+									 remote_host, sizeof(remote_host),
+									 remote_port, sizeof(remote_port),
+									 NI_NUMERICHOST | NI_NUMERICSERV);
 			if (ret == 0)
 			{
 				rpcz[i].host = (char *) palloc(NI_MAXHOST);

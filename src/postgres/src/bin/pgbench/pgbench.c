@@ -3003,9 +3003,8 @@ evalStandardFunc(CState *st,
 									if (li == PG_INT64_MIN)
 									{
 										pg_log_error("bigint div out of range");
-										ereport(
-											ELEVEL_LOG_CLIENT_FAIL,
-											(errmsg("bigint out of range\n")));
+										ereport(ELEVEL_LOG_CLIENT_FAIL,
+												(errmsg("bigint out of range\n")));
 										return false;
 									}
 									else

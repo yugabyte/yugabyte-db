@@ -49,14 +49,12 @@
 #define YB_INT64_OVERFLOW_CHECKING_FRAGMENT ll
 #endif
 
-_Static_assert(
-	sizeof(int64) == sizeof(YB_INT64_UNDERLYING_TYPE),
-	"Expecting int64 and " BOOST_PP_STRINGIZE(YB_INT64_UNDERLYING_TYPE)
-	" to be the same type");
+_Static_assert(sizeof(int64) == sizeof(YB_INT64_UNDERLYING_TYPE),
+			   "Expecting int64 and " BOOST_PP_STRINGIZE(YB_INT64_UNDERLYING_TYPE)
+			   " to be the same type");
 
-_Static_assert(
-	sizeof(int32) == sizeof(int),
-	"Expecting int32 and int to be the same type");
+_Static_assert(sizeof(int32) == sizeof(int),
+			   "Expecting int32 and int to be the same type");
 
 #define YB_CHECK_OVERFLOW_MACRO_ARG_TYPE(arg, arg_description, expected_type) \
 	_Static_assert( \

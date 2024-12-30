@@ -818,8 +818,8 @@ typedef struct YbDdlModeOptional
 	YbDdlMode value;
 } YbDdlModeOptional;
 
-YbDdlModeOptional YbGetDdlMode(
-	PlannedStmt *pstmt, ProcessUtilityContext context);
+extern YbDdlModeOptional YbGetDdlMode(PlannedStmt *pstmt,
+									  ProcessUtilityContext context);
 void YBAddModificationAspects(YbDdlMode mode);
 
 extern void YBBeginOperationsBuffering();
@@ -888,12 +888,10 @@ char *YBDetailSorted(char *input);
 /*
  * For given collation, type and value, setup collation info.
  */
-void YBGetCollationInfo(
-	Oid collation_id,
-	const YBCPgTypeEntity *type_entity,
-	Datum datum,
-	bool is_null,
-	YBCPgCollationInfo *collation_info);
+extern void YBGetCollationInfo(Oid collation_id,
+							   const YBCPgTypeEntity *type_entity, Datum datum,
+							   bool is_null,
+							   YBCPgCollationInfo *collation_info);
 
 /*
  * Setup collation info in attr.
@@ -1091,10 +1089,13 @@ LockWaitPolicy YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy);
 
 const char *yb_fetch_current_transaction_priority(void);
 
-void GetStatusMsgAndArgumentsByCode(
-	const uint32_t pg_err_code, uint16_t txn_err_code, YBCStatus s,
-	const char **msg_buf, size_t *msg_nargs, const char ***msg_args,
-	const char **detail_buf, size_t *detail_nargs, const char ***detail_args);
+void GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
+									uint16_t txn_err_code, YBCStatus s,
+									const char **msg_buf, size_t *msg_nargs,
+									const char ***msg_args,
+									const char **detail_buf,
+									size_t *detail_nargs,
+									const char ***detail_args);
 
 bool YbIsBatchedExecution();
 void YbSetIsBatchedExecution(bool value);

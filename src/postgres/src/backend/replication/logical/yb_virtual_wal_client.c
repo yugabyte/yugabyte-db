@@ -204,8 +204,7 @@ InitVirtualWal(List *publication_names)
 		 "Setting yb_read_time to last_pub_refresh_time for "
 		 "InitVirtualWal: %" PRIu64,
 		 MyReplicationSlot->data.yb_last_pub_refresh_time);
-	YBCUpdateYbReadTimeAndInvalidateRelcache(
-		MyReplicationSlot->data.yb_last_pub_refresh_time);
+	YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_last_pub_refresh_time);
 
 	tables = YBCGetTables(publication_names);
 	table_oids = YBCGetTableOids(tables);
@@ -235,8 +234,7 @@ InitVirtualWal(List *publication_names)
 	elog(DEBUG2,
 		 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
 		 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
-	YBCUpdateYbReadTimeAndInvalidateRelcache(
-		MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+	YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
 
 	pfree(table_oids);
 	list_free(tables);

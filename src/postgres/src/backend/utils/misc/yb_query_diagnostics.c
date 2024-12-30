@@ -1031,8 +1031,11 @@ FlushAndCleanBundles()
 	YbQueryDiagnosticsEntry *entry;
 	MemoryContext curr_context = GetCurrentMemoryContext();
 	int			expired_entries_index = 0;
-	YbQueryDiagnosticsEntry *expired_entries = palloc0(
-		sizeof(YbQueryDiagnosticsEntry) * QUERY_DIAGNOSTICS_HASH_MAX_SIZE);
+	YbQueryDiagnosticsEntry *expired_entries;
+
+	expired_entries = (YbQueryDiagnosticsEntry *)
+		palloc0(sizeof(YbQueryDiagnosticsEntry) *
+				QUERY_DIAGNOSTICS_HASH_MAX_SIZE);
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 

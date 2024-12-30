@@ -187,9 +187,9 @@ YbSeqNext(YbSeqScanState *node)
 										&low_bound, &low_bound_size,
 										&high_bound, &high_bound_size))
 				{
-					HandleYBStatus(YBCPgDmlBindRange(
-						ybScan->handle, low_bound, low_bound_size, high_bound,
-						high_bound_size));
+					HandleYBStatus(YBCPgDmlBindRange(ybScan->handle, low_bound,
+													 low_bound_size, high_bound,
+													 high_bound_size));
 					if (low_bound)
 						pfree((void *) low_bound);
 					if (high_bound)
@@ -206,8 +206,8 @@ YbSeqNext(YbSeqScanState *node)
 				ybScan->exec_params->yb_fetch_row_limit = 0;
 				ybScan->exec_params->yb_fetch_size_limit = 0;
 			}
-			HandleYBStatus(YBCPgExecSelect(
-				ybScan->handle, ybScan->exec_params));
+			HandleYBStatus(YBCPgExecSelect(ybScan->handle,
+										   ybScan->exec_params));
 			ybScan->is_exec_done = true;
 		}
 

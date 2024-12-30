@@ -240,12 +240,12 @@ ExecReScanYbBitmapIndexScan(YbBitmapIndexScanState *node)
 	 * required. For example, comparing an int4 and an int8 works if the int8
 	 * fits into an int4, but requires recheck if it doesn't.
 	 */
-	node->biss_requires_recheck |= YbPredetermineNeedsRecheck(
-		node->biss_ScanDesc->heapRelation,
-		node->biss_RelationDesc,
-		true /* xs_want_itup */,
-		node->biss_ScanKeys,
-		node->biss_NumScanKeys);
+	node->biss_requires_recheck |=
+		YbPredetermineNeedsRecheck(node->biss_ScanDesc->heapRelation,
+								   node->biss_RelationDesc,
+								   true /* xs_want_itup */,
+								   node->biss_ScanKeys,
+								   node->biss_NumScanKeys);
 
 	/* reset index scan */
 	if (node->biss_RuntimeKeysReady)

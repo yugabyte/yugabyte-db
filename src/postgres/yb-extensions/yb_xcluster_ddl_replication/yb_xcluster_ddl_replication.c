@@ -66,64 +66,55 @@ _PG_init(void)
 	if (IsBinaryUpgrade)
 		return;
 
-	DefineCustomEnumVariable(
-		"yb_xcluster_ddl_replication.replication_role",
-		gettext_noop(
-			"xCluster Replication role per database. "
-			"NOTE: Manually changing this can lead to replication errors."),
-		NULL,
-		&ReplicationRole,
-		REPLICATION_ROLE_DISABLED,
-		replication_roles,
-		PGC_SUSET,
-		0,
-		NULL, NULL, NULL);
+	DefineCustomEnumVariable("yb_xcluster_ddl_replication.replication_role",
+							 gettext_noop("xCluster Replication role per database. "
+										  "NOTE: Manually changing this can lead to replication errors."),
+							 NULL,
+							 &ReplicationRole,
+							 REPLICATION_ROLE_DISABLED,
+							 replication_roles,
+							 PGC_SUSET,
+							 0,
+							 NULL, NULL, NULL);
 
-	DefineCustomBoolVariable(
-		"yb_xcluster_ddl_replication.enable_manual_ddl_replication",
-		gettext_noop(
-			"Temporarily disable automatic xCluster DDL replication - DDLs will have "
-			"to be manually executed on the target."),
-		gettext_noop(
-			"DDL strings will still be captured and replicated, but will be marked "
-			"with a 'manual_replication' flag."),
-		&EnableManualDDLReplication,
-		false,
-		PGC_USERSET,
-		0,
-		NULL, NULL, NULL);
+	DefineCustomBoolVariable("yb_xcluster_ddl_replication.enable_manual_ddl_replication",
+							 gettext_noop("Temporarily disable automatic xCluster DDL replication - DDLs will have "
+										  "to be manually executed on the target."),
+							 gettext_noop("DDL strings will still be captured and replicated, but will be marked "
+										  "with a 'manual_replication' flag."),
+							 &EnableManualDDLReplication,
+							 false,
+							 PGC_USERSET,
+							 0,
+							 NULL, NULL, NULL);
 
-	DefineCustomStringVariable(
-		"yb_xcluster_ddl_replication.ddl_queue_primary_key_start_time",
-		gettext_noop("Internal use only: Used by HandleTargetDDLEnd function."),
-		NULL,
-		&DDLQueuePrimaryKeyStartTime,
-		"",
-		PGC_SUSET,
-		0,
-		NULL, NULL, NULL);
+	DefineCustomStringVariable("yb_xcluster_ddl_replication.ddl_queue_primary_key_start_time",
+							   gettext_noop("Internal use only: Used by HandleTargetDDLEnd function."),
+							   NULL,
+							   &DDLQueuePrimaryKeyStartTime,
+							   "",
+							   PGC_SUSET,
+							   0,
+							   NULL, NULL, NULL);
 
-	DefineCustomStringVariable(
-		"yb_xcluster_ddl_replication.ddl_queue_primary_key_query_id",
-		gettext_noop("Internal use only: Used by HandleTargetDDLEnd function."),
-		NULL,
-		&DDLQueuePrimaryKeyQueryId,
-		"",
-		PGC_SUSET,
-		0,
-		NULL, NULL, NULL);
+	DefineCustomStringVariable("yb_xcluster_ddl_replication.ddl_queue_primary_key_query_id",
+							   gettext_noop("Internal use only: Used by HandleTargetDDLEnd function."),
+							   NULL,
+							   &DDLQueuePrimaryKeyQueryId,
+							   "",
+							   PGC_SUSET,
+							   0,
+							   NULL, NULL, NULL);
 
   // YB_TODO(jhe): Remove this flag once colocated objects are supported.
-	DefineCustomBoolVariable(
-		"yb_xcluster_ddl_replication.TEST_allow_colocated_objects",
-		gettext_noop(
-			"Allow colocated objects to be replicated."),
-		NULL,
-		&TEST_AllowColocatedObjects,
-		false,
-		PGC_USERSET,
-		0,
-		NULL, NULL, NULL);
+	DefineCustomBoolVariable("yb_xcluster_ddl_replication.TEST_allow_colocated_objects",
+							 gettext_noop("Allow colocated objects to be replicated."),
+							 NULL,
+							 &TEST_AllowColocatedObjects,
+							 false,
+							 PGC_USERSET,
+							 0,
+							 NULL, NULL, NULL);
 }
 
 bool
@@ -281,8 +272,7 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	MemoryContext context_new, context_old;
 	Oid save_userid;
 	int save_sec_context;
-	INIT_MEM_CONTEXT_AND_SPI_CONNECT(
-		"yb_xcluster_ddl_replication.HandleSourceDDLEnd context");
+	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceDDLEnd context");
 
 	// Begin constructing json, fill common fields first.
 	JsonbParseState *state = NULL;
@@ -342,8 +332,7 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 	MemoryContext context_new, context_old;
 	Oid save_userid;
 	int save_sec_context;
-	INIT_MEM_CONTEXT_AND_SPI_CONNECT(
-		"yb_xcluster_ddl_replication.HandleTargetDDLEnd context");
+	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleTargetDDLEnd context");
 
 	JsonbParseState *state = NULL;
 	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
@@ -367,8 +356,7 @@ HandleSourceSQLDrop(EventTriggerData *trig_data)
 	MemoryContext context_new, context_old;
 	Oid save_userid;
 	int save_sec_context;
-	INIT_MEM_CONTEXT_AND_SPI_CONNECT(
-		"yb_xcluster_ddl_replication.HandleSourceSQLDrop context");
+	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceSQLDrop context");
 
 	should_replicate_ddl |= ProcessSourceEventTriggerDroppedObjects();
 
@@ -385,8 +373,7 @@ HandleSourceTableRewrite(EventTriggerData *trig_data)
 	MemoryContext context_new, context_old;
 	Oid save_userid;
 	int save_sec_context;
-	INIT_MEM_CONTEXT_AND_SPI_CONNECT(
-		"yb_xcluster_ddl_replication.HandleSourceTableRewrite context");
+	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceTableRewrite context");
 
 	ProcessSourceEventTriggerTableRewrite();
 

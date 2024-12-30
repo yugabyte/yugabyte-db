@@ -418,12 +418,13 @@ RemoveTablegroupById(Oid grp_oid, bool remove_implicit)
 char*
 get_implicit_tablegroup_name(Oid oidSuffix)
 {
-	char *tablegroup_name_from_tablespace = (char*) palloc(
-		(
-			10 /*strlen("colocation")*/ + 10 /*Max digits in OID*/ + 1 /*Under Scores*/
-			+ 1 /*Null Terminator*/
-		) * sizeof(char)
-	);
+	char	   *tablegroup_name_from_tablespace;
+
+	tablegroup_name_from_tablespace =
+		(char*) palloc((10 /*strlen("colocation")*/ +
+						10 /*Max digits in OID*/ +
+						1 /*Under Scores*/ +
+						1 /*Null Terminator*/) * sizeof(char));
 
 	sprintf(tablegroup_name_from_tablespace, "colocation_%u", oidSuffix);
 	return tablegroup_name_from_tablespace;
@@ -432,12 +433,12 @@ get_implicit_tablegroup_name(Oid oidSuffix)
 char*
 get_restore_tablegroup_name(Oid oidSuffix)
 {
-	char *restore_tablegroup_name = (char*) palloc(
-		(
-			19 /* strlen("colocation_restore_") */ + 10 /* Max digits in OID */ +
-			1 /* Null Terminator */
-		) * sizeof(char)
-	);
+	char	   *restore_tablegroup_name;
+
+	restore_tablegroup_name =
+		(char*) palloc((19 /* strlen("colocation_restore_") */ +
+						10 /* Max digits in OID */ +
+						1 /* Null Terminator */) * sizeof(char));
 
 	sprintf(restore_tablegroup_name, "colocation_restore_%u", oidSuffix);
 	return restore_tablegroup_name;

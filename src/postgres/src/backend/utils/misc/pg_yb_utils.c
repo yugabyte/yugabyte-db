@@ -345,14 +345,14 @@ AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
 
 int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum)
 {
-	return YBAttnumToBmsIndexWithMinAttr(
-		YBGetFirstLowInvalidAttributeNumber(rel), attnum);
+	return YBAttnumToBmsIndexWithMinAttr(YBGetFirstLowInvalidAttributeNumber(rel),
+										 attnum);
 }
 
 AttrNumber YBBmsIndexToAttnum(Relation rel, int idx)
 {
-	return YBBmsIndexToAttnumWithMinAttr(
-		YBGetFirstLowInvalidAttributeNumber(rel), idx);
+	return YBBmsIndexToAttnumWithMinAttr(YBGetFirstLowInvalidAttributeNumber(rel),
+										 idx);
 }
 
 int YBAttnumToBmsIndexWithMinAttr(AttrNumber minattr, AttrNumber attnum)
@@ -410,10 +410,10 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 Bitmapset *YBGetTablePrimaryKeyBms(Relation rel)
 {
 	if (!rel->primary_key_bms) {
-		rel->primary_key_bms = GetTablePrimaryKeyBms(
-			rel,
-			YBGetFirstLowInvalidAttributeNumber(rel) /* minattr */,
-			false /* includeYBSystemColumns */);
+		rel->primary_key_bms =
+			GetTablePrimaryKeyBms(rel,
+								  YBGetFirstLowInvalidAttributeNumber(rel) /* minattr */,
+								  false /* includeYBSystemColumns */);
 	}
 	return rel->primary_key_bms;
 }
@@ -421,10 +421,10 @@ Bitmapset *YBGetTablePrimaryKeyBms(Relation rel)
 Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel)
 {
 	if (!rel->full_primary_key_bms) {
-		rel->full_primary_key_bms = GetTablePrimaryKeyBms(
-			rel,
-			YBSystemFirstLowInvalidAttributeNumber + 1 /* minattr */,
-			true /* includeYBSystemColumns */);
+		rel->full_primary_key_bms =
+			GetTablePrimaryKeyBms(rel,
+								  YBSystemFirstLowInvalidAttributeNumber + 1 /* minattr */,
+								  true /* includeYBSystemColumns */);
 	}
 	return rel->full_primary_key_bms;
 }
@@ -940,11 +940,8 @@ IpAddressToBytes(YBCPgAshConfig *ash_config)
 }
 
 void
-YBInitPostgresBackend(
-	const char *program_name,
-	const char *db_name,
-	const char *user_name,
-	uint64_t *session_id)
+YBInitPostgresBackend(const char *program_name, const char *db_name,
+					  const char *user_name, uint64_t *session_id)
 {
 	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
@@ -1387,10 +1384,11 @@ void
 YBReportIfYugaByteEnabled()
 {
 	if (YBIsEnabledInPostgresEnvVar()) {
-		ereport(LOG, (errmsg(
-			"YugaByte is ENABLED in PostgreSQL. Transactions are %s.",
-			YBCIsEnvVarTrue("YB_PG_TRANSACTIONS_ENABLED") ?
-			"enabled" : "disabled")));
+		ereport(LOG,
+				(errmsg("YugaByte is ENABLED in PostgreSQL. Transactions are %s.",
+						(YBCIsEnvVarTrue("YB_PG_TRANSACTIONS_ENABLED") ?
+						 "enabled" :
+						 "disabled"))));
 	} else {
 		ereport(LOG, (errmsg("YugaByte is NOT ENABLED -- "
 							"this is a vanilla PostgreSQL server!")));
@@ -1782,8 +1780,9 @@ typedef struct DdlTransactionState
 static DdlTransactionState ddl_transaction_state = {0};
 
 static void
-MergeCatalogModificationAspects(
-	CatalogModificationAspects *aspects, bool apply) {
+MergeCatalogModificationAspects(CatalogModificationAspects *aspects,
+								bool apply)
+{
 	if (apply)
 		aspects->applied |= aspects->pending;
 	aspects->pending = 0;
@@ -1878,9 +1877,10 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
 	if (ddl_transaction_state.nesting_level == 0)
 	{
-		ddl_transaction_state.mem_context = AllocSetContextCreate(
-			GetCurrentMemoryContext(), "aux ddl memory context",
-			ALLOCSET_DEFAULT_SIZES);
+		ddl_transaction_state.mem_context =
+			AllocSetContextCreate(GetCurrentMemoryContext(),
+								  "aux ddl memory context",
+								  ALLOCSET_DEFAULT_SIZES);
 
 		MemoryContextSwitchTo(ddl_transaction_state.mem_context);
 		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
@@ -1890,8 +1890,8 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 			YBCForceAllowCatalogModifications(true);
 			yb_force_catalog_update_on_next_ddl = false;
 			if (YbIsClientYsqlConnMgr())
-				YbSendParameterStatusForConnectionManager(
-					"yb_force_catalog_update_on_next_ddl", "false");
+				YbSendParameterStatusForConnectionManager("yb_force_catalog_update_on_next_ddl",
+														  "false");
 		}
 	}
 
@@ -1923,8 +1923,8 @@ void
 YBDecrementDdlNestingLevel()
 {
 	const bool has_write = YBCPgHasWriteOperationsInDdlTxnMode();
-	MergeCatalogModificationAspects(
-		&ddl_transaction_state.catalog_modification_aspects, has_write);
+	MergeCatalogModificationAspects(&ddl_transaction_state.catalog_modification_aspects,
+									has_write);
 
 	--ddl_transaction_state.nesting_level;
 	if (yb_test_fail_next_ddl)
@@ -1951,15 +1951,13 @@ YBDecrementDdlNestingLevel()
 		bool is_silent_altering = false;
 		if (has_write)
 		{
-			const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(
-				ddl_transaction_state.catalog_modification_aspects.applied);
+			const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(ddl_transaction_state.catalog_modification_aspects.applied);
 
 			increment_done =
 				(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
-				YbIncrementMasterCatalogVersionTableEntry(
-					mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE,
-					ddl_transaction_state.is_global_ddl,
-					ddl_transaction_state.original_ddl_command_tag);
+				YbIncrementMasterCatalogVersionTableEntry(mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE,
+														  ddl_transaction_state.is_global_ddl,
+														  ddl_transaction_state.original_ddl_command_tag);
 
 			is_silent_altering = (mode == YB_DDL_MODE_SILENT_ALTERING);
 		}
@@ -1967,8 +1965,8 @@ YBDecrementDdlNestingLevel()
 		ddl_transaction_state = (DdlTransactionState) {};
 
 		YBCForceAllowCatalogModifications(false);
-		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(
-			MyDatabaseId, is_silent_altering));
+		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(MyDatabaseId,
+												   is_silent_altering));
 
 		/*
 		 * Optimization to avoid redundant cache refresh on the current session
@@ -2073,8 +2071,8 @@ YbShouldIncrementLogicalClientVersion(PlannedStmt *pstmt)
 	return false;
 }
 
-YbDdlModeOptional YbGetDdlMode(
-	PlannedStmt *pstmt, ProcessUtilityContext context)
+YbDdlModeOptional
+YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 {
 	bool is_ddl = true;
 	bool is_version_increment = true;
@@ -2597,15 +2595,14 @@ YbDdlModeOptional YbGetDdlMode(
 }
 
 static void
-YBTxnDdlProcessUtility(
-	PlannedStmt *pstmt,
-	const char *queryString,
-	bool readOnlyTree,
-	ProcessUtilityContext context,
-	ParamListInfo params,
-	QueryEnvironment *queryEnv,
-	DestReceiver *dest,
-	QueryCompletion *qc)
+YBTxnDdlProcessUtility(PlannedStmt *pstmt,
+					   const char *queryString,
+					   bool readOnlyTree,
+					   ProcessUtilityContext context,
+					   ParamListInfo params,
+					   QueryEnvironment *queryEnv,
+					   DestReceiver *dest,
+					   QueryCompletion *qc)
 {
 
 	const YbDdlModeOptional ddl_mode = YbGetDdlMode(pstmt, context);
@@ -3066,12 +3063,13 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	YBCPgTableDesc yb_tabledesc = NULL;
 	YbTablePropertiesData yb_table_properties;
 	bool not_found = false;
-	HandleYBStatusIgnoreNotFound(
-		YBCPgGetTableDesc(dbid, relfileNodeId, &yb_tabledesc), &not_found);
+	HandleYBStatusIgnoreNotFound(YBCPgGetTableDesc(dbid, relfileNodeId,
+												   &yb_tabledesc),
+								 &not_found);
 	if (!not_found)
-		HandleYBStatusIgnoreNotFound(
-			YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties),
-			&not_found);
+		HandleYBStatusIgnoreNotFound(YBCPgGetTableProperties(yb_tabledesc,
+															 &yb_table_properties),
+									 &not_found);
 
 	tupdesc = CreateTemplateTupleDesc(ncols);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
@@ -3764,8 +3762,8 @@ yb_get_current_transaction(PG_FUNCTION_ARGS)
 	}
 
 	txn_id = (pg_uuid_t *) palloc(sizeof(pg_uuid_t));
-	HandleYBStatus(
-		YBCPgGetSelfActiveTransaction((YBCPgUuid *) txn_id, &is_null));
+	HandleYBStatus(YBCPgGetSelfActiveTransaction((YBCPgUuid *) txn_id,
+												 &is_null));
 
 	if (is_null)
 		PG_RETURN_NULL();
@@ -4277,13 +4275,13 @@ YBComputeNonCSortKey(Oid collation_id, const char* value, int64_t bytes) {
 	return buf2;
 }
 
-void YBGetCollationInfo(
-	Oid collation_id,
-	const YBCPgTypeEntity *type_entity,
-	Datum datum,
-	bool is_null,
-	YBCPgCollationInfo *collation_info) {
-
+void
+YBGetCollationInfo(Oid collation_id,
+				   const YBCPgTypeEntity *type_entity,
+				   Datum datum,
+				   bool is_null,
+				   YBCPgCollationInfo *collation_info)
+{
 	if (!type_entity) {
 		Assert(collation_id == InvalidOid);
 		collation_info->collate_is_valid_non_c = false;
@@ -4421,19 +4419,17 @@ void YBSetParentDeathSignal()
 			}
 			else
 			{
-				fprintf(
-					stderr,
-					"Error: YB_PG_PDEATHSIG is an invalid signal value: %ld",
-					pdeathsig);
+				fprintf(stderr,
+						"Error: YB_PG_PDEATHSIG is an invalid signal value: %ld",
+						pdeathsig);
 			}
 
 		}
 		else
 		{
-			fprintf(
-				stderr,
-				"Error: failed to parse the value of YB_PG_PDEATHSIG: %s",
-				pdeathsig_str);
+			fprintf(stderr,
+					"Error: failed to parse the value of YB_PG_PDEATHSIG: %s",
+					pdeathsig_str);
 		}
 	}
 #endif
@@ -4626,9 +4622,8 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 	if (!*YBCGetGFlags()->ysql_minimal_catalog_caches_preload)
 		sys_only_filter_attr = InvalidAttrNumber;
 
-	YBCRegisterSysTableForPrefetching(
-		db_id, sys_table_id, sys_table_index_id, sys_only_filter_attr,
-		fetch_ybctid);
+	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id,
+									  sys_only_filter_attr, fetch_ybctid);
 }
 
 void YbTryRegisterCatalogVersionTableForPrefetching()
@@ -5356,15 +5351,14 @@ YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
 				 * isn't a new relation yet, but we still need a map to
 				 * generate an index stmt.
 				 */
-				AttrMap *att_map = build_attrmap_by_name(
-					RelationGetDescr(rel), RelationGetDescr(rel),
-					false /* yb_ignore_type_mismatch */);
+				AttrMap *att_map = build_attrmap_by_name(RelationGetDescr(rel),
+														 RelationGetDescr(rel),
+														 false /* yb_ignore_type_mismatch */);
 
 				Relation idx_rel =
 					index_open(con_form->conindid, AccessShareLock);
-				IndexStmt *index_stmt = generateClonedIndexStmt(
-					NULL, idx_rel, att_map,
-					NULL);
+				IndexStmt *index_stmt = generateClonedIndexStmt(NULL, idx_rel,
+																att_map, NULL);
 
 				Constraint *pk_constr = makeNode(Constraint);
 				pk_constr->contype = CONSTR_PRIMARY;
@@ -5419,18 +5413,18 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 	Relation indexedRel;
 	IndexInfo *indexInfo;
 
-	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(
-		RelationGetRelid(indexRel)));
+	tuple = SearchSysCache1(RELOID,
+							ObjectIdGetDatum(RelationGetRelid(indexRel)));
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for index %u",
 				RelationGetRelid(indexRel));
 
-	reloptions = SysCacheGetAttr(RELOID, tuple,
-		Anum_pg_class_reloptions, &isNull);
+	reloptions = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions,
+								 &isNull);
 	ReleaseSysCache(tuple);
 	reloptions = ybExcludeNonPersistentReloptions(reloptions);
-	indexedRel = table_open(
-		IndexGetRelation(RelationGetRelid(indexRel), false), ShareLock);
+	indexedRel = table_open(IndexGetRelation(RelationGetRelid(indexRel), false),
+							ShareLock);
 	indexInfo = BuildIndexInfo(indexRel);
 
 	YbGetTableProperties(indexRel);

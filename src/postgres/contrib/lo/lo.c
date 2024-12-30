@@ -74,9 +74,8 @@ lo_manage(PG_FUNCTION_ARGS)
 	 * object associated with the original value is unlinked.
 	 */
 	if (newtuple != NULL &&
-		bms_is_member(
-			attnum - YBGetFirstLowInvalidAttributeNumber(trigdata->tg_relation),
-			trigdata->tg_updatedcols))
+		bms_is_member(attnum - YBGetFirstLowInvalidAttributeNumber(trigdata->tg_relation),
+					  trigdata->tg_updatedcols))
 	{
 		char	   *orig = SPI_getvalue(trigtuple, tupdesc, attnum);
 		char	   *newv = SPI_getvalue(newtuple, tupdesc, attnum);

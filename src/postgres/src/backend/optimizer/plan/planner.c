@@ -1322,8 +1322,9 @@ yb_ipath_matches_pk(IndexPath *index_path)
 			/* indexcols is only set for RowCompareExpr. */
 			Assert(iclause->indexcols == NULL);
 
-			op_strategy = get_op_opfamily_strategy(
-				clause_op, index_path->indexinfo->opfamily[iclause->indexcol]);
+			op_strategy =
+				get_op_opfamily_strategy(clause_op,
+										 index_path->indexinfo->opfamily[iclause->indexcol]);
 			Assert(op_strategy != 0); /* not a member of opfamily?? */
 			if (op_strategy != BTEqualStrategyNumber)
 				return false;
@@ -4806,11 +4807,9 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 						path = ((UpperUniquePath *) path)->subpath;
 
 					add_path(distinct_rel, (Path *)
-							 create_upper_unique_path(
-								root, distinct_rel,
-								path,
-								list_length(root->distinct_pathkeys),
-								numDistinctRows));
+							 create_upper_unique_path(root, distinct_rel, path,
+													  list_length(root->distinct_pathkeys),
+													  numDistinctRows));
 				}
 			}
 		}
@@ -4843,11 +4842,9 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 				path = ((UpperUniquePath *) path)->subpath;
 
 			add_path(distinct_rel, (Path *)
-					 create_upper_unique_path(
-						root, distinct_rel,
-						path,
-						list_length(root->distinct_pathkeys),
-						numDistinctRows));
+					 create_upper_unique_path(root, distinct_rel, path,
+											  list_length(root->distinct_pathkeys),
+											  numDistinctRows));
 		}
 	}
 

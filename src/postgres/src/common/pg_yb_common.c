@@ -131,8 +131,8 @@ YBSuppressUnsafeAlterNotice()
 {
 	static int cached_value = -1;
 	if (cached_value == -1) {
-		cached_value = YBCIsEnvVarTrue(
-			"FLAGS_ysql_suppress_unsafe_alter_notice");
+		cached_value =
+			YBCIsEnvVarTrue("FLAGS_ysql_suppress_unsafe_alter_notice");
 	}
 	return cached_value;
 }

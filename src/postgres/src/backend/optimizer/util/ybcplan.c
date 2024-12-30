@@ -58,17 +58,21 @@
  */
 typedef size_t *AttrToColIdxMap;
 
-static void YbUpdateComputeIndexColumnReferences(
-	const Relation rel, const Bitmapset *maybe_modified_cols,
-	const AttrToColIdxMap map, YbUpdateAffectedEntities *affected_entities,
-	YbSkippableEntities *skip_entities, int *nentities);
+static void YbUpdateComputeIndexColumnReferences(const Relation rel,
+												 const Bitmapset *maybe_modified_cols,
+												 const AttrToColIdxMap map,
+												 YbUpdateAffectedEntities *affected_entities,
+												 YbSkippableEntities *skip_entities,
+												 int *nentities);
 
-static void YbUpdateComputeForeignKeyColumnReferences(
-	const Relation rel, const List *fkeylist,
-	const Bitmapset *maybe_modified_cols, const AttrToColIdxMap map,
-	YbUpdateAffectedEntities *affected_entities,
-	YbSkippableEntities *skip_entities, bool is_referencing_rel,
-	int *nentities);
+static void YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
+													  const List *fkeylist,
+													  const Bitmapset *maybe_modified_cols,
+													  const AttrToColIdxMap map,
+													  YbUpdateAffectedEntities *affected_entities,
+													  YbSkippableEntities *skip_entities,
+													  bool is_referencing_rel,
+													  int *nentities);
 
 /*
  * Check if statement can be implemented by a single request to the DocDB.
@@ -742,16 +746,20 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 										 &nentities);
 
 	/* Compute a list of affected 'referencing' foreign key constraints */
-	YbUpdateComputeForeignKeyColumnReferences(
-		rel, fkeylist, maybe_modified_cols, map, affected_entities,
-		modifyTable->yb_skip_entities,	true /* is_referencing_rel */,
-		&nentities);
+	YbUpdateComputeForeignKeyColumnReferences(rel, fkeylist,
+											  maybe_modified_cols, map,
+											  affected_entities,
+											  modifyTable->yb_skip_entities,
+											  true /* is_referencing_rel */,
+											  &nentities);
 
 	/* Compute a list of affected 'referenced' foreign key constraints */
-	YbUpdateComputeForeignKeyColumnReferences(
-		rel, fkeyreflist, maybe_modified_cols, map, affected_entities,
-		modifyTable->yb_skip_entities, false /* is_referencing_rel */,
-		&nentities);
+	YbUpdateComputeForeignKeyColumnReferences(rel, fkeyreflist,
+											  maybe_modified_cols, map,
+											  affected_entities,
+											  modifyTable->yb_skip_entities,
+											  false /* is_referencing_rel */,
+											  &nentities);
 
 	Assert(nentities <= maxentities);
 
@@ -874,14 +882,14 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 		Bitmapset *extraattrs = NULL;
 		if (indexDesc->rd_indpred)
 		{
-			YbComputeIndexExprOrPredicateAttrs(
-				&extraattrs, indexDesc, Anum_pg_index_indpred, offset);
+			YbComputeIndexExprOrPredicateAttrs(&extraattrs, indexDesc,
+											   Anum_pg_index_indpred, offset);
 		}
 
 		if (indexDesc->rd_indexprs)
 		{
-			YbComputeIndexExprOrPredicateAttrs(
-				&extraattrs, indexDesc, Anum_pg_index_indexprs, offset);
+			YbComputeIndexExprOrPredicateAttrs(&extraattrs, indexDesc,
+											   Anum_pg_index_indexprs, offset);
 		}
 
 		if (extraattrs)

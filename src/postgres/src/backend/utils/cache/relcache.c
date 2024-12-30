@@ -1728,9 +1728,10 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 	if (attp->atthasdef)
 	{
 		if (processing->attrdef == NULL)
-			processing->attrdef = (AttrDefault*) MemoryContextAllocZero(
-				CacheMemoryContext,
-				relation->rd_rel->relnatts * sizeof(AttrDefault));
+			processing->attrdef = (AttrDefault*)
+				MemoryContextAllocZero(CacheMemoryContext,
+									   (relation->rd_rel->relnatts *
+										sizeof(AttrDefault)));
 
 		AttrDefault *attrdef = processing->attrdef;
 		attrdef[processing->ndef].adnum = attp->attnum;
@@ -1752,9 +1753,10 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 		{
 			/* Yes, fetch from the array */
 			if (processing->attrmiss == NULL)
-				processing->attrmiss = (AttrMissing *)MemoryContextAllocZero(
-					CacheMemoryContext,
-					relation->rd_rel->relnatts * sizeof(AttrMissing));
+				processing->attrmiss = (AttrMissing *)
+					MemoryContextAllocZero(CacheMemoryContext,
+										   (relation->rd_rel->relnatts *
+											sizeof(AttrMissing)));
 			bool is_null;
 			int one = 1;
 			Datum missval = array_get_element(missingval, 1, &one, -1,
@@ -1802,8 +1804,8 @@ YbStartNewAttrProcessing(YbAttrProcessorState* state,
 
 	processing->relation = relation;
 	processing->need = processing->relation->rd_rel->relnatts;
-	processing->constr = (TupleConstr*) MemoryContextAllocZero(
-		CacheMemoryContext, sizeof(TupleConstr));
+	processing->constr = (TupleConstr*)
+		MemoryContextAllocZero(CacheMemoryContext, sizeof(TupleConstr));
 	bool applied = YbApplyAttr(state, attrel, htup);
 	Assert(applied);
 	(void) applied;
@@ -1859,8 +1861,9 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 		if (relation->rd_rel->relchecks > 0)    /* CHECKs */
 		{
 			constr->num_check = relation->rd_rel->relchecks;
-			constr->check = (ConstrCheck *) MemoryContextAllocZero(
-				CacheMemoryContext, constr->num_check * sizeof(ConstrCheck));
+			constr->check = (ConstrCheck *)
+				MemoryContextAllocZero(CacheMemoryContext,
+									   constr->num_check * sizeof(ConstrCheck));
 			YbCheckConstraintFetch(relation, state->pg_constraint_cache);
 		}
 		else
@@ -1918,8 +1921,9 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 	 * info.
 	 */
 	Relation attrel = table_open(AttributeRelationId, AccessShareLock);
-	SysScanDesc scandesc = systable_beginscan(
-		attrel, InvalidOid, false /* indexOk */, NULL, 0, NULL);
+	SysScanDesc scandesc = systable_beginscan(attrel, InvalidOid,
+											  false /* indexOk */, NULL, 0,
+											  NULL);
 
 	YbAttrProcessorState state = {0};
 	state.pg_attrdef_cache = &cache_update_state->pg_attrdef_cache;
@@ -2114,8 +2118,9 @@ static void
 YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 {
 	Relation indrel = table_open(IndexRelationId, AccessShareLock);
-	SysScanDesc indscan = systable_beginscan(
-		indrel, IndexIndrelidIndexId, true /* indexOk */, NULL, 0, NULL);
+	SysScanDesc indscan = systable_beginscan(indrel, IndexIndrelidIndexId,
+											 true /* indexOk */, NULL, 0,
+											 NULL);
 	HeapTuple htup;
 	YbIndexProcessorState state = {0};
 	while (HeapTupleIsValid(htup = systable_getnext(indscan)))
@@ -2134,8 +2139,9 @@ YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 		if (!YbApplyIndex(&state, htup))
 		{
 			YbCompleteIndexProcessing(&state);
-			YbStartNewIndexProcessing(
-				&state, cache_update_state->sys_relations_update_required, htup);
+			YbStartNewIndexProcessing(&state,
+									  cache_update_state->sys_relations_update_required,
+									  htup);
 		}
 	}
 	YbCompleteIndexProcessing(&state);
@@ -2375,8 +2381,7 @@ YbRegisterTable(YbTablePrefetcherState* prefetcher, YbPFetchTable table)
 	YbPFetchTableState* ts = prefetcher->tables + table;
 	if (*ts == YB_PFETCH_STATE_EMPTY)
 	{
-		YbRegisterSysTableForPrefetching(
-			YbGetPrefetchableTableInfo(table)->relation_oid);
+		YbRegisterSysTableForPrefetching(YbGetPrefetchableTableInfo(table)->relation_oid);
 		*ts = YB_PFETCH_STATE_REGISTERED;
 	}
 }
@@ -2433,8 +2438,8 @@ YbFillCache(YbTablePrefetcherState* prefetcher, YbPFetchTable table)
 		YbPreloadCatalogCache(info->cache.cat_cache.id, -1);
 		break;
 	case YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX:
-		YbPreloadCatalogCache(
-			info->cache.cat_cache.id, info->cache.cat_cache.index_id);
+		YbPreloadCatalogCache(info->cache.cat_cache.id,
+							  info->cache.cat_cache.index_id);
 		break;
 	case YB_TABLE_CACHE_TYPE_CUSTOM_CACHE:
 		info->cache.custom_loader();
@@ -2474,10 +2479,9 @@ typedef struct YbPrefetcherStarterFunctor
 } YbPrefetcherStarterFunctor;
 
 static YBCStatus
-YbRunWithPrefetcherImpl(
-	YbPrefetcherStarterFunctor *prefetcher_starter,
-	YBCStatus (*func)(YbRunWithPrefetcherContext *ctx),
-	bool keep_prefetcher)
+YbRunWithPrefetcherImpl(YbPrefetcherStarterFunctor *prefetcher_starter,
+						YBCStatus (*func)(YbRunWithPrefetcherContext *ctx),
+						bool keep_prefetcher)
 {
 	const bool is_using_response_cache =
 		prefetcher_starter->call(prefetcher_starter);
@@ -2540,18 +2544,19 @@ YbPrefetcherStarterNoCacheCall(YbPrefetcherStarterFunctor *functor)
 }
 
 static void
-YbRunWithPrefetcher(
-	YBCStatus (*func)(YbRunWithPrefetcherContext *), bool keep_prefetcher)
+YbRunWithPrefetcher(YBCStatus (*func)(YbRunWithPrefetcherContext *),
+					bool keep_prefetcher)
 {
 	YBCPgLastKnownCatalogVersionInfo catalog_version = {};
-	YbPrefetcherStarterWithCache trust_cache = MakeStarterWithCache(
-		YB_YQL_PREFETCHER_TRUST_CACHE, &catalog_version);
-	YbPrefetcherStarterWithCache renew_soft = MakeStarterWithCache(
-		YB_YQL_PREFETCHER_RENEW_CACHE_SOFT, &catalog_version);
-	YbPrefetcherStarterWithCache renew_hard = MakeStarterWithCache(
-		YB_YQL_PREFETCHER_RENEW_CACHE_HARD, &catalog_version);
-	YbPrefetcherStarterFunctor no_cache =
-		{.call = &YbPrefetcherStarterNoCacheCall};
+	YbPrefetcherStarterWithCache trust_cache = MakeStarterWithCache(YB_YQL_PREFETCHER_TRUST_CACHE,
+																	&catalog_version);
+	YbPrefetcherStarterWithCache renew_soft = MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
+																   &catalog_version);
+	YbPrefetcherStarterWithCache renew_hard = MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
+																   &catalog_version);
+	YbPrefetcherStarterFunctor no_cache = {
+		.call = &YbPrefetcherStarterNoCacheCall,
+	};
 
 	YbPrefetcherStarterFunctor *prefetcher_starters[] = {
 		&trust_cache.functor,
@@ -2577,8 +2582,8 @@ YbRunWithPrefetcher(
 	}
 	for (;;)
 	{
-		YBCStatus status = YbRunWithPrefetcherImpl(
-			prefetcher_starters[starter_idx], func, keep_prefetcher);
+		YBCStatus status = YbRunWithPrefetcherImpl(prefetcher_starters[starter_idx],
+												   func, keep_prefetcher);
 		if (!status)
 			break;
 		if (++starter_idx == kStartersCount ||
@@ -2928,9 +2933,8 @@ YBPreloadRelCache()
 }
 
 static YBCStatus
-YbPrefetchRequiredDataImpl(
-	YbRunWithPrefetcherContext* ctx,
-	bool preload_rel_cache)
+YbPrefetchRequiredDataImpl(YbRunWithPrefetcherContext* ctx,
+						   bool preload_rel_cache)
 {
 	YbTablePrefetcherState *prefetcher = &ctx->prefetcher;
 
@@ -2975,11 +2979,10 @@ YbPrefetchRequiredDataWithRelCache(YbRunWithPrefetcherContext *ctx)
 void
 YbPrefetchRequiredData(bool preload_rel_cache)
 {
-	YbRunWithPrefetcher(
-		preload_rel_cache
-			? &YbPrefetchRequiredDataWithRelCache
-			: &YbPrefetchRequiredDataWithoutRelCache,
-		true /* keep_prefetcher */);
+	YbRunWithPrefetcher((preload_rel_cache ?
+						 &YbPrefetchRequiredDataWithRelCache :
+						 &YbPrefetchRequiredDataWithoutRelCache),
+						true /* keep_prefetcher */);
 }
 
 /*
@@ -7431,9 +7434,8 @@ YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
 								   AttrNumber attr_offset)
 {
 	bool		isnull = false;
-	Datum		datum = heap_getattr(
-		indexDesc->rd_indextuple, Anum_pg_index, GetPgIndexDescriptor(),
-		&isnull);
+	Datum		datum = heap_getattr(indexDesc->rd_indextuple, Anum_pg_index,
+									 GetPgIndexDescriptor(), &isnull);
 
 	if (isnull)
 		return;
@@ -7449,8 +7451,8 @@ CheckUpdateExprOrPred(const Bitmapset *updated_attrs,
 					  AttrNumber attr_offset)
 {
 	Bitmapset *indexattrs = NULL;
-	YbComputeIndexExprOrPredicateAttrs(
-		&indexattrs, indexDesc, Anum_pg_index, attr_offset);
+	YbComputeIndexExprOrPredicateAttrs(&indexattrs, indexDesc, Anum_pg_index,
+									   attr_offset);
 	bool need_update = bms_overlap(updated_attrs, indexattrs);
 	bms_free(indexattrs);
 	return need_update;

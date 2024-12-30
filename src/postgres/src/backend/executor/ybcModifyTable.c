@@ -157,8 +157,9 @@ YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
 	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetRelfileNodeId(rel), &ybc_table_desc));
 	Bitmapset *pkey    = YBGetTableFullPrimaryKeyBms(rel);
 	AttrNumber minattr = YBSystemFirstLowInvalidAttributeNumber + 1;
-	YBCPgYBTupleIdDescriptor *descr = YBCCreateYBTupleIdDescriptor(
-		dboid, YbGetRelfileNodeId(rel), bms_num_members(pkey));
+	YBCPgYBTupleIdDescriptor *descr = YBCCreateYBTupleIdDescriptor(dboid,
+																   YbGetRelfileNodeId(rel),
+																   bms_num_members(pkey));
 	YBCPgAttrValueDescriptor *next_attr = descr->attrs;
 	int col = -1;
 	while ((col = bms_next_member(pkey, col)) >= 0)
@@ -533,9 +534,8 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 	 * transaction that targets a single row (i.e. single-row-modify txn), and
 	 * there are no indices or triggers on the target table.
 	 */
-	YBCExecuteInsertForDb(
-			dboid, resultRelationDesc, slot, ONCONFLICT_NONE, NULL /* ybctid */,
-			transaction_setting);
+	YBCExecuteInsertForDb(dboid, resultRelationDesc, slot, ONCONFLICT_NONE,
+						  NULL /* ybctid */, transaction_setting);
 }
 
 bool
@@ -717,9 +717,11 @@ YBCExecuteInsertIndexForDb(Oid dboid,
 	const bool is_backfill = (backfill_write_time != NULL);
 	const bool is_non_distributed_txn_write =
 		is_backfill || (!IsSystemRelation(index) && yb_disable_transactional_writes);
-	HandleYBStatus(YBCPgNewInsert(
-		dboid, YbGetRelfileNodeId(index), YBCIsRegionLocal(index), &insert_stmt,
-		is_non_distributed_txn_write ? YB_NON_TRANSACTIONAL : YB_TRANSACTIONAL));
+	HandleYBStatus(YBCPgNewInsert(dboid, YbGetRelfileNodeId(index),
+								  YBCIsRegionLocal(index), &insert_stmt,
+								  (is_non_distributed_txn_write ?
+								   YB_NON_TRANSACTIONAL :
+								   YB_TRANSACTIONAL)));
 
 	callback(insert_stmt, indexstate, index, values, isnull,
 			 RelationGetNumberOfAttributes(index),
@@ -1453,9 +1455,11 @@ YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple,
 		 * Since we are assign values to non-primary-key columns, pass InvalidOid as
 		 * collation_id to skip computing collation sortkeys.
 		 */
-		YBCPgExpr ybc_expr = YBCNewConstant(
-			update_stmt, TupleDescAttr(tupleDesc, idx)->atttypid, InvalidOid /* collation_id */,
-			d, is_null);
+		YBCPgExpr ybc_expr = YBCNewConstant(update_stmt,
+											TupleDescAttr(tupleDesc, idx)->atttypid,
+											InvalidOid /* collation_id */,
+											d,
+											is_null);
 		HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 	}
 
