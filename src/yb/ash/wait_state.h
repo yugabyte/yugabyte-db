@@ -210,6 +210,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
   (kDiskIO)
   (kNetwork)
   (kWaitOnCondition)
+  (kLock)
 );
 
 // List of pggate sync RPCs instrumented (in pg_client.cc)
