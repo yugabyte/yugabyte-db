@@ -42,7 +42,7 @@ Increasing either of these flags reduces the frequency of statistics updates.
 If the total number of mutations for a table is greater than its analyze threshold, then the service runs ANALYZE on the table. The analyze threshold of a table is calculated as follows:
 
 ```sh
-analyze_threshold = ysql_auto_analyze_threshold + ysql_auto_analyze_scale_factor * <table_size>
+analyze_threshold = ysql_auto_analyze_threshold + (ysql_auto_analyze_scale_factor * <table_size>)
 ```
 
 where `<table_size>` is the current `reltuples` column value stored in the `pg_class` catalog.
@@ -51,7 +51,7 @@ where `<table_size>` is the current `reltuples` column value stored in the `pg_c
 
 On the other hand, `ysql_auto_analyze_scale_factor` is especially important for big tables. If a table has 1,000,000,000 rows, 10% (100,000,000 rows) would have to be mutated before ANALYZE runs. Set the scale factor to a lower value to allow for more frequent statistics collection for such large tables.
 
-In addition, `ysql_auto_analyze_batch_size` controls the maximum number of tables the auto analyze service tries to analyze in a single ANALYZE statement. Its default value is 10. Setting this flag to a larger value can potentially reduce the number of YSQL catalog cache refreshes if Auto Analyze decides to ANALYZE many tables in the same database at the same time.
+In addition, `ysql_auto_analyze_batch_size` controls the maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement. The default is 10. Setting this flag to a larger value can potentially reduce the number of YSQL catalog cache refreshes if Auto Analyze decides to ANALYZE many tables in the same database at the same time.
 
 For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../../reference/configuration/yb-tserver#auto-analyze-service-flags).
 
@@ -86,4 +86,4 @@ SELECT reltuples FROM pg_class WHERE relname = 'test';
 
 ## Limitations
 
-Because ANALYZE is a DDL statement, it can cause DDL conflicts when run concurrently with other DDL statements. As Auto Analyze runs ANALYZE in the background, you should turn off Auto Analyze if you want to execute DDL statements. You can do this by setting `ysql_enable_auto_analyze_service` to false on all YB-Tservers at runtime.
+Because ANALYZE is a DDL statement, it can cause DDL conflicts when run concurrently with other DDL statements. As Auto Analyze runs ANALYZE in the background, you should turn off Auto Analyze if you want to execute DDL statements. You can do this by setting `ysql_enable_auto_analyze_service` to false on all YB-TServers at runtime.
