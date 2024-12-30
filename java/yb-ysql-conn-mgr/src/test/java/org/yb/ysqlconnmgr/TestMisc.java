@@ -19,6 +19,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import java.sql.*;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Properties;
 import org.junit.Test;
@@ -26,6 +27,8 @@ import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionEndpoint;
+
+import com.google.common.collect.ImmutableMap;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestMisc extends BaseYsqlConnMgr {
@@ -66,6 +69,24 @@ public class TestMisc extends BaseYsqlConnMgr {
     }
 
     return -1;
+  }
+
+  public void assertStickyStateWithSequences(boolean expectedSticky) throws Exception{
+    ResultSet rs;
+     try (Connection conn = getConnectionBuilder()
+                    .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                    .connect();
+                    Statement stmt = conn.createStatement()) {
+      assertConnectionStickyState(stmt, false);
+
+      // Create sequence and call nextval to make session sticky.
+      stmt.execute("CREATE sequence my_seq");
+      rs = stmt.executeQuery("SELECT nextval('my_seq')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong(1));
+
+      assertConnectionStickyState(stmt, expectedSticky);
+    }
   }
 
   @Test
@@ -207,7 +228,6 @@ public class TestMisc extends BaseYsqlConnMgr {
   @Test
   public void testStickySuperuserConns() throws Exception {
     ResultSet rs;
-    HashSet<Integer> pids = new HashSet<>();
 
     try (Connection conn = getConnectionBuilder()
         .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
@@ -216,17 +236,11 @@ public class TestMisc extends BaseYsqlConnMgr {
       // Sticky superuser flag is not yet enabled, connection should not
       // be sticky. Assert by verifying set of unique backend pids.
       assertTrue(verifySessionParameterValue(stmt, "is_superuser", "on"));
-      for (int i = 0; i < 10; i++) {
-        rs = stmt.executeQuery("SELECT pg_backend_pid()");
-        assertTrue(rs.next());
-        pids.add(rs.getInt(1));
-      }
-      assertTrue(pids.size() > 1);
+      assertConnectionStickyState(stmt, false);
     }
 
     // Enable sticky superuser connections and restart the cluster.
     enableStickySuperuserConnsAndRestartCluster();
-    pids.clear();
 
     // Create only one superuser logical connection for the test.
     Connection suConn = getConnectionBuilder()
@@ -236,12 +250,7 @@ public class TestMisc extends BaseYsqlConnMgr {
 
     // Sticky superuser flag is enabled, connection should be sticky.
     assertTrue(verifySessionParameterValue(suStmt, "is_superuser", "on"));
-    for (int i = 0; i < 10; i++) {
-      rs = suStmt.executeQuery("SELECT pg_backend_pid()");
-      assertTrue(rs.next());
-      pids.add(rs.getInt(1));
-    }
-    assertTrue(pids.size() == 1);
+    assertConnectionStickyState(suStmt, true);
 
     // Create a non-superuser to verify they do not have stickiness.
     suStmt.execute("CREATE ROLE test_role LOGIN");
@@ -253,42 +262,126 @@ public class TestMisc extends BaseYsqlConnMgr {
         .connect();
     Statement testStmt = testConn.createStatement();
 
-    pids.clear();
-
     assertTrue(verifySessionParameterValue(testStmt, "is_superuser", "off"));
-    for (int i = 0; i < 10; i++) {
-      rs = testStmt.executeQuery("SELECT pg_backend_pid()");
-      assertTrue(rs.next());
-      pids.add(rs.getInt(1));
-    }
-    assertTrue(pids.size() > 1);
-
-    pids.clear();
+    assertConnectionStickyState(testStmt, false);
 
     // Alter test_role to now be a superuser and verify stickiness.
     suStmt.execute("ALTER ROLE test_role SUPERUSER");
 
-    for (int i = 0; i < 10; i++) {
-      rs = testStmt.executeQuery("SELECT pg_backend_pid()");
-      assertTrue(rs.next());
-      pids.add(rs.getInt(1));
-    }
-    assertTrue(pids.size() == 1);
+    assertConnectionStickyState(suStmt, true);
 
     // The most important part of the test - verify that testConn remains
     // sticky after removal of superuser privileges.
     suStmt.execute("ALTER ROLE test_role NOSUPERUSER");
 
-    pids.clear();
-
-    for (int i = 0; i < 10; i++) {
-      rs = testStmt.executeQuery("SELECT pg_backend_pid()");
-      assertTrue(rs.next());
-      pids.add(rs.getInt(1));
-    }
-    assertTrue(pids.size() == 1);
+    assertConnectionStickyState(suStmt, true);
 
     testConn.close();
     suConn.close();
+  }
+
+  @Test
+  public void testStickySequence() throws Exception {
+    // Default settings with ysql_conn_mgr_sequence_support_mode = "pooled_without_curval_lastval".
+    // This will not make connection sticky.
+    assertStickyStateWithSequences(false);
+
+    // Restarting cluster with
+    // ysql_conn_mgr_sequence_support_mode = "pooled_with_curval_lastval".
+    // This will not make connection sticky.
+    restartClusterWithFlags(
+        Collections.emptyMap(),
+        Collections.singletonMap(
+            "ysql_conn_mgr_sequence_support_mode",
+            "pooled_with_curval_lastval"
+        )
+    );
+    assertStickyStateWithSequences(false);
+
+    // ysql_conn_mgr_sequence_support_mode = "session".
+    // This will make connection sticky.
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("ysql_conn_mgr_sequence_support_mode",
+                                                     "session"));
+    assertStickyStateWithSequences(true);
+  }
+
+  // The query string could be either SELECT currval('sequence_name') or SELECT lastval()
+  public void testSequenceFunctions(String query) throws Exception {
+      ResultSet rs;
+      // ysql_conn_mgr_sequence_support_mode = "pooled_without_curval_lastval"
+      // Not supported
+      try (Connection conn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .connect();
+          Statement stmt = conn.createStatement()) {
+
+          stmt.execute("CREATE SEQUENCE my_seq");
+
+          rs = stmt.executeQuery("SELECT nextval('my_seq')");
+          assertTrue(rs.next());
+          assertEquals(1, rs.getLong(1));
+
+          try {
+              stmt.executeQuery(query);
+              fail("Expected SQLException to be thrown");
+          } catch (SQLException e) {
+              String errMsg = "not supported for session created by connection manager";
+              assertTrue(e.getMessage().contains(errMsg));
+          }
+      }
+
+      // ysql_conn_mgr_sequence_support_mode = "pooled_with_curval_lastval"
+      // Supported.
+      restartClusterWithFlags(Collections.emptyMap(),
+                          Collections.singletonMap("ysql_conn_mgr_sequence_support_mode",
+                                                    "pooled_with_curval_lastval"));
+      try (Connection conn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .connect();
+          Statement stmt = conn.createStatement()) {
+
+          stmt.execute("CREATE SEQUENCE my_seq");
+
+          rs = stmt.executeQuery("SELECT nextval('my_seq')");
+          assertTrue(rs.next());
+          assertEquals(1, rs.getLong(1));
+
+          rs = stmt.executeQuery(query);
+          assertTrue(rs.next());
+          assertEquals(1, rs.getLong(1));
+      }
+
+      // ysql_conn_mgr_sequence_support_mode = "session"
+      // Supported
+      restartClusterWithFlags(Collections.emptyMap(),
+                          Collections.singletonMap("ysql_conn_mgr_sequence_support_mode",
+                                                    "session"));
+
+      try (Connection conn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .connect();
+          Statement stmt = conn.createStatement()) {
+
+          stmt.execute("CREATE SEQUENCE my_seq");
+
+          rs = stmt.executeQuery("SELECT nextval('my_seq')");
+          assertTrue(rs.next());
+          assertEquals(1, rs.getLong(1));
+
+          rs = stmt.executeQuery(query);
+          assertTrue(rs.next());
+          assertEquals(1, rs.getLong(1));
+      }
+  }
+
+  @Test
+  public void testCurrvalErrorOut() throws Exception {
+    testSequenceFunctions("SELECT currval('my_seq')");
+  }
+
+  @Test
+  public void testLastvalErrorOut() throws Exception {
+    testSequenceFunctions("SELECT lastval()");
   }
 }
