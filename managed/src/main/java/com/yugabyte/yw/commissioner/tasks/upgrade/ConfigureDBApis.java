@@ -116,11 +116,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                 currentCluster,
                 currClusters,
                 taskParams().communicationPorts);
-            NodeDetails node = nodes.iterator().next();
-            node.isYqlServer = taskParams().enableYCQL;
-            node.isYsqlServer = taskParams().enableYSQL;
-            CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node);
-            createNodeDetailsUpdateTask(node, false);
+            if (processTypes.size() == 1 && processTypes.contains(ServerType.TSERVER)) {
+              NodeDetails node = nodes.iterator().next();
+              node.isYqlServer = taskParams().enableYCQL;
+              node.isYsqlServer = taskParams().enableYSQL;
+              CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node);
+              createNodeDetailsUpdateTask(node, false);
+            }
           },
           masterNodes,
           tserverNodes,
