@@ -412,6 +412,8 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_block_dangerous_roles;
   const char*     ysql_sequence_cache_method;
   const char*     ysql_conn_mgr_sequence_support_mode;
+  const int32_t*  ysql_conn_mgr_max_query_size;
+  const int32_t*  ysql_conn_mgr_wait_timeout_ms;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

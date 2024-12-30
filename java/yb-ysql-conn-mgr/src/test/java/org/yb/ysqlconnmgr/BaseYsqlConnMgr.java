@@ -107,17 +107,34 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     return warmup_random_mode;
   }
 
-  protected void enableStickySuperuserConnsAndRestartCluster() throws Exception {
-    ysql_conn_mgr_superuser_sticky = true;
+  private void restartClusterWithAdditionalFlags(
+      Map<String, String> additionalMasterFlags,
+      Map<String, String> additionalTserverFlags) throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    Map<String, String> masterFlags = getMasterFlags();
+    tserverFlags.putAll(additionalTserverFlags);
+    masterFlags.putAll(additionalMasterFlags);
+
     destroyMiniCluster();
     waitForProperShutdown();
-    createMiniCluster();
+    createMiniCluster(masterFlags, tserverFlags);
     waitForDatabaseToStart();
+  }
+
+  protected void enableStickySuperuserConnsAndRestartCluster() throws Exception {
+    ysql_conn_mgr_superuser_sticky = true;
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
+  }
+
+  protected void reduceQuerySizePacketAndRestartCluster(int query_sz) throws Exception {
+    Map<String, String> myMap = new HashMap<>();
+    myMap.put("ysql_conn_mgr_max_query_size", Integer.toString(query_sz));
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), myMap);
   }
 
 protected void enableVersionMatchingAndRestartCluster(boolean higher_version_matching)
         throws Exception {
-    Map<String, String> tsFlagMap = getTServerFlags();
+    Map<String, String> tsFlagMap = new HashMap<>();
     tsFlagMap.put("allowed_preview_flags_csv",
             ",enable_ysql_conn_mgr,ysql_conn_mgr_version_matching");
     tsFlagMap.put("enable_ysql_conn_mgr", "true");
@@ -135,11 +152,7 @@ protected void enableVersionMatchingAndRestartCluster(boolean higher_version_mat
         tsFlagMap.put("ysql_conn_mgr_version_matching_connect_higher_version", "false");
     }
 
-    Map<String, String> masterFlagMap = getMasterFlags();
-    destroyMiniCluster();
-    waitForProperShutdown();
-    createMiniCluster(masterFlagMap, tsFlagMap);
-    waitForDatabaseToStart();
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tsFlagMap);
   }
 
   protected void enableVersionMatchingAndRestartCluster() throws Exception {

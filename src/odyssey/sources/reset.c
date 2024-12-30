@@ -48,9 +48,12 @@ int od_reset(od_server_t *server)
 	 *
 	 * 3. Continue with (1)
 	 */
-
-	/* With tsan larger time is taken to read from the sockets */
-	int wait_timeout = 10000;
+	/*
+	 * wait_timeout is not used anywhere. It's usage has been replaced by
+	 * yb_wait_timeout. Keeping it to avoid any conflicts while merging upstream
+	 * odyssey code in future.
+	 */
+	int wait_timeout = 1000;
 	int wait_try = 0;
 	int wait_try_cancel = 0;
 	int wait_cancel_limit = 1;
@@ -64,10 +67,10 @@ int od_reset(od_server_t *server)
 			od_debug(&instance->logger, "reset", server->client,
 				 server,
 				 "not synchronized, wait for %d msec (#%d)",
-				 wait_timeout, wait_try);
+				 yb_wait_timeout, wait_try);
 			wait_try++;
 			rc = od_backend_ready_wait(server, "reset", 1,
-						   wait_timeout);
+						   yb_wait_timeout);
 			/* can be -1 or -2 */
 			if (rc < 0)
 				break;
@@ -114,7 +117,7 @@ int od_reset(od_server_t *server)
 			char query_rlb[] = "ROLLBACK";
 			rc = od_backend_query(server, "reset-rollback",
 					      query_rlb, NULL,
-					      sizeof(query_rlb), wait_timeout,
+					      sizeof(query_rlb), yb_wait_timeout,
 					      1);
 			if (rc < 0)
 				goto error;
@@ -126,7 +129,7 @@ int od_reset(od_server_t *server)
 	if (route->rule->pool->discard) {
 		char query_discard[] = "DISCARD ALL";
 		rc = od_backend_query(server, "reset-discard", query_discard,
-				      NULL, sizeof(query_discard), wait_timeout,
+				      NULL, sizeof(query_discard), yb_wait_timeout,
 				      1);
 		if (rc < 0)
 			goto error;
@@ -138,7 +141,7 @@ int od_reset(od_server_t *server)
 			"SET SESSION AUTHORIZATION DEFAULT;RESET ALL;CLOSE ALL;UNLISTEN *;SELECT pg_advisory_unlock_all();DISCARD PLANS;DISCARD SEQUENCES;DISCARD TEMP;";
 		rc = od_backend_query(server, "reset-discard-smart",
 				      query_discard, NULL,
-				      sizeof(query_discard), wait_timeout, 1);
+				      sizeof(query_discard), yb_wait_timeout, 1);
 		if (rc < 0)
 			goto error;
 	}
@@ -147,7 +150,7 @@ int od_reset(od_server_t *server)
 	{
 		char query_reset[] = "RESET ALL";
 		rc = od_backend_query(server, "reset-resetall", query_reset,
-				      NULL, sizeof(query_reset), wait_timeout, 1);
+				      NULL, sizeof(query_reset), yb_wait_timeout, 1);
 		if (rc == -1)
 			goto error;
 		/* reset timeout */
