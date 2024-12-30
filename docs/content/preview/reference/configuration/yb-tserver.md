@@ -1657,7 +1657,7 @@ Default: 50
 ##### ysql_auto_analyze_scale_factor
 
 The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table.
-ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`.
+ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`, where table_size is the value of the `reltuples` column in the `pg_class` catalog.
 
 Default: 0.1
 
