@@ -1643,7 +1643,7 @@ Enable the Auto Analyze service, which automatically runs ANALYZE to update tabl
 Default: false
 
 ##### ysql_enable_table_mutation_counter
-Enable counting of mutations on a per-table basis. These mutations are used to automatically run ANALYZE as soon as the mutations of a table cross 
+Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds 
 the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
 
 Default: false
