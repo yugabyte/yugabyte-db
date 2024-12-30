@@ -1441,7 +1441,7 @@ You can send this configuration with a `POST` command to a running Kafka Connect
 
 ### Adding connector configuration
 
-To run a the connector, create a connector configuration and add the configuration to your Kafka Connect cluster.
+To run the connector, create a connector configuration and add the configuration to your Kafka Connect cluster.
 
 **Prerequisites**
 

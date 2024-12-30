@@ -729,7 +729,7 @@ The connector represents changes to rows with events that are structured like th
 
 ### Default values
 
-If there is a default value for any column in a the YugabyteDB database schema, the connector propagates the same value to the Kafka schema.
+If there is a default value for any column in the YugabyteDB database schema, the connector propagates the same value to the Kafka schema.
 
 ### Basic types
 

@@ -115,7 +115,7 @@ The connector retrieves schema information as part of the change events which co
 
 ### Topic names
 
-By default, the YugabyteDB gRPC connector writes change events for all `INSERT`, `UPDATE`, and `DELETE` operations that occur in a table to a single Apache Kafka topic that is specific to that table. The connector names change event topics as _serverName.schemaName.tableName_.
+By default, the YugabyteDB gRPC connector writes change events for all INSERT, UPDATE, and DELETE operations that occur in a table to a single Apache Kafka topic that is specific to that table. The connector names change event topics as _serverName.schemaName.tableName_.
 
 The components of a topic name are as follows:
 
@@ -178,12 +178,12 @@ Debezium registers and receives metadata only for transactions that occur _after
 
 {{< /note >}}
 
-For every transaction `BEGIN` and `END`, Debezium generates an event containing the following fields:
+For every transaction BEGIN and END, Debezium generates an event containing the following fields:
 
-* `status` - `BEGIN` or `END`
+* `status` - BEGIN or END
 * `id` - string representation of unique transaction identifier
-* `event_count` (for `END` events) - total number of events emitted by the transaction
-* `data_collections` (for `END` events) - an array of pairs of `data_collection` and `event_count` that provides the number of events emitted by changes originating from given data collection
+* `event_count` (for END events) - total number of events emitted by the transaction
+* `data_collections` (for END events) - an array of pairs of `data_collection` and `event_count` that provides the number of events emitted by changes originating from given data collection
 
 For example:
 
@@ -246,7 +246,7 @@ For example:
 
 ## Data change events
 
-The connector generates a data change event for each row-level `INSERT`, `UPDATE`, and `DELETE` operation. Each event contains a key and a value. The structure of the key and the value depends on the table that was changed.
+The connector generates a data change event for each row-level INSERT, UPDATE, and DELETE operation. Each event contains a key and a value. The structure of the key and the value depends on the table that was changed.
 
 Debezium and Kafka Connect are designed around continuous streams of event messages. However, the structure of these events may change over time, which can be difficult for consumers to handle. To address this, each event contains the schema for its content. This makes each event self-contained.
 
@@ -723,7 +723,7 @@ The connector represents changes to rows with events that are structured like th
 
 ### Default values
 
-If there is a default value for any column in a the YugabyteDB database schema, the connector propagates the same value to the Kafka schema.
+If there is a default value for any column in the YugabyteDB database schema, the connector propagates the same value to the Kafka schema.
 
 ### Basic types
 
@@ -764,7 +764,7 @@ The following table describes mappings for YugabyteDB basic data types.
 
 ### Temporal types
 
-Other than YugabyteDB's `TIMESTAMPTZ` and `TIMETZ` data types, which contain time zone information, how temporal types are mapped depends on the value of the `time.precision.mode` connector configuration property. The following sections describe these mappings:
+Other than the YugabyteDB TIMESTAMPTZ and TIMETZ data types, which contain time zone information, how temporal types are mapped depends on the value of the `time.precision.mode` connector configuration property. The following sections describe these mappings:
 
 * [`time.precision.mode=adaptive`](#adaptive-mode)
 * [`time.precision.mode=adaptive_time_microseconds`](#adaptive-microseconds-mode)
@@ -812,7 +812,7 @@ The TIMESTAMP type represents a timestamp without time zone information. Such co
 
 The timezone of the JVM running Kafka Connect and Debezium does not affect this conversion.
 
-YugabyteDB supports using `+/-infinity` values in `TIMESTAMP` columns. These special values are converted to timestamps with value `9223372036825200000` in case of positive infinity or `-9223372036832400000` in case of negative infinity.
+YugabyteDB supports using `+/-infinity` values in TIMESTAMP columns. These special values are converted to timestamps with value `9223372036825200000` in case of positive infinity or `-9223372036832400000` in case of negative infinity.
 
 ### Decimal types
 
@@ -824,7 +824,7 @@ YugabyteDB doesn't currently support the `decimal.handling.mode` property value 
 
 {{< /note >}}
 
-When the `decimal.handling.mode` property is set to `double`, the connector represents all `DECIMAL`, `NUMERIC`, and `MONEY` values as Java double values and encodes them as shown in the following table.
+When the `decimal.handling.mode` property is set to `double`, the connector represents all DECIMAL, NUMERIC, and MONEY values as Java double values and encodes them as shown in the following table.
 
 The following table describes mappings when `decimal.handling.mode` is `double`.
 
@@ -834,7 +834,7 @@ The following table describes mappings when `decimal.handling.mode` is `double`.
 | DECIMAL [(M[,D])] | FLOAT64 | |
 | MONEY [(M[,D])] | FLOAT64 | |
 
-The other possible value for `decimal.handling.mode` is `string`. In this case, the connector represents `DECIMAL`, `NUMERIC`, and `MONEY` values as their formatted string representation, and encodes them as shown in the following table.
+The other possible value for `decimal.handling.mode` is `string`. In this case, the connector represents DECIMAL, NUMERIC, and MONEY values as their formatted string representation, and encodes them as shown in the following table.
 
 The following table describes mappings when `decimal.handling.mode` is `string`.
 
@@ -1061,7 +1061,7 @@ Advanced connector configuration properties:
 | admin.operation.timeout.ms | 60000 | The default timeout used for administrative operations (such as createTable, deleteTable, getTables, etc). |
 | operation.timeout.ms | 60000 | The default timeout used for user operations (using sessions and scanners). |
 | socket.read.timeout.ms | 60000 | The default timeout to use when waiting on data from a socket. |
-| time.precision.mode | adaptive | Time, date, and timestamps can be represented with different kinds of precision: <br/><br/> `adaptive` captures the time and timestamp values exactly as in the database using millisecond precision values based on the database column's type. <br/><br/> `adaptive_time_microseconds` captures the date, datetime and timestamp values exactly as in the database using millisecond precision values based on the database column's type. An exception is `TIME` type fields, which are always captured as microseconds. <br/><br/> `connect` always represents time and timestamp values by using Kafka Connect's built-in representations for Time, Date, and Timestamp, which use millisecond precision regardless of the database columns' precision. See temporal values. |
+| time.precision.mode | adaptive | Time, date, and timestamps can be represented with different kinds of precision: <br/><br/> `adaptive` captures the time and timestamp values exactly as in the database using millisecond precision values based on the database column's type. <br/><br/> `adaptive_time_microseconds` captures the date, datetime and timestamp values exactly as in the database using millisecond precision values based on the database column's type. An exception is TIME type fields, which are always captured as microseconds. <br/><br/> `connect` always represents time and timestamp values by using Kafka Connect's built-in representations for Time, Date, and Timestamp, which use millisecond precision regardless of the database columns' precision. See temporal values. |
 | decimal.handling.mode | double | The `precise` mode is not currently supported. <br/><br/>  `double` maps all the numeric, double, and money types as Java double values (FLOAT64). <br/><br/>  `string` represents the numeric, double, and money types as their string-formatted form. <br/><br/> |
 | binary.handling.mode | hex | `hex` is the only supported mode. All binary strings are converted to their respective hex format and emitted as their string representation . |
 | interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/> `numeric` represents intervals using approximate number of microseconds. <br/><br/> `string` represents intervals exactly by using the string pattern representation<br/> `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`.<br/> For example: P1Y2M3DT4H5M6.78S. See [YugabyteDB data types](../../../../api/ysql/datatypes/). |
@@ -1179,7 +1179,7 @@ The connector publishes metadata that can be used to distinguish transaction bou
 
 ### Prerequisites
 
-* Create the Stream ID should in the `EXPLICIT` checkpointing mode. For more information, see [yb-admin create\_change\_data_stream](../../../../admin/yb-admin#create-change-data-stream).
+* Create the Stream ID should in the EXPLICIT checkpointing mode. For more information, see [yb-admin create\_change\_data_stream](../../../../admin/yb-admin#create-change-data-stream).
 * You should always run the connector with a single task, that is, `tasks.max` should always be set to 1.
 
 ### Known limitations
