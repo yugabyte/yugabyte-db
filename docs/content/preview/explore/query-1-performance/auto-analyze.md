@@ -9,12 +9,12 @@ tags:
 menu:
   preview:
     identifier: auto_analyze
-    parent: explore
-    weight: 20
+    parent: query-tuning
+    weight: 700
 type: docs
 ---
 
-To create optimal plans for queries, the query planner needs accurate and up-to-date statistics related to tables and their columns. These statistics are also used by the YugabyteDB [cost-based optimizer](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) (CBO) to create optimal execution plans for queries. To generate the statistics, you run the [ANALYZE](../../api/ysql/the-sql-language/statements/cmd_analyze/) command. ANALYZE collects statistics about the contents of tables in the database, and stores the results in the `pg_statistic` system catalog.
+To create optimal plans for queries, the query planner needs accurate and up-to-date statistics related to tables and their columns. These statistics are also used by the YugabyteDB [cost-based optimizer](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) (CBO) to create optimal execution plans for queries. To generate the statistics, you run the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command. ANALYZE collects statistics about the contents of tables in the database, and stores the results in the `pg_statistic` system catalog.
 
 Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM), the YugabyteDB Auto Analyze service automates the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold for the table. This ensures table statistics are always up-to-date.
 
@@ -22,7 +22,7 @@ Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routi
 
 The Auto Analyze service is {{<tags/feature/tp>}}. Before you can use the feature, you must enable it by setting `ysql_enable_auto_analyze_service` to true on all YB-Masters, and both `ysql_enable_auto_analyze_service` and `ysql_enable_table_mutation_counter` to true on all YB-Tservers.
 
-For example, to create a single-node [yugabyted](../../reference/configuration/yugabyted/) cluster with Auto Analyze enabled, use the following command:
+For example, to create a single-node [yugabyted](../../../reference/configuration/yugabyted/) cluster with Auto Analyze enabled, use the following command:
 
 ```sh
 ./bin/yugabyted start --master_flags "ysql_enable_auto_analyze_service=true" --tserver_flags "ysql_enable_auto_analyze_service=true,ysql_enable_table_mutation_counter=true"
@@ -53,7 +53,7 @@ On the other hand, `ysql_auto_analyze_scale_factor` is especially important for 
 
 In addition, `ysql_auto_analyze_batch_size` controls the maximum number of tables the auto analyze service tries to analyze in a single ANALYZE statement. Its default value is 10. Setting this flag to a larger value can potentially reduce the number of YSQL catalog cache refreshes if Auto Analyze decides to ANALYZE many tables in the same database at the same time.
 
-For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../reference/configuration/yb-tserver#auto-analyze-service-flags).
+For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../../reference/configuration/yb-tserver#auto-analyze-service-flags).
 
 ## Example
 
