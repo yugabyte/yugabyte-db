@@ -3733,7 +3733,10 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   if (checkpoint_type == yb::ToString("EXPLICIT")) {
         req.set_checkpoint_type(cdc::CDCCheckpointType::EXPLICIT);
   } else {
-        req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
+    cout << "WARNING: Creation of streams with IMPLICIT checkpointing is deprecated and will be "
+            "removed in a future release. Consider creating a stream with EXPLICIT checkpointing."
+         << endl;
+    req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
   }
 
   if (consistent_snapshot_option == "USE_SNAPSHOT") {

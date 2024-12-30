@@ -17,7 +17,7 @@ Create a database user and provide the user with READ access to all the resource
    ```sql
    psql -h <host> \
         -d <database> \
-        -U <username> \
+        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
         -v voyager_user='ybvoyager' \
         -v schema_list='<comma_separated_schema_list>' \
         -v is_live_migration=0 \

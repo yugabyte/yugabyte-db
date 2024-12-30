@@ -15,24 +15,54 @@
 
 #pragma once
 
+#include <future>
+#include <mutex>
+#include <string_view>
+
 #include "yb/client/client_fwd.h"
+
+#include "yb/common/pgsql_protocol.pb.h"
+
+#include "yb/gutil/thread_annotations.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 
-constexpr char kPgAdvisoryLocksTableName[] = "pg_advisory_locks";
+class AdvisoryLockTest;
+
+namespace tserver {
+
+constexpr std::string_view kPgAdvisoryLocksTableName = "pg_advisory_locks";
 
 // Helper class for the advisory locks table.
 class YsqlAdvisoryLocksTable {
  public:
-  explicit YsqlAdvisoryLocksTable(client::YBClient& client);
-  ~YsqlAdvisoryLocksTable();
+  explicit YsqlAdvisoryLocksTable(std::shared_future<client::YBClient*> client_future);
+
+  Result<client::YBPgsqlLockOpPtr> CreateLockOp(
+      uint32_t db_oid, uint32_t class_oid, uint32_t objid, uint32_t objsubid,
+      PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, bool wait,
+      rpc::Sidecars* sidecars) EXCLUDES(mutex_);
+
+  Result<client::YBPgsqlLockOpPtr> CreateUnlockOp(
+      uint32_t db_oid, uint32_t class_oid, uint32_t objid, uint32_t objsubid,
+      PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, rpc::Sidecars* sidecars) EXCLUDES(mutex_);
+
+  Result<client::YBPgsqlLockOpPtr> CreateUnlockAllOp(
+      uint32_t db_oid, rpc::Sidecars* sidecars) EXCLUDES(mutex_);
+
+ private:
+  friend class yb::AdvisoryLockTest;
 
   Result<client::YBTablePtr> GetTable() EXCLUDES(mutex_);
 
- private:
   std::mutex mutex_;
-  client::YBTablePtr table_ GUARDED_BY(mutex_);;
-  client::YBClient& client_;
+  client::YBTablePtr table_ GUARDED_BY(mutex_);
+  std::shared_future<client::YBClient*> client_future_;
 };
 
+} // namespace tserver
 } // namespace yb

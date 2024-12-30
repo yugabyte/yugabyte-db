@@ -40,7 +40,8 @@
   case DataType::UINT16: FALLTHROUGH_INTENDED;    \
   case DataType::UINT32: FALLTHROUGH_INTENDED;    \
   case DataType::UINT64: FALLTHROUGH_INTENDED;    \
-  case DataType::GIN_NULL
+  case DataType::GIN_NULL: FALLTHROUGH_INTENDED;  \
+  case DataType::VECTOR
 
 namespace yb {
 

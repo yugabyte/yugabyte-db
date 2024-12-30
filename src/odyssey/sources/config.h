@@ -33,7 +33,9 @@ struct od_config {
 	int log_config;
 	int log_session;
 	int log_query;
-	char *log_file;
+	char *log_dir;
+	int log_max_size;
+	int log_rotate_interval;
 	char *log_format;
 	int log_stats;
 	int log_general_stats_prom;

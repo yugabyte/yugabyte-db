@@ -108,7 +108,7 @@ You can verify replication by stopping the workload and then using the `COUNT(*)
 
 ### Unidirectional replication
 
-For unidirectional replication, connect to the target universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and confirm that you can see the expected records.
+For unidirectional replication, connect to the target universe using the YSQL shell (ysqlsh) or the YCQL shell (ycqlsh), and confirm that you can see the expected records.
 
 ### Bidirectional replication
 

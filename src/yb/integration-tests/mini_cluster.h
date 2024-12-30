@@ -476,4 +476,6 @@ Result<T> MiniCluster::GetLeaderMasterProxy() {
   return T(proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
 }
 
+void DisableFlushOnShutdown(MiniCluster& cluster, bool disable);
+
 }  // namespace yb

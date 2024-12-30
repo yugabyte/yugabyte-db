@@ -95,7 +95,8 @@ public class AllowedActionsHelper {
     // removeSingleNodeErrOrNull. We will add validation after.
     if (action == NodeActionType.STOP
         || action == NodeActionType.REMOVE
-        || action == NodeActionType.REBOOT) {
+        || action == NodeActionType.REBOOT
+        || action == NodeActionType.DECOMMISSION) {
       errorMsg = removeProcessesErrOrNull(action);
       if (errorMsg != null) {
         return errorMsg;
@@ -106,7 +107,7 @@ public class AllowedActionsHelper {
       }
     }
 
-    if (action == NodeActionType.DELETE) {
+    if (action == NodeActionType.DELETE || action == NodeActionType.DECOMMISSION) {
       errorMsg = deleteSingleNodeErrOrNull(action);
       if (errorMsg != null) {
         return errorMsg;
@@ -189,7 +190,8 @@ public class AllowedActionsHelper {
 
   private String deleteSingleNodeErrOrNull(NodeActionType action) {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    if ((cluster.clusterType == PRIMARY) && (node.state == NodeState.Decommissioned)) {
+    if ((cluster.clusterType == PRIMARY)
+        && ((node.state == NodeState.Decommissioned) || action == NodeActionType.DECOMMISSION)) {
       int nodesInCluster = universe.getUniverseDetails().getNodesInCluster(cluster.uuid).size();
       int minNodes =
           cluster.userIntent.dedicatedNodes

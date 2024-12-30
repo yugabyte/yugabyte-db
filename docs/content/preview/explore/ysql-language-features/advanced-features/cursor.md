@@ -6,7 +6,7 @@ menu:
   preview:
     identifier: advanced-features-cursor
     parent: advanced-features
-    weight: 220
+    weight: 200
 aliases:
   - /preview/explore/ysql-language-features/cursor/
 type: docs

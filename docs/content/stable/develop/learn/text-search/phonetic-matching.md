@@ -4,6 +4,8 @@ headerTitle: Phonetic search
 linkTitle: Phonetic search
 headcontent: Learn how to do phonetic matching in YSQL
 description: Learn how to do phonetic matching in YSQL
+tags:
+  other: ysql
 menu:
   stable:
     identifier: phonetic-matching-ysql
@@ -35,7 +37,7 @@ CREATE TABLE IF NOT EXISTS words (
 Load some sample words into the table as follows:
 
 ```sql
-INSERT INTO words(word) VALUES 
+INSERT INTO words(word) VALUES
   ('anopisthographic'),('ambassadorship'),('ambuscader'),('ambiguity'),('ampycides'),
   ('anapaestically'),('anapests'),('anapsidan'),('unpsychic'),('anapsid'),
   ('unpessimistic'),('unepistolary'),('inabstracted'),('anapaest'),('unobstinate'),

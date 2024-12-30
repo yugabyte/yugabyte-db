@@ -145,7 +145,7 @@ To enable database audit logging for a cluster, do the following:
     - **DDL** - All DDL that is not included in the ROLE class.
     - **Misc** - Miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, and SET.
 
-1. Configure the [YSQL audit log settings](#ysql-audit-loggng-settings).
+1. Configure the [YSQL audit log settings](#ysql-audit-logging-settings).
 
 1. Select the export configuration to use.
 

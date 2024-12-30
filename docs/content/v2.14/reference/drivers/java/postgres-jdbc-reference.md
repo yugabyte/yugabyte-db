@@ -34,7 +34,7 @@ The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC 
 
 ## Quick Start
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/java/ysql-jdbc) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](../../../../quick-start/build-apps/java/ysql-jdbc) in the Quick Start section.
 
 ## Download the Driver Dependency
 

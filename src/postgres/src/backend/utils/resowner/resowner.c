@@ -1198,7 +1198,7 @@ static void
 PrintYbPgInheritsCacheLeakWarning(YbPgInheritsCacheEntry entry)
 {
 	elog(WARNING, "YbPgInheritsCache reference leak: Entry for oid \"%d\" not "
- 				  "released", entry->parentOid);
+				  "released", entry->parentOid);
 }
 
 /*

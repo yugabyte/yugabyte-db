@@ -183,4 +183,13 @@ Status FetchExistingYbctids(
     const scoped_refptr<PgSession>& session, PgOid database_id, TableYbctidVector& ybctids,
     const OidSet& region_local_tables, const ExecParametersMutator& exec_params_mutator);
 
+
+struct YbctidBatch {
+  YbctidBatch(std::reference_wrapper<const std::vector<Slice>> ybctids_, bool keep_order_)
+      : ybctids(ybctids_), keep_order(keep_order_) {}
+
+  const std::vector<Slice>& ybctids;
+  bool keep_order;
+};
+
 } // namespace yb::pggate

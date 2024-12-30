@@ -3139,10 +3139,11 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         ServerType.TSERVER,
         (node, params) -> {
           params.force = true;
+          params.gflags = new HashMap<>();
+
           if (action == XClusterUniverseAction.PAUSE) {
-            params.gflags =
-                Collections.singletonMap(
-                    GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN, Integer.toString(Integer.MAX_VALUE));
+            params.gflags.put(
+                GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN, Integer.toString(Integer.MAX_VALUE));
           } else if (action == XClusterUniverseAction.RESUME) {
             Map<String, String> oldGFlags =
                 GFlagsUtil.getGFlagsForNode(
@@ -3150,12 +3151,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                     ServerType.TSERVER,
                     universe.getUniverseDetails().getPrimaryCluster(),
                     universe.getUniverseDetails().clusters);
-            params.gflags =
-                Collections.singletonMap(
-                    GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN,
-                    oldGFlags.containsKey(GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN)
-                        ? oldGFlags.get(GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN)
-                        : "900");
+            params.gflags.put(
+                GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN,
+                oldGFlags.getOrDefault(GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN, "900"));
           }
         });
 

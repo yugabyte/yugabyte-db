@@ -107,7 +107,7 @@ do { \
 #define CHECK_REL_PROCEDURE2(pname1, pname2) \
 do { \
 	if (indexRelation->rd_indam->pname1 == NULL && \
-	    indexRelation->rd_indam->pname2 == NULL) \
+		indexRelation->rd_indam->pname2 == NULL) \
 		elog(ERROR, "functions %s/%s are not defined for index %s", \
 			 CppAsString(pname1), CppAsString(pname2), RelationGetRelationName(indexRelation)); \
 } while(0)

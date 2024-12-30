@@ -1027,7 +1027,7 @@ TEST_F(CreateTableITest, OnlyMajorityReplicasWithPlacement) {
   // Try creating a table. It should succeed.
   YBTableName table_name5(kNamespaceType, kNamespaceName, kTableName5);
   std::unique_ptr<client::YBTableCreator> table_creator5(client_->NewTableCreator());
-  ASSERT_OK(table_creator1->table_name(table_name5)
+  ASSERT_OK(table_creator5->table_name(table_name5)
                             .schema(&client_schema)
                             .num_tablets(kNumTablets)
                             .wait(true)

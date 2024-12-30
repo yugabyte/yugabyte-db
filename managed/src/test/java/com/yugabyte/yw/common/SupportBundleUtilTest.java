@@ -35,6 +35,8 @@ public class SupportBundleUtilTest extends FakeDBApplication {
   public static final String universe_logs_regex_pattern =
       "((?:.*)(?:yb-)(?:master|tserver)(?:.*))(\\d{8})-(?:\\d*)\\.(?:.*)";
   public static final String postgres_logs_regex_pattern = "((?:.*)(?:postgresql)-)(.{10})(?:.*)";
+  public static final String connection_pooling_logs_regex_pattern =
+      "((?:.*)(?:ysql-conn-mgr)-)(.{10})(?:.*)";
 
   @Before
   public void setup() {
@@ -129,18 +131,23 @@ public class SupportBundleUtilTest extends FakeDBApplication {
             "/mnt/disk0/yb-data/tserver/logs/"
                 + "yb-tserver.yb-dev-sahith-new-yb-tserver-1.root.log.INFO.20221116-093807.24.gz",
             "/mnt/disk0/yb-data/master/logs/"
-                + "yb-master.yb-dev-sahith-new-yb-master-1.root.log.WARNING.20221116-093807.24.gz");
+                + "yb-master.yb-dev-sahith-new-yb-master-1.root.log.WARNING.20221116-093807.24.gz",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2024-12-24_065828.log.117963.gz");
     List<String> expectedFileTypeList =
         Arrays.asList(
             "/mnt/disk0/yb-data/tserver/logs/postgresql-",
             "/mnt/disk0/yb-data/tserver/logs/"
                 + "yb-tserver.yb-dev-sahith-new-yb-tserver-1.root.log.INFO.",
             "/mnt/disk0/yb-data/master/logs/"
-                + "yb-master.yb-dev-sahith-new-yb-master-1.root.log.WARNING.");
+                + "yb-master.yb-dev-sahith-new-yb-master-1.root.log.WARNING.",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-");
 
     for (int i = 0; i < fileNameList.size(); ++i) {
       List<String> fileRegexList =
-          Arrays.asList(universe_logs_regex_pattern, postgres_logs_regex_pattern);
+          Arrays.asList(
+              universe_logs_regex_pattern,
+              postgres_logs_regex_pattern,
+              connection_pooling_logs_regex_pattern);
       assertEquals(
           expectedFileTypeList.get(i),
           supportBundleUtil.extractFileTypeFromFileNameAndRegex(
@@ -152,6 +159,8 @@ public class SupportBundleUtilTest extends FakeDBApplication {
   public void testExtractDateFromFileNameAndRegex() throws ParseException {
     List<String> fileNameList =
         Arrays.asList(
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2024-12-24_065828.log.117963.gz",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2022-01-01_000000.log.117900",
             "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-16_093918.log.gz",
             "/mnt/disk0/yb-data/tserver/logs/postgresql-2021-12-31_000000.log.gz",
             "/mnt/disk0/yb-data/tserver/logs/postgresql-2020-01-01_000000.log.gz",
@@ -170,6 +179,8 @@ public class SupportBundleUtilTest extends FakeDBApplication {
 
     List<String> expectedDateList =
         Arrays.asList(
+            "2024-12-24",
+            "2022-01-01",
             "2022-11-16",
             "2021-12-31",
             "2020-01-01",
@@ -182,7 +193,10 @@ public class SupportBundleUtilTest extends FakeDBApplication {
 
     for (int i = 0; i < fileNameList.size(); ++i) {
       List<String> fileRegexList =
-          Arrays.asList(universe_logs_regex_pattern, postgres_logs_regex_pattern);
+          Arrays.asList(
+              universe_logs_regex_pattern,
+              postgres_logs_regex_pattern,
+              connection_pooling_logs_regex_pattern);
       Date date = new SimpleDateFormat("yyyy-MM-dd").parse(expectedDateList.get(i));
       assertEquals(
           date,
@@ -206,6 +220,13 @@ public class SupportBundleUtilTest extends FakeDBApplication {
             "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-20_000000.log.gz",
             "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-21_000000.log.gz",
             "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-22_000000.log",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2024-12-24_065828.log.117963.gz",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2022-11-18_065828.log.117963.gz",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2022-11-17_055828.log.117963.gz",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2020-01-02_065828.log.117963",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2022-11-22_065828.log.117963",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2022-11-20_000000.log.117963.gz",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2022-11-20_000001.log.117963",
             "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
                 + "log.INFO.20221114-000000.00.gz",
             "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
@@ -243,6 +264,11 @@ public class SupportBundleUtilTest extends FakeDBApplication {
             "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-20_000000.log.gz",
             "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-21_000000.log.gz",
             "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-22_000000.log",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2022-11-18_065828.log.117963.gz",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2022-11-17_055828.log.117963.gz",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2022-11-22_065828.log.117963",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2022-11-20_000000.log.117963.gz",
+            "/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-2022-11-20_000001.log.117963",
             "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
                 + "log.INFO.20221116-000000.00.gz",
             "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
@@ -271,7 +297,10 @@ public class SupportBundleUtilTest extends FakeDBApplication {
     List<Path> filteredLogFilePaths =
         supportBundleUtil.filterFilePathsBetweenDates(
             unFilteredLogFilePathList,
-            Arrays.asList(universe_logs_regex_pattern, postgres_logs_regex_pattern),
+            Arrays.asList(
+                universe_logs_regex_pattern,
+                postgres_logs_regex_pattern,
+                connection_pooling_logs_regex_pattern),
             startDate,
             endDate);
 

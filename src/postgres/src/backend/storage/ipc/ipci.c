@@ -150,10 +150,10 @@ CalculateShmemSize(int *num_semaphores)
 	size = add_size(size, ShmemBackendArraySize());
 #endif
 
-	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
 		size = add_size(size, YbAshShmemSize());
 
-	if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_query_diagnostics)
 		size = add_size(size, YbQueryDiagnosticsShmemSize());
 
 	/* include additional requested shmem from preload libraries */
@@ -305,10 +305,10 @@ CreateSharedMemoryAndSemaphores(void)
 	AsyncShmemInit();
 	StatsShmemInit();
 
-	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
 		YbAshShmemInit();
 
-	if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_query_diagnostics)
 		YbQueryDiagnosticsShmemInit();
 
 #ifdef EXEC_BACKEND

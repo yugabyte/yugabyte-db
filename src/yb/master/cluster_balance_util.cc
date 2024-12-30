@@ -126,23 +126,44 @@ bool PerTableLoadState::LeaderLoadComparator::operator()(
   return a_load < b_load;
 }
 
-bool PerTableLoadState::CompareByUuid(const TabletServerId& a, const TabletServerId& b) {
+bool PerTableLoadState::CompareLoad(
+    const TabletServerId& a, const TabletServerId& b, optional_ref<const TabletId> tablet_id) {
   auto load_a = GetLoad(a);
   auto load_b = GetLoad(b);
-  if (load_a == load_b) {
-    // Use global load as a heuristic to help break ties.
-    load_a = global_state_->GetGlobalLoad(a);
-    load_b = global_state_->GetGlobalLoad(b);
-    if (load_a == load_b) {
-      return a < b;
+  if (load_a != load_b) {
+    return load_a < load_b;
+  }
+  if (tablet_id) {
+    load_a = GetTabletDriveLoad(a, *tablet_id);
+    load_b = GetTabletDriveLoad(b, *tablet_id);
+    if (load_a != load_b) {
+      return load_a < load_b;
     }
   }
-  return load_a < load_b;
+  // Use global load as a heuristic to help break ties.
+  load_a = global_state_->GetGlobalLoad(a);
+  load_b = global_state_->GetGlobalLoad(b);
+  if (load_a != load_b) {
+    return load_a < load_b;
+  }
+  return a < b;
 }
 
 size_t PerTableLoadState::GetLoad(const TabletServerId& ts_uuid) const {
   const auto& ts_meta = per_ts_meta_.at(ts_uuid);
   return ts_meta.starting_tablets.size() + ts_meta.running_tablets.size();
+}
+
+size_t PerTableLoadState::GetTabletDriveLoad(
+    const TabletServerId& ts_uuid, const TabletId& tablet_id) const {
+  const auto& ts_meta = per_ts_meta_.at(ts_uuid);
+  for (const auto& [_, tablets] : ts_meta.path_to_tablets) {
+    if (tablets.contains(tablet_id)) {
+      return tablets.size();
+    }
+  }
+  LOG(DFATAL) << "Did not find tablet " << tablet_id << " on tserver " << ts_uuid;
+  return 0;
 }
 
 size_t PerTableLoadState::GetLeaderLoad(const TabletServerId& ts_uuid) const {
@@ -702,8 +723,7 @@ Status PerTableLoadState::RemoveReplica(const TabletId& tablet_id, const TabletS
 }
 
 void PerTableLoadState::SortLoad() {
-  auto comparator = Comparator(this);
-  sort(sorted_load_.begin(), sorted_load_.end(), comparator);
+  sort(sorted_load_.begin(), sorted_load_.end(), LoadComparator(this, std::nullopt));
 
   if (global_state_->drive_aware_) {
     SortDriveLoad();

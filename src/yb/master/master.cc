@@ -202,7 +202,7 @@ Status Master::Init() {
 
   RETURN_NOT_OK(DbServerBase::Init());
 
-  RETURN_NOT_OK(fs_manager_->ListTabletIds());
+  RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 

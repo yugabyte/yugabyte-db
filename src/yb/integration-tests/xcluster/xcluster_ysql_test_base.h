@@ -71,6 +71,9 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Result<std::string> GetUniverseId(Cluster* cluster);
   Result<master::SysClusterConfigEntryPB> GetClusterConfig(Cluster& cluster);
 
+  Result<std::pair<NamespaceId, NamespaceId>> CreateDatabaseOnBothClusters(
+      const NamespaceName& db_name);
+
   Result<client::YBTableName> CreateYsqlTable(
       Cluster* cluster,
       const std::string& namespace_name,
@@ -125,11 +128,14 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   Status VerifyWrittenRecords(
       std::shared_ptr<client::YBTable> producer_table = {},
-      std::shared_ptr<client::YBTable> consumer_table = {});
+      std::shared_ptr<client::YBTable> consumer_table = {},
+      bool verify_column_count_match = true);
 
   Status VerifyWrittenRecords(
       const client::YBTableName& producer_table_name,
-      const client::YBTableName& consumer_table_name);
+      const client::YBTableName& consumer_table_name,
+      bool verify_column_count_match = true);
+
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
       XClusterTestBase::Cluster* cluster);
@@ -170,6 +176,9 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   // A empty list for namespace_names (the default) means just the namespace namespace_name.
   Status WaitForCreateReplicationToFinish(
       const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names = {});
+
+  Status VerifyDDLExtensionTablesCreation(const NamespaceName& db_name, bool only_source = false);
+  Status VerifyDDLExtensionTablesDeletion(const NamespaceName& db_name, bool only_source = false);
 
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);

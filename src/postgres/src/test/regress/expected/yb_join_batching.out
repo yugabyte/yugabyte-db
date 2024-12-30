@@ -282,16 +282,19 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
 (16 rows)
 
 /*+ Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b AND p1.a = p2.a;
-                                        QUERY PLAN
-------------------------------------------------------------------------------------------
+                                           QUERY PLAN
+------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (p1.a = p2.b)
    ->  Seq Scan on p2
          Storage Filter: (b = a)
-   ->  Index Scan using p1_pkey on p1
-         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(p2.b, p2.b), ROW($1, $1), ROW($2, $2)]))
-         Storage Filter: (a = b)
-(7 rows)
+   ->  Memoize
+         Cache Key: p2.b
+         Cache Mode: logical
+         ->  Index Scan using p1_pkey on p1
+               Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(p2.b, p2.b), ROW($1, $1), ROW($2, $2)]))
+               Storage Filter: (a = b)
+(10 rows)
 
 /*+ Leading((p2 p1)) */ SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b AND p1.a = p2.a;
  a  | b  |  c   | a  | b  |  c
@@ -1321,14 +1324,14 @@ RIGHT OUTER JOIN (
         r2
      LIMIT 1)) AS r2
 ON (r1.a = r2.nullcol);
-                           QUERY PLAN
-----------------------------------------------------------------
+                               QUERY PLAN
+-------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (r1.a = (NULL::integer))
    ->  Limit
          ->  Seq Scan on r2
    ->  Index Scan using r1_pkey on r1
-         Index Cond: (a = ANY (ARRAY[(NULL::integer), $1, $2]))
+         Index Cond: (a = ANY (ARRAY[(NULL::integer), $1, $2, ..., $9]))
 (6 rows)
 
 SELECT *

@@ -23,7 +23,7 @@
 #include "yb/util/tostring.h"
 
 #include "yb/vector_index/coordinate_types.h"
-#include "yb/vector_index/vector_id.h"
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace yb::vector_index {
 

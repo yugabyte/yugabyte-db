@@ -45,30 +45,32 @@
 // They should be handled on the Postgres side, see the HandleYBStatusAtErrorLevel macro in the
 // pg_yb_utils.h for details.
 #define PG_RETURN_NOT_OK(status) \
-  do { \
-    YbgStatus status_ = status; \
-    if (YbgStatusIsError(status_)) { \
-      const char *filename = YbgStatusGetFilename(status_); \
-      int lineno = YbgStatusGetLineNumber(status_); \
-      const char *funcname = YbgStatusGetFuncname(status_); \
-      uint32_t sqlerror = YbgStatusGetSqlError(status_); \
-      std::string msg = std::string(YbgStatusGetMessage(status_)); \
-      std::vector<std::string> args; \
-      int32_t s_nargs; \
-      const char **s_args = YbgStatusGetMessageArgs(status_, &s_nargs); \
-      if (s_nargs > 0) { \
-        args.reserve(s_nargs); \
-        for (int i = 0; i < s_nargs; i++) { \
-          args.emplace_back(std::string(s_args[i])); \
-        } \
-      } \
-      YbgStatusDestroy(status_); \
-      Status s = Status(Status::kQLError, filename, lineno, msg); \
-      s = s.CloneAndAddErrorCode(PgsqlError(static_cast<YBPgErrorCode>(sqlerror))); \
-      if (funcname) { \
-        s = s.CloneAndAddErrorCode(FuncName(funcname)); \
-      } \
-      return args.empty() ? s : s.CloneAndAddErrorCode(PgsqlMessageArgs(args)); \
-    } \
-    YbgStatusDestroy(status_); \
-  } while(0)
+	do { \
+		YbgStatus status_ = status; \
+		if (YbgStatusIsError(status_)) \
+		{ \
+			const char *filename = YbgStatusGetFilename(status_); \
+			int lineno = YbgStatusGetLineNumber(status_); \
+			const char *funcname = YbgStatusGetFuncname(status_); \
+			uint32_t sqlerror = YbgStatusGetSqlError(status_); \
+			std::string msg = std::string(YbgStatusGetMessage(status_)); \
+			std::vector<std::string> args; \
+			int32_t s_nargs; \
+			const char **s_args = YbgStatusGetMessageArgs(status_, &s_nargs); \
+			if (s_nargs > 0) \
+			{ \
+				args.reserve(s_nargs); \
+				for (int i = 0; i < s_nargs; i++) \
+					args.emplace_back(std::string(s_args[i])); \
+			} \
+			YbgStatusDestroy(status_); \
+			Status s = Status(Status::kQLError, filename, lineno, msg); \
+			s = s.CloneAndAddErrorCode(PgsqlError(static_cast<YBPgErrorCode>(sqlerror))); \
+			if (funcname) \
+				s = s.CloneAndAddErrorCode(FuncName(funcname)); \
+			return (args.empty() ? \
+					s : \
+					s.CloneAndAddErrorCode(PgsqlMessageArgs(args))); \
+		} \
+		YbgStatusDestroy(status_); \
+	} while(0)

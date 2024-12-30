@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
+import { useSelector } from 'react-redux';
 
 import { getUniqueTraceId } from '../../redesign/components/YBMetrics/utils';
 import { YBMetricGraph } from '../../redesign/components/YBMetrics/YBMetricGraph';
@@ -40,7 +41,7 @@ export const HaMetrics = () => {
   );
 
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
-
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   const isCustomTimeRange = selectedTimeRangeOption.type === TimeRangeType.CUSTOM;
   const metricTimeRange = isCustomTimeRange
     ? { startMoment: customStartMoment, endMoment: customEndMoment }
@@ -179,6 +180,7 @@ export const HaMetrics = () => {
               setStartMoment={(dateString: any) => setCustomStartMoment(moment(dateString))}
               setEndMoment={(dateString: any) => setCustomEndMoment(moment(dateString))}
               handleTimeframeChange={refetchMetrics}
+              timezone={currentUserTimezone}
             />
           )}
           <Dropdown id="LagGraphTimeRangeDropdown" pullRight>

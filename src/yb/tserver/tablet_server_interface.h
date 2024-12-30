@@ -58,7 +58,7 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual TSTabletManager* tablet_manager() = 0;
   virtual TabletPeerLookupIf* tablet_peer_lookup() = 0;
-  virtual tablet::TSLocalLockManager* ts_local_lock_manager() = 0;
+  virtual tablet::TSLocalLockManager* ts_local_lock_manager() const = 0;
 
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;
@@ -124,6 +124,8 @@ class TabletServerIf : public LocalTabletServer {
       const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) = 0;
 
   virtual bool SkipCatalogVersionChecks() { return false; }
+
+  virtual const std::string& permanent_uuid() const = 0;
 };
 
 } // namespace tserver

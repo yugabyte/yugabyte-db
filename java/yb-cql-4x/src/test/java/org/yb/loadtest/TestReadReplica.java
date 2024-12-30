@@ -12,6 +12,9 @@
 //
 package org.yb.loadtest;
 
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+
 import com.datastax.oss.driver.api.core.ConsistencyLevel;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.CqlSessionBuilder;
@@ -25,35 +28,28 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 import com.yugabyte.oss.driver.internal.core.loadbalancing.PartitionAwarePolicy;
+import java.net.InetSocketAddress;
+import java.time.Duration;
+import java.util.*;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
-import org.yb.Common;
 import org.yb.CommonTypes;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.client.*;
-import org.yb.consensus.Metadata;
 import org.yb.master.CatalogEntityInfo.PlacementBlockPB;
 import org.yb.master.CatalogEntityInfo.PlacementInfoPB;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
-import org.yb.YBTestRunner;
+import org.yb.util.YBTestRunnerNonMac;
 
-import java.net.InetSocketAddress;
-import java.time.Duration;
-import java.util.*;
-
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertTrue;
-
-@RunWith(value= YBTestRunner.class)
+@RunWith(value = YBTestRunnerNonMac.class)
 public class TestReadReplica extends BaseMiniClusterTest {
-
   protected static final Logger LOG = LoggerFactory.getLogger(TestReadReplica.class);
   private static final String PLACEMENT_CLOUD = "testCloud";
   private static final String PLACEMENT_REGION_LIVE = "testRegionLive";

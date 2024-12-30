@@ -68,7 +68,7 @@ int64_t InsertOnConflictBuffer::GetNumIndexKeys() const {
 
 YBCPgInsertOnConflictKeyState InsertOnConflictBuffer::IndexKeyExists(
     const TableYbctid& index_key) const {
-  if (intent_keys_.find(index_key) != intent_keys_.end()) {
+  if (IntentKeys().find(index_key) != IntentKeys().end()) {
     return YBCPgInsertOnConflictKeyState::KEY_JUST_INSERTED;
   }
 
@@ -85,21 +85,28 @@ YBCPgInsertOnConflictKeyState InsertOnConflictBuffer::IndexKeyExists(
 }
 
 void InsertOnConflictBuffer::AddIndexKeyIntent(const LightweightTableYbctid& key) {
-  intent_keys_.emplace(TableYbctid(key));
+  IntentKeys().emplace(TableYbctid(key));
 }
 
 void InsertOnConflictBuffer::ClearIntents() {
-  intent_keys_.clear();
+  IntentKeys().clear();
 }
 
-void InsertOnConflictBuffer::Clear() {
+void InsertOnConflictBuffer::Clear(bool clear_intents) {
   keys_.clear();
   keys_iter_ = keys_.end();
-  intent_keys_.clear();
+  if (clear_intents) {
+    IntentKeys().clear();
+  }
 }
 
 bool InsertOnConflictBuffer::IsEmpty() const {
-  return keys_.empty() && intent_keys_.empty();
+  return keys_.empty() && IntentKeys().empty();
+}
+
+TableYbctidSet& InsertOnConflictBuffer::IntentKeys() {
+  static TableYbctidSet intent_keys_;
+  return intent_keys_;
 }
 
 }  // namespace yb::pggate

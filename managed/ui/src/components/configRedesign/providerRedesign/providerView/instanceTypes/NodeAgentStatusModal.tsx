@@ -26,9 +26,17 @@ export const NodeAgentStatusModal = ({
     >
       <Box mt={2} paddingBottom={4}>
         {isAssignedNodes ? (
-          <NodeAgentAssignedNodes nodeIPs={nodeIPs} isNodeAgentDebugPage={false} />
+          <NodeAgentAssignedNodes
+            nodeIPs={nodeIPs}
+            isNodeAgentDebugPage={false}
+            isErrorFilterChecked={false}
+          />
         ) : (
-          <NodeAgentUnassignedNodes nodeIPs={nodeIPs} isNodeAgentDebugPage={false} />
+          <NodeAgentUnassignedNodes
+            nodeIPs={nodeIPs}
+            isNodeAgentDebugPage={false}
+            isErrorFilterChecked={false}
+          />
         )}
       </Box>
     </YBModal>

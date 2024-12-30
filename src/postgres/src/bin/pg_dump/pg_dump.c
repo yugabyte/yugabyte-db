@@ -8412,14 +8412,6 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 		if (!tbinfo->interesting)
 			continue;
 
-#ifdef YB_TODO
-		/*
-		 * - Postgres now initialize tbinfo later in this function and not in this loop.
-		 * - Move this code further down where appropriate.
-		 */
-		tbinfo->primaryKeyIndex = NULL;
-#endif
-
 		/* OK, we need info for this table */
 		if (tbloids->len > 1)	/* do we have more than the '{'? */
 			appendPQExpBufferChar(tbloids, ',');
@@ -8595,6 +8587,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 		tbinfo->notnull = (bool *) pg_malloc(numatts * sizeof(bool));
 		tbinfo->inhNotNull = (bool *) pg_malloc(numatts * sizeof(bool));
 		tbinfo->attrdefs = (AttrDefInfo **) pg_malloc(numatts * sizeof(AttrDefInfo *));
+		tbinfo->primaryKeyIndex = NULL;
 		hasdefaults = false;
 
 		for (int j = 0; j < numatts; j++, r++)
@@ -15679,10 +15672,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			 * YB: We may create a primary key index as part of the CREATE TABLE
 			 * statement we generate here; accordingly, set things up so we
 			 * will set its OID correctly in binary update mode.
-			 *
-			 * YB_TODO: For upgrade, figure out how to handle a table partition
-			 * where the parent defines the primary key. (See use of
-			 * parent_has_primary_key, below.)
 			 */
 			if (tbinfo->primaryKeyIndex)
 			{
@@ -15724,7 +15713,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 							  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
 							  yb_properties->tablegroup_oid);
 
-			if(strcmp(yb_properties->tablegroup_name, "default") == 0)
+			if (strcmp(yb_properties->tablegroup_name, "default") == 0)
 			{
 				appendPQExpBufferStr(q,
 									 "\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
@@ -15977,7 +15966,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				appendPQExpBuffer(q, "\nSERVER %s", fmtId(srvname));
 		}
 
-		YbAppendReloptions3(q, true /* newline_before*/,
+		YbAppendReloptions3(q, true /* newline_before */,
 			tbinfo->reloptions, "",
 			tbinfo->toast_reloptions, "toast.",
 			yb_reloptions->data, "",
@@ -16694,13 +16683,13 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 			getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
 				indxinfo->dobj.catId.oid, indxinfo->dobj.name, tbinfo->relkind);
 
-			if(yb_properties && yb_properties->is_colocated){
+			if (yb_properties && yb_properties->is_colocated){
 				appendPQExpBufferStr(q,
 								 "\n-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid\n");
 				appendPQExpBuffer(q,
 								 "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
 								 yb_properties->tablegroup_oid);
-				if(strcmp(yb_properties->tablegroup_name, "default") == 0)
+				if (strcmp(yb_properties->tablegroup_name, "default") == 0)
 				{
 					appendPQExpBufferStr(q,
 									"\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
@@ -16967,10 +16956,17 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
-		const bool is_unique_index_constraint =
-			coninfo->contype == 'u' && indxinfo->indexdef;
-
 		/*
+		 * #13603 #24260 Postgres does not dump the CREATE INDEX separately for
+		 * constraints, losing information present in CREATE INDEX like index
+		 * type (ASC/HASH). This is acceptable for PG since it only
+		 * supports a specific INDEX type for constraints. However, YB supports
+		 * such index types for constraints.
+		 * To preserve this in a dump, YB emits the CREATE INDEX separately.
+		 * However, this causes an issue for partitioned tables, because
+		 * they do not support ALTER TABLE / ADD CONSTRAINT / USING INDEX,
+		 * so we do not emit this in that case.
+		 *
 		 * If the constraint type is unique and index definition (indexdef)
 		 * exists, it means a constraint exists for this table which is
 		 * backed by an unique index.
@@ -16978,7 +16974,11 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 		 * unique or non-unique index exists for a table. The indexdef
 		 * contains the full YSQL command to create the index.
 		 */
-		if (is_unique_index_constraint)
+		const bool dump_index_for_constraint =
+			(coninfo->contype == 'u' && indxinfo->indexdef) &&
+			indxinfo->parentidx == 0 &&
+			tbinfo->relkind != RELKIND_PARTITIONED_TABLE;
+		if (dump_index_for_constraint)
 		{
 			if (dopt->include_yb_metadata)
 			{
@@ -17012,12 +17012,9 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 			appendPQExpBuffer(q, "%s ",
 							  coninfo->contype == 'p' ? "PRIMARY KEY" : "UNIQUE");
 			/*
-			 * If a table has an unique constraint with index definition,
-			 * then ALTER TABLE ADD CONSTRAINT UNIQUE command must append
-			 * the USING INDEX syntax followed by the unique index name in
-			 * order to attach the index as a constraint type.
+			 * See note on #13603 #24260 above.
 			 */
-			if (is_unique_index_constraint)
+			if (dump_index_for_constraint)
 			{
 				appendPQExpBuffer(q, "USING INDEX %s",
 								  indxinfo->dobj.name);
@@ -18989,14 +18986,11 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		int	i_tablegroup_oid = PQfnumber(res, "tablegroup_oid");
 		int	i_colocation_id = PQfnumber(res, "colocation_id");
 
-#ifdef YB_TODO
-		/* Need rework to match Pg15 */
 		if (i_colocation_id == -1)
-			fatal("cannot create a dump with YSQL metadata included, "
-				  "please run YSQL upgrade first.\n"
-				  "DETAILS: yb_table_properties system function definition "
-				  "is out of date.\n");
-#endif
+			pg_fatal("cannot create a dump with YSQL metadata included, "
+					 "please run YSQL upgrade first.\n"
+					 "DETAILS: yb_table_properties system function definition "
+					 "is out of date.\n");
 
 		properties->num_tablets = atoi(PQgetvalue(res, 0, i_num_tablets));
 		properties->num_hash_key_columns = atoi(PQgetvalue(res, 0, i_num_hash_key_columns));
@@ -19009,12 +19003,9 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		PQclear(res);
 		destroyPQExpBuffer(query);
 
-#ifdef YB_TODO
-		/* Need rework to match Pg15 */
 		if (properties->is_colocated && !OidIsValid(properties->colocation_id))
-			fatal("colocation ID is not defined for a colocated table \"%s\"\n",
-				  relname);
-#endif
+			pg_fatal("colocation ID is not defined for a colocated table \"%s\"\n",
+					 relname);
 
 		if (is_colocated_database && !is_legacy_colocated_database &&  properties->is_colocated)
 		{

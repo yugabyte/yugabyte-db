@@ -206,10 +206,16 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MasterCrashDurin
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   auto master_leader = cluster_->GetLeaderMaster();
 
+  auto state_to_fail_at = master::YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE;
+#ifdef __APPLE__
+  // Mac machines are slow so fail earlier.
+  state_to_fail_at = master::YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB;
+#endif
+
   // Block the upgrade from finishing.
   ASSERT_OK(cluster_->SetFlag(
       master_leader, "TEST_fail_ysql_catalog_upgrade_state_transition_from",
-      "PERFORMING_PG_UPGRADE"));
+      master::YsqlMajorCatalogUpgradeInfoPB::State_Name(state_to_fail_at)));
 
   rpc::RpcController rpc;
   CountDownLatch latch(1);
@@ -217,12 +223,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MasterCrashDurin
   AsyncStartYsqlMajorUpgrade(upgrade_response, rpc, latch);
   latch.Wait();
 
-  ASSERT_OK(LoggedWaitFor(
-      [this]() -> Result<bool> {
-        return VERIFY_RESULT(DumpYsqlCatalogConfig()).find("state: PERFORMING_PG_UPGRADE") !=
-               std::string::npos;
-      },
-      5min, "Waiting for pg_upgrade to start"));
+  ASSERT_OK(WaitForState(state_to_fail_at));
 
   // The pg_upgrade takes longer than 2s in all builds.
   SleepFor(2s);

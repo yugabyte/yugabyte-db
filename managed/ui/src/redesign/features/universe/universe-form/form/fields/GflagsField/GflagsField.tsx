@@ -584,7 +584,6 @@ export const GFlagsField = ({
           t('universeForm.gFlags.addFlag');
     }
 
-    const disableForm = _.get(pgGroupFlags, selectedProps?.flagname || '', false);
     return (
       <YBModalForm
         title={modalTitle}
@@ -607,7 +606,6 @@ export const GFlagsField = ({
         }
         headerClassName="add-flag-header"
         showBackButton={true}
-        isSubmitDisabled={disableForm}
       />
     );
   };

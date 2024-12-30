@@ -547,7 +547,7 @@ YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 				 errmsg("permission denied to attach role \"%s\" to profile \"%s\"",
 						rolename, prfname),
 				 errhint("Must be superuser or a member of the yb_db_admin "
-				 		 "role to attach a profile.")));
+						 "role to attach a profile.")));
 
 	/*
 	 * Check that there is a profile by this name.

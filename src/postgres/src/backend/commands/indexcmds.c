@@ -533,9 +533,6 @@ WaitForOlderSnapshots(TransactionId limitXmin, bool progress)
  * 'quiet': suppress the NOTICE chatter ordinarily provided for constraints.
  *
  * Returns the object address of the created index.
- *
- * YB_TODO(later): "safe_index" and calls to "pgstat_*()" are new in PG13.
- * Need to check if these changes are also necessary for Yugabyte.
  */
 ObjectAddress
 DefineIndex(Oid relationId,
@@ -1592,6 +1589,10 @@ DefineIndex(Oid relationId,
 		indexRelationId = GetTableOidFromRelOptions(
 			stmt->options, tablespaceId, stmt->relation->relpersistence);
 	}
+
+	if (IsYugaByteEnabled() &&
+		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+		YBCForceAllowCatalogModifications(true);
 
 	indexRelationId =
 		index_create(rel, indexRelationName, indexRelationId, parentIndexId,

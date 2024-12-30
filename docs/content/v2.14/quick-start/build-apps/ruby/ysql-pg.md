@@ -47,7 +47,7 @@ $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_conf
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/install/macos/).
+- installed YugabyteDB and created a universe with YSQL enabled. If not, follow the steps in the [Quick Start guide](/preview/tutorials/quick-start/).
 
 ### Add the sample Ruby application code
 

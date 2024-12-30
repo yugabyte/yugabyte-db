@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models.helpers;
 
 import static com.yugabyte.yw.common.NodeActionType.ADD;
+import static com.yugabyte.yw.common.NodeActionType.DECOMMISSION;
 import static com.yugabyte.yw.common.NodeActionType.DELETE;
 import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.QUERY;
@@ -121,7 +122,7 @@ public class NodeDetails {
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
     // Setting state to Live must be towards the end as ADD cannot be an option here.
-    Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT, REPLACE),
+    Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT, REPLACE, DECOMMISSION),
     // Set when node is about to enter the stopped state.
     // The actions in Live state should apply because of the transition from Live to Stopping.
     Stopping(STOP, REMOVE),
@@ -137,7 +138,7 @@ public class NodeDetails {
     // a status query
     MetricsUnavailable(),
     // Set when a node is marked for removal. Note that we will wait to get all its data out.
-    ToBeRemoved(REMOVE),
+    ToBeRemoved(REMOVE, DECOMMISSION),
     // Set when a node is about to be removed (unjoined) from the cluster.
     Removing(REMOVE),
     // Set after the node has been removed (unjoined) from the cluster.

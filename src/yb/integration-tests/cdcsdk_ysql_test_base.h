@@ -671,7 +671,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void CDCSDKAlterWithSysCatalogCompaction(bool packed_row);
   void CDCSDKIntentsBatchReadWithAlterAndTabletLeaderSwitch(bool packed_row);
 
-  void WaitForCompaction(YBTableName table);
+  void WaitForCompaction(YBTableName table, bool expect_equal_entries_after_compaction = false);
   void VerifySnapshotOnColocatedTables(
       xrepl::StreamId stream_id,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
@@ -804,6 +804,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       CDCSDKCheckpointPB checkpoint, GetChangesResponsePB* change_resp);
 
   void TestCreateReplicationSlotWithLsnType(const std::string lsn_type);
+
+  void TestCreateReplicationSlotWithLsnTypeParam(const std::string lsn_type);
 
   void TestTableIdAndPkInCDCRecords(bool colocated_db);
 

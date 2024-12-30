@@ -575,3 +575,22 @@ class AwsUpdateMountedDisksMethod(UpdateMountedDisksMethod):
 
     def get_device_names(self, args, host_info=None):
         return self.cloud.get_device_names(args, host_info)
+
+
+class AwsQueryDeviceNames(AbstractMethod):
+    def __init__(self, base_command):
+        super(AwsQueryDeviceNames, self).__init__(base_command, "device_names")
+
+    def add_extra_args(self):
+        super(AwsQueryDeviceNames, self).add_extra_args()
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
+                                 help="Volume type for volumes on EBS-backed instances.")
+        self.parser.add_argument("--region", required=False, help="Region associated with the node")
+        self.parser.add_argument("--instance_type",
+                                 required=False,
+                                 help="The instance type to act on")
+        self.parser.add_argument("--num_volumes", type=int, default=0,
+                                 help="number of volumes to mount at the default path (/mnt/d#)")
+
+    def callback(self, args):
+        print(json.dumps(self.cloud.get_device_names(args)))

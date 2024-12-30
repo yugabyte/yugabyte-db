@@ -37,6 +37,9 @@ my $FirstGenbkiObjectId =
   Catalog::FindDefinedSymbol('access/transam.h', '..', 'FirstGenbkiObjectId');
 push @{$oids}, $FirstGenbkiObjectId;
 
+# YB: We also reserve 8078 for VECTOROID
+push @{$oids}, 8078;
+
 my $prev_oid = 0;
 my @sortedoids = sort { $a <=> $b } @{$oids};
 foreach my $oid (@sortedoids)

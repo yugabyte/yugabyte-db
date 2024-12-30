@@ -15,7 +15,7 @@
 
 
 /**
- * count for automatic and manual refactoring
+ * Count of automatic, manual and invalid SQL objects displayed in Schema analysis page
  * @export
  * @interface RefactoringCount
  */

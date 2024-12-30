@@ -29,20 +29,22 @@ const (
 		"\t{{.MasterNumVolumes}}\t{{.MasterDiskIops}}"
 	masterInstanceTable2 = "table {{.MasterThroughput}}\t{{.MasterStorageClass}}" +
 		"\t{{.MasterStorageType}}"
-	masterGFlagsTable   = "table {{.MasterGFlags}}"
-	tserverGFlagsTable  = "table {{.TServerGFlags}}"
-	userTagsTable       = "table {{.UserTags}}"
-	userTagsHeader      = "User Tags"
-	masterGFlagsHeader  = "Master GFlags"
-	tserverGFlagsHeader = "TServer GFlags"
-	instanceTypeHeader  = "Instance Type"
-	volumeSizeHeader    = "Volume Size"
-	numVolumesHeader    = "Number of Volumes"
-	diskIopsHeader      = "Disk IOPS"
-	throughputHeader    = "Throughput"
-	storageClassHeader  = "Storage Class"
-	storageTypeHeader   = "Storage Type"
-	linuxVersionHeader  = "Linux Version"
+	masterGFlagsTable    = "table {{.MasterGFlags}}"
+	tserverGFlagsTable   = "table {{.TServerGFlags}}"
+	specificGFlagsTable  = "table {{.SpecificGFlags}}"
+	userTagsTable        = "table {{.UserTags}}"
+	userTagsHeader       = "User Tags"
+	masterGFlagsHeader   = "Master GFlags"
+	tserverGFlagsHeader  = "TServer GFlags"
+	specificGFlagsHeader = "Specific GFlags (in json)"
+	instanceTypeHeader   = "Instance Type"
+	volumeSizeHeader     = "Volume Size"
+	numVolumesHeader     = "Number of Volumes"
+	diskIopsHeader       = "Disk IOPS"
+	throughputHeader     = "Throughput"
+	storageClassHeader   = "Storage Class"
+	storageTypeHeader    = "Storage Type"
+	linuxVersionHeader   = "Linux Version"
 )
 
 // ClusterContext for cluster outputs
@@ -190,6 +192,18 @@ func (c *ClusterContext) Write(index int) error {
 		return err
 	}
 	c.PostFormat(tmpl, NewClusterContext())
+	c.Output.Write([]byte("\n"))
+
+	tmpl, err = c.startSubsection(specificGFlagsTable)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	if err := c.ContextFormat(tmpl, cc.Cluster); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	c.PostFormat(tmpl, NewClusterContext())
 
 	// Regions Subsection
 	placementInfo := c.c.GetPlacementInfo()
@@ -254,6 +268,7 @@ func NewClusterContext() *ClusterContext {
 		"MasterThroughput":        throughputHeader,
 		"MasterStorageClass":      storageClassHeader,
 		"MasterStorageType":       storageTypeHeader,
+		"SpecificGFlags":          specificGFlagsHeader,
 	}
 	return &clusterCtx
 }
@@ -328,6 +343,17 @@ func (c *ClusterContext) TServerGFlags() string {
 	gflags = gflags[0 : len(gflags)-1]
 
 	return gflags
+}
+
+// SpecificGFlags for formatting output
+func (c *ClusterContext) SpecificGFlags() string {
+	userIntent := c.c.GetUserIntent()
+	jsonBytes, err := json.MarshalIndent(userIntent.GetSpecificGFlags(), "", "  ")
+	if err != nil {
+		fmt.Println("Error converting JSON to string:", err)
+		return ""
+	}
+	return string(jsonBytes)
 }
 
 // UserTags fetches map as string

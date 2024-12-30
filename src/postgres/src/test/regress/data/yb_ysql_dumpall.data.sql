@@ -149,8 +149,8 @@ ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPL
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.1.1505-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
+-- Dumped from database version 15.2-YB-2.25.0.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -225,8 +225,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.1.1505-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
+-- Dumped from database version 15.2-YB-2.25.0.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -299,8 +299,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.1.1505-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
+-- Dumped from database version 15.2-YB-2.25.0.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -407,8 +407,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.1.1505-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
+-- Dumped from database version 15.2-YB-2.25.0.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;

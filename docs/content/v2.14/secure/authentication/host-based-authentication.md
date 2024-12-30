@@ -207,7 +207,7 @@ Obtain the client's operating system user name from the operating system and che
 
 #### ldap
 
-Use LDAP for password authentication. For more information, refer to [LDAP authentication](../ldap-authentication/).
+Use LDAP for password authentication. For more information, refer to [LDAP authentication](../ldap-authentication-ysql/).
 
 #### cert
 

@@ -35,6 +35,9 @@ struct ProjectedColumn {
   KeyEntryValue subkey; // id converted to KeyEntryValue
   DataType data_type;
 
+  // TODO(vector-index) remove once DataType::VECTOR is added.
+  bool is_vector;
+
   std::string ToString() const;
 };
 

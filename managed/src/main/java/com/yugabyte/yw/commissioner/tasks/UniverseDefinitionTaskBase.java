@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
@@ -44,6 +45,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
+import com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -80,11 +82,13 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -93,6 +97,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
+import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collection;
@@ -121,6 +126,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 
 /**
@@ -2341,6 +2347,105 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Creates a task to copy the node-agent package on the DB node.
+   *
+   * @param nodes a collection of nodes to be processed.
+   */
+  public SubTaskGroup createSetupYNPTask(Collection<NodeDetails> nodes) {
+    Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
+    SubTaskGroup subTaskGroup = createSubTaskGroup(SetupYNP.class.getSimpleName());
+    String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
+    if (!new File(installPath).isAbsolute()) {
+      String errMsg = String.format("Node agent installation path %s is invalid", installPath);
+      log.error(errMsg);
+      throw new IllegalArgumentException(errMsg);
+    }
+    int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
+    Universe universe = getUniverse();
+    Customer customer = Customer.get(universe.getCustomerId());
+    filterNodesForInstallNodeAgent(universe, nodes)
+        .forEach(
+            n -> {
+              SetupYNP.Params params = new SetupYNP.Params();
+              Provider provider =
+                  nodeUuidProviderMap.computeIfAbsent(
+                      n.placementUuid,
+                      k -> {
+                        Cluster cluster = universe.getCluster(n.placementUuid);
+                        System.out.println(cluster.userIntent.provider);
+                        return Provider.getOrBadRequest(
+                            UUID.fromString(cluster.userIntent.provider));
+                      });
+              params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
+              params.nodeName = n.nodeName;
+              params.customerUuid = customer.getUuid();
+              params.setUniverseUUID(universe.getUniverseUUID());
+              params.nodeAgentInstallDir = installPath;
+              params.nodeAgentPort = serverPort;
+              if (StringUtils.isNotEmpty(n.sshUserOverride)) {
+                params.sshUser = n.sshUserOverride;
+              }
+              SetupYNP task = createTask(SetupYNP.class);
+              task.initialize(params);
+              subTaskGroup.addSubTask(task);
+            });
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates a task to do the provisioning via YNP.
+   *
+   * @param nodes a collection of nodes to be processed.
+   */
+  public SubTaskGroup createYNPProvisioningTask(Collection<NodeDetails> nodes) {
+    Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
+    SubTaskGroup subTaskGroup = createSubTaskGroup(YNPProvisioning.class.getSimpleName());
+    String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
+    if (!new File(installPath).isAbsolute()) {
+      String errMsg = String.format("Node agent installation path %s is invalid", installPath);
+      log.error(errMsg);
+      throw new IllegalArgumentException(errMsg);
+    }
+    int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
+    Universe universe = getUniverse();
+    Customer customer = Customer.get(universe.getCustomerId());
+    filterNodesForInstallNodeAgent(universe, nodes)
+        .forEach(
+            n -> {
+              UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
+              YNPProvisioning.Params params = new YNPProvisioning.Params();
+              params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+              Provider provider =
+                  nodeUuidProviderMap.computeIfAbsent(
+                      n.placementUuid,
+                      k -> {
+                        Cluster cluster = universe.getCluster(n.placementUuid);
+                        return Provider.getOrBadRequest(
+                            UUID.fromString(cluster.userIntent.provider));
+                      });
+              params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
+              params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+              params.nodeName = n.nodeName;
+              params.customerUuid = customer.getUuid();
+              params.setUniverseUUID(universe.getUniverseUUID());
+              params.remotePackagePath = taskParams().remotePackagePath;
+              if (StringUtils.isNotEmpty(n.sshUserOverride)) {
+                params.sshUser = n.sshUserOverride;
+              }
+              YNPProvisioning task = createTask(YNPProvisioning.class);
+              task.initialize(params);
+              subTaskGroup.addSubTask(task);
+            });
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  /**
    * Creates subtasks to create a set of server nodes. As the tasks are not idempotent, node states
    * are checked to determine if some tasks must be run or skipped. This state checking is ignored
    * if ignoreNodeStatus is true.
@@ -2357,6 +2462,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean ignoreNodeStatus,
       @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
 
+    boolean useYNPProvisioning = confGetter.getGlobalConf(GlobalConfKeys.enableYNPProvisioning);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
     boolean isNextFallThrough =
@@ -2404,13 +2510,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
             filteredNodes -> {
+              if (useYNPProvisioning) {
+                createSetupYNPTask(filteredNodes)
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                createYNPProvisioningTask(filteredNodes)
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              }
               createInstallNodeAgentTasks(filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createWaitForNodeAgentTasks(nodesToBeCreated)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createHookProvisionTask(filteredNodes, TriggerType.PreNodeProvision);
-              createSetupServerTasks(filteredNodes, setupParamsCustomizer)
-                  .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              if (!useYNPProvisioning) {
+                createSetupServerTasks(filteredNodes, setupParamsCustomizer)
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              }
             });
 
     isNextFallThrough =
@@ -3029,6 +3143,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected SubTaskGroup createUpdateUniverseIntentTask(Cluster cluster) {
+    return createUpdateUniverseIntentTask(cluster, false /*updatePlacementInfo*/);
+  }
+
+  protected SubTaskGroup createUpdateUniverseIntentTask(
+      Cluster cluster, boolean updatePlacementInfo) {
     if (cluster == null) {
       // can be null if only editing read replica
       return null;
@@ -3036,7 +3155,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateDetails");
     UpdateUniverseIntent.Params params = new UpdateUniverseIntent.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.updatePlacementInfo = updatePlacementInfo;
     params.clusters = Collections.singletonList(cluster);
+    params.clusterNodeDetails =
+        taskParams().getNodesInCluster(cluster.uuid).stream()
+            .filter(n -> n.state != NodeState.ToBeRemoved)
+            .collect(Collectors.toList());
     UpdateUniverseIntent task = createTask(UpdateUniverseIntent.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
@@ -3453,6 +3577,76 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       rollMaxBatchSize.setPrimaryBatchSize(fallback.getPrimaryBatchSize());
     }
     return rollMaxBatchSize;
+  }
+
+  protected boolean isTabletMovementAvailable(String nodeName) {
+    Universe universe = getUniverse();
+    NodeDetails currentNode = universe.getNode(nodeName);
+    String softwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (CommonUtils.isReleaseBefore(CommonUtils.MIN_LIVE_TABLET_SERVERS_RELEASE, softwareVersion)) {
+      log.debug("ListLiveTabletServers is not supported for {} version", softwareVersion);
+      return true;
+    }
+
+    // taskParams().placementUuid is not used because it will be null for RR.
+    Cluster currCluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
+    UserIntent userIntent = currCluster.userIntent;
+    PlacementInfo pi = currCluster.placementInfo;
+
+    Collection<NodeDetails> nodesExcludingCurrentNode =
+        new HashSet<>(universe.getNodesByCluster(currCluster.uuid));
+    nodesExcludingCurrentNode.remove(currentNode);
+    int rfInZone =
+        PlacementInfoUtil.getZoneRF(
+            pi,
+            currentNode.cloudInfo.cloud,
+            currentNode.cloudInfo.region,
+            currentNode.cloudInfo.az);
+
+    if (rfInZone == -1) {
+      log.error(
+          "Unexpected placement info in universe: {} rfInZone: {}", universe.getName(), rfInZone);
+      throw new RuntimeException(
+          "Error getting placement info for cluster with node: " + currentNode.nodeName);
+    }
+
+    // We do not get isActive() tservers due to new masters starting up changing
+    //   nodeStates to not-active node states which will cause retry to fail.
+    // Note: On master leader failover, if a tserver was already down, it will not be reported as a
+    //    "live" tserver even though it has been less than
+    //    "follower_unavailable_considered_failed_sec" secs since the tserver was down. This is
+    //    fine because we do not take into account the current node and if it is not the current
+    //    node that is down we may prematurely fail, which is expected.
+    List<TabletServerInfo> liveTabletServers = getLiveTabletServers(universe);
+
+    List<TabletServerInfo> tserversActiveInAZExcludingCurrentNode =
+        liveTabletServers.stream()
+            .filter(
+                tserverInfo ->
+                    currentNode.cloudInfo.cloud.equals(tserverInfo.getCloudInfo().getCloud())
+                        && currentNode.cloudInfo.region.equals(
+                            tserverInfo.getCloudInfo().getRegion())
+                        && currentNode.cloudInfo.az.equals(tserverInfo.getCloudInfo().getZone())
+                        && currCluster.uuid.equals(tserverInfo.getPlacementUuid())
+                        && !currentNode.cloudInfo.private_ip.equals(
+                            tserverInfo.getPrivateAddress().getHost()))
+            .collect(Collectors.toList());
+
+    long numActiveTservers = tserversActiveInAZExcludingCurrentNode.size();
+
+    // We have replication number of copies a tablet so we need more than the replication
+    //   factor number of nodes for tablets to move off.
+    // We only want to move data if the number of nodes in the zone are more than or equal
+    //   the RF of the zone.
+    log.debug(
+        "Cluster: {}, numNodes in cluster: {}, number of active tservers excluding current node"
+            + " removing: {}, RF in az: {}",
+        currCluster.uuid,
+        userIntent.numNodes,
+        numActiveTservers,
+        rfInZone);
+    return userIntent.numNodes > userIntent.replicationFactor && numActiveTservers >= rfInZone;
   }
 
   public void createResumeUniverseTasks(Universe universe, UUID customerUUID) {

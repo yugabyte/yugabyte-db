@@ -81,6 +81,7 @@ class VectorANN {
       Vector query_vec, size_t k, double lb_distance, Slice lb_key, bool is_lb_inclusive) const = 0;
 
   static Result<Vector> GetVectorFromYSQLWire(const YSQLVector& ysql_vector, size_t total_len);
+  static Result<Vector> GetVectorFromYSQLWire(Slice binary_vector);
 
   // static Vector GetVector(VectorSlice vec_ref) { return pointer_cast<Vector>(vec_ref.data()); }
 

@@ -254,6 +254,12 @@ static void CreateTableAddColumn(YBCPgStatement handle,
 	const AttrNumber attnum = att->attnum;
 	const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(attnum,
 															att->atttypid);
+
+	if (att->atttypid == VECTOROID && !yb_enable_docdb_vector_type)
+		elog(ERROR,
+			 "all nodes in the cluster need to upgrade before creating "
+			 "a vector table");
+
 	HandleYBStatus(YBCPgCreateTableAddColumn(handle,
 											 NameStr(att->attname),
 											 attnum,
@@ -591,8 +597,11 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		Oid	parentOid = RangeVarGetRelid(rv, NoLock, false);
 
 		Relation parentRel = table_open(parentOid, NoLock);
-		Assert(!OidIsValid(tablegroupId));
-		tablegroupId = YbGetTableProperties(parentRel)->tablegroup_oid;
+		if (!MyDatabaseColocated || MyColocatedDatabaseLegacy)
+		{
+			Assert(!OidIsValid(tablegroupId));
+			tablegroupId = YbGetTableProperties(parentRel)->tablegroup_oid;
+		}
 		List *idxlist = RelationGetIndexList(parentRel);
 		ListCell *cell;
 		foreach(cell, idxlist)

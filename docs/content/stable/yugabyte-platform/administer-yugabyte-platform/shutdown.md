@@ -41,4 +41,4 @@ replicatedctl app stop
 
 ## Kubernetes
 
-For Kubernetes, node patching doesn't require YBA coordination.
+For Kubernetes, node patching doesn't require YugabyteDB Anywhere coordination.

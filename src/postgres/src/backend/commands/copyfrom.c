@@ -55,6 +55,7 @@
 
 /* Yugabyte includes */
 #include "executor/ybcModifyTable.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 
 /*
@@ -625,8 +626,10 @@ CopyFrom(CopyFromState cstate)
 	 * scan or command tolerates false negatives. FREEZE causes other sessions
 	 * to see rows they would not see under MVCC, and a false negative merely
 	 * spreads that anomaly to the current session.
+	 *
+	 * YB: We don't support COPY FREEZE on YB tables.
 	 */
-	if (cstate->opts.freeze)
+	if (!IsYugaByteEnabled() && cstate->opts.freeze)
 	{
 		/*
 		 * We currently disallow COPY FREEZE on partitioned tables.  The
@@ -666,6 +669,11 @@ CopyFrom(CopyFromState cstate)
 
 		ti_options |= TABLE_INSERT_FROZEN;
 	}
+
+	if (IsYugaByteEnabled() && cstate->opts.freeze)
+		ereport(yb_ignore_freeze_with_copy ? NOTICE : ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot perform COPY FREEZE on a YugaByte table")));
 
 	/*
 	 * We need a ResultRelInfo so we can use the regular executor's
@@ -740,12 +748,12 @@ CopyFrom(CopyFromState cstate)
 			Assert(resultRelInfo->ri_RelationDesc->rd_rel->relpersistence == RELPERSISTENCE_TEMP ||
 					resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
 			ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 	 errmsg("Batched COPY is not supported on %s tables. "
-						"Defaulting to using one transaction for the entire copy.",
-						YbIsTempRelation(resultRelInfo->ri_RelationDesc) ? "temporary" : "foreign"),
-				 errhint("Either copy onto non-temporary table or set rows_per_transaction "
-						 "option to `0` to disable batching and remove this warning.")));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("Batched COPY is not supported on %s tables. "
+							"Defaulting to using one transaction for the entire copy.",
+							YbIsTempRelation(resultRelInfo->ri_RelationDesc) ? "temporary" : "foreign"),
+					 errhint("Either copy onto non-temporary table or set rows_per_transaction "
+							 "option to `0` to disable batching and remove this warning.")));
 		}
 		else if (YBIsDataSent())
 			ereport(WARNING,
@@ -758,11 +766,11 @@ CopyFrom(CopyFromState cstate)
 		else if (HasNonRITrigger(cstate->rel->trigdesc))
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 	 errmsg("Batched COPY is not supported on table with non RI trigger. "
+				 errmsg("Batched COPY is not supported on table with non RI trigger. "
 						"Defaulting to using one transaction for the entire copy."),
 				 errhint("Set rows_per_transaction option to `0` to disable batching "
-				 		 "and remove this warning.")));
-		else			
+						 "and remove this warning.")));
+		else
 			batch_size = cstate->opts.batch_size;
 
 		cstate->opts.batch_size = batch_size;
@@ -1298,9 +1306,9 @@ yb_process_more_batches:
 
 	if (cstate->opts.batch_size > 0)
 	{
-		/* 
+		/*
 		 * Handle queued AFTER triggers before committing. If there are errors,
-		 * do not commit the current batch. 
+		 * do not commit the current batch.
 		 */
 		AfterTriggerEndQuery(estate);
 

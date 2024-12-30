@@ -137,7 +137,7 @@ class IndexInfo {
 
   size_t DynamicMemoryUsage() const;
 
-  bool is_vector_idx() const;
+  bool is_vector_index() const;
 
   const PgVectorIdxOptionsPB& vector_idx_options() const {
     return *vector_idx_options_;

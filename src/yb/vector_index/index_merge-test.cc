@@ -84,20 +84,22 @@ class IndexMergeTest : public YBTest {
     auto data_b = CreateAndFillIndex(index_factory, half_size, half_size);
 
     VectorIndexIfPtr<FloatVector, float> merged_index =
-      ASSERT_RESULT(Merge(index_factory, data_a.index, data_b.index));
+      ASSERT_RESULT(Merge(index_factory, {data_a.index, data_b.index}));
 
     // Check that the merged index contains all entries.
-    auto result_a = ASSERT_RESULT(merged_index->Search(input_vectors_[0], 1));
+    auto result_a = ASSERT_RESULT(merged_index->Search(
+        input_vectors_[0], {.max_num_results = 1}));
     ASSERT_EQ(result_a.size(), 1);
     ASSERT_EQ(result_a[0].vertex_id, data_a.vector_ids[0]);
 
-    auto result_b = ASSERT_RESULT(merged_index->Search(input_vectors_[half_size], 1));
+    auto result_b = ASSERT_RESULT(merged_index->Search(
+        input_vectors_[half_size], {.max_num_results = 1}));
     ASSERT_EQ(result_b.size(), 1);
     ASSERT_EQ(result_b[0].vertex_id, data_b.vector_ids[0]);
 
     // Verify the size of the merged index.
     auto all_results = ASSERT_RESULT(merged_index->Search(
-        {0.0f, 0.0f, 0.0f}, 10)); // Query that fetches all.
+        {0.0f, 0.0f, 0.0f}, {.max_num_results = 10})); // Query that fetches all.
     ASSERT_EQ(all_results.size(), data_a.num_vectors() + data_b.num_vectors());
 
     // Check that all expected vertex_ids are in the results.
@@ -112,12 +114,12 @@ class IndexMergeTest : public YBTest {
     // Generate indexes for the input set.
     auto data_a = CreateAndFillIndex(index_factory, 0, input_vectors_.size() / 2);
 
-    // Merge empty_index into data_a.
-    auto merged_index = ASSERT_RESULT(Merge(index_factory, data_a.index, empty_index));
+    // Merge empty_index with data_a.
+    auto merged_index = ASSERT_RESULT(Merge(index_factory, {data_a.index, empty_index}));
 
     // Check that the merged index contains only the entries from data_a.
     auto all_results = ASSERT_RESULT(merged_index->Search(
-        {0.0f, 0.0f, 0.0f}, 10)); // Query that fetches all.
+        {0.0f, 0.0f, 0.0f}, {.max_num_results = 10})); // Query that fetches all.
     ASSERT_EQ(all_results.size(), data_a.num_vectors());
 
     // Check that all expected vector ids are in the results.

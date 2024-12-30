@@ -1329,11 +1329,12 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
         leader_lease_status,
         new_ht_lease_exp,
         new_heartbeats_without_leader_lease};
-  TabletReplicaDriveInfo drive_info{
-        storage_metadata.sst_file_size(),
-        storage_metadata.wal_file_size(),
-        storage_metadata.uncompressed_sst_file_size(),
-        storage_metadata.may_have_orphaned_post_split_data()};
+  auto drive_info = TabletReplicaDriveInfo {
+    .sst_files_size = storage_metadata.sst_file_size(),
+    .wal_files_size = storage_metadata.wal_file_size(),
+    .uncompressed_sst_file_size = storage_metadata.uncompressed_sst_file_size(),
+    .may_have_orphaned_post_split_data = storage_metadata.may_have_orphaned_post_split_data(),
+  };
   tablet->UpdateReplicaInfo(ts_uuid, drive_info, leader_lease_info);
 }
 

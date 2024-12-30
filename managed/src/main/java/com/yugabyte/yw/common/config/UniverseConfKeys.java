@@ -709,6 +709,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Postgres logs regex pattern in support bundle",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> connectionPoolingLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.connection_pooling_logs_regex_pattern",
+          ScopeType.UNIVERSE,
+          "Connection Pooling logs regex pattern",
+          "Connection Pooling logs regex pattern in support bundle",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ysqlUpgradeTimeoutSec =
       new ConfKeyInfo<>(
           "yb.upgrade.ysql_upgrade_timeout_sec",
@@ -1410,6 +1418,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Option for Off-Cluster PITR based Backup Schedule",
           "Enable option for creating backup schedules that support off-cluster PITR",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useDBNodesIAMRoleForBackup =
+      new ConfKeyInfo<>(
+          "yb.backup.s3.use_db_nodes_iam_role_for_backup",
+          ScopeType.UNIVERSE,
+          "Use S3 IAM roles attached to DB node for Backup/Restore",
+          "Use S3 IAM roles attached to DB node for Backup/Restore",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

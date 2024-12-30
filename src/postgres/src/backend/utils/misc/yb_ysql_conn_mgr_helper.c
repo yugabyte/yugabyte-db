@@ -887,6 +887,9 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 {
 	yb_is_client_ysqlconnmgr = newval;
 
+	if (MyBackendType != YB_YSQL_CONN_MGR && YbIsClientYsqlConnMgr())
+		MyBackendType = YB_YSQL_CONN_MGR;
+
 	/*
 	 * Parallel workers are created and maintained by postmaster. So physical
 	 * connections can never be of parallel worker type, therefore it makes no

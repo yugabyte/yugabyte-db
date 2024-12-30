@@ -525,7 +525,7 @@ Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:700
 
 Setting placement for tables is not supported for clusters with read-replicas or leader affinity policies enabled.
 
-Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
+Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [Tablespaces](../../explore/going-beyond-sql/tablespaces) instead.
 {{< /note >}}
 
 #### create_transaction_table
@@ -1778,6 +1778,12 @@ A successful operation of the above command returns a message with a DB stream I
 ```output
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
+
+{{< note title="IMPLICIT checkpointing is deprecated" >}}
+
+It is recommended that you create streams in EXPLICIT checkpointing mode only (the default). IMPLICIT checkpointing mode will be completely removed in future releases.
+
+{{< /note >}}
 
 #### list_change_data_streams
 

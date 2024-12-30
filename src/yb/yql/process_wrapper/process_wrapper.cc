@@ -44,14 +44,7 @@ Result<int> ProcessWrapper::Wait() {
   return proc_->Wait();
 }
 
-void ProcessWrapper::Kill() {
-  // TODO(fizaa): Use SIGQUIT in asan build until GH #15168 is fixed.
-#ifdef ADDRESS_SANITIZER
-  Kill(SIGQUIT);
-#else
-  Kill(SIGINT);
-#endif
-}
+void ProcessWrapper::Kill() { Kill(SIGQUIT); }
 
 void ProcessWrapper::Kill(int signal) {
   WARN_NOT_OK(proc_->Kill(signal), "Kill process failed");
@@ -163,20 +156,17 @@ void ProcessSupervisor::Stop() {
     if (thread_finished_latch_.WaitFor(10s)) {
       break;
     }
-    auto passed = MonoDelta(CoarseMonoClock::now() - start);
-    bool force_kill = passed >= 1min;
-    auto message = Format(
-        "$0 did not gracefully exist after $1. $2.",
-        GetProcessName(), passed,
-        force_kill ? "Force killing it" : "Retry");
-    if (force_kill) {
-      LOG(DFATAL) << message;
+    const auto passed = MonoDelta(CoarseMonoClock::now() - start);
+    if (passed >= 1min) {
+      LOG(DFATAL) << GetProcessName() << " did not gracefully exit after " << passed
+                  << ". Force killing it with SIGKILL";
+      std::lock_guard lock(mtx_);
+      if (process_wrapper_) {
+        process_wrapper_->Kill(SIGKILL);
+      }
+      break;
     } else {
-      LOG(WARNING) << message;
-    }
-    std::lock_guard lock(mtx_);
-    if (process_wrapper_) {
-      process_wrapper_->Kill(force_kill ? SIGQUIT : SIGINT);
+      LOG(WARNING) << GetProcessName() << " did not gracefully exist after " << passed;
     }
   }
   supervisor_thread_->Join();

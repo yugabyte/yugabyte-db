@@ -133,10 +133,6 @@ RelationGetIndexScan(Relation indexRelation, int nkeys, int norderbys)
 	 * Upstream PG commit c2fe139c201c48f1133e9fbea2dd99b8efe2fadd removes
 	 * setting the item pointer invalid.  Bring that back for the sake of YB
 	 * asserts that that PG field is not changed in YB logic.
-	 *
-	 * YB_TODO(jason): the intention of this is to set both PG and YB fields
-	 * invalid, so watch out in case we decide to change the definition of this
-	 * macro to only set the PG fields invalid.
 	 */
 	ItemPointerSetInvalid(&scan->xs_heaptid);
 	scan->yb_exec_params = NULL;
@@ -414,14 +410,12 @@ systable_beginscan(Relation heapRelation,
 	Relation	irel;
 
 	if (IsYugaByteEnabled())
-	{
 		return ybc_systable_beginscan(heapRelation,
-		                              indexId,
-		                              indexOK,
-		                              snapshot,
-		                              nkeys,
-		                              key);
-	}
+									  indexId,
+									  indexOK,
+									  snapshot,
+									  nkeys,
+									  key);
 
 	if (indexOK &&
 		!IgnoreSystemIndexes &&

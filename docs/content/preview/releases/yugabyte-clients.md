@@ -96,7 +96,7 @@ The YugabyteDB clients are released with every version of [YugabyteDB](../ybdb-r
 
 ### v2.23.0.0 - September 13, 2024 {#v2.23.0.0}
 
-* Documents the limitations of retry logic when using `-c` flag in `ysqlsh` command. {{<issue 21804>}}
+* Documents the limitations of retry logic when using `-c` flag in ysqlsh command. {{<issue 21804>}}
 
 * Allows the deletion of the Cassandra role in ycqlsh without it regenerating upon cluster restart, by adding a flag to mark if the role was previously created. {{<issue 21057>}}
 

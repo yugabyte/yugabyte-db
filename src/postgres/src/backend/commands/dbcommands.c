@@ -281,7 +281,7 @@ ScanSourceDatabasePgClass(Oid tbid, Oid dbid, char *srcpath)
 	List	   *rnodelist = NIL;
 	LockRelId	relid;
 	Snapshot	snapshot;
-	SMgrRelation	smgr;
+	SMgrRelation smgr;
 	BufferAccessStrategy bstrategy;
 
 	/* Get pg_class relfilenode. */
@@ -746,9 +746,9 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	createdb_failure_params fparms;
 
 	/* yb variables */
-	DefElem    *dcolocated = NULL;
+	DefElem	   *dcolocated = NULL;
 	DefElem	   *dclonetime = NULL;
-	DefElem    **default_options[] = {&dtablespacename};
+	DefElem	  **default_options[] = {&dtablespacename};
 	bool		dbcolocated = false;
 	int64		dbclonetime = 0;
 
@@ -1377,28 +1377,27 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	pg_database_rel = table_open(DatabaseRelationId, RowExclusiveLock);
 
 	/*
-	 * CREATE DATABASE using templates other than template0 and template1 will 
+	 * CREATE DATABASE using templates other than template0 and template1 will
 	 * always go through the DB clone workflow.
 	 */
-  bool is_clone = strcmp(dbtemplate, "template0") != 0 && strcmp(dbtemplate, "template1") != 0;
-  YbCloneInfo yb_clone_info = {
-    .clone_time = dbclonetime,
-    .src_db_name = dbtemplate,
-    .src_owner = is_clone ? GetUserNameFromId(src_owner, true /* noerr */) : NULL,
-    .tgt_owner = is_clone ? GetUserNameFromId(datdba, true /* noerr */) : NULL,
-  };
-  if (is_clone) {
-    if (!yb_clone_info.src_owner) {
-      ereport(ERROR,
-          (errcode(ERRCODE_UNDEFINED_OBJECT),
-          errmsg("Could not get source database owner name from oid")));
-    }
-    if (!yb_clone_info.tgt_owner) {
-      ereport(ERROR,
-          (errcode(ERRCODE_UNDEFINED_OBJECT),
-          errmsg("Could not get target database owner name from oid")));
-    }
-  }
+	bool is_clone = strcmp(dbtemplate, "template0") != 0 && strcmp(dbtemplate, "template1") != 0;
+	YbCloneInfo yb_clone_info = {
+		.clone_time = dbclonetime,
+		.src_db_name = dbtemplate,
+		.src_owner = is_clone ? GetUserNameFromId(src_owner, true /* noerr */) : NULL,
+		.tgt_owner = is_clone ? GetUserNameFromId(datdba, true /* noerr */) : NULL,
+	};
+	if (is_clone)
+	{
+		if (!yb_clone_info.src_owner)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("Could not get source database owner name from oid")));
+		if (!yb_clone_info.tgt_owner)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("Could not get target database owner name from oid")));
+	}
 
 	/*
 	 * If database OID is configured, check if the OID is already in use or
@@ -1441,7 +1440,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		 * This is needed for xcluster.
 		 */
 		bool retry_on_oid_collision = false;
-		do 
+		do
 		{
 			/* Select an OID for the new database if is not explicitly configured. */
 			do
@@ -1716,9 +1715,9 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 				nslots_active;
 	int			nsubscriptions;
 
-	uint32_t 	yb_num_logical_conn;
-	uint32_t 	yb_num_physical_conn_from_ysqlconnmgr;
-	int		 	yb_net_client_connections;
+	uint32_t	yb_num_logical_conn;
+	uint32_t	yb_num_physical_conn_from_ysqlconnmgr;
+	int			yb_net_client_connections;
 
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We
@@ -1979,7 +1978,7 @@ RenameDatabase(const char *oldname, const char *newname)
 	int			npreparedxacts;
 	ObjectAddress address;
 
-	uint32_t 	yb_num_logical_conn;
+	uint32_t	yb_num_logical_conn;
 	uint32_t	yb_num_physical_conn_from_ysqlconnmgr;
 	int			yb_net_client_connections;
 
@@ -2097,7 +2096,8 @@ RenameDatabase(const char *oldname, const char *newname)
 	namestrcpy(&(((Form_pg_database) GETSTRUCT(newtup))->datname), newname);
 	CatalogTupleUpdate(rel, &newtup->t_self, newtup);
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		YBCPgStatement handle = NULL;
 		HandleYBStatus(YBCPgNewAlterDatabase(oldname, db_id, &handle));
 		HandleYBStatus(YBCPgAlterDatabaseRenameDatabase(handle, newname));
@@ -2545,14 +2545,16 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 	}
 
 	/* Check YB options support */
-	if (YBIsUsingYBParser()) {
-		for (int i = lengthof(unsupported_options); i > 0; --i) {
+	if (YBIsUsingYBParser())
+	{
+		for (int i = lengthof(unsupported_options); i > 0; --i)
+		{
 			/* Allow template during YSQL major version upgrade */
 			if (IsBinaryUpgrade && unsupported_options[i - 1] == &distemplate)
 				continue;
 
 			DefElem *option = *unsupported_options[i - 1];
-			if (option != NULL && option->arg != NULL) {
+			if (option != NULL && option->arg != NULL)
 				ereport(YBUnsupportedFeatureSignalLevel(),
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("Altering %s option is not yet supported",
@@ -2561,7 +2563,6 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 								 "https://github.com/YugaByte/yugabyte-db"
 								 "/issues"),
 						 parser_errposition(pstate, option->location)));
-			}
 		}
 	}
 

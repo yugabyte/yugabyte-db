@@ -229,7 +229,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 			case BNL_MATCHING:
 				Assert(!TupIsNull(econtext->ecxt_innertuple));
 
-				if(!LOCAL_JOIN_FN(GetNewOuterTuple, bnlstate, econtext))
+				if (!LOCAL_JOIN_FN(GetNewOuterTuple, bnlstate, econtext))
 				{
 					bnlstate->bnl_currentstatus = BNL_NEWINNER;
 					continue;
@@ -588,7 +588,7 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 							  eq,
 							  bnlstate->innerHashFunctions,
 							  bnlstate->innerAttrs);
-	if(data == NULL)
+	if (data == NULL)
 	{
 		/* Inner plan returned a tuple that doesn't match with anything. */
 		InstrCountFiltered1(bnlstate, 1);
@@ -747,7 +747,7 @@ FlushTupleTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	while (bnlstate->bnl_batchTupNo < tuplestore_tuple_count(bnlstate->bnl_tupleStoreState))
 	{
 		ListCell *lc = list_nth_cell(bnlstate->bnl_batchMatchedInfo,
-								 	 bnlstate->bnl_batchTupNo);
+									 bnlstate->bnl_batchTupNo);
 		if (lfirst_int(lc) == 0)
 		{
 			GetNewOuterTupleTS(bnlstate, econtext);
@@ -791,7 +791,7 @@ GetNewOuterTupleTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		if (bnlstate->js.single_match)
 		{
 			ListCell *lc = list_nth_cell(bnlstate->bnl_batchMatchedInfo,
-								 		 current_tup_no);
+										 current_tup_no);
 			if (lfirst_int(lc) > 0)
 			{
 				continue;

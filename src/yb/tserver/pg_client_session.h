@@ -61,6 +61,7 @@ namespace yb::tserver {
 
 class PgMutationCounter;
 class TserverXClusterContextIf;
+class YsqlAdvisoryLocksTable;
 
 #define PG_CLIENT_SESSION_METHODS \
     (AlterDatabase) \
@@ -86,6 +87,8 @@ class TserverXClusterContextIf;
     (TruncateTable) \
     (UpdateSequenceTuple) \
     (WaitForBackendsCatalogVersion) \
+    (AcquireAdvisoryLock) \
+    (ReleaseAdvisoryLock) \
     /**/
 
 // These methods may respond with Status::OK() and continue async processing (including network
@@ -97,7 +100,14 @@ class TserverXClusterContextIf;
     (GetTableKeyRanges) \
     /**/
 
-using PgClientSessionOperations = std::vector<std::shared_ptr<client::YBPgsqlOp>>;
+struct PgClientSessionOperation {
+  std::shared_ptr<client::YBPgsqlOp> op;
+  // TODO(vector_index) Support multiple reads in a single perform.
+  std::unique_ptr<rpc::Sidecars> vector_index_sidecars;
+  std::unique_ptr<PgsqlReadRequestPB> vector_index_read_request;
+};
+
+using PgClientSessionOperations = std::vector<PgClientSessionOperation>;
 
 YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence));
 
@@ -142,12 +152,14 @@ class PgClientSession {
   using UsedReadTimeApplier = std::function<void(ReadTimeData&&)>;
 
   PgClientSession(
-      TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source, uint64_t id,
+      TransactionBuilder&& transaction_builder,
+      SharedThisSource shared_this_source, uint64_t id,
       client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
       const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
       PgSequenceCache* sequence_cache, PgSharedMemoryPool& shared_mem_pool,
-      const EventStatsPtr& stats_exchange_response_size, rpc::Scheduler& scheduler);
+      const EventStatsPtr& stats_exchange_response_size, rpc::Scheduler& scheduler,
+      YsqlAdvisoryLocksTable& advisory_locks_table);
 
   virtual ~PgClientSession() = default;
 
@@ -155,7 +167,7 @@ class PgClientSession {
 
   Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
 
-  std::shared_ptr<CountDownLatch> ProcessSharedRequest(size_t size, SharedExchange* exchange);
+  void ProcessSharedRequest(size_t size, SharedExchange* exchange);
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data, method) \
   Status method( \
@@ -199,7 +211,7 @@ class PgClientSession {
       client::YBSession* session, client::YBTransaction* transaction);
 
   Result<SetupSessionResult> SetupSession(
-      const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit);
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit);
   Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);
@@ -339,6 +351,7 @@ class PgClientSession {
 
   simple_spinlock pending_data_mutex_;
   std::vector<WriteBuffer> pending_data_ GUARDED_BY(pending_data_mutex_);
+  YsqlAdvisoryLocksTable& advisory_locks_table_;
 };
 
 template <class Pb>
@@ -369,4 +382,4 @@ inline void TryUpdateAshWaitState(const PgGetDatabaseInfoRequestPB&) {}
 inline void TryUpdateAshWaitState(const PgIsInitDbDoneRequestPB&) {}
 inline void TryUpdateAshWaitState(const PgCreateSequencesDataTableRequestPB&) {}
 
-}  // namespace yb::tserver
+} // namespace yb::tserver

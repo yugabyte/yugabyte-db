@@ -6,12 +6,15 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesSerializer;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -24,11 +27,15 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
+import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,8 +53,11 @@ public class OperatorUtils {
   private final String namespace;
   private final Config k8sClientConfig;
 
+  private ReleaseManager releaseManager;
+
   @Inject
-  public OperatorUtils(RuntimeConfGetter confGetter) {
+  public OperatorUtils(RuntimeConfGetter confGetter, ReleaseManager releaseManager) {
+    this.releaseManager = releaseManager;
     this.confGetter = confGetter;
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     ConfigBuilder confBuilder = new ConfigBuilder();
@@ -278,5 +288,76 @@ public class OperatorUtils {
             specGFlags)
         || shouldUpdateYbUniverse(currentUserIntent, incomingNumNodes, incomingDeviceInfo)
         || !StringUtils.equals(currentUserIntent.ybSoftwareVersion, incomingYbSoftwareVersion);
+  }
+
+  /*--- Release related help methods ---*/
+
+  public static Pair<String, ReleaseMetadata> crToReleaseMetadata(Release release) {
+    DownloadConfig downloadConfig = release.getSpec().getConfig().getDownloadConfig();
+    String version = release.getSpec().getConfig().getVersion();
+    ReleaseMetadata metadata = ReleaseMetadata.create(version);
+    if (downloadConfig.getS3() != null) {
+      metadata.s3 = new ReleaseMetadata.S3Location();
+      metadata.s3.paths = new ReleaseMetadata.PackagePaths();
+      metadata.s3.accessKeyId = downloadConfig.getS3().getAccessKeyId();
+      metadata.s3.secretAccessKey = downloadConfig.getS3().getSecretAccessKey();
+      metadata.s3.paths.x86_64 = downloadConfig.getS3().getPaths().getX86_64();
+      metadata.filePath = downloadConfig.getS3().getPaths().getX86_64();
+      metadata.s3.paths.x86_64_checksum = downloadConfig.getS3().getPaths().getX86_64_checksum();
+      metadata.s3.paths.helmChart = downloadConfig.getS3().getPaths().getHelmChart();
+      metadata.s3.paths.helmChartChecksum =
+          downloadConfig.getS3().getPaths().getHelmChartChecksum();
+    }
+
+    if (downloadConfig.getGcs() != null) {
+      metadata.gcs = new ReleaseMetadata.GCSLocation();
+      metadata.gcs.paths = new ReleaseMetadata.PackagePaths();
+      metadata.gcs.credentialsJson = downloadConfig.getGcs().getCredentialsJson();
+      metadata.gcs.paths.x86_64 = downloadConfig.getGcs().getPaths().getX86_64();
+      metadata.filePath = downloadConfig.getGcs().getPaths().getX86_64();
+      metadata.gcs.paths.x86_64_checksum = downloadConfig.getGcs().getPaths().getX86_64_checksum();
+      metadata.gcs.paths.helmChart = downloadConfig.getGcs().getPaths().getHelmChart();
+      metadata.gcs.paths.helmChartChecksum =
+          downloadConfig.getGcs().getPaths().getHelmChartChecksum();
+    }
+
+    if (downloadConfig.getHttp() != null) {
+      metadata.http = new ReleaseMetadata.HttpLocation();
+      metadata.http.paths = new ReleaseMetadata.PackagePaths();
+      metadata.http.paths.x86_64 = downloadConfig.getHttp().getPaths().getX86_64();
+      metadata.filePath = downloadConfig.getHttp().getPaths().getX86_64();
+      metadata.http.paths.x86_64_checksum =
+          downloadConfig.getHttp().getPaths().getX86_64_checksum();
+      metadata.http.paths.helmChart = downloadConfig.getHttp().getPaths().getHelmChart();
+      metadata.http.paths.helmChartChecksum =
+          downloadConfig.getHttp().getPaths().getHelmChartChecksum();
+    }
+    Pair<String, ReleaseMetadata> output = new Pair<>(version, metadata);
+    return output;
+  }
+
+  public void deleteReleaseCr(Release release) {
+    ObjectMeta releaseMetadata = release.getMetadata();
+    log.info("Removing Release {}", releaseMetadata.getName());
+    Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(release);
+    try (final KubernetesClient kubernetesClient =
+        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+      if (releaseManager.getInUse(releasePair.getFirst())) {
+        log.info("Release " + releasePair.getFirst() + " is in use!, Skipping deletion");
+        return;
+      }
+      releaseManager.removeRelease(releasePair.getFirst());
+      releaseManager.updateCurrentReleases();
+      log.info("Removing finalizers from release {}", releaseMetadata.getName());
+      releaseMetadata.setFinalizers(Collections.emptyList());
+      kubernetesClient
+          .resources(Release.class)
+          .inNamespace(releaseMetadata.getNamespace())
+          .withName(releaseMetadata.getName())
+          .patch(release);
+    } catch (RuntimeException re) {
+      log.error("Error in deleting release", re);
+    }
+    log.info("Removed release {}", release.getMetadata().getName());
   }
 }

@@ -1375,9 +1375,10 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 		Form_pg_depend depform = (Form_pg_depend) GETSTRUCT(tup);
 		CatalogTupleDelete(*depRel, tup);
 
-		if (MyDatabaseColocated && depform->refclassid == YbTablegroupRelationId && 
-      !tablegroupHasDependents(depform->refobjid)) 
-    {
+		if (MyDatabaseColocated &&
+			depform->refclassid == YbTablegroupRelationId &&
+			!tablegroupHasDependents(depform->refobjid))
+		{
 			implicit_tablegroup.classId = depform->refclassid;
 			implicit_tablegroup.objectId = depform->refobjid;
 			implicit_tablegroup.objectSubId = depform->refobjsubid;
@@ -1387,14 +1388,14 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	systable_endscan(scan);
 
 	/*
-	 * Check if implicit tablegroup has any more tables in it. 
+	 * Check if implicit tablegroup has any more tables in it.
 	 * If not delete it.
 	 */
 
 	if (is_colocated_tables_with_tablespace_enabled &&
 		OidIsValid(implicit_tablegroup.objectId))
 	{
-		deleteSharedDependencyRecordsFor(implicit_tablegroup.classId, implicit_tablegroup.objectId, 
+		deleteSharedDependencyRecordsFor(implicit_tablegroup.classId, implicit_tablegroup.objectId,
 			implicit_tablegroup.objectSubId);
 		RemoveTablegroupById(implicit_tablegroup.objectId, true);
 	}

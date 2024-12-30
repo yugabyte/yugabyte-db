@@ -19,7 +19,7 @@ namespace yb {
 
 class Pg15UpgradeTestBase : public UpgradeTestBase {
  public:
-  Pg15UpgradeTestBase() : UpgradeTestBase(kBuild_2024_2_0_0) {}
+  Pg15UpgradeTestBase() : UpgradeTestBase(kBuild_2024_2_1_0) {}
   virtual ~Pg15UpgradeTestBase() override = default;
 
   void SetUp() override;
@@ -66,6 +66,8 @@ class Pg15UpgradeTestBase : public UpgradeTestBase {
   Status TestRollbackWithSimpleTable();
 
   Result<std::string> DumpYsqlCatalogConfig();
+
+  Status WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::State state);
 
   constexpr static auto kSimpleTableName = "simple_tbl";
   uint32 simple_tbl_row_count_ = 0;

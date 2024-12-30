@@ -921,30 +921,40 @@ public class PlacementInfoUtil {
         .collect(Collectors.toList());
   }
 
+  // Given accurate node details, updates placement info to match.
   public static void updatePlacementInfo(
       Collection<NodeDetails> nodes, PlacementInfo placementInfo) {
-    if (nodes != null && placementInfo != null) {
-      Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes, true);
-      for (int cIdx = 0; cIdx < placementInfo.cloudList.size(); cIdx++) {
-        PlacementCloud cloud = placementInfo.cloudList.get(cIdx);
-        for (int rIdx = 0; rIdx < cloud.regionList.size(); rIdx++) {
-          PlacementRegion region = cloud.regionList.get(rIdx);
-          for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-            PlacementAZ az = region.azList.get(azIdx);
-            Integer azNumNodes = azUuidToNumNodes.get(az.uuid);
-            if (azNumNodes != null) {
-              LOG.info("Update {} {} {}.", az.name, az.numNodesInAZ, azNumNodes);
-              az.numNodesInAZ = azNumNodes;
-            } else {
-              region.azList.remove(az);
-              azIdx--;
-            }
-          }
+    if (nodes == null || placementInfo == null) {
+      LOG.debug(
+          "updatePlacementInfo: ignoring null values for nodes {}, placementInfo {}",
+          nodes,
+          placementInfo);
+      return;
+    }
 
-          if (region.azList.isEmpty()) {
-            cloud.regionList.remove(region);
-            rIdx--;
+    // get AZ -> node count map from nodeDetails
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes, true);
+
+    // update placement info structures based on this map
+    for (int cIdx = 0; cIdx < placementInfo.cloudList.size(); cIdx++) {
+      PlacementCloud cloud = placementInfo.cloudList.get(cIdx);
+      for (int rIdx = 0; rIdx < cloud.regionList.size(); rIdx++) {
+        PlacementRegion region = cloud.regionList.get(rIdx);
+        for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+          PlacementAZ az = region.azList.get(azIdx);
+          Integer azNumNodes = azUuidToNumNodes.get(az.uuid);
+          if (azNumNodes != null) {
+            LOG.info("Update {} {} {}.", az.name, az.numNodesInAZ, azNumNodes);
+            az.numNodesInAZ = azNumNodes;
+          } else {
+            region.azList.remove(az);
+            azIdx--;
           }
+        }
+
+        if (region.azList.isEmpty()) {
+          cloud.regionList.remove(region);
+          rIdx--;
         }
       }
     }

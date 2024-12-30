@@ -80,3 +80,9 @@ ybvectorcanreturn(Relation index, int attno)
 {
 	return true;
 }
+
+bool
+ybvectorcopartitionedcanreturn(Relation index, int attno)
+{
+	return false;
+}

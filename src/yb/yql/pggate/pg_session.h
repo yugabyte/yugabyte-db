@@ -240,7 +240,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   ExplicitRowLockBuffer& explicit_row_lock_buffer() { return explicit_row_lock_buffer_; }
 
-  InsertOnConflictBuffer& insert_on_conflict_buffer() { return insert_on_conflict_buffer_; }
+  InsertOnConflictBuffer& GetInsertOnConflictBuffer(void* plan);
+  InsertOnConflictBuffer& GetInsertOnConflictBuffer();
+  void ClearAllInsertOnConflictBuffers();
+  void ClearInsertOnConflictBuffer(void* plan);
+  bool IsInsertOnConflictBufferEmpty() const;
 
   Result<int> TabletServerCount(bool primary_only = false);
 
@@ -290,6 +294,17 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
+
+  Status AcquireAdvisoryLock(
+      const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode, bool wait, bool session);
+  Status ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode);
+  Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
+
+  void SetForceAllowCatalogModifications(bool allowed);
+
+  bool AreCatalogModificationsForceAllowed() const { return force_allow_catalog_modifications_; }
+
+  bool IsMajorPgVersionUpgrade() const { return is_major_pg_version_upgrade_; }
 
  private:
   Result<PgTableDescPtr> DoLoadTable(
@@ -346,7 +361,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   OidSet fk_intent_region_local_tables_;
 
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
-  InsertOnConflictBuffer insert_on_conflict_buffer_;
+  using InsertOnConflictPlanBuffer = std::pair<void *, InsertOnConflictBuffer>;
+  std::vector<InsertOnConflictPlanBuffer> insert_on_conflict_buffers_;
 
   PgDocMetrics metrics_;
 
@@ -363,6 +379,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   const bool is_major_pg_version_upgrade_;
 
   const WaitEventWatcher& wait_event_watcher_;
+
+  bool force_allow_catalog_modifications_ = false;
 };
 
 }  // namespace yb::pggate

@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import org.apache.commons.collections4.MapUtils;
@@ -138,6 +140,14 @@ public interface CloudUtil extends StorageUtil {
     return new HashSet<>();
   }
 
+  public default boolean downloadRemoteReleases(
+      CustomerConfigData configData,
+      Set<String> releaseVersions,
+      String releasesPath,
+      String backupDir) {
+    return false;
+  }
+
   public default RestorePreflightResponse
       generateYBBackupRestorePreflightResponseWithoutBackupObject(
           AdvancedRestorePreflightParams preflightParams, CustomerConfigData configData) {
@@ -204,6 +214,16 @@ public interface CloudUtil extends StorageUtil {
     ProxySpec pSpec = getOldProxySpec(configData);
     if (pSpec != null) {
       return org.yb.ybc.ProxyConfig.newBuilder().setDefaultProxy(pSpec).build();
+    }
+    return null;
+  }
+
+  public default String extractReleaseVersion(String key, String backupDir) {
+    String regex = String.format("%s/%s/([^/]+)/([^/]+)$", backupDir, YBDB_RELEASES);
+    Pattern pattern = Pattern.compile(regex);
+    Matcher matcher = pattern.matcher(key);
+    if (matcher.matches()) {
+      return matcher.group(1);
     }
     return null;
   }

@@ -17,6 +17,7 @@ static void clear_stats(struct ConnectionStats *yb_stats) {
 		yb_stats[i].waiting_clients = 0;
 		yb_stats[i].active_servers = 0;
 		yb_stats[i].idle_servers = 0;
+		yb_stats[i].sticky_connections = 0;
 		yb_stats[i].query_rate = 0;
 		yb_stats[i].transaction_rate = 0;
 		yb_stats[i].avg_wait_time_ns = 0;
@@ -731,8 +732,6 @@ od_router_status_t od_router_attach(od_router_t *router,
 		od_route_lock(route);
 	}
 
-	od_route_unlock(route);
-
 	/* create new server object */
 	bool created_atleast_one = false;
 	while (is_warmup_needed &&
@@ -751,6 +750,8 @@ od_router_status_t od_router_attach(od_router_t *router,
 		created_atleast_one = true;
 	}
 
+	od_route_unlock(route);
+	
 	if (!created_atleast_one)
 	{
 		server = od_server_allocate(

@@ -17,6 +17,7 @@ readonly EXPECTED_USERNAME=({{ user_name }})
 readonly CORES_DIR=({{ yb_cores_dir }})
 {% raw %}
 readonly NUM_MOUNTS=${#MOUNT_PATHS[@]}
+readonly SYSTEMD_OPTION={{systemd_option}}
 {% endraw %}
 
 if ! [ -f /.dockerenv ] && [ "$(whoami)" != "$EXPECTED_USERNAME" ]; then
@@ -217,6 +218,16 @@ hard_kill_postgres() {
   done
 }
 
+check_systemd_service_status() {
+  if [ "$SYSTEMD_OPTION" == "true" ]; then
+    return 1
+  else
+    return 0 
+  fi
+
+}
+
+
 command=""
 daemon=""
 case "$1" in
@@ -277,6 +288,17 @@ case "$daemon" in
     echo "Invalid Daemon: $daemon"
     print_help
     exit 1
+esac
+case "$command" in
+  create|start|stop|status|cron-check)
+    # We just check if yb-master yb-tserver is enabled in systemd mode.
+    check_systemd_service_status()
+    if [ $? -eq 1 ]; then
+      echo "Systemd installation detected."
+      echo "This node uses systemd to manage the yugabyte services."
+      echo "Please use systemctl commands instead."
+      exit 1
+    fi
 esac
 
 daemon_home="{{ yb_home_dir }}/$daemon"

@@ -192,6 +192,9 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_locks, kLocalVolatile, false, tru
     "Enable the pg_locks view. This view provides information about the locks held by "
     "active postgres sessions.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_docdb_vector_type, kExternal, false, true,
+    "Enable using the DocDB Vector type from YSQL.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
     "Sets the minimum transaction age for results from pg_locks.");
 
@@ -298,9 +301,6 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
 DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
   "Determines the behavior of read-after-commit-visibility guarantee.");
 
-DEFINE_test_flag(bool, yb_enable_query_diagnostics, false,
-              "True to enable Query Diagnostics");
-
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
     "Enable preloading of foreign key information into the relation cache.");
 
@@ -317,6 +317,10 @@ DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
 
 DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
             "Trust YSQL connections via the local socket from the yugabyte user.");
+
+DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
+    "Enables the collection of query diagnostics data for YSQL queries, "
+    "facilitating the creation of diagnostic bundles.");
 
 DECLARE_bool(enable_pg_cron);
 

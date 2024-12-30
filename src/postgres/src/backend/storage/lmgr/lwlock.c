@@ -1256,7 +1256,7 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 	if (num_held_lwlocks >= MAX_SIMUL_LWLOCKS)
 		elog(ERROR, "too many LWLocks taken");
 
-    /*
+	/*
 	 * ybLWLockAcquired is true when a postgres backend has acquired one or more
 	 * LWLocks.ybLWLockAcquired is false if and only if a backed does not hold
 	 * any LWLock.

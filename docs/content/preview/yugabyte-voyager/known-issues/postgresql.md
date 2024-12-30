@@ -62,6 +62,8 @@ ERROR: adding primary key to a partitioned table is not yet implemented (SQLSTAT
 
 **Workaround**: Manual intervention needed. Add primary key in the `CREATE TABLE` statement.
 
+**Fixed In**: {{<release "2024.1.0.0, 2024.2.0.0, 2.23.0.0">}}.
+
 **Example**
 
 An example schema on the source database is as follows:
@@ -900,6 +902,8 @@ ERROR:  UNLOGGED database object not supported yet
 ```
 
 **Workaround**: Convert it to a LOGGED table.
+
+**Fixed In**: {{<release "2024.2.0.0">}}.
 
 **Example**
 

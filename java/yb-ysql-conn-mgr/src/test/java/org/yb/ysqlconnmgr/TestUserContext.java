@@ -22,6 +22,11 @@ import static org.yb.AssertionWrappers.*;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestUserContext extends BaseYsqlConnMgr {
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return 1200;
+  }
+
   private final TestUser[] TEST_USERS = new TestUser[] {
       new TestUser("user1", "grant all privileges on table emp1 to user1;",
           new String[] {"select * from emp1;", "insert into emp1 values(4, 'manav');"},

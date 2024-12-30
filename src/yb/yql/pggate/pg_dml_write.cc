@@ -52,6 +52,11 @@ Status PgDmlWrite::Prepare(const PgObjectId& table_id, bool is_region_local) {
   write_req_->set_schema_version(target_->schema_version());
   write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
 
+  if (YBIsMajorUpgradeInitDb() || pg_session_->IsMajorPgVersionUpgrade() ||
+      pg_session_->AreCatalogModificationsForceAllowed()) {
+    write_req_->set_force_catalog_modifications(true);
+  }
+
   doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
   PrepareColumns();
   return Status::OK();
@@ -243,6 +248,7 @@ class PackableBindColumn final : public dockv::PackableValue {
         PackAsUInt64<uint64_t>(type_entity, datum, ValueEntryType::kUInt64, out);
         return;
 
+      case YB_YQL_DATA_TYPE_VECTOR: [[fallthrough]];
       case YB_YQL_DATA_TYPE_BINARY: {
         char *value;
         int64_t bytes = type_entity->datum_fixed_size;
@@ -310,6 +316,7 @@ class PackableBindColumn final : public dockv::PackableValue {
       case YB_YQL_DATA_TYPE_UINT64:
         return 9;
 
+      case YB_YQL_DATA_TYPE_VECTOR: [[fallthrough]];
       case YB_YQL_DATA_TYPE_BINARY: {
         char *value;
         int64_t bytes = type_entity->datum_fixed_size;

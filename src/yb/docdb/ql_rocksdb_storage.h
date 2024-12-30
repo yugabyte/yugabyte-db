@@ -28,7 +28,7 @@ namespace docdb {
 // Implementation of YQLStorageIf with rocksdb as a backend. This is what all of our QL tables use.
 class QLRocksDBStorage : public YQLStorageIf {
  public:
-  explicit QLRocksDBStorage(const DocDB& doc_db);
+  explicit QLRocksDBStorage(const std::string& log_prefix, const DocDB& doc_db);
 
   //------------------------------------------------------------------------------------------------
   // CQL Support.
@@ -85,9 +85,19 @@ class QLRocksDBStorage : public YQLStorageIf {
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       SkipSeek skip_seek = SkipSeek::kFalse) const override;
 
+  Result<SampleBlocksData> GetSampleBlocks(
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      DocDbBlocksSamplingMethod blocks_sampling_method,
+      size_t num_blocks_for_sample) const override;
+
   std::string ToString() const override;
 
  private:
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+  const std::string log_prefix_;
   const DocDB doc_db_;
 };
 

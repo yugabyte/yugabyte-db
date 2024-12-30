@@ -6,7 +6,7 @@ menu:
   stable:
     identifier: advanced-features-collations
     parent: advanced-features
-    weight: 240
+    weight: 100
 type: docs
 ---
 

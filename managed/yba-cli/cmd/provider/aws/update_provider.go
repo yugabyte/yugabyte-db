@@ -390,7 +390,7 @@ func init() {
 			" The default for SSH Port is 22, IMDSv2 ("+
 			"This should be true if the Image bundle requires Instance Metadata Service v2)"+
 			" is false. Default marks the image bundle as default for the provider. "+
-			"Allowed values for architecture are x86_64 and arm64."+
+			"Allowed values for architecture are x86_64 and arm64/aarch64."+
 			"Each image bundle can be added using separate --add-image-bundle flag.")
 	updateAWSProviderCmd.Flags().StringArray("add-image-bundle-region-override", []string{},
 		"[Optional] Add Image bundle region overrides associated with the provider. "+

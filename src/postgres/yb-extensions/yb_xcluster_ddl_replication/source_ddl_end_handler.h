@@ -16,7 +16,11 @@
 #define YB_XCLUSTER_DDL_REPLICATION_SOURCE_DDL_END
 
 #include "postgres.h"
+#include "tcop/cmdtag.h"
 #include "utils/jsonb.h"
+
+bool
+IsPassThroughDdlCommandSupported(CommandTag command_tag);
 
 /*
  * Iterate over pg_catalog.pg_event_trigger_ddl_commands() and process each base
@@ -35,5 +39,12 @@ bool ProcessSourceEventTriggerDDLCommands(JsonbParseState *state);
  * Same as above but for pg_catalog.pg_event_trigger_dropped_objects().
  */
 bool ProcessSourceEventTriggerDroppedObjects();
+
+/*
+ * Retrieve and store the OID of the table that is about to be rewritten.
+ */
+void ProcessSourceEventTriggerTableRewrite();
+
+void ClearRewrittenTableOidList();
 
 #endif

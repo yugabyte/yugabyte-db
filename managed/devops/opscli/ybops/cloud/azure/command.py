@@ -16,7 +16,7 @@ from ybops.cloud.azure.method import AzureNetworkBootstrapMethod, AzureProvision
     AzureDeleteDnsEntryMethod, AzureListDnsEntryMethod, AzureDeleteRootVolumesMethod, \
     AzurePauseInstancesMethod, AzureResumeInstancesMethod, AzureChangeInstanceTypeMethod, \
     AzureCreateRootVolumesMethod, AzureReplaceRootVolumeMethod, AzureHardRebootInstancesMethod, \
-    AzureQueryCurrentHostMethod
+    AzureQueryCurrentHostMethod, AzureQueryDeviceNames
 from ybops.cloud.common.method import AccessCreateVaultMethod, ConfigureInstancesMethod, \
     ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
     AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
@@ -86,6 +86,7 @@ class AzureQueryCommand(QueryCommand):
         self.add_method(AzureQueryVnetMethod(self))
         self.add_method(AzureQueryUltraMethod(self))
         self.add_method(AzureQueryCurrentHostMethod(self))
+        self.add_method(AzureQueryDeviceNames(self))
 
 
 class AzureDnsCommand(DnsCommand):

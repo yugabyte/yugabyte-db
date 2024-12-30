@@ -9,8 +9,6 @@ menu:
     identifier: api-ysql-exprs
     parent: api-ysql
     weight: 60
-aliases:
-  - /preview/api/ysql/exprs/
 type: indexpage
 ---
 

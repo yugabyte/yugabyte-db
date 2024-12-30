@@ -4,3 +4,4 @@ test: yb-fk-row-locking
 test: yb-user-managed-constraint
 test: yb-fk-relationship
 test: yb-check-constraint-locking
+test: yb-advisory-locks-fail-on-conflict

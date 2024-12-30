@@ -159,7 +159,10 @@ public class CertsRotate extends UpgradeTaskBase {
             createCertReloadConfigTask(universe);
             log.info("cert reload configuration task scheduled for this universe");
           }
-        });
+        },
+        // Save the params set in setAdditionalTaskParams in verify params.
+        // TODO move setting the params from verifyParams to freeze callback.
+        u -> updateTaskDetailsInDB(taskParams()));
   }
 
   private void createCertUpdateTasks(

@@ -71,20 +71,15 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     if (isTestRunningWithConnectionManager()) {
-      String preview_flags = "enable_ysql_conn_mgr," +
-        "cdcsdk_enable_dynamic_table_support";
+      String preview_flags = "enable_ysql_conn_mgr";
       flagMap.put("allowed_preview_flags_csv",preview_flags);
       flagMap.put("ysql_conn_mgr_stats_interval", "1");
-    } else {
-      flagMap.put("allowed_preview_flags_csv",
-          "cdcsdk_enable_dynamic_table_support");
     }
     flagMap.put(
         "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
     flagMap.put("ysql_log_min_messages", "DEBUG2");
     flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
-    flagMap.put("cdcsdk_enable_dynamic_table_support", "true");
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
     return flagMap;
   }

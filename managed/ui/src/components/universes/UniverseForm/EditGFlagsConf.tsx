@@ -420,6 +420,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                   onClick={() => {
                                     removeItem(index);
                                   }}
+                                  disabled={item?.disabled}
                                 >
                                   <CloseIcon />
                                 </IconButton>

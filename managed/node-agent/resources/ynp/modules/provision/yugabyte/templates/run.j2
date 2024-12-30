@@ -4,6 +4,7 @@ if id "{{ yb_user }}" &>/dev/null; then
 else
     # Creating the yb_user
     useradd -u {{ yb_user_id }} -s /bin/bash --create-home --home-dir {{ yb_home_dir }} {{ yb_user }}
+    chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}
     echo "User {{ yb_user }} created"
 fi
 
@@ -30,7 +31,7 @@ else
 fi
 
 # Determine the PLATFORM_ID
-platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
 
 if [[ "$platform_id" == "platform:el8" ]]; then
     # Check SELinux status
@@ -48,6 +49,44 @@ if [[ "$platform_id" == "platform:el8" ]]; then
 else
     echo "el8 not detected, skipping changing selinux context"
 fi
+
+{% if cloud_type is defined and cloud_type != '' %}
+    mount_points="{{ mount_paths | default('') | trim }}"
+    IFS=' ' read -ra mount_points_array <<< "$mount_points"
+    # Verify each mount point
+    for mount_point in "${mount_points_array[@]}"; do
+        if [ ! -d "$mount_point" ]; then
+            echo "Creating mount point: $mount_point"
+            mkdir -p "$mount_point"
+            chown -R {{ yb_user }}:{{ yb_user }} "$mount_point"
+        else
+            echo "Mount point already exists: $mount_point"
+        fi
+    done
+
+    # Set up the ssh key access for yugabyte
+    mkdir -p {{ yb_home_dir }}/.ssh
+    # Determine the current user
+    if [ -n "$SUDO_USER" ]; then
+        CURRENT_USER=$SUDO_USER
+    else
+        CURRENT_USER=$(whoami)
+    fi
+    echo $CURRENT_USER
+    CURRENT_USER_HOME=$(eval echo "~$CURRENT_USER")
+    AUTHORIZED_KEYS="$CURRENT_USER_HOME/.ssh/authorized_keys"
+
+    # Check if the current user's authorized_keys file exists
+    if [[ -f "$AUTHORIZED_KEYS" ]]; then
+        cat "$AUTHORIZED_KEYS" > {{ yb_home_dir }}/.ssh/authorized_keys
+        chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/.ssh
+        chmod 600 "{{ yb_home_dir }}/.ssh/authorized_keys"
+
+        echo "Authorized keys from $CURRENT_USER copied to {{ yb_user }} home directory."
+    else
+        echo "No authorized_keys file found for user $CURRENT_USER. Skipping."
+    fi
+{% endif %}
 
 installer_dir="{{ ynp_dir }}/../../bin"
 # Copy node-agent binary to yugabyte home directory. This is needed so that yugabyte user

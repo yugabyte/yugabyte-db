@@ -109,7 +109,7 @@ void ReaderThread(SharedState* state) {
   }
 }
 
-void WriterThread(SharedState* state) {
+void WriterThread(SharedState* state) NO_THREAD_SAFETY_ANALYSIS {
   string local_str;
   while (!NoBarrier_Load(&state->stop)) {
     state->rwc_lock.WriteLock();

@@ -714,56 +714,54 @@ DeleteSequenceTuple(Oid relid)
 HeapTuple
 YBReadSequenceTuple(Relation seqrel)
 {
-  /* Get sequence OID */
-  Oid relid = seqrel->rd_id;
+	/* Get sequence OID */
+	Oid relid = seqrel->rd_id;
 
-  /* Read our data from YB's table of all sequences */
-  FormData_pg_sequence_data seqdataform;
-  if (IsYugaByteEnabled())
-  {
-    int64_t last_val;
-    bool is_called;
-    HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
-										relid,
-										YbGetCatalogCacheVersion(),
-										YBIsDBCatalogVersionMode(),
-										&last_val,
-										&is_called));
-    seqdataform.last_value = last_val;
-    seqdataform.is_called = is_called;
-    seqdataform.log_cnt = 0; /* not used by YugaByte, defaults to 0 */
-  }
-  else
-  {
-    ereport(ERROR,
-            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                errmsg("Should never reach here")));
-  }
+	/* Read our data from YB's table of all sequences */
+	FormData_pg_sequence_data seqdataform;
+	if (IsYugaByteEnabled())
+	{
+		int64_t last_val;
+		bool is_called;
+		HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
+											relid,
+											YbGetCatalogCacheVersion(),
+											YBIsDBCatalogVersionMode(),
+											&last_val,
+											&is_called));
+		seqdataform.last_value = last_val;
+		seqdataform.is_called = is_called;
+		seqdataform.log_cnt = 0; /* not used by YugaByte, defaults to 0 */
+	}
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Should never reach here")));
 
-  /* Set up the tuple */
-  Datum value[SEQ_COL_LASTCOL];
-  bool null[SEQ_COL_LASTCOL];
+	/* Set up the tuple */
+	Datum value[SEQ_COL_LASTCOL];
+	bool null[SEQ_COL_LASTCOL];
 
-  for (int i = SEQ_COL_FIRSTCOL; i <= SEQ_COL_LASTCOL; i++)
-  {
-    null[i - 1] = false;
+	for (int i = SEQ_COL_FIRSTCOL; i <= SEQ_COL_LASTCOL; i++)
+	{
+		null[i - 1] = false;
 
-    switch (i)
-    {
-      case SEQ_COL_LASTVAL:
-        value[i - 1] = Int64GetDatumFast(seqdataform.last_value);
-        break;
-      case SEQ_COL_LOG:
-        value[i - 1] = Int64GetDatum(seqdataform.log_cnt);
-        break;
-      case SEQ_COL_CALLED:
-        value[i - 1] = BoolGetDatum(seqdataform.is_called);
-        break;
-    }
-  }
+		switch (i)
+		{
+			case SEQ_COL_LASTVAL:
+				value[i - 1] = Int64GetDatumFast(seqdataform.last_value);
+				break;
+			case SEQ_COL_LOG:
+				value[i - 1] = Int64GetDatum(seqdataform.log_cnt);
+				break;
+			case SEQ_COL_CALLED:
+				value[i - 1] = BoolGetDatum(seqdataform.is_called);
+				break;
+		}
+	}
 
-  TupleDesc tupDesc = RelationGetDescr(seqrel);
-  return heap_form_tuple(tupDesc, value, null);
+	TupleDesc tupDesc = RelationGetDescr(seqrel);
+	return heap_form_tuple(tupDesc, value, null);
 }
 
 /*
@@ -1020,10 +1018,11 @@ nextval_internal(Oid relid, bool check_permissions)
 		elm->last_valid = true;
 		last_used_seq = elm;
 		relation_close(seqrel, NoLock);
-		if(YbIsClientYsqlConnMgr())
+		if (YbIsClientYsqlConnMgr() &&
+			(strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode), "session") == 0))
 		{
 			increment_sticky_object_count();
-			elog(LOG, "Incremented sticky object count for sequence %s",
+			elog(LOG_SERVER_ONLY, "Incremented sticky object count for sequence %s",
 				 RelationGetRelationName(seqrel));
 		}
 		return first_val;
@@ -1209,6 +1208,13 @@ nextval_internal(Oid relid, bool check_permissions)
 Datum
 currval_oid(PG_FUNCTION_ARGS)
 {
+	if (YbIsClientYsqlConnMgr() && (strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
+		"pooled_without_curval_lastval") == 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						errmsg("currval not supported for session created "
+								"by connection manager")));
+	}
 	Oid			relid = PG_GETARG_OID(0);
 	int64		result;
 	SeqTable	elm;
@@ -1240,6 +1246,13 @@ currval_oid(PG_FUNCTION_ARGS)
 Datum
 lastval(PG_FUNCTION_ARGS)
 {
+	if (YbIsClientYsqlConnMgr() && (strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
+		"pooled_without_curval_lastval") == 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						errmsg("lastval not supported for session created "
+								"by connection manager")));
+	}
 	Relation	seqrel;
 	int64		result;
 
@@ -1359,13 +1372,13 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	 */
 	if (IsYugaByteEnabled())
 	{
-    HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
-										  relid,
-										  YbGetCatalogCacheVersion(),
-										  YBIsDBCatalogVersionMode(),
-										  next,
-										  iscalled,
-										  NULL));
+		HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
+											  relid,
+											  YbGetCatalogCacheVersion(),
+											  YBIsDBCatalogVersionMode(),
+											  next,
+											  iscalled,
+											  NULL));
 		relation_close(seqrel, NoLock);
 		return;
 	}

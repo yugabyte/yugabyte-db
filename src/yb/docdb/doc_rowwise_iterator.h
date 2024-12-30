@@ -80,6 +80,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   void Seek(Slice key) override;
 
+  void SeekToDocKeyPrefix(Slice doc_key_prefix) override;
+
   // Refreshes the iterator if it was in finished state.
   // filter - filter mode that should be used with refreshed iterator.
   void Refresh(SeekFilter filter);
@@ -102,6 +104,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   bool TEST_use_fast_backward_scan() const {
     return use_fast_backward_scan_;
   }
+
+  Result<Slice> FetchDirect(Slice key) override;
 
  private:
   void InitIterator(

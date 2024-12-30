@@ -621,6 +621,10 @@ class OnPremVerifyCertificatesMethod(AbstractInstancesMethod):
     def verify_custom_certificate_checksum(self, root_cert_path, yba_cert_checksum,
                                            connect_options):
         remote_shell = RemoteShell(connect_options)
+        check_md5_present = remote_shell.run_command_raw("which md5sum")
+        if check_md5_present.exited != 0:
+            logging.warning("md5sum command not found on the node. Skipping checksum verification.")
+            return
         root_ca_checksum_response = remote_shell.run_command_raw("md5sum {}".format(root_cert_path))
         if root_ca_checksum_response.exited != 0:
             raise YBOpsRuntimeError("Failed to get checksum for root CA certificate")

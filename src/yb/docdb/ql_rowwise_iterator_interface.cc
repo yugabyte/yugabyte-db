@@ -29,9 +29,19 @@ Slice YQLRowwiseIteratorIf::GetTupleId() const {
   return Slice();
 }
 
+Slice YQLRowwiseIteratorIf::GetRowKey() const {
+  LOG(DFATAL) << "This iterator cannot return row key";
+  return Slice();
+}
+
 void YQLRowwiseIteratorIf::SeekTuple(Slice tuple_id) {
   LOG(DFATAL) << "This iterator cannot seek by tuple id";
 }
+
+void YQLRowwiseIteratorIf::SeekToDocKeyPrefix(Slice doc_key_prefix) {
+  LOG(DFATAL) << "This iterator cannot seek to doc key prefix";
+}
+
 
 HybridTime YQLRowwiseIteratorIf::TEST_MaxSeenHt() {
   return HybridTime::kInvalid;
@@ -39,6 +49,10 @@ HybridTime YQLRowwiseIteratorIf::TEST_MaxSeenHt() {
 
 Result<bool> YQLRowwiseIteratorIf::FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row) {
   return STATUS(NotSupported, "This iterator cannot fetch tuple id");
+}
+
+Result<Slice> YQLRowwiseIteratorIf::FetchDirect(Slice key) {
+  return STATUS(NotSupported, "FetchDirect not supported");
 }
 
 }  // namespace docdb

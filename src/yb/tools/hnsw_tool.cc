@@ -36,7 +36,7 @@
 #include "yb/vector_index/hnswlib_wrapper.h"
 #include "yb/vector_index/sharded_index.h"
 #include "yb/vector_index/usearch_wrapper.h"
-#include "yb/vector_index/vector_id.h"
+#include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_wrapper_util.h"
 
 #include "yb/tools/tool_arguments.h"
@@ -380,7 +380,7 @@ class BenchmarkTool {
     if (!args_.load_index_from_path.empty()) {
       LOG(INFO) << "Loading index from " << args_.load_index_from_path;
       auto load_start_time = MonoTime::Now();
-      RETURN_NOT_OK(vector_index_->LoadFromFile(args_.load_index_from_path));
+      RETURN_NOT_OK(vector_index_->LoadFromFile(args_.load_index_from_path, 0));
       LOG(INFO) << "Loaded index from " << args_.load_index_from_path
                 << " in " << MonoTime::Now().GetDeltaSince(load_start_time);
     } else {

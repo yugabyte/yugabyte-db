@@ -2425,6 +2425,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   const std::string kPgsqlTableName = "pgsqlrangepartitionedtable";
   const std::string kPgsqlTableId = "pgsqlrangepartitionedtableid";
+  const std::string kYqlTableId = "yqlrangepartitionedtableid";
   const size_t kColIdx = 1;
   const int64_t kKeyValue = 48238;
   auto yql_table_name = YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "yqlrangepartitionedtable");
@@ -2472,6 +2473,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 
   // Create a YQL table using range partition.
   s = table_creator->table_name(yql_table_name)
+      .table_id(kYqlTableId)
       .schema(&schema)
       .set_range_partition_columns({"key"})
       .table_type(YBTableType::YQL_TABLE_TYPE)
@@ -2560,7 +2562,7 @@ class CompactionClientTest : public ClientTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
     ClientTest::SetUp();
     time_before_compaction_ =
-        ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->clock()->Now();
+        ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Now();
   }
 
  protected:
@@ -2766,7 +2768,7 @@ Result<client::internal::RemoteTabletPtr> GetRemoteTablet(
   std::promise<Result<client::internal::RemoteTabletPtr>> tablet_lookup_promise;
   auto future = tablet_lookup_promise.get_future();
   client->LookupTabletById(
-      tablet_id, /* table =*/ nullptr, master::IncludeInactive::kTrue,
+      tablet_id, /* table =*/ nullptr, master::IncludeHidden::kTrue,
       master::IncludeDeleted::kFalse, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(1000),
       [&tablet_lookup_promise](const Result<client::internal::RemoteTabletPtr>& result) {
         tablet_lookup_promise.set_value(result);

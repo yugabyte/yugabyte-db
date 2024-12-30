@@ -22,7 +22,7 @@ from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstanc
     GcpNetworkCleanupMethod, GcpQueryVpcMethod, GcpCreateRootVolumesMethod, \
     GcpReplaceRootVolumeMethod, GcpChangeInstanceTypeMethod, GcpPauseInstancesMethod, \
     GcpResumeInstancesMethod, GcpUpdateMountedDisksMethod, GcpDeleteRootVolumesMethod, \
-    GcpTagsMethod, GcpHardRebootInstancesMethod
+    GcpTagsMethod, GcpHardRebootInstancesMethod, GcpQueryDeviceNames
 
 
 class GcpInstanceCommand(InstanceCommand):
@@ -70,6 +70,7 @@ class GcpQueryCommand(QueryCommand):
         self.add_method(GcpQueryCurrentHostMethod(self))
         self.add_method(GcpQueryPreemptibleInstanceMethod(self))
         self.add_method(GcpQueryVpcMethod(self))
+        self.add_method(GcpQueryDeviceNames(self))
 
 
 class GcpAccessCommand(AccessCommand):

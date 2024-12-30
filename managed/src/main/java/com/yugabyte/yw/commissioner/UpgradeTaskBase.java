@@ -50,6 +50,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -234,11 +235,15 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   public abstract NodeState getNodeState();
 
   public void runUpgrade(Runnable upgradeLambda) {
+    runUpgrade(upgradeLambda, null /* Txn callback */);
+  }
+
+  public void runUpgrade(Runnable upgradeLambda, @Nullable Consumer<Universe> firstRunTxnCallback) {
     if (maybeRunOnlyPrechecks()) {
       return;
     }
     checkUniverseVersion();
-    lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, null /* Txn callback */);
+    lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, firstRunTxnCallback);
     try {
       Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
 

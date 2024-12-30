@@ -119,7 +119,8 @@ void XClusterManager::StartShutdown() {
     tasks = monitored_tasks_;
   }
   for (auto& task : tasks) {
-    task->AbortAndReturnPrevState(STATUS(Aborted, "Master is shutting down"));
+    task->AbortAndReturnPrevState(
+        STATUS(Aborted, "Master is shutting down"), /* call_task_finisher */ true);
   }
 }
 
@@ -759,6 +760,12 @@ bool XClusterManager::IsTableReplicated(const TableId& table_id) const {
   return XClusterSourceManager::IsTableReplicated(table_id) ||
          XClusterTargetManager::IsTableReplicated(table_id);
 }
+
+bool XClusterManager::IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const {
+  return XClusterSourceManager::IsNamespaceInAutomaticDDLMode(namespace_id) ||
+         XClusterTargetManager::IsNamespaceInAutomaticDDLMode(namespace_id);
+}
+
 
 bool XClusterManager::IsTableBiDirectionallyReplicated(const TableId& table_id) const {
   // In theory this would return true for B in the case of chaining A -> B -> C, but we don't

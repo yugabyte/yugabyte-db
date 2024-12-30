@@ -354,7 +354,8 @@ void Batcher::TabletLookupFinished(
   }
 }
 
-void Batcher::TransactionReady(const Status& status) {
+void Batcher::TransactionReady(ash::WaitStateInfoPtr wait_state, const Status& status) {
+  ADOPT_WAIT_STATE(wait_state);
   if (status.ok()) {
     ExecuteOperations(Initial::kFalse);
   } else {
@@ -377,6 +378,7 @@ std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
         case YBOperation::QL_WRITE: FALLTHROUGH_INTENDED;
         case YBOperation::PGSQL_READ: FALLTHROUGH_INTENDED;
         case YBOperation::PGSQL_WRITE: FALLTHROUGH_INTENDED;
+        case YBOperation::PGSQL_LOCK: FALLTHROUGH_INTENDED;
         case YBOperation::REDIS_READ: FALLTHROUGH_INTENDED;
         case YBOperation::REDIS_WRITE: {
           partition_contains_row = partition.ContainsKey(partition_key);
@@ -531,7 +533,8 @@ void Batcher::ExecuteOperations(Initial initial) {
     // it could be done.
     if (!transaction->batcher_if().Prepare(
         &ops_info_, force_consistent_read_, deadline_, initial,
-        std::bind(&Batcher::TransactionReady, shared_from_this(), _1))) {
+        std::bind(&Batcher::TransactionReady, shared_from_this(),
+        ash::WaitStateInfo::CurrentWaitState(), _1))) {
       return;
     }
   } else if (force_consistent_read_ &&
@@ -655,7 +658,9 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   };
 
   switch (op_group) {
-    case OpGroup::kWrite:
+    case OpGroup::kWrite: FALLTHROUGH_INTENDED;
+    case OpGroup::kLock: FALLTHROUGH_INTENDED;
+    case OpGroup::kUnlock:
       return std::make_shared<WriteRpc>(data);
     case OpGroup::kLeaderRead:
       return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG);

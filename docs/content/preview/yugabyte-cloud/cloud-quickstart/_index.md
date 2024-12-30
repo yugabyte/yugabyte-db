@@ -4,7 +4,6 @@ headerTitle: Quick start
 linkTitle: Quick start
 headcontent: Sign up for YugabyteDB Aeon and create a free Sandbox cluster
 description: Get started using YugabyteDB Aeon in less than five minutes.
-image: /images/section_icons/index/quick_start.png
 layout: single
 type: docs
 menu:
@@ -12,6 +11,7 @@ menu:
     parent: yugabytedb-managed
     weight: 2
     params:
+      classes: separator
       hideLink: true
 ---
 
@@ -129,4 +129,4 @@ Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
 
 ### Choose your language
 
-{{< readfile "../../quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+{{< readfile "/preview/tutorials/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}

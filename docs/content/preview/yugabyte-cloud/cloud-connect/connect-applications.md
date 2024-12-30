@@ -16,7 +16,7 @@ type: docs
 
 Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. YugabyteDB also supports [smart drivers](../../../drivers-orms/smart-drivers/), which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
-To connect to a YugabyteDB Aeon cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using. For examples of applications that connect to YugabyteDB Aeon using common drivers, refer to [Build an application](../../../tutorials/build-apps/).
+To connect to a YugabyteDB Aeon cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using. For examples of applications that connect to YugabyteDB Aeon using common drivers, refer to [Build an application](/preview/tutorials/build-apps/).
 
 You may want to add a database user specifically for your application. Refer to [Add database users](../../cloud-secure-clusters/add-users/).
 
@@ -78,7 +78,7 @@ To get the connection parameters for your cluster:
 
 Select **Connection String** to display the string that YSQL applications can use to connect. Select **Parameters** to display the individual parameters.
 
-Here's an example of a generated `ysqlsh` string:
+Here's an example of a generated ysqlsh string:
 
 ```sh
 postgresql://<DB USER>:<DB PASSWORD>@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.yugabyte.cloud:5433/yugabyte? \
@@ -101,7 +101,7 @@ postgresql://admin:qwerty@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.yuga
 sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
-The connection string includes parameters for TLS settings (`ssl`, `sslmode`, and `sslrootcert`). The generated `ysqlsh` connection string uses the `verify-full` SSL mode by default.
+The connection string includes parameters for TLS settings (`ssl`, `sslmode`, and `sslrootcert`). The generated ysqlsh connection string uses the `verify-full` SSL mode by default.
 
 For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
@@ -127,9 +127,9 @@ To connect your application, do the following:
 
 {{< /tabpane >}}
 
-For examples of applications you can build and connect to YugabyteDB Aeon using a variety of drivers, refer to [Build an application](../../../tutorials/build-apps/).
+For examples of applications you can build and connect to YugabyteDB Aeon using a variety of drivers, refer to [Build an application](/preview/tutorials/build-apps/).
 
 ## Learn more
 
 - [Add database users](../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../tutorials/build-apps/)
+- [Build an application](/preview/tutorials/build-apps/)

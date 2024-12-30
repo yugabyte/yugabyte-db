@@ -70,6 +70,41 @@ public class CloudQueryHelper extends DevopsBase {
             .build());
   }
 
+  public List<String> getDeviceNames(
+      Provider provider,
+      Common.CloudType cloudType,
+      String numVolumes,
+      String volumeType,
+      String regionName,
+      String instanceType) {
+    List<String> commandArgs = new ArrayList<>();
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(provider);
+
+    commandArgs.add("--num_volumes");
+    commandArgs.add(numVolumes);
+    commandArgs.add("--volume_type");
+    commandArgs.add(volumeType);
+    if (cloudType == Common.CloudType.aws) {
+      commandArgs.add("--region");
+      commandArgs.add(regionName);
+    }
+    commandArgs.add("--instance_type");
+    commandArgs.add(instanceType);
+    JsonNode deviceNames =
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .cloudType(cloudType)
+                .command("device_names")
+                .envVars(envVars)
+                .commandArgs(commandArgs)
+                .build());
+    List<String> deviceNamesList = ImmutableList.of();
+    if (deviceNames instanceof ArrayNode) {
+      deviceNamesList = Json.fromJson(deviceNames, List.class);
+    }
+    return deviceNamesList;
+  }
+
   public List<String> getRegionCodes(Provider p) {
     List<String> commandArgs = new ArrayList<>();
     if (p.getCode().equals("gcp")) {

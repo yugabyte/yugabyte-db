@@ -30,6 +30,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+DECLARE_bool(cdc_enable_implicit_checkpointing);
+
 using std::vector;
 using std::string;
 
@@ -359,47 +361,43 @@ TEST_F(CDCSDKStreamTest, CDCWithXclusterEnabled) {
   // We not need to create both xcluster and cdc streams on a table,
   // and we will list them to check that they are not the same.
 
-  const uint32_t num_of_streams = 100;
+  const size_t kNumOfStreams = RegularBuildVsSanitizers(100, 10);
 
   // Creating CDC DB streams on the table.
   // We get a sorted vector from CreateDBStreams() function already.
-  std::vector<xrepl::StreamId> created_db_streams = ASSERT_RESULT(CreateDBStreams(num_of_streams));
+  std::vector<xrepl::StreamId> created_db_streams = ASSERT_RESULT(CreateDBStreams(kNumOfStreams));
 
   // Creating xCluster streams now.
   std::vector<xrepl::StreamId> created_xcluster_streams;
-  for (uint32_t i = 0; i < num_of_streams; ++i) {
+  for (size_t i = 0; i < kNumOfStreams; ++i) {
     created_xcluster_streams.emplace_back(
         ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table.table_id())));
   }
   std::sort(created_xcluster_streams.begin(), created_xcluster_streams.end());
 
   // Ensure that created streams are all different.
-  for (uint32_t i = 0; i < num_of_streams; ++i) {
-    ASSERT_NE(created_db_streams[i], created_xcluster_streams[i]);
+  for (const auto& db_stream : created_db_streams) {
+    ASSERT_FALSE(std::binary_search(
+        created_xcluster_streams.begin(), created_xcluster_streams.end(), db_stream));
   }
 
   // List streams for CDC and xCluster. They both should not be the same.
-  google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_cdc_resp =
-      ASSERT_RESULT(ListDBStreams(kNamespaceName));
   std::vector<std::string> db_streams;
-  for (int32_t i = 0; i < list_cdc_resp.size(); ++i) {
-    db_streams.push_back(list_cdc_resp.Get(i).stream_id());
+  for (const auto& stream : ASSERT_RESULT(ListDBStreams(kNamespaceName))) {
+    db_streams.push_back(stream.stream_id());
   }
-  std::sort(db_streams.begin(), db_streams.end());
 
   // List the streams for xCluster.
-  google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_xcluster_resp =
-      ASSERT_RESULT(ListDBStreams(kNamespaceName, table.table_id()));
   std::vector<std::string> xcluster_streams;
-  for (int32_t i = 0; i < list_xcluster_resp.size(); ++i) {
-    xcluster_streams.push_back(list_xcluster_resp.Get(i).stream_id());
+  for (const auto& stream : ASSERT_RESULT(ListDBStreams(kNamespaceName, table.table_id()))) {
+    xcluster_streams.push_back(stream.stream_id());
   }
   std::sort(xcluster_streams.begin(), xcluster_streams.end());
 
   // Ensuring that the streams we got in both the cases are different in order to make sure that
   // there are no clashes.
-  for (uint32_t i = 0; i < num_of_streams; ++i) {
-    ASSERT_NE(db_streams[i], xcluster_streams[i]);
+  for (const auto& stream : db_streams) {
+    ASSERT_FALSE(std::binary_search(xcluster_streams.begin(), xcluster_streams.end(), stream));
   }
 }
 
@@ -520,6 +518,20 @@ TEST_F(CDCSDKStreamTest, TestStreamRetentionWithTableDeletion) {
         return (resp->table_info_size() == 0);
       },
       MonoDelta::FromSeconds(60), "Waiting for stream metadata update with no table info."));
+}
+
+TEST_F(CDCSDKStreamTest, TestDisallowImplicitStreamCreationWhenFlagDisabled) {
+  constexpr int num_tservers = 1;
+  ASSERT_OK(SetUpWithParams(num_tservers, /* num_masters */ 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_implicit_checkpointing) = false;
+
+  constexpr auto num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+
+  ASSERT_NOK_STR_CONTAINS(
+      CreateConsistentSnapshotStream(
+          CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::IMPLICIT),
+      "Stream creation with IMPLICIT checkpointing is disabled");
 }
 
 }  // namespace cdc

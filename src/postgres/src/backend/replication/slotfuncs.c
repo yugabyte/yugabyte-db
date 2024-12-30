@@ -195,15 +195,23 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("CreateReplicationSlot is unavailable"),
 				 errdetail("Creation of replication slot is only allowed with "
-				 		   "ysql_yb_enable_replication_commands and "
+						   "ysql_yb_enable_replication_commands and "
 						   "ysql_yb_enable_replica_identity set to true.")));
 
 	Name		name = PG_GETARG_NAME(0);
 	Name		plugin = PG_GETARG_NAME(1);
 	bool		temporary = PG_GETARG_BOOL(2);
 	bool		two_phase = PG_GETARG_BOOL(3);
+
+	Name		yb_lsn_type_arg;
 	char		*yb_lsn_type = "SEQUENCE";
-	
+
+	if (!PG_ARGISNULL(4))
+	{
+		yb_lsn_type_arg = PG_GETARG_NAME(4);
+		yb_lsn_type = NameStr(*yb_lsn_type_arg);
+	}
+
 	Datum		result;
 	TupleDesc	tupdesc;
 	HeapTuple	tuple;
@@ -216,13 +224,13 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	if (IsYugaByteEnabled())
 	{
 		if (temporary)
-			ereport(ERROR, 
+			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("Temporary replication slot is not yet supported"),
 					 errhint("See https://github.com/yugabyte/yugabyte-db/"
 							 "issues/19263. React with thumbs up to raise its "
 							 "priority")));
-	
+
 		/*
 		 * Validate output plugin requirement early so that we can avoid the
 		 * expensive call to yb-master.
@@ -299,7 +307,7 @@ pg_drop_replication_slot(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("pg_drop_replication_slot is unavailable"),
 				 errdetail("yb_enable_replication_commands is false or a "
-				 		   "system upgrade is in progress")));
+						   "system upgrade is in progress")));
 
 	Name		name = PG_GETARG_NAME(0);
 

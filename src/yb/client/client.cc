@@ -101,6 +101,7 @@
 #include "yb/tools/yb-admin_util.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/util/atomic.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/init.h"
@@ -130,6 +131,8 @@ using google::protobuf::RepeatedPtrField;
 using std::make_pair;
 using std::string;
 using std::vector;
+using yb::master::AcquireObjectLocksGlobalRequestPB;
+using yb::master::AcquireObjectLocksGlobalResponsePB;
 using yb::master::AddTransactionStatusTabletRequestPB;
 using yb::master::AddTransactionStatusTabletResponsePB;
 using yb::master::AlterRoleRequestPB;
@@ -218,6 +221,8 @@ using yb::master::RedisConfigGetRequestPB;
 using yb::master::RedisConfigGetResponsePB;
 using yb::master::RedisConfigSetRequestPB;
 using yb::master::RedisConfigSetResponsePB;
+using yb::master::ReleaseObjectLocksGlobalRequestPB;
+using yb::master::ReleaseObjectLocksGlobalResponsePB;
 using yb::master::ReplicationInfoPB;
 using yb::master::ReservePgsqlOidsRequestPB;
 using yb::master::ReservePgsqlOidsResponsePB;
@@ -2405,13 +2410,13 @@ void YBClient::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
 
 void YBClient::LookupTabletById(const std::string& tablet_id,
                                 const std::shared_ptr<const YBTable>& table,
-                                master::IncludeInactive include_inactive,
+                                master::IncludeHidden include_hidden,
                                 master::IncludeDeleted include_deleted,
                                 CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
-      tablet_id, table, include_inactive, include_deleted, deadline, std::move(callback),
+      tablet_id, table, include_hidden, include_deleted, deadline, std::move(callback),
       use_cache);
 }
 
@@ -2590,7 +2595,7 @@ Result<master::ListTablesResponsePB> YBClient::ListTables(
 
 Result<std::vector<YBTableName>> YBClient::ListTables(
     const std::string& filter, bool exclude_ysql, const std::string& ysql_db_filter,
-    bool skip_hidden) {
+    SkipHidden skip_hidden) {
   auto resp = VERIFY_RESULT(ListTables(filter, ysql_db_filter));
 
   std::vector<YBTableName> result;
@@ -2598,6 +2603,7 @@ Result<std::vector<YBTableName>> YBClient::ListTables(
 
   for (int i = 0; i < resp.tables_size(); i++) {
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
+    VLOG_WITH_FUNC(4) << "Table: " << AsString(table_info);
     DCHECK(table_info.has_namespace_());
     DCHECK(table_info.namespace_().has_name());
     DCHECK(table_info.namespace_().has_id());
@@ -2733,15 +2739,27 @@ Result<pair<Schema, uint32_t>> YBClient::GetTableSchemaFromSysCatalog(
   return make_pair(current_schema, resp.version());
 }
 
-Result<bool> YBClient::TableExists(const YBTableName& table_name, bool skip_hidden) {
-  auto tables = VERIFY_RESULT(ListTables(
-      table_name.table_name(), /*exclude_ysql=*/false, /*ysql_db_filter=*/"", skip_hidden));
-  for (const YBTableName& table : tables) {
-    if (table == table_name) {
+Result<bool> YBClient::TableExists(const YBTableName& table_name) {
+  if (table_name.namespace_type() != YQLDatabase::YQL_DATABASE_PGSQL) {
+    auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+    auto status = data_->GetTableSchema(this, table_name, deadline, nullptr);
+    if (status.ok()) {
       return true;
     }
+    if (status.IsNotFound()) {
+      return false;
+    }
+    return status;
+  } else {
+    auto tables = VERIFY_RESULT(ListTables(
+        table_name.table_name(), /* exclude_ysql =*/ false, /* ysql_db_filter= */ ""));
+    for (const YBTableName& table : tables) {
+      if (table == table_name) {
+        return true;
+      }
+    }
+    return false;
   }
-  return false;
 }
 
 Status YBClient::OpenTable(const YBTableName& table_name, YBTablePtr* table) {
@@ -3019,6 +3037,39 @@ int64_t YBClient::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
 
 void YBClient::RequestAbortAllRpcs() {
   data_->rpcs_.RequestAbortAll();
+}
+
+Status YBClient::AcquireObjectLocksGlobal(const tserver::AcquireObjectLockRequestPB& lock_req) {
+  LOG_WITH_FUNC(INFO) << lock_req.ShortDebugString();
+  AcquireObjectLocksGlobalRequestPB req;
+  AcquireObjectLocksGlobalResponsePB resp;
+  req.set_txn_id(lock_req.txn_id());
+  req.set_txn_reuse_version(lock_req.txn_reuse_version());
+  req.set_subtxn_id(lock_req.subtxn_id());
+  req.set_session_host_uuid(lock_req.session_host_uuid());
+  req.mutable_object_locks()->CopyFrom(lock_req.object_locks());
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, AcquireObjectLocksGlobal);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status YBClient::ReleaseObjectLocksGlobal(const tserver::ReleaseObjectLockRequestPB& release_req) {
+  LOG_WITH_FUNC(INFO) << release_req.ShortDebugString();
+  ReleaseObjectLocksGlobalRequestPB req;
+  ReleaseObjectLocksGlobalResponsePB resp;
+  req.set_txn_id(release_req.txn_id());
+  req.set_txn_reuse_version(release_req.txn_reuse_version());
+  req.set_subtxn_id(release_req.subtxn_id());
+  req.set_session_host_uuid(release_req.session_host_uuid());
+  req.mutable_object_locks()->CopyFrom(release_req.object_locks());
+  req.set_release_all_locks(release_req.release_all_locks());
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ReleaseObjectLocksGlobal);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
 }
 
 }  // namespace client

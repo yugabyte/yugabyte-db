@@ -31,7 +31,7 @@ The following ports must be exposed for intra-cluster communication, and you sho
 * 13000 - YSQL API
 * 54422 - Custom SSH
 
-The following ports must be exposed for intra-node communication and be available to your application or any user attempting to connect to the YugabyteDB:
+The following ports must be exposed for inter-node communication and be available to your application or any user attempting to connect to the YugabyteDB:
 
 * 5433 - YSQL server
 * 9042 - YCQL server

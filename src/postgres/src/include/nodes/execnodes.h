@@ -46,6 +46,9 @@ struct ExprEvalStep;			/* avoid including execExpr.h everywhere */
 struct CopyMultiInsertBuffer;
 struct LogicalTapeSet;
 
+/* YB forward references. */
+struct YbInsertOnConflictBatchState;
+
 
 /* ----------------
  *		ExprState node
@@ -451,6 +454,12 @@ typedef struct ResultRelInfo
 	 */
 	AttrNumber	ri_RowIdAttNo;
 
+	/*
+	 * YB note: For non-fast path UPDATE, the attribute number of the wholerow junk attribute
+	 * in the source plan's output tuples. This stores the old tuple.
+	 */
+	AttrNumber	ri_YbWholeRowAttNo;
+
 	/* Projection to generate new tuple in an INSERT/UPDATE */
 	ProjectionInfo *ri_projectNew;
 	/* Slot to hold that tuple */
@@ -560,27 +569,6 @@ typedef struct ResultRelInfo
 	 * one of its ancestors; see ExecCrossPartitionUpdateForeignKey().
 	 */
 	List	   *ri_ancestorResultRels;
-
-	/*
-	 * YB batch insert stuff:
-	 * - batching mode:
-	 *   - ri_NumSlots: index of next slot to add to batch
-	 * - flushing mode:
-	 *   - ri_YbFlushCurrentSlotIdx: index of next slot to flush from batch
-	 *   - ri_YbFlushNumSlots: total number of slots to flush from batch.  It's
-	 *     a copy of ri_NumSlots before that overwritten.  0 <
-	 *     ri_YbFlushNumSlots < ri_BatchSize.
-	 *   - ri_YbFlushResultRelInfo: for partitioned tables, this is set on the
-	 *     root's ResultRelInfo to point to the partition that is in flushing
-	 *     mode.
-	 * If ri_NumSlots == ri_BatchSize when trying to add another slot to the
-	 * batch or ExecPendingInserts is requested, enter flushing mode.
-	 * ri_YbFlushCurrentSlotIdx > 0 indicates flushing mode is still ongoing.
-	 * If ri_YbFlushCurrentSlotIdx == ri_YbFlushNumSlots, exit flushing mode.
-	 */
-	int			ri_YbFlushCurrentSlotIdx;
-	int			ri_YbFlushNumSlots;
-	struct ResultRelInfo *ri_YbFlushResultRelInfo;
 } ResultRelInfo;
 
 /*
@@ -759,6 +747,12 @@ typedef struct EState
 	 * an extra memory allocation per tuple.
 	 */
 	YbSkippableEntities yb_skip_entities;
+
+	/*
+	 * List of PartitionTupleRouting to find PK partition referenced by a FK
+	 * relation. Used by YBCBuildYBTupleIdDescriptor().
+	 */
+	List *yb_es_pk_proutes;
 } EState;
 
 /*
@@ -1329,7 +1323,6 @@ typedef struct ProjectSetState
 	MemoryContext argcontext;	/* context for SRF arguments */
 } ProjectSetState;
 
-
 /* flags for mt_merge_subcommands */
 #define MERGE_INSERT	0x01
 #define MERGE_UPDATE	0x02
@@ -1408,6 +1401,13 @@ typedef struct ModifyTableState
 	 * because they do not involve updates to secondary indexes.
 	 */
 	bool yb_is_inplace_index_update_enabled;
+
+	/*
+	 * YB: If enabled, this struct holds the state for batched INSERT ... ON
+	 * CONFLICT. This state is shared across all the (partitioned) relations in
+	 * the ModifyTable plan.
+	 */
+	struct YbInsertOnConflictBatchState *yb_ioc_state;
 } ModifyTableState;
 
 /* ----------------
@@ -3004,6 +3004,9 @@ typedef struct LockRowsState
 	PlanState	ps;				/* its first field is NodeTag */
 	List	   *lr_arowMarks;	/* List of ExecAuxRowMarks */
 	EPQState	lr_epqstate;	/* for evaluating EvalPlanQual rechecks */
+
+	bool 		yb_are_row_marks_for_yb_rels; /* lr_arowMarks relates to YB
+											   * relations */
 } LockRowsState;
 
 /* ----------------
@@ -3046,5 +3049,36 @@ typedef struct LimitState
 								 * option */
 	TupleTableSlot *last_slot;	/* slot for evaluation of ties */
 } LimitState;
+
+/* ----------------
+ *	 YbInsertOnConflictBatchState information
+ *
+ *		INSERT ... ON CONFLICT read batching state for Yugabyte relations.  The
+ *		batch size is taken from ResultRelInfo.ri_BatchSize.
+ * ----------------
+ */
+typedef struct YbInsertOnConflictBatchState
+{
+	TupleTableSlot **slots;		/* input slots for batch insert */
+	TupleTableSlot **planSlots;	/* related slots */
+	List	   *pending_relids;	/* all (partitioned) relations involved */
+
+	/* batching mode fields */
+	int			num_slots;		/* index of next slot to add to batch */
+
+	/* flushing mode fields */
+	int			flush_idx;		/* index of next slot to flush from batch */
+
+	/*
+	 * pickup mode fields
+	 *
+	 * In case the flow was interrupted by a relation that does not support
+	 * batching (e.g. a partitioned table with triggers) plus the presence of
+	 * returned slots, these fields save where we should continue off of after
+	 * flushing is over.
+	 */
+	TupleTableSlot *pickup_slot;
+	TupleTableSlot *pickup_plan_slot;
+} YbInsertOnConflictBatchState;
 
 #endif							/* EXECNODES_H */

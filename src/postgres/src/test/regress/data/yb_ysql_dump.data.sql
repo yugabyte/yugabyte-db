@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.1.1505-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
+-- Dumped from database version 15.2-YB-2.25.1.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.1.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -348,6 +348,146 @@ SPLIT INTO 3 TABLETS;
 
 \if :use_roles
     ALTER TABLE public.p2 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: part_uniq_const; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16591'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16590'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16589'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16592'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('0'::pg_catalog.oid);
+
+CREATE TABLE public.part_uniq_const (
+    v1 integer NOT NULL,
+    v2 integer,
+    v3 integer NOT NULL,
+    CONSTRAINT part_uniq_const_pkey PRIMARY KEY((v1) HASH, v3 ASC)
+)
+PARTITION BY RANGE (v1)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.part_uniq_const OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: part_uniq_const_30_50; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16601'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16600'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16599'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16599'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16602'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16602'::pg_catalog.oid);
+
+CREATE TABLE public.part_uniq_const_30_50 (
+    v1 integer NOT NULL,
+    v2 integer,
+    v3 integer NOT NULL,
+    CONSTRAINT part_uniq_const_30_50_pkey PRIMARY KEY((v1) HASH, v3 ASC)
+)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.part_uniq_const_30_50 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: part_uniq_const_50_100; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16596'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16595'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16594'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16594'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16597'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16597'::pg_catalog.oid);
+
+CREATE TABLE public.part_uniq_const_50_100 (
+    v1 integer NOT NULL,
+    v2 integer,
+    v3 integer NOT NULL,
+    CONSTRAINT part_uniq_const_50_100_pkey PRIMARY KEY((v1) HASH, v3 ASC)
+)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.part_uniq_const_50_100 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: part_uniq_const_default; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16606'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16605'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16604'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16604'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16607'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16607'::pg_catalog.oid);
+
+CREATE TABLE public.part_uniq_const_default (
+    v1 integer NOT NULL,
+    v2 integer,
+    v3 integer NOT NULL,
+    CONSTRAINT part_uniq_const_default_pkey PRIMARY KEY((v1) HASH, v3 ASC)
+)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.part_uniq_const_default OWNER TO yugabyte_test;
 \endif
 
 --
@@ -1515,6 +1655,27 @@ CREATE TABLE public.uaccount (
 \endif
 
 --
+-- Name: part_uniq_const_30_50; Type: TABLE ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER TABLE ONLY public.part_uniq_const ATTACH PARTITION public.part_uniq_const_30_50 FOR VALUES FROM (30) TO (50);
+
+
+--
+-- Name: part_uniq_const_50_100; Type: TABLE ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER TABLE ONLY public.part_uniq_const ATTACH PARTITION public.part_uniq_const_50_100 FOR VALUES FROM (50) TO (100);
+
+
+--
+-- Name: part_uniq_const_default; Type: TABLE ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER TABLE ONLY public.part_uniq_const ATTACH PARTITION public.part_uniq_const_default DEFAULT;
+
+
+--
 -- Name: hints id; Type: DEFAULT; Schema: hint_plan; Owner: yugabyte_test
 --
 
@@ -1580,6 +1741,33 @@ COPY public.p1 (k, v) FROM stdin;
 --
 
 COPY public.p2 (k, v) FROM stdin;
+\.
+
+
+--
+-- Data for Name: part_uniq_const_30_50; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.part_uniq_const_30_50 (v1, v2, v3) FROM stdin;
+31	231	231
+\.
+
+
+--
+-- Data for Name: part_uniq_const_50_100; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.part_uniq_const_50_100 (v1, v2, v3) FROM stdin;
+51	151	151
+\.
+
+
+--
+-- Data for Name: part_uniq_const_default; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.part_uniq_const_default (v1, v2, v3) FROM stdin;
+1	1001	1001
 \.
 
 
@@ -1909,6 +2097,73 @@ ALTER TABLE ONLY public.p2
 
 
 --
+-- Name: part_uniq_const part_uniq_const_unique; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16609'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('0'::pg_catalog.oid);
+
+ALTER TABLE ONLY public.part_uniq_const
+    ADD CONSTRAINT part_uniq_const_unique UNIQUE  (v1, v2);
+
+
+--
+-- Name: part_uniq_const_30_50 part_uniq_const_30_50_v1_v2_key; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16611'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16611'::pg_catalog.oid);
+
+ALTER TABLE ONLY public.part_uniq_const_30_50
+    ADD CONSTRAINT part_uniq_const_30_50_v1_v2_key UNIQUE  (v1, v2);
+
+
+--
+-- Name: part_uniq_const_50_100 part_uniq_const_50_100_v1_v2_key; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16613'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16613'::pg_catalog.oid);
+
+ALTER TABLE ONLY public.part_uniq_const_50_100
+    ADD CONSTRAINT part_uniq_const_50_100_v1_v2_key UNIQUE  (v1, v2);
+
+
+--
+-- Name: part_uniq_const_50_100 part_uniq_const_50_100_v2_uniq; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16617'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16617'::pg_catalog.oid);
+
+CREATE UNIQUE INDEX NONCONCURRENTLY part_uniq_const_50_100_v2_uniq ON public.part_uniq_const_50_100 USING lsm (v2 ASC);
+
+ALTER TABLE ONLY public.part_uniq_const_50_100
+    ADD CONSTRAINT part_uniq_const_50_100_v2_uniq UNIQUE USING INDEX part_uniq_const_50_100_v2_uniq;
+
+
+--
+-- Name: part_uniq_const_default part_uniq_const_default_v1_v2_key; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16615'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16615'::pg_catalog.oid);
+
+ALTER TABLE ONLY public.part_uniq_const_default
+    ADD CONSTRAINT part_uniq_const_default_v1_v2_key UNIQUE  (v1, v2);
+
+
+--
 -- Name: hints_norm_and_app; Type: INDEX; Schema: hint_plan; Owner: yugabyte_test
 --
 
@@ -2053,6 +2308,48 @@ CREATE UNIQUE INDEX NONCONCURRENTLY unique_idx_with_include_clause ON public.ran
 
 
 --
+-- Name: part_uniq_const_30_50_pkey; Type: INDEX ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER INDEX public.part_uniq_const_pkey ATTACH PARTITION public.part_uniq_const_30_50_pkey;
+
+
+--
+-- Name: part_uniq_const_30_50_v1_v2_key; Type: INDEX ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER INDEX public.part_uniq_const_unique ATTACH PARTITION public.part_uniq_const_30_50_v1_v2_key;
+
+
+--
+-- Name: part_uniq_const_50_100_pkey; Type: INDEX ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER INDEX public.part_uniq_const_pkey ATTACH PARTITION public.part_uniq_const_50_100_pkey;
+
+
+--
+-- Name: part_uniq_const_50_100_v1_v2_key; Type: INDEX ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER INDEX public.part_uniq_const_unique ATTACH PARTITION public.part_uniq_const_50_100_v1_v2_key;
+
+
+--
+-- Name: part_uniq_const_default_pkey; Type: INDEX ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER INDEX public.part_uniq_const_pkey ATTACH PARTITION public.part_uniq_const_default_pkey;
+
+
+--
+-- Name: part_uniq_const_default_v1_v2_key; Type: INDEX ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER INDEX public.part_uniq_const_unique ATTACH PARTITION public.part_uniq_const_default_v1_v2_key;
+
+
+--
 -- Name: uaccount account_policies; Type: POLICY; Schema: public; Owner: regress_rls_alice
 --
 
@@ -2099,7 +2396,7 @@ ALTER TABLE public.rls_public ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uaccount ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: pg_hint_plan; Type: EXTENSION; Schema: -; Owner:
+-- Name: pg_hint_plan; Type: EXTENSION; Schema: -; Owner: 
 --
 
 -- YB: ensure extconfig field for extension: pg_hint_plan in pg_extension catalog is correct

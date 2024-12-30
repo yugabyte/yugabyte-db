@@ -521,8 +521,7 @@ ExecBuildUpdateProjection(List *targetList,
 						  TupleDesc relDesc,
 						  ExprContext *econtext,
 						  TupleTableSlot *slot,
-						  PlanState *parent,
-						  bool ybUseScanTuple)
+						  PlanState *parent)
 {
 	ProjectionInfo *projInfo = makeNode(ProjectionInfo);
 	ExprState  *state;
@@ -585,24 +584,21 @@ ExecBuildUpdateProjection(List *targetList,
 		assignedCols = bms_add_member(assignedCols, targetattnum);
 	}
 
-	if (ybUseScanTuple)
+	/*
+	 * We need to insert EEOP_*_FETCHSOME steps to ensure the input tuples are
+	 * sufficiently deconstructed.  The scan tuple must be deconstructed at
+	 * least as far as the last old column we need.
+	 */
+	for (int attnum = relDesc->natts; attnum > 0; attnum--)
 	{
-		/*
-		 * We need to insert EEOP_*_FETCHSOME steps to ensure the input tuples are
-		 * sufficiently deconstructed.  The scan tuple must be deconstructed at
-		 * least as far as the last old column we need.
-		 */
-		for (int attnum = relDesc->natts; attnum > 0; attnum--)
-		{
-			Form_pg_attribute attr = TupleDescAttr(relDesc, attnum - 1);
+		Form_pg_attribute attr = TupleDescAttr(relDesc, attnum - 1);
 
-			if (attr->attisdropped)
-				continue;
-			if (bms_is_member(attnum, assignedCols))
-				continue;
-			deform.last_scan = attnum;
-			break;
-		}
+		if (attr->attisdropped)
+			continue;
+		if (bms_is_member(attnum, assignedCols))
+			continue;
+		deform.last_scan = attnum;
+		break;
 	}
 
 	/*
@@ -708,7 +704,7 @@ ExecBuildUpdateProjection(List *targetList,
 	{
 		Form_pg_attribute attr = TupleDescAttr(relDesc, attnum - 1);
 
-		if (attr->attisdropped || (!ybUseScanTuple && !bms_is_member(attnum, assignedCols)))
+		if (attr->attisdropped)
 		{
 			/* Put a null into the ExprState's resvalue/resnull ... */
 			scratch.opcode = EEOP_CONST;
@@ -2023,16 +2019,19 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				off = 0;
 				for (off = 0,
 					 l_left_expr = list_head(rcexpr->largs),
-					 l_right_expr = yb_is_for_row_in ? NULL :
-					 	list_head(castNode(List, rcexpr->rargs)),
+					 l_right_expr = (yb_is_for_row_in ?
+									 NULL :
+									 list_head(castNode(List, rcexpr->rargs))),
 					 l_opno = list_head(rcexpr->opnos),
 					 l_opfamily = list_head(rcexpr->opfamilies),
 					 l_inputcollid = list_head(rcexpr->inputcollids);
 					 off < nopers;
 					 off++,
 					 l_left_expr = lnext(rcexpr->largs, l_left_expr),
-					 l_right_expr = yb_is_for_row_in ? NULL :
-					 	lnext(castNode(List, rcexpr->rargs), l_right_expr),
+					 l_right_expr = (yb_is_for_row_in ?
+									 NULL :
+									 lnext(castNode(List, rcexpr->rargs),
+										   l_right_expr)),
 					 l_opno = lnext(rcexpr->opnos, l_opno),
 					 l_opfamily = lnext(rcexpr->opfamilies, l_opfamily),
 					 l_inputcollid = lnext(rcexpr->inputcollids, l_inputcollid))

@@ -1,7 +1,7 @@
 ---
 title: Writing data
 linkTitle: Write data
-headcontent: INSERT, UPDATE, and DELETE
+headerTitle: INSERT, UPDATE, and DELETE
 description: Data manipulation - Insert/Modify/Delete in YSQL
 headcontent: Understand how to insert new data and modify or delete existing data
 aliases:
@@ -11,7 +11,7 @@ menu:
   preview:
     identifier: explore-ysql-language-features-data-manipulation
     parent: explore-ysql-language-features
-    weight: 500
+    weight: 400
 type: docs
 ---
 

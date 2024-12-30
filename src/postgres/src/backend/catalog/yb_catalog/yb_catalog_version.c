@@ -58,7 +58,7 @@ uint64_t YbGetMasterCatalogVersion()
 	{
 		case CATALOG_VERSION_CATALOG_TABLE:
 			if (YbGetMasterCatalogVersionFromTable(
-			    	YbMasterCatalogVersionTableDBOid(), &version))
+					YbMasterCatalogVersionTableDBOid(), &version))
 				return version;
 			/*
 			 * In spite of the fact the pg_yb_catalog_version table exists it has no actual
@@ -482,9 +482,9 @@ YbCatalogVersionType YbGetCatalogVersionType()
 		HandleYBStatus(YBCPgTableExists(
 			Template1DbOid, YBCatalogVersionRelationId,
 			&catalog_version_table_exists));
-		yb_catalog_version_type = catalog_version_table_exists
-		    ? CATALOG_VERSION_CATALOG_TABLE
-		    : CATALOG_VERSION_PROTOBUF_ENTRY;
+		yb_catalog_version_type = (catalog_version_table_exists ?
+								   CATALOG_VERSION_CATALOG_TABLE :
+								   CATALOG_VERSION_PROTOBUF_ENTRY);
 	}
 	return yb_catalog_version_type;
 }
@@ -516,10 +516,10 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 	YBCPgStatement ybc_stmt;
 
 	HandleYBStatus(YBCPgNewSelect(Template1DbOid,
-	                              YBCatalogVersionRelationId,
-	                              NULL /* prepare_params */,
-	                              false /* is_region_local */,
-	                              &ybc_stmt));
+								  YBCatalogVersionRelationId,
+								  NULL /* prepare_params */,
+								  false /* is_region_local */,
+								  &ybc_stmt));
 
 	Datum oid_datum = Int32GetDatum(db_oid);
 	YBCPgExpr pkey_expr = YBCNewConstant(
@@ -566,7 +566,8 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 		 * pick the row that matches db_oid. This work around should be removed
 		 * when prefetching is enhanced to support filtering.
 		 */
-		while (true) {
+		while (true)
+		{
 			/* Fetch one row. */
 			HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
 										 natts,
@@ -588,7 +589,7 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 				result = true;
 				break;
 			}
- 		}
+		}
 	}
 
 	pfree(values);

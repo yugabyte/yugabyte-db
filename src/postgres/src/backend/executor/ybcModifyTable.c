@@ -544,19 +544,9 @@ YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo)
 	/*
 	 * TODO(jason): figure out how to enable triggers.
 	 */
-	/*
-	 * TODO(GH#24834): Enable INSERT ON CONFLICT batching for null-not-distinct
-	 * indexes.
-	 */
-	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
-	{
-		if (resultRelInfo->ri_IndexRelationInfo[i]->ii_NullsNotDistinct)
-			return false;
-	}
 	return (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 			!IsCatalogRelation(resultRelInfo->ri_RelationDesc) &&
 			resultRelInfo->ri_BatchSize > 1 &&
-			!resultRelInfo->ri_projectReturning &&
 			!(resultRelInfo->ri_TrigDesc &&
 			  (resultRelInfo->ri_TrigDesc->trig_delete_after_row ||
 			   resultRelInfo->ri_TrigDesc->trig_delete_before_row ||
@@ -578,7 +568,7 @@ YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo)
  * secondary index.
  */
 YBCPgYBTupleIdDescriptor *
-YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
+YBCBuildUniqueIndexYBTupleId(Relation unique_index, Datum *values, bool *nulls)
 {
 	Assert(IsYBRelation(unique_index));
 
@@ -587,8 +577,6 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 	Oid relfileNodeId;
 	YBCPgTableDesc ybc_table_desc = NULL;
 	TupleDesc tupdesc;
-	Bitmapset *pkey;
-	AttrNumber minattr = YBSystemFirstLowInvalidAttributeNumber + 1;
 
 	if (is_pkey)
 	{
@@ -596,7 +584,6 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 		relfileNodeId = YbGetRelfileNodeId(main_table);
 		tupdesc = RelationGetDescr(main_table);
 		RelationClose(main_table);
-		pkey = YBGetTableFullPrimaryKeyBms(main_table);
 	}
 	else
 	{
@@ -609,15 +596,31 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 	YBCPgYBTupleIdDescriptor* result = YBCCreateYBTupleIdDescriptor(dboid,
 		relfileNodeId, nattrs + (is_pkey ? 0 : 1));
 	YBCPgAttrValueDescriptor *next_attr = result->attrs;
-	for (int i = 0, col = -1; i < nattrs; ++i)
+	bool has_null = false;
+	for (int i = 0; i < nattrs; ++i)
 	{
 		AttrNumber attnum;
 		if (is_pkey)
 		{
-			/* Primary keys can have out of order attribute numbers */
-			col = bms_next_member(pkey, col);
-			Assert(col >= 0);
-			attnum = col + minattr;
+			/*
+			 * Since Yugabyte tables are clustered on the primary key, the
+			 * primary key reuses the attribute numbers of the table. This leads
+			 * to cases where the primary key attribute numbers are neither
+			 * contiguous nor in the same order as that of the main table.
+			 * For example:
+			 *  CREATE TABLE foo (a int, b int, c int, PRIMARY KEY (c, a));
+			 * The table 'foo' would have the attribute numbers:
+			 * a: 1, b: 2, c: 3
+			 * while its primary key would have the attribute numbers:
+			 * a: 1, c: 3
+			 * The array of index col values supplied to this function is in the
+			 * order defined by the index (primary key). For the above example,
+			 * this would be [c, a]. Therefore, the column values have to be
+			 * explicitly mapped to the attribute numbers of the main table.
+			 * That is, the attribute numbers would have to be [3, 1] rather
+			 * than [1, 2] as in the case of secondary indexes.
+			 */
+			attnum = unique_index->rd_index->indkey.values[i];
 		}
 		else
 			attnum = i + 1;
@@ -627,7 +630,8 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 		next_attr->collation_id = ybc_get_attcollation(tupdesc, attnum);
 		next_attr->attr_num = attnum;
 		next_attr->datum = values[i];
-		next_attr->is_null = false;
+		next_attr->is_null = nulls == NULL ? false : nulls[i];
+		has_null = has_null || next_attr->is_null;
 		YBCPgColumnInfo column_info = {0};
 		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
 												   attnum,
@@ -638,7 +642,16 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 
 	/* Primary keys do not have the YBUniqueIdxKeySuffix attribute */
 	if (!is_pkey)
+	{
+		/*
+		 * If unique_index is not PK, this function should be used only for
+		 * indexes that use nulls-not-distinct mode or for the index tuples with
+		 * non-null values for all the index key columns. YBUniqueIdxKeySuffix
+		 * is null in both these cases.
+		 */
+		Assert(unique_index->rd_index->indnullsnotdistinct || !has_null);
 		YBCFillUniqueIndexNullAttribute(result);
+	}
 
 	return result;
 }
@@ -659,7 +672,8 @@ YBCForeignKeyReferenceCacheDeleteIndex(Relation index, Datum *values, bool *isnu
 			if (isnulls[i])
 				return;
 
-		YBCPgYBTupleIdDescriptor* descr = YBCBuildNonNullUniqueIndexYBTupleId(index, values);
+		YBCPgYBTupleIdDescriptor *descr =
+			YBCBuildUniqueIndexYBTupleId(index, values, NULL);
 		HandleYBStatus(YBCPgForeignKeyReferenceCacheDelete(descr));
 		pfree(descr);
 	}
@@ -1411,6 +1425,7 @@ YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple,
 	Bitmapset  *pkey   = YBGetTablePrimaryKeyBms(rel);
 
 	/* Bind the ybctid to the statement. */
+	Assert(HEAPTUPLE_YBCTID(tuple));
 	YBCBindTupleId(update_stmt, HEAPTUPLE_YBCTID(tuple));
 
 	/* Assign values to the non-primary-key columns to update the current row. */

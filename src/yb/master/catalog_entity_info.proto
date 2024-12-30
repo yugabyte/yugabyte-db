@@ -427,16 +427,20 @@ message SysObjectLockEntryPB {
     // db_id -> map of objects/locks-taken
     map<uint64, ObjectLocksMapPB> dbs = 1;
   }
-  message SessionDBMapPB {
-    // session_id -> DB ...
-    map<uint64, DBObjectsMapPB> sessions = 1;
+  message SubtxnDBMapPB {
+    // subtxn -> DB ...
+    map<uint32, DBObjectsMapPB> subtxns = 1;
+  }
+  message TransactionSubtxnMapPB {
+    // txn_id -> subtxn ...
+    map<string, SubtxnDBMapPB> transactions = 1;
   }
 
   // host_uid is part of the key. Thus not stored
   // explicitly in this proto again.
 
-  // incarnation id -> Session ...
-  map<uint64, SessionDBMapPB> incarnations = 1;
+  // incarnation id -> Transaction ...
+  map<uint64, TransactionSubtxnMapPB> incarnations = 1;
 }
 
 message SysXClusterConfigEntryPB {

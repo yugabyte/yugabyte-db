@@ -305,6 +305,10 @@ message GetTransactionStatusResponsePB {
   repeated AppStatusPB deadlock_reason = 8;
 
   optional TabletConsensusInfoPB tablet_consensus_info = 9;
+
+  // When re-using transactions, coordinator replies with the current active reuse version of the
+  // transaction, and the receiver can drop all requests/locks corresponding to older versions.
+  repeated uint64 min_active_txn_reuse_version = 10;
 }
 
 message GetOldTransactionsRequestPB {

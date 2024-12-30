@@ -67,7 +67,6 @@ TEST_F(UsearchVectorIndexTest, CreateAndQuery) {
     for (size_t thread_index = 0; thread_index < kNumIndexingThreads; ++thread_index) {
       indexing_thread_holder.AddThreadFunctor(
           [&num_vectors_inserted, &index, &latch, &uniform_distrib]() {
-            std::random_device rd;
             size_t vector_id;
             while ((vector_id = num_vectors_inserted.fetch_add(1)) < kNumVectors) {
               auto vec = RandomFloatVector(kDimensions, uniform_distrib);

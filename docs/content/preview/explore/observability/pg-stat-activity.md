@@ -19,7 +19,7 @@ YugabyteDB supports the PostgreSQL `pg_stat_activity` view to analyze live queri
 
 ## Supported fields
 
-At a `ysqlsh` prompt, run the following meta-command to return the fields supported by pg_stat_activity:
+At a ysqlsh prompt, run the following meta-command to return the fields supported by pg_stat_activity:
 
 ```sql
 yugabyte=# \d pg_stat_activity
@@ -118,7 +118,7 @@ Often enough, you may need to identify long-running queries, because these queri
 
 Because the transaction never ends, it wastes resources as an open process.
 
-1. Check the state of the transaction by opening another `ysqlsh` instance and finding information about this idle transaction with pg_stat_activity.
+1. Check the state of the transaction by opening another ysqlsh instance and finding information about this idle transaction with pg_stat_activity.
 
     ```sql
     yugabyte=# SELECT datname, pid, application_name, state, query

@@ -235,6 +235,7 @@ static void drop_unnamed_stmt(void);
 static void log_disconnections(int code, Datum arg);
 static void enable_statement_timeout(void);
 static void disable_statement_timeout(void);
+static void yb_start_xact_command_internal(bool yb_skip_read_committed_internal_savepoint);
 
 
 /* ----------------------------------------------------------------
@@ -702,6 +703,27 @@ pg_parse_query(const char *query_string)
 	return raw_parsetree_list;
 }
 
+static bool
+yb_skip_read_committed_internal_savepoint(CommandTag command_tag)
+{
+	/*
+	 * In the common case, when a "BEGIN;" statement is issued, an internal save point is not
+	 * registered because we are in the TBLOCK_DEFAULT state (when calling StartTransactionCommand).
+	 * However, we explicitly chose to add a check to skip for "BEGIN;" because there can be cases
+	 * when a "BEGIN;" is called while a transaction block is already in progress and hence we are not
+	 * in TBLOCK_DEFAULT state. We want to skip registering an internal savepoint in such situations
+	 * too.
+	 */
+
+	bool skip =
+		command_tag == CMDTAG_SET ||
+		command_tag == CMDTAG_BEGIN ||
+		command_tag == CMDTAG_RELEASE ||
+		command_tag == CMDTAG_SAVEPOINT;
+	elog(DEBUG2, "Skip rc sub-txn: %d, command tag: %s", skip, GetCommandTagName(command_tag));
+	return skip;
+}
+
 /*
  * Given a raw parsetree (gram.y output), and optionally information about
  * types of parameter symbols ($n), perform parse analysis and rule rewriting.
@@ -1075,13 +1097,16 @@ exec_simple_query(const char *query_string)
 	bool		use_implicit_block;
 	char		msec_str[32];
 	const char *redacted_query_string;
+	CommandTag command_tag;
 
 	/*
 	 * Report query to various monitoring facilities.
 	 */
 	debug_query_string = query_string;
 
-	redacted_query_string = RedactPasswordIfExists(query_string);
+	/* Use YbParseCommandTag to suppress error warnings. */
+	command_tag = YbParseCommandTag(query_string);
+	redacted_query_string = YbRedactPasswordIfExists(query_string, command_tag);
 	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
 
 	TRACE_POSTGRESQL_QUERY_START(query_string);
@@ -1100,7 +1125,7 @@ exec_simple_query(const char *query_string)
 	 * one of those, else bad things will happen in xact.c. (Note that this
 	 * will normally change current memory context.)
 	 */
-	start_xact_command();
+	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(command_tag));
 
 	/*
 	 * Zap any pre-existing unnamed statement.  (While not strictly necessary,
@@ -1194,7 +1219,7 @@ exec_simple_query(const char *query_string)
 					 errdetail_abort()));
 
 		/* Make sure we are in a transaction command */
-		start_xact_command();
+		yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(commandTag));
 
 		/*
 		 * If using an implicit transaction block, and we're not already in a
@@ -1458,13 +1483,16 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
 	const char *redacted_query_string;
+	CommandTag command_tag;
 
 	/*
 	 * Report query to various monitoring facilities.
 	 */
 	debug_query_string = query_string;
 
-	redacted_query_string = RedactPasswordIfExists(query_string);
+	/* Use YbParseCommandTag to suppress error warnings. */
+	command_tag = YbParseCommandTag(query_string);
+	redacted_query_string = YbRedactPasswordIfExists(query_string, command_tag);
 	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
 
 	set_ps_display("PARSE");
@@ -1483,7 +1511,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	 * if we are already in one.  This also arms the statement timeout if
 	 * necessary.
 	 */
-	start_xact_command();
+	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(command_tag));
 
 	/*
 	 * Switch to appropriate context for constructing parsetrees.
@@ -1702,6 +1730,7 @@ exec_bind_message(StringInfo input_message)
 	char		msec_str[32];
 	ParamsErrorCbData params_data;
 	ErrorContextCallback params_errcxt;
+	CommandTag command_tag;
 
 	/* Get the fixed part of the message */
 	portal_name = pq_getmsgstring(input_message);
@@ -1735,7 +1764,9 @@ exec_bind_message(StringInfo input_message)
 	 */
 	debug_query_string = psrc->query_string;
 
-	redacted_query_string = RedactPasswordIfExists(psrc->query_string);
+	/* Use YbParseCommandTag to suppress error warnings. */
+	command_tag = YbParseCommandTag(psrc->query_string);
+	redacted_query_string = YbRedactPasswordIfExists(psrc->query_string, command_tag);
 	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
 
 	set_ps_display("BIND");
@@ -1749,7 +1780,7 @@ exec_bind_message(StringInfo input_message)
 	 * we are already in one.  This also arms the statement timeout if
 	 * necessary.
 	 */
-	start_xact_command();
+	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(command_tag));
 
 	/* Switch back to message context */
 	MemoryContextSwitchTo(MessageContext);
@@ -2226,7 +2257,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	 * Ensure we are in a transaction command (this should normally be the
 	 * case already due to prior BIND).
 	 */
-	start_xact_command();
+	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(portal->commandTag));
 
 	/*
 	 * If we re-issue an Execute protocol request against an existing portal,
@@ -2655,7 +2686,7 @@ exec_describe_statement_message(const char *stmt_name)
 	 * Start up a transaction command. (Note that this will normally change
 	 * current memory context.) Nothing happens if we are already in one.
 	 */
-	start_xact_command();
+	yb_start_xact_command_internal(true /* yb_skip_read_committed_internal_savepoint */);
 
 	/* Switch back to message context */
 	MemoryContextSwitchTo(MessageContext);
@@ -2749,7 +2780,7 @@ exec_describe_portal_message(const char *portal_name)
 	 * Start up a transaction command. (Note that this will normally change
 	 * current memory context.) Nothing happens if we are already in one.
 	 */
-	start_xact_command();
+	yb_start_xact_command_internal(true /* yb_skip_read_committed_internal_savepoint */);
 
 	/* Switch back to message context */
 	MemoryContextSwitchTo(MessageContext);
@@ -2795,9 +2826,15 @@ exec_describe_portal_message(const char *portal_name)
 static void
 start_xact_command(void)
 {
+	yb_start_xact_command_internal(false /* yb_skip_read_committed_internal_savepoint */);
+}
+
+static void
+yb_start_xact_command_internal(bool yb_skip_read_committed_internal_savepoint)
+{
 	if (!xact_started)
 	{
-		StartTransactionCommand();
+		YBStartTransactionCommandInternal(yb_skip_read_committed_internal_savepoint);
 
 		xact_started = true;
 	}
@@ -4137,8 +4174,8 @@ static void YBRefreshCache()
 	if (xact_started)
 	{
 		ereport(ERROR,
-		        (errcode(ERRCODE_INTERNAL_ERROR),
-				        errmsg("Cannot refresh cache within a transaction")));
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Cannot refresh cache within a transaction")));
 	}
 
 	if (yb_debug_log_catcache_events)
@@ -4155,7 +4192,7 @@ static void YBRefreshCache()
 		yb_catalog_version_type = CATALOG_VERSION_UNSET;
 
 	/* Need to execute some (read) queries internally so start a local txn. */
-	start_xact_command();
+	yb_start_xact_command_internal(true /* yb_skip_read_committed_internal_savepoint */);
 
 	/* Clear and reload system catalog caches, including all callbacks. */
 	ResetCatalogCaches();
@@ -4229,7 +4266,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	}
 	char *table_to_refresh = NULL;
 	const bool need_table_cache_refresh =
-	    YBTableSchemaVersionMismatchError(edata, &table_to_refresh);
+		YBTableSchemaVersionMismatchError(edata, &table_to_refresh);
 
 	/*
 	 * Get the latest syscatalog version from the master to check if we need
@@ -4377,7 +4414,8 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
  * Parse query tree via pg_parse_query, suppressing log messages below ERROR level.
  * This is useful e.g. for avoiding "not supported yet and will be ignored" warnings.
  */
-static List* yb_parse_query_silently(const char *query_string)
+static List *
+yb_parse_query_silently(const char *query_string)
 {
 	List* parsetree_list;
 
@@ -4402,22 +4440,24 @@ static List* yb_parse_query_silently(const char *query_string)
 	return parsetree_list;
 }
 
-static CommandTag yb_parse_command_tag(const char *query_string)
+CommandTag
+YbParseCommandTag(const char *query_string)
 {
 	List* parsetree_list = yb_parse_query_silently(query_string);
 
-	if (list_length(parsetree_list) > 0) {
+	if (list_length(parsetree_list) > 0)
+	{
 		RawStmt* raw_parse_tree = linitial_node(RawStmt, parsetree_list);
 		return CreateCommandTag(raw_parse_tree->stmt);
-	} else {
-		return CMDTAG_UNKNOWN;
 	}
+	else
+		return CMDTAG_UNKNOWN;
 }
 
 static bool yb_is_begin_transaction(CommandTag command_tag)
 {
 	return (command_tag == CMDTAG_BEGIN ||
-	        command_tag == CMDTAG_START_TRANSACTION);
+			command_tag == CMDTAG_START_TRANSACTION);
 }
 
 /*
@@ -4442,7 +4482,7 @@ static bool yb_is_dml_command(const char *query_string)
 
 	/*
 	 * Detect and return false for replication commands since they are never a
-	 * DML. This is needed to avoid calling yb_parse_command_tag for replication
+	 * DML. This is needed to avoid calling YbParseCommandTag for replication
 	 * commands which have a different grammar (repl_gram.y) and will always
 	 * lead to a syntax error.
 	 */
@@ -4453,11 +4493,11 @@ static bool yb_is_dml_command(const char *query_string)
 		return false;
 	}
 
-	CommandTag command_tag = yb_parse_command_tag(query_string);
+	CommandTag command_tag = YbParseCommandTag(query_string);
 	return (command_tag == CMDTAG_DELETE ||
-	        command_tag == CMDTAG_INSERT ||
-	        command_tag == CMDTAG_SELECT ||
-	        command_tag == CMDTAG_UPDATE);
+			command_tag == CMDTAG_INSERT ||
+			command_tag == CMDTAG_SELECT ||
+			command_tag == CMDTAG_UPDATE);
 }
 
 /*
@@ -4963,7 +5003,7 @@ yb_restart_current_stmt(int attempt, bool is_read_restart)
 	Assert(!strcmp(
 		GetCurrentTransactionName(), YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME));
 	RollbackAndReleaseCurrentSubTransaction();
-	BeginInternalSubTransactionForReadCommittedStatement();
+	YbBeginInternalSubTransactionForReadCommittedStatement();
 
 	if (is_read_restart)
 	{
@@ -5008,7 +5048,7 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 			 * Each statement in a read committed transaction block (i.e., after BEGIN) registers an
 			 * internal sub-transaction to be able to undo and retry the statement for kConflict and
 			 * kReadRestart errors (see yb_restart_current_stmt()). This registration is done in
-			 * StartTransactionCommandInternal(). However, since we are retrying by surgically resetting
+			 * YBStartTransactionCommandInternal(). However, since we are retrying by surgically resetting
 			 * just the YB-side transaction state without resetting and retriggering the Pg-side
 			 * transaction state machine changes, we should explicitly make the sub-transaction changes
 			 * on Pg side i.e., by registsring a new internal sub transaction.
@@ -5028,7 +5068,7 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 			 * be much higher depending on how many statement level retries have already been done so far
 			 * using the same YB transaction (i.e., via yb_restart_current_stmt()).
 			 */
-			BeginInternalSubTransactionForReadCommittedStatement();
+			YbBeginInternalSubTransactionForReadCommittedStatement();
 		}
 
 		yb_maybe_sleep_on_txn_conflict(attempt);
@@ -5221,7 +5261,7 @@ yb_exec_simple_query(const char *query_string, MemoryContext exec_context)
 	YBQueryRetryData retry_data  = {
 		.portal_name  = NULL,
 		.query_string = query_string,
-		.command_tag  = yb_parse_command_tag(query_string)
+		.command_tag  = YbParseCommandTag(query_string)
 	};
 	yb_exec_query_wrapper(
 		exec_context, &retry_data, &yb_exec_simple_query_impl, query_string);
@@ -5254,8 +5294,8 @@ yb_exec_execute_message_impl(const void* raw_ctx)
  */
 static void
 yb_exec_execute_message(long max_rows,
-                        const YBQueryRetryData *restart_data,
-                        MemoryContext exec_context)
+						const YBQueryRetryData *restart_data,
+						MemoryContext exec_context)
 {
 	YBExecuteMessageFunctorContext ctx = {
 		.portal_name = restart_data->portal_name,
@@ -5276,10 +5316,10 @@ yb_exec_execute_message(long max_rows,
 static void yb_report_cache_version_restart(const char* query, ErrorData *edata)
 {
 	ereport(LOG,
-	        (errmsg("Restarting statement due to catalog version mismatch:"
-	                "\nQuery: %s\nError: %s",
-	                query,
-	                edata->message)));
+			(errmsg("Restarting statement due to catalog version mismatch:"
+					"\nQuery: %s\nError: %s",
+					query,
+					edata->message)));
 }
 
 /*
@@ -5416,7 +5456,7 @@ PostgresMain(const char *dbname, const char *username)
 
 	SetProcessingMode(InitProcessing);
 
-    /* TODO(neil)
+	/* TODO(neil)
 	 * Once we have our system DB, remove the following code. It is a hack to help us getting
 	 * by for now.
 	 */
@@ -5946,11 +5986,11 @@ PostgresMain(const char *dbname, const char *username)
 		{
 			ConfigReloadPending = false;
 			/*
-			 * YB: Reloading postgres config file on a control connection can 
+			 * YB: Reloading postgres config file on a control connection can
 			 * have some repercussion, therefore adopting most safest option;
 			 * destroy the control connection which leads to failure of client
-			 * authentication and let client keep trying agin untill a new 
-			 * control connection is formed for authentication with updated 
+			 * authentication and let client keep trying agin untill a new
+			 * control connection is formed for authentication with updated
 			 * config file.
 			 * Control connection is identified if a connection receives a
 			 * Auth Passthrough Request ('A') packet.
@@ -6009,7 +6049,7 @@ PostgresMain(const char *dbname, const char *username)
 				PG_TRY();
 				{
 					if (!am_walsender || !exec_replication_command(query_string))
-                      yb_exec_simple_query(query_string, oldcontext);
+						yb_exec_simple_query(query_string, oldcontext);
 				}
 				PG_CATCH();
 				{
@@ -6081,10 +6121,10 @@ PostgresMain(const char *dbname, const char *username)
 					PG_TRY();
 					{
 						exec_parse_message(query_string,
-						                   stmt_name,
-						                   paramTypes,
-						                   numParams,
-						                   whereToSendOutput);
+										   stmt_name,
+										   paramTypes,
+										   numParams,
+										   whereToSendOutput);
 					}
 					PG_CATCH();
 					{
@@ -6167,11 +6207,11 @@ PostgresMain(const char *dbname, const char *username)
 						 * yet. (i.e. if portal is named or has params).
 						 */
 						bool can_retry =
-						    IsYugaByteEnabled() &&
-						    old_portal &&
-						    portal_name[0] == '\0' &&
-						    !old_portal->portalParams &&
-						    yb_check_retry_allowed(retry_data->query_string);
+							IsYugaByteEnabled() &&
+							old_portal &&
+							portal_name[0] == '\0' &&
+							!old_portal->portalParams &&
+							yb_check_retry_allowed(retry_data->query_string);
 
 
 						/* Stuff we might need for retrying below */
@@ -6192,8 +6232,8 @@ PostgresMain(const char *dbname, const char *username)
 								nformats = old_portal->tupDesc->natts;
 								formats  = (int16 *) palloc(nformats * sizeof(int16));
 								memcpy(formats,
-								       old_portal->formats,
-								       nformats * sizeof(int16));
+									   old_portal->formats,
+									   nformats * sizeof(int16));
 							}
 						}
 
@@ -6220,10 +6260,10 @@ PostgresMain(const char *dbname, const char *username)
 
 								/* 1. Redo Parse: Create Cached stmt (no output) */
 								exec_parse_message(query_string,
-								                   portal_name,
-								                   NULL /* param_types*/,
-								                   0 /* num_params */,
-								                   DestNone);
+												   portal_name,
+												   NULL /* param_types */,
+												   0 /* num_params */,
+												   DestNone);
 
 								/* 2. Redo the Bind step */
 								Portal portal;
@@ -6246,16 +6286,16 @@ PostgresMain(const char *dbname, const char *username)
 								MemoryContextSwitchTo(oldContext);
 
 								CachedPlan *cplan = GetCachedPlan(unnamed_stmt_psrc,
-								                                  params,
-								                                  false,
-								                                  NULL);
+																  params,
+																  false,
+																  NULL);
 
 								PortalDefineQuery(portal,
-								                  stmt_name,
-								                  query_string,
-								                  unnamed_stmt_psrc->commandTag,
-								                  cplan->stmt_list,
-								                  cplan);
+												  stmt_name,
+												  query_string,
+												  unnamed_stmt_psrc->commandTag,
+												  cplan->stmt_list,
+												  cplan);
 
 								/* Start portal */
 								PortalStart(portal, params, 0, InvalidSnapshot);
@@ -6788,28 +6828,27 @@ disable_statement_timeout(void)
 /*
  * Redact password, if exists in the query text.
  */
-const char* RedactPasswordIfExists(const char* queryStr) {
+const char*
+YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag)
+{
 	char *redactedStr;
 	char *passwordToken;
 	int i;
 	int passwordPos;
-	CommandTag commandTag;
 
 	/*
 	* Parse and check the type of the query. We only redact password
 	* for the CREATE USER / CREATE ROLE / ALTER USER / ALTER ROLE queries.
-	* Use yb_parse_command_tag to suppress error warnings.
 	*/
-	commandTag = yb_parse_command_tag(queryStr);
 	if (commandTag == CMDTAG_UNKNOWN ||
 		(commandTag != CMDTAG_CREATE_ROLE && commandTag != CMDTAG_ALTER_ROLE))
 		return queryStr;
 
 	/* Copy the query string and convert to lower case. */
-  	redactedStr = pstrdup(queryStr);
+	redactedStr = pstrdup(queryStr);
 
-  	for (i = 0; redactedStr[i]; i++)
-    	redactedStr[i] = (char)pg_tolower((unsigned char)redactedStr[i]);
+	for (i = 0; redactedStr[i]; i++)
+		redactedStr[i] = (char)pg_tolower((unsigned char)redactedStr[i]);
 
 	/* Find index of password token. */
 	passwordToken = strstr(redactedStr, TOKEN_PASSWORD);

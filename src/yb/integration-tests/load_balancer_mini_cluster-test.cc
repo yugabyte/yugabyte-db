@@ -46,18 +46,19 @@ METRIC_DECLARE_event_stats(load_balancer_duration);
 METRIC_DECLARE_gauge_uint32(tablets_in_wrong_placement);
 METRIC_DECLARE_gauge_uint32(total_table_load_difference);
 
-DECLARE_int32(catalog_manager_bg_task_wait_ms);
-DECLARE_bool(enable_load_balancing);
-DECLARE_string(instance_uuid_override);
-DECLARE_bool(load_balancer_drive_aware);
-DECLARE_int32(load_balancer_max_concurrent_moves);
-DECLARE_int32(replication_factor);
-DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
-DECLARE_int32(TEST_load_balancer_wait_ms);
-DECLARE_int32(TEST_load_balancer_wait_after_count_pending_tasks_ms);
-DECLARE_bool(tserver_heartbeat_metrics_add_drive_data);
-DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_fail_async_delete_replica_task);
+DECLARE_bool(enable_load_balancing);
+DECLARE_bool(load_balancer_drive_aware);
+DECLARE_bool(tserver_heartbeat_metrics_add_drive_data);
+DECLARE_int32(TEST_load_balancer_wait_after_count_pending_tasks_ms);
+DECLARE_int32(TEST_load_balancer_wait_ms);
+DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(load_balancer_max_concurrent_moves);
+DECLARE_int32(min_leader_stepdown_retry_interval_ms);
+DECLARE_int32(replication_factor);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_string(instance_uuid_override);
 
 using namespace std::literals;
 
@@ -137,12 +138,16 @@ void WaitLoadBalancerIdle(
       msg));
 }
 
-typedef std::unordered_map<std::string,
-                           std::pair<std::unordered_map<std::string, int>, int>> DriveStats;
+struct TSDriveStats {
+  std::unordered_map<std::string, std::vector<TabletId>> dir_tablets;
+  int num_leaders = 0;
+};
 
-Status GetTabletsDriveStats(DriveStats* stats,
-                            yb::MiniCluster* mini_cluster,
-                            const yb::client::YBTableName& table_name) {
+using DriveStats = std::unordered_map<TabletServerId, TSDriveStats>;
+
+Result<DriveStats> GetTabletsDriveStats(
+    MiniCluster* mini_cluster, const client::YBTableName& table_name) {
+  DriveStats result;
   scoped_refptr<master::TableInfo> tbl_info =
     VERIFY_RESULT(mini_cluster->GetLeaderMiniMaster())->catalog_manager().
       GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),
@@ -150,27 +155,17 @@ Status GetTabletsDriveStats(DriveStats* stats,
                                                 table_name.table_name());
   for (const auto& tablet : VERIFY_RESULT(tbl_info->GetTablets())) {
     auto replica_map = tablet->GetReplicaLocations();
-    for (const auto& replica : *replica_map.get()) {
-      auto ts = stats->find(replica.first);
-      if (ts == stats->end()) {
-        ts = stats->insert({replica.first,
-                           std::make_pair(std::unordered_map<std::string, int>(), 0)}).first;
+    for (const auto& [ts_uuid, replica] : *replica_map) {
+      auto& ts = result[ts_uuid];
+      if (replica.role == PeerRole::LEADER) {
+        ++ts.num_leaders;
       }
-      if (replica.second.role == PeerRole::LEADER) {
-        ++ts->second.second;
-      }
-      if (!replica.second.fs_data_dir.empty()) {
-        auto& ts_map = ts->second.first;
-        auto path = ts_map.find(replica.second.fs_data_dir);
-        if (path == ts_map.end()) {
-          ts_map.insert({replica.second.fs_data_dir, 1});
-        } else {
-          ++path->second;
-        }
+      if (!replica.fs_data_dir.empty()) {
+        ts.dir_tablets[replica.fs_data_dir].push_back(tablet->id());
       }
     }
   }
-  return Status::OK();
+  return result;
 }
 
 } // namespace
@@ -606,12 +601,13 @@ TEST_F_EX(LoadBalancerMiniClusterTest, CheckLoadBalanceWithoutDriveData,
 }
 
 TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDriveAware) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_leader_stepdown_retry_interval_ms) = 0;
+
   // Wait LB to move leaders
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms * 2));
   WaitLoadBalancerIdle(client_.get());
 
-  DriveStats before;
-  ASSERT_OK(GetTabletsDriveStats(&before, mini_cluster(), table_name()));
+  auto before = ASSERT_RESULT(GetTabletsDriveStats(mini_cluster(), table_name()));
 
   // Add new tserver to force load balancer moves.
   auto new_ts_index = mini_cluster()->num_tablet_servers();
@@ -623,37 +619,43 @@ TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDriveAware) {
   WaitLoadBalancerActive(client_.get());
   WaitLoadBalancerIdle(client_.get());
 
-  DriveStats after;
-  ASSERT_OK(GetTabletsDriveStats(&after, mini_cluster(), table_name()));
+  auto after = ASSERT_RESULT(GetTabletsDriveStats(mini_cluster(), table_name()));
 
-  bool found = false;
+  int balanced_servers = 0;
   for (size_t ts_index = 0; ts_index < new_ts_index; ++ts_index) {
     const auto ts_uuid = mini_cluster()->mini_tablet_server(ts_index)->server()->permanent_uuid();
     std::vector<std::string> drives;
     auto& ts_before = before[ts_uuid];
     auto& ts_after = after[ts_uuid];
-    for (const auto& drive : ts_before.first) {
+    for (const auto& drive : ts_before.dir_tablets) {
       drives.emplace_back(drive.first);
     }
     ASSERT_FALSE(drives.empty());
     std::sort(drives.begin(), drives.end());
     LOG(INFO) << "P " << ts_uuid;
-    LOG(INFO) << "Leaders before: " << ts_before.second << " after: " << ts_after.second;
+    LOG(INFO) << "Leaders before: " << ts_before.num_leaders << " after: " << ts_after.num_leaders;
 
-    int tablets = ts_after.first[drives.front()];
-    bool expected_move = true;
+    size_t tablets = ts_after.dir_tablets[drives.front()].size();
+    bool drives_balanced = true;
     for (const auto& drive : drives) {
-      if (ts_after.first[drive] != tablets) {
-        expected_move = false;
+      LOG(INFO) << drive << " before: " << AsString(ts_before.dir_tablets[drive]) <<
+                   " after: " << AsString(ts_after.dir_tablets[drive]);
+      if (ts_after.dir_tablets[drive].size() != tablets) {
+        drives_balanced = false;
       }
-      LOG(INFO) << drive << " before: " << ts_before.first[drive] <<
-                   " after: " << ts_after.first[drive];
     }
-    if (expected_move) {
-      found = true;
+    if (drives_balanced) {
+      ++balanced_servers;
     }
   }
-  ASSERT_TRUE(found);
+
+  // There are 4 tablets in this test and each tserver has 3 disks.
+  // The goal of the test is to get 1 tablet on each disk after adding a new tablet server.
+  // Before adding a tserver we have 2 tablets on some disk for all tservers, and 1 tablet on the
+  // other disks. It could happen that the same two tablets share a disk on all tservers.
+  // In this case we cannot guarantee even disk load, but at least 2 original tservers should have
+  // a balanced disks after load balancing.
+  ASSERT_GE(balanced_servers, 2);
 }
 
 TEST_F(LoadBalancerMiniClusterTest, ClearPendingDeletesOnFailure) {

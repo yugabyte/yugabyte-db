@@ -22,11 +22,14 @@ def test_analyze_test_results() -> None:
     test_data_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'test_data')
     aggregated_test_report_path = os.path.join(
         test_data_base_dir, 'clang16_debug_centos7_test_report_from_junit_xml.json')
+    planned_tests = os.path.join(
+        test_data_base_dir, 'planned_tests.json')
     run_tests_on_spark_full_report = os.path.join(
         test_data_base_dir,
         'clang16_debug_centos7_run_tests_on_spark_full_report.json')
     analyzer = analyze_test_results.SingleBuildAnalyzer(
         aggregated_test_report_path,
+        planned_tests,
         run_tests_on_spark_full_report,
         archive_dir=None)
     result = analyzer.analyze()
@@ -35,15 +38,17 @@ def test_analyze_test_results() -> None:
         analyze_test_results.AnalysisResult(
             num_tests_in_junit_xml=384,
             num_tests_in_spark=385,
+            num_tests_planned=387,
+            num_tests_did_not_run=2,
             num_failed_tests_in_junit_xml=2,
             num_failed_tests_in_spark=2,
             num_unique_failed_tests=3,
             num_dedup_errors_in_junit_xml=0,
-            num_total_unique_tests=387,
+            num_unique_test_results=387,
             num_tests_failed_in_spark_but_not_junit_xml=1,
             num_tests_failed_in_junit_xml_but_not_spark=1,
-            num_tests_without_junit_xml_report=3,
-            num_tests_without_spark_report=1,
+            num_tests_without_junit_xml_report=5,
+            num_tests_without_spark_report=2,
             num_successful_tests=379,
             num_unique_tests_present_in_both_report_types=382
         ))

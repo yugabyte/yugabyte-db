@@ -16,7 +16,6 @@ type NodeAgentResponse = {
 };
 
 class ApiService {
-
   private getCustomerId(): string {
     const customerId = localStorage.getItem('customerId');
     return customerId ?? '';
@@ -24,7 +23,7 @@ class ApiService {
 
   fetchNodeAgents = () => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/node_agents`;
-    return axios.get(requestURL).then((res) => res.data);
+    return axios.get<NodeAgentEntities[]>(requestURL).then((res) => res.data);
   };
 
   fetchOnPremProviderNodeList = (providerUUID: string) => {
@@ -40,6 +39,11 @@ class ApiService {
   deleteNodeAgent = (nodeAgentUuid: string) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/node_agents/${nodeAgentUuid}`;
     return axios.delete(requestURL).then((res) => res.data);
+  };
+
+  installNodeAgent = (universeUuid: string, { nodeNames }: { nodeNames: string[] }) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/node_agents`;
+    return axios.post(requestUrl, { nodeNames }).then((response) => response.data);
   };
 }
 

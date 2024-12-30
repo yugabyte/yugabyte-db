@@ -45,3 +45,12 @@ CREATE FUNCTION yb_xcluster_ddl_replication.handle_sql_drop()
 CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_sql_drop_trigger
   ON sql_drop
   EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_sql_drop();
+
+CREATE FUNCTION yb_xcluster_ddl_replication.handle_table_rewrite()
+  RETURNS event_trigger
+  LANGUAGE C
+  AS 'MODULE_PATHNAME', 'handle_table_rewrite';
+
+CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_table_rewrite_trigger
+  ON table_rewrite
+  EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_table_rewrite();

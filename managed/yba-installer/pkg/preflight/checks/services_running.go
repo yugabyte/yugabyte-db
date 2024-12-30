@@ -48,7 +48,7 @@ func (s *servicesRunningCheck) Execute() Result {
 			continue
 		}
 		if !common.IsHappyStatus(status) {
-			logging.Error(fmt.Sprintf("%s has bad status %s", service.Name(), status))
+			logging.Error(fmt.Sprintf("%s has bad status %s", service.Name(), status.Status))
 			failedServices = append(failedServices, service.Name())
 		}
 	}

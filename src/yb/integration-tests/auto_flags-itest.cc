@@ -681,15 +681,15 @@ TEST_F(AutoFlagsMiniClusterTest, AddTserverBeforeApplyDelay) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_flags_apply_delay_ms) = kApplyDelayMs;
 
   ASSERT_OK(RunSetUp());
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
-  auto now_ht = [&leader_master]() { return leader_master->clock()->Now(); };
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto now_ht = [&leader_master]() { return leader_master->Now(); };
   uint32 expected_config_version = 0;
   CHECK_OK(ValidateConfigOnAllProcesses(expected_config_version));
 
   AutoFlagsConfigPB config;
   ASSERT_NO_FATALS(
       config = PromoteFlagsAndValidate(
-          ++expected_config_version, leader_master, AutoFlagClass::kExternal));
+          ++expected_config_version, leader_master->master(), AutoFlagClass::kExternal));
 
   ASSERT_TRUE(config.has_config_apply_time());
   HybridTime config_apply_ht;

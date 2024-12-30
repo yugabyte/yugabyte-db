@@ -384,13 +384,12 @@ You can use only one of the following arguments to connect to your Oracle instan
    ```sql
    psql -h <host> \
         -d <database> \
-        -U <username> \
+        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
         -v voyager_user='ybvoyager' \
         -v schema_list='<comma_separated_schema_list>' \
         -v is_live_migration=1 \
         -v is_live_migration_fall_back=0 \
         -v replication_group='<replication_group>' \
-        -v original_owner_of_tables='<original_owner_of_tables>' \
         -f <path_to_the_script>
    ```
 
@@ -421,13 +420,12 @@ You can use only one of the following arguments to connect to your Oracle instan
    ```sql
    psql -h <host> \
         -d <database> \
-        -U <username> \
+        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
         -v voyager_user='ybvoyager' \
         -v schema_list='<comma_separated_schema_list>' \
         -v is_live_migration=1 \
         -v is_live_migration_fall_back=0 \
         -v replication_group='<replication_group>' \
-        -v original_owner_of_tables='<original_owner_of_tables>' \
         -f <path_to_the_script>
    ```
 
@@ -605,6 +603,14 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
+{{< note title="NOT VALID constraints are not imported" >}}
+
+Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
+
+To add the constraints back, you run the `import schema` command after data import. See [Cutover to the target](#cutover-to-the-target).
+
+{{< /note >}}
+
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
 ### Export data from source
@@ -778,6 +784,19 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
+1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `import schema` with the `post-snapshot-import` flag:
+
+    ```sh
+    # Replace the argument values with those applicable for your migration.
+    yb-voyager import schema --export-dir <EXPORT_DIR> \
+            --target-db-host <TARGET_DB_HOST> \
+            --target-db-user <TARGET_DB_USER> \
+            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+            --target-db-name <TARGET_DB_NAME> \
+            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+            --post-snapshot-import true
+    ```
+
 1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them using the following command:
 
     ```sh
@@ -848,4 +867,4 @@ DROP USER ybvoyager;
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
-- For Oracle source databases, table and column names with more than 30 characters are not supported.
+- For Oracle source databases, schema, table, and column names with more than 30 characters are not supported.

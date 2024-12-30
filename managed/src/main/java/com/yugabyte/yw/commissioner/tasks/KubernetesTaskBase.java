@@ -86,6 +86,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     return false; // TODO: Modify blacklist is disabled by default for k8s now for some reason.
   }
 
+  protected boolean isSkipPrechecks() {
+    return false;
+  }
+
   public static class KubernetesPlacement {
     public PlacementInfo placementInfo;
     public Map<UUID, Integer> masters;
@@ -1035,10 +1039,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         final List<NodeDetails> nodeList = partition.nodeList;
         final List<String> podNames = partition.podNames;
         for (NodeDetails node : nodeList) {
-          createNodePrecheckTasks(
-              node, serverTypes, SubTaskGroupType.ConfigureUniverse, true, softwareVersion);
+          if (!isSkipPrechecks()) {
+            createNodePrecheckTasks(
+                node, serverTypes, SubTaskGroupType.ConfigureUniverse, true, softwareVersion);
+          }
         }
-        if (!isReadOnlyCluster) {
+        if (!isReadOnlyCluster && !isSkipPrechecks()) {
           createCheckNodesAreSafeToTakeDownTask(
               Collections.singletonList(
                   UpgradeTaskBase.MastersAndTservers.from(nodeList, serverTypes)),
@@ -1578,6 +1584,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       UUID providerUUID) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    Provider provider = Provider.getOrBadRequest(providerUUID);
     params.universeName = universeName;
     params.commandType = KubernetesCommandExecutor.CommandType.RESUME_AZ;
     params.azCode = azCode;

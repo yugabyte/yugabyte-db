@@ -255,7 +255,7 @@ void AssertChangeRecords(
 }
 
 void VerifyCdcStateNotEmpty(client::YBClient* client) {
-  CDCStateTable cdc_state_table(client);
+  auto cdc_state_table = MakeCDCStateTable(client);
   Status s;
   auto table_range = ASSERT_RESULT(
       cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
@@ -278,7 +278,7 @@ Status VerifyCdcStateMatches(
   LOG(INFO) << Format("Verifying tablet: $0, stream: $1, op_id: $2",
       tablet_id, stream_id, OpId(term, index).ToString());
 
-  CDCStateTable cdc_state_table(client);
+  auto cdc_state_table = MakeCDCStateTable(client);
   auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
       {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
   SCHECK(row, IllegalState, "CDC state row not found");
@@ -295,7 +295,7 @@ void VerifyStreamDeletedFromCdcState(
     const xrepl::StreamId& stream_id,
     const TabletId& tablet_id,
     int timeout_secs = 10) {
-  CDCStateTable cdc_state_table(client);
+  auto cdc_state_table = MakeCDCStateTable(client);
 
   // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
   // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
@@ -2004,7 +2004,7 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
-  CDCStateTable cdc_state_table(client_.get());
+  auto cdc_state_table = MakeCDCStateTable(client_.get());
   Status s;
   auto table_range = ASSERT_RESULT(
       cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
@@ -2161,7 +2161,7 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestCdcMinReplicatedIndexAreRese
   WaitForCDCIndex(
     tablet_id, CDCService(tserver), 5, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
-  CDCStateTable cdc_state_table(client_.get());
+  auto cdc_state_table = MakeCDCStateTable(client_.get());
 
   std::vector<CDCStateTableKey> keys_to_delete;
   for (auto& stream_id : stream_ids) {

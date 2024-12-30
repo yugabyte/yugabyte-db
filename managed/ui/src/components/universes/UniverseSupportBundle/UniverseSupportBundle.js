@@ -20,7 +20,7 @@ import {
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseSupportBundle.scss';
 import { filterTypes } from '../../metrics/MetricsComparisonModal/ComparisonFilterContextProvider';
-import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getUniverseStatus } from '../helpers/universeHelpers';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
@@ -48,7 +48,7 @@ export const UniverseSupportBundle = (props) => {
   );
   const [payload, setPayload] = useState(defaultOptions);
 
-  const isK8sUniverse = isKubernetesUniverse(props.currentUniverse);
+  const isK8sUniverse = getIsKubernetesUniverse(props.currentUniverse);
 
   const dispatch = useDispatch();
   const [supportBundles] = useSelector(getSupportBundles);

@@ -301,11 +301,10 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   }
   std::string type_name() const override { return "Backends Catalog Version"; }
   std::string description() const override;
-  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override
-      EXCLUDES(mutex_);
-  bool CompareAndSwapState(server::MonitoredTaskState old_state,
-                           server::MonitoredTaskState new_state)
-      EXCLUDES(mutex_);
+  server::MonitoredTaskState AbortAndReturnPrevState(
+      const Status& status, bool call_task_finisher = true) override EXCLUDES(mutex_);
+  bool CompareAndSwapState(
+      server::MonitoredTaskState old_state, server::MonitoredTaskState new_state) EXCLUDES(mutex_);
   Result<int> HandleTerminalState() EXCLUDES(mutex_);
 
   // Put job in kRunning state and kick off TS RPCs.

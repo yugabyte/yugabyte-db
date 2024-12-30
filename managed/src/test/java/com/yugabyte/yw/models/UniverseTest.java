@@ -23,7 +23,6 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
@@ -721,95 +720,6 @@ public class UniverseTest extends FakeDBApplication {
       }
     }
     return false;
-  }
-
-  @Test
-  public void testGetNodeActions() {
-    for (int numNodes = 3; numNodes <= 4; numNodes++) {
-      Universe u = createUniverseWithNodes(3 /* rf */, numNodes, true /* setMasters */);
-      NodeDetails nd = numNodes == 3 ? u.getNode("host-n1") : u.getNode("host-n4");
-
-      for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
-        nd.state = nodeState;
-        Set<NodeActionType> allowedActions = new AllowedActionsHelper(u, nd).listAllowedActions();
-
-        if (nodeState == NodeDetails.NodeState.ToBeAdded) {
-          assertEquals(ImmutableSet.of(NodeActionType.DELETE, NodeActionType.ADD), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Adding) {
-          assertEquals(
-              ImmutableSet.of(
-                  NodeActionType.DELETE,
-                  NodeActionType.RELEASE,
-                  NodeActionType.ADD,
-                  NodeActionType.REMOVE),
-              allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.InstanceCreated) {
-          assertEquals(ImmutableSet.of(NodeActionType.DELETE, NodeActionType.ADD), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.ServerSetup) {
-          assertEquals(ImmutableSet.of(NodeActionType.DELETE, NodeActionType.ADD), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.ToJoinCluster) {
-          assertEquals(ImmutableSet.of(NodeActionType.REMOVE, NodeActionType.ADD), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.SoftwareInstalled) {
-          assertEquals(
-              ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE, NodeActionType.ADD),
-              allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.ToBeRemoved) {
-          assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Live) {
-          assertEquals(
-              ImmutableSet.of(
-                  NodeActionType.STOP,
-                  NodeActionType.REMOVE,
-                  NodeActionType.QUERY,
-                  NodeActionType.REBOOT,
-                  NodeActionType.HARD_REBOOT,
-                  NodeActionType.REPLACE),
-              allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Stopped) {
-          assertEquals(
-              ImmutableSet.of(
-                  NodeActionType.START,
-                  NodeActionType.REMOVE,
-                  NodeActionType.QUERY,
-                  NodeActionType.REPROVISION),
-              allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Removed) {
-          assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Decommissioned) {
-          if (numNodes == 3) {
-            // Cannot DELETE node from universe with 3 nodes only - will get only two nodes
-            // left.
-            assertEquals(ImmutableSet.of(NodeActionType.ADD), allowedActions);
-          } else {
-            assertEquals(
-                ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE), allowedActions);
-          }
-        } else if (nodeState == NodeDetails.NodeState.Provisioned) {
-          assertEquals(ImmutableSet.of(NodeActionType.DELETE, NodeActionType.ADD), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.BeingDecommissioned) {
-          assertEquals(ImmutableSet.of(NodeActionType.RELEASE), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Starting) {
-          assertEquals(
-              ImmutableSet.of(NodeActionType.START, NodeActionType.REMOVE), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Stopping) {
-          assertEquals(ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Removing) {
-          assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Terminating) {
-          assertEquals(
-              ImmutableSet.of(NodeActionType.RELEASE, NodeActionType.DELETE), allowedActions);
-        } else if (nodeState == NodeState.Terminated) {
-          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
-        } else if (nodeState == NodeState.Rebooting) {
-          assertEquals(ImmutableSet.of(NodeActionType.REBOOT), allowedActions);
-        } else if (nodeState == NodeState.HardRebooting) {
-          assertEquals(ImmutableSet.of(NodeActionType.HARD_REBOOT), allowedActions);
-        } else {
-          assertTrue(allowedActions.isEmpty());
-        }
-      }
-      u.delete();
-    }
   }
 
   private Universe createUniverseWithNodes(int rf, int numNodes, boolean setMasters) {

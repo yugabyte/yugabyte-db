@@ -15,6 +15,8 @@
 
 #include <mutex>
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -40,15 +42,15 @@ class TabletComponent {
   }
 
  protected:
-  TabletScopedRWOperationPauses StartShutdownRocksDBs(
+  TabletScopedRWOperationPauses StartShutdownStorages(
       DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
-  std::vector<std::string> CompleteShutdownRocksDBs(
+  std::vector<std::string> CompleteShutdownStorages(
       const TabletScopedRWOperationPauses& ops_pauses);
 
-  Status DeleteRocksDBs(const std::vector<std::string>& db_paths);
+  Status DeleteStorages(const std::vector<std::string>& db_paths);
 
-  Status OpenRocksDBs();
+  Status OpenStorages();
 
   std::string LogPrefix() const;
 
@@ -69,6 +71,8 @@ class TabletComponent {
   rocksdb::Env& rocksdb_env() const;
 
   void RefreshYBMetaDataCache();
+
+  docdb::VectorIndexesPtr VectorIndexesList() const;
 
  private:
   Tablet& tablet_;

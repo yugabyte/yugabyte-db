@@ -72,12 +72,12 @@ bool
 YBShouldAllowRunningAsAnyUser()
 {
 	if (YBIsEnabledInPostgresEnvVar())
-    {
+	{
 		return true;
 	}
 	static int cached_value = -1;
 	if (cached_value == -1)
-    {
+	{
 		cached_value = YBCIsEnvVarTrue("YB_PG_ALLOW_RUNNING_AS_ANY_USER");
 	}
 	return cached_value;
@@ -88,7 +88,7 @@ bool YBIsInitDbModeEnvVarSet()
 
 	static int cached_value = -1;
 	if (cached_value == -1)
-    {
+	{
 		cached_value = YBCIsEnvVarTrue("YB_PG_INITDB_MODE");
 	}
 	return cached_value;
@@ -240,13 +240,6 @@ YBColocateDatabaseByDefault()
 	return cached_value;
 }
 
-bool
-YBIsMajorUpgradeInitDb()
-{
-	return YBCIsEnvVarTrueWithDefault("YB_PG_MAJOR_UPGRADE_INITDB",
-									  false /* default_value */);
-}
-
 Oid YBGetDatabaseOidFromEnv(const char *database_name)
 {
 	char *env_var = psprintf("YB_DATABASE_OID_%s", database_name);
@@ -259,21 +252,4 @@ Oid YBGetDatabaseOidFromEnv(const char *database_name)
 			return (Oid) full_oid;
 	}
 	return InvalidOid;
-}
-
-/*
- * Note: This function is used for the test flag only.
- * Once the associated feature is fully developed and stable, this function will be removed.
- * The flag is defined this way and not in ybc_pggate.cc because it is used in the ipic.c file,
- * which is initialized before the pggate api.
- */
-bool
-YBIsQueryDiagnosticsEnabled()
-{
-	static int cached_value = -1;
-	if (cached_value == -1)
-	{
-		cached_value = YBCIsEnvVarTrue("FLAGS_TEST_yb_enable_query_diagnostics");
-	}
-	return cached_value;
 }

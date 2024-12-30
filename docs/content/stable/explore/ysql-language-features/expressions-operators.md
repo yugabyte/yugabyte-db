@@ -6,7 +6,7 @@ menu:
   stable:
     identifier: explore-ysql-language-features-expressions-operators
     parent: explore-ysql-language-features
-    weight: 300
+    weight: 500
 type: docs
 ---
 

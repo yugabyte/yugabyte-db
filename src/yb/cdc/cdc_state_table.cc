@@ -30,8 +30,8 @@
 #include "yb/util/atomic.h"
 #include "yb/util/logging.h"
 #include "yb/util/stol_utils.h"
-
 #include "yb/util/string_util.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DEFINE_RUNTIME_int32(cdc_state_table_num_tablets, 0,
@@ -323,8 +323,6 @@ CDCStateTable::CDCStateTable(std::shared_future<client::YBClient*> client_future
   CHECK(client_future_.valid());
 }
 
-CDCStateTable::CDCStateTable(client::YBClient* client) : client_(client) { CHECK_NOTNULL(client); }
-
 std::string CDCStateTableKey::ToString() const {
   return Format(
       "TabletId: $0, StreamId: $1 $2", tablet_id, stream_id,
@@ -435,33 +433,28 @@ Result<master::CreateTableRequestPB> CDCStateTable::GenerateCreateCdcStateTableR
 }
 
 Status CDCStateTable::WaitForCreateTableToFinishWithCache() {
-  if (created_) {
-    return Status::OK();
+  if (!created_) {
+    RETURN_NOT_OK(WaitForCreateTableToFinishWithoutCache());
+    created_ = true;
   }
-  auto* client = VERIFY_RESULT(GetClient());
-  RETURN_NOT_OK(client->WaitForCreateTableToFinish(kCdcStateYBTableName));
-  created_ = true;
   return Status::OK();
 }
 
 Status CDCStateTable::WaitForCreateTableToFinishWithoutCache() {
-  auto* client = VERIFY_RESULT(GetClient());
-  return client->WaitForCreateTableToFinish(kCdcStateYBTableName);
+  return client().WaitForCreateTableToFinish(kCdcStateYBTableName);
 }
 
-Status CDCStateTable::OpenTable(client::TableHandle* cdc_table) {
-  auto* client = VERIFY_RESULT(GetClient());
-  RETURN_NOT_OK(cdc_table->Open(kCdcStateYBTableName, client));
-  return Status::OK();
+Result<std::shared_ptr<client::TableHandle>> CDCStateTable::OpenTable() {
+  auto cdc_table = std::make_shared<client::TableHandle>();
+  RETURN_NOT_OK(cdc_table->Open(kCdcStateYBTableName, &client()));
+  return cdc_table;
 }
 
 Result<std::shared_ptr<client::TableHandle>> CDCStateTable::GetTable() {
   bool use_cache = GetAtomicFlag(&FLAGS_enable_cdc_state_table_caching);
   if (!use_cache) {
     RETURN_NOT_OK(WaitForCreateTableToFinishWithoutCache());
-    auto cdc_table = std::make_shared<client::TableHandle>();
-    RETURN_NOT_OK(OpenTable(cdc_table.get()));
-    return cdc_table;
+    return OpenTable();
   }
 
   {
@@ -472,30 +465,16 @@ Result<std::shared_ptr<client::TableHandle>> CDCStateTable::GetTable() {
   }
 
   std::lock_guard l(mutex_);
-  if (cdc_table_) {
-    return cdc_table_;
+  if (!cdc_table_) {
+    RETURN_NOT_OK(WaitForCreateTableToFinishWithCache());
+    cdc_table_ = VERIFY_RESULT(OpenTable());
   }
-  RETURN_NOT_OK(WaitForCreateTableToFinishWithCache());
-  auto cdc_table = std::make_shared<client::TableHandle>();
-  RETURN_NOT_OK(OpenTable(cdc_table.get()));
-  cdc_table_.swap(cdc_table);
   return cdc_table_;
 }
 
-Result<client::YBClient*> CDCStateTable::GetClient() {
-  if (!client_) {
-    CHECK(client_future_.valid());
-    client_ = client_future_.get();
-  }
-
-  SCHECK(client_, IllegalState, "CDC Client not initialized or shutting down");
-  return client_;
-}
-
-Result<std::shared_ptr<client::YBSession>> CDCStateTable::GetSession() {
-  auto* client = VERIFY_RESULT(GetClient());
-  auto session = client->NewSession(client->default_rpc_timeout());
-  return session;
+std::shared_ptr<client::YBSession> CDCStateTable::MakeSession() {
+  auto& c = client();
+  return c.NewSession(c.default_rpc_timeout());
 }
 
 template <class CDCEntry>
@@ -509,7 +488,7 @@ Status CDCStateTable::WriteEntriesAsync(
   }
 
   auto cdc_table = VERIFY_RESULT(GetTable());
-  auto session = VERIFY_RESULT(GetSession());
+  auto session = MakeSession();
 
   std::vector<client::YBOperationPtr> ops;
   ops.reserve(entries.size() * 2);
@@ -621,14 +600,9 @@ Result<CDCStateTableRange> CDCStateTable::GetTableRange(
 
 Result<CDCStateTableRange> CDCStateTable::GetTableRangeAsync(
     CDCStateTableEntrySelector&& field_filter, Status* iteration_status) {
-  auto* client = VERIFY_RESULT(GetClient());
-
-  bool table_creation_in_progress = false;
-  RETURN_NOT_OK(client->IsCreateTableInProgress(kCdcStateYBTableName, &table_creation_in_progress));
-  if (table_creation_in_progress) {
-    return STATUS(Uninitialized, "CDC State Table creation is in progress");
-  }
-
+  bool creation_in_progress = false;
+  RETURN_NOT_OK(client().IsCreateTableInProgress(kCdcStateYBTableName, &creation_in_progress));
+  SCHECK(!creation_in_progress, Uninitialized, "CDC State Table creation is in progress");
   return GetTableRange(std::move(field_filter), iteration_status);
 }
 
@@ -645,7 +619,7 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
       narrow_cast<ColumnIdRep>(Schema::first_column_id() + kCdcStreamIdIdx);
 
   auto cdc_table = VERIFY_RESULT(GetTable());
-  auto session = VERIFY_RESULT(GetSession());
+  auto session = MakeSession();
 
   const auto read_op = cdc_table->NewReadOp();
   auto* const req_read = read_op->mutable_request();

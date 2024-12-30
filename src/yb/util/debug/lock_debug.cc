@@ -14,6 +14,9 @@
 #include "yb/util/debug/lock_debug.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/debug-util.h"
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -49,6 +52,23 @@ void SingleThreadedMutex::unlock() {
 
 bool SingleThreadedMutex::try_lock() {
   return !locked_.exchange(true, std::memory_order_acq_rel);
+}
+
+void TimeTrackedLockBase::Acquired() {
+  start_ = CoarseMonoClock::now();
+}
+
+void TimeTrackedLockBase::Released(const char* name) {
+  CHECK(start_ != CoarseTimePoint());
+  MonoDelta passed(CoarseMonoClock::now() - start_);
+  if (passed > 1s) {
+    LOG(INFO) << "Long " << name << " " << passed << ":\n" << GetStackTrace();
+  }
+  start_ = CoarseTimePoint();
+}
+
+void TimeTrackedLockBase::Assign(const TimeTrackedLockBase& rhs) {
+  start_ = rhs.start_;
 }
 
 }  // namespace yb

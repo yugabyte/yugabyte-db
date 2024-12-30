@@ -49,7 +49,7 @@ namespace yb {
 using client::YBClient;
 using YBTables = std::vector<std::shared_ptr<client::YBTable>>;
 
-constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
+constexpr int kRpcTimeout = RegularBuildVsSanitizers(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const xcluster::ReplicationGroupId kReplicationGroupId("test_replication_group");
 static const std::string kKeyColumnName = "key";

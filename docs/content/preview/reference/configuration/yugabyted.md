@@ -541,7 +541,7 @@ The following sub-commands are available for the `yugabyted demo` command:
 
 #### connect
 
-Use the `yugabyted demo connect` sub-command to load the  [Northwind sample dataset](../../../sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the `ysqlsh` prompt for the same database.
+Use the `yugabyted demo connect` sub-command to load the  [Northwind sample dataset](../../../sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the ysqlsh prompt for the same database.
 
 #### destroy
 
@@ -1588,7 +1588,7 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 
 Docker-based deployments are in {{<tags/feature/ea>}}.
 
-You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
+You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/tutorials/quick-start/docker/).
 
 The following example shows how to create a multi-region cluster. If the `~/yb_docker_data` directory already exists, delete and re-create it.
 

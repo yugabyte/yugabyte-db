@@ -572,6 +572,20 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters* exec_params) {
   return Status::OK();
 }
 
+bool CouldBeExecutedInParallel(const LWPgsqlReadRequestPB& req) {
+  if (req.index_request().has_vector_idx_options()) {
+    // Executed in parallel on PgClient
+    return false;
+  }
+  if (req.is_aggregate()) {
+    return true;
+  }
+  if (!req.has_is_forward_scan() && !req.where_clauses().empty()) {
+    return true;
+  }
+  return false;
+}
+
 Result<bool> PgDocReadOp::DoCreateRequests() {
   // All information from the SQL request has been collected and setup. This code populates
   // Protobuf requests before sending them to DocDB. For performance reasons, requests are
@@ -604,10 +618,8 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // scans on range partitioned tables.
   // TODO(GHI 13737): as explained above, explicitly indicate, if operation should return ordered
   // results.
-  } else if (req.is_aggregate() ||
-             (!req.has_is_forward_scan() && !req.where_clauses().empty())) {
+  } else if (CouldBeExecutedInParallel(req)) {
     return PopulateParallelSelectOps();
-
   } else {
     // No optimization.
     if (exec_params_.partition_key != nullptr) {
@@ -1211,9 +1223,9 @@ Result<bool> PgDocReadOp::PopulateSamplingOps() {
 }
 
 EstimatedRowCount PgDocReadOp::GetEstimatedRowCount() const {
-  VLOG(1) << "Returning liverows " << sample_rows_;
+  VLOG(1) << "Returning liverows " << estimated_total_rows_;
   // TODO count dead tuples while sampling
-  return EstimatedRowCount{.live = sample_rows_, .dead = 0};
+  return EstimatedRowCount{.live = estimated_total_rows_, .dead = 0};
 }
 
 // When postgres requests to scan a specific partition, set the partition parameter accordingly.
@@ -1287,7 +1299,9 @@ Status PgDocReadOp::CompleteProcessResponse() {
 
     if (res.has_sampling_state()) {
       VLOG(1) << "Received sampling state: " << res.sampling_state().ShortDebugString();
-      sample_rows_ = res.sampling_state().samplerows();
+      estimated_total_rows_ = res.sampling_state().has_estimated_total_rows()
+                                  ? res.sampling_state().estimated_total_rows()
+                                  : res.sampling_state().samplerows();
 
       // Copy sampling state from the response to propagate in later requests for continuing further
       // sampling.

@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include <memory>
+#include "yb/common/doc_hybrid_time.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -24,6 +24,8 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/kv_util.h"
+
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace yb::docdb {
 
@@ -49,15 +51,32 @@ class VectorIndex {
 
   virtual Slice indexed_table_key_prefix() const = 0;
   virtual ColumnId column_id() const = 0;
+  virtual const std::string& path() const = 0;
+
   virtual Status Insert(
-      const VectorIndexInsertEntries& entries, HybridTime write_time,
-      const rocksdb::UserFrontiers* frontiers) = 0;
-  virtual Result<VectorIndexSearchResult> Search(Slice vector, size_t max_num_results) = 0;
+      const VectorIndexInsertEntries& entries,
+      const rocksdb::UserFrontiers* frontiers,
+      rocksdb::DirectWriteHandler* handler,
+      DocHybridTime write_time) = 0;
+  virtual Result<VectorIndexSearchResult> Search(
+      Slice vector, const vector_index::SearchOptions& options) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
+  virtual Status Flush() = 0;
+  virtual Status WaitForFlush() = 0;
+  virtual rocksdb::UserFrontierPtr GetFlushedFrontier() = 0;
+  virtual rocksdb::FlushAbility GetFlushAbility() = 0;
+  virtual Status CreateCheckpoint(const std::string& out) = 0;
 };
 
 Result<VectorIndexPtr> CreateVectorIndex(
-    const std::string& data_root_dir, rpc::ThreadPool& thread_pool,
-    Slice indexed_table_key_prefix, const qlexpr::IndexInfo& index_info);
+    const std::string& data_root_dir,
+    rpc::ThreadPool& thread_pool,
+    Slice indexed_table_key_prefix,
+    const qlexpr::IndexInfo& index_info,
+    const DocDB& doc_db);
+
+KeyBuffer VectorIdKey(vector_index::VectorId vector_id);
+
+extern const std::string kVectorIndexDirPrefix;
 
 }  // namespace yb::docdb

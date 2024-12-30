@@ -267,6 +267,7 @@ ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg15_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg15_upgrade_pgregress-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
@@ -300,6 +301,9 @@ YB_TEST_TARGET_LINK_LIBRARIES(disk_full-test pg_wrapper_test_base)
 
 ADD_YB_TEST(sequence_utility-itest)
 YB_TEST_TARGET_LINK_LIBRARIES(sequence_utility-itest pg_wrapper_test_base)
+
+ADD_YB_TEST(upgrade-tests/ysql_ddl_whitelist-test)
+YB_TEST_TARGET_LINK_LIBRARIES(upgrade-tests/ysql_ddl_whitelist-test pg_wrapper_test_base)
 
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)

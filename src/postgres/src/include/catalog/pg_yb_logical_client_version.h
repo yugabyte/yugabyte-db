@@ -27,12 +27,11 @@
  */
 CATALOG(pg_yb_logical_client_version,8073,YBLogicalClientVersionRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(8074,YBLogicalClientVersionRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
-    /* Oid of the database this applies to. */
-    Oid        db_oid;
+	/* Oid of the database this applies to. */
+	Oid			db_oid;
 
-    /* Current version of the logical client. */
-    int64      current_version;
-
+	/* Current version of the logical client. */
+	int64		current_version;
 } FormData_yb_pg_logical_client_version;
 
 /* ----------------

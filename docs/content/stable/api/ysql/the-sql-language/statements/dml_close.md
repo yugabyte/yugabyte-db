@@ -54,7 +54,7 @@ start transaction;
   select name, is_holdable::text, is_scrollable::text
   from pg_cursors
   order by name;
-  
+
   close "Cur-One";
 commit;
 
@@ -68,7 +68,7 @@ fetch all from "Cur-Two";
 This is the result from the first _pg_cursors_ query:
 
 ```output
-  name   | is_holdable | is_scrollable 
+  name   | is_holdable | is_scrollable
 ---------+-------------+---------------
  Cur-One | false       | false
  Cur-Two | true        | false
@@ -77,7 +77,7 @@ This is the result from the first _pg_cursors_ query:
 This is the result from the second _pg_cursors_ query:
 
 ```output
-  name   | is_holdable | is_scrollable 
+  name   | is_holdable | is_scrollable
 ---------+-------------+---------------
  Cur-Two | true        | false
 ```
@@ -85,7 +85,7 @@ This is the result from the second _pg_cursors_ query:
 And this is the result from _fetch all from "Cur-Two"_:
 
 ```output
- v  
+ v
 ----
  42
 ```

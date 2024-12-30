@@ -105,7 +105,7 @@ var updateAzureProviderCmd = &cobra.Command{
 		}
 		if len(azureCreds.ResourceGroup) > 0 {
 			logrus.Debug("Updating Azure Resource Group\n")
-			azureCloudInfo.SetAzuClientId(azureCreds.ResourceGroup)
+			azureCloudInfo.SetAzuRG(azureCreds.ResourceGroup)
 		}
 
 		azureCreds.ClientID, err = cmd.Flags().GetString("client-id")
@@ -123,7 +123,7 @@ var updateAzureProviderCmd = &cobra.Command{
 		}
 		if len(azureCreds.ClientSecret) > 0 {
 			logrus.Debug("Updating Azure Client Secret\n")
-			azureCloudInfo.SetAzuClientId(azureCreds.ClientSecret)
+			azureCloudInfo.SetAzuClientSecret(azureCreds.ClientSecret)
 		}
 
 		azureCreds.TenantID, err = cmd.Flags().GetString("tenant-id")
@@ -132,7 +132,7 @@ var updateAzureProviderCmd = &cobra.Command{
 		}
 		if len(azureCreds.TenantID) > 0 {
 			logrus.Debug("Updating Azure Tenant ID\n")
-			azureCloudInfo.SetAzuClientId(azureCreds.TenantID)
+			azureCloudInfo.SetAzuTenantId(azureCreds.TenantID)
 		}
 
 		azureCreds.SubscriptionID, err = cmd.Flags().GetString("subscription-id")
@@ -141,7 +141,7 @@ var updateAzureProviderCmd = &cobra.Command{
 		}
 		if len(azureCreds.SubscriptionID) > 0 {
 			logrus.Debug("Updating Azure Subscription ID\n")
-			azureCloudInfo.SetAzuClientId(azureCreds.SubscriptionID)
+			azureCloudInfo.SetAzuSubscriptionId(azureCreds.SubscriptionID)
 		}
 
 		networkRG, err := cmd.Flags().GetString("network-rg")
@@ -150,7 +150,7 @@ var updateAzureProviderCmd = &cobra.Command{
 		}
 		if len(networkRG) > 0 {
 			logrus.Debug("Updating Azure Network Resource Group\n")
-			azureCloudInfo.SetAzuClientId(networkRG)
+			azureCloudInfo.SetAzuNetworkRG(networkRG)
 		}
 
 		networkSubscriptionID, err := cmd.Flags().GetString("network-subscription-id")
@@ -159,7 +159,7 @@ var updateAzureProviderCmd = &cobra.Command{
 		}
 		if len(networkSubscriptionID) > 0 {
 			logrus.Debug("Updating Azure Network Subscription ID\n")
-			azureCloudInfo.SetAzuClientId(networkSubscriptionID)
+			azureCloudInfo.SetAzuNetworkSubscriptionId(networkSubscriptionID)
 		}
 
 		hostedZoneID, err := cmd.Flags().GetString("hosted-zone-id")

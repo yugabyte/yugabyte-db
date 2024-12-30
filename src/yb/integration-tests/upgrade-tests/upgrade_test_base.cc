@@ -420,6 +420,14 @@ Status UpgradeTestBase::PerformYsqlMajorCatalogUpgrade() {
     return Status::OK();
   }
 
+  RETURN_NOT_OK(StartYsqlMajorCatalogUpgrade());
+
+  return WaitForYsqlMajorCatalogUpgradeToFinish();
+}
+
+Status UpgradeTestBase::StartYsqlMajorCatalogUpgrade() {
+  LOG_WITH_FUNC(INFO) << "Starting ysql major upgrade";
+
   LOG(INFO) << "Running ysql major catalog version upgrade";
 
   master::StartYsqlMajorCatalogUpgradeRequestPB req;
@@ -432,7 +440,7 @@ Status UpgradeTestBase::PerformYsqlMajorCatalogUpgrade() {
     return StatusFromPB(resp.error().status());
   }
 
-  return WaitForYsqlMajorCatalogUpgradeToFinish();
+  return Status::OK();
 }
 
 Status UpgradeTestBase::WaitForYsqlMajorCatalogUpgradeToFinish() {

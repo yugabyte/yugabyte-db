@@ -4007,6 +4007,11 @@ InitTempTableNamespace(void)
 
 	Assert(!OidIsValid(myTempNamespace));
 
+	if (IsYugaByteEnabled())
+	{
+		YBCForceAllowCatalogModifications(true);
+	}
+
 	/*
 	 * First, do permission check to see if we are authorized to make temp
 	 * tables.  We use a nonstandard error message here since "databasename:
@@ -4304,7 +4309,10 @@ RemoveTempRelations(Oid tempNamespaceId)
 	object.objectSubId = 0;
 
 	if (IsYugaByteEnabled())
+	{
+		YBCForceAllowCatalogModifications(true);
 		YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
+	}
 	performDeletion(&object, DROP_CASCADE,
 					PERFORM_DELETION_INTERNAL |
 					PERFORM_DELETION_QUIETLY |

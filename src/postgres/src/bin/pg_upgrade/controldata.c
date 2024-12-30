@@ -679,8 +679,8 @@ check_control_data(ControlData *oldctrl,
 	if (oldctrl->index == 0 || oldctrl->index != newctrl->index)
 		pg_fatal("old and new pg_controldata maximum indexed columns are invalid or do not match\n");
 
-#ifdef YB_TODO	
-	/* Investigate/implement this check */	
+#ifdef YB_TODO
+	/* Investigate/implement this check */
 	if (oldctrl->toast == 0 || oldctrl->toast != newctrl->toast)
 		pg_fatal("old and new pg_controldata maximum TOAST chunk sizes are invalid or do not match\n");
 #endif

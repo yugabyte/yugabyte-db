@@ -52,6 +52,7 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
+import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
@@ -80,6 +81,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
   private final OperatorWorkQueue workqueue;
   private final SharedIndexInformer<YBUniverse> ybUniverseInformer;
+  private final SharedIndexInformer<Release> releaseInformer;
   private final String namespace;
   private final Lister<YBUniverse> ybUniverseLister;
   // Resource here has full class name since it conflicts with
@@ -101,7 +103,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final Map<String, UUID> universeTaskMap;
   private Customer customer;
   private OperatorUtils operatorUtils;
-
   private final Integer reconcileExceptionBackoffMS = 5000;
 
   KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
@@ -151,6 +152,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     super(client, informerFactory);
     this.ybUniverseClient = client.resources(YBUniverse.class);
     this.ybUniverseInformer = informerFactory.getSharedIndexInformer(YBUniverse.class, client);
+    this.releaseInformer = informerFactory.getSharedIndexInformer(Release.class, client);
     this.ybUniverseLister = new Lister<>(ybUniverseInformer.getIndexer());
     this.namespace = namespace;
     this.workqueue = workqueue;
@@ -337,6 +339,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                             log.error("Got error in deleting provider", e);
                           }
                         }
+                        // If the release is marked for deletion then remove that as well
+                        maybeDeleteRelease(ybUniverse);
                         log.info("Removing finalizers...");
                         if (ybUniverse.getMetadata() != null) {
                           objectMeta.setFinalizers(Collections.emptyList());
@@ -1177,5 +1181,30 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       return true;
     }
     return false;
+  }
+
+  private Release maybeGetReleaseCr(String releaseVersion) {
+    Lister<Release> releaseLister = new Lister<>(this.releaseInformer.getIndexer());
+    List<Release> releases = releaseLister.list();
+    for (Release release : releases) {
+      if (release.getSpec().getConfig().getVersion().equals(releaseVersion)) {
+        return release;
+      }
+    }
+    log.info("Unable to find release cr for version {}", releaseVersion);
+    return null;
+  }
+
+  private void maybeDeleteRelease(YBUniverse ybUniverse) {
+    try {
+      String releaseVersion = ybUniverse.getSpec().getYbSoftwareVersion();
+      Release release = maybeGetReleaseCr(releaseVersion);
+      if (release != null && release.getMetadata().getDeletionTimestamp() != null) {
+        log.info("Cleaning up release - {}", release.getMetadata().getName());
+        operatorUtils.deleteReleaseCr(release);
+      }
+    } catch (Exception e) {
+      log.error("Error deleting release cr", e);
+    }
   }
 }

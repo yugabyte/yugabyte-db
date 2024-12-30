@@ -2014,10 +2014,10 @@ class CppCassandraDriverTestSlowTServer : public CppCassandraDriverTest {
   }
 
  protected:
-  void testBackfillBatching(bool batching_enabled);
+  void TestBackfillBatching(bool batching_enabled);
 };
 
-void CppCassandraDriverTestSlowTServer::testBackfillBatching(bool batching_enabled) {
+void CppCassandraDriverTestSlowTServer::TestBackfillBatching(bool batching_enabled) {
   ASSERT_OK(cluster_->SetFlagOnMasters(
       "allow_batching_non_deferred_indexes", ToString(batching_enabled)));
   constexpr int64_t kNumTabletsPerTable = 1;
@@ -2033,14 +2033,19 @@ void CppCassandraDriverTestSlowTServer::testBackfillBatching(bool batching_enabl
   int num_deferred_indexes = 0;
   BackfillMetrics before(*cluster_);
   std::vector<YBTableName> indexes;
+  std::vector<CassandraFuture> futures;
   for (int i = 0; i < kNumIndexes; ++i) {
     const YBTableName index_name(YQL_DATABASE_CQL, kNamespace, Format("idx$0", i));
     const bool defer = i % 2 == 0;
-    ASSERT_OK(session_.ExecuteQueryFormat(
-        "CREATE $0 INDEX $1 ON test_table (v)", (defer ? "DEFERRED" : ""),
-        index_name.table_name()));
+    futures.push_back(session_.ExecuteGetFuture(
+        Format("CREATE $0 INDEX $1 ON test_table (v)",
+               (defer ? "DEFERRED" : ""), index_name.table_name())));
     indexes.push_back(std::move(index_name));
     num_deferred_indexes += defer;
+  }
+
+  for (auto& future : futures) {
+    ASSERT_OK(future.Wait());
   }
 
   for (const auto& index_name : indexes) {
@@ -2051,11 +2056,8 @@ void CppCassandraDriverTestSlowTServer::testBackfillBatching(bool batching_enabl
   }
 
   BackfillMetrics after(*cluster_);
-  // CppCassandraDriverTestSlowTServer slows the BackfillIndex rpc at the TServer, but not
-  // the Alters at the master/tserver. Thus, by the time the first index backfill is done,
-  // all other indexes should be at DO_BACKFILL.
-  // Thus, when batching of non-deferred index backfills is allowed, we expect to see 2 batches.
-  const int64_t kNumBatchesExpected = (batching_enabled ? 2 : kNumIndexes - num_deferred_indexes);
+  // When batching of non-deferred index backfills is allowed, we expect to see 1 batche.
+  const int64_t kNumBatchesExpected = batching_enabled ? 1 : kNumIndexes - num_deferred_indexes;
   const int64_t kNumApiCallsExpected = kNumBatchesExpected * kNumTabletsPerTable;
   ASSERT_EQ(0, before.get("backfill_index"));
   ASSERT_EQ(kNumApiCallsExpected, after.get("backfill_index"));
@@ -2064,11 +2066,11 @@ void CppCassandraDriverTestSlowTServer::testBackfillBatching(bool batching_enabl
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestBackfillBatchingEnabled, CppCassandraDriverTestSlowTServer) {
-  testBackfillBatching(true);
+  TestBackfillBatching(true);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestBackfillBatchingDisabled, CppCassandraDriverTestSlowTServer) {
-  testBackfillBatching(false);
+  TestBackfillBatching(false);
 }
 
 TEST_F_EX(CppCassandraDriverTest, ConcurrentBackfillIndexFailures, CppCassandraDriverTest) {

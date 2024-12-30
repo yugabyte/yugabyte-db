@@ -13,6 +13,9 @@
 
 package org.yb.loadtest;
 
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+
 import com.datastax.oss.driver.api.core.ConsistencyLevel;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.CqlSessionBuilder;
@@ -22,31 +25,23 @@ import com.datastax.oss.driver.api.core.config.ProgrammaticDriverConfigLoaderBui
 import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 import com.datastax.oss.driver.api.core.cql.Row;
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder;
-
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.oss.driver.internal.core.loadbalancing.PartitionAwarePolicy;
+import java.net.InetSocketAddress;
+import java.time.Duration;
+import java.util.*;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.google.common.net.HostAndPort;
 import org.yb.*;
-import org.yb.CommonTypes;
 import org.yb.client.*;
-import org.yb.consensus.Metadata;
 import org.yb.minicluster.*;
-import org.yb.YBTestRunner;
+import org.yb.util.YBTestRunnerNonMac;
 
-import java.net.InetSocketAddress;
-import java.time.Duration;
-import java.util.*;
-
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertTrue;
-
-@RunWith(value= YBTestRunner.class)
+@RunWith(value = YBTestRunnerNonMac.class)
 public class TestUnsetDC extends BaseMiniClusterTest {
-
   protected static final Logger LOG = LoggerFactory.getLogger(TestUnsetDC.class);
   private YBTable ybTable = null;
   private LocatedTablet tablet = null;
@@ -371,5 +366,4 @@ public class TestUnsetDC extends BaseMiniClusterTest {
       "placement_region", PLACEMENT_REGION_LIVE+i ,
       "placement_zone", PLACEMENT_ZONE + i);
   }
-
 }

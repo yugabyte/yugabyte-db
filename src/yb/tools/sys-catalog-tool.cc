@@ -732,8 +732,8 @@ Status SysCatalogTool::Init() {
 
   RETURN_NOT_OK(InitFsManager());
   RETURN_NOT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
-  vector<string> tablet_ids = VERIFY_RESULT(fs_manager_->ListTabletIds());
-  sinfo << "Found Tablet IDs: " << yb::ToString(tablet_ids) << endl;
+  auto tablet_ids = VERIFY_RESULT(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kFalse));
+  sinfo << "Found Tablet IDs: " << AsString(tablet_ids) << endl;
 
   // Load SysCatalog Tablet.
   sys_catalog_ = VERIFY_RESULT(MiniSysCatalogTable::Load(fs_manager_.get()));

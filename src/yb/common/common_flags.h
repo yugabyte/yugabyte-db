@@ -31,6 +31,7 @@ DECLARE_bool(TEST_ysql_hide_catalog_version_increment_log);
 DECLARE_bool(TEST_check_catalog_version_overflow);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 DECLARE_bool(ysql_enable_auto_analyze_service);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 namespace yb {
 

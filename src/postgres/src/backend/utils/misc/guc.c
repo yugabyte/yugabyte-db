@@ -2598,6 +2598,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_skip_data_insert_for_table_rewrite", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("If enabled, any DDL operations that cause a table rewrite "
+						 "will skip the data loading phase. "
+						 "WARNING: Incorrect usage will result in data loss."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_skip_data_insert_for_table_rewrite,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_fail_all_drops", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set, all drops will fail"),
 			NULL,
@@ -2659,6 +2672,21 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_table_rewrite_keep_old_table,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_force_catalog_update_on_next_ddl", PGC_USERSET,
+			DEVELOPER_OPTIONS,
+			gettext_noop("Make the next DDL update the catalog in force mode "
+			"which allows it to operate even during ysql major catalog "
+			"upgrades. WARNING: This is a dangerous option and should be used "
+			"only for DDLs on temp tables, and other transient objects."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_force_catalog_update_on_next_ddl,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2949,30 +2977,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_ash_enable_infra", PGC_POSTMASTER, STATS_MONITORING,
-			gettext_noop("Allocate shared memory for ASH, start the "
-							"background worker, create instrumentation hooks "
-							"and enable querying the yb_active_session_history "
-							"view."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_ash_enable_infra,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"yb_enable_ash", PGC_SIGHUP, STATS_MONITORING,
-			gettext_noop("Starts sampling and instrumenting YSQL and YCQL queries, "
-						 "and various background activities. This does nothing if "
-						 "ysql_yb_ash_enable_infra is disabled."),
+		{"yb_enable_ash", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Enable Active Session History for sampling and instrumenting YSQL "
+						 "and YCQL queries, and various background activities."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_ash,
 		true,
-		yb_enable_ash_check_hook, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -2997,7 +3010,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_update_optimization_options.is_enabled,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3033,6 +3046,51 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_nop_alter_role_optimization,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_query_diagnostics", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Enables the collection of query diagnostics data "
+						 "for YSQL queries, facilitating the creation of diagnostic bundles."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_query_diagnostics,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Enable advisory lock feature"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_advisory_locks,
+		false,
+	},
+
+	{
+		{"yb_ignore_freeze_with_copy", PGC_USERSET, ERROR_HANDLING_OPTIONS,
+			gettext_noop("Ignore the FREEZE flag on COPY FROM command."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ignore_freeze_with_copy,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_docdb_vector_type", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Autoflag to enable using the DocDB Vector type. "
+						 "Not to be touched by users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_docdb_vector_type,
 		true,
 		NULL, NULL, NULL
 	},
@@ -10900,7 +10958,7 @@ void
 ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 {
 	GucAction	action = stmt->is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET;
-	bool 		YbDbAdminCanSet = false;
+	bool YbDbAdminCanSet = false;
 
 	if (IsYbDbAdminUser(GetUserId()))
 	{

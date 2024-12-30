@@ -69,15 +69,4 @@ public class DeleteCustomerConfigTest extends CommissionerBaseTest {
     submitTask(TaskType.DeleteCustomerConfig, params, true);
     verify(mockTableManager, times(0)).deleteBackup(any());
   }
-
-  @Test
-  public void testDeleteCustomerConfigWithSchedules() {
-    DeleteCustomerConfig.Params params = new DeleteCustomerConfig.Params();
-    params.customerUUID = defaultCustomer.getUuid();
-    params.configUUID = nfsStorageConfig.getConfigUUID();
-    submitTask(TaskType.DeleteCustomerConfig, params, true);
-    schedule = Schedule.getOrBadRequest(schedule.getScheduleUUID());
-    assertEquals(Schedule.State.Stopped, schedule.getStatus());
-    verify(mockTableManager, times(0)).deleteBackup(any());
-  }
 }

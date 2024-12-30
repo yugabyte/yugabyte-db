@@ -65,6 +65,14 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         OLD_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + OLD_DB_VERSION + "/bin");
   }
 
+  protected SoftwareUpgradeParams getBaseUpgradeParams() {
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.expectedUniverseVersion = -1;
+    params.sleepAfterMasterRestartMillis = 10000;
+    params.sleepAfterTServerRestartMillis = 10000;
+    return params;
+  }
+
   @Test
   public void testSoftwareUpgradeWithNoRollbackSupport() throws InterruptedException {
     RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.skipVersionChecks.getKey(), "true");
@@ -80,10 +88,9 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
     initAndStartPayload(universe);
-    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
-    params.ybSoftwareVersion = DB_VERSION;
+    SoftwareUpgradeParams params = getBaseUpgradeParams();
     params.setUniverseUUID(universe.getUniverseUUID());
-    params.expectedUniverseVersion = -1;
+    params.ybSoftwareVersion = DB_VERSION;
     TaskInfo taskInfo =
         waitForTask(
             upgradeUniverseHandler.upgradeDBVersion(
@@ -110,10 +117,9 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(),
         "false",
         true);
-    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    SoftwareUpgradeParams params = getBaseUpgradeParams();
     params.ybSoftwareVersion = NEW_DB_VERSION;
     params.setUniverseUUID(universe.getUniverseUUID());
-    params.expectedUniverseVersion = -1;
     TaskInfo taskInfo =
         waitForTask(
             upgradeUniverseHandler.upgradeDBVersion(
@@ -150,10 +156,9 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(),
         "false",
         true);
-    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    SoftwareUpgradeParams params = getBaseUpgradeParams();
     params.ybSoftwareVersion = NEW_DB_VERSION;
     params.setUniverseUUID(universe.getUniverseUUID());
-    params.expectedUniverseVersion = -1;
     TaskInfo taskInfo =
         waitForTask(
             upgradeUniverseHandler.upgradeDBVersion(

@@ -171,7 +171,15 @@ bool IsActive(const tablet::TabletPeer& peer) {
 }
 
 bool IsForTable(const tablet::TabletPeer& peer, const TableId& table_id) {
-  return peer.tablet_metadata()->table_id() == table_id;
+  if (table_id.empty()) {
+    return true;
+  }
+  for (const auto& table : peer.tablet_metadata()->GetAllColocatedTables()) {
+    if (table == table_id) {
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace
@@ -1581,6 +1589,22 @@ std::vector<std::string> DumpDocDBToStrings(MiniCluster* cluster, ListPeersFilte
     result.push_back(peer->shared_tablet()->TEST_DocDBDumpStr());
   }
   return result;
+}
+
+void DisableFlushOnShutdown(MiniCluster& cluster, bool disable) {
+  for (const auto& peer : ListTabletPeers(&cluster, ListPeersFilter::kAll)) {
+    auto tablet = peer->shared_tablet();
+    if (!tablet) {
+      continue;
+    }
+    auto doc_db = tablet->doc_db();
+    if (doc_db.regular) {
+      doc_db.regular->SetDisableFlushOnShutdown(disable);
+    }
+    if (doc_db.intents) {
+      doc_db.intents->SetDisableFlushOnShutdown(disable);
+    }
+  }
 }
 
 }  // namespace yb

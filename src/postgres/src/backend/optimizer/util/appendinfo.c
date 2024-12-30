@@ -445,6 +445,12 @@ adjust_appendrel_attrs_mutator(Node *node,
 													context->nappinfos,
 													context->appinfos);
 
+		/* YB: Also adjust rinfos within yb_batched_rinfo. */
+		newinfo->yb_batched_rinfo = (List *)
+			expression_tree_mutator((Node *) oldinfo->yb_batched_rinfo,
+								  adjust_appendrel_attrs_mutator,
+								  context);
+
 		/*
 		 * Reset cached derivative fields, since these might need to have
 		 * different values when considering the child relation.  Note we
@@ -869,12 +875,9 @@ add_row_identity_columns(PlannerInfo *root, Index rtindex,
 	if (IsYBRelation(target_relation))
 	{
 		/*
-		 * If there are secondary indices on the target table, or if we have a
-		 * row-level trigger corresponding to the operations, then also return
-		 * the whole row.
+		 * Emit wholerow if required.
 		 */
-		if (YbUseWholeRowJunkAttribute(target_relation, target_rte->updatedCols,
-									   commandType, root->parse->returningList))
+		if (YbWholeRowAttrRequired(target_relation, commandType))
 		{
 			var = makeVar(rtindex, InvalidAttrNumber, RECORDOID, -1, InvalidOid,
 						  0);

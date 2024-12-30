@@ -42,7 +42,7 @@ Create the two data centers as follows:
 
 In the default `yugabyte` database, you can create the table `users` on the "Data Center - East" cluster:
 
-1. Open `ysqlsh` by specifying the host IP address of `127.0.0.1`, as follows:
+1. Open ysqlsh by specifying the host IP address of `127.0.0.1`, as follows:
 
     ```sh
     ./bin/ysqlsh -h 127.0.0.1
@@ -59,7 +59,7 @@ In the default `yugabyte` database, you can create the table `users` on the "Dat
 
 Create an identical table on your second cluster:
 
-1. Open `ysqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`, as follows:
+1. Open ysqlsh for "Data Center - West" by specifying the host IP address of `127.0.0.2`, as follows:
 
     ```sh
     ./bin/ysqlsh -h 127.0.0.2

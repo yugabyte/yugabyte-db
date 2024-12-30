@@ -201,7 +201,7 @@ select * from pg_temp.tab;
 This works—and produces this result:
 
 ```output
- k  | v  
+ k  | v
 ----+----
  10 | 42
 ```
@@ -217,7 +217,7 @@ select name, kind from pg_temp.my_temporary_schema_objects order by name;
 This is the result:
 
 ```output
-            name             |      kind      
+            name             |      kind
 -----------------------------+----------------
  =                           | operator
  cmplx_equals                | function

@@ -777,7 +777,7 @@ timestamptz_out(PG_FUNCTION_ARGS)
 	const char *tzn;
 	char		buf[MAXDATELEN + 1];
 
-	if(PG_NARGS() == 2)
+	if (PG_NARGS() == 2)
 	{
 		decode_options = (DatumDecodeOptions *)PG_GETARG_POINTER(1);
 	}

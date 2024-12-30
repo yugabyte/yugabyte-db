@@ -116,6 +116,7 @@ class TabletStatusListener {
 struct DocDbOpIds {
   OpId regular;
   OpId intents;
+  boost::container::small_vector<OpId, 1> vector_indexes;
 
   std::string ToString() const;
 };
@@ -136,9 +137,7 @@ class TabletBootstrapTestHooksIf {
   // TabletBootstrap calls this when an operation is replayed.
   // replay_decision is true for transaction update operations that have already been applied to the
   // regular RocksDB but not to the intents RocksDB.
-  virtual void Replayed(
-      OpId op_id,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db) = 0;
+  virtual void Replayed(OpId op_id, const docdb::StorageSet& apply_to_storages) = 0;
 
   // TabletBootstrap calls this when an operation is overwritten after a leader change.
   virtual void Overwritten(OpId op_id) = 0;

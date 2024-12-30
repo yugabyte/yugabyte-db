@@ -150,7 +150,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
-  tablet::TSLocalLockManager* ts_local_lock_manager() override {
+  tablet::TSLocalLockManager* ts_local_lock_manager() const override {
     return ts_local_lock_manager_.get();
   }
 

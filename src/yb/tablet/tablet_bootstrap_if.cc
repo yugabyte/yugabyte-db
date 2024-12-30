@@ -56,8 +56,7 @@
 
 using std::string;
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 using consensus::ConsensusBootstrapInfo;
 
@@ -123,8 +122,7 @@ Status BootstrapTablet(
 }
 
 string DocDbOpIds::ToString() const {
-  return Format("{ regular: $0 intents: $1 }", regular, intents);
+  return YB_STRUCT_TO_STRING(regular, intents, vector_indexes);
 }
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet

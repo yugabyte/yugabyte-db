@@ -23,7 +23,9 @@ typedef enum {
 	OD_LLOG_CONFIG,
 	OD_LLOG_SESSION,
 	OD_LLOG_QUERY,
-	OD_LLOG_FILE,
+	OD_LLOG_DIR,
+	OD_LLOG_MAX_SIZE,
+	OD_LLOG_ROTATE_INTERVAL,
 	OD_LLOG_FORMAT,
 	OD_LLOG_STATS,
 
@@ -171,7 +173,9 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("log_config", OD_LLOG_CONFIG),
 	od_keyword("log_session", OD_LLOG_SESSION),
 	od_keyword("log_query", OD_LLOG_QUERY),
-	od_keyword("log_file", OD_LLOG_FILE),
+	od_keyword("log_dir", OD_LLOG_DIR),
+	od_keyword("log_max_size", OD_LLOG_MAX_SIZE),
+	od_keyword("log_rotate_interval", OD_LLOG_ROTATE_INTERVAL),
 	od_keyword("log_format", OD_LLOG_FORMAT),
 	od_keyword("log_stats", OD_LLOG_STATS),
 	od_keyword("log_syslog", OD_LLOG_SYSLOG),
@@ -2134,10 +2138,24 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 				goto error;
 			}
 			continue;
-		/* log_file */
-		case OD_LLOG_FILE:
+		/* log_dir */
+		case OD_LLOG_DIR:
 			if (!od_config_reader_string(reader,
-						     &config->log_file)) {
+						     &config->log_dir)) {
+				goto error;
+			}
+			continue;
+		/* log_max_size */
+		case OD_LLOG_MAX_SIZE:
+			if (!od_config_reader_number(reader,
+						     &config->log_max_size)) {
+				goto error;
+			}
+			continue;
+		/* log_rotate_interval */
+		case OD_LLOG_ROTATE_INTERVAL:
+			if (!od_config_reader_number(reader,
+						     &config->log_rotate_interval)) {
 				goto error;
 			}
 			continue;

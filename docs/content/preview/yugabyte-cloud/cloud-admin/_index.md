@@ -3,7 +3,6 @@ title: Plan, billing, and invoicing
 headerTitle: Billing
 linkTitle: Billing
 description: Manage plans, billing, and invoicing.
-image: /images/section_icons/explore/administer.png
 headcontent: Manage your plan and payment, and review invoices and usage
 menu:
   preview_yugabyte-cloud:

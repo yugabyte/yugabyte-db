@@ -128,6 +128,8 @@ public class CDCBaseClass extends BaseMiniClusterTest {
     flagMap.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
     flagMap.put("ysql_enable_packed_row", "false");
 
+    flagMap.put("cdc_enable_implicit_checkpointing", "true");
+
     return flagMap;
   }
 

@@ -47,7 +47,7 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
     EXPECT_TRUE(frontier.Equals(frontier));
     EXPECT_EQ(
         "{ op_id: 0.0 hybrid_time: <invalid> "
-        "history_cutoff: { cotables cutoff: <invalid>, primary cutoff: <invalid> } "
+        "history_cutoff: { cotables_cutoff_ht: <invalid> primary_cutoff_ht: <invalid> } "
         "max_value_level_ttl_expiration_time: <invalid> primary_schema_version: <nullopt> "
         "cotable_schema_versions: [] global_filter: <invalid> cotables_filter: [] }",
         frontier.ToString());
@@ -62,7 +62,8 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
     ConsensusFrontier frontier{{1, 1}, 1000_usec_ht, { 500_usec_ht, 500_usec_ht }};
     EXPECT_EQ(
         "{ op_id: 1.1 hybrid_time: { physical: 1000 } "
-        "history_cutoff: { cotables cutoff: { physical: 500 }, primary cutoff: { physical: 500 } } "
+        "history_cutoff: { cotables_cutoff_ht: { physical: 500 } "
+        "primary_cutoff_ht: { physical: 500 } } "
         "max_value_level_ttl_expiration_time: <invalid> primary_schema_version: <nullopt> "
         "cotable_schema_versions: [] global_filter: <invalid> cotables_filter: [] }",
         frontier.ToString());
@@ -122,7 +123,7 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
   EXPECT_EQ(
       PbToString(pb),
       "{ op_id: 0.0 hybrid_time: <min> "
-      "history_cutoff: { cotables cutoff: <invalid>, primary cutoff: <invalid> } "
+      "history_cutoff: { cotables_cutoff_ht: <invalid> primary_cutoff_ht: <invalid> } "
       "max_value_level_ttl_expiration_time: <invalid> primary_schema_version: <nullopt> "
       "cotable_schema_versions: [] global_filter: <invalid> cotables_filter: [] }");
 
@@ -131,7 +132,7 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
   EXPECT_EQ(
       PbToString(pb),
       "{ op_id: 2.3 hybrid_time: <min> "
-      "history_cutoff: { cotables cutoff: <invalid>, primary cutoff: <invalid> } "
+      "history_cutoff: { cotables_cutoff_ht: <invalid> primary_cutoff_ht: <invalid> } "
       "max_value_level_ttl_expiration_time: <invalid> primary_schema_version: <nullopt> "
       "cotable_schema_versions: [] global_filter: <invalid> cotables_filter: [] }");
 
@@ -139,7 +140,7 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
   EXPECT_EQ(
       PbToString(pb),
       "{ op_id: 2.3 hybrid_time: { physical: 24 logical: 1696 } "
-      "history_cutoff: { cotables cutoff: <invalid>, primary cutoff: <invalid> } "
+      "history_cutoff: { cotables_cutoff_ht: <invalid> primary_cutoff_ht: <invalid> } "
       "max_value_level_ttl_expiration_time: <invalid> primary_schema_version: <nullopt> "
       "cotable_schema_versions: [] global_filter: <invalid> cotables_filter: [] }");
 
@@ -147,8 +148,8 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
   EXPECT_EQ(
       PbToString(pb),
       "{ op_id: 2.3 hybrid_time: { physical: 24 logical: 1696 } "
-      "history_cutoff: { cotables cutoff: <invalid>, "
-      "primary cutoff: { physical: 48 logical: 3392 } } "
+      "history_cutoff: { cotables_cutoff_ht: <invalid> "
+      "primary_cutoff_ht: { physical: 48 logical: 3392 } } "
       "max_value_level_ttl_expiration_time: <invalid> primary_schema_version: <nullopt> "
       "cotable_schema_versions: [] global_filter: <invalid> cotables_filter: [] }");
 
@@ -156,8 +157,8 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
   EXPECT_EQ(
       PbToString(pb),
       "{ op_id: 2.3 hybrid_time: { physical: 24 logical: 1696 } "
-      "history_cutoff: { cotables cutoff: { physical: 48 logical: 3392 }, "
-      "primary cutoff: { physical: 48 logical: 3392 } } "
+      "history_cutoff: { cotables_cutoff_ht: { physical: 48 logical: 3392 } "
+      "primary_cutoff_ht: { physical: 48 logical: 3392 } } "
       "max_value_level_ttl_expiration_time: <invalid> primary_schema_version: <nullopt> "
       "cotable_schema_versions: [] global_filter: <invalid> cotables_filter: [] }");
 }

@@ -1201,15 +1201,8 @@ public class UniverseCRUDHandler {
     // Set the node exporter config based on the provider
     UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
     boolean installNodeExporter = universeDetails.extraDependencies.installNodeExporter;
-    int nodeExporterPort = universeDetails.communicationPorts.nodeExporterPort;
     String nodeExporterUser = universeDetails.nodeExporterUser;
     taskParams.extraDependencies.installNodeExporter = installNodeExporter;
-    taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
-
-    for (NodeDetails node : taskParams.nodeDetailsSet) {
-      node.nodeExporterPort = nodeExporterPort;
-    }
-
     if (installNodeExporter) {
       taskParams.nodeExporterUser = nodeExporterUser;
     }
@@ -2493,7 +2486,7 @@ public class UniverseCRUDHandler {
     if (null == primaryCluster
         || runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
         || Util.compareYBVersions(
-                primaryCluster.userIntent.ybSoftwareVersion, "2024.1.0.0", "2.23.0.0", true)
+                primaryCluster.userIntent.ybSoftwareVersion, "2024.2.0.0", "2.25.0.0", true)
             < 0
         || !primaryCluster.userIntent.providerType.isVM()
         || primaryCluster.userIntent.dedicatedNodes) {

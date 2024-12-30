@@ -20,7 +20,7 @@ create function arr()
   language sql
 as $body$
   select array[
-                'mon', 'tue', 'wed', 'thu','fri', 'sat', 'sun', 
+                'mon', 'tue', 'wed', 'thu','fri', 'sat', 'sun',
                 'mon', 'tue', 'wed', 'thu','fri', 'sat', 'sun',
                 'mon', 'tue', 'wed'
               ];
@@ -41,7 +41,7 @@ select pos, days[pos] as day from c order by pos;
 This is the result:
 
 ```output
- pos | day 
+ pos | day
 -----+-----
    1 | mon
    2 | tue
@@ -90,7 +90,7 @@ select array_position(
 This is the result:
 
 ```output
- position 
+ position
 ----------
         9
 ```
@@ -121,7 +121,7 @@ select unnest(
 This is the result:
 
 ```output
- position 
+ position
 ----------
         2
         9

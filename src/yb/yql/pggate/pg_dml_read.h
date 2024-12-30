@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -57,9 +58,11 @@ namespace yb::pggate {
 
 class PgDmlRead : public PgDml {
  public:
+  Status AppendColumnRef(PgColumnRef* colref, bool is_for_secondary_index) override;
+
   // Append a filter condition.
   // Supported expression kind is serialized Postgres expression.
-  Status AppendQual(PgExpr* qual, bool is_primary);
+  Status AppendQual(PgExpr* qual, bool is_for_secondary_index);
 
   // Allocate binds.
   virtual void PrepareBinds();
@@ -103,10 +106,8 @@ class PgDmlRead : public PgDml {
       YBCPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
 
   // Execute.
-  virtual Status Exec(const PgExecParameters* exec_params);
-  Status SetRequestedYbctids(const std::vector<Slice>* ybctids);
-  Status RetrieveYbctidsFromSecondaryIndex(
-      const PgExecParameters* exec_params, std::vector<Slice>* ybctids, bool* exceeded_work_mem);
+  Status Exec(const PgExecParameters* exec_params);
+  void SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids);
 
   Status ANNBindVector(PgExpr* vector);
   Status ANNSetPrefetchSize(int32_t prefetch_size);
@@ -122,6 +123,8 @@ class PgDmlRead : public PgDml {
   [[nodiscard]] bool IsReadFromYsqlCatalog() const;
 
   [[nodiscard]] bool IsIndexOrderedScan() const;
+
+  [[nodiscard]] virtual bool IsPgSelectIndex() const { return false; }
 
  protected:
   explicit PgDmlRead(const PgSession::ScopedRefPtr& pg_session);
@@ -144,6 +147,9 @@ class PgDmlRead : public PgDml {
   std::shared_ptr<LWPgsqlReadRequestPB> read_req_;
 
  private:
+  [[nodiscard]] bool ActualValueForIsForSecondaryIndexArg(
+      bool is_for_secondary_index) const;
+
   [[nodiscard]] ArenaList<LWPgsqlColRefPB>& ColRefPBs() override;
 
   // Indicates that current operation reads concrete row by specifying row's DocKey.
@@ -152,12 +158,14 @@ class PgDmlRead : public PgDml {
   [[nodiscard]] bool IsAllPrimaryKeysBound() const;
   Result<std::vector<Slice>> BuildYbctidsFromPrimaryBinds();
 
-  Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params,
-                                           const std::vector<Slice>& ybctids);
+  Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* params);
   Result<dockv::DocKey> EncodeRowKeyForBound(
       YBCPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound);
 
-  Status InitDocOp();
+  Status InitDocOp(const PgExecParameters* params, bool is_concrete_row_read);
+  Status InitDocOp(const PgExecParameters* params) {
+    return InitDocOp(params, IsConcreteRowRead());
+  }
 
   // Holds original doc_op_ object after call of the UpgradeDocOp method.
   // Required to prevent structures related to request from being freed.

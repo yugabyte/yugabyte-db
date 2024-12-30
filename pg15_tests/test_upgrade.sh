@@ -33,7 +33,6 @@ restart_node_2_in_pg15
 
 # Demonstrate simultaneous access for DMLs before the upgrade has been finalized. (DDLs are not
 # allowed, and rollback to PG11 is still possible.)
-# YB_TODO: Test that DDLs are prohibited when the functionality is implemented.
 
 # Insert from PG15
 diff <(ysqlsh 2 <<EOT | sed 's/ *$//'

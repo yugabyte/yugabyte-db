@@ -449,10 +449,11 @@ YbgStatus YbgExprContextReset(YbgExprContext expr_ctx)
 	PG_STATUS_OK();
 }
 
-YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
-                                    int32_t attno,
-                                    uint64_t datum,
-                                    bool is_null)
+YbgStatus
+YbgExprContextAddColValue(YbgExprContext expr_ctx,
+						  int32_t attno,
+						  uint64_t datum,
+						  bool is_null)
 {
 	PG_SETUP_ERROR_REPORTING();
 

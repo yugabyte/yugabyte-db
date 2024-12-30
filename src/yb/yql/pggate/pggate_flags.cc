@@ -78,6 +78,18 @@ DEFINE_NON_RUNTIME_bool(ysql_suppress_unsafe_alter_notice, false,
 DEFINE_UNKNOWN_int32(ysql_sequence_cache_minval, 100,
              "Set how many sequence numbers to be preallocated in cache.");
 
+DEFINE_RUNTIME_string(ysql_sequence_cache_method, "connection",
+    "Where sequence values are cached for both existing and new sequences. Valid values are "
+    "\"connection\" and \"server\"");
+
+DEFINE_RUNTIME_string(ysql_conn_mgr_sequence_support_mode, "pooled_without_curval_lastval",
+    "Sequence support mode when connection manager is enabled. When set to "
+    "'pooled_without_curval_lastval', currval() and lastval() functions are not supported. "
+    "When set to 'pooled_with_curval_lastval', currval() and lastval() functions are supported. "
+    "In these both settings, the monotonic order of sequence is not guaranteed if the "
+    "'ysql_sequence_cache_method' is set to 'connection'. To support monotonic order also set "
+    "this flag to 'session'");
+
 // Top-level flag to enable all YSQL beta features.
 DEFINE_UNKNOWN_bool(ysql_beta_features, false,
             "Whether to enable all ysql beta features");

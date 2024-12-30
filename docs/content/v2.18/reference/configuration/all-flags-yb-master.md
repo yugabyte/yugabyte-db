@@ -6,7 +6,8 @@ menu:
   v2.18:
     identifier: all-flags-yb-master
     weight: 2440
-type: indexpage
+type: docs
+showRightNav: false
 ---
 
 Use the yb-master binary and its flags to configure the [YB-Master](../../../architecture/concepts/yb-master/) server. The yb-master executable file is located in the `bin` directory of YugabyteDB home. For more detailed information about flags commonly used for production deployments and instructions on using yb-master, refer to the [yb-master](../yb-master/) documentation.

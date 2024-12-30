@@ -49,6 +49,12 @@ Result<Vector> VectorANN<Vector>::GetVectorFromYSQLWire(
   return result;
 }
 
+template <IndexableVectorType Vector>
+Result<Vector> VectorANN<Vector>::GetVectorFromYSQLWire(Slice binary_vector) {
+  const auto& ysql_vector = *pointer_cast<const vector_index::YSQLVector*>(binary_vector.data());
+  return GetVectorFromYSQLWire(ysql_vector, binary_vector.size());
+}
+
 namespace {
 
 // Dummy implementation of the VectorANN interface. This is used for testing.

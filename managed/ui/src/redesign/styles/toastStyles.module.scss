@@ -1,9 +1,12 @@
 .toastMessage {
   display: flex;
+  align-items: center;
   gap: 4px;
+  cursor: default;
 
   a {
     text-decoration: underline;
     color: #fff;
+    cursor: pointer;
   }
 }

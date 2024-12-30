@@ -213,12 +213,19 @@ export interface NodeAgentEntities {
   name: string;
   osType: string;
   port: number;
+  providerUuid: string;
   reachable: boolean;
   state: string;
   updatedAt: string;
   uuid: string;
+  universeUuid: string;
   version: string;
   versionMatched: boolean;
+
+  lastError?: {
+    code: string;
+    message: string;
+  };
 }
 
 export enum NodeAgentStatusList {
@@ -255,19 +262,19 @@ export interface TaskResponse {
 }
 
 export interface MetadataFields {
-	id: string;
-	name?: string;
-	customerId: string;
-	apiToken: string;
-	platformUrl: string;
-	metricsUrl: string;
-	metricsScrapePeriodSec: number;
-	dataMountPoints: string[];
-	otherMountPoints: string[];
-	lastSyncError?: string | null;
+  id: string;
+  name?: string;
+  customerId: string;
+  apiToken: string;
+  platformUrl: string;
+  metricsUrl: string;
+  metricsScrapePeriodSec: number;
+  dataMountPoints: string[];
+  otherMountPoints: string[];
+  lastSyncError?: string | null;
 }
 
 export interface UpdateMetadataFormFields {
-	apiToken: string;
-	metricsScrapePeriodSec: number;
+  apiToken: string;
+  metricsScrapePeriodSec: number;
 }

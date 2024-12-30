@@ -115,8 +115,8 @@ struct ExternalUDTypeSnapshotData {
 typedef std::unordered_map<UDTypeId, ExternalUDTypeSnapshotData> UDTypeMap;
 
 struct TableDescription {
-  scoped_refptr<NamespaceInfo> namespace_info;
-  scoped_refptr<TableInfo> table_info;
+  NamespaceInfoPtr namespace_info;
+  TableInfoPtr table_info;
   TabletInfos tablet_infos;
 };
 
@@ -137,6 +137,12 @@ struct TabletReplicaDriveInfo {
   uint64 wal_files_size = 0;
   uint64 uncompressed_sst_file_size = 0;
   bool may_have_orphaned_post_split_data = true;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        sst_files_size, wal_files_size, uncompressed_sst_file_size,
+        may_have_orphaned_post_split_data);
+  }
 };
 
 struct FullCompactionStatus {
@@ -446,9 +452,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.schema();
   }
 
-  const std::string& indexed_table_id() const;
+  const TableId& indexed_table_id() const;
 
   bool is_index() const;
+  bool is_vector_index() const;
 
   SchemaPB* mutable_schema() {
     return pb.mutable_schema();
@@ -506,6 +513,22 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
 
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
+
+  bool IsXClusterDDLReplicationDDLQueueTable() const;
+  bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
+
+  bool IsXClusterDDLReplicationTable() const {
+    return IsXClusterDDLReplicationDDLQueueTable() ||
+           IsXClusterDDLReplicationReplicatedDDLsTable();
+  }
+
+  Result<uint32_t> GetPgTableOid(const std::string& id) const;
+  bool has_pg_type_oid() const;
+  Result<Schema> GetSchema() const;
+
+  TableType GetTableType() const {
+    return pb.table_type();
+  }
 };
 
 // A tablet, and two partitions that together cover the tablet's partition.
@@ -568,12 +591,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::string ToString() const override;
   std::string ToStringWithState() const;
 
-  const NamespaceId namespace_id() const;
-  const NamespaceName namespace_name() const;
+  NamespaceId namespace_id() const;
+  NamespaceName namespace_name() const;
 
   ColocationId GetColocationId() const;
 
-  const Status GetSchema(Schema* schema) const;
+  Result<Schema> GetSchema() const;
 
   bool has_pgschema_name() const;
 
@@ -752,10 +775,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsTablegroupParentTable() const;
   bool IsColocatedUserTable() const;
   bool IsSequencesSystemTable() const;
+  bool IsSequencesSystemTable(const ReadLock& lock) const;
   bool IsXClusterDDLReplicationDDLQueueTable() const;
   bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
   bool IsXClusterDDLReplicationTable() const {
-    return IsXClusterDDLReplicationDDLQueueTable() || IsXClusterDDLReplicationReplicatedDDLsTable();
+    return LockForRead()->IsXClusterDDLReplicationTable();
   }
 
   // Provides the ID of the tablespace that will be used to determine
@@ -778,6 +802,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   std::vector<TransactionId> EraseDdlTxnsWaitingForSchemaVersion(
       int schema_version) EXCLUDES(lock_);
+
+  bool IsUserCreated() const;
+  bool IsUserTable() const;
+  bool IsUserIndex() const;
+
+  bool IsUserCreated(const ReadLock& lock) const;
+  bool IsUserTable(const ReadLock& lock) const;
+  bool IsUserIndex(const ReadLock& lock) const;
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;

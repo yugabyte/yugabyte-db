@@ -1,8 +1,9 @@
 import { MetricMeasure, MetricTypes } from '../components/metrics/constants';
 import { MetricsPanel } from '../components/metrics';
-import { isKubernetesUniverse } from './UniverseUtils';
+import { getIsKubernetesUniverse } from './UniverseUtils';
 import { YBLoading, YBErrorIndicator } from '../components/common/indicators';
-import { isNonEmptyObject, isNonEmptyString } from './ObjectUtils';
+import { isEmptyString, isNonEmptyObject, isNonEmptyString } from './ObjectUtils';
+import { DEFAULT_TIMEZONE } from '../redesign/helpers/constants';
 
 export const getTabContent = (
   graph: any,
@@ -12,6 +13,7 @@ export const getTabContent = (
   title: string,
   currentUser: any,
   isGranularMetricsEnabled: boolean,
+  isMetricsTimezoneEnabled: boolean,
   updateTimestamp: (start: 'object' | number, end: 'object' | number) => void,
   printMode: boolean
 ) => {
@@ -30,6 +32,18 @@ export const getTabContent = (
 
   const { metrics, prometheusQueryEnabled } = graph;
   const { nodeName, metricMeasure } = graph.graphFilter;
+
+  const getUserTimezone = () => {
+    return currentUser?.data?.timezone;
+  };
+
+  const getMetricsSessionTimezone = () => {
+    const metricsTimezone = sessionStorage.getItem('metricsTimezone');
+    if (metricsTimezone === DEFAULT_TIMEZONE.value || isEmptyString(metricsTimezone)) {
+      return getUserTimezone();
+    }
+    return metricsTimezone;
+  };
 
   if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
     /* Logic here is, since there will be multiple instances of GraphTab
@@ -67,13 +81,16 @@ export const getTabContent = (
             isGranularMetricsEnabled={isGranularMetricsEnabled}
             updateTimestamp={updateTimestamp}
             printMode={printMode}
+            metricsTimezone={
+              isMetricsTimezoneEnabled ? getMetricsSessionTimezone() : getUserTimezone()
+            }
           />
         ) : null;
       })
       .filter(Boolean);
   }
 
-  if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
+  if (selectedUniverse && getIsKubernetesUniverse(selectedUniverse)) {
     //Hide master related panels for tserver pods.
     // eslint-disable-next-line eqeqeq
     if (nodeName.match('yb-tserver-') != null) {

@@ -1,0 +1,16 @@
+Table name: test_table1
+- Table information:
+|Table Name         |Table Groupname |Colocated |
++-------------------+----------------+----------+
+|public.test_table1 |                |false     |
+
+- Columns:
+|Column |Type             |Collation |Nullable |Default |Storage  |Stats Target |Description |
++-------+-----------------+----------+---------+--------+---------+-------------+------------+
+|a      |text             |          |         |        |extended |             |            |
+|b      |integer          |          |         |        |plain    |             |            |
+|c      |double precision |          |         |        |plain    |             |            |
+
+
+============================================================
+

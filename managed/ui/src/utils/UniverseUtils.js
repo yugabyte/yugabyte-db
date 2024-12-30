@@ -221,7 +221,7 @@ export function hasLiveNodes(universe) {
   return false;
 }
 
-export function isKubernetesUniverse(currentUniverse) {
+export function getIsKubernetesUniverse(currentUniverse) {
   return (
     isDefinedNotNull(currentUniverse.universeDetails) &&
     isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) &&
@@ -377,7 +377,7 @@ export const unformatConf = (formValues, GFlagInput) => {
     }
 
     const content = isNonEmptyString(GFlagRowConfSubset) ? GFlagRowConfSubset : GFlagRowConf;
-    const isDisabled = isRowDisabled(formValues, flagName, GFlagRowConfSubset);
+    const isDisabled = isRowDisabled(formValues, flagName, content);
 
     return {
       id: `item-${index}`,

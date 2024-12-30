@@ -50,6 +50,7 @@
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/shared_lock_manager.h"
+#include "yb/docdb/storage_set.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -98,6 +99,7 @@ namespace tablet {
 YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
+YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
@@ -329,20 +331,19 @@ class Tablet : public AbstractTablet,
   // Apply all of the row operations associated with this transaction.
   Status ApplyRowOperations(
       WriteOperation* operation,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
+      const docdb::StorageSet& apply_to_storages = {});
 
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
+      const docdb::StorageSet& apply_to_storages = {});
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers* frontiers,
-      HybridTime write_hybrid_time, HybridTime local_hybrid_time,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
+      HybridTime write_hybrid_time, HybridTime local_hybrid_time);
 
   void WriteToRocksDB(
       const rocksdb::UserFrontiers* frontiers,
@@ -653,7 +654,7 @@ class Tablet : public AbstractTablet,
   // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
   void TEST_DocDBDumpToLog(IncludeIntents include_intents);
 
-  Result<size_t> TEST_CountRegularDBRecords();
+  Result<size_t> TEST_CountDBRecords(docdb::StorageDbType db_type);
 
   Status CreateReadIntents(
       IsolationLevel level,
@@ -873,7 +874,7 @@ class Tablet : public AbstractTablet,
 
   // Should only be used in code that could be executed from Raft operations apply or other
   // callsites that doesn't handle RocksDB shutdown start (without destroy, see
-  // Tablet::StartShutdownRocksDBs, rocksdb::DB::StartShutdown) during operation, so tablet shutdown
+  // Tablet::StartShutdownStorages, rocksdb::DB::StartShutdown) during operation, so tablet shutdown
   // will wait till their completion and don't fail Raft operation apply.
   ScopedRWOperation CreateScopedRWOperationBlockingRocksDbShutdownStart(
       const CoarseTimePoint deadline = CoarseTimePoint()) const;
@@ -917,13 +918,13 @@ class Tablet : public AbstractTablet,
   // 4. Pauses new read/write operations and wait for all of those that are pending to complete.
   // Returns TabletScopedRWOperationPauses that are preventing new read/write operations from being
   // started.
-  TabletScopedRWOperationPauses StartShutdownRocksDBs(
+  TabletScopedRWOperationPauses StartShutdownStorages(
       DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops,
       Stop stop = Stop::kFalse);
 
   // Returns DB paths for destructed in-memory RocksDBs objects, so caller can delete on-disk
   // directories if needed.
-  std::vector<std::string> CompleteShutdownRocksDBs(
+  std::vector<std::string> CompleteShutdownStorages(
       const TabletScopedRWOperationPauses& ops_pauses);
 
   Status OpenKeyValueTablet();
@@ -1024,7 +1025,7 @@ class Tablet : public AbstractTablet,
 
   // Attempt to delete on-disk RocksDBs from all provided db_paths, even if errors are encountered.
   // Return the first error encountered.
-  Status DeleteRocksDBs(const std::vector<std::string>& db_paths);
+  Status DeleteStorages(const std::vector<std::string>& db_paths);
 
   Status DoEnableCompactions();
 
@@ -1206,6 +1207,15 @@ class Tablet : public AbstractTablet,
   template <class Ids>
   Status RemoveIntentsImpl(const RemoveIntentsData& data, RemoveReason reason, const Ids& ids);
 
+  // Remove advisory lock intents for the given transaction id.
+  Status RemoveAdvisoryLocks(const TransactionId& id,
+                             rocksdb::DirectWriteHandler* handler) override;
+
+  // Remove the advisory lock intent with speficied key and intent_types for the given txn id.
+  Status RemoveAdvisoryLock(
+      const TransactionId& transaction_id, const Slice& key,
+      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler* handler) override;
+
   // Tries to find intent .SST files that could be deleted and remove them.
   void DoCleanupIntentFiles();
 
@@ -1221,6 +1231,20 @@ class Tablet : public AbstractTablet,
   auto GetRegularDbStat(const F& func, const decltype(func())& default_value) const;
 
   HybridTime DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMetaData*>& inputs);
+
+  Result<rocksdb::Options> CommonRocksDBOptions();
+  Status OpenRegularDB(const rocksdb::Options& common_options);
+  Status OpenIntentsDB(const rocksdb::Options& common_options);
+  Status OpenVectorIndexes();
+  // Creates vector index for specified index and indexed tables.
+  // allow_inplace_insert is set to true only during initial tablet bootstrap, so nobody should
+  // hold external pointer to vector index list at this moment.
+  Status CreateVectorIndex(
+      const TableInfo& index_table, const TableInfo& indexed_table, bool allow_inplace_insert)
+      REQUIRES(vector_indexes_mutex_);
+  docdb::VectorIndexesPtr VectorIndexesList() const EXCLUDES(vector_indexes_mutex_);
+
+  docdb::HistoryCutoff AllowedHistoryCutoff();
 
   mutable std::mutex flush_filter_mutex_;
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_
@@ -1252,6 +1276,7 @@ class Tablet : public AbstractTablet,
   std::function<void()> num_sst_files_changed_listener_
       GUARDED_BY(num_sst_files_changed_listener_mutex_);
 
+  AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;
 
   std::mutex full_compaction_token_mutex_;
@@ -1291,7 +1316,7 @@ class Tablet : public AbstractTablet,
   std::unique_ptr<OperationFilter> restoring_operation_filter_ GUARDED_BY(operation_filters_mutex_);
 
   std::atomic<bool> has_vector_indexes_{false};
-  std::shared_mutex vector_indexes_mutex_;
+  mutable std::shared_mutex vector_indexes_mutex_;
   std::unordered_map<TableId, docdb::VectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
   docdb::VectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);

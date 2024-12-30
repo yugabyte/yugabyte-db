@@ -125,7 +125,7 @@ class HnswlibIndex :
     return Status::OK();
   }
 
-  Status DoLoadFromFile(const std::string& path) {
+  Status DoLoadFromFile(const std::string& path, size_t) {
     // Create hnsw_ before loading from file.
     RETURN_NOT_OK(Reserve(0, 0, 0));
     try {
@@ -144,9 +144,9 @@ class HnswlibIndex :
   }
 
   std::vector<VertexWithDistance<DistanceResult>> DoSearch(
-      const Vector& query_vector, size_t max_num_results) const {
+      const Vector& query_vector, const SearchOptions& options) const {
     std::vector<VertexWithDistance<DistanceResult>> result;
-    auto tmp_result = hnsw_->searchKnnCloserFirst(query_vector.data(), max_num_results);
+    auto tmp_result = hnsw_->searchKnnCloserFirst(query_vector.data(), options.max_num_results);
     result.reserve(tmp_result.size());
     for (const auto& entry : tmp_result) {
       // Being careful to avoid switching the order of distance and vertex id..

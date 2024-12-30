@@ -1343,11 +1343,11 @@ static void
 initRandomState(RandomState *random_state)
 {
 	random_state->data[0] = (unsigned short)
-                (pg_jrand48(base_random_sequence.data) & 0xFFFF);
+		(pg_jrand48(base_random_sequence.data) & 0xFFFF);
 	random_state->data[1] =(unsigned short)
-                (pg_jrand48(base_random_sequence.data) & 0xFFFF);
+		(pg_jrand48(base_random_sequence.data) & 0xFFFF);
 	random_state->data[2] = (unsigned short)
-                (pg_jrand48(base_random_sequence.data) & 0xFFFF);
+		(pg_jrand48(base_random_sequence.data) & 0xFFFF);
 
 	random_state->xseed[0] = (unsigned short)
 		(pg_jrand48(base_random_sequence.xseed) & 0xFFFF);
@@ -1972,7 +1972,7 @@ YbLookupVariable(Variables *variables, char *name)
 {
 #ifdef YB_TODO
 	/* Need to replace this with Postgres's implementation. */
- 	Variable	key;
+	Variable	key;
 
 	/* On some versions of Solaris, bsearch of zero items dumps core */
 	if (variables->nvariables <= 0)
@@ -4300,7 +4300,7 @@ static void
 YbCopyVariables(Variables *destination_vars, const Variables *source_vars)
 {
 #ifdef YB_TODO
-    /* Need to replace Yugabyte's code with Postgres's implementation. */
+	/* Need to replace Yugabyte's code with Postgres's implementation. */
 	Variable   *destination;
 	Variable   *current_destination;
 	const Variable *source;
@@ -4706,13 +4706,13 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 						st->state = CSTATE_ABORTED;
 						break;
 					}
-					else                                                             
-					{                                                                
-						// Connection init sql                                   
-						if (yb_connection_init_sql != NULL) {                       
+					else
+					{
+						// Connection init sql
+						if (yb_connection_init_sql != NULL) {
 							executeStatement(st->con,
-									 yb_connection_init_sql);  
-						}                                                        
+									 yb_connection_init_sql);
+						}
 					}
 
 					/* reset now after connection */
@@ -6092,21 +6092,21 @@ initCreateTables(PGconn *con, bool use_primary_key)
 			"ysql_bench_tellers",
 			"tid int not null,bid int,tbalance int,filler char(84)",
 			"tid int not null,bid int,tbalance int,filler char(84)",
-      ",PRIMARY KEY(tid)",
+			",PRIMARY KEY(tid)",
 			1
 		},
 		{
 			"ysql_bench_accounts",
 			"aid    int not null,bid int,abalance int,filler char(84)",
 			"aid bigint not null,bid int,abalance int,filler char(84)",
-      ",PRIMARY KEY(aid)",
+			",PRIMARY KEY(aid)",
 			1
 		},
 		{
 			"ysql_bench_branches",
 			"bid int not null,bbalance int,filler char(88)",
 			"bid int not null,bbalance int,filler char(88)",
-      ",PRIMARY KEY(bid)",
+			",PRIMARY KEY(bid)",
 			1
 		}
 	};
@@ -8359,8 +8359,8 @@ main(int argc, char **argv)
 				}
 				yb_metrics_arg_set = true;
 				break;
-			case 18:                                /* yb-connection-init-sql */                
-				yb_connection_init_sql = pg_strdup(optarg);                                 
+			case 18:                                /* yb-connection-init-sql */
+				yb_connection_init_sql = pg_strdup(optarg);
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -8747,7 +8747,7 @@ main(int argc, char **argv)
 	initStats(&stats, 0);
 
 	/* Start metrics webserver if any metrics args are set */
-	if(yb_metrics_arg_set)
+	if (yb_metrics_arg_set)
 	{
 		YbInitMetricsWebserver(argv[0]);
 	}
@@ -8866,11 +8866,11 @@ threadRun(void *arg)
 				pg_fatal("could not create connection for client %d",
 						 state[i].id);
 			}
-			else                                                                             
-			{                                                                                
-				if (yb_connection_init_sql != NULL) {                                       
-					executeStatement(state[i].con, yb_connection_init_sql);             
-				}                                                                        
+			else
+			{
+				if (yb_connection_init_sql != NULL) {
+					executeStatement(state[i].con, yb_connection_init_sql);
+				}
 			}
 		}
 	}
