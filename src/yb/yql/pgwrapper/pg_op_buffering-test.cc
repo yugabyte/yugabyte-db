@@ -11,6 +11,8 @@
 // under the License.
 
 #include <cmath>
+#include <cstdio>
+#include <fstream>
 #include <optional>
 #include <string>
 
@@ -41,6 +43,12 @@ class PgOpBufferingTest : public PgMiniTestBase {
 
   size_t NumTabletServers() override {
     return 1;
+  }
+
+  Result<PGConn> CreateColocatedDB(const std::string& db_name) {
+    PGConn conn = VERIFY_RESULT(ConnectToDB("yugabyte"));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", db_name));
+    return ConnectToDB(db_name);
   }
 
   std::optional<SingleMetricWatcher> write_rpc_watcher_;
@@ -312,6 +320,222 @@ TEST_F(PgOpBufferingTest, TxnRollbackWithInFlightOperations) {
        kMaxBatchSize * 3 + 1,
        kMaxItems));
   ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+}
+
+Status CreateTableWithIndex(PGConn* conn, const std::string& name, int num_indices = 1,
+                            bool fk = false, int num_rows = 0, bool temporary_table = false) {
+  if (fk) {
+    RETURN_NOT_OK(conn->Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
+    RETURN_NOT_OK(conn->ExecuteFormat("INSERT INTO t VALUES(generate_series(0, $0))", num_rows));
+  }
+
+  // Start building the column definitions (k column + dynamic v columns)
+  std::string column_defs = "k INT CONSTRAINT " + PKConstraintName(name) + " PRIMARY KEY";
+
+  // Add dynamic columns v0, v1, v2, ..., vn
+  for (int i = 0; i <= num_indices; ++i) {
+    column_defs += ", v" + std::to_string(i) + " INT";
+  }
+  if (fk) {
+    // add fk to last column
+    column_defs += " REFERENCES t(k)";
+  }
+
+  const std::string create_table = temporary_table ?  "CREATE TEMPORARY TABLE " : "CREATE TABLE ";
+  const std::string sql = create_table + name + "(" + column_defs + ")";
+
+  // Execute the query to create the table
+  RETURN_NOT_OK(conn->ExecuteFormat(sql));
+
+  // After the table is created, create an index for each of the columns v1, v2, ..., vn
+  for (int i = 1; i <= num_indices; ++i) {
+    std::string index_constraint = name + "_v" + std::to_string(i) + "_idx";
+    std::string create_index_sql = "CREATE INDEX " + index_constraint + " ON " + name + "(v" +
+                                   std::to_string(i) + ")";
+    // Create the index for the column
+    RETURN_NOT_OK(conn->ExecuteFormat(create_index_sql));
+  }
+
+  return Status::OK();
+}
+
+void generateCSVFileForCopy(const std::string& filename, int num_rows, int num_columns) {
+  std::remove(filename.c_str());
+  std::ofstream temp_file(filename);
+  temp_file << "k";
+  for (int c = 0; c < num_columns - 1; ++c) {
+    temp_file << ",v" << c;
+  }
+  temp_file << std::endl;
+  for (int i = 0; i < num_rows; ++i) {
+    temp_file << i;
+    for (int c = 0; c < num_columns - 1; ++c) {
+      temp_file << "," << i + c;
+    }
+    temp_file << std::endl;
+  }
+  temp_file.close();
+}
+
+void TestBulkLoadUseFastPathForColocated(PGConn* conn, const std::string& table_name,
+    int num_rows, int num_indices, std::optional<SingleMetricWatcher>& write_rpc_watcher) {
+  std::string csv_filename = "/tmp/PgOpBufferingTest_copy_test.tmp";
+  generateCSVFileForCopy(csv_filename, num_rows, num_indices + 2);
+  const int total_write_entries = num_rows * (num_indices + 1);
+  ASSERT_OK(CreateTableWithIndex(conn, table_name, num_indices));
+  // will take 2 buffers if not adjusted
+  ASSERT_OK(SetMaxBatchSize(conn, total_write_entries - 1));
+  auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
+      [&conn, &csv_filename, &table_name](){
+        return conn->ExecuteFormat(
+            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            table_name, csv_filename);
+      }));
+
+  if (num_indices > 0) {
+    // the buffer size is adjusted to total_write_entries, all writes will take 1 rpc.
+    ASSERT_EQ(write_rpc_count, 1);
+  } else {
+    // Without index, the buffer size is not adjusted.
+    ASSERT_EQ(write_rpc_count, 2);
+  }
+
+  // For colocated table, if ROWS_PER_TRANSACTION is set explicitly, distributed transaction
+  // will be used, so the buffer batch size will not be adjusted.
+  write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
+      [&conn, &csv_filename, table_name](){
+        return conn->ExecuteFormat(
+            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, ROWS_PER_TRANSACTION 20000, REPLACE)",
+            table_name, csv_filename);
+      }));
+  // the buffer size is not adjusted, all write will take 2 rpc.
+  ASSERT_EQ(write_rpc_count, 2);
+}
+
+TEST_F(PgOpBufferingTest, BulkLoadUseFastPathForColocatedConsistencyTest) {
+  // For colocated table, if ROWS_PER_TRANSACTION is not set explicitly, fast path transaction will
+  // be used so the buffer batch size will be adjusted.
+  auto conn = ASSERT_RESULT(CreateColocatedDB("colo_db"));
+  for (int i = 0; i <= 3; ++i) {
+    TestBulkLoadUseFastPathForColocated(&conn, kTable + std::to_string(i), 100,
+                                        i, write_rpc_watcher_);
+  }
+}
+
+// If there is a fk constraint on the colocated table, distributed transaction will be used.
+// The buffer size is not adjusted to account for the indexes and hence 2 buffers will be used.
+void CheckBulkLoadForColocatedFK(PGConn* conn, const std::string& table_name,
+                                 const std::string& csv_filename, int num_rows,
+                                 std::optional<SingleMetricWatcher>& write_rpc_watcher) {
+  ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 1,
+                                 /* fk = */ true, num_rows));
+  auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
+      [&conn, &csv_filename, &table_name](){
+        return conn->ExecuteFormat(
+            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            table_name, csv_filename);
+      }));
+  ASSERT_EQ(write_rpc_count, 2);
+}
+
+// If there is a trigger on the colocated table, distributed transaction will be used.
+// The buffer size is not adjusted to account for the indexes and hence 2 buffers will be used.
+void CheckBulkLoadForColocatedTrigger(PGConn* conn, const std::string& table_name,
+                                      const std::string& csv_filename,
+                                      std::optional<SingleMetricWatcher>& write_rpc_watcher) {
+  ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 1));
+  std::string func_sql =
+        "CREATE OR REPLACE FUNCTION update_column() \n"
+        "RETURNS TRIGGER AS $$ \n"
+        "BEGIN \n"
+        "    NEW.v0 := 1; \n"
+        "    RETURN NEW; \n"
+        "END; \n"
+        "$$ LANGUAGE plpgsql;";
+  ASSERT_OK(conn->ExecuteFormat(func_sql));
+  std::string create_trigger_sql = "CREATE TRIGGER test_trigger AFTER UPDATE ON " + table_name +
+      " FOR EACH ROW EXECUTE FUNCTION update_column()";
+  ASSERT_OK(conn->ExecuteFormat(create_trigger_sql));
+
+  auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
+      [&conn, &csv_filename, &table_name](){
+        return conn->ExecuteFormat(
+            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            table_name, csv_filename);
+      }));
+  ASSERT_EQ(write_rpc_count, 2);
+}
+
+// If a transaction is started explicitly, should use distributed transaction.
+// The buffer size is not adjusted to account for the indexes and hence 2 buffers will be used.
+void CheckBulkLoadForColocatedExplicitTxn(PGConn* conn, const std::string& table_name,
+                                          const std::string& csv_filename,
+                                          std::optional<SingleMetricWatcher>& write_rpc_watcher) {
+  ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 1));
+  auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
+      [&conn, &csv_filename, &table_name](){
+        return conn->ExecuteFormat(
+            "begin transaction isolation level repeatable read;"
+            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            table_name, csv_filename);
+      }));
+  ASSERT_EQ(write_rpc_count, 2);
+}
+
+// For temporary table, should not use fast-path transaction. The data doesn't go through tserver
+// so rpc should be 0.
+void CheckBulkLoadForColocatedTempTable(PGConn* conn, const std::string& table_name,
+                                        const std::string& csv_filename,
+                                        std::optional<SingleMetricWatcher>& write_rpc_watcher) {
+  ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 1, /* fk = */ false,
+      /* num_rows*/ 0, /* temporary_table */ true));
+  auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
+      [&conn, &csv_filename, &table_name](){
+        return conn->ExecuteFormat(
+            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            table_name, csv_filename);
+      }));
+  ASSERT_EQ(write_rpc_count, 0);
+}
+
+// Test the cases which should always use distributed transaction on colocated table.
+TEST_F(PgOpBufferingTest, BulkLoadForColocatedUseDistributedTxnTest) {
+  std::string csv_filename = "/tmp/PgOpBufferingTest_copy_test.tmp";
+  const int num_rows = 100;
+  const std::string table_name = kTable;
+  generateCSVFileForCopy(csv_filename, num_rows, /* num_columns = */ 3);
+  auto conn = ASSERT_RESULT(CreateColocatedDB("colo_db"));
+  ASSERT_OK(SetMaxBatchSize(&conn, num_rows * 2 - 1));
+
+  CheckBulkLoadForColocatedFK(&conn, table_name + "_fk", csv_filename, num_rows,
+      write_rpc_watcher_);
+  CheckBulkLoadForColocatedTrigger(&conn, table_name + "_trigger", csv_filename,
+      write_rpc_watcher_);
+  CheckBulkLoadForColocatedExplicitTxn(&conn, table_name + "_txn", csv_filename,
+      write_rpc_watcher_);
+  CheckBulkLoadForColocatedTempTable(&conn, table_name + "_temporary", csv_filename,
+      write_rpc_watcher_);
+}
+
+// Test that distributed transaction should be used in the non-colocated case even if rows per
+// transaction isn't specified.
+TEST_F(PgOpBufferingTest, BulkLoadForNonColocatedTest) {
+  std::string csv_filename = "/tmp/PgOpBufferingTest_copy_test.tmp";
+  const int num_rows = 100;
+  generateCSVFileForCopy(csv_filename, num_rows, /* num_columns = */ 3);
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string table_name = kTable;
+  ASSERT_OK(CreateTableWithIndex(&conn, table_name, /* num_indices = */ 1));
+  ASSERT_OK(SetMaxBatchSize(&conn, num_rows * 2 - 1));
+  auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta(
+      [&conn, &csv_filename, &table_name](){
+        return conn.ExecuteFormat(
+            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            table_name, csv_filename);
+      }));
+  // For non-colcated table, table and index may be located in separate tables, so it takes
+  // at least 2 rpc.
+  ASSERT_GE(write_rpc_count, 2);
 }
 
 } // namespace yb::pgwrapper

@@ -1448,6 +1448,10 @@ YbcStatus YBCPgFlushBufferedOperations() {
   return ToYBCStatus(pgapi->FlushBufferedOperations());
 }
 
+YbcStatus YBCPgAdjustOperationsBuffering(int multiple) {
+  return ToYBCStatus(pgapi->AdjustOperationsBuffering(multiple));
+}
+
 YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_count) {
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
 }

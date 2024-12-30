@@ -1352,6 +1352,10 @@ Status PgApiImpl::FlushBufferedOperations() {
   return pg_session_->FlushBufferedOperations();
 }
 
+Status PgApiImpl::AdjustOperationsBuffering(int multiple) {
+  return pg_session_->AdjustOperationsBuffering(multiple);
+}
+
 Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
   auto& dml_write = VERIFY_RESULT_REF(GetStatementAs<PgDmlWrite>(handle));
   RETURN_NOT_OK(dml_write.Exec(ForceNonBufferable{rows_affected_count != nullptr}));
