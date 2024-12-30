@@ -31,6 +31,8 @@ DECLARE_string(TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 DECLARE_bool(ysql_conn_mgr_superuser_sticky);
 DECLARE_bool(ysql_conn_mgr_version_matching);
 DECLARE_bool(ysql_conn_mgr_version_matching_connect_higher_version);
+DECLARE_int32(ysql_conn_mgr_max_query_size);
+DECLARE_int32(ysql_conn_mgr_wait_timeout_ms);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
@@ -217,6 +219,12 @@ Status YsqlConnMgrWrapper::Start() {
   proc_->SetEnv(
       "YB_YSQL_CONN_MGR_VERSION_MATCHING_CONNECT_HIGHER_VERSION",
       FLAGS_ysql_conn_mgr_version_matching_connect_higher_version ? "true" : "false");
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_MAX_QUERY_SIZE", std::to_string(FLAGS_ysql_conn_mgr_max_query_size));
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_WAIT_TIMEOUT_MS", std::to_string(FLAGS_ysql_conn_mgr_wait_timeout_ms));
 
   unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if (FLAGS_enable_ysql_conn_mgr_stats) {

@@ -11,6 +11,12 @@
 
 bool version_matching = false;
 bool version_matching_connect_higher_version = false;
+/*
+ * YB TODO(mkumar): GH#24724 Implement a solution to process the quries
+ * in batches rather than only increasing the size of query array.
+ */
+int yb_max_query_size = OD_QRY_MAX_SZ;
+int yb_wait_timeout = YB_DEFAULT_WAIT_TIMEOUT;
 
 static inline void od_frontend_close(od_client_t *client)
 {
