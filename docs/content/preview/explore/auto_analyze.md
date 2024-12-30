@@ -1,8 +1,9 @@
 ---
-title: auto analyze service
-headerTitle: auto analyze service
-linkTitle: auto analyze service
-description: Using the auto analyze service in YugabyteDB
+title: Auto Analyze service
+headerTitle: Auto Analyze service
+linkTitle: Auto Analyze
+description: Use the Auto Analyze service to keep table statistics up to date
+headcontent: Keep table statistics up to date automatically
 tags:
   feature: tech-preview
 menu:
@@ -13,58 +14,70 @@ menu:
 type: docs
 ---
 
-Having accurate and up-to-date statistics related to tables and their columns is important for a query planner to create the optimal plan for a given query.
+To create optimal plans for queries, the query planner needs accurate and up-to-date statistics related to tables and their columns. These statistics are also used by the YugabyteDB [cost-based optimizer](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) (CBO) to create optimal execution plans for queries. To generate the statistics, you run the [ANALYZE](../../api/ysql/the-sql-language/statements/cmd_analyze/) command. ANALYZE collects statistics about the contents of tables in the database, and stores the results in the `pg_statistic` system catalog.
 
-Similar to PostgresSQL autovaccum feature, YugabyteDB has the auto analyze service to automate the execution of ANALYZE commands for any table with mutated rows more than the analyze threshold calculated for the table. This ensures table statistics are up-to-date.
+Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM), the YugabyteDB Auto Analyze service automates the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold for the table. This ensures table statistics are always up-to-date.
 
+## Enable Auto Analyze
 
-## Enable auto analyze service
+The Auto Analyze service is {{<tags/feature/tp>}}. Before you can use the feature, you must enable it by setting `ysql_enable_auto_analyze_service` to true on all YB-Masters, and both `ysql_enable_auto_analyze_service` and `ysql_enable_table_mutation_counter` to true on all YB-Tservers.
 
-Auto analyze service in YugabyteDB is {{<tags/feature/tp>}}. Before you can use the feature, you must enable it by setting `ysql_enable_auto_analyze_service` to true on all YB-Masters and both `ysql_enable_auto_analyze_service` and `ysql_enable_table_mutation_counter` to true on all YB-Tservers.
-
-For example, to create a single-node [yugabyted](../../../../reference/configuration/yugabyted/) cluster with auto analyze service enabled, use the following command:
+For example, to create a single-node [yugabyted](../../reference/configuration/yugabyted/) cluster with Auto Analyze enabled, use the following command:
 
 ```sh
 ./bin/yugabyted start --master_flags "ysql_enable_auto_analyze_service=true" --tserver_flags "ysql_enable_auto_analyze_service=true,ysql_enable_table_mutation_counter=true"
 ```
 
-To enable auto analyze service on an existing cluster, a rolling restart is required for setting `ysql_enable_auto_analyze_service` and `ysql_enable_table_mutation_counter` to true.
+To enable Auto Analyze on an existing cluster, a rolling restart is required to set `ysql_enable_auto_analyze_service` and `ysql_enable_table_mutation_counter` to true.
 
+## Configure Auto Analyze
 
-## Configure auto analyze service statistics update frequency
+You can control how frequently the service updates table statistics using the following YB-TServer flags:
 
-Auto analyze service has a few configurable flags. Refer to [Auto analyze service flags](../../preview/reference/configuration/yb-tserver#auto-analyze-service-flags).
+- `ysql_auto_analyze_threshold` - the minimum number of mutations (INSERT, UPDATE, and DELETE) needed to run ANALYZE on a table. Default is 50.
+- `ysql_auto_analyze_scale_factor` - a fraction that determines when enough mutations have been accumulated to run ANALYZE for a table. Default is 0.1.
 
-The most important configurable flags are: `ysql_auto_analyze_threshold` and `ysql_auto_analyze_scale_factor` which control how frequently auto analyze service updates table statistics. Increasing either of these two flags will reduce the frequency of auto analyze service statistics update.
+Increasing either of these flags reduces the frequency of statistics updates.
 
-If the total number of mutations (INSERT, UPDATE, and DELETE) for a table is greater than its analyze threshold, then auto analyze service will run ANALYZE on the table. The analyze threshold of a table is calculated as:
+If the total number of mutations for a table is greater than its analyze threshold, then the service runs ANALYZE on the table. The analyze threshold of a table is calculated as follows:
 
-```
+```sh
 analyze_threshold = ysql_auto_analyze_threshold + ysql_auto_analyze_scale_factor * <table_size>
 ```
 
-where `<table_size>` is the current `reltuples` column value stored in `pg_class` catalog.
+where `<table_size>` is the current `reltuples` column value stored in the `pg_class` catalog.
 
-The default value of `ysql_auto_analyze_threshold` is 50 and the default value of `ysql_auto_analyze_scale_factor` is 0.1.
-`ysql_auto_analyze_threshold` is important for small tables. If a table has 100 rows and 20 are mutated, ANALYZE won’t run as `ysql_auto_analyze_threshold` is not met even though 20% of the rows are mutated.
+`ysql_auto_analyze_threshold` is important for small tables. With default settings, if a table has 100 rows and 20 are mutated, ANALYZE won't run as the threshold is not met, even though 20% of the rows are mutated.
 
-On the other hand, `ysql_auto_analyze_scale_factor` is especially important for big tables. If a table has 1,000,000,000 rows, then 10% of that, or 100,000,000 rows, would have to be mutated before ANALYZE runs. `ysql_auto_analyze_scale_factor` needs to be set to a lower value to allow for more frequent statistics collections for such large tables.
+On the other hand, `ysql_auto_analyze_scale_factor` is especially important for big tables. If a table has 1,000,000,000 rows, 10% (100,000,000 rows) would have to be mutated before ANALYZE runs. Set the scale factor to a lower value to allow for more frequent statistics collection for such large tables.
 
-In addition, `ysql_auto_analyze_batch_size` controls the the max number of tables the auto analyze service tries to analyze in a single ANALYZE statement. Its default value is 10. Setting this flag to a larger value can potentially reduce the number of YSQL catalog cache refresh if auto analyze service decides to ANALYZE many tables within the same database at the same time.
+In addition, `ysql_auto_analyze_batch_size` controls the maximum number of tables the auto analyze service tries to analyze in a single ANALYZE statement. Its default value is 10. Setting this flag to a larger value can potentially reduce the number of YSQL catalog cache refreshes if Auto Analyze decides to ANALYZE many tables in the same database at the same time.
 
+For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../reference/configuration/yb-tserver#auto-analyze-service-flags).
 
 ## Example
-With auto analyze service enabled, try the following SQL statements.
+
+With Auto Analyze enabled, try the following SQL statements.
+
 ```sql
 CREATE TABLE test (k INT PRIMARY KEY, v INT);
 SELECT reltuples FROM pg_class WHERE relname = 'test';
+```
+
+```output
  reltuples 
 -----------
         -1
 (1 row)
+```
+
+```sql
 INSERT INTO test SELECT i, i FROM generate_series(1, 100) i;
 -- Wait for few seconds
 SELECT reltuples FROM pg_class WHERE relname = 'test';
+```
+
+```output
  reltuples
 -----------
        100
@@ -72,6 +85,5 @@ SELECT reltuples FROM pg_class WHERE relname = 'test';
 ```
 
 ## Limitations
-ANALYZE command is a DDL statment. It can cause DDL conflicts when running concurrently with other DDL statements.
-Since auto analyze service runs ANALYZEs in background, turn off auto analyze service if you want to execute DDL statements.
-Setting `ysql_enable_auto_analyze_service` to false on all YB-Tservers at runtime is sufficient to turn off auto analyze service.
+
+Because ANALYZE is a DDL statement, it can cause DDL conflicts when run concurrently with other DDL statements. As Auto Analyze runs ANALYZE in the background, you should turn off Auto Analyze if you want to execute DDL statements. You can do this by setting `ysql_enable_auto_analyze_service` to false on all YB-Tservers at runtime.
