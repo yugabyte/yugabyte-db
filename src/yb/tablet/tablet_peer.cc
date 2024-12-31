@@ -759,6 +759,7 @@ Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   if (!tablet) {
     return STATUS(IllegalState, "Tablet destroyed");
   }
+  // TODO(yyan) : we should use the last replicated op id instead of last committed op id.
   data->op_id = consensus->GetLastCommittedOpId();
   data->log_ht = tablet->mvcc_manager()->LastReplicatedHybridTime();
   return Status::OK();

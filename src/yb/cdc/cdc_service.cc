@@ -1733,6 +1733,7 @@ void CDCServiceImpl::GetChanges(
   }
 
   bool report_tablet_split = false;
+  HaveMoreMessages have_more_messages = HaveMoreMessages::kFalse;
   // Read the latest changes from the Log.
   if (record.GetSourceType() == XCLUSTER) {
     // Check AutoFlags version and fail early on errors before scanning the WAL.
@@ -1741,11 +1742,24 @@ void CDCServiceImpl::GetChanges(
     }
     TEST_SYNC_POINT("GetChanges::AfterFirstValidateAutoFlagsConfigVersion1");
     TEST_SYNC_POINT("GetChanges::AfterFirstValidateAutoFlagsConfigVersion2");
-    status = GetChangesForXCluster(
-        stream_id, req->tablet_id(), from_op_id, tablet_peer,
-        std::bind(
-            &CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForXCluster, this, producer_tablet, _1),
-        mem_tracker, get_changes_deadline, &record, &msgs_holder, resp, &last_readable_index);
+    XClusterGetChangesContext get_changes_context = {
+        .stream_id = stream_id,
+        .tablet_id = req->tablet_id(),
+        .from_op_id = from_op_id,
+        .tablet_peer = tablet_peer,
+        .update_on_split_op_func =
+            std::bind(
+                &CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForXCluster, this, producer_tablet,
+                _1),
+        .mem_tracker = mem_tracker,
+        .deadline = get_changes_deadline,
+        .stream_metadata = &record,
+        .msgs_holder = &msgs_holder,
+        .resp = resp,
+        .have_more_messages = &have_more_messages,
+        .last_readable_opid_index = &last_readable_index,
+    };
+    status = GetChangesForXCluster(get_changes_context);
 
     // Check AutoFlags version again if we are sending any records back.
     if (resp->records_size() > 0 && !ValidateAutoFlagsConfigVersion(*req, *resp, context)) {
@@ -1982,7 +1996,8 @@ void CDCServiceImpl::GetChanges(
   }
   // Update relevant GetChanges metrics before handing off the Response.
   UpdateTabletMetrics(
-      *resp, producer_tablet, tablet_peer, from_op_id, record.GetSourceType(), last_readable_index);
+      *resp, producer_tablet, tablet_peer, from_op_id, record.GetSourceType(),
+      last_readable_index, have_more_messages);
 
   if (report_tablet_split) {
     RPC_STATUS_RETURN_ERROR(
@@ -4064,9 +4079,11 @@ Result<uint64_t> CDCServiceImpl::GetSafeTime(
 void CDCServiceImpl::UpdateTabletMetrics(
     const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
-    const CDCRequestSource source_type, int64_t last_readable_index) {
+    const CDCRequestSource source_type, int64_t last_readable_index,
+    HaveMoreMessages have_more_messages) {
   if (source_type == XCLUSTER) {
-    UpdateTabletXClusterMetrics(resp, producer_tablet, tablet_peer, op_id, last_readable_index);
+    UpdateTabletXClusterMetrics(resp, producer_tablet, tablet_peer, op_id, last_readable_index,
+                                have_more_messages);
   } else {
     UpdateTabletCDCSDKMetrics(resp, producer_tablet, tablet_peer);
   }
@@ -4075,7 +4092,7 @@ void CDCServiceImpl::UpdateTabletMetrics(
 void CDCServiceImpl::UpdateTabletXClusterMetrics(
     const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
-    int64_t last_readable_index) {
+    int64_t last_readable_index, HaveMoreMessages have_more_messages) {
   auto tablet_metric_result =
       GetXClusterTabletMetrics(*tablet_peer.get(), producer_tablet.stream_id);
   if (!tablet_metric_result) {
@@ -4091,16 +4108,23 @@ void CDCServiceImpl::UpdateTabletXClusterMetrics(
   tablet_metric->last_checkpoint_opid_index->set_value(op_id.index);
   tablet_metric->last_getchanges_time->set_value(GetCurrentTimeMicros());
 
+  auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
   const auto records_size = resp.records_size();
   if (records_size <= 0) {
     tablet_metric->rpc_heartbeats_responded->Increment();
-    // If there are no more entries to be read, that means we're caught up.
-    auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
-    tablet_metric->last_read_physicaltime->set_value(last_replicated_micros);
-    tablet_metric->last_checkpoint_physicaltime->set_value(last_replicated_micros);
-    tablet_metric->last_caughtup_physicaltime->set_value(GetCurrentTimeMicros());
-    tablet_metric->async_replication_sent_lag_micros->set_value(0);
-    tablet_metric->async_replication_committed_lag_micros->set_value(0);
+    if (!have_more_messages) {
+      // If there are no more entries to be read, that means we're caught up.
+      tablet_metric->last_read_physicaltime->set_value(last_replicated_micros);
+      tablet_metric->last_checkpoint_physicaltime->set_value(last_replicated_micros);
+      tablet_metric->last_caughtup_physicaltime->set_value(GetCurrentTimeMicros());
+      tablet_metric->async_replication_sent_lag_micros->set_value(1);
+      tablet_metric->async_replication_committed_lag_micros->set_value(1);
+    } else {
+      auto replication_lag = std::max<int64_t>(
+          1, last_replicated_micros - tablet_metric->last_read_physicaltime->value());
+      tablet_metric->async_replication_sent_lag_micros->set_value(replication_lag);
+      tablet_metric->async_replication_committed_lag_micros->set_value(replication_lag);
+    }
     return;
   }
 
@@ -4113,7 +4137,6 @@ void CDCServiceImpl::UpdateTabletXClusterMetrics(
   // Only count bytes responded if we are including a response payload.
   tablet_metric->rpc_payload_bytes_responded->Increment(resp.ByteSize());
   // Get the physical time of the last committed record on producer.
-  auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
   tablet_metric->async_replication_sent_lag_micros->set_value(
       last_replicated_micros - last_record_micros);
 

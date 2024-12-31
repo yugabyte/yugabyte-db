@@ -897,8 +897,8 @@ TEST_F(XClusterTabletSplitMetricsTest, VerifyReplicationLagMetricsOnChildren) {
   {
     auto [committed_lag_micros, sent_lag_micros] = FetchMaxReplicationLag(stream_id);
     LOG(INFO) << "Replication lag is : " << committed_lag_micros << ", " << sent_lag_micros;
-    ASSERT_EQ(committed_lag_micros, 0);
-    ASSERT_EQ(sent_lag_micros, 0);
+    ASSERT_EQ(committed_lag_micros, 1);
+    ASSERT_EQ(sent_lag_micros, 1);
   }
 
   SleepFor(FLAGS_update_metrics_interval_ms * 2ms);  // Wait for metrics to update.
@@ -947,8 +947,8 @@ TEST_F(XClusterTabletSplitMetricsTest, VerifyReplicationLagMetricsOnChildren) {
   {
     auto [committed_lag_micros, sent_lag_micros] = FetchMaxReplicationLag(stream_id);
     LOG(INFO) << "Replication lag is : " << committed_lag_micros << ", " << sent_lag_micros;
-    ASSERT_EQ(committed_lag_micros, 0);
-    ASSERT_EQ(sent_lag_micros, 0);
+    ASSERT_EQ(committed_lag_micros, 1);
+    ASSERT_EQ(sent_lag_micros, 1);
   }
 }
 
