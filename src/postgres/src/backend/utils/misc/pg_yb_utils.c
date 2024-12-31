@@ -1813,6 +1813,7 @@ typedef struct DdlTransactionState
 	bool is_global_ddl;
 	NodeTag original_node_tag;
 	const char *original_ddl_command_tag;
+	Oid database_oid;
 } DdlTransactionState;
 
 static DdlTransactionState ddl_transaction_state = {0};
@@ -2001,6 +2002,7 @@ YBDecrementDdlNestingLevel()
 			is_silent_altering = (mode == YB_DDL_MODE_SILENT_ALTERING);
 		}
 
+		Oid database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
 		ddl_transaction_state = (DdlTransactionState) {};
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(MyDatabaseId,
@@ -2015,7 +2017,11 @@ YBDecrementDdlNestingLevel()
 		 */
 		if (increment_done)
 		{
-			YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
+			if (database_oid == MyDatabaseId || !YBIsDBCatalogVersionMode())
+				YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
+			else
+				elog(LOG, "skipped optimization %u %u", database_oid, MyDatabaseId);
+
 			if (YbIsClientYsqlConnMgr())
 			{
 				/* Wait for tserver hearbeat */
@@ -2641,6 +2647,60 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 }
 
 static void
+CheckAlterDatabaseDdl(PlannedStmt *pstmt)
+{
+	Node *const parsetree = GetActualStmtNode(pstmt);
+	char *dbname = NULL;
+	switch (nodeTag(parsetree))
+	{
+		case T_AlterDatabaseSetStmt:
+			dbname = castNode(AlterDatabaseSetStmt, parsetree)->dbname;
+			break;
+		case T_AlterDatabaseStmt:
+			dbname = castNode(AlterDatabaseStmt, parsetree)->dbname;
+			break;
+		case T_AlterDatabaseRefreshCollStmt:
+			dbname = castNode(AlterDatabaseRefreshCollStmt, parsetree)->dbname;
+			break;
+		case T_RenameStmt:
+		{
+			const RenameStmt *const stmt = castNode(RenameStmt, parsetree);
+			if (stmt->renameType == OBJECT_DATABASE)
+			{
+				/*
+				 * At this point, old database name is already renamed to newname
+				 * in the current DDL transaction, so we will not be able to find
+				 * the database oid using the old name.
+				 */
+				dbname = stmt->newname;
+			}
+			break;
+		}
+		case T_AlterOwnerStmt:
+		{
+			const AlterOwnerStmt *const stmt = castNode(AlterOwnerStmt, parsetree);
+			if (stmt->objectType == OBJECT_DATABASE)
+				dbname = strVal(stmt->object);
+			break;
+		}
+		default:
+			break;
+	}
+	if (dbname)
+	{
+		/*
+		 * Alter database does not need to be a global impact DDL, it only needs
+		 * to increment the catalog version of the database that is altered,
+		 * which may not be the same as MyDatabaseId.
+		 */
+		ddl_transaction_state.database_oid = get_database_oid(dbname, false);
+		ddl_transaction_state.is_global_ddl = false;
+	}
+	else
+		ddl_transaction_state.database_oid = InvalidOid;
+}
+
+static void
 YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 					   const char *queryString,
 					   bool readOnlyTree,
@@ -2695,7 +2755,10 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 									dest, qc);
 
 		if (is_ddl)
+		{
+			CheckAlterDatabaseDdl(pstmt);
 			YBDecrementDdlNestingLevel();
+		}
 	}
 	PG_CATCH();
 	{
@@ -5854,4 +5917,14 @@ YbGetIndexAttnum(Relation index, AttrNumber table_attno)
 			return i + 1;
 	}
 	elog(ERROR, "column is not in index");
+}
+
+Oid
+YbGetDatabaseOidToIncrementCatalogVersion()
+{
+	if (!YBIsDBCatalogVersionMode())
+		return Template1DbOid;
+	if (OidIsValid(ddl_transaction_state.database_oid))
+		return ddl_transaction_state.database_oid;
+	return MyDatabaseId;
 }
