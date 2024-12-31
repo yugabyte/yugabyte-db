@@ -38,7 +38,7 @@ extern bool EnableMetadataReferenceTableSync;
  * Since nodeId, Pid are stable.
  */
 #define INVALID_CITUS_INTERNAL_BACKEND_GPID 0
-static uint64 HelioCitusGlobalPid = 0;
+static uint64 DocumentDBCitusGlobalPid = 0;
 
 /*
  * In Citus we query citus_is_coordinator() to get if
@@ -374,7 +374,7 @@ TryGetShardNameForUnshardedCollectionCore(Oid relationId, uint64 collectionId, c
 static const char *
 GetDistributedApplicationNameCore(void)
 {
-	if (HelioCitusGlobalPid == INVALID_CITUS_INTERNAL_BACKEND_GPID)
+	if (DocumentDBCitusGlobalPid == INVALID_CITUS_INTERNAL_BACKEND_GPID)
 	{
 		bool isNull;
 		Datum result = ExtensionExecuteQueryViaSPI(
@@ -385,9 +385,9 @@ GetDistributedApplicationNameCore(void)
 			return NULL;
 		}
 
-		HelioCitusGlobalPid = DatumGetUInt64(result);
+		DocumentDBCitusGlobalPid = DatumGetUInt64(result);
 
-		if (HelioCitusGlobalPid == INVALID_CITUS_INTERNAL_BACKEND_GPID)
+		if (DocumentDBCitusGlobalPid == INVALID_CITUS_INTERNAL_BACKEND_GPID)
 		{
 			return NULL;
 		}
@@ -397,7 +397,8 @@ GetDistributedApplicationNameCore(void)
 	 * Match the application name pattern for the citus run_command* internal backend
 	 * so these don't count in the quota for max_client_backends for citus.
 	 */
-	return psprintf("citus_run_command gpid=%lu HelioDBInternal", HelioCitusGlobalPid);
+	return psprintf("citus_run_command gpid=%lu HelioDBInternal",
+					DocumentDBCitusGlobalPid);
 }
 
 
@@ -477,10 +478,10 @@ EnsureMetadataTableReplicatedCore(const char *tableName)
 
 
 /*
- * Register hook overrides for Helio.
+ * Register hook overrides for DocumentDB.
  */
 void
-InitializeHelioDistributedHooks(void)
+InitializeDocumentDBDistributedHooks(void)
 {
 	is_metadata_coordinator_hook = IsMetadataCoordinatorCore;
 	run_command_on_metadata_coordinator_hook = RunCommandOnMetadataCoordinatorCore;

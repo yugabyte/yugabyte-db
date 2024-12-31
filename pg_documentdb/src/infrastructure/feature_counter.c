@@ -318,7 +318,7 @@ PG_FUNCTION_INFO_V1(get_feature_counter_stats);
 
 /*
  * get_feature_counter_stats returns all the available information about all
- * the helioapi features that have been requested.
+ * the documentdb_api features that have been requested.
  */
 Datum
 get_feature_counter_stats(PG_FUNCTION_ARGS)

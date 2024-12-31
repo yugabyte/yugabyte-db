@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/helio_api_extension_version.c
+ * src/documentdb_extension_version.c
  *
  * Implementation of version information for the extension.
  *

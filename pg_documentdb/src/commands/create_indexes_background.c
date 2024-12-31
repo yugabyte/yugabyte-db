@@ -1101,9 +1101,9 @@ CreateLockTagAdvisoryForCreateIndexBackground(uint64 collectionId)
  * CheckForIndexCmdToFinish checks for the index command to finish for all indexIds present in indexIdList.
  * The count(indexId) will match the length(indexIdList) only if for each indexId in indexIdList, any one of following conditions are met:
  * 1. Request is already picked second time (attempt count >= 2) by cron-job before CheckForIndexCmdToFinish function could check its failure status.
- * 2. Request is not there in helio_api_catalog.helio_index_queue, which means it is completed successfully.
- * 3. Request is there in helio_api_catalog.helio_index_queue and index_cmd_status >= 3 (Failed, Skippable).
- * 4. Request is there in helio_api_catalog.helio_index_queue and index_cmd_status = 2 (InProgress)
+ * 2. Request is not there in ApiCatalogSchemaName.helio_index_queue, which means it is completed successfully.
+ * 3. Request is there in ApiCatalogSchemaName.helio_index_queue and index_cmd_status >= 3 (Failed, Skippable).
+ * 4. Request is there in ApiCatalogSchemaName.helio_index_queue and index_cmd_status = 2 (InProgress)
  *    and corresponding global_pid (opid) is not present in pg_stat_activity. This means that process was abruptly failed.
  */
 static BuildIndexesResult *
@@ -1118,7 +1118,7 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 
 	/*  WITH query AS
 	 *      (SELECT index_cmd_status::int4, comment, attempt
-	 *      FROM helio_api_catalog.helio_index_queue piq
+	 *      FROM ApiCatalogSchemaName.helio_index_queue piq
 	 *      WHERE cmd_type = 'C' AND index_id =ANY(ARRAY[32001, 32002, 32003, 32004, 32005, 32006])
 	 *  )
 	 *  SELECT COALESCE(CATALOG_SCHEMA.bson_array_agg(helio_core.row_get_bson(query), ''), '{ "": [] }'::CORE_SCHEMA.bson) FROM query

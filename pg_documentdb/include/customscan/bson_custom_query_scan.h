@@ -1,20 +1,20 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/customscan/helio_custom_query_scan.h
+ * include/customscan/bson_custom_query_scan.h
  *
  *  Implementation of a custom scan plan.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_CUSTOM_QUERY_SCAN_H
-#define HELIO_CUSTOM_QUERY_SCAN_H
+#ifndef BSON_CUSTOM_QUERY_SCAN_H
+#define BSON_CUSTOM_QUERY_SCAN_H
 
 #include <optimizer/plancat.h>
 #include <utils/builtins.h>
 #include <utils/varlena.h>
-#include <opclass/helio_index_support.h>
+#include <opclass/bson_index_support.h>
 
 void AddExtensionQueryScanForTextQuery(PlannerInfo *root, RelOptInfo *rel,
 									   RangeTblEntry *rte,

@@ -15,14 +15,14 @@
 #include <catalog/pg_type.h>
 #include <funcapi.h>
 
-#include "opclass/helio_bson_gin_private.h"
+#include "opclass/bson_gin_private.h"
 #include "io/bson_core.h"
 #include "query/bson_compare.h"
 #include "operators/bson_expr_eval.h"
 #include "nodes/makefuncs.h"
 #include "query/query_operator.h"
-#include "opclass/helio_gin_index_mgmt.h"
-#include "opclass/helio_gin_index_term.h"
+#include "opclass/bson_gin_index_mgmt.h"
+#include "opclass/bson_gin_index_term.h"
 
 
 /* --------------------------------------------------------- */

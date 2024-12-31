@@ -22,7 +22,7 @@
 #include "utils/documentdb_errors.h"
 #include "aggregation/bson_query.h"
 #include "metadata/metadata_cache.h"
-#include "planner/helio_planner.h"
+#include "planner/documentdb_planner.h"
 
 
 extern bool ThrowDeadlockOnCrud;
@@ -279,7 +279,7 @@ TryGetErrorMessageAndCode(ErrorData *errorData, int *code, char **errmessage)
 				StringView indexNameView = StringViewSubstring(&errorView,
 															   constraintError.length);
 				StringView actualNameView = StringViewFindPrefix(&indexNameView, '\"');
-				mongoIndexName = GetHelioIndexNameFromPostgresIndex(
+				mongoIndexName = GetDocumentDBIndexNameFromPostgresIndex(
 					CreateStringFromStringView(&actualNameView), useLibPq);
 			}
 			else if (StringViewStartsWithStringView(&errorView, &uniqueIndexError))
@@ -287,7 +287,7 @@ TryGetErrorMessageAndCode(ErrorData *errorData, int *code, char **errmessage)
 				StringView indexNameView = StringViewSubstring(&errorView,
 															   uniqueIndexError.length);
 				StringView actualNameView = StringViewFindPrefix(&indexNameView, '\"');
-				mongoIndexName = GetHelioIndexNameFromPostgresIndex(
+				mongoIndexName = GetDocumentDBIndexNameFromPostgresIndex(
 					CreateStringFromStringView(&actualNameView), useLibPq);
 			}
 			else if (StringViewStartsWithStringView(&errorView, &constraintCreateError))
@@ -296,13 +296,13 @@ TryGetErrorMessageAndCode(ErrorData *errorData, int *code, char **errmessage)
 															   constraintCreateError.
 															   length);
 				StringView actualNameView = StringViewFindPrefix(&indexNameView, '\"');
-				mongoIndexName = GetHelioIndexNameFromPostgresIndex(
+				mongoIndexName = GetDocumentDBIndexNameFromPostgresIndex(
 					CreateStringFromStringView(&actualNameView), useLibPq);
 			}
 		}
 		else
 		{
-			mongoIndexName = GetHelioIndexNameFromPostgresIndex(
+			mongoIndexName = GetDocumentDBIndexNameFromPostgresIndex(
 				errorData->constraint_name, useLibPq);
 		}
 

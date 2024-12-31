@@ -165,7 +165,7 @@ UpdateColocationHooks(void)
 
 
 /*
- * Process colocation options for a distributed heliodb deployment.
+ * Process colocation options for a distributed DocumentDB deployment.
  */
 static void
 HandleDistributedColocation(MongoCollection *collection, const

@@ -594,7 +594,7 @@ GetMongoQueryOperatorOid(const MongoIndexOperatorInfo *operator)
 		rightHandSideOid = TSQUERYOID;
 	}
 
-	char *schemaName = operator->isApiInternalSchema ? HelioApiInternalSchemaName :
+	char *schemaName = operator->isApiInternalSchema ? DocumentDBApiInternalSchemaName :
 					   ApiCatalogSchemaName;
 	List *qualifiedOperatorName = list_make2(makeString(schemaName),
 											 makeString(operator->postgresOperatorName));

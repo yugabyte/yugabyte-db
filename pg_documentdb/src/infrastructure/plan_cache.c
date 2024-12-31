@@ -3,7 +3,7 @@
  *
  * src/planner/plan_cache.c
  *
- * Implementation of an SPI query plan cache for helioapi.
+ * Implementation of an SPI query plan cache for documentdb_api.
  *
  * Each collection has different query strings, and each query can have
  * have several variations. Hence the cached is keyed by collection ID
@@ -18,7 +18,7 @@
 
 #include "utils/memutils.h"
 
-#include "infrastructure/helio_plan_cache.h"
+#include "infrastructure/documentdb_plan_cache.h"
 
 /* QueryKey is used as the key of a query in the cache */
 typedef struct QueryKey
@@ -80,7 +80,7 @@ InitializeQueryPlanCache(void)
 	}
 
 	QueryPlanCacheContext = AllocSetContextCreate(CacheMemoryContext,
-												  "HelioDB query cache context",
+												  "DocumentDB query cache context",
 												  ALLOCSET_DEFAULT_SIZES);
 
 
@@ -92,7 +92,7 @@ InitializeQueryPlanCache(void)
 	info.hcxt = QueryPlanCacheContext;
 	int hashFlags = HASH_ELEM | HASH_BLOBS | HASH_CONTEXT;
 
-	QueryPlanHash = hash_create("HelioDB query cache hash", 32, &info, hashFlags);
+	QueryPlanHash = hash_create("DocumentDB query cache hash", 32, &info, hashFlags);
 
 	dlist_init(&QueryPlanLRUQueue);
 }

@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/opclass/helio_gin_common.h
+ * include/opclass/bson_gin_common.h
  *
  * Common declarations of the bson gin methods.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_GIN_COMMON_H
-#define HELIO_GIN_COMMON_H
+#ifndef BSON_GIN_COMMON_H
+#define BSON_GIN_COMMON_H
 
 /*
  * Maps the set of operators for the gin index as strategies that are used in

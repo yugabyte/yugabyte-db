@@ -25,20 +25,20 @@ extern PGDLLIMPORT char *ApiCatalogSchemaName;
 extern PGDLLIMPORT char *ApiToApiInternalSchemaName;
 extern PGDLLIMPORT char *ApiCatalogToApiInternalSchemaName;
 extern PGDLLIMPORT char *PostgisSchemaName;
-extern PGDLLIMPORT char *HelioApiInternalSchemaName;
+extern PGDLLIMPORT char *DocumentDBApiInternalSchemaName;
 extern PGDLLEXPORT char *ApiCatalogToCoreSchemaName;
 
-extern MemoryContext HelioApiMetadataCacheContext;
+extern MemoryContext DocumentDBApiMetadataCacheContext;
 
-/* functions related with pg_helio_api "extension" itself */
-void InitializeHelioApiExtensionCache(void);
+/* functions related with pg_documentdb "extension" itself */
+void InitializeDocumentDBApiExtensionCache(void);
 void InvalidateCollectionsCache(void);
-bool IsHelioApiExtensionActive(void);
-Oid HelioApiExtensionOwner(void);
+bool IsDocumentDBApiExtensionActive(void);
+Oid DocumentDBApiExtensionOwner(void);
 
 /* functions and procedures */
 Oid ApiCollectionFunctionId(void);
-Oid HelioApiCollectionFunctionId(void);
+Oid DocumentDBApiCollectionFunctionId(void);
 Oid ApiCreateIndexesProcedureId(void);
 Oid ApiReIndexProcedureId(void);
 Oid BsonEqualMatchRuntimeFunctionId(void);
@@ -330,7 +330,7 @@ Oid BsonStdDevSampAggregateFunctionOid(void);
 Oid PostgresAnyValueFunctionOid(void);
 Oid BsonLookupExtractFilterExpressionFunctionOid(void);
 Oid BsonDollarLookupExpressionEvalMergeOid(void);
-Oid HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid(void);
+Oid DocumentDBApiInternalBsonLookupExtractFilterExpressionFunctionOid(void);
 Oid BsonDollarLookupJoinFilterFunctionOid(void);
 Oid BsonLookupExtractFilterArrayFunctionOid(void);
 Oid BsonLookupUnwindFunctionOid(void);
@@ -368,6 +368,6 @@ Oid InsertWorkerFunctionOid(void);
 Oid DeleteWorkerFunctionOid(void);
 
 /* Compat functions*/
-Oid HelioCoreBsonToBsonFunctionOId(void);
+Oid DocumentDBCoreBsonToBsonFunctionOId(void);
 
 #endif

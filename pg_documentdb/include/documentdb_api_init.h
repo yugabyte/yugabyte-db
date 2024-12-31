@@ -1,18 +1,18 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/helio_api_init.h
+ * include/documentdb_api_init.h
  *
  * Exports related to shared library initialization for the API.
  *
  *-------------------------------------------------------------------------
  */
-#ifndef HELIO_API_INIT_H
-#define HELIO_API_INIT_H
+#ifndef DOCUMENTDB_API_INIT_H
+#define DOCUMENTDB_API_INIT_H
 
 void InitApiConfigurations(char *prefix, char *newGucPrefix);
-void InstallHelioApiPostgresHooks(void);
-void UninstallHelioApiPostgresHooks(void);
-void InitializeHelioBackgroundWorker(char *libraryName, char *gucPrefix);
+void InstallDocumentDBApiPostgresHooks(void);
+void UninstallDocumentDBApiPostgresHooks(void);
+void InitializeDocumentDBBackgroundWorker(char *libraryName, char *gucPrefix);
 void InitializeSharedMemoryHooks(void);
 #endif

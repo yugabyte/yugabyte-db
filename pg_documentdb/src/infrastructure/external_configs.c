@@ -11,7 +11,7 @@
 #include <utils/guc.h>
 
 #include "commands/commands_common.h"
-#include "infrastructure/helio_external_configs.h"
+#include "infrastructure/bson_external_configs.h"
 
 #define DEFAULT_FEATURE_FLAG_COLL_MOD_INDEX_UNIQUE false
 bool PEC_FeatureFlagCollModIndexUnique = DEFAULT_FEATURE_FLAG_COLL_MOD_INDEX_UNIQUE;

@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/opclass/helio_bson_text_gin.h
+ * include/opclass/bson_text_gin.h
  *
  * Specific exports that handle indexing for $text operators
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_BSON_TEXT_GIN_H
-#define HELIO_BSON_TEXT_GIN_H
+#ifndef BSON_TEXT_GIN_H
+#define BSON_TEXT_GIN_H
 
 #include "tsearch/ts_type.h"
 #include "nodes/primnodes.h"

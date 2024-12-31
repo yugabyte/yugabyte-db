@@ -3,7 +3,7 @@
  *
  * include/geospatial/bson_geospatial_common.h
  *
- * Common function declarations for method interacting between pg_helio_api and
+ * Common function declarations for method interacting between documentdb_api and
  * postgis extension to convert and process GeoSpatial Data
  *
  *-------------------------------------------------------------------------

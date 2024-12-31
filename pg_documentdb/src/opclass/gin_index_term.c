@@ -12,7 +12,7 @@
 #include <postgres.h>
 #include <fmgr.h>
 #include <miscadmin.h>
-#include "opclass/helio_gin_index_term.h"
+#include "opclass/bson_gin_index_term.h"
 #include "query/bson_compare.h"
 #include "utils/documentdb_errors.h"
 #include "types/decimal128.h"

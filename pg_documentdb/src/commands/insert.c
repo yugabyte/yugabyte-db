@@ -33,7 +33,7 @@
 #include "commands/insert.h"
 #include "commands/parse_error.h"
 #include "metadata/collection.h"
-#include "infrastructure/helio_plan_cache.h"
+#include "infrastructure/documentdb_plan_cache.h"
 #include "sharding/sharding.h"
 #include "commands/retryable_writes.h"
 #include "io/pgbsonsequence.h"
@@ -916,7 +916,7 @@ CallInsertWorkerForInsertOne(MongoCollection *collection, int64 shardKeyHash,
 	const char *updateQuery = FormatSqlQuery(
 		" SELECT %s.insert_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM %s.documents_"
 		UINT64_FORMAT " WHERE shard_key_value = %ld",
-		HelioApiInternalSchemaName, ApiDataSchemaName, collection->collectionId,
+		DocumentDBApiInternalSchemaName, ApiDataSchemaName, collection->collectionId,
 		shardKeyHash);
 
 	argValues[0] = UInt64GetDatum(collection->collectionId);

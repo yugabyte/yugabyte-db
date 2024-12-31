@@ -158,10 +158,10 @@ static void
 InitializeCollectionsHash(void)
 {
 	/* make sure the metadata cache is initalized */
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	/* should not call this function if extension does not exist */
-	Assert(IsHelioApiExtensionActive());
+	Assert(IsDocumentDBApiExtensionActive());
 
 	if (CollectionCacheIsValid)
 	{
@@ -206,7 +206,7 @@ InitializeCollectionsHash(void)
 
 /*
  * ResetCollectionsCache is called when we rebuild the cache from scratch.
- * We need not worry about freeing memory here, since HelioApiMetadataCacheContext
+ * We need not worry about freeing memory here, since DocumentDBApiMetadataCacheContext
  * is reset as part of the process. We only set ResetCollectionsCache such
  * that we rebuild the hashes in InitializeCollectionsHash.
  */
@@ -1475,7 +1475,7 @@ DropStagingCollectionForOut(Datum dbNameDatum, Datum srcCollectionNameDatum)
 {
 	/*
 	 *  Note that chage tracking is turned off for this delete
-	 *  helio_api.drop_collection(
+	 *  ApiSchemaName.drop_collection(
 	 *      daatabaseName, collectionName, write_concern, uuid, track_changes)
 	 */
 	const char *cmdStr = FormatSqlQuery(
@@ -1610,13 +1610,13 @@ command_get_next_collection_id(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_DATUM(SequenceGetNextValAsUser(ApiCatalogCollectionIdSequenceId(),
-											 HelioApiExtensionOwner()));
+											 DocumentDBApiExtensionOwner()));
 }
 
 
 /*
  * Validation function that ensures that the database/collections created in
- * helioapi are valid.
+ * documentdb_api are valid.
  */
 Datum
 command_ensure_valid_db_coll(PG_FUNCTION_ARGS)
@@ -1628,7 +1628,7 @@ command_ensure_valid_db_coll(PG_FUNCTION_ARGS)
 
 /*
  * Validation function that ensures that the database/collections created in
- * helioapi are valid.
+ * documentdb_api are valid.
  */
 void
 ValidateDatabaseCollection(Datum databaseDatum, Datum collectionDatum)

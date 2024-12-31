@@ -12,7 +12,7 @@
 #define MONGO_QUERY_OPERATOR_H
 
 #include "io/bson_core.h"
-#include "opclass/helio_gin_common.h"
+#include "opclass/bson_gin_common.h"
 #include "utils/feature_counter.h"
 
 /* Invalid Feature counter tag for query operators that are not defined */

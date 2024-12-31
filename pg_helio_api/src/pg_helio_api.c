@@ -13,8 +13,8 @@
 
 #include "bson_init.h"
 #include "utils/feature_counter.h"
-#include "infrastructure/helio_external_configs.h"
-#include "helio_api_init.h"
+#include "infrastructure/bson_external_configs.h"
+#include "documentdb_api_init.h"
 
 PG_MODULE_MAGIC;
 
@@ -52,9 +52,9 @@ _PG_init(void)
 	InitializeExtensionExternalConfigs("helio_api");
 	InitializeSharedMemoryHooks();
 	MarkGUCPrefixReserved("helio_api");
-	InitializeHelioBackgroundWorker("pg_helio_api", "helio_api");
+	InitializeDocumentDBBackgroundWorker("pg_helio_api", "helio_api");
 
-	InstallHelioApiPostgresHooks();
+	InstallDocumentDBApiPostgresHooks();
 
 	ereport(LOG, (errmsg("Initialized pg_helio_api extension")));
 }
@@ -71,5 +71,5 @@ _PG_fini(void)
 		return;
 	}
 
-	UninstallHelioApiPostgresHooks();
+	UninstallDocumentDBApiPostgresHooks();
 }

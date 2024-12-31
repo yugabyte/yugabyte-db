@@ -3,7 +3,7 @@
  *
  * src/planner/planner.c
  *
- * Implementation of the helioapi planner hook.
+ * Implementation of the documentdb_api planner hook.
  *
  *-------------------------------------------------------------------------
  */
@@ -36,14 +36,14 @@
 #include "geospatial/bson_geospatial_geonear.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
-#include "planner/helio_planner.h"
+#include "planner/documentdb_planner.h"
 #include "query/query_operator.h"
-#include "opclass/helio_index_support.h"
-#include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/bson_index_support.h"
+#include "opclass/bson_gin_index_mgmt.h"
 #include "metadata/index.h"
-#include "customscan/helio_custom_scan.h"
-#include "customscan/helio_custom_query_scan.h"
-#include "opclass/helio_bson_text_gin.h"
+#include "customscan/bson_custom_scan.h"
+#include "customscan/bson_custom_query_scan.h"
+#include "opclass/bson_text_gin.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "utils/query_utils.h"
 #include "api_hooks.h"
@@ -94,17 +94,17 @@ explain_get_index_name_hook_type ExtensionPreviousIndexNameHook = NULL;
 
 
 /*
- * HelioApiPlanner  transforms the query tree before passing it
+ * DocumentDBApiPlanner transforms the query tree before passing it
  * to the planner.
  */
 PlannedStmt *
-HelioApiPlanner(Query *parse, const char *queryString, int cursorOptions,
-				ParamListInfo boundParams)
+DocumentDBApiPlanner(Query *parse, const char *queryString, int cursorOptions,
+					 ParamListInfo boundParams)
 {
 	bool hasUnresolvedParams = false;
 	int queryFlags = 0;
 	bool isNonExistentCollection = false;
-	if (IsHelioApiExtensionActive())
+	if (IsDocumentDBApiExtensionActive())
 	{
 		if (IsReadWriteCommand(parse))
 		{
@@ -706,7 +706,7 @@ void
 ExtensionRelPathlistHook(PlannerInfo *root, RelOptInfo *rel, Index rti,
 						 RangeTblEntry *rte)
 {
-	if (IsHelioApiExtensionActive())
+	if (IsDocumentDBApiExtensionActive())
 	{
 		ExtensionRelPathlistHookCore(root, rel, rti, rte);
 	}
@@ -1047,7 +1047,7 @@ IsResolvableMongoCollectionBasedRTE(RangeTblEntry *rte, ParamListInfo boundParam
 
 	/* Perform Function-specific actions */
 	if (funcExpr->funcid == ApiCollectionFunctionId() ||
-		funcExpr->funcid == HelioApiCollectionFunctionId())
+		funcExpr->funcid == DocumentDBApiCollectionFunctionId())
 	{
 		return true;
 	}
@@ -1086,7 +1086,7 @@ IsMongoCollectionBasedRTE(RangeTblEntry *rte)
 	}
 
 	if (funcExpr->funcid != ApiCollectionFunctionId() &&
-		funcExpr->funcid != HelioApiCollectionFunctionId())
+		funcExpr->funcid != DocumentDBApiCollectionFunctionId())
 	{
 		return false;
 	}
@@ -1120,7 +1120,7 @@ IndexIdGetIndexNameDefault(Oid indexId)
 const char *
 ExtensionExplainGetIndexName(Oid indexId)
 {
-	if (IsHelioApiExtensionActive())
+	if (IsDocumentDBApiExtensionActive())
 	{
 		bool useLibPQ = true;
 		const char *mongoIndexName = ExtensionIndexOidGetIndexName(indexId, useLibPQ);
@@ -1143,7 +1143,7 @@ ExtensionExplainGetIndexName(Oid indexId)
  * Given a postgres index name, returns the corresponding mongo index name if available.
  */
 const char *
-GetHelioIndexNameFromPostgresIndex(const char *pgIndexName, bool useLibPq)
+GetDocumentDBIndexNameFromPostgresIndex(const char *pgIndexName, bool useLibPq)
 {
 	int prefixLength = strlen(DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX);
 	if (strncmp(pgIndexName, DOCUMENT_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX,
@@ -1205,7 +1205,8 @@ ExtensionIndexOidGetIndexName(Oid indexId, bool useLibPq)
 	}
 
 	/* if it's an extension secondary index */
-	const char *indexName = GetHelioIndexNameFromPostgresIndex(pgIndexName, useLibPq);
+	const char *indexName = GetDocumentDBIndexNameFromPostgresIndex(pgIndexName,
+																	useLibPq);
 	if (indexName == NULL)
 	{
 		indexName = IndexIdGetIndexNameDefault(indexId);
@@ -1398,7 +1399,7 @@ ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	/* It's a shard query for a update worker projector
 	 * Transform this query into a FuncRTE with a Var projector
 	 */
-	entry->expr = (Expr *) makeVar(rti, 1, HelioCoreBsonTypeId(), -1,
+	entry->expr = (Expr *) makeVar(rti, 1, DocumentDBCoreBsonTypeId(), -1,
 								   InvalidOid, 0);
 	rte->rtekind = RTE_FUNCTION;
 	RangeTblFunction *func = makeNode(RangeTblFunction);

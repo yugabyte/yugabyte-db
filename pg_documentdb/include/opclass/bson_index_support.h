@@ -1,17 +1,17 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/opclass/helio_index_support.h
+ * include/opclass/bson_index_support.h
  *
  * Common declarations for Index support functions.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_INDEX_SUPPORT_H
-#define HELIO_INDEX_SUPPORT_H
+#ifndef BSON_INDEX_SUPPORT_H
+#define BSON_INDEX_SUPPORT_H
 
-#include <opclass/helio_bson_text_gin.h>
+#include <opclass/bson_text_gin.h>
 #include <vector/vector_utilities.h>
 #include <optimizer/planner.h>
 #include "planner/mongo_query_operator.h"

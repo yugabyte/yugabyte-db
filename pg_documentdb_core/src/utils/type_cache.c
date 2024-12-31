@@ -77,7 +77,7 @@ BsonTypeId(void)
 
 
 PGDLLEXPORT Oid
-HelioCoreBsonSequenceTypeId(void)
+DocumentDBCoreBsonSequenceTypeId(void)
 {
 	InitializeOidCaches();
 
@@ -97,7 +97,7 @@ HelioCoreBsonSequenceTypeId(void)
  * BsonTypeId returns the OID of the bson type defined in helio_core schema ignoring core schema override.
  */
 PGDLLEXPORT Oid
-HelioCoreBsonTypeId(void)
+DocumentDBCoreBsonTypeId(void)
 {
 	InitializeOidCaches();
 

@@ -3,14 +3,14 @@
  *
  * include/commands/lock_tags.h
  *
- * Constants defined under HelioAdvisoryLockField4 are meant to be used for
+ * Constants defined under DocumentDBAdvisoryLockField4 are meant to be used for
  * "locktag_field4" field of "LOCKTAG" struct when acquiring an advisory lock
- * that is specific to pg_helio_api.
+ * that is specific to documentdb_api.
  *
  * In Postgres, "locktag_field4" is used to to discern between different kind of
  * advisory locks. 1 and 2 are used by Postgres and 4-12 are used by Citus; so
  * starting from 100 here is a good enough choice that wouldn't cause a conflict
- * with other known advisory locks that pg_helio_api should be compatible with.
+ * with other known advisory locks that documentdb_api should be compatible with.
  *
  * See AdvisoryLocktagClass at citus/src/include/distributed/resource_lock.h.
  *
@@ -31,6 +31,6 @@ typedef enum
 
 	/* AcquireAdvisoryExclusiveSessionLockForCreateIndexBackground */
 	LT_FIELD4_EXCL_CREATE_INDEX_BACKGROUND
-} HelioAdvisoryLockField4;
+} DocumentDBAdvisoryLockField4;
 
 #endif

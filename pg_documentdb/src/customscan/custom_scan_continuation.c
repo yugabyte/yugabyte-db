@@ -26,13 +26,13 @@
 #include <optimizer/restrictinfo.h>
 
 #include "io/bson_core.h"
-#include "customscan/helio_custom_scan.h"
+#include "customscan/bson_custom_scan.h"
 #include "customscan/custom_scan_registrations.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
 #include "catalog/pg_am.h"
 #include "commands/cursor_common.h"
-#include "customscan/helio_custom_scan_private.h"
+#include "customscan/bson_custom_scan_private.h"
 
 #if (PG_VERSION_NUM >= 150000)
 

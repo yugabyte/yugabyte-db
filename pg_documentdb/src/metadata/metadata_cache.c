@@ -101,7 +101,7 @@ static Oid GetSchemaFunctionIdWithNargs(Oid *functionId, char *schema,
 static CacheValidityValue CacheValidity = CACHE_INVALID;
 
 /* session-level memory context in which we keep all cached bytes */
-MemoryContext HelioApiMetadataCacheContext = NULL;
+MemoryContext DocumentDBApiMetadataCacheContext = NULL;
 
 PGDLLEXPORT char *ApiDataSchemaName = "helio_data";
 PGDLLEXPORT char *ApiAdminRole = "helio_admin_role";
@@ -123,7 +123,7 @@ PGDLLEXPORT char *ApiToApiInternalSchemaName = "helio_api_internal";
 
 PGDLLEXPORT char *ApiCatalogToApiInternalSchemaName = "helio_api_internal";
 
-PGDLLEXPORT char *HelioApiInternalSchemaName = "helio_api_internal";
+PGDLLEXPORT char *DocumentDBApiInternalSchemaName = "helio_api_internal";
 
 PGDLLEXPORT char *ApiCatalogToCoreSchemaName = "helio_core";
 
@@ -1019,14 +1019,14 @@ typedef struct HelioApiOidCacheData
 static HelioApiOidCacheData Cache;
 
 /*
- * InitializeHelioApiExtensionCache (re)initializes the cache.
+ * InitializeDocumentDBApiExtensionCache (re)initializes the cache.
  *
  * This function either completes and sets CacheValidity to valid, or throws
  * an OOM and leaves CacheValidity as invalid. In the latter case, any allocated
  * memory will be reset on the next invocation.
  */
 void
-InitializeHelioApiExtensionCache(void)
+InitializeDocumentDBApiExtensionCache(void)
 {
 	if (CacheValidity == CACHE_VALID)
 	{
@@ -1034,20 +1034,20 @@ InitializeHelioApiExtensionCache(void)
 	}
 
 	/* we create a memory context and register the invalidation handler once */
-	if (HelioApiMetadataCacheContext == NULL)
+	if (DocumentDBApiMetadataCacheContext == NULL)
 	{
 		/* postgres does not always initialize CacheMemoryContext */
 		CreateCacheMemoryContext();
 
-		HelioApiMetadataCacheContext = AllocSetContextCreate(CacheMemoryContext,
-															 "HelioApiMetadataCacheContext ",
-															 ALLOCSET_DEFAULT_SIZES);
+		DocumentDBApiMetadataCacheContext = AllocSetContextCreate(CacheMemoryContext,
+																  "DocumentDBApiMetadataCacheContext ",
+																  ALLOCSET_DEFAULT_SIZES);
 
 		CacheRegisterRelcacheCallback(InvalidateHelioApiCache, (Datum) 0);
 	}
 
 	/* reset any previously allocated memory. Code below is sensitive to OOMs */
-	MemoryContextReset(HelioApiMetadataCacheContext);
+	MemoryContextReset(DocumentDBApiMetadataCacheContext);
 
 	/* clear the cache data */
 	memset(&Cache, 0, sizeof(Cache));
@@ -1130,7 +1130,7 @@ InvalidateHelioApiCache(Datum argument, Oid relationId)
 		{
 			/*
 			 * If the cache is not valid, we'll reset the collections
-			 * cache on the next call to InitializeHelioApiExtensionCache.
+			 * cache on the next call to InitializeDocumentDBApiExtensionCache.
 			 */
 		}
 	}
@@ -1152,13 +1152,13 @@ ParseTypeNameCore(const char *typeName)
 
 
 /*
- * IsHelioApiExtensionActive returns whether the current extension exists and is
+ * IsDocumentDBApiExtensionActive returns whether the current extension exists and is
  * usable (not being altered, no pg_upgrade in progress).
  */
 bool
-IsHelioApiExtensionActive(void)
+IsDocumentDBApiExtensionActive(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	return CacheValidity == CACHE_VALID && !IsBinaryUpgrade &&
 		   !(creating_extension && CurrentExtensionObject == Cache.HelioApiExtensionId);
@@ -1166,12 +1166,12 @@ IsHelioApiExtensionActive(void)
 
 
 /*
- * HelioApiExtensionOwner returns OID of the owner of current extension.
+ * DocumentDBApiExtensionOwner returns OID of the owner of current extension.
  */
 Oid
-HelioApiExtensionOwner(void)
+DocumentDBApiExtensionOwner(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.HelioApiExtensionOwner != InvalidOid)
 	{
@@ -1215,7 +1215,7 @@ HelioApiExtensionOwner(void)
 Oid
 ApiCollectionFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.CollectionFunctionId == InvalidOid)
 	{
@@ -1233,9 +1233,9 @@ ApiCollectionFunctionId(void)
 
 
 Oid
-HelioApiCollectionFunctionId(void)
+DocumentDBApiCollectionFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.HelioApiCollectionFunctionId == InvalidOid)
 	{
@@ -1260,7 +1260,7 @@ HelioApiCollectionFunctionId(void)
 Oid
 BigintEqualOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BigintEqualOperatorId == InvalidOid)
 	{
@@ -1278,7 +1278,7 @@ BigintEqualOperatorId(void)
 Oid
 TextEqualOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.TextEqualOperatorId == InvalidOid)
 	{
@@ -1296,7 +1296,7 @@ TextEqualOperatorId(void)
 Oid
 TextNotEqualOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.TextNotEqualOperatorId == InvalidOid)
 	{
@@ -1314,7 +1314,7 @@ TextNotEqualOperatorId(void)
 Oid
 TextLessOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.TextLessOperatorId == InvalidOid)
 	{
@@ -1336,7 +1336,7 @@ TextLessOperatorId(void)
 Oid
 ApiCreateIndexesProcedureId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.CreateIndexesProcedureId == InvalidOid)
 	{
@@ -1389,7 +1389,7 @@ ApiCreateIndexesProcedureId(void)
 Oid
 ApiReIndexProcedureId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ReindexProcedureId == InvalidOid)
 	{
@@ -1441,7 +1441,7 @@ ApiReIndexProcedureId(void)
 Oid
 BsonQueryMatchFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonQueryMatchFunctionId == InvalidOid)
 	{
@@ -1720,11 +1720,11 @@ BsonGeonearDistanceOperatorId(void)
 Oid
 BsonGeonearDistanceRangeOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonGeonearDistanceRangeOperatorId == InvalidOid)
 	{
-		List *operatorNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *operatorNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString("@|><|"));
 
 		Cache.BsonGeonearDistanceRangeOperatorId =
@@ -1869,9 +1869,10 @@ Oid
 BsonExprWithLetFunctionId(void)
 {
 	return GetOperatorFunctionIdThreeArgs(&Cache.BsonExprWithLetFunctionId,
-										  HelioApiInternalSchemaName,
-										  "bson_dollar_expr", HelioCoreBsonTypeId(),
-										  HelioCoreBsonTypeId(), HelioCoreBsonTypeId());
+										  DocumentDBApiInternalSchemaName,
+										  "bson_dollar_expr", DocumentDBCoreBsonTypeId(),
+										  DocumentDBCoreBsonTypeId(),
+										  DocumentDBCoreBsonTypeId());
 }
 
 
@@ -2288,7 +2289,7 @@ PostgresMakeIntervalFunctionId(void)
 Oid
 PostgresInt4LessOperatorOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.PostgresInt4LessOperatorOid == InvalidOid)
 	{
@@ -2341,7 +2342,7 @@ PostgresAddIntervalToDateFunctionId(void)
 Oid
 PostgresInt4EqualOperatorOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.PostgresInt4EqualOperatorOid == InvalidOid)
 	{
@@ -2386,7 +2387,7 @@ PostgresToDateFunctionId(void)
 Oid
 Float8EqualOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.Float8EqualOperatorId == InvalidOid)
 	{
@@ -2407,7 +2408,7 @@ Float8EqualOperatorId(void)
 Oid
 Float8LessThanEqualOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.Float8LessThanEqualOperatorId == InvalidOid)
 	{
@@ -2428,7 +2429,7 @@ Float8LessThanEqualOperatorId(void)
 Oid
 Float8GreaterThanEqualOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.Float8GreaterThanEqualOperatorId == InvalidOid)
 	{
@@ -2493,7 +2494,7 @@ PostgresDatePartFromInterval(void)
 Oid
 RumIndexAmId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.RumIndexAmId == InvalidOid)
 	{
@@ -2518,7 +2519,7 @@ RumIndexAmId(void)
 Oid
 PgVectorIvfFlatIndexAmId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.PgVectorIvfFlatIndexAmId == InvalidOid)
 	{
@@ -2543,7 +2544,7 @@ PgVectorIvfFlatIndexAmId(void)
 Oid
 PgVectorHNSWIndexAmId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.PgVectorHNSWIndexAmId == InvalidOid)
 	{
@@ -2570,7 +2571,7 @@ PgVectorHNSWIndexAmId(void)
 Oid
 PgDoubleToVectorFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.PgDoubleToVectorFunctionOid == InvalidOid)
 	{
@@ -2593,7 +2594,7 @@ PgDoubleToVectorFunctionOid(void)
 Oid
 VectorAsVectorFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.VectorAsVectorFunctionOid == InvalidOid)
 	{
@@ -2616,7 +2617,7 @@ VectorAsVectorFunctionOid(void)
 Oid
 BsonTrueFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonTrueFunctionId == InvalidOid)
 	{
@@ -2640,7 +2641,7 @@ BsonDensifyRangeWindowFunctionOid(void)
 	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(&Cache.BsonDensifyRangeWindowFunctionOid,
-										HelioApiInternalSchemaName,
+										DocumentDBApiInternalSchemaName,
 										"bson_densify_range", nargs, argTypes,
 										missingOk);
 }
@@ -2653,7 +2654,7 @@ BsonDensifyPartitionWindowFunctionOid(void)
 	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(&Cache.BsonDensifyPartitionWindowFunctionOid,
-										HelioApiInternalSchemaName,
+										DocumentDBApiInternalSchemaName,
 										"bson_densify_partition", nargs, argTypes,
 										missingOk);
 }
@@ -2666,7 +2667,7 @@ BsonDensifyFullWindowFunctionOid(void)
 	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(&Cache.BsonDensifyFullWindowFunctionOid,
-										HelioApiInternalSchemaName,
+										DocumentDBApiInternalSchemaName,
 										"bson_densify_full", nargs, argTypes,
 										missingOk);
 }
@@ -2678,7 +2679,7 @@ BsonDensifyFullWindowFunctionOid(void)
 Oid
 ApiCursorStateFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.CursorStateFunctionId == InvalidOid)
 	{
@@ -2698,15 +2699,15 @@ ApiCursorStateFunctionId(void)
 Oid
 UpdateWorkerFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.UpdateWorkerFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString("update_worker"));
 		Oid paramOids[6] = {
-			INT8OID, INT8OID, REGCLASSOID, HelioCoreBsonTypeId(),
-			HelioCoreBsonSequenceTypeId(), TEXTOID
+			INT8OID, INT8OID, REGCLASSOID, DocumentDBCoreBsonTypeId(),
+			DocumentDBCoreBsonSequenceTypeId(), TEXTOID
 		};
 		bool missingOK = true;
 
@@ -2721,15 +2722,15 @@ UpdateWorkerFunctionOid(void)
 Oid
 InsertWorkerFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.InsertWorkerFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString("insert_worker"));
 		Oid paramOids[6] = {
-			INT8OID, INT8OID, REGCLASSOID, HelioCoreBsonTypeId(),
-			HelioCoreBsonSequenceTypeId(), TEXTOID
+			INT8OID, INT8OID, REGCLASSOID, DocumentDBCoreBsonTypeId(),
+			DocumentDBCoreBsonSequenceTypeId(), TEXTOID
 		};
 		bool missingOK = true;
 
@@ -2744,15 +2745,15 @@ InsertWorkerFunctionOid(void)
 Oid
 DeleteWorkerFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.DeleteWorkerFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString("delete_worker"));
 		Oid paramOids[6] = {
-			INT8OID, INT8OID, REGCLASSOID, HelioCoreBsonTypeId(),
-			HelioCoreBsonSequenceTypeId(), TEXTOID
+			INT8OID, INT8OID, REGCLASSOID, DocumentDBCoreBsonTypeId(),
+			DocumentDBCoreBsonSequenceTypeId(), TEXTOID
 		};
 		bool missingOK = true;
 
@@ -2770,7 +2771,7 @@ DeleteWorkerFunctionOid(void)
 Oid
 ApiCurrentCursorStateFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.CurrentCursorStateFunctionId == InvalidOid)
 	{
@@ -2793,7 +2794,7 @@ ApiCurrentCursorStateFunctionId(void)
 Oid
 BsonEmptyDataTableFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonEmptyDataTableFunctionId == InvalidOid)
 	{
@@ -2816,7 +2817,7 @@ BsonEmptyDataTableFunctionId(void)
 Oid
 ApiCollStatsAggregationFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.CollStatsAggregationFunctionOid == InvalidOid)
 	{
@@ -2839,7 +2840,7 @@ ApiCollStatsAggregationFunctionOid(void)
 Oid
 ApiChangeStreamAggregationFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiCatalogChangeStreamFunctionId == InvalidOid)
 	{
@@ -2862,7 +2863,7 @@ ApiChangeStreamAggregationFunctionOid(void)
 Oid
 ApiIndexStatsAggregationFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.IndexStatsAggregationFunctionOid == InvalidOid)
 	{
@@ -2882,7 +2883,7 @@ ApiIndexStatsAggregationFunctionOid(void)
 Oid
 BsonCurrentOpAggregationFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonCurrentOpAggregationFunctionId == InvalidOid)
 	{
@@ -2905,7 +2906,7 @@ BsonCurrentOpAggregationFunctionId(void)
 Oid
 IndexSpecAsBsonFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.IndexSpecAsBsonFunctionId == InvalidOid)
 	{
@@ -2928,7 +2929,7 @@ IndexSpecAsBsonFunctionId(void)
 Oid
 ExtensionTableSampleSystemRowsFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ExtensionTableSampleSystemRowsFunctionId == InvalidOid)
 	{
@@ -2948,7 +2949,7 @@ ExtensionTableSampleSystemRowsFunctionId(void)
 Oid
 BsonInRangeIntervalFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonInRangeIntervalFunctionId == InvalidOid)
 	{
@@ -2968,7 +2969,7 @@ BsonInRangeIntervalFunctionId(void)
 Oid
 BsonInRangeNumericFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonInRangeNumericFunctionId == InvalidOid)
 	{
@@ -3043,9 +3044,9 @@ BsonDollarAddFieldsWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonDollarAddFieldsWithLetFunctionOid,
-		HelioApiInternalSchemaName, "bson_dollar_add_fields",
-		HelioCoreBsonTypeId(),
-		HelioCoreBsonTypeId(), HelioCoreBsonTypeId());
+		DocumentDBApiInternalSchemaName, "bson_dollar_add_fields",
+		DocumentDBCoreBsonTypeId(),
+		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId());
 }
 
 
@@ -3074,9 +3075,9 @@ BsonDollarProjectWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonDollarProjectWithLetFunctionOid,
-		HelioApiInternalSchemaName, "bson_dollar_project",
-		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
-		HelioCoreBsonTypeId());
+		DocumentDBApiInternalSchemaName, "bson_dollar_project",
+		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(),
+		DocumentDBCoreBsonTypeId());
 }
 
 
@@ -3085,9 +3086,9 @@ BsonDollarLookupExpressionEvalMergeOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonDollarLookupExpressionEvalMergeOid,
-		HelioApiInternalSchemaName, "bson_dollar_lookup_expression_eval_merge",
-		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
-		HelioCoreBsonTypeId());
+		DocumentDBApiInternalSchemaName, "bson_dollar_lookup_expression_eval_merge",
+		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(),
+		DocumentDBCoreBsonTypeId());
 }
 
 
@@ -3098,12 +3099,12 @@ Oid
 BsonDollarInverseMatchFunctionId()
 {
 	int nargs = 2;
-	Oid argTypes[2] = { HelioCoreBsonTypeId(), HelioCoreBsonTypeId() };
+	Oid argTypes[2] = { DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId() };
 	bool missingOk = true;
 
 	Oid result = GetSchemaFunctionIdWithNargs(
 		&Cache.ApiCatalogBsonDollarInverseMatchFunctionOid,
-		HelioApiInternalSchemaName,
+		DocumentDBApiInternalSchemaName,
 		"bson_dollar_inverse_match", nargs, argTypes,
 		missingOk);
 
@@ -3125,7 +3126,7 @@ BsonDollarInverseMatchFunctionId()
 Oid
 BsonDollarProjectFindFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiCatalogBsonDollarProjectFindFunctionOid == InvalidOid)
 	{
@@ -3148,21 +3149,22 @@ BsonDollarProjectFindWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdFourArgs(
 		&Cache.ApiCatalogBsonDollarProjectFindWithLetFunctionOid,
-		HelioApiInternalSchemaName,
+		DocumentDBApiInternalSchemaName,
 		"bson_dollar_project_find",
-		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
-		HelioCoreBsonTypeId());
+		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(),
+		DocumentDBCoreBsonTypeId(),
+		DocumentDBCoreBsonTypeId());
 }
 
 
 Oid
 BsonDollarMergeHandleWhenMatchedFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiInternalBsonDollarMergeHandleWhenMatchedFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_handle_when_matched"));
 		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), INT4OID };
@@ -3179,11 +3181,11 @@ BsonDollarMergeHandleWhenMatchedFunctionOid(void)
 Oid
 BsonDollarMergeAddObjectIdFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiInternalBsonDollarMergeAddObjectIdFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_add_object_id"));
 		Oid paramOids[2] = { BsonTypeId(), BsonTypeId() };
@@ -3200,11 +3202,11 @@ BsonDollarMergeAddObjectIdFunctionOid(void)
 Oid
 BsonDollarMergeGenerateObjectId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiInternalBsonDollarMergeGenerateObjectId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_generate_object_id"));
 		Oid paramOids[1] = { BsonTypeId() };
@@ -3245,11 +3247,11 @@ BsonDollarMergeExtractFilterFunctionOid(void)
 Oid
 BsonDollarMergeJoinFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiInternalBsonDollarMergeJoinFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_join"));
 		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), TEXTOID };
@@ -3266,7 +3268,7 @@ BsonDollarMergeJoinFunctionOid(void)
 Oid
 BsonGetValueFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonGetValueFunctionId == InvalidOid)
 	{
@@ -3314,17 +3316,17 @@ BsonDollarReplaceRootWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonDollarReplaceRootWithLetFunctionOid,
-		HelioApiInternalSchemaName,
+		DocumentDBApiInternalSchemaName,
 		"bson_dollar_replace_root",
-		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
-		HelioCoreBsonTypeId());
+		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(),
+		DocumentDBCoreBsonTypeId());
 }
 
 
 static Oid
 GetAggregateFunctionByName(Oid *function, char *namespaceName, char *name)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*function == InvalidOid)
 	{
@@ -3345,7 +3347,7 @@ GetAggregateFunctionByName(Oid *function, char *namespaceName, char *name)
 static Oid
 GetFunctionByName(Oid *function, char *namespaceName, char *name)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*function == InvalidOid)
 	{
@@ -3367,7 +3369,7 @@ Oid
 BsonRankFunctionOid(void)
 {
 	return GetFunctionByName(&Cache.ApiCatalogBsonRankFunctionOid,
-							 HelioApiInternalSchemaName, "bson_rank");
+							 DocumentDBApiInternalSchemaName, "bson_rank");
 }
 
 
@@ -3375,7 +3377,7 @@ Oid
 BsonDenseRankFunctionOid(void)
 {
 	return GetFunctionByName(&Cache.ApiCatalogBsonDenseRankFunctionOid,
-							 HelioApiInternalSchemaName, "bson_dense_rank");
+							 DocumentDBApiInternalSchemaName, "bson_dense_rank");
 }
 
 
@@ -3383,7 +3385,7 @@ Oid
 BsonDocumentNumberFunctionOid(void)
 {
 	return GetFunctionByName(&Cache.ApiCatalogBsonDocumentNumberFunctionOid,
-							 HelioApiInternalSchemaName, "bson_document_number");
+							 DocumentDBApiInternalSchemaName, "bson_document_number");
 }
 
 
@@ -3392,7 +3394,7 @@ BsonShiftFunctionOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonShiftFunctionOid,
-		HelioApiInternalSchemaName,
+		DocumentDBApiInternalSchemaName,
 		"bson_shift",
 		BsonTypeId(), INT4OID,
 		BsonTypeId());
@@ -3410,11 +3412,11 @@ BsonSumAggregateFunctionOid(void)
 Oid
 BsonLinearFillFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiCatalogBsonLinearFillFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString("bson_linear_fill"));
 		Oid paramOids[2] = { BsonTypeId(), BsonTypeId() };
 		bool missingOK = false;
@@ -3430,11 +3432,11 @@ BsonLinearFillFunctionOid(void)
 Oid
 BsonLocfFillFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiCatalogBsonLocfFillFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString("bson_locf_fill"));
 		Oid paramOids[1] = { BsonTypeId() };
 		bool missingOK = false;
@@ -3450,11 +3452,11 @@ BsonLocfFillFunctionOid(void)
 Oid
 BsonConstFillFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonConstFillFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString("bson_const_fill"));
 		Oid paramOids[2] = { BsonTypeId(), BsonTypeId() };
 		bool missingOK = false;
@@ -3472,7 +3474,7 @@ BsonIntegralAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonIntegralAggregateFunctionOid,
-		HelioApiInternalSchemaName, "bsonintegral");
+		DocumentDBApiInternalSchemaName, "bsonintegral");
 }
 
 
@@ -3481,7 +3483,7 @@ BsonDerivativeAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonDerivativeAggregateFunctionOid,
-		HelioApiInternalSchemaName, "bsonderivative");
+		DocumentDBApiInternalSchemaName, "bsonderivative");
 }
 
 
@@ -3498,7 +3500,7 @@ BsonCovariancePopAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonCovariancePopAggregateFunctionOid,
-		HelioApiInternalSchemaName, "bsoncovariancepop");
+		DocumentDBApiInternalSchemaName, "bsoncovariancepop");
 }
 
 
@@ -3507,14 +3509,14 @@ BsonCovarianceSampAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonCovarianceSampAggregateFunctionOid,
-		HelioApiInternalSchemaName, "bsoncovariancesamp");
+		DocumentDBApiInternalSchemaName, "bsoncovariancesamp");
 }
 
 
 static Oid
 GetBsonArrayAggregateFunctionOid(Oid *function, bool allArgs)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*function == InvalidOid)
 	{
@@ -3582,11 +3584,11 @@ BsonArrayAggregateAllArgsFunctionOid(void)
 Oid
 BsonExpMovingAvgAggregateFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiCatalogBsonExpMovingAvgAggregateFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString("bson_exp_moving_avg"));
 		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), BOOLOID };
 		bool missingOK = false;
@@ -3620,7 +3622,7 @@ BsonMergeObjectsOnSortedFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonMergeObjectsOnSortedFunctionOid,
-		HelioApiInternalSchemaName,
+		DocumentDBApiInternalSchemaName,
 		"bson_merge_objects_on_sorted");
 }
 
@@ -3629,7 +3631,8 @@ Oid
 BsonMergeObjectsFunctionOid(void)
 {
 	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonMergeObjectsFunctionOid,
-									  HelioApiInternalSchemaName, "bson_merge_objects");
+									  DocumentDBApiInternalSchemaName,
+									  "bson_merge_objects");
 }
 
 
@@ -3653,12 +3656,12 @@ BsonMinAggregateFunctionOid(void)
 static Oid
 GetBsonFirstNLastNAggregateFunctionOid(Oid *function, bool allArgs, char *aggregateName)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	String *schemaName;
 	if (allArgs)
 	{
-		schemaName = makeString(HelioApiInternalSchemaName);
+		schemaName = makeString(DocumentDBApiInternalSchemaName);
 	}
 	else
 	{
@@ -3732,12 +3735,12 @@ static Oid
 GetBsonFirstNLastNOnSortedAggregateFunctionOid(Oid *function, bool allArgs,
 											   char *aggregateName)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	String *schemaName;
 	if (allArgs)
 	{
-		schemaName = makeString(HelioApiInternalSchemaName);
+		schemaName = makeString(DocumentDBApiInternalSchemaName);
 	}
 	else
 	{
@@ -3954,7 +3957,7 @@ BsonMaxNAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonMaxNAggregateFunctionOid,
-		HelioApiInternalSchemaName, "bsonmaxn");
+		DocumentDBApiInternalSchemaName, "bsonmaxn");
 }
 
 
@@ -3963,7 +3966,7 @@ BsonMinNAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonMinNAggregateFunctionOid,
-		HelioApiInternalSchemaName, "bsonminn");
+		DocumentDBApiInternalSchemaName, "bsonminn");
 }
 
 
@@ -3972,7 +3975,7 @@ BsonStdDevPopAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonStdDevPopAggregateFunctionOid,
-		HelioApiInternalSchemaName, "bsonstddevpop");
+		DocumentDBApiInternalSchemaName, "bsonstddevpop");
 }
 
 
@@ -3981,7 +3984,7 @@ BsonStdDevSampAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonStdDevSampAggregateFunctionOid,
-		HelioApiInternalSchemaName, "bsonstddevsamp");
+		DocumentDBApiInternalSchemaName, "bsonstddevsamp");
 }
 
 
@@ -3989,7 +3992,7 @@ Oid
 BsonAddToSetAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonAddToSetAggregateFunctionOid,
-									  HelioApiInternalSchemaName, "bson_add_to_set");
+									  DocumentDBApiInternalSchemaName, "bson_add_to_set");
 }
 
 
@@ -4004,7 +4007,7 @@ PostgresAnyValueFunctionOid(void)
 Oid
 PgRandomFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.PgRandomFunctionOid == InvalidOid)
 	{
@@ -4043,7 +4046,7 @@ BsonLookupExtractFilterArrayFunctionOid(void)
 
 
 Oid
-HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid(void)
+DocumentDBApiInternalBsonLookupExtractFilterExpressionFunctionOid(void)
 {
 	bool missingOk = false;
 	return GetHelioInternalBinaryOperatorFunctionId(
@@ -4056,11 +4059,11 @@ HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid(void)
 Oid
 BsonDollarLookupJoinFilterFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonDollarLookupJoinFilterFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString("bson_dollar_lookup_join_filter"));
 		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), TEXTOID };
 		bool missingOK = false;
@@ -4094,7 +4097,7 @@ BsonDistinctUnwindFunctionOid(void)
 Oid
 BsonRepathAndBuildFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiCatalogBsonRepathAndBuildFunctionOid == InvalidOid)
 	{
@@ -4117,7 +4120,7 @@ BsonRepathAndBuildFunctionOid(void)
 Oid
 RowGetBsonFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiCatalogRowGetBsonFunctionOid == InvalidOid)
 	{
@@ -4151,8 +4154,9 @@ BsonExpressionGetWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdFourArgs(
 		&Cache.ApiCatalogBsonExpressionGetWithLetFunctionOid,
-		HelioApiInternalSchemaName, "bson_expression_get",
-		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(), BOOLOID, HelioCoreBsonTypeId());
+		DocumentDBApiInternalSchemaName, "bson_expression_get",
+		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(), BOOLOID,
+		DocumentDBCoreBsonTypeId());
 }
 
 
@@ -4161,7 +4165,7 @@ BsonExpressionPartitionGetFunctionOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonExpressionPartitionGetFunctionOid,
-		HelioApiInternalSchemaName, "bson_expression_partition_get",
+		DocumentDBApiInternalSchemaName, "bson_expression_partition_get",
 		BsonTypeId(), BsonTypeId(), BOOLOID);
 }
 
@@ -4174,7 +4178,7 @@ BsonExpressionPartitionByFieldsGetFunctionOid(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.BsonExpressionPartitionByFieldsGetFunctionOid,
-		HelioApiInternalSchemaName,
+		DocumentDBApiInternalSchemaName,
 		"bson_expression_partition_by_fields_get", nargs,
 		argTypes,
 		missingOk);
@@ -4186,8 +4190,9 @@ BsonExpressionPartitionGetWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdFourArgs(
 		&Cache.ApiCatalogBsonExpressionPartitionGetWithLetFunctionOid,
-		HelioApiInternalSchemaName, "bson_expression_partition_get",
-		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(), BOOLOID, HelioCoreBsonTypeId());
+		DocumentDBApiInternalSchemaName, "bson_expression_partition_get",
+		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(), BOOLOID,
+		DocumentDBCoreBsonTypeId());
 }
 
 
@@ -4206,9 +4211,9 @@ BsonExpressionMapWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdFiveArgs(
 		&Cache.ApiCatalogBsonExpressionMapWithLetFunctionOid,
-		HelioApiInternalSchemaName, "bson_expression_map",
-		HelioCoreBsonTypeId(), TEXTOID, HelioCoreBsonTypeId(), BOOLOID,
-		HelioCoreBsonTypeId());
+		DocumentDBApiInternalSchemaName, "bson_expression_map",
+		DocumentDBCoreBsonTypeId(), TEXTOID, DocumentDBCoreBsonTypeId(), BOOLOID,
+		DocumentDBCoreBsonTypeId());
 }
 
 
@@ -4218,7 +4223,7 @@ BsonExpressionMapWithLetFunctionOid(void)
 Oid
 GeometryTypeId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.GeometryTypeId == InvalidOid)
 	{
@@ -4239,7 +4244,7 @@ GeometryTypeId(void)
 Oid
 Box2dfTypeId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.Box2dfTypeId == InvalidOid)
 	{
@@ -4259,7 +4264,7 @@ Box2dfTypeId(void)
 Oid
 GeographyTypeId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.GeographyTypeId == InvalidOid)
 	{
@@ -4280,7 +4285,7 @@ GeographyTypeId(void)
 Oid
 GIDXTypeId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.GIDXTypeId == InvalidOid)
 	{
@@ -4310,7 +4315,7 @@ GeometryArrayTypeId(void)
 Oid
 VectorTypeId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.VectorTypeId == InvalidOid)
 	{
@@ -4329,7 +4334,7 @@ VectorTypeId(void)
 Oid
 IndexSpecTypeId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.IndexSpecTypeId == InvalidOid)
 	{
@@ -4346,7 +4351,7 @@ IndexSpecTypeId(void)
 Oid
 MongoCatalogCollectionsTypeOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.MongoCatalogCollectionsTypeOid == InvalidOid)
 	{
@@ -4377,11 +4382,11 @@ BsonOrderByFunctionOid(void)
 Oid
 BsonOrderByPartitionFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonOrderByPartitionFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString(
 												"bson_orderby_partition"));
 		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), BOOLOID };
@@ -4424,7 +4429,7 @@ ApiBsonSearchParamFunctionId(void)
 Oid
 ApiBsonDocumentAddScoreFieldFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiBsonDocumentAddScoreFieldFunctionId == InvalidOid)
 	{
@@ -4504,10 +4509,10 @@ BsonValidateGeographyFunctionId(void)
 
 
 Oid
-HelioCoreBsonToBsonFunctionOId(void)
+DocumentDBCoreBsonToBsonFunctionOId(void)
 {
 	int nargs = 1;
-	Oid argTypes[1] = { HelioCoreBsonTypeId() };
+	Oid argTypes[1] = { DocumentDBCoreBsonTypeId() };
 
 	return GetSchemaFunctionIdWithNargs(&Cache.HelioCoreBsonToBsonFunctionOId,
 										"helio_api_internal",
@@ -5131,7 +5136,7 @@ VectorOrderByQueryOperatorId(void)
 Oid
 Float8PlusOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.Float8PlusOperatorId == InvalidOid)
 	{
@@ -5151,7 +5156,7 @@ Float8PlusOperatorId(void)
 Oid
 Float8MinusOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.Float8MinusOperatorId == InvalidOid)
 	{
@@ -5171,7 +5176,7 @@ Float8MinusOperatorId(void)
 Oid
 Float8MultiplyOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.Float8MultiplyOperatorId == InvalidOid)
 	{
@@ -5191,7 +5196,7 @@ Float8MultiplyOperatorId(void)
 Oid
 VectorCosineSimilaritySearchOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.VectorCosineSimilaritySearchOperatorId == InvalidOid)
 	{
@@ -5211,7 +5216,7 @@ VectorCosineSimilaritySearchOperatorId(void)
 Oid
 VectorL2SimilaritySearchOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.VectorL2SimilaritySearchOperatorId == InvalidOid)
 	{
@@ -5231,7 +5236,7 @@ VectorL2SimilaritySearchOperatorId(void)
 Oid
 VectorIPSimilaritySearchOperatorId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.VectorIPSimilaritySearchOperatorId == InvalidOid)
 	{
@@ -5252,7 +5257,7 @@ VectorIPSimilaritySearchOperatorId(void)
 Oid
 VectorIVFFlatCosineSimilarityOperatorFamilyId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.VectorIVFFlatCosineSimilarityOperatorFamilyId == InvalidOid)
 	{
@@ -5274,7 +5279,7 @@ VectorIVFFlatCosineSimilarityOperatorFamilyId(void)
 Oid
 VectorHNSWCosineSimilarityOperatorFamilyId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.VectorHNSWCosineSimilarityOperatorFamilyId == InvalidOid)
 	{
@@ -5296,7 +5301,7 @@ VectorHNSWCosineSimilarityOperatorFamilyId(void)
 Oid
 VectorIVFFlatL2SimilarityOperatorFamilyId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.VectorIVFFlatL2SimilarityOperatorFamilyId == InvalidOid)
 	{
@@ -5318,7 +5323,7 @@ VectorIVFFlatL2SimilarityOperatorFamilyId(void)
 Oid
 VectorHNSWL2SimilarityOperatorFamilyId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.VectorHNSWL2SimilarityOperatorFamilyId == InvalidOid)
 	{
@@ -5340,7 +5345,7 @@ VectorHNSWL2SimilarityOperatorFamilyId(void)
 Oid
 VectorIVFFlatIPSimilarityOperatorFamilyId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.VectorIVFFlatIPSimilarityOperatorFamilyId == InvalidOid)
 	{
@@ -5362,7 +5367,7 @@ VectorIVFFlatIPSimilarityOperatorFamilyId(void)
 Oid
 VectorHNSWIPSimilarityOperatorFamilyId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.VectorHNSWIPSimilarityOperatorFamilyId == InvalidOid)
 	{
@@ -5384,7 +5389,7 @@ VectorHNSWIPSimilarityOperatorFamilyId(void)
 Oid
 BsonExclusionPreConsistentFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonExclusionPreconsistentFunctionId == InvalidOid)
 	{
@@ -5449,7 +5454,7 @@ BsonLessThanOperatorId(void)
 Oid
 BsonRumTextPathOperatorFamily(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonRumTextPathOperatorFamily == InvalidOid)
 	{
@@ -5472,7 +5477,7 @@ BsonRumTextPathOperatorFamily(void)
 Oid
 BsonGistGeographyOperatorFamily(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonGistGeographyOperatorFamily == InvalidOid)
 	{
@@ -5495,7 +5500,7 @@ BsonGistGeographyOperatorFamily(void)
 Oid
 BsonGistGeometryOperatorFamily(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonGistGeometryOperatorFamily == InvalidOid)
 	{
@@ -5518,7 +5523,7 @@ BsonGistGeometryOperatorFamily(void)
 Oid
 BsonRumSinglePathOperatorFamily(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonRumSinglePathOperatorFamily == InvalidOid)
 	{
@@ -5542,7 +5547,7 @@ BsonRumSinglePathOperatorFamily(void)
 Oid
 WebSearchToTsQueryFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.WebSearchToTsQueryFunctionId == InvalidOid)
 	{
@@ -5566,7 +5571,7 @@ WebSearchToTsQueryFunctionId(void)
 Oid
 WebSearchToTsQueryWithRegConfigFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.WebSearchToTsQueryWithRegConfigFunctionId == InvalidOid)
 	{
@@ -5590,7 +5595,7 @@ WebSearchToTsQueryWithRegConfigFunctionId(void)
 Oid
 RumExtractTsVectorFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.RumExtractTsVectorFunctionId == InvalidOid)
 	{
@@ -5614,7 +5619,7 @@ RumExtractTsVectorFunctionId(void)
 Oid
 BsonTextSearchMetaQualFuncId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonTextSearchMetaQualFuncId == InvalidOid)
 	{
@@ -5633,7 +5638,7 @@ BsonTextSearchMetaQualFuncId(void)
 Oid
 TsRankFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.PostgresTsRankFunctionId == InvalidOid)
 	{
@@ -5652,7 +5657,7 @@ TsRankFunctionId(void)
 Oid
 TsVectorConcatFunctionId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.TsVectorConcatFunctionId == InvalidOid)
 	{
@@ -5675,7 +5680,7 @@ TsVectorConcatFunctionId(void)
 Oid
 TsMatchFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.TsMatchFunctionOid == InvalidOid)
 	{
@@ -5699,7 +5704,7 @@ static Oid
 GetBinaryOperatorId(Oid *operatorId, Oid leftTypeOid, char *operatorName,
 					Oid rightTypeOid)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*operatorId == InvalidOid)
 	{
@@ -5722,7 +5727,7 @@ static Oid
 GetCoreBinaryOperatorId(Oid *operatorId, Oid leftTypeOid, char *operatorName,
 						Oid rightTypeOid)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*operatorId == InvalidOid)
 	{
@@ -5749,7 +5754,7 @@ GetBinaryOperatorFunctionIdMissingOk(Oid *operatorFuncId, char *operatorName,
 									 Oid leftTypeOid, Oid rightTypeOid,
 									 const char *releaseName)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*operatorFuncId == InvalidOid)
 	{
@@ -5774,7 +5779,7 @@ static Oid
 GetInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
 									Oid leftTypeOid, Oid rightTypeOid)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*operatorFuncId == InvalidOid)
 	{
@@ -5800,7 +5805,7 @@ GetBinaryOperatorFunctionIdWithSchema(Oid *operatorFuncId, char *operatorName,
 									  Oid leftTypeOid, Oid rightTypeOid,
 									  char *schemaName)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*operatorFuncId == InvalidOid)
 	{
@@ -5835,7 +5840,7 @@ static Oid
 GetOperatorFunctionIdThreeArgs(Oid *operatorFuncId, char *schemaName, char *operatorName,
 							   Oid arg0TypeOid, Oid arg1TypeOid, Oid arg2TypeOid)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*operatorFuncId == InvalidOid)
 	{
@@ -5857,7 +5862,7 @@ GetOperatorFunctionIdFourArgs(Oid *operatorFuncId, char *schemaName, char *opera
 							  Oid arg0TypeOid, Oid arg1TypeOid, Oid arg2TypeOid,
 							  Oid arg3TypeOid)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*operatorFuncId == InvalidOid)
 	{
@@ -5879,7 +5884,7 @@ GetOperatorFunctionIdFiveArgs(Oid *operatorFuncId, char *schemaName, char *opera
 							  Oid arg0TypeOid, Oid arg1TypeOid, Oid arg2TypeOid,
 							  Oid arg3TypeOid, Oid arg4TypeId)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*operatorFuncId == InvalidOid)
 	{
@@ -5903,11 +5908,11 @@ GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName
 										 Oid leftTypeOid, Oid rightTypeOid,
 										 bool missingOK)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*operatorFuncId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString(operatorName));
 		Oid paramOids[2] = { leftTypeOid, rightTypeOid };
 
@@ -5926,7 +5931,7 @@ GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName
 Oid
 GetPostgresInternalFunctionId(Oid *funcId, char *operatorName)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*funcId == InvalidOid)
 	{
@@ -5940,7 +5945,7 @@ GetPostgresInternalFunctionId(Oid *funcId, char *operatorName)
 Oid
 ApiCatalogCollectionIdSequenceId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.CollectionIdSequenceId == InvalidOid)
 	{
@@ -5961,7 +5966,7 @@ ApiCatalogCollectionIdSequenceId(void)
 Oid
 ApiCatalogCollectionIndexIdSequenceId(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.CollectionIndexIdSequenceId == InvalidOid)
 	{
@@ -5989,7 +5994,7 @@ GetSchemaFunctionIdWithNargs(Oid *functionId, char *schema,
 							 char *functionName, int nargs,
 							 Oid *argTypes, bool missingOk)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*functionId == InvalidOid)
 	{
@@ -6009,7 +6014,7 @@ GetSchemaFunctionIdWithNargs(Oid *functionId, char *schema,
 static Oid
 GetArrayTypeOid(Oid *arrayTypeId, Oid baseElementType)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (*arrayTypeId == InvalidOid)
 	{
@@ -6059,7 +6064,7 @@ IndexBuildIsInProgressFunctionId()
 Oid
 ApiDataNamespaceOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.ApiDataNamespaceOid == InvalidOid)
 	{
@@ -6077,7 +6082,7 @@ ApiDataNamespaceOid(void)
 Oid
 GetBsonArrayTypeOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	InitializeDocumentDBApiExtensionCache();
 
 	if (Cache.BsonArrayTypeOid == InvalidOid)
 	{

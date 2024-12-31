@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/customscan/helio_custom_scan.h
+ * include/customscan/bson_custom_scan_private.h
  *
  *  Implementation of a custom scan plan.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_CUSTOM_SCAN_PRIVATE_H
-#define HELIO_CUSTOM_SCAN_PRIVATE_H
+#ifndef BSON_CUSTOM_SCAN_PRIVATE_H
+#define BSON_CUSTOM_SCAN_PRIVATE_H
 #include <nodes/readfuncs.h>
 
 

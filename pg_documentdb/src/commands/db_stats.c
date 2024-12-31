@@ -26,7 +26,7 @@
 #include "utils/query_utils.h"
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
-#include "planner/helio_planner.h"
+#include "planner/documentdb_planner.h"
 #include "commands/diagnostic_commands_common.h"
 #include "api_hooks_def.h"
 
@@ -653,7 +653,7 @@ GetAllMongoCollectionShardOidsAndNamesInDB(ArrayType *collectionIdArray,
 												 TYPALIGN_INT);
 
 	/* Here the logicalrelid is of the format ApiDataSchemaName.documents_<collectionId>
-	 *      e.g. helio_data.documents_1
+	 *      e.g. ApiDataSchemaName.documents_1
 	 * This query gets all the shardIds of given logicalrelid, and appends it to "documents_<collectionId>"
 	 * part of the logicalrelid
 	 *      e.g. documents_1_10240

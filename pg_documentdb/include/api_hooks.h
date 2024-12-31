@@ -158,7 +158,7 @@ void PostSetupClusterHook(bool isInitialize);
 /*
  * Get current IndexAmRoutine for the index handler.
  */
-IndexAmRoutine *GetHelioIndexAmRoutine(PG_FUNCTION_ARGS);
+IndexAmRoutine *GetDocumentDBIndexAmRoutine(PG_FUNCTION_ARGS);
 
 /*
  * Gets the multi and bitmap function for multi index join implemented on a specific index handler.

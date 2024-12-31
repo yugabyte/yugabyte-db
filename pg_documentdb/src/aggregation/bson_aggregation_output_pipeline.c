@@ -40,7 +40,7 @@
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
 #include "query/bson_compare.h"
-#include "planner/helio_planner.h"
+#include "planner/documentdb_planner.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "commands/insert.h"
 #include "commands/parse_error.h"
@@ -1789,13 +1789,13 @@ ValidateAndAddObjectIdToWriter(pgbson_writer *writer,
  * MERGE INTO ONLY ApiDataSchemaName.documents_3 documents_3
  * USING ( SELECT collection.document,
  *            '3'::bigint AS target_shard_key_value,
- *            helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id
+ *            ApiInternalSchemaName.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id
  *           FROM ApiDataSchemaName.documents_2 collection
  *          WHERE collection.shard_key_value = '2'::bigint) agg_stage_0
  *   ON documents_3.shard_key_value OPERATOR(pg_catalog.=) agg_stage_0.target_shard_key_value AND FALSE
  *   WHEN NOT MATCHED
  *    THEN INSERT (shard_key_value, object_id, document, creation_time)
- *     VALUES (agg_stage_0.target_shard_key_value, COALESCE(bson_get_value(agg_stage_0.document, '_id'::text), agg_stage_0.generated_object_id), helio_api_internal.bson_dollar_merge_add_object_id(agg_stage_0.document, agg_stage_0.generated_object_id), '2024-08-21 11:06:38.323204+00'::timestamp with time zone)
+ *     VALUES (agg_stage_0.target_shard_key_value, COALESCE(bson_get_value(agg_stage_0.document, '_id'::text), agg_stage_0.generated_object_id), ApiInternalSchemaName.bson_dollar_merge_add_object_id(agg_stage_0.document, agg_stage_0.generated_object_id), '2024-08-21 11:06:38.323204+00'::timestamp with time zone)
  */
 Query *
 HandleOut(const bson_value_t *existingValue, Query *query,

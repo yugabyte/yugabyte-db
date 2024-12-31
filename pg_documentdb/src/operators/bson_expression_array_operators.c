@@ -24,7 +24,7 @@
 #include "utils/sort_utils.h"
 #include "utils/heap_utils.h"
 
-#include "planner/helio_planner.h"
+#include "planner/documentdb_planner.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 
 #define MAX_BUFFER_SIZE_DOLLAR_RANGE (64 * 1024 * 1024)

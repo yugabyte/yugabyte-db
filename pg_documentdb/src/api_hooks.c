@@ -11,7 +11,7 @@
 #include <utils/guc.h>
 #include <limits.h>
 
-#include "index_am/helio_rum.h"
+#include "index_am/documentdb_rum.h"
 #include "metadata/collection.h"
 #include "io/bson_core.h"
 #include "lib/stringinfo.h"
@@ -341,7 +341,7 @@ PostSetupClusterHook(bool isInitialize)
 
 /* This function returns the rum handler index routine, if the hook to get it is implemented it just calls into it. */
 IndexAmRoutine *
-GetHelioIndexAmRoutine(PG_FUNCTION_ARGS)
+GetDocumentDBIndexAmRoutine(PG_FUNCTION_ARGS)
 {
 	if (get_index_amroutine_hook != NULL)
 	{

@@ -3,7 +3,7 @@
  *
  * include/shard_colocation.h
  *
- * The implementation for shard colocation for helio with citus.
+ * The implementation for shard colocation for DocumentDB with citus.
  *
  *-------------------------------------------------------------------------
  */

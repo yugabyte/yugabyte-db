@@ -14,9 +14,9 @@
 #include <postmaster/bgworker.h>
 #include <storage/ipc.h>
 
-#include "helio_api_init.h"
+#include "documentdb_api_init.h"
 #include "metadata/metadata_guc.h"
-#include "planner/helio_planner.h"
+#include "planner/documentdb_planner.h"
 #include "customscan/custom_scan_registrations.h"
 #include "commands/connection_management.h"
 #include "utils/feature_counter.h"
@@ -63,12 +63,12 @@ bool RecreateRetryTableOnSharding = DEFAULT_RECREATE_RETRY_TABLE_ON_SHARDING;
 
 
 /* callbacks for transaction management */
-static void HelioTransactionCallback(XactEvent event, void *arg);
-static void HelioSubTransactionCallback(SubXactEvent event, SubTransactionId mySubid,
-										SubTransactionId parentSubid, void *arg);
-static void InitHelioBackgroundWorkerGucs(const char *prefix);
+static void DocumentDBTransactionCallback(XactEvent event, void *arg);
+static void DocumentDBSubTransactionCallback(SubXactEvent event, SubTransactionId mySubid,
+											 SubTransactionId parentSubid, void *arg);
+static void InitDocumentDBBackgroundWorkerGucs(const char *prefix);
 
-static void HelioSharedMemoryInit(void);
+static void DocumentDBSharedMemoryInit(void);
 
 /* --------------------------------------------------------- */
 /* GUCs and default values */
@@ -151,8 +151,8 @@ bool EnableVectorPreFilter = DEFAULT_ENABLE_VECTOR_PRE_FILTER;
 #define DEFAULT_MAX_NUM_ACTIVE_USERS_INDEX_BUILDS 2
 int MaxNumActiveUsersIndexBuilds = DEFAULT_MAX_NUM_ACTIVE_USERS_INDEX_BUILDS;
 
-#define DEFAULT_HELIO_PG_READ_ONLY_FOR_DISK_FULL false
-bool HelioPGReadOnlyForDiskFull = DEFAULT_HELIO_PG_READ_ONLY_FOR_DISK_FULL;
+#define DEFAULT_DOCUMENTDB_PG_READ_ONLY_FOR_DISK_FULL false
+bool DocumentDBPGReadOnlyForDiskFull = DEFAULT_DOCUMENTDB_PG_READ_ONLY_FOR_DISK_FULL;
 
 /*
  * GUC for "Count Policy" change Threshold for collStats DB command
@@ -517,7 +517,8 @@ InitApiConfigurations(char *prefix, char *newGucPrefix)
 		psprintf("%s.IsPgReadOnlyForDiskFull", prefix),
 		gettext_noop(
 			"Determines whether postgres is in readonly mode since disk is full"),
-		NULL, &HelioPGReadOnlyForDiskFull, DEFAULT_HELIO_PG_READ_ONLY_FOR_DISK_FULL,
+		NULL, &DocumentDBPGReadOnlyForDiskFull,
+		DEFAULT_DOCUMENTDB_PG_READ_ONLY_FOR_DISK_FULL,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
@@ -872,14 +873,14 @@ InitApiConfigurations(char *prefix, char *newGucPrefix)
 
 
 /*
- * Install custom hooks that Postgres exposes for Helio API.
+ * Install custom hooks that Postgres exposes for DocumentDB API.
  */
 void
-InstallHelioApiPostgresHooks(void)
+InstallDocumentDBApiPostgresHooks(void)
 {
 	/* override planner to apply query transformations */
 	ExtensionPreviousPlannerHook = planner_hook;
-	planner_hook = HelioApiPlanner;
+	planner_hook = DocumentDBApiPlanner;
 
 	ExtensionPreviousIndexNameHook = explain_get_index_name_hook;
 	explain_get_index_name_hook = ExtensionExplainGetIndexName;
@@ -888,8 +889,8 @@ InstallHelioApiPostgresHooks(void)
 	ExtensionPreviousSetRelPathlistHook = set_rel_pathlist_hook;
 	set_rel_pathlist_hook = ExtensionRelPathlistHook;
 
-	RegisterXactCallback(HelioTransactionCallback, NULL);
-	RegisterSubXactCallback(HelioSubTransactionCallback, NULL);
+	RegisterXactCallback(DocumentDBTransactionCallback, NULL);
+	RegisterSubXactCallback(DocumentDBSubTransactionCallback, NULL);
 
 	RegisterScanNodes();
 	RegisterQueryScanNodes();
@@ -899,10 +900,10 @@ InstallHelioApiPostgresHooks(void)
 
 /* Initialized the background worker */
 void
-InitializeHelioBackgroundWorker(char *libraryName, char *gucPrefix)
+InitializeDocumentDBBackgroundWorker(char *libraryName, char *gucPrefix)
 {
 	/* Initialize GUCs */
-	InitHelioBackgroundWorkerGucs(gucPrefix);
+	InitDocumentDBBackgroundWorkerGucs(gucPrefix);
 
 	if (!EnableBackgroundWorker)
 	{
@@ -920,7 +921,7 @@ InitializeHelioBackgroundWorker(char *libraryName, char *gucPrefix)
 	worker.bgw_notify_pid = 0;
 
 	sprintf(worker.bgw_library_name, "%s", libraryName);
-	sprintf(worker.bgw_function_name, "HelioBackgroundWorkerMain");
+	sprintf(worker.bgw_function_name, "DocumentDBBackgroundWorkerMain");
 	snprintf(worker.bgw_name, BGW_MAXLEN, "helio bg worker leader");
 	snprintf(worker.bgw_type, BGW_MAXLEN, "helio_bg_worker_leader");
 
@@ -929,10 +930,10 @@ InitializeHelioBackgroundWorker(char *libraryName, char *gucPrefix)
 
 
 /*
- * Uninstalls custom hooks that Postgres exposes for Helio API.
+ * Uninstalls custom hooks that Postgres exposes for DocumentDB API.
  */
 void
-UninstallHelioApiPostgresHooks(void)
+UninstallDocumentDBApiPostgresHooks(void)
 {
 	planner_hook = ExtensionPreviousPlannerHook;
 	ExtensionPreviousPlannerHook = NULL;
@@ -943,8 +944,8 @@ UninstallHelioApiPostgresHooks(void)
 	set_rel_pathlist_hook = ExtensionPreviousSetRelPathlistHook;
 	ExtensionPreviousSetRelPathlistHook = NULL;
 
-	UnregisterXactCallback(HelioTransactionCallback, NULL);
-	UnregisterSubXactCallback(HelioSubTransactionCallback, NULL);
+	UnregisterXactCallback(DocumentDBTransactionCallback, NULL);
+	UnregisterSubXactCallback(DocumentDBSubTransactionCallback, NULL);
 }
 
 
@@ -952,7 +953,7 @@ void
 InitializeSharedMemoryHooks(void)
 {
 	prev_shmem_startup_hook = shmem_startup_hook;
-	shmem_startup_hook = HelioSharedMemoryInit;
+	shmem_startup_hook = DocumentDBSharedMemoryInit;
 }
 
 
@@ -962,7 +963,7 @@ InitializeSharedMemoryHooks(void)
 
 
 static void
-HelioSharedMemoryInit(void)
+DocumentDBSharedMemoryInit(void)
 {
 	SharedFeatureCounterShmemInit();
 	InitializeVersionCache();
@@ -975,7 +976,7 @@ HelioSharedMemoryInit(void)
 
 
 static void
-HelioTransactionCallback(XactEvent event, void *arg)
+DocumentDBTransactionCallback(XactEvent event, void *arg)
 {
 	switch (event)
 	{
@@ -995,8 +996,8 @@ HelioTransactionCallback(XactEvent event, void *arg)
 
 
 static void
-HelioSubTransactionCallback(SubXactEvent event, SubTransactionId mySubid,
-							SubTransactionId parentSubid, void *arg)
+DocumentDBSubTransactionCallback(SubXactEvent event, SubTransactionId mySubid,
+								 SubTransactionId parentSubid, void *arg)
 {
 	switch (event)
 	{
@@ -1015,7 +1016,7 @@ HelioSubTransactionCallback(SubXactEvent event, SubTransactionId mySubid,
 
 
 static void
-InitHelioBackgroundWorkerGucs(const char *prefix)
+InitDocumentDBBackgroundWorkerGucs(const char *prefix)
 {
 	DefineCustomStringVariable(
 		psprintf("%s_bg_worker_database_name", prefix),

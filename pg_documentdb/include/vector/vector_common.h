@@ -54,8 +54,8 @@
 #define VECTOR_METADATA_SCORE_FIELD_NAME_STR_LEN 5
 
 /*
- * helioapi.enableVectorHNSWIndex GUC determines vector indexes
- * and queries are enabled in pg_helio_api or not.
+ * ApiGucPrefix.enableVectorHNSWIndex GUC determines vector indexes
+ * and queries are enabled in documentdb_api or not.
  */
 extern bool EnableVectorHNSWIndex;
 

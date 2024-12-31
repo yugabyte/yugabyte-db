@@ -4915,12 +4915,12 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 	{
 		appendStringInfo(indexExprStr,
 						 "%s.generate_unique_shard_document(document, shard_key_value, '%s'::%s.bson, %s) %s.bson_rum_unique_shard_path_ops WITH OPERATOR(%s.=#=)",
-						 HelioApiInternalSchemaName,
+						 DocumentDBApiInternalSchemaName,
 						 GenerateUniqueProjectionSpec(indexDefKey),
 						 CoreSchemaName,
 						 sparse ? "true" : "false",
-						 HelioApiInternalSchemaName,
-						 HelioApiInternalSchemaName);
+						 DocumentDBApiInternalSchemaName,
+						 DocumentDBApiInternalSchemaName);
 		firstColumnWritten = true;
 	}
 

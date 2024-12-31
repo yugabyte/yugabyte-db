@@ -13,7 +13,7 @@
 #include <utils/guc.h>
 
 #include "io/bson_core.h"
-#include "infrastructure/helio_external_configs.h"
+#include "infrastructure/bson_external_configs.h"
 #include "utils/query_utils.h"
 #include "utils/list_utils.h"
 

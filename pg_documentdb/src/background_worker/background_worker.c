@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/backgroundworker/helio_background_worker.c
+ * src/backgroundworker/background_worker.c
  *
  * Implementation of Background worker.
  *
@@ -44,11 +44,11 @@ typedef struct BackgroundWorkerShmemStruct
 	Latch latch;
 } BackgroundWorkerShmemStruct;
 
-PGDLLEXPORT void HelioBackgroundWorkerMain(Datum);
+PGDLLEXPORT void DocumentDBBackgroundWorkerMain(Datum);
 extern char *BackgroundWorkerDatabaseName;
 extern int LatchTimeOutSec;
 
-static const char *HelioBackgroundWorkerLeaderName = "helio_bg_worker_leader";
+static const char *DocumentDBBackgroundWorkerLeaderName = "helio_bg_worker_leader";
 static bool BackgroundWorkerReloadConfig = false;
 
 /* Shared memory segment for BackgroundWorker */
@@ -64,10 +64,10 @@ static void background_worker_sighup(SIGNAL_ARGS);
 
 
 /*
- * Helio background worker entry point.
+ * DocumentDB background worker entry point.
  */
 void
-HelioBackgroundWorkerMain(Datum main_arg)
+DocumentDBBackgroundWorkerMain(Datum main_arg)
 {
 	char *databaseName = BackgroundWorkerDatabaseName;
 
@@ -81,8 +81,8 @@ HelioBackgroundWorkerMain(Datum main_arg)
 	BackgroundWorkerInitializeConnection(databaseName, NULL, 0);
 
 	ereport(LOG, (errmsg("Starting %s with databaseName %s",
-						 HelioBackgroundWorkerLeaderName, databaseName)));
-	pgstat_report_appname(HelioBackgroundWorkerLeaderName);
+						 DocumentDBBackgroundWorkerLeaderName, databaseName)));
+	pgstat_report_appname(DocumentDBBackgroundWorkerLeaderName);
 
 	/* Own the latch once everything is ready */
 	BackgroundWorkerShmemInit();
@@ -139,7 +139,7 @@ HelioBackgroundWorkerMain(Datum main_arg)
 
 	/* when sigterm comes, try cancel all currently open connections */
 	ereport(LOG, (errmsg("%s is shutting down.",
-						 HelioBackgroundWorkerLeaderName)));
+						 DocumentDBBackgroundWorkerLeaderName)));
 }
 
 
@@ -165,7 +165,7 @@ BackgroundWorkerShmemInit(void)
 {
 	bool found;
 	BackgroundWorkerShmem = (BackgroundWorkerShmemStruct *) ShmemInitStruct(
-		"Helio Background Worker data",
+		"DocumentDB Background Worker data",
 		BackgroundWorkerShmemSize(),
 		&found);
 	if (!found)
@@ -206,7 +206,7 @@ background_worker_sigterm(SIGNAL_ARGS)
 	got_sigterm = true;
 	ereport(LOG,
 			(errmsg("Terminating \"%s\" due to administrator command",
-					HelioBackgroundWorkerLeaderName)));
+					DocumentDBBackgroundWorkerLeaderName)));
 
 	if (BackgroundWorkerShmem != NULL)
 	{

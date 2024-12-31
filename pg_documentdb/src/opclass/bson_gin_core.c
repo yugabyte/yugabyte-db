@@ -26,10 +26,10 @@
 #include <funcapi.h>
 #include <lib/stringinfo.h>
 
-#include "opclass/helio_gin_common.h"
-#include "opclass/helio_bson_gin_private.h"
-#include "opclass/helio_gin_index_mgmt.h"
-#include "opclass/helio_gin_index_term.h"
+#include "opclass/bson_gin_common.h"
+#include "opclass/bson_gin_private.h"
+#include "opclass/bson_gin_index_mgmt.h"
+#include "opclass/bson_gin_index_term.h"
 #include "io/bson_core.h"
 #include "aggregation/bson_query_common.h"
 #include "query/bson_compare.h"

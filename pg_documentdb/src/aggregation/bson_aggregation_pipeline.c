@@ -47,7 +47,7 @@
 #include "io/bson_core.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
-#include "planner/helio_planner.h"
+#include "planner/documentdb_planner.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "aggregation/bson_aggregation_window_operators.h"
 #include "commands/parse_error.h"
@@ -828,7 +828,7 @@ EnsureTopLevelNumberFieldType(const char *fieldName, const bson_value_t *value)
 
 
 /*
- * Creates a Var in the query representing the 'document' column of a helio_data table.
+ * Creates a Var in the query representing the 'document' column of a documentdb_data table.
  */
 inline static Var *
 CreateDocumentVar(void)
@@ -845,7 +845,7 @@ CreateDocumentVar(void)
 
 
 /*
- * Creates a Var in the query representing the 'document' column of a helio_data table.
+ * Creates a Var in the query representing the 'document' column of a documentdb_data table.
  */
 inline static Var *
 CreateChangeStreamDocumentVar(void)
@@ -862,7 +862,7 @@ CreateChangeStreamDocumentVar(void)
 
 
 /*
- * Creates a Var in the query representing the 'document' column of a helio_data table.
+ * Creates a Var in the query representing the 'document' column of a documentdb_data table.
  */
 inline static Var *
 CreateChangeStreamContinuationtVar(void)
@@ -4451,11 +4451,11 @@ AddSimpleGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 		functionId, BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
-	if (EnableLetSupport && BsonTypeId() != HelioCoreBsonTypeId() &&
+	if (EnableLetSupport && BsonTypeId() != DocumentDBCoreBsonTypeId() &&
 		IsClusterVersionAtleastThis(1, 24, 0))
 	{
 		accumFunc = makeFuncExpr(
-			HelioCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(accumFunc),
+			DocumentDBCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(accumFunc),
 			InvalidOid,
 			InvalidOid, COERCE_EXPLICIT_CALL);
 	}
@@ -4700,7 +4700,7 @@ AddSortedGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 
 	/* Cast documentExpr from helio_core.bson to bson to ensure type */
 	/* correctness for accumulators that require bson. */
-	if (EnableLetSupport && BsonTypeId() != HelioCoreBsonTypeId())
+	if (EnableLetSupport && BsonTypeId() != DocumentDBCoreBsonTypeId())
 	{
 		documentExpr = (Expr *) makeRelabelType(documentExpr, BsonTypeId(), -1,
 												InvalidOid,
@@ -4938,11 +4938,11 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		bsonExpressionGetFunction, BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
-	if (EnableLetSupport && BsonTypeId() != HelioCoreBsonTypeId() &&
+	if (EnableLetSupport && BsonTypeId() != DocumentDBCoreBsonTypeId() &&
 		IsClusterVersionAtleastThis(1, 24, 0))
 	{
 		groupFunc = makeFuncExpr(
-			HelioCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(groupFunc),
+			DocumentDBCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(groupFunc),
 			InvalidOid,
 			InvalidOid, COERCE_EXPLICIT_CALL);
 	}

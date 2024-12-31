@@ -17,8 +17,8 @@
 #include <access/reloptions.h>
 
 #include "io/bson_core.h"
-#include "opclass/helio_gin_common.h"
-#include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/bson_gin_common.h"
+#include "opclass/bson_gin_index_mgmt.h"
 #include "utils/documentdb_errors.h"
 #include "io/bson_traversal.h"
 

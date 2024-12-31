@@ -17,7 +17,7 @@
 #include "operators/bson_expression_operators.h"
 #include "utils/documentdb_errors.h"
 #include "metadata/metadata_cache.h"
-#include "opclass/helio_bson_text_gin.h"
+#include "opclass/bson_text_gin.h"
 #include "vector/vector_utilities.h"
 #include "utils/lsyscache.h"
 #include "utils/fmgroids.h"

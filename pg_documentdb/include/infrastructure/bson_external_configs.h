@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/infrastructure/helio_external_configs.h
+ * include/infrastructure/bson_external_configs.h
  *
- * User facing configuration options for pg_helio_api
+ * User facing configuration options for pg_documentdb
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_EXTERNAL_CONFIGS_H
-#define HELIO_EXTERNAL_CONFIGS_H
+#ifndef BSON_EXTERNAL_CONFIGS_H
+#define BSON_EXTERNAL_CONFIGS_H
 
 /*-------------------------------------------------------------------------
  * Data types

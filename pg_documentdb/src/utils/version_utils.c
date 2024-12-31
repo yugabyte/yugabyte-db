@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/helio_api_version_utils.c
+ * src/version_utils.c
  *
  * Utilities that Provide extension functions to handle version upgrade
  * scenarios for the current extension.
@@ -36,7 +36,7 @@ InitializeVersionCache(void)
 	bool found;
 
 	size_t version_cache_size = MAXALIGN(sizeof(ExtensionVersion));
-	CurrentVersion = (ExtensionVersion *) ShmemInitStruct("Helio Version Cache",
+	CurrentVersion = (ExtensionVersion *) ShmemInitStruct("DocumentDB Version Cache",
 														  version_cache_size, &found);
 
 	if (!found)

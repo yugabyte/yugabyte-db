@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/customscan/helio_custom_scan.h
+ * include/customscan/bson_custom_scan.h
  *
  *  Implementation of a custom scan plan.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_CUSTOM_SCAN_H
-#define HELIO_CUSTOM_SCAN_H
+#ifndef BSON_CUSTOM_SCAN_H
+#define BSON_CUSTOM_SCAN_H
 
 #include <optimizer/plancat.h>
 

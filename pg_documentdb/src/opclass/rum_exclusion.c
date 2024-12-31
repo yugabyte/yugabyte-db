@@ -51,8 +51,8 @@
 #include "utils/documentdb_errors.h"
 #include "utils/version_utils.h"
 #include "utils/hashset_utils.h"
-#include "opclass/helio_bson_gin_private.h"
-#include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/bson_gin_private.h"
+#include "opclass/bson_gin_index_mgmt.h"
 #include "metadata/metadata_cache.h"
 
 /* --------------------------------------------------------- */

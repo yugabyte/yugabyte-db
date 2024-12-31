@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/helio_distributed_init.h
+ * include/documentdb_distributed_init.h
  *
- * The implementation for shard colocation for helio with citus.
+ * The implementation for shard colocation for documentdb with citus.
  *
  *-------------------------------------------------------------------------
  */
-#ifndef HELIO_DISTRIBUTED_INIT_H
-#define HELIO_DISTRIBUTED_INIT_H
+#ifndef DOCUMENTDB_DISTRIBUTED_INIT_H
+#define DOCUMENTDB_DISTRIBUTED_INIT_H
 
-void InitHelioDistributedConfigurations(const char *prefix);
+void InitDocumentDBDistributedConfigurations(const char *prefix);
 
 #endif

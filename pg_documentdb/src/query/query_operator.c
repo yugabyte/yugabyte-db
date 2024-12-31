@@ -44,11 +44,11 @@
 #include "geospatial/bson_geospatial_geonear.h"
 #include "geospatial/bson_geospatial_shape_operators.h"
 #include "metadata/collection.h"
-#include "planner/helio_planner.h"
+#include "planner/documentdb_planner.h"
 #include "query/query_operator.h"
 #include "sharding/sharding.h"
 #include "utils/rel.h"
-#include "opclass/helio_bson_text_gin.h"
+#include "opclass/bson_text_gin.h"
 #include "utils/feature_counter.h"
 #include "vector/vector_common.h"
 #include "vector/vector_utilities.h"
@@ -2772,7 +2772,7 @@ CheckAndAddIdFilter(List *opArgs, IdFilterWalkerContext *context,
 
 		/*  regex. _id can take Code, but Code is agnostic to collation
 		 * _id can't be array accrording to mongo senmantics, but it can
-		 * be an array in helio since we rewrite $or conditions on _id as $in. */
+		 * be an array in documentdb since we rewrite $or conditions on _id as $in. */
 		if (qualElement.bsonValue.value_type == BSON_TYPE_UTF8 ||
 			qualElement.bsonValue.value_type == BSON_TYPE_DOCUMENT ||
 			qualElement.bsonValue.value_type == BSON_TYPE_ARRAY)

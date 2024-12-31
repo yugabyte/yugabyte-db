@@ -3,7 +3,7 @@
  *
  * src/index_am/rum.c
  *
- * Rum access method implementations for helioapi.
+ * Rum access method implementations for documentdb_api.
  * See also: https://www.postgresql.org/docs/current/gin-extensibility.html
  * See also: https://github.com/postgrespro/rum
  *
@@ -20,8 +20,8 @@
 
 #include "api_hooks.h"
 #include "planner/mongo_query_operator.h"
-#include "opclass/helio_gin_index_mgmt.h"
-#include "index_am/helio_rum.h"
+#include "opclass/bson_gin_index_mgmt.h"
+#include "index_am/documentdb_rum.h"
 #include "metadata/metadata_cache.h"
 
 
@@ -54,7 +54,7 @@ PG_FUNCTION_INFO_V1(extensionrumhandler);
 Datum
 extensionrumhandler(PG_FUNCTION_ARGS)
 {
-	IndexAmRoutine *indexRoutine = GetHelioIndexAmRoutine(fcinfo);
+	IndexAmRoutine *indexRoutine = GetDocumentDBIndexAmRoutine(fcinfo);
 	PG_RETURN_POINTER(indexRoutine);
 }
 

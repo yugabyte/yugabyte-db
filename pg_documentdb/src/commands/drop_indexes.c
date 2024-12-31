@@ -935,7 +935,7 @@ CancelIndexBuildRequest(int indexId)
 
 		/* Run pg_cancel_backend as super user via libpq otherwise we will not be able to cancel cron-job (launched as super user) */
 		ExtensionExecuteQueryWithArgsAsUserOnLocalhostViaLibPQ(cmdStr->data,
-															   HelioApiExtensionOwner(),
+															   DocumentDBApiExtensionOwner(),
 															   nargs, argTypes,
 															   parameterValues);
 

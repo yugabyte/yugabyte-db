@@ -24,13 +24,13 @@
 #include <nodes/makefuncs.h>
 
 #include "io/bson_core.h"
-#include "opclass/helio_gin_common.h"
-#include "opclass/helio_gin_index_mgmt.h"
-#include "opclass/helio_bson_gin_private.h"
+#include "opclass/bson_gin_common.h"
+#include "opclass/bson_gin_index_mgmt.h"
+#include "opclass/bson_gin_private.h"
 #include "utils/documentdb_errors.h"
-#include "opclass/helio_bson_text_gin.h"
+#include "opclass/bson_text_gin.h"
 #include "metadata/metadata_cache.h"
-#include "opclass/helio_index_support.h"
+#include "opclass/bson_index_support.h"
 
 
 extern QueryTextIndexData *QueryTextData;
@@ -318,7 +318,7 @@ BsonTextGenerateTSQuery(const bson_value_t *queryValue, bytea *indexOptions)
 
 
 /*
- * Parses the $text filter and validates the options for what's supported in helioapi.
+ * Parses the $text filter and validates the options for what's supported in documentdb_api.
  */
 void
 BsonValidateTextQuery(const bson_value_t *queryValue)

@@ -24,7 +24,7 @@
 #include "operators/bson_expr_eval.h"
 #include "utils/fmgr_utils.h"
 #include "utils/hashset_utils.h"
-#include "opclass/helio_bson_text_gin.h"
+#include "opclass/bson_text_gin.h"
 #include "types/decimal128.h"
 #include "collation/collation.h"
 #include "utils/version_utils.h"
@@ -1107,7 +1107,7 @@ bson_dollar_not_gte(PG_FUNCTION_ARGS)
 
 
 /*
- * bson_dollar_range implements the Helio API's version of the range
+ * bson_dollar_range implements the DocumentDB API's version of the range
  * functionality in the runtime. Note that this is different from MongoDB's
  * $range array operator. This combines $gt and $lt conditions into a range
  * operator that can be used to traverse an index efficiently.
@@ -1117,7 +1117,7 @@ bson_dollar_not_gte(PG_FUNCTION_ARGS)
  * rewritten range query in the following format (see below) and ensures that at least
  * one range condition is satisfied on the provided value.
  *
- * Note that if no attempt was made to push down a rewritten Helio range operator
+ * Note that if no attempt was made to push down a rewritten DocumentDB range operator
  * to the index, this runtime function would not be called.
  *
  * Range query format: { "path": { "min": VALUE, "max": VALUE, "minInclusive": BOOL, "maxInclusive": BOOL } }

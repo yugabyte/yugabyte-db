@@ -265,7 +265,7 @@ ROLLBACK;
 SET helio_api.enableVectorHNSWIndex = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 10000000 }  } } ], "cursor": {} }');
 ERROR:  hnsw index is not supported.
-DETAIL:  hnsw index configuration is not enabled. Set helio_api.enableVectorHNSWIndex to true to enable hnsw index.
+DETAIL:  hnsw index configuration is not enabled. Set ApiGucPrefix.enableVectorHNSWIndex to true to enable hnsw index.
 SET helio_api.enableVectorHNSWIndex = on;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 10000000 }  } } ], "cursor": {} }');
 ERROR:  $efSearch must be less than or equal to 1000.

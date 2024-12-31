@@ -20,7 +20,7 @@
 #include "types/pcre_regex.h"
 #include "query/bson_dollar_operators.h"
 
-#define HELIO_PCRE2_INDEX_UNSET (~(size_t) 0)
+#define PCRE2_INDEX_UNSET (~(size_t) 0)
 
 #define MAX_REGEX_OUTPUT_BUFFER_SIZE (64 * 1024 * 1024)
 
@@ -3004,7 +3004,7 @@ ConstructResultForDollarRegex(RegexData *regexData, bson_value_t *input,
 		currMatchStartID = outputVector[i];
 		currMatchEndID = outputVector[i + 1];
 
-		if (currMatchStartID == HELIO_PCRE2_INDEX_UNSET)
+		if (currMatchStartID == PCRE2_INDEX_UNSET)
 		{
 			bson_value_t nullValue;
 			nullValue.value_type = BSON_TYPE_NULL;

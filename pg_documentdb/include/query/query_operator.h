@@ -16,7 +16,7 @@
 
 #include "metadata/collection.h"
 #include "io/bson_core.h"
-#include "opclass/helio_gin_common.h"
+#include "opclass/bson_gin_common.h"
 #include "planner/mongo_query_operator.h"
 
 /* BsonElemMatchContext is passed down while expanding BSON query expressions to handle $elemMatch operator */

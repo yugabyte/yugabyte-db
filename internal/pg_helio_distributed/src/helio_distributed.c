@@ -44,8 +44,8 @@ _PG_init(void)
 							"Note that pg_helio_distributed should be placed right after citus and pg_helio_api.")));
 	}
 
-	InitializeHelioDistributedHooks();
-	InitHelioDistributedConfigurations("helio_api_distributed");
+	InitializeDocumentDBDistributedHooks();
+	InitDocumentDBDistributedConfigurations("helio_api_distributed");
 	MarkGUCPrefixReserved("helio_api_distributed");
 }
 

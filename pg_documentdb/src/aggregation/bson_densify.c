@@ -18,7 +18,7 @@
 
 #include "aggregation/bson_project.h"
 #include "commands/parse_error.h"
-#include "infrastructure/helio_external_configs.h"
+#include "infrastructure/bson_external_configs.h"
 #include "io/bson_core.h"
 #include "io/bson_hash.h"
 #include "metadata/metadata_cache.h"

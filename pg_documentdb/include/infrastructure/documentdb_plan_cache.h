@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/planner/helio_plan_cache.h
+ * include/planner/documentdb_plan_cache.h
  *
- * Common declarations for the pg_helio_api plan cache.
+ * Common declarations for the pg_documentdb plan cache.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_PLAN_CACHE_H
-#define HELIO_PLAN_CACHE_H
+#ifndef BSON_PLAN_CACHE_H
+#define BSON_PLAN_CACHE_H
 
 #include <executor/spi.h>
 

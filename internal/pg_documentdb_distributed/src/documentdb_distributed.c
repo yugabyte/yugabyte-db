@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/helio_distributed.c
+ * src/documentdb_distributed.c
  *
  * Initialization of the shared library.
  *-------------------------------------------------------------------------
@@ -41,11 +41,11 @@ _PG_init(void)
 							"pg_documentdb_distributed can only be loaded via shared_preload_libraries. "
 							"Add pg_documentdb_distributed to shared_preload_libraries configuration "
 							"variable in postgresql.conf in coordinator and workers. "
-							"Note that pg_documentdb_distributed should be placed right after citus and pg_helio_api.")));
+							"Note that pg_documentdb_distributed should be placed right after citus and pg_documentdb.")));
 	}
 
-	InitializeHelioDistributedHooks();
-	InitHelioDistributedConfigurations("documentdb_distributed");
+	InitializeDocumentDBDistributedHooks();
+	InitDocumentDBDistributedConfigurations("documentdb_distributed");
 	MarkGUCPrefixReserved("documentdb_distributed");
 }
 

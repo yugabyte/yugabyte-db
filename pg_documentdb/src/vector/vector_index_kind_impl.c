@@ -324,7 +324,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 {
 	if (!EnableVectorHNSWIndex)
 	{
-		/* Safe guard against the helio_api.enableVectorHNSWIndex GUC */
+		/* Safe guard against the ApiGucPrefix.enableVectorHNSWIndex GUC */
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
 							"hnsw index is not supported for this cluster tier")));
@@ -541,12 +541,12 @@ ParseHNSWIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 {
 	if (!EnableVectorHNSWIndex)
 	{
-		/* Safe guard against the helio_api.enableVectorHNSWIndex GUC */
+		/* Safe guard against the ApiGucPrefix.enableVectorHNSWIndex GUC */
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
 							"hnsw index is not supported."),
 						errdetail(
-							"hnsw index configuration is not enabled. Set helio_api.enableVectorHNSWIndex to true to enable hnsw index.")));
+							"hnsw index configuration is not enabled. Set ApiGucPrefix.enableVectorHNSWIndex to true to enable hnsw index.")));
 	}
 
 	ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_HNSW);

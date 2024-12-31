@@ -26,7 +26,7 @@
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
-#include "infrastructure/helio_plan_cache.h"
+#include "infrastructure/documentdb_plan_cache.h"
 #include "sharding/sharding.h"
 #include "commands/retryable_writes.h"
 #include "io/pgbsonsequence.h"
@@ -809,7 +809,7 @@ CallDeleteOne(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 			  int64 shardKeyHash, text *transactionId, bool forceInlineWrites,
 			  DeleteOneResult *result)
 {
-	/* In single node scenarios (like HelioDB where we can inline the write, call the internal)
+	/* In single node scenarios (like DocumentDB where we can inline the write, call the internal)
 	 * delete functions directly.
 	 * Alternatively in a distributed scenario, if the shard is colocated on the current node anyway,
 	 * then we don't need to go remote - we can simply call the delete internal functions directly.
@@ -852,7 +852,7 @@ CallDeleteWorker(MongoCollection *collection,
 	const char *updateQuery = FormatSqlQuery(
 		"SELECT %s.delete_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM %s.documents_"
 		UINT64_FORMAT " WHERE shard_key_value = %ld",
-		HelioApiInternalSchemaName, ApiDataSchemaName, collection->collectionId,
+		DocumentDBApiInternalSchemaName, ApiDataSchemaName, collection->collectionId,
 		shardKeyHash);
 
 	argValues[0] = UInt64GetDatum(collection->collectionId);

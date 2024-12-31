@@ -20,8 +20,8 @@
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
 #include "geospatial/bson_geospatial_shape_operators.h"
-#include "opclass/helio_gin_common.h"
-#include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/bson_gin_common.h"
+#include "opclass/bson_gin_index_mgmt.h"
 #include "metadata/metadata_cache.h"
 #include "utils/fmgr_utils.h"
 
@@ -83,7 +83,7 @@ typedef struct IndexBsonGeospatialState
 /*
  * This is a copy of BOX2DF Structure that Postgis uses to store
  * geometries bounding boxes, we define it here to extract the min/max
- * values from the bounding box in helioapi
+ * values from the bounding box in documentdb_api
  */
 typedef struct BSON_BOUNDING_BOXF
 {

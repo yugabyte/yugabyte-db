@@ -34,7 +34,7 @@
 #include "query/query_operator.h"
 #include "commands/parse_error.h"
 #include "commands/defrem.h"
-#include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/bson_gin_index_mgmt.h"
 #include "utils/version_utils.h"
 
 #include "aggregation/bson_aggregation_pipeline.h"
@@ -1045,7 +1045,7 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("$filter is not supported for vector search yet."),
 								errdetail_log(
-									"vector pre-filter is disabled. Set helio_api.enableVectorPreFilter to true to enable vector pre filter.")));
+									"vector pre-filter is disabled. Set ApiGucPrefix.enableVectorPreFilter to true to enable vector pre filter.")));
 			}
 			EnsureTopLevelFieldValueType("filter", value, BSON_TYPE_DOCUMENT);
 			PgbsonWriterAppendValue(&writer, "filter", 6, value);
@@ -1316,7 +1316,7 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("$filter is not supported for vector search yet."),
 								errdetail_log(
-									"vector pre-filter is disabled. Set helio_api.enableVectorPreFilter to true to enable vector pre filter.")));
+									"vector pre-filter is disabled. Set ApiGucPrefix.enableVectorPreFilter to true to enable vector pre filter.")));
 			}
 
 			if (!BSON_ITER_HOLDS_DOCUMENT(&specIter))

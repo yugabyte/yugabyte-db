@@ -57,7 +57,7 @@ typedef enum BoolIndexOption
  *  - CopyIndexSpec()
  *  - IndexSpecOptionsAreEquivalent()
  *  - MakeIndexSpecForIndexDef()
- * , and index_spec_type_internal type in helio_api.sql.
+ * , and index_spec_type_internal type in documentdb_api.sql.
  */
 typedef struct IndexSpec
 {
@@ -123,7 +123,7 @@ typedef struct IndexDetails
 } IndexDetails;
 
 /*
- * Index command status in helio_api_catalog.helio_index_queue
+ * Index command status in ApiCatalogSchemaName.helio_index_queue
  * Since GetRequestFromIndexQueue relies on order of index_cmd_status to avoid the starvation
  * the enum values are kept in such a way that GetRequestFromIndexQueue always picks request in order
  * IndexCmdStatus_Queued first then IndexCmdStatus_Failed (ascending order).

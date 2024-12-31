@@ -1,9 +1,9 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/pg_helio_api.c
+ * src/pg_documentdb.c
  *
- * Initialization of the shared library for the Helio API.
+ * Initialization of the shared library for the DocumentDB API.
  *-------------------------------------------------------------------------
  */
 #include <postgres.h>
@@ -13,8 +13,8 @@
 
 #include "bson_init.h"
 #include "utils/feature_counter.h"
-#include "infrastructure/helio_external_configs.h"
-#include "helio_api_init.h"
+#include "infrastructure/bson_external_configs.h"
+#include "documentdb_api_init.h"
 
 PG_MODULE_MAGIC;
 
@@ -51,7 +51,7 @@ _PG_init(void)
 	InitializeSharedMemoryHooks();
 	MarkGUCPrefixReserved("documentdb");
 
-	InstallHelioApiPostgresHooks();
+	InstallDocumentDBApiPostgresHooks();
 
 	ereport(LOG, (errmsg("Initialized pg_documentdb extension")));
 }
@@ -68,5 +68,5 @@ _PG_fini(void)
 		return;
 	}
 
-	UninstallHelioApiPostgresHooks();
+	UninstallDocumentDBApiPostgresHooks();
 }

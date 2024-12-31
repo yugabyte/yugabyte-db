@@ -16,8 +16,8 @@
 
 #include "io/bson_core.h"
 #include "geospatial/bson_geospatial_private.h"
-#include "opclass/helio_gin_index_mgmt.h"
-#include "opclass/helio_index_support.h"
+#include "opclass/bson_gin_index_mgmt.h"
+#include "opclass/bson_index_support.h"
 #include "geospatial/bson_geospatial_common.h"
 
 

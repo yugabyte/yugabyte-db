@@ -535,7 +535,7 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
  *
  * The Postgres query that is formed at the end of the function is:
  *
- * SELECT helio_api_internal.bson_dollar_merge_documents(document, ApiCatalogSchema.bson_repath_and_build(<field1>::text, total)) AS document
+ * SELECT ApiInternalSchemaName.bson_dollar_merge_documents(document, ApiCatalogSchema.bson_repath_and_build(<field1>::text, total)) AS document
  * FROM (
  *     SELECT
  *         document,
@@ -886,7 +886,7 @@ UpdateWindowOperatorAndFrameOptions(const bson_value_t *windowOpValue,
 	}
 	*allFrameOptions |= frameOptions;
 
-	/* In the window frameOptions strip helio specific options */
+	/* In the window frameOptions strip documentdb specific options */
 	windowClause->frameOptions = frameOptions & (~FRAMEOPTION_MONGO_ONLY);
 
 	/* entry should not remain NULL at this point */

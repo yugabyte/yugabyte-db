@@ -37,7 +37,7 @@
 #include "io/bson_core.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
-#include "planner/helio_planner.h"
+#include "planner/documentdb_planner.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "commands/parse_error.h"
 #include "commands/commands_common.h"
@@ -544,7 +544,7 @@ HandleInverseMatch(const bson_value_t *existingValue, Query *query,
 
 	Expr *currentProjection = firstEntry->expr;
 
-	/* build WHERE helio_api.bson_dollar_inverse_match clause */
+	/* build WHERE ApiSchemaName.bson_dollar_inverse_match clause */
 	Expr *specArgument = NULL;
 	ParseState *parseState = make_parsestate(NULL);
 	parseState->p_expr_kind = EXPR_KIND_SELECT_TARGET;
@@ -562,7 +562,7 @@ HandleInverseMatch(const bson_value_t *existingValue, Query *query,
 		/* if from collection is specified we generate a query like:
 		 * SELECT document
 		 * FROM ApiDataSchemaName.documents_963002 collection
-		 * WHERE helio_api_internal.bson_dollar_inverse_match(
+		 * WHERE ApiInternalSchemaName.bson_dollar_inverse_match(
 		 *  document,
 		 *  (
 		 *      SELECT ApiCatalogSchema.bson_dollar_add_fields(
@@ -2104,7 +2104,7 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		else
 		{
 			Oid extractFunctionOid =
-				HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid();
+				DocumentDBApiInternalBsonLookupExtractFilterExpressionFunctionOid();
 
 			projectorFunc = makeFuncExpr(
 				extractFunctionOid, BsonTypeId(),
@@ -2710,7 +2710,7 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 		else
 		{
 			Oid extractFunctionOid =
-				HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid();
+				DocumentDBApiInternalBsonLookupExtractFilterExpressionFunctionOid();
 
 			projectorFunc = (Expr *) makeFuncExpr(
 				extractFunctionOid, BsonTypeId(),

@@ -170,7 +170,7 @@ static bool ScramSaltedPassword(ScramState *state, const char *password, const
 /* ------------------------------------------------------------------------- */
 
 /*
- * FUNCTION DECLARATIONS FORMAT FOR HELIO EXTENSION FUNCTIONS
+ * FUNCTION DECLARATIONS FORMAT FOR DocumentDB EXTENSION FUNCTIONS
  */
 PG_FUNCTION_INFO_V1(command_authenticate_with_scram_sha256);
 PG_FUNCTION_INFO_V1(command_scram_sha256_get_salt_and_iterations);
@@ -535,7 +535,7 @@ ParseScramShadowPassword(ScramState *scramState)
  * Generate Auth Message for command_generate_auth_message_client_proof_for_test
  * This is a test helper function that helps in forming the input parameter to
  * the function: command_authenticate_with_scram_sha256() for the tests added
- * pg_helio_api regress suite.
+ * pg_documentdb regress suite.
  *
  * Auth message = Client First message bare + Server First message
  *                 + Client Final message without Proof

@@ -3,13 +3,13 @@
  *
  * include/distributed_hooks.h
  *
- * The implementation for shard colocation for helio with citus.
+ * The implementation for shard colocation for DocumentDB with citus.
  *
  *-------------------------------------------------------------------------
  */
-#ifndef HELIO_DISTRIBUTED_HOOKS_H
-#define HELIO_DISTRIBUTED_HOOKS_H
+#ifndef DOCUMENTDB_DISTRIBUTED_HOOKS_H
+#define DOCUMENTDB_DISTRIBUTED_HOOKS_H
 
-void InitializeHelioDistributedHooks(void);
+void InitializeDocumentDBDistributedHooks(void);
 
 #endif

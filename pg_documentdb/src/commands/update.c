@@ -85,7 +85,7 @@
 #include "commands/update.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
-#include "infrastructure/helio_plan_cache.h"
+#include "infrastructure/documentdb_plan_cache.h"
 #include "query/query_operator.h"
 #include "sharding/sharding.h"
 #include "commands/retryable_writes.h"
@@ -1394,7 +1394,7 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 		 * object_id,
 		 * shard_key_value,
 		 * newDocument,
-		 * helio_api_internal.schema_validation_against_update($5, filtered_documents.newDocument, filtered_documents.document, false)
+		 * ApiInternalSchemaName.schema_validation_against_update($5, filtered_documents.newDocument, filtered_documents.document, false)
 		 * FROM filtered_documents
 		 * ),
 		 * u AS (
@@ -1681,7 +1681,7 @@ CallUpdateWorker(MongoCollection *collection, pgbson *serializedSpec,
 	const char *updateQuery = FormatSqlQuery(
 		" SELECT %s.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM %s.documents_"
 		UINT64_FORMAT " WHERE shard_key_value = %ld",
-		HelioApiInternalSchemaName, ApiDataSchemaName, collection->collectionId,
+		DocumentDBApiInternalSchemaName, ApiDataSchemaName, collection->collectionId,
 		shardKeyHash);
 
 	argValues[0] = UInt64GetDatum(collection->collectionId);

@@ -453,7 +453,8 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		{
 			PgbsonWriterAppendNull(&writer, path, len);
 		}
-		else if (types[i + 1] == BsonTypeId() || types[i + 1] == HelioCoreBsonTypeId())
+		else if (types[i + 1] == BsonTypeId() || types[i + 1] ==
+				 DocumentDBCoreBsonTypeId())
 		{
 			pgbsonelement elem;
 			pgbson *pbson = DatumGetPgBson(args[i + 1]);
@@ -652,7 +653,7 @@ PgbsonElementWriterWriteSQLValue(pgbson_element_writer *writer,
 
 		default:
 		{
-			if (fieldTypeId == HelioCoreBsonTypeId())
+			if (fieldTypeId == DocumentDBCoreBsonTypeId())
 			{
 				WriteBsonSqlValue(fieldValue, writer);
 				return;

@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/helio_distributed_init.c
+ * src/documentdb_distributed_init.c
  *
  * Initialization of the shared library initialization for distribution for Hleio API.
  *-------------------------------------------------------------------------
@@ -28,10 +28,10 @@ bool EnableShardRebalancer = DEFAULT_ENABLE_SHARD_REBALANCER;
 /* --------------------------------------------------------- */
 
 /*
- * Initializes core configurations pertaining to helio core.
+ * Initializes core configurations pertaining to documentdb distributed.
  */
 void
-InitHelioDistributedConfigurations(const char *prefix)
+InitDocumentDBDistributedConfigurations(const char *prefix)
 {
 	DefineCustomBoolVariable(
 		psprintf("%s.enable_metadata_reference_table_sync", prefix),

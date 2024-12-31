@@ -1298,11 +1298,11 @@ CopyIndexSpec(const IndexSpec *indexSpec)
 
 /*
  * command_get_next_collection_index_id returns next unique collection index
- * id based on the value of helio_api.next_collection_index_id GUC if it is set.
+ * id based on the value of ApiSchemaName.next_collection_index_id GUC if it is set.
  *
  * Otherwise, uses the next value of collection_indexes_index_id_seq sequence.
  *
- * Note that helio_api.next_collection_index_id GUC is only expected to be set
+ * Note that ApiSchemaName.next_collection_index_id GUC is only expected to be set
  * in regression tests to ensure consistent collection index ids when running
  * tests in parallel.
  */
@@ -1317,12 +1317,12 @@ command_get_next_collection_index_id(PG_FUNCTION_ARGS)
 
 	PG_RETURN_INT32(DatumGetInt32(
 						SequenceGetNextValAsUser(ApiCatalogCollectionIndexIdSequenceId(),
-												 HelioApiExtensionOwner())));
+												 DocumentDBApiExtensionOwner())));
 }
 
 
 /*
- * AddRequestInIndexQueue inserts a record into helio_api_catalog.helio_index_queue
+ * AddRequestInIndexQueue inserts a record into ApiCatalogSchemaName.helio_index_queue
  * for given indexId using SPI.
  */
 void
@@ -1389,7 +1389,7 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	 *
 	 * SELECT index_cmd, index_id, index_cmd_status,
 	 *        COALESCE(attempt, 0) AS attempt, comment, update_time, user_oid
-	 * FROM helio_api_catalog.helio_index_queue iq
+	 * FROM ApiCatalogSchemaName.helio_index_queue iq
 	 * WHERE cmd_type = '%c'
 	 *       AND iq.collection_id = collectionId
 	 *       AND (index_cmd_status != IndexCmdStatus_Inprogress
@@ -1470,7 +1470,7 @@ GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds)
 	 *
 	 * SELECT array_agg(a.collection_id) FROM
 	 *  (SELECT collection_id
-	 *  FROM helio_api_catalog.helio_index_queue pq
+	 *  FROM ApiCatalogSchemaName.helio_index_queue pq
 	 *  WHERE cmd_type = $1 AND collection_id <> ANY($2)
 	 *  ORDER BY min(pq.index_cmd_status) LIMIT MaxNumActiveUsersIndexBuilds
 	 *  ) a;
@@ -1559,7 +1559,7 @@ GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds)
 
 /*
  * RemoveRequestFromIndexQueue deletes the record inserted for given index from
- * helio_api_catalog.helio_index_queue using SPI.
+ * ApiCatalogSchemaName.helio_index_queue using SPI.
  */
 void
 RemoveRequestFromIndexQueue(int indexId, char cmdType)
@@ -1663,7 +1663,7 @@ MarkIndexRequestStatus(int indexId, char cmdType, IndexCmdStatus status, pgbson 
 
 
 /*
- * GetIndexBuildStatusFromIndexQueue gets the status of Create Index request from the helio_api_catalog.helio_index_queue
+ * GetIndexBuildStatusFromIndexQueue gets the status of Create Index request from the ApiCatalogSchemaName.helio_index_queue
  */
 IndexCmdStatus
 GetIndexBuildStatusFromIndexQueue(int indexId)

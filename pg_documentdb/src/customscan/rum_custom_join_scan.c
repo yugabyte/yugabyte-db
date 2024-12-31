@@ -27,7 +27,7 @@
 
 #include "api_hooks.h"
 #include "io/bson_core.h"
-#include "customscan/helio_custom_scan.h"
+#include "customscan/bson_custom_scan.h"
 #include "customscan/custom_scan_registrations.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
@@ -43,7 +43,7 @@
 /* --------------------------------------------------------- */
 
 /* Name needed for Postgres to register a custom scan */
-#define InputContinuationNodeName "HelioRumJoinScanInput"
+#define InputContinuationNodeName "DocumentDBRumJoinScanInput"
 
 typedef struct RumCustomJoinInputState
 {
@@ -54,7 +54,7 @@ typedef struct RumCustomJoinInputState
 } RumCustomJoinInputState;
 
 
-typedef struct HelioRumCustomJoinScanState
+typedef struct DocumentDBRumCustomJoinScanState
 {
 	/* must be first field */
 	CustomScanState custom_scanstate;
@@ -66,7 +66,7 @@ typedef struct HelioRumCustomJoinScanState
 	RumCustomJoinInputState *inputState;
 
 	bool initializedInnerTidBitmap;
-} HelioRumCustomJoinScanState;
+} DocumentDBRumCustomJoinScanState;
 
 extern bool EnableMultiIndexRumJoin;
 
@@ -117,17 +117,17 @@ static void InitializeBitmapHeapScanState(BitmapHeapScanState *scanState, int32_
 
 /* Declaration of extensibility paths for query processing (See extensible.h) */
 static const struct CustomPathMethods ExtensionRumJoinScanPathMethods = {
-	.CustomName = "HelioApiRumJoinScan",
+	.CustomName = "DocumentDBApiRumJoinScan",
 	.PlanCustomPath = ExtensionRumJoinScanPlanCustomPath,
 };
 
 static const struct CustomScanMethods ExtensionRumJoinScanMethods = {
-	.CustomName = "HelioApiRumJoinScan",
+	.CustomName = "DocumentDBApiRumJoinScan",
 	.CreateCustomScanState = ExtensionRumJoinScanCreateCustomScanState
 };
 
 static const struct CustomExecMethods ExtensionRumJoinScanExecuteMethods = {
-	.CustomName = "HelioApiRumJoinScan",
+	.CustomName = "DocumentDBApiRumJoinScan",
 	.BeginCustomScan = ExtensionRumJoinScanBeginCustomScan,
 	.ExecCustomScan = ExtensionRumJoinScanExecCustomScan,
 	.EndCustomScan = ExtensionRumJoinScanEndCustomScan,
@@ -336,8 +336,9 @@ ExtensionRumJoinScanPlanCustomPath(PlannerInfo *root,
 static Node *
 ExtensionRumJoinScanCreateCustomScanState(CustomScan *cscan)
 {
-	HelioRumCustomJoinScanState *queryScanState = (HelioRumCustomJoinScanState *) newNode(
-		sizeof(HelioRumCustomJoinScanState), T_CustomScanState);
+	DocumentDBRumCustomJoinScanState *queryScanState =
+		(DocumentDBRumCustomJoinScanState *) newNode(
+			sizeof(DocumentDBRumCustomJoinScanState), T_CustomScanState);
 
 	CustomScanState *cscanstate = &queryScanState->custom_scanstate;
 	cscanstate->methods = &ExtensionRumJoinScanExecuteMethods;
@@ -359,7 +360,8 @@ ExtensionRumJoinScanBeginCustomScan(CustomScanState *node, EState *estate,
 									int eflags)
 {
 	/* Initialize the actual state of the plan */
-	HelioRumCustomJoinScanState *queryScanState = (HelioRumCustomJoinScanState *) node;
+	DocumentDBRumCustomJoinScanState *queryScanState =
+		(DocumentDBRumCustomJoinScanState *) node;
 
 	queryScanState->innerScanState = (ScanState *) ExecInitNode(
 		queryScanState->innerPlan, estate, eflags);
@@ -374,7 +376,7 @@ ExtensionRumJoinScanBeginCustomScan(CustomScanState *node, EState *estate,
 static TupleTableSlot *
 ExtensionRumJoinScanExecCustomScan(CustomScanState *pstate)
 {
-	HelioRumCustomJoinScanState *node = (HelioRumCustomJoinScanState *) pstate;
+	DocumentDBRumCustomJoinScanState *node = (DocumentDBRumCustomJoinScanState *) pstate;
 
 	/*
 	 * Call ExecScan with the next/recheck methods. This handles
@@ -392,8 +394,8 @@ ExtensionRumJoinScanExecCustomScan(CustomScanState *pstate)
 static TupleTableSlot *
 ExtensionRumJoinScanNext(CustomScanState *node)
 {
-	HelioRumCustomJoinScanState *extensionScanState =
-		(HelioRumCustomJoinScanState *) node;
+	DocumentDBRumCustomJoinScanState *extensionScanState =
+		(DocumentDBRumCustomJoinScanState *) node;
 
 	if (!extensionScanState->initializedInnerTidBitmap)
 	{
@@ -440,7 +442,8 @@ ExtensionRumJoinScanNextRecheck(ScanState *state, TupleTableSlot *slot)
 static void
 ExtensionRumJoinScanEndCustomScan(CustomScanState *node)
 {
-	HelioRumCustomJoinScanState *queryScanState = (HelioRumCustomJoinScanState *) node;
+	DocumentDBRumCustomJoinScanState *queryScanState =
+		(DocumentDBRumCustomJoinScanState *) node;
 	ExecEndNode((PlanState *) queryScanState->innerScanState);
 }
 
@@ -448,7 +451,8 @@ ExtensionRumJoinScanEndCustomScan(CustomScanState *node)
 static void
 ExtensionRumJoinScanReScanCustomScan(CustomScanState *node)
 {
-	HelioRumCustomJoinScanState *queryScanState = (HelioRumCustomJoinScanState *) node;
+	DocumentDBRumCustomJoinScanState *queryScanState =
+		(DocumentDBRumCustomJoinScanState *) node;
 
 	/* reset any scanstate state here */
 	ExecReScan((PlanState *) queryScanState->innerScanState);
@@ -459,7 +463,8 @@ static void
 ExtensionRumJoinScanExplainCustomScan(CustomScanState *node, List *ancestors,
 									  ExplainState *es)
 {
-	HelioRumCustomJoinScanState *queryScanState = (HelioRumCustomJoinScanState *) node;
+	DocumentDBRumCustomJoinScanState *queryScanState =
+		(DocumentDBRumCustomJoinScanState *) node;
 	ExplainPropertyInteger("Limit", "tuples", queryScanState->inputState->limit, es);
 }
 
@@ -501,7 +506,7 @@ OutInputRumJoinScanNode(StringInfo str, const struct ExtensibleNode *raw_node)
 
 
 /*
- * Function for reading HelioApiQueryScan node (unsupported)
+ * Function for reading DocumentDBApiQueryScan node (unsupported)
  */
 static void
 ReadRumJoinScannNode(struct ExtensibleNode *node)

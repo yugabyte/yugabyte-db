@@ -156,7 +156,7 @@ command_rebalancer_stop(PG_FUNCTION_ARGS)
 
 
 /*
- * Appends a helio compatible response for the rebalancer status:
+ * Appends a DocumentDB compatible response for the rebalancer status:
  * {
  *    "mode": "off|full",
  *    "runningJobs": [ { job output from citus }],
