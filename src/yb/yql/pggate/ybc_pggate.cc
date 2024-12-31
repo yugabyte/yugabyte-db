@@ -2752,6 +2752,7 @@ YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count) {
         .partition_key_start_len = tablet.partition().partition_key_start().size(),
         .partition_key_end = YBCPAllocStdString(tablet.partition().partition_key_end()),
         .partition_key_end_len = tablet.partition().partition_key_end().size(),
+        .tablet_data_state = YBCPAllocStdString(TabletDataState_Name(tablet.tablet_data_state()))
       };
       ++dest;
     }

@@ -12030,9 +12030,9 @@
   proname => 'yb_local_tablets', prorows => '100',
   proretset => 't', provolatile => 'v', proparallel => 'r',
   prorettype => 'record', proargtypes => '',
-  proallargtypes => '{text,text,text,text,text,text,bytea,bytea}',
-  proargnames => '{tablet_id,table_id,table_type,namespace_name,ysql_schema_name,table_name,partition_key_start,partition_key_end}',
-  proargmodes => '{o,o,o,o,o,o,o,o}',
+  proallargtypes => '{text,text,text,text,text,text,bytea,bytea,text}',
+  proargnames => '{tablet_id,table_id,table_type,namespace_name,ysql_schema_name,table_name,partition_key_start,partition_key_end,state}',
+  proargmodes => '{o,o,o,o,o,o,o,o,o}',
   prosrc => 'yb_local_tablets'},
 
 { oid => '8067',
