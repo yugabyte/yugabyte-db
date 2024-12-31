@@ -1564,9 +1564,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         try (Statement statement = connection.createStatement()) {
             /* Run query diagnostics on the prepared stmt */
-            String queryId1 = String.valueOf((int) (Math.random() * 1000));
+            String queryId1 = generateUniqueQueryId();
             String queryId2 = getQueryIdFromPgStatStatements(statement, "PREPARE%");
-            String queryId3 = String.valueOf((int) (Math.random() * 1000));
+            String queryId3 = generateUniqueQueryId();
 
             /* Start processing query diagnostics bundles */
             Path bundleDataPath1 = runQueryDiagnostics(statement, queryId1, params1);
