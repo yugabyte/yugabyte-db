@@ -5730,6 +5730,12 @@ HandlePreParsedDollarDateFromString(pgbson *doc, void *arguments,
 		if (isDateStringNull)
 		{
 			result = onNull;
+
+			/* Return directly if onNull type is BSON_TYPE_EOD */
+			if (onNull.value_type == BSON_TYPE_EOD)
+			{
+				return;
+			}
 		}
 
 		ExpressionResultSetValue(expressionResult, &result);

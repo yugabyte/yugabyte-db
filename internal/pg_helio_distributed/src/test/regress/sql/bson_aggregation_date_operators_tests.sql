@@ -932,6 +932,7 @@ select * from bson_dollar_project('{"dateString": "2017", "format": "%G"}','{"re
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": null, "format": "%Y-%m-%dT%H:%M:%S.%LZ", "onNull": "5"} } }');
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": null, "format": "%Y-%m-%dT%H:%M:%S.%LZ", "onNull": 1} } }');
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": null, "format": "%Y-%m-%dT%H:%M:%S.%LZ", "onNull":  {"$date": {"$numberLong": "1678924740500"} }} } }');
+select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "$missing", "onNull": "$missing"} } }');
 -- onNull with document cases
 select * from bson_dollar_project('{"dateString": null, "format": "%Y-%m-%dT%H:%M:%S.%LZ", "onNull": "5"}','{"result": {"$dateFromString": {"dateString": "$dateFromString", "format": "$format", "onNull": "$onNull"} } }');
 select * from bson_dollar_project('{"dateString": null, "format": "%Y-%m-%dT%H:%M:%S.%LZ", "onNull": 1}','{"result": {"$dateFromString": {"dateString": "$dateString", "format": "$format", "onNull": "$onNull"} } }');
