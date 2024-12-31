@@ -326,13 +326,14 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 {
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
-	/*
-	 * Template1DbOid row is for global catalog version when not in per-db mode.
-	 */
-	Oid db_oid = YBIsDBCatalogVersionMode() ? MyDatabaseId : Template1DbOid;
-	YbIncrementMasterDBCatalogVersionTableEntryImpl(db_oid, is_breaking_change,
-													is_global_ddl, command_tag);
 
+	Oid database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
+	Assert(OidIsValid(database_oid));
+
+	YbIncrementMasterDBCatalogVersionTableEntryImpl(database_oid,
+													is_breaking_change,
+													is_global_ddl,
+													command_tag);
 	if (yb_test_fail_next_inc_catalog_version)
 	{
 		yb_test_fail_next_inc_catalog_version = false;
