@@ -97,3 +97,13 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_server_lifetime | The maximum duration (in seconds) that a backend PostgreSQL connection managed by YSQL Connection Manager can remain open after creation. | 3600 |
 | ysql_conn_mgr_log_settings | Comma-separated list of log settings for YSQL Connection Manger. Can include  'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. | "" |
 | ysql_conn_mgr_use_auth_backend | Enable the use of the auth-backend for authentication of logical connections. When false, the older auth-passthrough implementation is used. | true |
+
+## Limitations
+
+- Changes to default GUC values for a user or database (ALTER ROLE SET/ALTER DATABASE SET queries) may reflect in other pre-existing active sessions.
+- Connection Manager can only support upto a total of 10,000 pools to route. This includes pools corresponding to dropped users and databases as well.
+- Prepared statements may be visible to other sessions within the same connection pool. [#24652](https://github.com/yugabyte/yugabyte-db/issues/24652)
+- Attempting to use DEALLOCATE/DEALLOCATE ALL queries can result in unexpected behavior. [#24653](https://github.com/yugabyte/yugabyte-db/issues/24653)
+- As of now, Connection Manager does not facilitate custom configurations per pool. All configurations used will apply to every pool that Connection Manager routes through.
+- With connection manager enabled, the backend PID stored using JDBC drivers may not accurate. This does not affect backend-specific functionalities (eg. cancel queries), but this PID should not be used to identify the backend process.
+- `currval` and `nextval` functions do not work by default with connection manager enabled. They can be supported with the help of the `ysql_conn_mgr_sequence_support_mode` flag.
