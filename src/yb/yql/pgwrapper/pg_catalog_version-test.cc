@@ -1691,5 +1691,76 @@ TEST_F(PgCatalogVersionTest, DisableNopAlterRoleOptimization) {
   ASSERT_EQ(v3, v2 + 1);
 }
 
+TEST_F(PgCatalogVersionTest, AlterDatabaseCatalogVersionIncrement) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  // Create a test db and a test user.
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+  ASSERT_OK(conn.Execute("CREATE USER test_user"));
+  auto v1_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn));
+
+  // Connect to the test db as the test user.
+  PGConn conn_test1 = ASSERT_RESULT(ConnectToDBAsUser("test_db" /* db_name */, "test_user"));
+  auto v1_test_db = ASSERT_RESULT(GetCatalogVersion(&conn_test1));
+
+  // Try to perform alter database test_db as the test user, which isn't the owner.
+  auto status = conn_test1.Execute("ALTER DATABASE test_db SET statement_timeout = 100");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "must be owner of database");
+  status = conn_test1.Execute("ALTER DATABASE test_db SET temp_file_limit = 1024");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "must be owner of database");
+  status = conn_test1.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "must be owner of database");
+
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user"));
+  auto v2_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn));
+  auto v2_test_db = ASSERT_RESULT(GetCatalogVersion(&conn_test1));
+  ASSERT_EQ(v2_yugabyte, v1_yugabyte);
+  ASSERT_EQ(v2_test_db, v1_test_db + 1);
+  WaitForCatalogVersionToPropagate();
+  ASSERT_OK(conn_test1.Execute("ALTER DATABASE test_db SET statement_timeout = 100"));
+  auto v3_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn));
+  auto v3_test_db = ASSERT_RESULT(GetCatalogVersion(&conn_test1));
+  ASSERT_EQ(v3_yugabyte, v2_yugabyte);
+  ASSERT_EQ(v3_test_db, v2_test_db + 1);
+  // temp_file_limit requires PGC_SUSET, test_user only has PGC_USERSET.
+  status = conn_test1.Execute("ALTER DATABASE test_db SET temp_file_limit = 1024");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "permission denied to set parameter");
+
+  // Rename database requires createdb priviledge.
+  status = conn_test1.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "permission denied to rename database");
+
+  // Grant createdb priviledge to test user.
+  ASSERT_OK(conn.Execute("ALTER USER test_user CREATEDB"));
+  auto v4_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn));
+  auto v4_test_db = ASSERT_RESULT(GetCatalogVersion(&conn_test1));
+  // Alter user is a global-impact DDL.
+  ASSERT_EQ(v4_yugabyte, v3_yugabyte + 1);
+  ASSERT_EQ(v4_test_db, v3_test_db + 1);
+  WaitForCatalogVersionToPropagate();
+  status = conn_test1.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "current database cannot be renamed");
+
+  PGConn conn_test2 = ASSERT_RESULT(ConnectToDBAsUser(
+      "yugabyte" /* db_name */, "test_user"));
+  status = conn_test2.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  // The error is only detected on connection to the same node.
+  ASSERT_STR_CONTAINS(status.ToString(), "is being accessed by other users");
+
+  // Make a connection to the second node as test user.
+  pg_ts = cluster_->tablet_server(1);
+  PGConn conn_test3 = ASSERT_RESULT(ConnectToDBAsUser(
+      "yugabyte" /* db_name */, "test_user"));
+  // The error is not detected on connection to the a different node, this is
+  // unique for YB.
+  ASSERT_OK(conn_test3.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

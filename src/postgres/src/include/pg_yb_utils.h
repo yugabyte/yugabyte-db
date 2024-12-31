@@ -1233,4 +1233,6 @@ extern bool yb_ysql_conn_mgr_superuser_existed;
 
 extern AttrNumber YbGetIndexAttnum(Relation index, AttrNumber table_attno);
 
+extern Oid YbGetDatabaseOidToIncrementCatalogVersion();
+
 #endif /* PG_YB_UTILS_H */
