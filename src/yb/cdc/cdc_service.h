@@ -283,12 +283,13 @@ class CDCServiceImpl : public CDCServiceIf {
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
       const StreamMetadata& stream_metadata, int64_t last_readable_index,
+      HaveMoreMessages have_more_messages,
       const CDCThroughputMetrics& throughput_metrics);
 
   void UpdateTabletXClusterMetrics(
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
-      int64_t last_readable_index);
+      int64_t last_readable_index, HaveMoreMessages have_more_messages);
 
   void UpdateTabletCDCSDKMetrics(
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
