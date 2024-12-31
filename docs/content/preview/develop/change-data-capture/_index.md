@@ -10,7 +10,7 @@ menu:
   preview:
     identifier: explore-change-data-capture
     parent: develop
-    weight: 280
+    weight: 575
 type: indexpage
 ---
 

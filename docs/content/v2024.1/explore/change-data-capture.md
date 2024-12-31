@@ -14,32 +14,28 @@ menu:
 type: docs
 ---
 
-In databases, change data capture (CDC) is a set of software design patterns used to determine and track the data that has changed so that action can be taken using the changed data. CDC is beneficial in a number of scenarios:
+In databases, change data capture (CDC) is a set of software design patterns used to determine and track the data that has changed so that action can be taken using the changed data. CDC is useful in a number of scenarios:
 
-- **Microservice-oriented architectures**: Some microservices require a stream of changes to the data, and using CDC in YugabyteDB can provide consumable data changes to CDC subscribers.
+- Microservice-oriented architectures - Some microservices require a stream of changes to the data, and using CDC in YugabyteDB can provide consumable data changes to CDC subscribers.
 
-- **Asynchronous replication to remote systems**: Remote systems may subscribe to a stream of data changes and then transform and consume the changes. Maintaining separate database instances for transactional and reporting purposes can be used to manage workload performance.
+- Asynchronous replication to remote systems - Remote systems may subscribe to a stream of data changes and then transform and consume the changes. Maintaining separate database instances for transactional and reporting purposes can be used to manage workload performance.
 
-- **Multiple data center strategies**: Maintaining multiple data centers enables enterprises to provide high availability (HA).
+- Multiple data center strategies - Maintaining multiple data centers enables enterprises to provide high availability (HA).
 
-- **Compliance and auditing**: Auditing and compliance requirements can require you to use CDC to maintain records of data changes.
+- Compliance and auditing - Satisfy auditing and compliance requirements using CDC to maintain records of data changes.
 
 YugabyteDB's CDC implementation uses [PostgreSQL Logical Replication](https://www.postgresql.org/docs/11/logical-replication.html), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model, where publications (source tables) send changes to subscribers (target systems).
 
-{{< note title="Note" >}}
-
-CDC via logical replication is supported in YugabyteDB starting from version 2024.1.1.
-
-{{< /note >}}
+CDC via logical replication is supported in YugabyteDB starting from v2024.1.1.
 
 ## How it works
 
-YugabyteDB's logical replication can be used in conjunction with Apache Kafka to create a scalable, fault-tolerant, and highly available data pipeline.
+YugabyteDB logical replication can be used in conjunction with Apache Kafka to create a scalable, fault-tolerant, and highly available data pipeline as follows:
 
-1. Logical Replication: YugabyteDB publishes changes to a logical replication slot, which captures the changes in a format that can be consumed by Kafka.
-1. [YugabyteDB connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/): The logical replication slot is connected to the YugabyteDB connector, a Kafka Connect worker based on Debezium, which converts the PostgreSQL change stream into Kafka messages.
-1. Kafka Topics: YugabyteDB Connector publishes the messages to one or more Kafka topics.
-1. Kafka Consumers: Kafka consumers subscribe to the topics and process the messages, which can be used for further processing, storage, or analysis.
+1. Logical replication: YugabyteDB publishes changes to a logical replication slot, which captures the changes in a format that can be consumed by Kafka.
+1. [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/): The logical replication slot is connected to the YugabyteDB Connector, a Kafka Connect worker based on Debezium, which converts the PostgreSQL change stream into Kafka messages.
+1. Kafka topics: YugabyteDB Connector publishes the messages to one or more Kafka topics.
+1. Kafka consumers: Kafka consumers subscribe to the topics and process the messages, which can be used for further processing, storage, or analysis.
 
 Using Kafka with PostgreSQL logical replication provides several benefits:
 
@@ -49,9 +45,9 @@ Using Kafka with PostgreSQL logical replication provides several benefits:
 
 ## Try it out
 
-The following example uses pg_recvlogical, a command-line tool provided by PostgreSQL for interacting with the logical replication feature. It is specifically used to receive changes from the database using logical replication slots.
+The following example uses [pg_recvlogical](https://www.postgresql.org/docs/current/app-pgrecvlogical.html), a command-line tool provided by PostgreSQL for interacting with the logical replication feature. It is specifically used to receive changes from the database using logical replication slots.
 
-YugabyteDB provides the pg_recvlogical binary in the `<yugabyte-db-dir>/postgres/bin/` directory, which is inherited and based on PostgreSQL 11.2. Although PostgreSQL also offers a pg_recvlogical binary, you should use the YugabyteDB version to avoid compatibility issues.
+YugabyteDB provides the pg_recvlogical binary in the `<yugabyte-db-dir>/postgres/bin/` directory, which is inherited from and based on PostgreSQL 11.2. Although PostgreSQL also offers a pg_recvlogical binary, you should use the YugabyteDB version to avoid compatibility issues.
 
 ### Set up pg_recvlogical
 
@@ -69,7 +65,7 @@ To set up pg_recvlogical, create and start the local cluster by running the foll
 1. Use ysqlsh to connect to the default `yugabyte` database with the default superuser `yugabyte`, as follows:
 
     ```sh
-    bin/ysqlsh -h 127.0.0.1 -U yugabyte -d yugabyte
+    ./bin/ysqlsh -h 127.0.0.1 -U yugabyte -d yugabyte
     ```
 
 1. In the `yugabyte` database, create a table `employees`.
@@ -83,13 +79,12 @@ To set up pg_recvlogical, create and start the local cluster by running the foll
     );
     ```
 
-### Create a Replication slot
+### Create a replication slot
 
 Create a logical replication slot named `test_logical_replication_slot` using the `test_decoding` output plugin via the following function:
 
 ```sql
-SELECT *
-FROM pg_create_logical_replication_slot('test_logical_replication_slot', 'test_decoding');
+SELECT * FROM pg_create_logical_replication_slot('test_logical_replication_slot', 'test_decoding');
 ```
 
 ```output
@@ -144,7 +139,7 @@ COMMIT 2
 
 ### Add tables
 
-You can add a new table to the `yugabyte` database and any DMLs performed on the new table would also be replicated to pg_recvlogical.
+You can add a new table to the `yugabyte` database and any DMLs performed on the new table are also replicated to pg_recvlogical.
 
 1. In the `yugabyte` database, create a new table `projects`:
 
@@ -176,4 +171,4 @@ COMMIT 3
 ## Learn more
 
 - [Change data capture](../../develop/change-data-capture/)
-- [Get started with YugabyteDB connector](../../develop/change-data-capture/using-logical-replication/get-started/)
+- [Get started with YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/get-started/)

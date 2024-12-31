@@ -10,7 +10,7 @@ menu:
   v2024.1:
     identifier: explore-change-data-capture
     parent: develop
-    weight: 280
+    weight: 575
 type: indexpage
 ---
 In databases, change data capture (CDC) is a set of software design patterns used to determine and track the data that has changed so that action can be taken using the changed data. CDC is beneficial in a number of scenarios:
