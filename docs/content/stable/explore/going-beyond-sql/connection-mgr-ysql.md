@@ -81,11 +81,11 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 
 | flag | Description | Default |
 |:---- | :---------- | :------ |
-| enable_ysql_conn_mgr | Enables YSQL Connection Manager for the cluster. YB-TServer starts a YSQL Connection Manager process as a child process. | false |
+| enable_ysql_conn_mgr | Enable YSQL Connection Manager for the cluster. YB-TServer starts a YSQL Connection Manager process as a child process. | false |
 | enable_ysql_conn_mgr_stats | Enable statistics collection from YSQL Connection Manager. These statistics are displayed at the endpoint `<ip_address_of_cluster>:13000/connections`. | true |
-| ysql_conn_mgr_idle_time | Specifies the maximum idle time (in seconds) allowed for database connections created by YSQL Connection Manager. If a database connection remains idle without serving a client connection for a duration equal to, or exceeding this value, it is automatically closed by YSQL Connection Manager. | 60 |
+| ysql_conn_mgr_idle_time | Maximum idle time (in seconds) allowed for database connections created by YSQL Connection Manager. If a database connection remains idle without serving a client connection for a duration equal to, or exceeding this value, it is automatically closed by YSQL Connection Manager. | 60 |
 | ysql_conn_mgr_max_client_connections | Maximum number of concurrent client connections allowed. | 10000 |
-| ysql_conn_mgr_max_conns_per_db | Maximum number of concurrent database connections YSQL Connection Manager can create per pool. If set to zero, get max connections from pgconf file, 10% for control connection and 90% for global. | 0 |
+| ysql_conn_mgr_max_conns_per_db | Maximum number of concurrent database connections YSQL Connection Manager can create per pool. If set to zero, get maximum connections from the pgconf file, 10% for control connection and 90% for global. | 0 |
 | ysql_conn_mgr_min_conns_per_db | Minimum number of physical connections that is present in the pool. This limit is not considered while closing a broken physical connection. | 1 |
 | ysql_conn_mgr_num_workers | Number of worker threads used by YSQL Connection Manager. If set to 0, the number of worker threads will be half of the number of CPU cores. | 0 |
 | ysql_conn_mgr_stats_interval | Interval (in seconds) for updating the YSQL Connection Manager statistics. | 1 |
@@ -97,3 +97,11 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_server_lifetime | The maximum duration (in seconds) that a backend PostgreSQL connection managed by YSQL Connection Manager can remain open after creation. | 3600 |
 | ysql_conn_mgr_log_settings | Comma-separated list of log settings for YSQL Connection Manger. Can include  'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. | "" |
 | ysql_conn_mgr_use_auth_backend | Enable the use of the auth-backend for authentication of logical connections. When false, the older auth-passthrough implementation is used. | true |
+| ysql_conn_mgr_readahead_buffer_size | Set size of per-connection buffer used for io readahead operations in Ysql Connection Manager | 8192 |
+| ysql_conn_mgr_tcp_keepalive | TCP keepalive time in Ysql Connection Manager. Set to zero, to disable keepalive | 15 |
+| ysql_conn_mgr_tcp_keepalive_keep_interval | TCP keepalive interval in Ysql Connection Manager. This is applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled. | 75 |
+| ysql_conn_mgr_tcp_keepalive_probes | TCP keepalive probes in Ysql Connection Manager. This is applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled. | 9 |
+| ysql_conn_mgr_tcp_keepalive_usr_timeout | TCP user timeout in Ysql Connection Manager. This is applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled. | 9 |
+| ysql_conn_mgr_control_connection_pool_size | Maximum number of concurrent control connections in Ysql Connection Manager. If the value is zero, the default value is 0.1 * ysql_max_connections | 0 |
+| ysql_conn_mgr_pool_timeout | Server pool wait timeout(in ms) in Ysql Connection Manager. Time to wait in milliseconds for an available server. Disconnect client on timeout reach. If the value is set to zero, the client waits for the server connection indefinitely | 0 |
+| ysql_conn_mgr_sequence_support_mode | Sequence support mode when connection manager is enabled. When set to  'pooled_without_curval_lastval', currval() and lastval() functions are not supported. "When set to 'pooled_with_curval_lastval', currval() and lastval() functions are supported. In these both settings, the monotonic order of sequence is not guaranteed if the "'ysql_sequence_cache_method' is set to 'connection'. To support monotonic order also, set this flag to 'session'. | pooled_without_curval_lastval |
