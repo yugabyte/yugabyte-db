@@ -29,7 +29,8 @@ struct od_route {
 	od_error_logger_t *err_logger;
 	bool extra_logging_enabled;
 
-	yb_db_entry_t* yb_database_entry;
+	yb_oid_entry_t* yb_database_entry;
+	yb_oid_entry_t* yb_user_entry;
 
 	od_list_t link;
 
@@ -69,7 +70,11 @@ static inline void od_route_init(od_route_t *route, bool extra_route_logging)
 
 static inline void od_route_free(od_route_t *route)
 {
-	od_route_id_free(&route->id);
+	/* invalid function after moving to OID pooling for user+DB */
+#ifndef YB_SUPPORT_FOUND
+	od_route_id_free(NULL);
+#endif
+
 	od_pg_server_pool_free(&route->server_pool);
 
 	kiwi_params_lock_free(&route->params);

@@ -240,7 +240,7 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 	uint64_t lifetime = route->rule->server_lifetime_us;
 	uint64_t server_life = *now_us - server->init_time_us;
 
-	/* Database is dropped */
+	/* Database or user is dropped */
 	if (yb_is_route_invalid(route))
 		goto expire_server;
 
@@ -384,11 +384,16 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 	assert(startup->database.value_len);
 	assert(startup->user.value_len);
 	assert(client->yb_db_oid >= 0);
+	assert(client->yb_user_oid >= 0);
 
-	/* yb_db_oid for external client's can't be equal to 0 */
+	/*
+	 * yb_db_oid and yb_user_oid for external clients can't be equal to 
+	 * YB_CTRL_CONN_OID.
+	 */
 	if (client->type != OD_POOL_CLIENT_INTERNAL)
 	{
 		assert(client->yb_db_oid > YB_CTRL_CONN_OID);
+		assert(client->yb_user_oid > YB_CTRL_CONN_OID);
 	}
 
 	od_router_lock(router);
@@ -412,16 +417,11 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 
 	/* force settings required by route */
 	od_route_id_t id = { .yb_db_oid = client->yb_db_oid,
-			     .user = startup->user.value,
-			     .user_len = startup->user.value_len,
+			     .yb_user_oid = client->yb_user_oid,
 			     .physical_rep = false,
 			     .logical_rep = false,
 			     .yb_stats_index = -1 };
 
-	if (rule->storage_user) {
-		id.user = rule->storage_user;
-		id.user_len = strlen(rule->storage_user) + 1;
-	}
 	if (startup->replication.value_len != 0) {
 		if (strcmp(startup->replication.value, "database") == 0)
 			id.logical_rep = true;
@@ -452,16 +452,21 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 				rule->ldap_endpoint->ldap_search_pool,
 				ldap_server, OD_SERVER_IDLE);
 			od_ldap_endpoint_unlock(rule->ldap_endpoint);
-			id.user = client->ldap_storage_username;
-			id.user_len = client->ldap_storage_username_len + 1;
+
+			/* invalid after switching to OID based pool design */
+#ifndef YB_SUPPORT_FOUND
+			/* YB: commenting out code to avoid compiler errors */
+			// id.user = client->ldap_storage_username;
+			// id.user_len = client->ldap_storage_username_len + 1;
 			rule->storage_user = client->ldap_storage_username;
 			rule->storage_user_len =
 				client->ldap_storage_username_len;
 			rule->storage_password = client->ldap_storage_password;
 			rule->storage_password_len =
 				client->ldap_storage_password_len;
-			od_debug(&instance->logger, "routing", client, NULL,
-				 "route->id.user changed to %s", id.user);
+			// od_debug(&instance->logger, "routing", client, NULL,
+			//   "route->id.user changed to %s", id.user);
+#endif
 			break;
 		}
 		case LDAP_INSUFFICIENT_ACCESS: {

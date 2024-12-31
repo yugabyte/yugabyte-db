@@ -218,17 +218,6 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
     assertFalse(isProcessAlive(backendPid));
   }
 
-  private static void executeQuery(Connection conn, String query, boolean shouldSucceed) {
-    try (Statement stmt = conn.createStatement()) {
-      ResultSet rs = stmt.executeQuery(query);
-      assertEquals(shouldSucceed, rs.next());
-      assertTrue("Expected the query to fail", shouldSucceed);
-    } catch (Exception e) {
-      LOG.info("Got an exception while executing the query", e);
-      assertFalse("Expected the query to succeed", shouldSucceed);
-    }
-  }
-
   private int getDbOid(String dbName) {
     try (Connection conn = getConnectionBuilder().connect();
         Statement stmt = conn.createStatement()) {
@@ -367,8 +356,9 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
   }
 
   @Test
-  public void testRenameWithRecreateDb() {
+  public void testRenameWithRecreateDb() throws Exception {
     assumeFalse(BaseYsqlConnMgr.DISABLE_TEST_WITH_ASAN, BuildTypeUtil.isASAN());
+    disableWarmupModeAndRestartCluster();
     testRenameDbWithNoPhysicalConnection();
     testRenameDbWithPhysicalConnection();
   }
@@ -380,7 +370,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
 
     @Override
     public void run() {
-      testConnectivityToDb(dbName, true, true);
+      testConnectivityToDb(oidObjName, true, true);
       testSuccess = true;
     }
   }
@@ -392,7 +382,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
 
     @Override
     public void run() {
-      testConnectivityToDb(dbName, false, false);
+      testConnectivityToDb(oidObjName, false, false);
       testSuccess = true;
     }
   }

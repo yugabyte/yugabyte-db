@@ -152,6 +152,28 @@ yb_frontend_error_is_db_does_not_exist(od_client_t *client)
 	return strcmp(error.code, KIWI_UNDEFINED_DATABASE) == 0;
 }
 
+static inline bool
+yb_frontend_error_is_role_does_not_exist(od_client_t *client)
+{
+	od_instance_t *instance = client->global->instance;
+	od_server_t *server = client->server;
+	assert(server != NULL);
+
+	if (server->error_connect == NULL)
+		return false;
+
+	kiwi_fe_error_t error;
+	int rc;
+
+	rc = kiwi_fe_read_error(machine_msg_data(server->error_connect),
+				machine_msg_size(server->error_connect),
+				&error);
+	if (rc == -1)
+		return false;
+
+	return strcmp(error.code, KIWI_INVALID_AUTHORIZATION_SPECIFICATION) == 0;
+}
+
 static int od_frontend_startup(od_client_t *client)
 {
 	od_instance_t *instance = client->global->instance;
@@ -300,18 +322,29 @@ od_frontend_attach(od_client_t *client, char *context,
 				continue;
 			}
 
-			if (yb_frontend_error_is_db_does_not_exist(client)) {
-				yb_resolve_db_status(server->global,
-					((od_route_t *)server->route)->yb_database_entry,
-					NULL);
+			if (yb_frontend_error_is_db_does_not_exist(client))
+				((od_route_t *)server->route)->yb_database_entry->status = YB_OID_DROPPED;
+			else if (yb_frontend_error_is_role_does_not_exist(client))
+				((od_route_t *)server->route)->yb_user_entry->status = YB_OID_DROPPED;
 
-				if (((od_route_t *)server->route)
-					    ->yb_database_entry->status == YB_DB_ACTIVE) {
-					od_router_close(router, client);
-					continue;
-				}
-			}
+			return OD_ESERVER_CONNECT;
+		}
 
+		/* In case we create a new server but the logical client version of
+		 * transactional backend is greater than the client's version then disconnect
+		 * the client. This can happen for existing logical connections that are
+		 * authenticated but during issuing the query, some ALTER ROLE SET or
+		 * ALTER DATABASE set command has been executed that bumped up the
+		 * current_version in pg_yb_logical_client_version.
+		*/
+		if (version_matching &&
+			!version_matching_connect_higher_version &&
+			 client->logical_client_version < server->logical_client_version) {
+			od_log(&instance->logger, context, client, server,
+			       "no matching server version found for client as client's logical version = %d "
+				    "and server's logical version = %d",
+			       client->logical_client_version,
+			       server->logical_client_version);
 			return OD_ESERVER_CONNECT;
 		}
 
@@ -1823,10 +1856,18 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 
 	for (;;) {
 		for (;;) {
-			if (yb_is_route_invalid(client->route)) {
+			rc = yb_is_route_invalid(client->route);
+			if (rc == ROUTE_INVALID_DB_OID) {
 				od_frontend_fatal(
 					client, KIWI_CONNECTION_FAILURE,
 					"Database might have been dropped by another user");
+				status = OD_ECLIENT_READ;
+				break;
+			} else if (rc == ROUTE_INVALID_ROLE_OID) {
+				od_frontend_fatal(
+					client, KIWI_CONNECTION_FAILURE,
+					"invalid role OID: %d",
+					((od_route_t *)(client->route))->yb_user_entry->oid);
 				status = OD_ECLIENT_READ;
 				break;
 			}
@@ -2400,7 +2441,7 @@ void od_frontend(void *arg)
 			&instance->logger, "auth backend", client, NULL,
 			"invalidate all existing active and idle backends of the route"
 			", with user = %s, db = %s, having %d idle backends and %d active backends",
-			(char *)route->id.user,
+			(char *)route->yb_user_entry->name,
 			(char *)route->yb_database_entry->name,
 			route->server_pool.count_idle,
 			route->server_pool.count_active);
@@ -2856,8 +2897,9 @@ int yb_auth_via_auth_backend(od_client_t *client)
 		goto cleanup;
 	}
 
-	/* Set the value of the db_oid received from the auth backend. */
+	/* Set the value of the user_oid and db_oid received from the auth backend. */
 	client->yb_db_oid = control_conn_client->yb_db_oid;
+	client->yb_user_oid = control_conn_client->yb_user_oid;
 
 cleanup:
 	/* Send any saved errors to the client. */
