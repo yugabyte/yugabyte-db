@@ -84,10 +84,10 @@ Result<bool> ShouldReplicateKey(
 }
 
 Status PopulateWriteRecord(
-    const consensus::LWReplicateMsg& msg, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    const StreamMetadata& stream_metadata, GetChangesResponsePB* resp) {
+    const XClusterGetChangesContext& context,
+    const consensus::LWReplicateMsg& msg) {
   const auto& batch = msg.write().write_batch();
-  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet_safe());
   // Write batch may contain records from different rows.
   // For xCluster, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
@@ -118,13 +118,13 @@ Status PopulateWriteRecord(
       Slice sub_doc_key = key;
       dockv::SubDocKey decoded_key;
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
-      if (!VERIFY_RESULT(ShouldReplicateKey(decoded_key, stream_metadata))) {
+      if (!VERIFY_RESULT(ShouldReplicateKey(decoded_key, *context.stream_metadata))) {
         skipping_prev_key = true;
         continue;
       }
 
       // Write pair contains record for different row. Create a new CDCRecord in this case.
-      record = resp->add_records();
+      record = context.resp->add_records();
 
       // For xCluster, populate serialized data from WAL, to avoid unnecessary deserializing on
       // producer and re-serializing on consumer.
@@ -150,7 +150,7 @@ Status PopulateWriteRecord(
       if (batch.has_transaction()) {
         auto* transaction_state = record->mutable_transaction_state();
         transaction_state->set_transaction_id(batch.transaction().transaction_id().ToBuffer());
-        transaction_state->add_tablets(tablet_peer->tablet_id());
+        transaction_state->add_tablets(context.tablet_peer->tablet_id());
         if (GetAtomicFlag(&FLAGS_xcluster_enable_subtxn_abort_propagation) &&
             batch.subtransaction().has_subtransaction_id()) {
           record->set_subtransaction_id(batch.subtransaction().subtransaction_id());
@@ -167,9 +167,8 @@ Status PopulateWriteRecord(
 }
 
 Status PopulateTransactionRecord(
-    const consensus::LWReplicateMsg& msg,
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    GetChangesResponsePB* resp) {
+    const XClusterGetChangesContext& context,
+    const consensus::LWReplicateMsg& msg) {
   SCHECK(
       msg.has_transaction_state(), InvalidArgument,
       Format("Update transaction message requires transaction_state: $0", msg.ShortDebugString()));
@@ -180,7 +179,7 @@ Status PopulateTransactionRecord(
     return Status::OK();
   }
 
-  auto* record = resp->add_records();
+  auto* record = context.resp->add_records();
   record->set_time(msg.hybrid_time());
   auto* txn_state = record->mutable_transaction_state();
   txn_state->set_transaction_id(transaction_state.transaction_id().ToBuffer());
@@ -192,34 +191,33 @@ Status PopulateTransactionRecord(
         VERIFY_RESULT(SubtxnSet::FromPB(transaction_state.aborted().set()));
     aborted_subtransactions.ToPB(txn_state->mutable_aborted()->mutable_set());
   }
-  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet_safe());
   tablet->metadata()->partition()->ToPB(record->mutable_partition());
   return Status::OK();
 }
 
 // Populate a CDCRecordPB for a tablet split operation.
 Status PopulateSplitOpRecord(
-    const xrepl::StreamId& stream_id, const TabletId& tablet_id,
-    const consensus::LWReplicateMsg& msg, UpdateOnSplitOpFunc update_on_split_op_func,
-    GetChangesResponsePB* resp) {
+    const XClusterGetChangesContext& context,
+    const consensus::LWReplicateMsg& msg) {
   SCHECK(
       msg.has_split_request(), InvalidArgument,
       Format("Split op message requires split_request: $0", msg.ShortDebugString()));
-  if (msg.split_request().tablet_id() != tablet_id) {
+  if (msg.split_request().tablet_id() != context.tablet_id) {
     return Status::OK();
   }
 
   // Only send split if it is our split, and if we can update the children tablet entries
   // in cdc_state table correctly (the reason for this check is that it is possible to
   // read our parent tablet splits).
-  auto s = update_on_split_op_func(msg.ToGoogleProtobuf());
+  auto s = context.update_on_split_op_func(msg.ToGoogleProtobuf());
   if (!s.ok()) {
-    LOG(INFO) << "Not replicating SPLIT_OP yet for tablet: " << tablet_id
-              << ", stream: " << stream_id << " : " << s;
+    LOG(INFO) << "Not replicating SPLIT_OP yet for tablet: " << context.tablet_id
+              << ", stream: " << context.stream_id << " : " << s;
     return s;
   }
 
-  CDCRecordPB* record = resp->add_records();
+  CDCRecordPB* record = context.resp->add_records();
   record->set_operation(CDCRecordPB::SPLIT_OP);
   record->set_time(msg.hybrid_time());
   msg.split_request().ToGoogleProtobuf(record->mutable_split_tablet_request());
@@ -231,8 +229,8 @@ Status PopulateSplitOpRecord(
 // false if it can be skipped. If a record was added then further batch processing should not be
 // done.
 Result<bool> PopulateChangeMetadataRecord(
-    const std::string& tablet_id, const consensus::LWReplicateMsg& msg,
-    GetChangesResponsePB* resp) {
+    const XClusterGetChangesContext& context,
+    const consensus::LWReplicateMsg& msg) {
   if (FLAGS_TEST_xcluster_skip_meta_ops) {
     return false;
   }
@@ -241,11 +239,11 @@ Result<bool> PopulateChangeMetadataRecord(
       msg.has_change_metadata_request(), InvalidArgument,
       Format("Change Meta op message requires payload $0", msg.ShortDebugString()));
 
-  if (msg.change_metadata_request().tablet_id() != tablet_id) {
+  if (msg.change_metadata_request().tablet_id() != context.tablet_id) {
     return false;
   }
 
-  auto* record = resp->add_records();
+  auto* record = context.resp->add_records();
   record->set_operation(CDCRecordPB::CHANGE_METADATA);
   record->set_time(msg.hybrid_time());
   msg.change_metadata_request().ToGoogleProtobuf(record->mutable_change_metadata_request());
@@ -270,34 +268,24 @@ HybridTime GetSafeTimeForTarget(
 }
 }  // namespace
 
-Status GetChangesForXCluster(
-    const xrepl::StreamId& stream_id,
-    const TabletId& tablet_id,
-    const OpId& from_op_id,
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    UpdateOnSplitOpFunc update_on_split_op_func,
-    const MemTrackerPtr& mem_tracker,
-    const CoarseTimePoint& deadline,
-    StreamMetadata* stream_metadata,
-    consensus::ReplicateMsgsHolder* msgs_holder,
-    GetChangesResponsePB* resp,
-    int64_t* last_readable_opid_index) {
-  SCHECK(tablet_peer, NotFound, Format("Tablet id $0 not found", tablet_id));
+Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
+  SCHECK(context.tablet_peer, NotFound, Format("Tablet id $0 not found", context.tablet_id));
   RSTATUS_DCHECK_EQ(
-      stream_metadata->GetRecordFormat(), CDCRecordFormat::WAL, IllegalState,
+      context.stream_metadata->GetRecordFormat(), CDCRecordFormat::WAL, IllegalState,
       "xCluster only supports WAL record format");
 
-  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-  auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
+  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet_safe());
+  auto consensus = VERIFY_RESULT(context.tablet_peer->GetConsensus());
   auto term = consensus->LeaderTerm();
-  SCHECK_GT(term, 0, NotFound, Format("Leader term for tablet $0 is not valid", tablet_id));
+  SCHECK_GT(
+      term, 0, NotFound, Format("Leader term for tablet $0 is not valid", context.tablet_id));
 
-  auto leader_safe_time = VERIFY_RESULT(tablet_peer->LeaderSafeTime());
+  auto leader_safe_time = VERIFY_RESULT(context.tablet_peer->LeaderSafeTime());
   SCHECK(
       !leader_safe_time.is_special(), IllegalState, "Leader safe time for tablet $0 is not valid",
-      tablet_id);
+      context.tablet_id);
 
-  auto stream_tablet_metadata = stream_metadata->GetTabletMetadata(tablet_id);
+  auto stream_tablet_metadata = context.stream_metadata->GetTabletMetadata(context.tablet_id);
   // There should only be one thread at a time calling GetChanges per tablet. But we cannot trust
   // calls we get over the network so we lock here.
   std::lock_guard l(stream_tablet_metadata->mutex_);
@@ -307,7 +295,7 @@ Status GetChangesForXCluster(
   auto now = MonoTime::Now();
   auto* txn_participant = tablet->transaction_participant();
   // Check if both the table and stream are transactional.
-  bool transactional = (txn_participant != nullptr) && stream_metadata->IsTransactional();
+  bool transactional = (txn_participant != nullptr) && context.stream_metadata->IsTransactional();
 
   // In order to provide a transactionally consistent WAL, we need to perform the below steps:
   // If last_apply_safe_time is kInvalid
@@ -329,14 +317,14 @@ Status GetChangesForXCluster(
             now) {
       update_apply_safe_time = true;
       // Resolve and apply intents to make the leader_safe_time a valid apply_safe_time candidate.
-      RETURN_NOT_OK(txn_participant->ResolveIntents(leader_safe_time, deadline));
+      RETURN_NOT_OK(txn_participant->ResolveIntents(leader_safe_time, context.deadline));
     }
   }
 
   auto read_result = VERIFY_RESULT(consensus->ReadReplicatedMessagesForXCluster(
-      from_op_id, deadline, /*fetch_single_entry=*/false));
+      context.from_op_id, context.deadline, /*fetch_single_entry=*/false));
   auto& read_ops = read_result.result;
-  *last_readable_opid_index = read_result.majority_replicated_index;
+  *context.last_readable_opid_index = read_result.majority_replicated_index;
 
   if (update_apply_safe_time) {
     DCHECK(!stream_tablet_metadata->last_apply_safe_time_.is_valid());
@@ -350,22 +338,24 @@ Status GetChangesForXCluster(
   }
 
   ScopedTrackedConsumption consumption;
-  if (read_ops.read_from_disk_size && mem_tracker) {
-    consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
+  if (read_ops.read_from_disk_size && context.mem_tracker) {
+    consumption = ScopedTrackedConsumption(context.mem_tracker, read_ops.read_from_disk_size);
   }
 
   ReplicateMsgs& messages = read_ops.messages;
   // Get the last checkpoint of records read, even if it is external.
-  OpId last_checkpoint = messages.empty() ? from_op_id : OpId::FromPB(messages.back()->id());
+  OpId last_checkpoint =
+      messages.empty() ? context.from_op_id : OpId::FromPB(messages.back()->id());
   // Filter out WAL records that are external.
   EraseIf([](const auto& msg) { return msg->write().has_external_hybrid_time(); }, &messages);
 
-  HaveMoreMessages have_more_messages =
+  *context.have_more_messages =
       PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_have_more_records) ? HaveMoreMessages::kTrue
                                                                     : read_ops.have_more_messages;
   auto ht_of_last_returned_message = HybridTime::kInvalid;
-  OpId checkpoint = from_op_id;
-  OpId previous_checkpoint = from_op_id;  // value of checkpoint from previous loop iteration.
+  OpId checkpoint = context.from_op_id;
+  // value of checkpoint from previous loop iteration.
+  OpId previous_checkpoint = context.from_op_id;
 
   bool exit_early = false;
   for (const auto& msg_ptr : messages) {
@@ -373,17 +363,16 @@ Status GetChangesForXCluster(
     checkpoint = OpId::FromPB(msg.id());
     switch (msg.op_type()) {
       case consensus::OperationType::UPDATE_TRANSACTION_OP:
-        RETURN_NOT_OK(PopulateTransactionRecord(msg, tablet_peer, resp));
+        RETURN_NOT_OK(PopulateTransactionRecord(context, msg));
         break;
       case consensus::OperationType::WRITE_OP:
-        RETURN_NOT_OK(PopulateWriteRecord(msg, tablet_peer, *stream_metadata, resp));
+        RETURN_NOT_OK(PopulateWriteRecord(context, msg));
         break;
       case consensus::OperationType::SPLIT_OP:
-        RETURN_NOT_OK(
-            PopulateSplitOpRecord(stream_id, tablet_id, msg, update_on_split_op_func, resp));
+        RETURN_NOT_OK(PopulateSplitOpRecord(context, msg));
         break;
       case consensus::OperationType::CHANGE_METADATA_OP:
-        if (VERIFY_RESULT(PopulateChangeMetadataRecord(tablet_id, msg, resp))) {
+        if (VERIFY_RESULT(PopulateChangeMetadataRecord(context, msg))) {
           // Change metadata should be the last record in the batch.
           exit_early = true;
         }
@@ -395,7 +384,7 @@ Status GetChangesForXCluster(
     ht_of_last_returned_message = HybridTime(msg.hybrid_time());
 
     if (exit_early) {
-      have_more_messages = HaveMoreMessages::kTrue;
+      *context.have_more_messages = HaveMoreMessages::kTrue;
       break;
     }
 
@@ -409,7 +398,7 @@ Status GetChangesForXCluster(
   }
 
   if (consumption) {
-    consumption.Add(resp->SpaceUsedLong());
+    consumption.Add(context.resp->SpaceUsedLong());
   }
 
   if (transactional) {
@@ -418,7 +407,8 @@ Status GetChangesForXCluster(
     if (stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
       if ((checkpoint.index == 0 && !read_ops.have_more_messages) ||
           checkpoint.index >= stream_tablet_metadata->apply_safe_time_checkpoint_op_id_) {
-        resp->set_safe_hybrid_time(stream_tablet_metadata->last_apply_safe_time_.ToUint64());
+        context.resp->set_safe_hybrid_time(
+            stream_tablet_metadata->last_apply_safe_time_.ToUint64());
         // Clear out the checkpoint and recompute it on next call.
         stream_tablet_metadata->apply_safe_time_checkpoint_op_id_ = 0;
         stream_tablet_metadata->last_apply_safe_time_ = HybridTime::kInvalid;
@@ -426,19 +416,20 @@ Status GetChangesForXCluster(
     }
   } else {
     auto safe_time =
-        GetSafeTimeForTarget(leader_safe_time, ht_of_last_returned_message, have_more_messages);
-    resp->set_safe_hybrid_time(safe_time.ToUint64());
+        GetSafeTimeForTarget(leader_safe_time, ht_of_last_returned_message,
+                             *context.have_more_messages);
+    context.resp->set_safe_hybrid_time(safe_time.ToUint64());
   }
 
-  *msgs_holder = consensus::ReplicateMsgsHolder(
+  *context.msgs_holder = consensus::ReplicateMsgsHolder(
       nullptr, std::move(messages), std::move(consumption));
-  (checkpoint.index > 0 ? checkpoint : from_op_id).ToPB(
-      resp->mutable_checkpoint()->mutable_op_id());
+  (checkpoint.index > 0 ? checkpoint : context.from_op_id).ToPB(
+      context.resp->mutable_checkpoint()->mutable_op_id());
 
   // Make sure we are still the leader, and the entire function run while under the same term.
   SCHECK_EQ(
       term, consensus->LeaderTerm(), NotFound,
-      Format("Leader term for tablet has changed", tablet_id));
+      Format("Leader term for tablet has changed", context.tablet_id));
 
   return Status::OK();
 }
