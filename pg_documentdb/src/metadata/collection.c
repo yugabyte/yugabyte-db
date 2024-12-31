@@ -341,10 +341,21 @@ GetMongoCollectionByColId(uint64 collectionId, LOCKMODE lockMode)
 	MongoCollection collection;
 	memset(&collection, 0, sizeof(collection));
 
+	/*
+	 * Temporarily disable unimportant logs related to collection catalog lookup
+	 * so that regression test outputs don't become flaky (e.g.: due to commands
+	 * being executed by Citus locally).
+	 */
+	int savedGUCLevel = NewGUCNestLevel();
+	SetGUCLocally("client_min_messages", "WARNING");
+
 	/* Read the collection metadata from ApiCatalogSchemaName.collections */
 	bool collectionExists =
 		GetMongoCollectionFromCatalogById(collectionId, documentsTableOid,
 										  &collection);
+
+	/* rollback the GUC change that we made for client_min_messages */
+	RollbackGUCChange(savedGUCLevel);
 
 	if (!collectionExists)
 	{

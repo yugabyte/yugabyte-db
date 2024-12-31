@@ -266,6 +266,10 @@ bool SkipFailOnCollation = DEFAULT_SKIP_FAIL_ON_COLLATION;
 bool EnableLookupIdJoinOptimizationOnCollation =
 	DEFAULT_ENABLE_LOOKUP_ID_JOIN_OPTIMIZATION_ON_COLLATION;
 
+#define DEFAULT_ENABLE_FASTPATH_POINTLOOKUP_PLANNER true
+bool EnableFastPathPointLookupPlanner =
+	DEFAULT_ENABLE_FASTPATH_POINTLOOKUP_PLANNER;
+
 #define DEFAULT_ENABLE_USER_CRUD false
 bool EnableUserCrud = DEFAULT_ENABLE_USER_CRUD;
 
@@ -803,6 +807,15 @@ InitApiConfigurations(char *prefix, char *newGucPrefix)
 			"Determines whether we can perform _id join opetimization on collation. It would be a customer input confiriming that _id does not contain collation aware data types (i.e., UTF8 and DOCUMENT)."),
 		NULL, &EnableLookupIdJoinOptimizationOnCollation,
 		DEFAULT_ENABLE_LOOKUP_ID_JOIN_OPTIMIZATION_ON_COLLATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableFastPathPointLookupPlanner", newGucPrefix),
+		gettext_noop(
+			"Determines whether or not the fast path planner for point lookup queries is enabled."),
+		NULL, &EnableFastPathPointLookupPlanner,
+		DEFAULT_ENABLE_FASTPATH_POINTLOOKUP_PLANNER,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(

@@ -225,8 +225,7 @@ command_list_collections_cursor_first_page(PG_FUNCTION_ARGS)
 												generateCursorParams);
 
 	/* TODO: Remove these restrictions */
-	queryData.isSingleBatch = true;
-	queryData.isStreamableCursor = false;
+	queryData.cursorKind = QueryCursorType_SingleBatch;
 	queryData.batchSize = INT_MAX;
 
 	int64_t cursorId = 0;
@@ -253,8 +252,7 @@ command_list_indexes_cursor_first_page(PG_FUNCTION_ARGS)
 											generateCursorParams);
 
 	/* TODO: Remove these restrictions */
-	queryData.isSingleBatch = true;
-	queryData.isStreamableCursor = false;
+	queryData.cursorKind = QueryCursorType_SingleBatch;
 	queryData.batchSize = INT_MAX;
 
 	int64_t cursorId = 0;
@@ -488,77 +486,121 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 	bool queryFullyDrained;
 	pgbson *continuationDoc;
 	bool persistConnection = false;
-	if (queryData->isSingleBatch)
+	bool addOperationTime = false;
+	switch (queryData->cursorKind)
 	{
-		bool isHoldCursor = false;
-		bool closeCursor = true;
-		CreateAndDrainPersistedQuery("singleBatchCursor", query,
-									 queryData->batchSize,
-									 &numIterations,
-									 accumulatedSize, &arrayWriter,
-									 isHoldCursor, closeCursor);
-		queryFullyDrained = true;
-		continuationDoc = NULL;
-		cursorId = 0;
-	}
-	else if (queryData->isTailableCursor)
-	{
-		HTAB *tailableCursorMap = CreateTailableCursorHashSet();
-		DrainTailableQuery(tailableCursorMap, query, queryData->batchSize,
-						   &numIterations, accumulatedSize,
-						   &arrayWriter);
-		cursorId = GenerateCursorId(cursorId);
-		continuationDoc = BuildStreamingContinuationDocument(tailableCursorMap,
-															 querySpec,
-															 cursorId, queryKind,
-															 numIterations, true);
-		hash_destroy(tailableCursorMap);
-	}
-	else if (queryData->isStreamableCursor)
-	{
-		Assert(queryData->cursorStateParamNumber == 1);
-		HTAB *cursorMap = CreateCursorHashSet();
-		queryFullyDrained = DrainStreamingQuery(cursorMap, query, queryData->batchSize,
-												&numIterations, accumulatedSize,
-												&arrayWriter);
-
-		continuationDoc = NULL;
-		if (!queryFullyDrained)
+		case QueryCursorType_SingleBatch:
 		{
-			cursorId = GenerateCursorId(cursorId);
-			continuationDoc = BuildStreamingContinuationDocument(cursorMap, querySpec,
-																 cursorId, queryKind,
-																 numIterations, false);
+			bool isHoldCursor = false;
+			bool closeCursor = true;
+			CreateAndDrainPersistedQuery("singleBatchCursor", query,
+										 queryData->batchSize,
+										 &numIterations,
+										 accumulatedSize, &arrayWriter,
+										 isHoldCursor, closeCursor);
+			queryFullyDrained = true;
+			continuationDoc = NULL;
+			cursorId = 0;
+			break;
 		}
 
-		hash_destroy(cursorMap);
-	}
-	else
-	{
-		/* In order to create the persistent cursor we initialize a cursorId anyway */
-		cursorId = GenerateCursorId(cursorId);
+		case QueryCursorType_Tailable:
+		{
+			addOperationTime = true;
+			HTAB *tailableCursorMap = CreateTailableCursorHashSet();
+			DrainTailableQuery(tailableCursorMap, query, queryData->batchSize,
+							   &numIterations, accumulatedSize,
+							   &arrayWriter);
+			cursorId = GenerateCursorId(cursorId);
+			continuationDoc = BuildStreamingContinuationDocument(tailableCursorMap,
+																 querySpec,
+																 cursorId, queryKind,
+																 numIterations, true);
+			hash_destroy(tailableCursorMap);
+			break;
+		}
 
-		StringInfo cursorStringInfo = makeStringInfo();
-		appendStringInfo(cursorStringInfo, "cursor_%ld", cursorId);
-		const char *cursorName = cursorStringInfo->data;
+		case QueryCursorType_Streamable:
+		{
+			Assert(queryData->cursorStateParamNumber == 1);
+			HTAB *cursorMap = CreateCursorHashSet();
+			queryFullyDrained = DrainStreamingQuery(cursorMap, query,
+													queryData->batchSize,
+													&numIterations, accumulatedSize,
+													&arrayWriter);
 
-		bool isTopLevel = true;
-		bool isHoldCursor = !IsInTransactionBlock(isTopLevel);
-		persistConnection = isHoldCursor;
-		bool closeCursor = false;
-		queryFullyDrained = CreateAndDrainPersistedQuery(cursorName, query,
-														 queryData->batchSize,
-														 &numIterations,
-														 accumulatedSize, &arrayWriter,
-														 isHoldCursor, closeCursor);
-		continuationDoc = queryFullyDrained ? NULL :
-						  BuildPersistedContinuationDocument(cursorName, cursorId,
-															 queryKind, numIterations);
+			continuationDoc = NULL;
+			if (!queryFullyDrained)
+			{
+				cursorId = GenerateCursorId(cursorId);
+				continuationDoc = BuildStreamingContinuationDocument(cursorMap, querySpec,
+																	 cursorId, queryKind,
+																	 numIterations,
+																	 false);
+			}
+
+			hash_destroy(cursorMap);
+			break;
+		}
+
+		case QueryCursorType_Persistent:
+		{
+			/* In order to create the persistent cursor we initialize a cursorId anyway */
+			cursorId = GenerateCursorId(cursorId);
+
+			StringInfo cursorStringInfo = makeStringInfo();
+			appendStringInfo(cursorStringInfo, "cursor_%ld", cursorId);
+			const char *cursorName = cursorStringInfo->data;
+
+			bool isTopLevel = true;
+			bool isHoldCursor = !IsInTransactionBlock(isTopLevel);
+			persistConnection = isHoldCursor;
+			bool closeCursor = false;
+			queryFullyDrained = CreateAndDrainPersistedQuery(cursorName, query,
+															 queryData->batchSize,
+															 &numIterations,
+															 accumulatedSize,
+															 &arrayWriter,
+															 isHoldCursor, closeCursor);
+			continuationDoc = queryFullyDrained ? NULL :
+							  BuildPersistedContinuationDocument(cursorName, cursorId,
+																 queryKind,
+																 numIterations);
+			break;
+		}
+
+		case QueryCursorType_PointRead:
+		{
+			if (queryData->batchSize < 1)
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
+								errmsg(
+									"Point read plan should have batch size >= 1, not %d",
+									queryData->batchSize),
+								errdetail_log(
+									"Point read plan should have batch size >= 1, not %d",
+									queryData->batchSize)));
+			}
+
+			CreateAndDrainPointReadQuery("pointReadCursor", query,
+										 &numIterations,
+										 accumulatedSize, &arrayWriter);
+			queryFullyDrained = true;
+			continuationDoc = NULL;
+			break;
+		}
+
+		default:
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
+							errmsg("Unknown query cursor kind detected - %d",
+								   queryData->cursorKind)));
+		}
 	}
 
 	return PostProcessCursorPage(fcinfo, &cursorDoc, &arrayWriter, &writer, cursorId,
 								 continuationDoc, persistConnection,
-								 queryData->isTailableCursor);
+								 addOperationTime);
 }
 
 

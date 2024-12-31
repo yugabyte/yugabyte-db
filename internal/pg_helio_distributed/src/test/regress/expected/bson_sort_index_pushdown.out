@@ -61,18 +61,11 @@ SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "
 (20 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": 1} }');
-                                              QUERY PLAN                                              
+                                        QUERY PLAN                                        
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive) (actual rows=10000 loops=1)
-   Task Count: 1
-   Tuple data received from nodes: 205 kB
-   Tasks Shown: All
-   ->  Task
-         Tuple data received from node: 205 kB
-         Node: host=localhost port=58070 dbname=regression
-         ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=10000 loops=1)
-               Index Cond: (shard_key_value = '964001'::bigint)
-(9 rows)
+ Index Scan using _id_ on documents_964001_9640002 collection (actual rows=10000 loops=1)
+   Index Cond: (shard_key_value = '964001'::bigint)
+(2 rows)
 
 SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": -1}, "limit": 20 }');
                                document                                
@@ -100,18 +93,11 @@ SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "
 (20 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": -1} }');
-                                                  QUERY PLAN                                                   
+                                            QUERY PLAN                                             
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive) (actual rows=10000 loops=1)
-   Task Count: 1
-   Tuple data received from nodes: 205 kB
-   Tasks Shown: All
-   ->  Task
-         Tuple data received from node: 205 kB
-         Node: host=localhost port=58070 dbname=regression
-         ->  Index Scan Backward using _id_ on documents_964001_9640002 collection (actual rows=10000 loops=1)
-               Index Cond: (shard_key_value = '964001'::bigint)
-(9 rows)
+ Index Scan Backward using _id_ on documents_964001_9640002 collection (actual rows=10000 loops=1)
+   Index Cond: (shard_key_value = '964001'::bigint)
+(2 rows)
 
 -- filter on _id_
 SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 5}}, "sort": {"_id": 1}, "limit":20 }');
@@ -165,46 +151,32 @@ SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "
 (20 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 5}}, "sort": {"_id": 1} }');
-                                                                               QUERY PLAN                                                                               
+                                                         QUERY PLAN                                                         
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive) (actual rows=9995 loops=1)
-   Task Count: 1
-   Tuple data received from nodes: 205 kB
-   Tasks Shown: All
-   ->  Task
-         Tuple data received from node: 205 kB
-         Node: host=localhost port=58070 dbname=regression
-         ->  Sort (actual rows=9995 loops=1)
-               Sort Key: object_id
-               Sort Method: quicksort  Memory: 1243kB
-               ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9995 loops=1)
-                     Recheck Cond: ((shard_key_value = '964001'::bigint) AND (object_id OPERATOR(helio_core.>) '{ "" : { "$numberInt" : "5" } }'::helio_core.bson))
-                     Filter: (document OPERATOR(helio_api_catalog.@>) '{ "_id" : { "$numberInt" : "5" } }'::helio_core.bson)
-                     Heap Blocks: exact=104
-                     ->  Bitmap Index Scan on _id_ (actual rows=9995 loops=1)
-                           Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id OPERATOR(helio_core.>) '{ "" : { "$numberInt" : "5" } }'::helio_core.bson))
-(16 rows)
+ Sort (actual rows=9995 loops=1)
+   Sort Key: object_id
+   Sort Method: quicksort  Memory: 1243kB
+   ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9995 loops=1)
+         Recheck Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
+         Filter: (document @> '{ "_id" : { "$numberInt" : "5" } }'::bson)
+         Heap Blocks: exact=104
+         ->  Bitmap Index Scan on _id_ (actual rows=9995 loops=1)
+               Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
+(9 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 5}}, "sort": {"_id": -1} }');
-                                                                               QUERY PLAN                                                                               
+                                                         QUERY PLAN                                                         
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive) (actual rows=9995 loops=1)
-   Task Count: 1
-   Tuple data received from nodes: 205 kB
-   Tasks Shown: All
-   ->  Task
-         Tuple data received from node: 205 kB
-         Node: host=localhost port=58070 dbname=regression
-         ->  Sort (actual rows=9995 loops=1)
-               Sort Key: object_id DESC
-               Sort Method: quicksort  Memory: 1243kB
-               ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9995 loops=1)
-                     Recheck Cond: ((shard_key_value = '964001'::bigint) AND (object_id OPERATOR(helio_core.>) '{ "" : { "$numberInt" : "5" } }'::helio_core.bson))
-                     Filter: (document OPERATOR(helio_api_catalog.@>) '{ "_id" : { "$numberInt" : "5" } }'::helio_core.bson)
-                     Heap Blocks: exact=104
-                     ->  Bitmap Index Scan on _id_ (actual rows=9995 loops=1)
-                           Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id OPERATOR(helio_core.>) '{ "" : { "$numberInt" : "5" } }'::helio_core.bson))
-(16 rows)
+ Sort (actual rows=9995 loops=1)
+   Sort Key: object_id DESC
+   Sort Method: quicksort  Memory: 1243kB
+   ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9995 loops=1)
+         Recheck Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
+         Filter: (document @> '{ "_id" : { "$numberInt" : "5" } }'::bson)
+         Heap Blocks: exact=104
+         ->  Bitmap Index Scan on _id_ (actual rows=9995 loops=1)
+               Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
+(9 rows)
 
 -- filter on a with no index
 SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 22}}, "sort": {"_id": 1}, "limit": 20 }');
@@ -233,21 +205,14 @@ SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "
 (20 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 22}}, "sort": {"_id": 1}, "limit": 20 }');
-                                                         QUERY PLAN                                                         
+                                         QUERY PLAN                                          
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
-   Task Count: 1
-   Tuple data received from nodes: 420 bytes
-   Tasks Shown: All
-   ->  Task
-         Tuple data received from node: 420 bytes
-         Node: host=localhost port=58070 dbname=regression
-         ->  Limit (actual rows=20 loops=1)
-               ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
-                     Index Cond: (shard_key_value = '964001'::bigint)
-                     Filter: (document OPERATOR(helio_api_catalog.@=) '{ "a" : { "$numberInt" : "22" } }'::helio_core.bson)
-                     Rows Removed by Filter: 39
-(12 rows)
+ Limit (actual rows=20 loops=1)
+   ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
+         Index Cond: (shard_key_value = '964001'::bigint)
+         Filter: (document @= '{ "a" : { "$numberInt" : "22" } }'::bson)
+         Rows Removed by Filter: 39
+(5 rows)
 
 -- create compound index on a and _id and filter on a and on _id
 SELECT helio_api_internal.create_indexes_non_concurrently('sort_pushdown', '{ "createIndexes": "coll", "indexes": [ { "key": { "a": 1, "_id": 1 }, "name": "a_id" }]}', true);
@@ -283,21 +248,14 @@ SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "
 (20 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
-                                                         QUERY PLAN                                                         
+                                         QUERY PLAN                                          
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
-   Task Count: 1
-   Tuple data received from nodes: 420 bytes
-   Tasks Shown: All
-   ->  Task
-         Tuple data received from node: 420 bytes
-         Node: host=localhost port=58070 dbname=regression
-         ->  Limit (actual rows=20 loops=1)
-               ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
-                     Index Cond: (shard_key_value = '964001'::bigint)
-                     Filter: (document OPERATOR(helio_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::helio_core.bson)
-                     Rows Removed by Filter: 38
-(12 rows)
+ Limit (actual rows=20 loops=1)
+   ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
+         Index Cond: (shard_key_value = '964001'::bigint)
+         Filter: (document @= '{ "a" : { "$numberInt" : "14" } }'::bson)
+         Rows Removed by Filter: 38
+(5 rows)
 
 SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 100}}, "sort": {"_id": 1}, "limit": 20 }');
                               document                               
@@ -325,44 +283,30 @@ SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "
 (20 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 100}}, "sort": {"_id": 1}, "limit": 20 }');
-                                                                                                                                    QUERY PLAN                                                                                                                                    
+                                                                                          QUERY PLAN                                                                                           
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
-   Task Count: 1
-   Tuple data received from nodes: 420 bytes
-   Tasks Shown: All
-   ->  Task
-         Tuple data received from node: 420 bytes
-         Node: host=localhost port=58070 dbname=regression
-         ->  Limit (actual rows=20 loops=1)
-               ->  Sort (actual rows=20 loops=1)
-                     Sort Key: object_id
-                     Sort Method: top-N heapsort  Memory: 26kB
-                     ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9900 loops=1)
-                           Recheck Cond: ((document OPERATOR(helio_api_catalog.@>) '{ "_id" : { "$numberInt" : "100" } }'::helio_core.bson) AND (shard_key_value = '964001'::bigint) AND (object_id OPERATOR(helio_core.>) '{ "" : { "$numberInt" : "100" } }'::helio_core.bson))
-                           Heap Blocks: exact=103
-                           ->  BitmapAnd (actual rows=0 loops=1)
-                                 ->  Bitmap Index Scan on a_id (actual rows=9900 loops=1)
-                                       Index Cond: (document OPERATOR(helio_api_catalog.@>) '{ "_id" : { "$numberInt" : "100" } }'::helio_core.bson)
-                                 ->  Bitmap Index Scan on _id_ (actual rows=9900 loops=1)
-                                       Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id OPERATOR(helio_core.>) '{ "" : { "$numberInt" : "100" } }'::helio_core.bson))
-(19 rows)
+ Limit (actual rows=20 loops=1)
+   ->  Sort (actual rows=20 loops=1)
+         Sort Key: object_id
+         Sort Method: top-N heapsort  Memory: 26kB
+         ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9900 loops=1)
+               Recheck Cond: ((document @> '{ "_id" : { "$numberInt" : "100" } }'::bson) AND (shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "100" } }'::bson))
+               Heap Blocks: exact=103
+               ->  BitmapAnd (actual rows=0 loops=1)
+                     ->  Bitmap Index Scan on a_id (actual rows=9900 loops=1)
+                           Index Cond: (document @> '{ "_id" : { "$numberInt" : "100" } }'::bson)
+                     ->  Bitmap Index Scan on _id_ (actual rows=9900 loops=1)
+                           Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "100" } }'::bson))
+(12 rows)
 
 -- no filter should still prefer the _id index
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": 1}, "limit": 20 }');
-                                               QUERY PLAN                                                
+                                         QUERY PLAN                                          
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
-   Task Count: 1
-   Tuple data received from nodes: 420 bytes
-   Tasks Shown: All
-   ->  Task
-         Tuple data received from node: 420 bytes
-         Node: host=localhost port=58070 dbname=regression
-         ->  Limit (actual rows=20 loops=1)
-               ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
-                     Index Cond: (shard_key_value = '964001'::bigint)
-(10 rows)
+ Limit (actual rows=20 loops=1)
+   ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
+         Index Cond: (shard_key_value = '964001'::bigint)
+(3 rows)
 
 -- shard the collection on a, should sort on object_id only when there is a shard filter.
 SELECT helio_api.shard_collection('sort_pushdown', 'coll', '{"a": "hashed"}', false);

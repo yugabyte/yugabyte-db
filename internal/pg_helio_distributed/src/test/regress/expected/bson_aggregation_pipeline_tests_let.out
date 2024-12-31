@@ -220,7 +220,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 -- pipeline with inlined $project then addFields, on exclusion
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": "$$varRef", "xyz": "$_id" } } ], "let": {"varRef": 1}}');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": "$$varRef", "xyz": "$_id" } } ], "let": {"varRef": 1}}');
                                               document                                              
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "1" }, "xyz" : "1" }
@@ -228,7 +228,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
  { "_id" : "3", "a" : { "$numberInt" : "1" }, "b" : "yes", "c" : true, "xyz" : "3" }
 (3 rows)
 
-EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": 1, "xyz": "$_id" } } ], "let": {"varRef": 1}}');
+EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": 1, "xyz": "$_id" } } ], "let": {"varRef": 1}}');
                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -236,13 +236,13 @@ EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline(
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::helio_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "1" } } }'::helio_core.bson) AS document FROM helio_data.documents_4110_411001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4110'::bigint)
+         Query: SELECT helio_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::helio_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "1" } } }'::helio_core.bson) AS document FROM helio_data.documents_4130_413001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4130'::bigint)
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on helio_data.documents_4110_411001 collection
+         ->  Bitmap Heap Scan on helio_data.documents_4130_413001 collection
                Output: helio_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::helio_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "1" } } }'::helio_core.bson)
-               Recheck Cond: (collection.shard_key_value = '4110'::bigint)
+               Recheck Cond: (collection.shard_key_value = '4130'::bigint)
                ->  Bitmap Index Scan on _id_
-                     Index Cond: (collection.shard_key_value = '4110'::bigint)
+                     Index Cond: (collection.shard_key_value = '4130'::bigint)
 (12 rows)
 
 -- $replaceRoot

@@ -99,6 +99,9 @@ typedef struct
 	 * Whether or not to apply the optimization transformation on the stages
 	 */
 	bool optimizePipelineStages;
+
+	/* Whether or not it's a point read query */
+	bool isPointReadQuery;
 } AggregationPipelineBuildContext;
 
 

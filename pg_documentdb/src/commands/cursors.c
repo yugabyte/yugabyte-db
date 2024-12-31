@@ -17,6 +17,8 @@
 #include <tcop/dest.h>
 #include <tcop/pquery.h>
 #include <tcop/tcopprot.h>
+#include <nodes/makefuncs.h>
+#include <utils/lsyscache.h>
 #include <metadata/metadata_cache.h>
 #include <io/bson_core.h>
 #include <utils/snapmgr.h>
@@ -30,6 +32,7 @@
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "io/bson_set_returning_functions.h"
 #include "commands/commands_common.h"
+#include "planner/documents_custom_planner.h"
 
 
 /*
@@ -408,6 +411,69 @@ CreateAndDrainPersistedQuery(const char *cursorName, Query *query,
 		SPI_cursor_close(queryPortal);
 	}
 
+	SPI_finish();
+	return reason == TerminationReason_CursorCompletion;
+}
+
+
+/*
+ * Given a query that is a point read query, creates the portal for that
+ * query in-line and then drains it and gets the first page.
+ * Tries to apply a fast-path planner for point reads - if it fails
+ * then falls back to default planning.
+ */
+bool
+CreateAndDrainPointReadQuery(const char *cursorName, Query *query,
+							 int32_t *numIterations, uint32_t
+							 accumulatedSize,
+							 pgbson_array_writer *arrayWriter)
+{
+	/* Set up cursor flags */
+	int cursorOptions = CURSOR_OPT_BINARY;
+
+	/* Save the context before doing SPI */
+	MemoryContext currentContext = CurrentMemoryContext;
+
+	/* Plan the query */
+	ParamListInfo paramList = NULL;
+	PlannedStmt *queryPlan = TryCreatePointReadPlan(query);
+	if (queryPlan == NULL)
+	{
+		ereport(DEBUG1, (errmsg("Falling back to default postgres planner")));
+		queryPlan = pg_plan_query(query, NULL, cursorOptions, paramList);
+	}
+
+	/* Create the cursor */
+	Portal queryPortal = CreatePortal(cursorName, false, false);
+	queryPortal->visible = true;
+	queryPortal->cursorOptions = cursorOptions;
+
+
+	/* Set the plan into the portal  */
+	PortalDefineQuery(queryPortal, NULL, "",
+					  CMDTAG_SELECT,
+					  list_make1(queryPlan),
+					  NULL);
+
+	/* Start execution */
+	PortalStart(queryPortal, paramList, 0, GetActiveSnapshot());
+
+	if (SPI_connect() != SPI_OK_CONNECT)
+	{
+		ereport(ERROR, (errmsg("could not connect to SPI manager")));
+	}
+
+	HTAB *cursorMap = NULL;
+	int32_t numRowsFetched = 0;
+	uint64_t currentAccumulatedSize = 0;
+	TerminationReason reason = FetchCursorAndWriteUntilPageOrSize(queryPortal, INT_MAX,
+																  arrayWriter,
+																  &accumulatedSize,
+																  cursorMap,
+																  &numRowsFetched,
+																  &currentAccumulatedSize,
+																  currentContext, false);
+	SPI_cursor_close(queryPortal);
 	SPI_finish();
 	return reason == TerminationReason_CursorCompletion;
 }
@@ -1169,13 +1235,13 @@ PostProcessCursorPage(PG_FUNCTION_ARGS,
 					  pgbson_writer *cursorDoc, pgbson_array_writer *arrayWriter,
 					  pgbson_writer *topLevelWriter, int64_t cursorId,
 					  pgbson *continuation, bool persistConnection,
-					  bool isTailableCursor)
+					  bool addOperationTime)
 {
 	/* Finish the cursor doc*/
 	PgbsonWriterEndArray(cursorDoc, arrayWriter);
 	PgbsonWriterEndDocument(topLevelWriter, cursorDoc);
 	PgbsonWriterAppendDouble(topLevelWriter, "ok", 2, 1);
-	if (isTailableCursor)
+	if (addOperationTime)
 	{
 		/*
 		 * TODO:  Currently, the operationTime field is applicable only for change

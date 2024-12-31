@@ -100,8 +100,11 @@ typedef struct IdFilterWalkerContext
 	/* The index into the RTE where the collection is. */
 	Index collectionVarno;
 
-	/* Whether the _id filed is of a type where collation rules apply, e.g., UTF8 */
+	/* Whether the _id filter is of a type where collation rules apply, e.g., UTF8 */
 	bool isCollationAware;
+
+	/* Whether or not the _id filter is an equality (point read) */
+	bool isPointReadQuery;
 } IdFilterWalkerContext;
 
 extern bool EnableCollation;
@@ -888,14 +891,16 @@ ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 				/* Mongo allows collation on _id field. We need to make sure we do that as well. We can't
 				 * push the Id filter to primary key index if the type needs to be collation aware (e.g., _id contains UTF8 )*/
 				bool isCollationAware;
+				bool isPointRead;
 				Expr *idFilter = CreateIdFilterForQuery(quals,
 														collectionVarno,
-														&isCollationAware);
+														&isCollationAware,
+														&isPointRead);
 
 				/* include _id filter in quals */
 				if (idFilter != NULL &&
-					!(isCollationAware && IsCollationApplicable(
-						  context.collationString)))
+					!(isCollationAware &&
+					  IsCollationApplicable(context.collationString)))
 				{
 					quals = lappend(quals, idFilter);
 				}
@@ -2796,6 +2801,7 @@ CheckAndAddIdFilter(List *opArgs, IdFilterWalkerContext *context,
 				Expr *documentIdFilter = MakeSimpleIdExpr(&qualElement.bsonValue,
 														  context->collectionVarno,
 														  BsonEqualOperatorId());
+				context->isPointReadQuery = true;
 				context->idQuals = lappend(context->idQuals, documentIdFilter);
 				return;
 			}
@@ -2969,7 +2975,9 @@ VisitIdFilterExpression(Node *node, IdFilterWalkerContext *context)
  */
 Expr *
 CreateIdFilterForQuery(List *existingQuals,
-					   Index collectionVarno, bool *isCollationAware)
+					   Index collectionVarno,
+					   bool *isCollationAware,
+					   bool *isPointRead)
 {
 	IdFilterWalkerContext walkerContext = { 0 };
 	walkerContext.idQuals = NIL;
@@ -2978,6 +2986,7 @@ CreateIdFilterForQuery(List *existingQuals,
 						   &walkerContext);
 
 	*isCollationAware = walkerContext.isCollationAware;
+	*isPointRead = walkerContext.isPointReadQuery;
 	if (walkerContext.idQuals == NIL)
 	{
 		return NULL;

@@ -124,7 +124,8 @@ Expr * CreateShardKeyFiltersForQuery(const bson_value_t *queryDocument, pgbson *
 									 uint64_t collectionId,
 									 Index collectionVarno);
 Expr * CreateIdFilterForQuery(List *existingQuals,
-							  Index collectionVarno, bool *isCollationAware);
+							  Index collectionVarno, bool *isCollationAware,
+							  bool *isPointRead);
 
 bool ValidateOrderbyExpressionAndGetIsAscending(pgbson *orderby);
 

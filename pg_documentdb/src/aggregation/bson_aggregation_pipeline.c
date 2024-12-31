@@ -76,6 +76,8 @@ extern bool IgnoreLetOnQuerySupport;
 extern bool EnableCursorsOnAggregationQueryRewrite;
 extern bool EnableLookupUnwindSupport;
 extern bool EnableCollation;
+extern bool EnableFastPathPointLookupPlanner;
+extern bool DefaultInlineWriteOperations;
 
 /*
  * The mutation function that modifies a given query with a pipeline stage's value.
@@ -943,159 +945,6 @@ helio_core_bson_to_bson(PG_FUNCTION_ARGS)
 
 
 /*
- * Traverses the query looking for an aggregation pipeline function.
- * If it's found, then replaces the function with nothing, and updates the query
- * to track the contents of the aggregation pipeline.
- */
-Query *
-ExpandAggregationFunction(Query *query, ParamListInfo boundParams)
-{
-	/* Top level validations - these are right now during development */
-
-	/* Today we only support a query of the form
-	 * SELECT document FROM bson_aggregation_pipeline('db', 'pipeline bson'::bson);
-	 * OR
-	 * SELECT document FROM bson_aggregation_find('db', 'findSpec bson'::bson);
-	 * This restriction exists during the development phase and can change as we move to prod.
-	 */
-	if (list_length(query->rtable) != 1)
-	{
-		ereport(ERROR, (errmsg(
-							"Aggregation pipeline node should have 1 collection. Found %d. This is unexpected",
-							list_length(query->rtable))));
-	}
-
-	if (query->jointree == NULL)
-	{
-		ereport(ERROR, (errmsg(
-							"Aggregation pipeline node should have at least 1 collection and query. This is unexpected")));
-	}
-
-	if (list_length(query->jointree->fromlist) != 1)
-	{
-		ereport(ERROR, (errmsg(
-							"Aggregation pipeline node should have exactly 1 collection to query from not %d. This is unexpected",
-							list_length(query->jointree->fromlist))));
-	}
-
-	if (list_length(query->cteList) > 0)
-	{
-		ereport(ERROR, (errmsg(
-							"Aggregation pipeline node should have CTEs. This is currently unsupported")));
-	}
-
-	if (list_length(query->targetList) != 1)
-	{
-		ereport(ERROR, (errmsg(
-							"Aggregation pipeline query should not have more than 1 projector Found %d. This is currently unsupported",
-							list_length(query->targetList))));
-	}
-
-	if (query->limitOffset != NULL || query->limitCount != NULL)
-	{
-		ereport(ERROR, (errmsg(
-							"Aggregation pipeline query should not have skip/limit. This is currently unsupported")));
-	}
-
-	if (query->sortClause != NIL)
-	{
-		ereport(ERROR, (errmsg(
-							"Aggregation pipeline query should not have sort. This is currently unsupported")));
-	}
-
-	TargetEntry *targetEntry = linitial(query->targetList);
-	if (!IsA(targetEntry->expr, Var))
-	{
-		ereport(ERROR, (errmsg(
-							"Projector must be a single (alias-ed) column. This is unexpected")));
-	}
-
-	if (query->jointree->quals != NULL)
-	{
-		ereport(ERROR, (errmsg(
-							"Query must not have filters. This is unexpected")));
-	}
-
-	RangeTblEntry *rte = (RangeTblEntry *) linitial(query->rtable);
-
-	if (rte->rtekind != RTE_FUNCTION || list_length(rte->functions) != 1)
-	{
-		ereport(ERROR, (errmsg(
-							"Aggregation pipeline node should select from the Mongo aggregation function kind %d. This is unexpected",
-							rte->rtekind)));
-	}
-
-	RangeTblFunction *rangeTblFunc = linitial(rte->functions);
-	if (!IsA(rangeTblFunc->funcexpr, FuncExpr))
-	{
-		ereport(ERROR, (errmsg(
-							"Aggregation pipeline node should select is not a function. This is unexpected")));
-	}
-
-	FuncExpr *aggregationFunc = (FuncExpr *) rangeTblFunc->funcexpr;
-
-	if (list_length(aggregationFunc->args) != 2)
-	{
-		ereport(ERROR, (errmsg(
-							"Aggregation pipeline node should have 2 args. This is unexpected")));
-	}
-
-	Node *databaseArg = linitial(aggregationFunc->args);
-	Node *secondArg = lsecond(aggregationFunc->args);
-
-	if (!IsA(secondArg, Const) || !IsA(databaseArg, Const))
-	{
-		secondArg = EvaluateBoundParameters(secondArg, boundParams);
-		databaseArg = EvaluateBoundParameters(databaseArg, boundParams);
-	}
-
-	if (!IsA(secondArg, Const) || !IsA(databaseArg, Const))
-	{
-		/* Let the runtime deal with this (This will either go to the runtime function and fail, or noop due to prepared and come back here
-		 * to be evaluated during the EXECUTE)
-		 */
-		return query;
-	}
-
-	Const *databaseConst = (Const *) databaseArg;
-	Const *aggregationConst = (Const *) secondArg;
-	if (databaseConst->constisnull || aggregationConst->constisnull)
-	{
-		ereport(ERROR, (errmsg(
-							"Aggregation pipeline arguments should not be null. This is unexpected")));
-	}
-
-	pgbson *pipeline = DatumGetPgBson(aggregationConst->constvalue);
-
-	QueryData queryData = { 0 };
-	bool enableCursorParam = false;
-	if (aggregationFunc->funcid == ApiCatalogAggregationPipelineFunctionId())
-	{
-		return GenerateAggregationQuery(databaseConst->constvalue, pipeline, &queryData,
-										enableCursorParam);
-	}
-	else if (aggregationFunc->funcid == ApiCatalogAggregationFindFunctionId())
-	{
-		return GenerateFindQuery(databaseConst->constvalue, pipeline, &queryData,
-								 enableCursorParam);
-	}
-	else if (aggregationFunc->funcid == ApiCatalogAggregationCountFunctionId())
-	{
-		return GenerateCountQuery(databaseConst->constvalue, pipeline);
-	}
-	else if (aggregationFunc->funcid == ApiCatalogAggregationDistinctFunctionId())
-	{
-		return GenerateDistinctQuery(databaseConst->constvalue, pipeline);
-	}
-	else
-	{
-		ereport(ERROR, (errmsg(
-							"Unrecognized pipeline functionid provided. This is unexpected")));
-	}
-}
-
-
-/*
  * Common utility function for parsing a batchSize argument for find/aggregate/getMore
  */
 void
@@ -1257,6 +1106,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 	AggregationPipelineBuildContext context = { 0 };
 	context.databaseNameDatum = database;
 	context.optimizePipelineStages = true;
+	queryData->cursorKind = QueryCursorType_Unspecified;
 
 	bson_iter_t aggregationIterator;
 	PgbsonInitIterator(aggregationSpec, &aggregationIterator);
@@ -1396,7 +1246,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 
 	if (context.requiresTailableCursor)
 	{
-		queryData->isTailableCursor = true;
+		queryData->cursorKind = QueryCursorType_Tailable;
 
 		/*
 		 * change stream is the only stage that requires a tailable cursor.
@@ -1405,16 +1255,16 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 		 */
 		addCursorParams = false;
 	}
-	else
+	else if (query->commandType == CMD_MERGE)
 	{
-		queryData->isStreamableCursor = !context.requiresPersistentCursor &&
-										!isCollectionAgnosticQuery;
+		/* CMD_MERGE is case when pipeline has output stage ($merge or $out) result will be always single batch. */
+		queryData->cursorKind = QueryCursorType_SingleBatch;
 	}
-
-	/* CMD_MERGE is case when pipeline has output stage ($merge or $out) result will be always single batch. */
-	if (query->commandType == CMD_MERGE)
+	else if (queryData->cursorKind == QueryCursorType_Unspecified)
 	{
-		queryData->isSingleBatch = true;
+		queryData->cursorKind =
+			context.requiresPersistentCursor || isCollectionAgnosticQuery ?
+			QueryCursorType_Persistent : QueryCursorType_Streamable;
 	}
 
 	queryData->namespaceName = context.namespaceName;
@@ -1439,7 +1289,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 		AddCursorFunctionsToQuery(query, baseQuery, queryData, &context,
 								  addCursorAsConst);
 	}
-	else if (queryData->isTailableCursor)
+	else if (queryData->cursorKind == QueryCursorType_Tailable)
 	{
 		AddQualifierForTailableQuery(query, baseQuery, queryData,
 									 &context);
@@ -1458,6 +1308,9 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 {
 	AggregationPipelineBuildContext context = { 0 };
 	context.databaseNameDatum = databaseDatum;
+
+	/* Queries start out as persistent cursor */
+	queryData->cursorKind = QueryCursorType_Unspecified;
 
 	bson_iter_t findIterator;
 	PgbsonInitIterator(findSpec, &findIterator);
@@ -1532,7 +1385,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 			EnsureTopLevelFieldType("singleBatch", &findIterator, BSON_TYPE_BOOL);
 			if (value->value.v_bool)
 			{
-				queryData->isSingleBatch = true;
+				queryData->cursorKind = QueryCursorType_SingleBatch;
 			}
 		}
 		else if (StringViewEqualsCString(&keyView, "batchSize"))
@@ -1646,24 +1499,18 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		}
 	}
 
-	/* TODO: In cases that need persisted cursors, we can't allow querying base table directly
-	 * until we find a solution for persisted cursors here.
-	 */
 	if (sort.value_type != BSON_TYPE_EOD)
 	{
-		context.allowShardBaseTable = false;
 		context.requiresPersistentCursor = true;
 	}
 
 	if (RequiresPersistentCursorSkip(&skip))
 	{
-		context.allowShardBaseTable = false;
 		context.requiresPersistentCursor = true;
 	}
 
 	if (RequiresPersistentCursorLimit(&limit))
 	{
-		context.allowShardBaseTable = false;
 		context.requiresPersistentCursor = true;
 	}
 
@@ -1710,8 +1557,22 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		context.requiresPersistentCursor = true;
 	}
 
-	queryData->isStreamableCursor = !context.requiresPersistentCursor;
+	if (queryData->cursorKind == QueryCursorType_Unspecified)
+	{
+		queryData->cursorKind = context.requiresPersistentCursor ?
+								QueryCursorType_Persistent : QueryCursorType_Streamable;
+	}
+
 	queryData->namespaceName = context.namespaceName;
+	if (EnableFastPathPointLookupPlanner && context.isPointReadQuery &&
+		context.allowShardBaseTable && queryData->batchSize >= 1)
+	{
+		/* If we're still targeting the local shard && we have a point read
+		 * Mark the query for a point read plan.
+		 */
+		queryData->cursorKind = QueryCursorType_PointRead;
+	}
+
 	if (addCursorParams)
 	{
 		bool addCursorAsConst = false;
@@ -3469,13 +3330,15 @@ AddShardKeyAndIdFilters(const bson_value_t *existingValue, Query *query,
 		/* Mongo allows collation on _id field. We need to make sure we do that as well. We can't
 		 * push the Id filter to primary key index if the type needs to be collation aware (e.g., _id contains UTF8 )*/
 		bool isCollationAware;
+		bool isPointRead = false;
 		Expr *idFilter = CreateIdFilterForQuery(existingQuals, var->varno,
-												&isCollationAware);
+												&isCollationAware, &isPointRead);
 
 		if (idFilter != NULL &&
 			!(isCollationAware && IsCollationApplicable(context->collationString)))
 		{
 			existingQuals = lappend(existingQuals, idFilter);
+			context->isPointReadQuery = EnableFastPathPointLookupPlanner && isPointRead;
 		}
 	}
 
@@ -5938,6 +5801,15 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 				collection->relationId = shardOid;
 				rte->relid = shardOid;
 			}
+			else if (DefaultInlineWriteOperations)
+			{
+				context->allowShardBaseTable = true;
+			}
+			else
+			{
+				/* Signal that shard table pushdown didn't succeed */
+				context->allowShardBaseTable = false;
+			}
 		}
 
 		rte->alias = makeAlias(collectionAlias, NIL);
@@ -6002,7 +5874,7 @@ AddCursorFunctionsToQuery(Query *query, Query *baseQuery,
 						  AggregationPipelineBuildContext *context,
 						  bool addCursorAsConst)
 {
-	if (!queryData->isStreamableCursor || queryData->isSingleBatch)
+	if (queryData->cursorKind != QueryCursorType_Streamable)
 	{
 		return;
 	}
@@ -6018,7 +5890,7 @@ AddCursorFunctionsToQuery(Query *query, Query *baseQuery,
 		 * since it'll likely drain in 1 shot due to the $limit: 1
 		 */
 		elog(LOG_SERVER_ONLY, "Query has more than 1 level with streaming mode.");
-		queryData->isStreamableCursor = false;
+		queryData->cursorKind = QueryCursorType_Persistent;
 		return;
 	}
 
@@ -6090,10 +5962,7 @@ AddQualifierForTailableQuery(Query *query, Query *baseQuery,
 							 QueryData *queryData,
 							 AggregationPipelineBuildContext *context)
 {
-	if (!queryData->isTailableCursor)
-	{
-		return;
-	}
+	Assert(queryData->cursorKind == QueryCursorType_Tailable);
 
 	/* Make sure that continuation is still projected after all mutations. */
 	TargetEntry *entry = llast(query->targetList);
@@ -6533,7 +6402,7 @@ ParseCursorDocument(bson_iter_t *iterator, QueryData *queryData)
 			EnsureTopLevelFieldType("cursor.singleBatch", &cursorDocIter, BSON_TYPE_BOOL);
 			if (value->value.v_bool)
 			{
-				queryData->isSingleBatch = true;
+				queryData->cursorKind = QueryCursorType_SingleBatch;
 			}
 		}
 		else

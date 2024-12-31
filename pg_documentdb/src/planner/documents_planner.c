@@ -48,6 +48,7 @@
 #include "utils/query_utils.h"
 #include "api_hooks.h"
 #include "query/bson_compare.h"
+#include "planner/documents_custom_planner.h"
 
 
 typedef enum MongoQueryFlag
@@ -85,6 +86,8 @@ static bool IsRTEShardForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNa
 static bool ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
 										RangeTblEntry *rte);
 static inline bool IsAMergeOuterQuery(PlannerInfo *root, RelOptInfo *rel);
+static Query * ExpandAggregationFunction(Query *node, ParamListInfo boundParams,
+										 PlannedStmt **plan);
 
 extern bool ForceRUMIndexScanToBitmapHeapScan;
 
@@ -104,6 +107,7 @@ DocumentDBApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 	bool hasUnresolvedParams = false;
 	int queryFlags = 0;
 	bool isNonExistentCollection = false;
+	PlannedStmt *plan = NULL;
 	if (IsDocumentDBApiExtensionActive())
 	{
 		if (IsReadWriteCommand(parse))
@@ -114,7 +118,11 @@ DocumentDBApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 		queryFlags = MongoQueryFlags(parse);
 		if (queryFlags & HAS_AGGREGATION_FUNCTION)
 		{
-			parse = (Query *) ExpandAggregationFunction(parse, boundParams);
+			parse = (Query *) ExpandAggregationFunction(parse, boundParams, &plan);
+			if (plan != NULL)
+			{
+				return plan;
+			}
 		}
 
 		/* replace the @@ operators and inject shard_key_value filters */
@@ -147,8 +155,6 @@ DocumentDBApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 				HasUnresolvedExternParamsWalker((Node *) parse, boundParams);
 		}
 	}
-
-	PlannedStmt *plan = NULL;
 
 	if (ExtensionPreviousPlannerHook != NULL)
 	{
@@ -1433,4 +1439,183 @@ static inline bool
 IsAMergeOuterQuery(PlannerInfo *root, RelOptInfo *rel)
 {
 	return root->parse->commandType == CMD_MERGE && rel->relid == 1;
+}
+
+
+/*
+ * Traverses the query looking for an aggregation pipeline function.
+ * If it's found, then replaces the function with nothing, and updates the query
+ * to track the contents of the aggregation pipeline.
+ */
+Query *
+ExpandAggregationFunction(Query *query, ParamListInfo boundParams, PlannedStmt **plan)
+{
+	/* Top level validations - these are right now during development */
+	*plan = NULL;
+
+	/* Today we only support a query of the form
+	 * SELECT document FROM bson_aggregation_pipeline('db', 'pipeline bson'::bson);
+	 * OR
+	 * SELECT document FROM bson_aggregation_find('db', 'findSpec bson'::bson);
+	 * This restriction exists during the development phase and can change as we move to prod.
+	 */
+	if (list_length(query->rtable) != 1)
+	{
+		ereport(ERROR, (errmsg(
+							"Aggregation pipeline node should have 1 collection. Found %d. This is unexpected",
+							list_length(query->rtable))));
+	}
+
+	if (query->jointree == NULL)
+	{
+		ereport(ERROR, (errmsg(
+							"Aggregation pipeline node should have at least 1 collection and query. This is unexpected")));
+	}
+
+	if (list_length(query->jointree->fromlist) != 1)
+	{
+		ereport(ERROR, (errmsg(
+							"Aggregation pipeline node should have exactly 1 collection to query from not %d. This is unexpected",
+							list_length(query->jointree->fromlist))));
+	}
+
+	if (list_length(query->cteList) > 0)
+	{
+		ereport(ERROR, (errmsg(
+							"Aggregation pipeline node should have CTEs. This is currently unsupported")));
+	}
+
+	if (list_length(query->targetList) != 1)
+	{
+		ereport(ERROR, (errmsg(
+							"Aggregation pipeline query should not have more than 1 projector Found %d. This is currently unsupported",
+							list_length(query->targetList))));
+	}
+
+	if (query->limitOffset != NULL || query->limitCount != NULL)
+	{
+		ereport(ERROR, (errmsg(
+							"Aggregation pipeline query should not have skip/limit. This is currently unsupported")));
+	}
+
+	if (query->sortClause != NIL)
+	{
+		ereport(ERROR, (errmsg(
+							"Aggregation pipeline query should not have sort. This is currently unsupported")));
+	}
+
+	TargetEntry *targetEntry = linitial(query->targetList);
+	if (!IsA(targetEntry->expr, Var))
+	{
+		ereport(ERROR, (errmsg(
+							"Projector must be a single (alias-ed) column. This is unexpected")));
+	}
+
+	if (query->jointree->quals != NULL)
+	{
+		ereport(ERROR, (errmsg(
+							"Query must not have filters. This is unexpected")));
+	}
+
+	RangeTblEntry *rte = (RangeTblEntry *) linitial(query->rtable);
+
+	if (rte->rtekind != RTE_FUNCTION || list_length(rte->functions) != 1)
+	{
+		ereport(ERROR, (errmsg(
+							"Aggregation pipeline node should select from the Mongo aggregation function kind %d. This is unexpected",
+							rte->rtekind)));
+	}
+
+	RangeTblFunction *rangeTblFunc = linitial(rte->functions);
+	if (!IsA(rangeTblFunc->funcexpr, FuncExpr))
+	{
+		ereport(ERROR, (errmsg(
+							"Aggregation pipeline node should select is not a function. This is unexpected")));
+	}
+
+	FuncExpr *aggregationFunc = (FuncExpr *) rangeTblFunc->funcexpr;
+
+	if (list_length(aggregationFunc->args) != 2)
+	{
+		ereport(ERROR, (errmsg(
+							"Aggregation pipeline node should have 2 args. This is unexpected")));
+	}
+
+	Node *databaseArg = linitial(aggregationFunc->args);
+	Node *secondArg = lsecond(aggregationFunc->args);
+
+	if (!IsA(secondArg, Const) || !IsA(databaseArg, Const))
+	{
+		secondArg = EvaluateBoundParameters(secondArg, boundParams);
+		databaseArg = EvaluateBoundParameters(databaseArg, boundParams);
+	}
+
+	if (!IsA(secondArg, Const) || !IsA(databaseArg, Const))
+	{
+		/* Let the runtime deal with this (This will either go to the runtime function and fail, or noop due to prepared and come back here
+		 * to be evaluated during the EXECUTE)
+		 */
+		return query;
+	}
+
+	Const *databaseConst = (Const *) databaseArg;
+	Const *aggregationConst = (Const *) secondArg;
+	if (databaseConst->constisnull || aggregationConst->constisnull)
+	{
+		ereport(ERROR, (errmsg(
+							"Aggregation pipeline arguments should not be null. This is unexpected")));
+	}
+
+	pgbson *pipeline = DatumGetPgBson(aggregationConst->constvalue);
+
+	QueryData queryData = { 0 };
+	queryData.batchSize = 101;
+	bool enableCursorParam = false;
+	Query *finalQuery;
+	if (aggregationFunc->funcid == ApiCatalogAggregationPipelineFunctionId())
+	{
+		finalQuery = GenerateAggregationQuery(databaseConst->constvalue, pipeline,
+											  &queryData,
+											  enableCursorParam);
+	}
+	else if (aggregationFunc->funcid == ApiCatalogAggregationFindFunctionId())
+	{
+		finalQuery = GenerateFindQuery(databaseConst->constvalue, pipeline, &queryData,
+									   enableCursorParam);
+	}
+	else if (aggregationFunc->funcid == ApiCatalogAggregationCountFunctionId())
+	{
+		finalQuery = GenerateCountQuery(databaseConst->constvalue, pipeline);
+	}
+	else if (aggregationFunc->funcid == ApiCatalogAggregationDistinctFunctionId())
+	{
+		finalQuery = GenerateDistinctQuery(databaseConst->constvalue, pipeline);
+	}
+	else
+	{
+		ereport(ERROR, (errmsg(
+							"Unrecognized pipeline functionid provided. This is unexpected")));
+	}
+
+	if (queryData.cursorKind == QueryCursorType_PointRead)
+	{
+		/* Assert we're a shard query */
+		bool isMongoDataNamespace;
+		uint64_t collectionId;
+		bool isShardQuery = IsRTEShardForMongoCollection(linitial(finalQuery->rtable),
+														 &isMongoDataNamespace,
+														 &collectionId);
+
+		if (!isShardQuery)
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
+							errmsg(
+								"Unexpected - found point read plan on a non-direct-shard collection")));
+		}
+
+		/* For point reads, allow for fast path planning */
+		*plan = TryCreatePointReadPlan(finalQuery);
+	}
+
+	return finalQuery;
 }

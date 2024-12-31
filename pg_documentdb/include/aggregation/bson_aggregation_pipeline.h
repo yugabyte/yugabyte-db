@@ -15,6 +15,38 @@
 
 #include "utils/documentdb_errors.h"
 
+typedef enum QueryCursorType
+{
+	QueryCursorType_Unspecified = 0,
+
+	/*
+	 * Whether or not the query can be done as a streamable
+	 * query.
+	 */
+	QueryCursorType_Streamable = 1,
+
+	/*
+	 * Whether or not it's a single batch query.
+	 */
+	QueryCursorType_SingleBatch,
+
+	/*
+	 * The cursor plan is a point read.
+	 */
+	QueryCursorType_PointRead,
+
+	/*
+	 * Whether or not the query can be done as a tailable
+	 * query.
+	 */
+	QueryCursorType_Tailable,
+
+	/*
+	 * By default all queries are persistent cursors.
+	 */
+	QueryCursorType_Persistent,
+} QueryCursorType;
+
 /*
  * Tracks the overall query spec data
  * that can be extracted from the query.
@@ -35,22 +67,7 @@ typedef struct
 	 */
 	const char *namespaceName;
 
-	/*
-	 * Whether or not the query can be done as a streamable
-	 * query.
-	 */
-	bool isStreamableCursor;
-
-	/*
-	 * Whether or not the query can be done as a tailable
-	 * query.
-	 */
-	bool isTailableCursor;
-
-	/*
-	 * Whether or not it's a single batch query.
-	 */
-	bool isSingleBatch;
+	QueryCursorType cursorKind;
 
 	/*
 	 * The requested batchSize in the query request.
@@ -72,8 +89,6 @@ Query * GenerateListIndexesQuery(Datum database, pgbson *listIndexesSpec,
 
 Query * GenerateAggregationQuery(Datum database, pgbson *aggregationSpec,
 								 QueryData *queryData, bool addCursorParams);
-
-Query * ExpandAggregationFunction(Query *node, ParamListInfo boundParams);
 
 int64_t ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData);
 

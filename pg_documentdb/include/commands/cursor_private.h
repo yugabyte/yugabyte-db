@@ -27,6 +27,11 @@ bool DrainPersistedCursor(const char *cursorName, int batchSize,
 						  int32_t *numIterations, uint32_t accumulatedSize,
 						  pgbson_array_writer *arrayWriter);
 
+bool CreateAndDrainPointReadQuery(const char *cursorName, Query *query,
+								  int32_t *numIterations, uint32_t
+								  accumulatedSize,
+								  pgbson_array_writer *arrayWriter);
+
 Datum PostProcessCursorPage(PG_FUNCTION_ARGS,
 							pgbson_writer *cursorDoc,
 							pgbson_array_writer *arrayWriter,
@@ -42,7 +47,6 @@ void SerializeContinuationsToWriter(pgbson_writer *writer, HTAB *cursorMap);
 void SerializeTailableContinuationsToWriter(pgbson_writer *writer, HTAB *cursorMap);
 
 pgbson * DrainSingleResultQuery(Query *query);
-
 
 void SetupCursorPagePreamble(pgbson_writer *topLevelWriter,
 							 pgbson_writer *cursorDoc,
