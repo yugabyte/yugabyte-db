@@ -21,6 +21,8 @@
 #include "metadata/collection.h"
 #include "planner/documents_custom_planner.h"
 
+static bool SetPointReadQualsOnIndexScan(IndexScan *indexScan, Expr *queryQuals);
+static List * FormatProjections(List *targetEntries);
 
 /*
  * Does a best effort to create a point read plan on the primary key index.
@@ -91,7 +93,6 @@ TryCreatePointReadPlan(Query *query)
 
 	/* Create an IndexScan plan on the BTree index */
 	IndexScan *indexScan = makeNode(IndexScan);
-	indexScan->scan.plan.targetlist = query->targetList;
 	indexScan->scan.plan.plan_rows = 1;
 
 	/* Use custom values that hint that it's our plan */
@@ -124,10 +125,56 @@ TryCreatePointReadPlan(Query *query)
 		return NULL;
 	}
 
+	if (!SetPointReadQualsOnIndexScan(indexScan, (Expr *) query->jointree->quals))
+	{
+		return NULL;
+	}
+
+	/* Finally, filter and set the projections if successful */
+	indexScan->scan.plan.targetlist = FormatProjections(query->targetList);
+	stmt->planTree = (Plan *) indexScan;
+
+	return stmt;
+}
+
+
+/*
+ * Removes unnecessary projections as per the point read plan.
+ */
+static List *
+FormatProjections(List *targetEntries)
+{
+	if (list_length(targetEntries) == 1)
+	{
+		return targetEntries;
+	}
+
+	ListCell *cell;
+	foreach(cell, targetEntries)
+	{
+		TargetEntry *currEntry = lfirst(cell);
+		if (currEntry->resjunk)
+		{
+			/* unused - remove */
+			foreach_delete_current(targetEntries, cell);
+		}
+	}
+
+	return targetEntries;
+}
+
+
+/*
+ * Scan quals and ensure that there's a point read in there.
+ * returns false if it couldn't form a point read plan.
+ */
+static bool
+SetPointReadQualsOnIndexScan(IndexScan *indexScan, Expr *queryQuals)
+{
 	List *indexClauses = NIL;
 	List *indexClausesOrig = NIL;
 	List *runtimeClauses = NIL;
-	List *quals = make_ands_implicit((Expr *) query->jointree->quals);
+	List *quals = make_ands_implicit(queryQuals);
 
 	ListCell *cell;
 	bool hasObjectIdFilter = false;
@@ -221,7 +268,7 @@ TryCreatePointReadPlan(Query *query)
 				if (funcExpr->funcid == BsonTextFunctionId())
 				{
 					/* Text search does not qualify here */
-					return NULL;
+					return false;
 				}
 			}
 
@@ -232,13 +279,11 @@ TryCreatePointReadPlan(Query *query)
 	/* Not a point read */
 	if (list_length(indexClauses) != 2 || !hasObjectIdFilter)
 	{
-		return NULL;
+		return false;
 	}
 
 	indexScan->scan.plan.qual = runtimeClauses;
 	indexScan->indexqual = indexClauses;
 	indexScan->indexqualorig = indexClausesOrig;
-	stmt->planTree = (Plan *) indexScan;
-
-	return stmt;
+	return true;
 }

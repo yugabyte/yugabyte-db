@@ -1173,10 +1173,12 @@ CreateCursorHashSet()
 HTAB *
 CreateTailableCursorHashSet()
 {
-	HASHCTL hashInfo;
-	hashInfo.entrysize = sizeof(TailableCursorContinuationEntry);
-	hashInfo.keysize = sizeof(uint32_t);
-	hashInfo.hash = tag_hash;
+	HashCompareFunc compareFunc = NULL;
+	HASHCTL hashInfo = CreateExtensionHashCTL(
+		sizeof(uint32_t),
+		sizeof(TailableCursorContinuationEntry),
+		compareFunc,
+		tag_hash);
 	int hashFlags = (HASH_ELEM | HASH_FUNCTION);
 	HTAB *cursorElementHashSet =
 		hash_create("Bson Tailable Cursor Element Hash Table",

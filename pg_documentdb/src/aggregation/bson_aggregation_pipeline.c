@@ -1557,6 +1557,12 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		context.requiresPersistentCursor = true;
 	}
 
+	if (rt_fetch(1, query->rtable)->rtekind != RTE_RELATION)
+	{
+		/* Any attempts to push to a subquery should invalidate point read plans */
+		context.isPointReadQuery = false;
+	}
+
 	if (queryData->cursorKind == QueryCursorType_Unspecified)
 	{
 		queryData->cursorKind = context.requiresPersistentCursor ?

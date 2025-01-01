@@ -214,7 +214,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
-   Output: document, object_id
+   Output: document
    Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
 (3 rows)
 
@@ -222,7 +222,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
-   Output: document, object_id
+   Output: document
    Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
 (3 rows)
 
@@ -230,7 +230,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
-   Output: document, bson_orderby(document, '{ "a" : { "$numberInt" : "-1" } }'::bson)
+   Output: document
    Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
 (3 rows)
 
@@ -238,7 +238,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
-   Output: document, bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)
+   Output: document
    Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
 (3 rows)
 
@@ -256,7 +256,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
-   Output: document, bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)
+   Output: document
    Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
    Filter: (collection.document #>= '{ "a" : { "$minKey" : 1 } }'::bsonquery)
 (4 rows)
@@ -265,7 +265,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=0 loops=1)
-   Output: document, bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)
+   Output: document
    Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
    Filter: bson_dollar_exists(collection.document, '{ "a" : false }'::bson)
    Rows Removed by Filter: 1
@@ -299,6 +299,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
          Rows Removed by Filter: 1
 (9 rows)
 
+-- filter with special operators
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "$text": { "$search": "abc" } }, "sort": { "$meta": 1 } }');
                                                                                                                       QUERY PLAN                                                                                                                       
 ---------------------------------------------------------------------
@@ -315,12 +316,53 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
                Rows Removed by Filter: 1
 (11 rows)
 
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "g": { "$nearSphere": { "$geometry": { "type" : "Point", "coordinates": [0, 0] } }} }, "sort": { "a": 1 } }');
+ERROR:  planner returned error :: caused by :: unable to find index for $geoNear query
+-- filters with and/nested and - today doesn't use the fast-path but needs to be handled.
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "$and": [ { "_id": { "$gt": "1" } }, { "$and": [ {"_id": "2" }, {"_id": { "$gt": "0" } } ] } ] } }');
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document @> '{ "_id" : "1" }'::bson) AND (collection.document @> '{ "_id" : "0" }'::bson))
+(4 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": { "$gt": "1" }, "_id": "2", "_id": { "$gt": "0" } } }');
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document @> '{ "_id" : "1" }'::bson) AND (collection.document @> '{ "_id" : "0" }'::bson))
+(4 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "$and": [ { "a": { "$gt": "1" } }, { "$and": [ {"_id": "2" }, {"a": { "$gt": "0" } } ] } ] } }');
+                                                                                     QUERY PLAN                                                                                      
+---------------------------------------------------------------------
+ Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=0 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document #> '{ "a" : "1" }'::bsonquery) AND ((collection.document #= '{ "_id" : "2" }'::bsonquery) AND (collection.document #> '{ "a" : "0" }'::bsonquery)))
+   Rows Removed by Filter: 1
+(5 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "a": { "$gt": "1" }, "_id": "2", "a": { "$gt": "0" } } }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=0 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document #> '{ "a" : "1" }'::bsonquery) AND (collection.document #> '{ "a" : "0" }'::bsonquery))
+   Rows Removed by Filter: 1
+(5 rows)
+
 -- singleBatch
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "sort": { "a": 1 }, "singleBatch": true }');
                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
-   Output: document, bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)
+   Output: document
    Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
 (3 rows)
 
