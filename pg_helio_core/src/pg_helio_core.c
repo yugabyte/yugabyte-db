@@ -12,6 +12,7 @@
 #include <utils/guc.h>
 
 #include "bson_init.h"
+#include "utils/type_cache.h"
 
 PG_MODULE_MAGIC;
 
@@ -33,6 +34,9 @@ _PG_init(void)
 	}
 
 	SkipDocumentDBCoreLoad = true;
+	CoreSchemaName = "helio_core";
+	CoreSchemaNameV2 = "helio_core";
+
 
 	if (!process_shared_preload_libraries_in_progress)
 	{

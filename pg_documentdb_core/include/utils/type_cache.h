@@ -12,6 +12,7 @@
 #define TYPE_CACHE_H
 
 extern PGDLLIMPORT char *CoreSchemaName;
+extern PGDLLIMPORT char *CoreSchemaNameV2;
 
 /* types */
 PGDLLEXPORT Oid BsonTypeId(void);

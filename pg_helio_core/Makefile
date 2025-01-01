@@ -82,6 +82,6 @@ $(generated_sql_files): build/%: %
 	@# -undef is used to not predefine any system-specific or GCC-specific macros.
 	@# -imacros is used to specify a file that defines macros for the global context but its output is thrown away.
 	@# `man cpp` for further information
-	cpp -undef -w $(SQL_DEFINES) -I$(OSS_SRC_DIR) -imacros $(OSS_COMMON_SQL_HEADER) -P -MMD -MP -MF$(SQL_DEPDIR)/$(*F).Po -MT$@ $< > $@
+	cpp -undef -w $(SQL_DEFINES)  -I$(OSS_SRC_DIR) -imacros $(OSS_COMMON_SQL_HEADER) -P -MMD -MP -MF$(SQL_DEPDIR)/$(*F).Po -MT$@ $< > $@
 
 include $(OSS_SRC_DIR)/Makefile.docdb

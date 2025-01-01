@@ -1,1 +1,2 @@
 test: public_api_schema
+test: bson_basic_types

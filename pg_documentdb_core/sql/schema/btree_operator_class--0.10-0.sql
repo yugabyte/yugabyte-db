@@ -1,8 +1,8 @@
-CREATE OPERATOR CLASS bson_btree_ops
-    DEFAULT FOR TYPE bson USING btree AS
-        OPERATOR 1 < (bson, bson),
-        OPERATOR 2 <= (bson, bson),
-        OPERATOR 3 = (bson, bson),
-        OPERATOR 4 >= (bson, bson),
-        OPERATOR 5 > (bson, bson),
-        FUNCTION 1 bson_compare(bson, bson);
+CREATE OPERATOR CLASS __CORE_SCHEMA__.bson_btree_ops
+    DEFAULT FOR TYPE __CORE_SCHEMA__.bson USING btree AS
+        OPERATOR 1 __CORE_SCHEMA__.< (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson),
+        OPERATOR 2 __CORE_SCHEMA__.<= (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson),
+        OPERATOR 3 __CORE_SCHEMA__.= (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson),
+        OPERATOR 4 __CORE_SCHEMA__.>= (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson),
+        OPERATOR 5 __CORE_SCHEMA__.> (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson),
+        FUNCTION 1 __CORE_SCHEMA__.bson_compare(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson);

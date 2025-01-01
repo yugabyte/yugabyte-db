@@ -20,6 +20,7 @@ extern PGDLLIMPORT char *ApiSchemaName;
 extern PGDLLIMPORT char *ApiInternalSchemaName;
 extern PGDLLIMPORT char *ExtensionObjectPrefix;
 extern PGDLLIMPORT char *CoreSchemaName;
+extern PGDLLIMPORT char *CoreSchemaNameV2;
 extern PGDLLIMPORT char *FullBsonTypeName;
 extern PGDLLIMPORT char *ApiCatalogSchemaName;
 extern PGDLLIMPORT char *ApiToApiInternalSchemaName;

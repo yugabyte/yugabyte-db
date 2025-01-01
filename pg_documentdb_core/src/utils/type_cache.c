@@ -17,8 +17,8 @@
 
 #include "utils/type_cache.h"
 
-PGDLLEXPORT char *CoreSchemaName = "helio_core";
-
+PGDLLEXPORT char *CoreSchemaName = "documentdb_core";
+PGDLLEXPORT char *CoreSchemaNameV2 = "documentdb_core";
 
 /*
  * CacheValidityValue represents the possible states of the cache.
@@ -44,10 +44,10 @@ typedef struct OidTypeCacheData
 	/* OID of the bsonquery type */
 	Oid BsonQueryTypeId;
 
-	/* OID of the helio_core.bsonsequence type */
+	/* OID of the CoreSchemaNameV2.bsonsequence type */
 	Oid HelioCoreBsonSequenceTypeId;
 
-	/* OID of the helio_core.bson type */
+	/* OID of the CoreSchemaNameV2.bson type */
 	Oid HelioCoreBsonTypeId;
 } OidTypeCacheData;
 
@@ -83,7 +83,7 @@ DocumentDBCoreBsonSequenceTypeId(void)
 
 	if (TypeCache.HelioCoreBsonSequenceTypeId == InvalidOid)
 	{
-		List *bsonTypeNameList = list_make2(makeString("helio_core"),
+		List *bsonTypeNameList = list_make2(makeString(CoreSchemaNameV2),
 											makeString("bsonsequence"));
 		TypeName *bsonTypeName = makeTypeNameFromNameList(bsonTypeNameList);
 		TypeCache.HelioCoreBsonSequenceTypeId = typenameTypeId(NULL, bsonTypeName);
@@ -94,7 +94,7 @@ DocumentDBCoreBsonSequenceTypeId(void)
 
 
 /*
- * BsonTypeId returns the OID of the bson type defined in helio_core schema ignoring core schema override.
+ * BsonTypeId returns the OID of the bson type defined in CoreSchemaNameV2 schema.
  */
 PGDLLEXPORT Oid
 DocumentDBCoreBsonTypeId(void)
@@ -103,7 +103,7 @@ DocumentDBCoreBsonTypeId(void)
 
 	if (TypeCache.HelioCoreBsonTypeId == InvalidOid)
 	{
-		List *bsonTypeNameList = list_make2(makeString("helio_core"),
+		List *bsonTypeNameList = list_make2(makeString(CoreSchemaNameV2),
 											makeString("bson"));
 		TypeName *bsonTypeName = makeTypeNameFromNameList(bsonTypeNameList);
 		TypeCache.HelioCoreBsonTypeId = typenameTypeId(NULL, bsonTypeName);
