@@ -3506,7 +3506,7 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level
 	if (!is_allowed_role && userid != GetUserId())
 	{
 		ereport(ERROR,
-				(errmsg("Insufficient privilege to read this query detail.")));
+				(errmsg("insufficient privilege to read this query detail")));
 		PG_RETURN_DATUM(0);
 	}
 
@@ -3515,8 +3515,8 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level
 	if (!entry)
 	{
 		ereport(ERROR,
-				(errmsg("Invalid combination of queryid, userid, dbid and top_level.\n"
-						"Please refer to pg_stat_statements for the correct details.")));
+				(errmsg("invalid combination of queryid, userid, dbid, and top_level"),
+				 errhint("Please refer to pg_stat_statements for the correct details.")));
 		PG_RETURN_DATUM(0);
 	}
 

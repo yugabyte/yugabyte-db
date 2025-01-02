@@ -799,9 +799,9 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 								 pubactions.pubtruncate))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Publishing only a subset of DML commands is not yet supported"),
+				 errmsg("publishing only a subset of DML commands is not yet supported"),
 				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
-						 "19250. React with thumbs up to raise its priority")));
+						 "19250. React with thumbs up to raise its priority.")));
 
 	puboid = GetNewOidWithIndex(rel, PublicationObjectIndexId,
 								Anum_pg_publication_oid);
@@ -1005,9 +1005,9 @@ AlterPublicationOptions(ParseState *pstate, AlterPublicationStmt *stmt,
 								 pubactions.pubtruncate))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Publishing only a subset of DML commands is not yet supported"),
+				 errmsg("publishing only a subset of DML commands is not yet supported"),
 				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
-						 "19250. React with thumbs up to raise its priority")));
+						 "19250. React with thumbs up to raise its priority.")));
 
 	/* Everything ok, form a new tuple. */
 	memset(values, 0, sizeof(values));

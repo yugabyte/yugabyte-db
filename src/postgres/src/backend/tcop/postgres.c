@@ -4239,12 +4239,12 @@ static void YBRefreshCache()
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Cannot refresh cache within a transaction")));
+				 errmsg("cannot refresh cache within a transaction")));
 	}
 
 	if (yb_debug_log_catcache_events)
 	{
-		ereport(LOG,(errmsg("Refreshing catalog cache.")));
+		ereport(LOG,(errmsg("refreshing catalog cache.")));
 	}
 
 	/*
@@ -5172,7 +5172,7 @@ yb_perform_retry_on_error(int attempt, uint16_t txn_errcode,
 						  const char *portal_name)
 {
 	if (yb_debug_log_internal_restarts)
-		ereport(LOG, (errmsg("Performing query layer retry with attempt number: %d", attempt)));
+		ereport(LOG, (errmsg("performing query layer retry, attempt number %d", attempt)));
 
 	const bool is_read_restart = YBCIsRestartReadError(txn_errcode);
 	const bool is_conflict_error = YBCIsTxnConflictError(txn_errcode);
@@ -5379,10 +5379,10 @@ yb_exec_execute_message(long max_rows,
 static void yb_report_cache_version_restart(const char* query, ErrorData *edata)
 {
 	ereport(LOG,
-			(errmsg("Restarting statement due to catalog version mismatch:"
-					"\nQuery: %s\nError: %s",
-					query,
-					edata->message)));
+			(errmsg("restarting statement due to catalog version mismatch"),
+			 errdetail("Query: %s\nError: %s",
+					   query,
+					   edata->message)));
 }
 
 /*
@@ -6069,7 +6069,7 @@ PostgresMain(const char *dbname, const char *username)
 
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("Reloading config on control connection is not supported")));
+						 errmsg("reloading config on control connection is not supported")));
 			}
 			else
 			{

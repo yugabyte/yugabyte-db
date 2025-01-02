@@ -798,7 +798,7 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 		if (off == InvalidOffsetNumber)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("Failed to add sequence tuple to page")));
+					 errmsg("failed to add sequence tuple to page")));
 
 		/* Unlock the buffer */
 		LockBuffer(buf, BUFFER_LOCK_UNLOCK);

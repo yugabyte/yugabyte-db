@@ -409,7 +409,7 @@ SELECT s.stxkind, d.stxdndistinct
 
 -- minor improvement, make sure the ctid does not break the matching
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY ctid, a, b');
-ERROR:  System column "ctid" is not supported yet
+ERROR:  system column "ctid" is not supported yet
 CONTEXT:  SQL statement "explain analyze SELECT COUNT(*) FROM ndistinct GROUP BY ctid, a, b"
 PL/pgSQL function check_estimated_rows(text) line 7 at FOR over EXECUTE statement
 -- Hash Aggregate, thanks to estimates improved by the statistic

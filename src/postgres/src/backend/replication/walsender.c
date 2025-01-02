@@ -1203,7 +1203,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			if (IsYugaByteEnabled())
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Exporting snapshot is not yet supported")));
+						 errmsg("exporting snapshot is not yet supported")));
 
 			if (IsTransactionBlock())
 				ereport(ERROR,
@@ -1252,11 +1252,11 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			if (cmd->temporary)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Temporary replication slot is not yet"
+						 errmsg("temporary replication slot is not yet"
 								" supported"),
 						 errhint("See https://github.com/yugabyte/yugabyte-db/"
 								 "issues/19263. React with thumbs up to raise"
-								 " its priority")));
+								 " its priority.")));
 
 			/*
 			 * Validate output plugin requirement early so that we can avoid the
@@ -1443,7 +1443,7 @@ DropReplicationSlot(DropReplicationSlotCmd *cmd)
 	if (IsYugaByteEnabled() && cmd->wait)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Waiting for a replication slot is not yet"
+				 errmsg("waiting for a replication slot is not yet"
 						" supported")));
 
 	ReplicationSlotDrop(cmd->slotname, !cmd->wait);

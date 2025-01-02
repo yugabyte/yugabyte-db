@@ -959,7 +959,7 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 	if (found)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("Query diagnostics for %ld, is already being generated",
+				 errmsg("query diagnostics for %ld is already being generated",
 						metadata->params.query_id)));
 }
 
@@ -2040,8 +2040,8 @@ ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata)
 				 DataDir, "query-diagnostics", metadata->params.query_id, rand_num) >= MAXPGPATH)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("Path to pg_data is too long"),
-				 errhint("Move the data directory to a shorter path")));
+				 errmsg("path to pg_data is too long"),
+				 errhint("Move the data directory to a shorter path.")));
 }
 
 /*

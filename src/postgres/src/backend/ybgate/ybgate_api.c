@@ -364,7 +364,7 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 					/* Planner should ensure we never get here. */
 					ereport(ERROR,
 							(errcode(ERRCODE_INTERNAL_ERROR),
-							 errmsg("Unsupported boolop received by DocDB")));
+							 errmsg("unsupported boolop received by DocDB")));
 					break;
 			}
 			return true;
@@ -380,7 +380,7 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			if (ce->arg)
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Unsupported CASE expression received by DocDB")));
+						 errmsg("unsupported CASE expression received by DocDB")));
 			/*
 			 * Evaluate WHEN clause expressions one by one, if any evaluation
 			 * result is true, evaluate and return respective result expression
@@ -416,7 +416,7 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			/* Planner should ensure we never get here. */
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("Unsupported YSQL expression received by DocDB")));
+					 errmsg("unsupported YSQL expression received by DocDB")));
 			break;
 	}
 	*is_null = true;

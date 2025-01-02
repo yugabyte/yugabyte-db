@@ -749,25 +749,25 @@ CopyFrom(CopyFromState cstate)
 					resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("Batched COPY is not supported on %s tables. "
-							"Defaulting to using one transaction for the entire copy.",
+					 errmsg("batched COPY is not supported on %s tables",
 							YbIsTempRelation(resultRelInfo->ri_RelationDesc) ? "temporary" : "foreign"),
+					 errdetail("Defaulting to using one transaction for the entire copy."),
 					 errhint("Either copy onto non-temporary table or set rows_per_transaction "
 							 "option to `0` to disable batching and remove this warning.")));
 		}
 		else if (YBIsDataSent())
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Batched COPY is not supported in transaction blocks. "
-						"Defaulting to using one transaction for the entire copy."),
+				 errmsg("batched COPY is not supported in transaction blocks"),
+				 errdetail("Defaulting to using one transaction for the entire copy."),
 				 errhint("Either run this COPY outside of a transaction block or set "
 						 "rows_per_transaction option to `0` to disable batching and "
 						 "remove this warning.")));
 		else if (HasNonRITrigger(cstate->rel->trigdesc))
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Batched COPY is not supported on table with non RI trigger. "
-						"Defaulting to using one transaction for the entire copy."),
+				 errmsg("batched COPY is not supported on table with non RI trigger"),
+				 errdetail("Defaulting to using one transaction for the entire copy."),
 				 errhint("Set rows_per_transaction option to `0` to disable batching "
 						 "and remove this warning.")));
 		else

@@ -53,8 +53,8 @@ SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false)
 SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_plugin', 'unsupported_plugin', false);
 ERROR:  could not access file "unsupported_plugin": No such file or directory
 SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_temporary', 'pgoutput', true);
-ERROR:  Temporary replication slot is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19263. React with thumbs up to raise its priority
+ERROR:  temporary replication slot is not yet supported
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19263. React with thumbs up to raise its priority.
 SELECT * FROM pg_create_physical_replication_slot('testslot_unsupported_physical', true, false);
 ERROR:  YSQL only supports logical replication slots
 -- creating replication slot with same name fails.

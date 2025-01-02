@@ -117,7 +117,7 @@ validatePlacementConfiguration(const char *value)
 {
 	if (value == NULL)
 	{
-		ereport(ERROR,(errmsg("Placement configuration cannot be empty")));
+		ereport(ERROR,(errmsg("placement configuration cannot be empty")));
 		return;
 	}
 
@@ -127,13 +127,13 @@ validatePlacementConfiguration(const char *value)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Required key \"placement_blocks\" not found")));
+				 errmsg("required key \"placement_blocks\" not found")));
 	}
 
 	const int length = get_json_array_length(json_array);
 	if (length < 1) {
 		ereport(ERROR,
-				(errmsg("Invalid number of placement blocks %d", length)));
+				(errmsg("invalid number of placement blocks %d", length)));
 		return;
 	}
 
@@ -171,10 +171,10 @@ validatePlacementConfiguration(const char *value)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Invalid value for \"leader_preference\" key"),
+						errmsg("invalid value for \"leader_preference\" key"),
 						errdetail("The set of leader_preference values should "
 								  "consist of contiguous integers starting at 1."
-								  " Preference value %d is invalid. ",
+								  " Preference value %d is invalid.",
 							priority)));
 			}
 			has_priority = true;
@@ -190,9 +190,9 @@ validatePlacementConfiguration(const char *value)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("Invalid value for \"num_replicas\" key"),
-				errdetail("num_replicas: %d is lesser than the total of "
-						"min_num_replicas fields %d", num_replicas,
+				errmsg("invalid value for \"num_replicas\" key"),
+				errdetail("num_replicas=%d is lesser than the total of "
+						"min_num_replicas fields %d.", num_replicas,
 						sum_min_replicas)));
 	}
 	if (sum_min_replicas < num_replicas)
@@ -219,7 +219,7 @@ validatePlacementConfiguration(const char *value)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Invalid value for \"leader_preference\" key"),
+						errmsg("invalid value for \"leader_preference\" key"),
 						errdetail("The set of leader_preference values should "
 								  "consist of contiguous integers starting at 1."
 								  " Preference value %d is missing.",

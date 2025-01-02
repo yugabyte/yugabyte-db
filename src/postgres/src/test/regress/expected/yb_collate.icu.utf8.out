@@ -226,10 +226,10 @@ Indexes:
 
 -- test YB restrictions
 CREATE DATABASE test_db LC_COLLATE = "en-US-x-icu" TEMPLATE template0; -- fail;
-ERROR:  Value other than 'C' for lc_collate option is not yet supported
+ERROR:  value other than 'C' for lc_collate option is not yet supported
 LINE 1: CREATE DATABASE test_db LC_COLLATE = "en-US-x-icu" TEMPLATE ...
                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues.
 CREATE TABLE tab3(id char(10) collate "en-US-x-icu");
 CREATE INDEX tab3_id_idx ON tab3(id bpchar_pattern_ops asc); -- fail;
 ERROR:  could not use operator class "bpchar_pattern_ops" with column collation "en-US-x-icu"

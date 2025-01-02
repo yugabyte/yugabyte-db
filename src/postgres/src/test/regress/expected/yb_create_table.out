@@ -426,7 +426,7 @@ CREATE TABLE tbl6 (
 	b			text,
 	primary key (b asc)
 ) SPLIT AT VALUES (('a'), (2, 'aba'), ('ac'));
-ERROR:  Number of SPLIT values cannot be greater than number of SPLIT columns
+ERROR:  number of SPLIT values cannot be greater than number of SPLIT columns
 CREATE TABLE tbl7 (
 	a			int4,
 	primary key (a asc)

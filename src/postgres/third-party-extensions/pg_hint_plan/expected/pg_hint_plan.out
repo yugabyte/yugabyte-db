@@ -1325,7 +1325,7 @@ DROP INDEX t1_bitmap_index;
 -- CTID based scans and searches not supported in Yugabyte
 -- full scan hint pattern test
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
-ERROR:  System column "ctid" is not supported yet
+ERROR:  system column "ctid" is not supported yet
 -- /*+SeqScan(t1)*/
 -- EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
 -- /*+IndexScan(t1)*/
@@ -3803,7 +3803,7 @@ error hint:
 -- Inheritance not supported by Yugabyte
 -- Inherited table test to specify the index's name
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
-ERROR:  System column "ctid" is not supported yet
+ERROR:  system column "ctid" is not supported yet
 -- /*+IndexScan(p2 p2_pkey)*/
 -- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
 -- /*+IndexScan(p2 p2_id_val_idx)*/

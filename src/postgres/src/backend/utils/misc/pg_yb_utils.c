@@ -266,7 +266,7 @@ CheckIsYBSupportedRelationByKind(char relkind)
 		  relkind == RELKIND_MATVIEW))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("This feature is not supported in YugaByte.")));
+								errmsg("this feature is not supported in Yugabyte")));
 }
 
 bool
@@ -3069,9 +3069,9 @@ yb_hash_code(PG_FUNCTION_ARGS)
 			YBCFreeStatus(status);
 			ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("Unsupported datatype given to yb_hash_code"),
-				errdetail("Only types supported by HASH key columns are allowed"),
-				errhint("Use explicit casts to ensure input types are as desired")));
+				errmsg("unsupported datatype given to yb_hash_code"),
+				errdetail("Only types supported by HASH key columns are allowed."),
+				errhint("Use explicit casts to ensure input types are as desired.")));
 			PG_RETURN_NULL();
 		}
 		size += typesize;
@@ -3097,9 +3097,9 @@ yb_hash_code(PG_FUNCTION_ARGS)
 			YBCFreeStatus(status);
 			ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("Unsupported datatype given to yb_hash_code"),
-				errdetail("Only types supported by HASH key columns are allowed"),
-				errhint("Use explicit casts to ensure input types are as desired")));
+				errmsg("unsupported datatype given to yb_hash_code"),
+				errdetail("Only types supported by HASH key columns are allowed."),
+				errhint("Use explicit casts to ensure input types are as desired.")));
 			PG_RETURN_NULL();
 		}
 		arg_buf_pos += written;
@@ -4592,7 +4592,7 @@ YbCheckUnsupportedSystemColumns(int attnum, const char *colname, RangeTblEntry *
 		case MaxCommandIdAttributeNumber:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("System column \"%s\" is not supported yet", colname)));
+					errmsg("system column \"%s\" is not supported yet", colname)));
 		default:
 			break;
 	}
@@ -4740,7 +4740,7 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 		{
 			ereport(FATAL,
 					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("Sys table '%d' is not yet intended for preloading", sys_table_id)));
+					 errmsg("sys table '%d' is not yet intended for preloading", sys_table_id)));
 
 		}
 	}
@@ -4932,7 +4932,7 @@ YBCheckServerAccessIsAllowed()
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("server file access disabled"),
 				 errdetail("tserver flag ysql_disable_server_file_access is "
-						   "set to true")));
+						   "set to true.")));
 }
 
 static void

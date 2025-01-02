@@ -334,7 +334,7 @@ CreateTableAddColumns(YBCPgStatement handle, TupleDesc desc,
 			if (!column_found)
 				ereport(FATAL,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Column '%s' not found in table",
+						 errmsg("column '%s' not found in table",
 								index_elem->name)));
 		}
 	}
@@ -484,7 +484,7 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 			if (primary_key == NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("Cannot split table that does not have primary key")));
+						 errmsg("cannot split table that does not have primary key")));
 
 			/* Find the column descriptions for primary key (split columns). */
 			Form_pg_attribute attrs[INDEX_MAX_KEYS];
@@ -512,7 +512,7 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 errmsg("Invalid split options")));
+					 errmsg("invalid split options")));
 	}
 }
 
@@ -1076,7 +1076,7 @@ CreateIndexHandleSplitOptions(YBCPgStatement handle,
 		}
 
 		default:
-			ereport(ERROR, (errmsg("Illegal memory state for SPLIT options")));
+			ereport(ERROR, (errmsg("illegal memory state for SPLIT options")));
 			break;
 	}
 }
@@ -1392,8 +1392,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("This ALTER TABLE command"
-								" is not yet supported.")));
+						 errmsg("this ALTER TABLE command"
+								" is not yet supported")));
 			}
 
 			break;
@@ -1564,7 +1564,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_SYSTEM_ERROR),
-								 errmsg("Cache lookup failed for constraint %u",
+								 errmsg("cache lookup failed for constraint %u",
 										constraint_oid)));
 					}
 					Form_pg_constraint con =
@@ -1593,8 +1593,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("This ALTER TABLE command is"
-									" not yet supported.")));
+							 errmsg("this ALTER TABLE command is"
+									" not yet supported")));
 				}
 				dependent_rels = lappend(dependent_rels,
 					table_openrv(index->relation, AccessExclusiveLock));
@@ -1627,9 +1627,9 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			if (!yb_enable_replica_identity)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("Replica Identity is unavailable"),
+						 errmsg("replica identity is unavailable"),
 						 errdetail("yb_enable_replica_identity is false or a "
-								   "system upgrade is in progress")));
+								   "system upgrade is in progress.")));
 
 			YBCPgStatement replica_identity_handle =
 				(YBCPgStatement) lfirst(list_head(handles));
@@ -1661,7 +1661,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 
 		default:
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("This ALTER TABLE command is not yet supported.")));
+					errmsg("this ALTER TABLE command is not yet supported")));
 			break;
 	}
 	return handles;
@@ -1752,7 +1752,7 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 
 		default:
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("Renaming this object is not yet supported.")));
+					errmsg("renaming this object is not yet supported")));
 
 	}
 
@@ -1781,7 +1781,7 @@ YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId)
 
 		default:
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("Schema altering for this object is not yet supported.")));
+					errmsg("schema altering for this object is not yet supported")));
 	}
 
 	YBCExecAlterTable(handle, relationId);

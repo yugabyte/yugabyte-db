@@ -421,7 +421,7 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	if (row_lock_for_yb_rel_found && row_lock_for_non_yb_rel_found)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Mixing Yugabyte relations and not Yugabyte "
+				 errmsg("mixing Yugabyte relations and not Yugabyte "
 						"relations with row locks is not supported")));
 
 	lrstate->yb_are_row_marks_for_yb_rels = row_lock_for_yb_rel_found;

@@ -9,10 +9,10 @@ Index Only Scan using idx on test
 (2 rows)
 
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_high_pri: SET yb_transaction_priority_lower_bound = 0.9; -- only for Fail-on-Conflict mode
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_low_pri: SET yb_transaction_priority_upper_bound = 0.1; -- only for Fail-on-Conflict mode
 step s1_begin_serializable: BEGIN ISOLATION LEVEL SERIALIZABLE;
 step s2_begin: BEGIN;
@@ -35,10 +35,10 @@ Index Only Scan using idx on test
 (2 rows)
 
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_high_pri: SET yb_transaction_priority_lower_bound = 0.9; -- only for Fail-on-Conflict mode
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_low_pri: SET yb_transaction_priority_upper_bound = 0.1; -- only for Fail-on-Conflict mode
 step s1_begin_serializable: BEGIN ISOLATION LEVEL SERIALIZABLE;
 step s2_begin: BEGIN;
@@ -62,10 +62,10 @@ Index Only Scan using unq_idx on test
 (2 rows)
 
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_high_pri: SET yb_transaction_priority_lower_bound = 0.9; -- only for Fail-on-Conflict mode
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_low_pri: SET yb_transaction_priority_upper_bound = 0.1; -- only for Fail-on-Conflict mode
 step s1_begin_serializable: BEGIN ISOLATION LEVEL SERIALIZABLE;
 step s2_begin: BEGIN;
@@ -88,10 +88,10 @@ Index Only Scan using unq_idx on test
 (2 rows)
 
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_high_pri: SET yb_transaction_priority_lower_bound = 0.9; -- only for Fail-on-Conflict mode
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_low_pri: SET yb_transaction_priority_upper_bound = 0.1; -- only for Fail-on-Conflict mode
 step s1_begin_serializable: BEGIN ISOLATION LEVEL SERIALIZABLE;
 step s2_begin: BEGIN;

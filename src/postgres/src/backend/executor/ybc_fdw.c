@@ -270,7 +270,7 @@ ybcGetForeignPlan(PlannerInfo *root,
 				case MaxCommandIdAttributeNumber:
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("System column with id %d is not supported yet",
+							 errmsg("system column with id %d is not supported yet",
 									attnum)));
 					break;
 				case TableOidAttributeNumber:
@@ -342,7 +342,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	ybc_state->exec_params->rowmark = -1;
 	if (YBReadFromFollowersEnabled()) {
-		ereport(DEBUG2, (errmsg("Doing read from followers")));
+		ereport(DEBUG2, (errmsg("doing read from followers")));
 	}
 	if (XactIsoLevel == XACT_SERIALIZABLE)
 	{

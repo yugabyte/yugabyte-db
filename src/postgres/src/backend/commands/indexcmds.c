@@ -964,9 +964,9 @@ DefineIndex(Oid relationId,
 			if (stmtTablespace != tablespaceId)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						errmsg("Tablespace for a primary key index must "
+						errmsg("tablespace for a primary key index must "
 							   " always match the tablespace of the "
-							   " indexed table.")));
+							   " indexed table")));
 		}
 	}
 	else if (stmt->tableSpace)
@@ -3278,7 +3278,7 @@ ExecReindex(ParseState *pstate, ReindexStmt *stmt, bool isTopLevel)
 	if (IsYugaByteEnabled() && (concurrently || tablespacename))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("Only REINDEX with VERBOSE option is supported")));
+				 errmsg("only REINDEX with VERBOSE option is supported")));
 
 	if (concurrently)
 		PreventInTransactionBlock(isTopLevel,

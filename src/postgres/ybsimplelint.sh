@@ -139,15 +139,26 @@ if ! [[ "$1" == src/postgres/contrib/bloom/bloom.h ||
 fi
 
 # Logging
-grep -nE ',\s*errmsg(_plural)?\(' "$1" \
-  | sed 's/^/error:missing_linebreak_before_errmsg:/'
-grep -nE ',\s*errdetail(_plural)?\(' "$1" \
-  | sed 's/^/error:missing_linebreak_before_errdetail:/'
-grep -nE ',\s*errhint\(' "$1" \
-  | sed 's/^/error:missing_linebreak_before_errhint:/'
-grep -nE '\serrmsg(_plural)?\("[A-Z][a-z]' "$1" \
+if ! [[ "$1" == src/postgres/src/backend/utils/activity/pgstat_function.c ||
+        "$1" == src/postgres/src/include/postmaster/startup.h ]]; then
+  grep -nE ',\s*err(code|((msg|detail|hint)(_plural)?))\([^)]' "$1" \
+    | sed 's/^/error:missing_linebreak_before_err:/'
+fi
+grep -nE ',\s*\(err(code|((msg|detail|hint)(_plural)?))\([^)].*[^;]$' "$1" \
+  | sed 's/^/warning:missing_linebreak_before_paren_err:/'
+# The first grep misses cases such as
+#     ereport((somecondition ? ERROR : WARNING),
+# but at the time of writing, those cases don't have the issue this lint
+# warning is trying to catch.
+# Alternatively, if \w+ is substituted with .*, it would throw additional
+# errors on cases already caught by the above linebreak rules.
+grep -nEA1 '^\s*ereport\(\w+,$' "$1" \
+  | grep -E '^[0-9]+-\s+err(code|((msg|detail|hint)(_plural)?))\(' \
+  | sed -E 's/^([0-9]+)-/\1:/' \
+  | sed 's/^/warning:missing_paren_before_err:/'
+grep -nE '[([:space:]]errmsg(_plural)?\("[A-Z][-'"'"'a-z]*\s' "$1" \
   | sed 's/^/warning:likely_bad_capitalization_in_errmsg:/'
-grep -nE '\serrdetail(_plural)?\("[a-z]+[^_[:alnum:][:space:]]' "$1" \
+grep -nE '[([:space:]]errdetail(_plural)?\("[-'"'"'a-z]+[:[:space:]]' "$1" \
   | sed 's/^/warning:likely_bad_lowercase_in_errdetail:/'
-grep -nE '\serrhint\("[a-z]+[^_[:alnum:][:space:]]' "$1" \
+grep -nE '[([:space:]]errhint(_plural)?\("[-'"'"'a-z]+[:[:space:]]' "$1" \
   | sed 's/^/warning:likely_bad_lowercase_in_errhint:/'

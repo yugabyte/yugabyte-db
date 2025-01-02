@@ -3038,8 +3038,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     try {
       result.addAll(receiveMessage(stream, 12));
     } catch (PSQLException e) {
-      assertTrue(e.getMessage().contains("Replica identity CHANGE is not supported for output"
-        + " plugin pgoutput. Consider using output plugin yboutput instead."));
+      assertTrue(e.getMessage().contains("replica identity CHANGE is not supported for output"
+        + " plugin pgoutput"));
     }
   }
 

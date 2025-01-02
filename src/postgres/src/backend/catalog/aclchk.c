@@ -5010,7 +5010,7 @@ pg_tablegroup_aclmask(Oid grp_oid, Oid roleid,
 	if (!YbTablegroupCatalogExists) {
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
+				 errmsg("tablegroup system catalog does not exist")));
 	}
 
 	/* Superusers bypass all permission checking. */
@@ -5838,7 +5838,7 @@ pg_tablegroup_ownercheck(Oid grp_oid, Oid roleid)
 	if (!YbTablegroupCatalogExists) {
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
+				 errmsg("tablegroup system catalog does not exist")));
 	}
 
 	/* Superusers and yb_db_admin role bypass all permission checking. */

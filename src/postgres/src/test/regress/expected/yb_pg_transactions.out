@@ -281,10 +281,10 @@ BEGIN;
 COMMIT;
 -- rows 6 and 8 should have been created by the same xact
 SELECT a.xmin = b.xmin FROM savepoints a, savepoints b WHERE a.a=6 AND b.a=8;
-ERROR:  System column "xmin" is not supported yet
+ERROR:  system column "xmin" is not supported yet
 -- rows 6 and 7 should have been created by different xacts
 SELECT a.xmin = b.xmin FROM savepoints a, savepoints b WHERE a.a=6 AND b.a=7;
-ERROR:  System column "xmin" is not supported yet
+ERROR:  system column "xmin" is not supported yet
 BEGIN;
 	INSERT INTO savepoints VALUES (9);
 	SAVEPOINT one;
@@ -301,7 +301,7 @@ SELECT a FROM savepoints WHERE a in (9, 10, 11);
 
 -- rows 9 and 11 should have been created by different xacts
 SELECT a.xmin = b.xmin FROM savepoints a, savepoints b WHERE a.a=9 AND b.a=11;
-ERROR:  System column "xmin" is not supported yet
+ERROR:  system column "xmin" is not supported yet
 BEGIN;
 	INSERT INTO savepoints VALUES (12);
 	SAVEPOINT one;
