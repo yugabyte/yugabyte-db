@@ -42,6 +42,7 @@
 #include "pg_yb_utils.h"
 #include "storage/dsm_impl.h"
 #include "storage/procarray.h"
+#include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
 
@@ -744,16 +745,25 @@ send_oid_info(const char oid_type, const int oid)
 }
 
 static void
-YbSendDatabaseOidAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superuser)
+YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superuser)
 {
-	/* Send back the database oid */
+	/* Send back database and role oids */
 	send_oid_info('d', database_oid);
+	send_oid_info('u', user);
 	if (database_oid == InvalidOid)
 	{
 		YbSendFatalForLogicalConnectionPacket();
 		ereport(WARNING,
 				(errmsg("database \"%s\" does not exist",
 						MyProcPort->database_name)));
+		return;
+	}
+
+	if (user == InvalidOid)
+	{
+		YbSendFatalForLogicalConnectionPacket();
+		ereport(WARNING,
+				(errmsg("role \"%s\" does not exist", MyProcPort->user_name)));
 		return;
 	}
 
@@ -792,7 +802,7 @@ YbCreateClientId(void)
 
 	database = get_database_oid(MyProcPort->database_name, true);
 
-	YbSendDatabaseOidAndSetupSharedMemory(database, user, is_superuser);
+	YbSendDbRoleOidsAndSetupSharedMemory(database, user, is_superuser);
 }
 
 void
@@ -810,7 +820,7 @@ YbCreateClientIdWithDatabaseOid(Oid database_oid)
 										   &user) < 0)
 		return;
 
-	YbSendDatabaseOidAndSetupSharedMemory(database_oid, user, is_superuser);
+	YbSendDbRoleOidsAndSetupSharedMemory(database_oid, user, is_superuser);
 }
 
 /*
@@ -887,6 +897,7 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 		!yb_is_auth_backend)
 	{
 		send_oid_info('d', get_database_oid(MyProcPort->database_name, false));
+		send_oid_info('u', get_role_oid(MyProcPort->user_name, false));
 		SendLogicalClientCacheVersionToFrontend();
 	}
 }
