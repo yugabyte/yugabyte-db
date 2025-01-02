@@ -38,19 +38,7 @@ endif
 
 SHLIB_LINK = $(libpq)
 
-# clean up files generated to measure code coverage
-EXTRA_CLEAN += $(addprefix src/,*.gcno *.gcda) $(addprefix src/**/,*.gcno *.gcda)
-EXTRA_CLEAN += build/ .deps/
-
-PG_CONFIG ?= pg_config
-PGXS := $(shell $(PG_CONFIG) --pgxs)
-include $(PGXS)
-
-ifeq ($(ALLOW_DEFAULT_VISIBILITY),yes)
-override LDFLAGS_SL += -fvisibility=default
-override CFLAGS += -fvisibility=default
-override CXXFLAGS += -fvisibility=default
-endif
+include $(OSS_SRC_DIR)/Makefile.global
 
 clean-sql:
 	rm -rf .deps/ build/
