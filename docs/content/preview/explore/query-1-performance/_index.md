@@ -76,7 +76,7 @@ Learn more about [YB-TServer logs](/preview/troubleshoot/nodes/check-logs/#yb-ts
 
 ## Export query diagnostics
 
-You can capture and export detailed diagnostic information across multiple dimensions, and use this information to identify and resolve database query problems.
+Capture and export detailed query diagnostic information across multiple dimensions to help identify and resolve database query problems.
 
 {{<lead link="./query-diagnostics/">}}
 To learn more, see [Query diagnostics](./query-diagnostics/).
