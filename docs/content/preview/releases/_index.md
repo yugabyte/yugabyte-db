@@ -43,26 +43,6 @@ Preview releases, which include features under active development are recommende
 
 For details about the differences between the release series, see [Release versioning](versioning/).
 
-### Stable Release support policy
-
-For Stable releases, the LTS or STS designation determines its support timelines.
-
-**LTS** release series receive maintenance updates for at least 2 years (730 days) from the first release date of the minor release. Extended support (defined below) is provided for an additional 180 days. As a result, 2.5 years of support is provided in total.
-
-**STS** release series receive maintenance updates for at least 1 year (365 days) from the first release date of the minor release. Extended support (defined below) is provided for an additional 180 days. As a result, 1.5 years of support is provided in total.
-
-- **Extended support:** Following the maintenance update period, Yugabyte will provide support for at least an additional 180 days subject to the following guidelines:
-  - Updates and Upgrades will not be made to the minor release.
-  - Yugabyte will direct Customers to existing Updates and workarounds applicable to the reported case.
-  - Yugabyte may direct Customers to Upgrade to a current release if a workaround does not exist.
-- **End of Life (EOL):** Yugabyte will post publicly on its website a notice of End of Life (EOL) for the affected Software and the timeline for discontinuing Support Services.
-
-  {{<note title="Archived docs available">}}
-Documentation for EOL stable releases is available at the [YugabyteDB docs archive](https://docs-archive.yugabyte.com/).
-  {{</note>}}
-
-The information in this section is a summary for convenience only. For complete details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.com/yugabyte-software-support-services-agreement/).
-
 ## Upcoming release series
 
 The table below includes tentative release dates for upcoming release series, subject to change.
@@ -71,7 +51,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| Next LTS    | End 2024       |
+| Next STS       | Mid 2025        |
 
 ## Recommended release series for projects
 
