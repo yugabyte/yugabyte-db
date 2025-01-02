@@ -13,17 +13,17 @@ menu:
 type: docs
 ---
 
-Use query diagnostics to troubleshoot and analyse database query performance issues. You can capture and export detailed diagnostic information across multiple dimensions, and use this information to identify and resolve database query problems.
+Use query diagnostics to troubleshoot and analyze database query performance issues. You can capture and export detailed diagnostic information across multiple dimensions, and use this information to identify and resolve database query problems.
 
-You can gather the following information about a particular query, while the query is in progress, over a defined interval of time:
+Query diagnostics collects data about a particular query, over several executions of the query, over the duration of a specified diagnostics interval. It also manages in-flight requests during this interval, and transfers the collected data to the file system for storage and future analysis.
+
+Query diagnostics collects the following information:
 
 - Bind variables and constants
-- Explain plans
 - PostgreSQL statement statistics
-- Active Session History
 - Schema details
-
-The information is exported to the file system.
+- Active Session History
+- Explain plans
 
 ## Enable query diagnostics
 
@@ -59,7 +59,7 @@ yb_query_diagnostics
 --------------------------------------------------------------------------------
 ```
 
-This exports diagnostics for the query with the specified ID, for a duration of 120 seconds, and includes explain plans for 5% of all queries observed during this timeframe. It also dumps constants/bind variables for queries that took more than 10ms.
+This exports diagnostics for the query with the specified ID, for a duration of 120 seconds, and includes EXPLAIN(ANALYZE, DIST) plans for 5% of all queries observed during this time frame. It also dumps constants/bind variables for queries that took more than 10ms.
 
 To cancel a running query diagnostic, use the `yb_cancel_query_diagnostics()` function.
 
@@ -73,9 +73,9 @@ SELECT yb_cancel_query_diagnostics(query_id => 7317833532428971166);
 
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
-| query_id | Required. ID of the query to export diagnostic information for. | |
+| query_id | Required. A unique identifier for the query used to identify identical normalized queries. | |
 | diagnostics_interval_sec | The duration for which the bundle will run, in seconds. | 300 |
-| explain_sample_rate | You can export the output of the EXPLAIN command for a randomly selected percentage of queries that are running during the diagnostics interval. | 1 |
+| explain_sample_rate | You can export the output of the EXPLAIN command for a randomly selected percentage (1-100) of queries that are running during the diagnostics interval. | 1 |
 | explain_analyze | Enhance the EXPLAIN plan output with planning and execution data. Note that this data is gathered during query execution itself, and the query is not re-executed. | false |
 | explain_dist | Log distributed data in the EXPLAIN plan. explain_analyze must be set to true. | false |
 | explain_debug | Log debug information to explain the plan. | false |
@@ -98,24 +98,28 @@ Use the `yb_query_diagnostics_status` view to check the status of previously exe
 
 ## Output
 
-Query diagnostics outputs the following information.
+When the specified diagnostic interval has elapsed, query diagnostics outputs the data to files in the following directory:
+
+`pg_data/query_diagnostics/query_id/<random-number>/`
 
 ### Constants
 
-Provides details of the executed bind variables when the supplied query ID corresponds to a prepared statement. Otherwise, provides the constants embedded in the query. Additionally, it includes the time of each execution along with the bind variable. Using the `bind_var_query_min_duration_ms` parameter, you can log only those bind_variables that take more than a specified duration.
+Provides details of the executed bind variables when the specified query ID corresponds to a prepared statement. Otherwise, provides the constants embedded in the query. Additionally, it includes the time of each execution along with the bind variable. Using the `bind_var_query_min_duration_ms` parameter, you can log only those bind_variables that take more than a specified duration.
 
-Output: pg_data/query_diagnostics/query_id/<random-number>/constants_and_bind_variables.csv
+Output file: constants_and_bind_variables.csv
 
 For example:
 
-| Query_id | query_time | var1 | var2 | var3 |
-| 7317833532428971166 | 12.323 | 19146 | 9008 | 'text_1’ |
+```output
+| Query_id            | query_time | var1  | var2 | var3     |
+| 7317833532428971166 | 12.323     | 19146 | 9008 | 'text_1' |
+```
 
 ### pg_stat_statements
 
-Presents aggregated PostgreSQL statement statistics (pg_stat_statements) data spanning the diagnostics interval of query diagnostics for the specified query ID.
+Presents aggregated pg_stat_statements data spanning the diagnostics interval of query diagnostics for the specified query ID.
 
-Output: pg_data/query_diagnostics/query_id/<random-number>/constants_and_bind_variables.csv
+Output file: pg_stat_statements.csv
 
 For more information, see [Get query statistics using pg_stat_statements](../pg-stat-statements/).
 
@@ -123,7 +127,7 @@ For more information, see [Get query statistics using pg_stat_statements](../pg-
 
 Provides information about the columns and indexes associated with unique tables mentioned in the query being diagnosed.
 
-Output: pg_data/query_diagnostics/query_id/<random-number>/schema_details.txt
+Output file: schema_details.txt
 
 For example, the following query would generate schema details as follows:
 
@@ -157,17 +161,19 @@ INNER JOIN
 
 ### Active session history
 
-Outputs the data from the `yb_active_session_history` view, for the diagnostics interval. The table can later be imported in SQL and queried to get data for only the specified query ID.
+Outputs the data from the `yb_active_session_history` view, for the diagnostics interval. You can later import the table in SQL and query it to get data for only the specified query ID.
 
-Output: pg_data/query_diagnostics/query_id/<random-number>/active_session_history.csv
+Output file: active_session_history.csv
 
-For more information on, see [Active Session History](../../observability/active-session-history/).
+For more information on active session history, see [Active Session History](../../observability/active-session-history/).
 
 ### Explain plans
 
 Provides the output of the EXPLAIN command for a randomly selected subset of queries.
 
-Output: pg_data/query_diagnostics/query_id/<random-number>/explain_plan.txt
+Note that if the explain data being gathered exceeds the internal buffer size, query diagnostics will do intermediate flushing of data to the file system to make room for data from further queries.
+
+Output file: explain_plan.txt
 
 For example:
 
@@ -211,7 +217,7 @@ For more information about using EXPLAIN, see [Analyze queries with EXPLAIN](../
 
 ## Limitations
 
-- Query diagnostics collects data such as explain plans, bind variables, pg_stat_statements, schema details, and Active Session History, over the duration of the diagnostics interval. It also manages in-flight requests during this interval, continuously transferring the collected data to the file system for storage and future analysis. Multiple diagnostic bundles can be triggered concurrently for different queries; however, only one bundle can run at a time for a single query ID.
+- Multiple diagnostic bundles can be triggered concurrently for different queries; however, only one bundle can run at a time for a single query ID.
 - Query diagnostics is available per node and is not aggregated across the cluster.
 - Schema details can export a maximum 10 unique schemas in the query.
 - You cannot have more than 100 consecutive query diagnostics bundles.
