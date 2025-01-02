@@ -143,18 +143,18 @@ $ sysbench <workload>                       \
 Run a workload as follows:
 
 ```sh
-$ sysbench <workload>               \
-      --tables=10                   \
-      --table-size=100000           \
-      --range_key_partitioning=true \
-      --db-driver=pgsql             \
-      --pgsql-host=127.0.0.1        \
-      --pgsql-port=5433             \
-      --pgsql-user=yugabyte         \
-      --pgsql-db=yugabyte           \
-      --threads=64                  \
-      --time=120                    \
-      --warmup-time=120             \
+$ sysbench <workload>                       \
+      --tables=10                           \
+      --table-size=100000                   \
+      --range_key_partitioning=true         \
+      --db-driver=pgsql                     \
+      --pgsql-host=<comma-separated-ips>    \
+      --pgsql-port=5433                     \
+      --pgsql-user=yugabyte                 \
+      --pgsql-db=yugabyte                   \
+      --threads=64                          \
+      --time=120                            \
+      --warmup-time=120                     \
       run
 ```
 
