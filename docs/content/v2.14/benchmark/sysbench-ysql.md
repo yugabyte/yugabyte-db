@@ -69,6 +69,12 @@ $ ./autogen.sh && ./configure --with-pgsql && make -j && sudo make install
 
   <div id="rhel" class="tab-pane fade" role="tabpanel" aria-labelledby="rhel-tab">
 
+{{< note title="Note" >}}
+
+RHEL package is only for EL8
+
+{{< /note >}}
+
 ```sh
 wget https://github.com/yugabyte/sysbench/releases/download/1.0.0-yb/sysbench-1.0.0-1.el8.x86_64.rpm
 
@@ -77,6 +83,12 @@ sudo yum install -y sysbench-1.0.0-1.el8.x86_64.rpm
 
   </div>
   <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
+
+{{< note title="Note" >}}
+
+The MacOS package is only for Apple Silicon.
+
+{{< /note >}}
 
 ```sh
 brew install postgresql@14 wget
