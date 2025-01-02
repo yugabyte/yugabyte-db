@@ -12100,4 +12100,10 @@
   prorettype => 'void', proargtypes => 'int8',
   proargnames => '{query_id}',
   prosrc => 'yb_cancel_query_diagnostics'},
+
+{ oid => '8078', descr => 'returns current hybrid time',
+  proname => 'yb_get_current_hybrid_time_lsn', proretset => 't', provolatile => 'v',
+  prorettype => 'int8', proargtypes => '', proallargtypes => '{int8}',
+  proargmodes => '{o}', proargnames => '{current_hybrid_time_lsn}',
+  prosrc => 'yb_get_current_hybrid_time_lsn'},
 ]

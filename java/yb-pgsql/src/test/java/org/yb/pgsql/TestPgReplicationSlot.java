@@ -3388,4 +3388,15 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     stream.close();
   }
+
+  @Test
+  public void testYbGetCurrentHybridTimeLsn() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet rs = stmt.executeQuery("SELECT yb_get_current_hybrid_time_lsn()");
+
+      assertTrue(rs.next());
+      assertEquals(1, rs.getMetaData().getColumnCount());
+      assertEquals("int8", rs.getMetaData().getColumnTypeName(1));
+    }
+  }
 }
