@@ -43,6 +43,10 @@ On rare occasions, YugabyteDB may issue a hot fix release. Hot fix releases are 
 
 {{< /note >}}
 
+### Stable release convention prior to v2024.1
+
+For releases prior to v2024.1, YugabyteDB used the `MAJOR.EVEN` numbering scheme (instead of `YYYY.N`) to denote stable releases. Apart from the numbering scheme, release policies, including for maintenance and patch releases, are otherwise identical. A stable release series is based on the preceding preview release series. For example, the v2.16 STS release series is based on the v2.15 preview release series.
+
 ## Preview releases
 
 Features in preview releases are considered to be {{<tags/feature/tp>}} unless marked otherwise.
@@ -68,6 +72,17 @@ Preview releases use the numbering format `MAJOR.MINOR.PATCH.HOTFIX`, where non-
 - There is currently no migration path from a preview release to a stable release.
 
 {{< /note >}}
+
+### Preview release convention prior to v2024.1
+
+For releases prior to v2024.1, release versions follow the versioning format of `MAJOR.MINOR.PATCH.REVISION`, where non-negative integers are used for:
+
+- `MAJOR` — Includes substantial changes.
+- `MINOR` — Incremented when new features and changes are introduced.
+  - `EVEN` — Stable minor release, intended for production deployments.
+  - `ODD` — Preview minor release, intended for development and testing.
+- `PATCH` — Patches in a stable release (`MAJOR.EVEN.PATCH`) include bug fixes and revisions that do not break backward compatibility. For patches in the preview release series (`MAJOR.ODD.PATCH`), new features and changes are introduced that might break backward compatibility.
+- `REVISION` - Occasionally, a revision is required to address an issue without delay. Most releases are a `.0` revision level.
 
 ## Feature maturity
 
