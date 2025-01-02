@@ -1,3 +1,5 @@
 SET search_path TO helio_distributed;
-#include "udfs/rebalancer/rebalancer_operations--1.24-0.sql"
+
+#include "internal/pg_documentdb_distributed/sql/udfs/rebalancer/rebalancer_operations--0.24-0.sql"
+
 RESET search_path;
