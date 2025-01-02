@@ -7555,15 +7555,20 @@ class ControlScript(object):
 
             if args.advertise_address is None:
                 if not self.configs.saved_data.get("advertise_address"):
-                    if OS_NAME == "Linux":
-                        # Case Scenario: When advertise_address has no value in conf file
-                        # and the OS is Linux, set the advertise address to the private IP
-                        # of the machine.
-                        args.advertise_address = self.find_ip_address_of_node()
+
+                    if str(os.path.exists("/.dockerenv")):
+                            args.advertise_address = self.find_hostname_of_node()
                     else:
-                        # Case Scenario: When advertise_address has no value in conf file
-                        # and the OS is Mac, set the advertise address to 127.0.0.1.
-                        args.advertise_address = IP_LOCALHOST
+                        if OS_NAME == "Linux":
+                            # Case Scenario: When advertise_address has no value in conf file
+                            # and the OS is Linux, set the advertise address to the private IP
+                            # of the machine.
+                            args.advertise_address = self.find_ip_address_of_node()
+
+                        else:
+                            # Case Scenario: When advertise_address has no value in conf file
+                            # and the OS is Mac, set the advertise address to 127.0.0.1.
+                            args.advertise_address = IP_LOCALHOST
                 else:
                     # Case Scenario: When advertise_address has a value in conf file and then
                     # use that regardless of the OS.
