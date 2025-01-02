@@ -84,6 +84,18 @@ This view provides a list of wait events and their metadata. The columns of the 
 | client_node_ip | text | IP address of the client which sent the query to YSQL/YCQL. Null for background activities. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `ysql_yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events are collected, each of the collected samples will have a weight of (200 / 100) = 2.0 |
 
+To obtain the IP address and location of a node where a query is being executed, use the `top_level_node_id` from the active session history view in the following command:
+
+```sql
+SELECT * FROM pg_catalog.yb_servers() WHERE uuid = <top_level_node_id>;
+```
+
+``` output
+     host     | port | num_connections | node_type | cloud |  region   |    zone    | public_ip |               uuid               
+--------------+------+-----------------+-----------+-------+-----------+------------+-----------+----------------------------------
+ 10.9.111.111 | 5433 |               0 | primary   | aws   | us-west-2 | us-west-2a |           | 5cac7c86ba4e4f0e838bf180d75bcad5
+```
+
 ## Wait events
 
 List of wait events by the wait event components.
