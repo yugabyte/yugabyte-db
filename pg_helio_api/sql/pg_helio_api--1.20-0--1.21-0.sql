@@ -1,7 +1,7 @@
 SET search_path TO helio_api;
 
 #include "udfs/metadata/collection_triggers--1.21-0.sql"
-#include "schema/collection_metadata--1.21-0.sql"
+#include "pg_documentdb/sql/schema/collection_metadata--0.21-0.sql"
 
 #include "udfs/query/bson_value_functions--1.21-0.sql"
 #include "udfs/index_mgmt/create_indexes_non_concurrently--1.21-0.sql"

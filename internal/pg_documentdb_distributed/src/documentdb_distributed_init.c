@@ -10,7 +10,7 @@
 #include <miscadmin.h>
 #include <utils/guc.h>
 
-#include "helio_distributed_init.h"
+#include "documentdb_distributed_init.h"
 
 
 /* --------------------------------------------------------- */

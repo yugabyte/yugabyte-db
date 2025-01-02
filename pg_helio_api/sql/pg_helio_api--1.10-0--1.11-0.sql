@@ -15,7 +15,7 @@ SET search_path TO helio_api;
 /*
  * Region: Background Index Schema
  */
- #include "schema/background_index_queue--1.11-0.sql"
+ #include "pg_documentdb/sql/schema/background_index_queue--0.11-0.sql"
  /*
  * Region: Create Index in Background
  */

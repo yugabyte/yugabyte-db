@@ -4,13 +4,13 @@ SET search_path TO helio_api;
  * Region: Index operator classes
  */
 #include "udfs/rum/wildcard_project_path_extensibility_functions--1.12-0.sql"
-#include "schema/wildcard_project_path_operator_class--1.12-0.sql"
+#include "pg_documentdb/sql/schema/wildcard_project_path_operator_class--0.12-0.sql"
  
 /*
  * Region: Index preconsistent support
  */
 -- TODO: Reenable this once we're able.
--- #include "schema/index_operator_classes_preconsistent--1.12-0.sql"
+-- #include "pg_documentdb/sql/schema/index_operator_classes_preconsistent--0.12-0.sql"
 
 /*
 * Commands propagated to helio API surface.

@@ -14,7 +14,7 @@
 #include <access/xact.h>
 #include <utils/version_utils.h>
 #include "distributed_hooks.h"
-#include "helio_distributed_init.h"
+#include "documentdb_distributed_init.h"
 
 extern bool SkipHelioApiLoad;
 

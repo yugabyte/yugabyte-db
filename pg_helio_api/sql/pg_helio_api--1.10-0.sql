@@ -28,16 +28,16 @@ SET search_path TO helio_api;
 /*
  * Region: Query operators
  */
-#include "operators/bson_query_operators--1.10-0.sql"
-#include "operators/bson_partial_filter_operators--1.10-0.sql"
-#include "operators/bsonquery_dollar_operators--1.10-0.sql"
+#include "pg_documentdb/sql/operators/bson_query_operators--0.10-0.sql"
+#include "pg_documentdb/sql/operators/bson_partial_filter_operators--0.10-0.sql"
+#include "pg_documentdb/sql/operators/bsonquery_dollar_operators--0.10-0.sql"
 
-#include "operators/bsonquery_btree_family--1.10-0.sql"
+#include "pg_documentdb/sql/operators/bsonquery_btree_family--0.10-0.sql"
 
 /*
  * Region: Shard key and document
  */
- #include "schema/shard_key_and_document--1.10-0.sql"
+ #include "pg_documentdb/sql/schema/shard_key_and_document--0.10-0.sql"
 
 /*
  * Region: RUM operators and functions
@@ -46,16 +46,16 @@ SET search_path TO helio_api;
  #include "udfs/rum/extensibility_functions--1.10-0.sql"
  #include "udfs/rum/single_path_extensibility_functions--1.10-0.sql"
  #include "udfs/rum/bson_preconsistent--1.10-0.sql"
- #include "operators/bson_path_operators--1.10-0.sql"
+ #include "pg_documentdb/sql/operators/bson_path_operators--0.10-0.sql"
 
  /*
  * Region: RUM metadata
  */
- #include "schema/rum_access_method--1.10-0.sql"
- #include "schema/single_path_operator_class--1.10-0.sql"
+ #include "pg_documentdb/sql/schema/rum_access_method--0.10-0.sql"
+ #include "pg_documentdb/sql/schema/single_path_operator_class--0.10-0.sql"
 
  -- TODO: Re-enable this for Helio when ready
- -- #include "schema/index_operator_classes_preconsistent--1.10-0.sql"
+ -- #include "pg_documentdb/sql/schema/index_operator_classes_preconsistent--0.10-0.sql"
 
 /*
  * Region: Aggregation operators.
@@ -82,11 +82,11 @@ SET search_path TO helio_api;
 #include "udfs/metadata/collection_metadata_functions--1.10-0.sql"
 #include "udfs/metadata/collection_indexes_metadata_functions--1.10-0.sql"
 
-#include "schema/collection_metadata--1.10-0.sql"
-#include "schema/collection_metadata_views--1.10-0.sql"
-#include "schema/collection_metadata_schemavalidation--1.10-0.sql"
+#include "pg_documentdb/sql/schema/collection_metadata--0.10-0.sql"
+#include "pg_documentdb/sql/schema/collection_metadata_views--0.10-0.sql"
+#include "pg_documentdb/sql/schema/collection_metadata_schemavalidation--0.10-0.sql"
 
-#include "schema/collection_indexes_metadata--1.10-0.sql"
+#include "pg_documentdb/sql/schema/collection_indexes_metadata--0.10-0.sql"
 
 /*
  * Region: Sharding Metadata
@@ -127,7 +127,7 @@ SET search_path TO helio_api;
 /*
  * Region: RBAC Metadata
  */
- #include "rbac/extension_admin_setup--1.10-0.sql"
+ #include "pg_documentdb/sql/rbac/extension_admin_setup--0.10-0.sql"
 
 /*
  * Region: Background Index Schema
