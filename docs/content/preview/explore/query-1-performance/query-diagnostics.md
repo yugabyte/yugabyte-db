@@ -37,7 +37,9 @@ Query diagnostics is {{<tags/feature/tp>}}. To use query diagnostics, enable and
 
 ## Export diagnostics
 
-To initiate query diagnostics, you use the `yb_query_diagnostics()` function.
+Use the [pg_stat_statements](../pg-stat-statements/) view to obtain the `queryid` of a query of interest.
+
+To initiate query diagnostics, you use the `yb_query_diagnostics()` function, providing the `queryid`.
 
 For example:
 
