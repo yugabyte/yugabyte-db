@@ -88,8 +88,8 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   auto master = mini_master->master();
   ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(master->catalog_manager()->GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(master->catalog_manager()->GetClusterConfig());
 
   // Verify that the cluster uuid was set in the config.
   ASSERT_EQ(FLAGS_cluster_uuid, config.cluster_uuid());
@@ -106,7 +106,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   master = mini_master->master();
   ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  ASSERT_OK(master->catalog_manager()->GetClusterConfig(&config));
+  config = ASSERT_RESULT(master->catalog_manager()->GetClusterConfig());
 
   // Check that the cluster_uuid was set.
   ASSERT_FALSE(config.cluster_uuid().empty());
@@ -312,8 +312,8 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
 
   // Get the config from the CatalogManager and test it is the default, as we didn't use the
   // CatalogManager to update it.
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(master_->catalog_manager()->GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(master_->catalog_manager()->GetClusterConfig());
   ASSERT_EQ(config.version(), 0);
   ASSERT_EQ(config.replication_info().live_replicas().placement_blocks_size(), 0);
 
@@ -348,7 +348,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
 
   // Confirm the in memory state does not match the config we get from the CatalogManager API, due
   // to version mismatch.
-  ASSERT_OK(master_->catalog_manager()->GetClusterConfig(&config));
+  config = ASSERT_RESULT(master_->catalog_manager()->GetClusterConfig());
   {
     auto l = config_info->LockForRead();
     ASSERT_FALSE(PbEquals(l->pb, config));

@@ -631,15 +631,14 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     hide_dead_node_threshold_override = atoi(threshold_arg->second.c_str());
   }
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     *output << "<div class=\"alert alert-warning\">"
-            << EscapeForHtmlToString(s.ToString()) << "</div>";
+            << EscapeForHtmlToString(cluster_config_result.status().ToString()) << "</div>";
     return;
   }
 
-  auto live_id = config.replication_info().live_replicas().placement_uuid();
+  auto live_id = cluster_config_result->replication_info().live_replicas().placement_uuid();
 
   vector<std::shared_ptr<TSDescriptor> > descs;
   const auto& ts_manager = master_->ts_manager();
@@ -707,12 +706,11 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
   JsonWriter jw(output, JsonWriter::COMPACT);
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     jw.StartObject();
     jw.String("error");
-    jw.String(s.ToString());
+    jw.String(cluster_config_result.status().ToString());
     return;
   }
 
@@ -725,7 +723,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
   CalculateTabletMap(&tablet_map);
 
   std::unordered_set<string> cluster_uuids;
-  auto primary_uuid = config.replication_info().live_replicas().placement_uuid();
+  auto primary_uuid = cluster_config_result->replication_info().live_replicas().placement_uuid();
   cluster_uuids.insert(primary_uuid);
   for (auto desc : descs) {
     cluster_uuids.insert(desc->placement_uuid());
@@ -856,12 +854,11 @@ void MasterPathHandlers::HandleHealthCheck(
   std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     jw.StartObject();
     jw.String("error");
-    jw.String(s.ToString());
+    jw.String(cluster_config_result.status().ToString());
     return;
   }
   auto replication_factor = master_->catalog_manager()->GetReplicationFactor();
@@ -876,7 +873,8 @@ void MasterPathHandlers::HandleHealthCheck(
   const auto* ts_manager = master_->ts_manager();
   ts_manager->GetAllDescriptors(&descs);
 
-  const auto& live_placement_uuid = config.replication_info().live_replicas().placement_uuid();
+  const auto& live_placement_uuid =
+      cluster_config_result->replication_info().live_replicas().placement_uuid();
   // Ignore read replica health for V1.
 
   vector<std::shared_ptr<TSDescriptor> > dead_nodes;
@@ -2314,13 +2312,13 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
     return;
   }
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     *output << "<div class=\"alert alert-warning\">"
-            << EscapeForHtmlToString(s.ToString()) << "</div>";
+            << EscapeForHtmlToString(cluster_config_result.status().ToString()) << "</div>";
     return;
   }
+  const auto& config = *cluster_config_result;
 
   // Get all the tables.
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
@@ -2774,16 +2772,16 @@ void MasterPathHandlers::HandleGetClusterConfig(
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   *output << "<h1>Current Cluster Config</h1>\n";
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     *output << "<div class=\"alert alert-warning\">"
-            << EscapeForHtmlToString(s.ToString()) << "</div>";
+            << EscapeForHtmlToString(cluster_config_result.status().ToString()) << "</div>";
     return;
   }
 
   *output << "<div class=\"alert alert-success\">Successfully got cluster config!</div>"
-  << "<pre class=\"prettyprint\">" << EscapeForHtmlToString(config.DebugString()) << "</pre>";
+          << "<pre class=\"prettyprint\">"
+          << EscapeForHtmlToString(cluster_config_result->DebugString()) << "</pre>";
 }
 
 void MasterPathHandlers::HandleGetClusterConfigJSON(
@@ -2793,25 +2791,26 @@ void MasterPathHandlers::HandleGetClusterConfigJSON(
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     jw.StartObject();
     jw.String("error");
-    jw.String(s.ToString());
+    jw.String(cluster_config_result.status().ToString());
     jw.EndObject();
     return;
   }
 
   // return cluster config in JSON format
-  jw.Protobuf(config);
+  jw.Protobuf(*cluster_config_result);
 }
 
-Status MasterPathHandlers::GetClusterAndXClusterConfigStatus(
-    SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config) {
+Result<std::pair<SysXClusterConfigEntryPB, SysClusterConfigEntryPB>>
+MasterPathHandlers::GetClusterAndXClusterConfigStatus() {
+  SysXClusterConfigEntryPB xcluster_config;
   RETURN_NOT_OK(
-      master_->catalog_manager()->GetXClusterManager()->GetXClusterConfigEntryPB(xcluster_config));
-  return master_->catalog_manager()->GetClusterConfig(cluster_config);
+      master_->catalog_manager()->GetXClusterManager()->GetXClusterConfigEntryPB(&xcluster_config));
+  return std::make_pair(
+      xcluster_config, VERIFY_RESULT(master_->catalog_manager()->GetClusterConfig()));
 }
 
 void MasterPathHandlers::HandleGetXClusterConfig(
@@ -2820,15 +2819,14 @@ void MasterPathHandlers::HandleGetXClusterConfig(
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   *output << "<h1>Current XCluster Config</h1>\n";
-  SysXClusterConfigEntryPB xcluster_config;
-  SysClusterConfigEntryPB cluster_config;
-  Status s = GetClusterAndXClusterConfigStatus(&xcluster_config, &cluster_config);
+  auto result = GetClusterAndXClusterConfigStatus();
 
-  if (!s.ok()) {
+  if (!result.ok()) {
     *output << "<div class=\"alert alert-warning\">"
-            << EscapeForHtmlToString(s.ToString()) << "</div>";
+            << EscapeForHtmlToString(result.status().ToString()) << "</div>";
     return;
   }
+  auto [xcluster_config, cluster_config] = *result;
   *output << "<div class=\"alert alert-success\">Successfully got xcluster config!</div>"
           << "<pre class=\"prettyprint\">" << EscapeForHtmlToString(xcluster_config.DebugString())
           << "consumer_registry {\n"
@@ -2843,17 +2841,16 @@ void MasterPathHandlers::HandleGetXClusterConfigJSON(
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  SysXClusterConfigEntryPB xcluster_config;
-  SysClusterConfigEntryPB cluster_config;
-  Status s = GetClusterAndXClusterConfigStatus(&xcluster_config, &cluster_config);
-  if (!s.ok()) {
+  auto result = GetClusterAndXClusterConfigStatus();
+  if (!result.ok()) {
     jw.StartObject();
     jw.String("error");
-    jw.String(s.ToString());
+    jw.String(result.status().ToString());
     jw.EndObject();
     return;
   }
 
+  auto [xcluster_config, cluster_config] = *result;
   jw.StartObject();
   jw.String("version");
   jw.Int64(xcluster_config.version());

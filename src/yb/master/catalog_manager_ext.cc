@@ -3131,8 +3131,7 @@ bool ShouldResendRegistry(
 
 Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                              TSHeartbeatResponsePB* resp) {
-  SysClusterConfigEntryPB cluster_config;
-  RETURN_NOT_OK(GetClusterConfig(&cluster_config));
+  SysClusterConfigEntryPB cluster_config = VERIFY_RESULT(GetClusterConfig());
   RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
   RETURN_NOT_OK(snapshot_coordinator_.FillHeartbeatResponse(resp));
   return FillHeartbeatResponseCDC(cluster_config, req, resp);

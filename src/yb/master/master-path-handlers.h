@@ -281,8 +281,8 @@ class MasterPathHandlers {
 
   std::string GetHttpHostPortFromServerRegistration(const ServerRegistrationPB& reg) const;
 
-  Status GetClusterAndXClusterConfigStatus(
-      SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config);
+  Result<std::pair<SysXClusterConfigEntryPB, SysClusterConfigEntryPB>>
+  GetClusterAndXClusterConfigStatus();
 
   Master* master_;
 
