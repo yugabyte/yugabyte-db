@@ -937,6 +937,12 @@ By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. 
 
 Default: `false`
 
+##### --enable_tablet_split_of_replication_slot_streamed_tables
+
+Toggle automatic tablet splitting for tables under replication slot.
+
+Default: `false`
+
 ## Metric export flags
 
 YB-Master metrics are available in Prometheus format at `http://localhost:7000/prometheus-metrics`.
