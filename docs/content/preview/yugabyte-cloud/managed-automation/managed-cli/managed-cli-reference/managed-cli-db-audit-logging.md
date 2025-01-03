@@ -14,8 +14,8 @@ type: docs
 
 Use the `cluster db-audit-logging` resource to perform operations on a YugabyteDB Aeon cluster, including the following:
 
-- enable, disable, and update database audit logging
-- get information about database audit logging
+- enable, disable, and update database audit logging.
+- get information about database audit logging.
 
 ## Syntax
 
