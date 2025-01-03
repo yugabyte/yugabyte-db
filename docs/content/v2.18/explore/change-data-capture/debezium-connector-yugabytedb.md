@@ -900,7 +900,7 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 Before using the YugabyteDB connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
-* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../admin/yb-admin#create_change_data_stream) command.
+* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../admin/yb-admin/#create-change-data-stream) command.
 * The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed. See [limitations](../../change-data-capture/cdc-overview/#known-limitations).
 
 ### WAL disk space consumption
@@ -1201,6 +1201,7 @@ The YugabyteDB connector externally stores the last processed offset in the form
 While the connector is running with a set of tables configured to capture the changes, if one of the tables in the set is dropped, the connector will fail with an appropriate error message indicating that the object is not found.
 
 To avoid a connector failure or to resolve the failure, the recommended way is to follow these steps:
+
 1. Delete the connector which contains the dropped or the table to be dropped.
 2. Edit the configuration and remove the given table from `table.include.list`.
 3. Deploy a new connector with the updated configuration.
