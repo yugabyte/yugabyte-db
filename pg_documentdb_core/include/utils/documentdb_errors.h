@@ -1086,4 +1086,6 @@ typedef int DocumentdbErrorEreportCode;
 #define ERRCODE_DOCUMENTDB_USERCOUNTLIMITEXCEEDED \
 	MAKE_SQLSTATE('M', '0', '0', 'D', 'R')
 
+#define ERRCODE_DOCUMENTDB_LOCATION55 MAKE_SQLSTATE('M', '0', '0', 'D', 'S')
+
 #endif

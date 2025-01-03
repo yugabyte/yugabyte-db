@@ -603,3 +603,19 @@ select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$or" : 
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$and" : [{"$or" : [{"x": 10},{"$expr" : {"$gte": ["$c", 100]}}, {"y": 10}]}]},"u":{"$set": {"a" :10}},"upsert":true}]}');
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$expr": {"$gt" : ["$x",10]}},"u":{},"upsert":true}]}');
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$and" : [{"a": 10}, {"$or" : [{"x": 10},{"$expr" : {"$gte": ["$c", 100]}}, {"y": 10}]}, {"b":11} ]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+
+--upsert with $ref
+PREPARE distinctQueryWithFilter(text, text, text, bson) AS (WITH r1 AS (SELECT DISTINCT 
+    bson_distinct_unwind(document, $3) AS document FROM helio_api.collection($1, $2) WHERE document @@ $4 )
+    SELECT bson_build_distinct_response(COALESCE(array_agg(document), '{}'::bson[])) FROM r1);
+select helio_api.update('update', '{"update":"server1470", "updates":[{"q": {"_id": 1, "name": "first", "pic": {"$ref": "foo", "$id": {"$oid": "4c48d04cd33a5a92628c9af6"} } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+EXECUTE distinctQueryWithFilter('update', 'server1470', 'name', '{ "pic": {"$ref" : "foo", "$id": { "$oid" : "4c48d04cd33a5a92628c9af6" } } }');
+select helio_api.update('update', '{"update":"server1470_1", "updates":[{"q": {"_id": 1, "name": "first", "pic": {"$id": {"$oid": "4c48d04cd33a5a92628c9af6"}, "$ref": "foo" } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+EXECUTE distinctQueryWithFilter('update', 'server1470_1', 'name', '{ "pic": {"$id": {"$oid": "4c48d04cd33a5a92628c9af6"}, "$ref": "foo" } }');
+select helio_api.update('update', '{"update":"server1470_2", "updates":[{"q": {"_id": 1, "name": "first", "pic": {"$ref": "foo", "$id": {"$oid": "4c48d04cd33a5a92628c9af6"}, "extraField": "extraField" } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+EXECUTE distinctQueryWithFilter('update', 'server1470_2', 'name', '{ "pic": {"$ref": "foo", "$id": {"$oid": "4c48d04cd33a5a92628c9af6"}, "extraField": "extraField" } }');
+--upsert with $ref negative test
+select helio_api.update('update', '{"update":"server1470_noid", "updates":[{"q": {"name": "first", "pic": {"$ref": "foo" } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+select helio_api.update('update', '{"update":"server1470_noref", "updates":[{"q": {"name": "first", "pic": {"$id": {"$oid": "4c48d04cd33a5a92628c9af6"} } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+select helio_api.update('update', '{"update":"server1470_extraf_1", "updates":[{"q": {"name": "first", "pic": {"$ref": "foo", "extraField": "extraField", "$id": {"$oid": "4c48d04cd33a5a92628c9af6"} } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+select helio_api.update('update', '{"update":"server1470_extraf_2", "updates":[{"q": {"name": "first", "pic": {"$id": {"$oid": "4c48d04cd33a5a92628c9af6"}, "extraField": "extraFiele", "$ref": "foo" } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');

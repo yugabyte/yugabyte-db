@@ -19,6 +19,7 @@ MongoError,ErrorName
 52,DollarPrefixedFieldName
 53,CanNotBeTypeArray
 54,NotSingleValueField
+55,Location55
 56,EmptyFieldName
 57,DottedFieldName
 61,ShardKeyNotFound

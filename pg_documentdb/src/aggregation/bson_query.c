@@ -196,6 +196,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 				/*      { _id: {a: 10, b: 20} }          Object as value */
 				/*      { _id: {$eq: 10, b: 20} }        Error Case      */
 				/*      { _id: {a: 10, $eq: 20} }        Not Error Case  */
+				/*      { $ref: "foo", $id: ObjectId("4c48d04cd33a5a92628c9af6") } */
 				bool isEmptyDoc = true;
 				while (bson_iter_next(&idIterator))
 				{
@@ -257,6 +258,32 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 						/*      {_id: {a: 10, $eq: 20}}   */
 						processValueFunc(context, key, bson_iter_value(queryDocument));
 						break;
+					}
+					else if (isUpsert && ((strcmp(op, "$ref") == 0) ||
+										  (strcmp(op, "$id") == 0)))
+					{
+						/* handle $ref case */
+						/* { $ref: "foo", $id: ObjectId("4c48d04cd33a5a92628c9af6") } */
+						/* { $id: ObjectId("4c48d04cd33a5a92628c9af6"), $ref: "foo" } */
+						bson_iter_t refIterator = idIterator;
+
+						if (!bson_iter_next(&refIterator))
+						{
+							ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
+												"unknown operator: %s",
+												op),
+											errdetail_log("unknown operator: %s",
+														  op)));
+						}
+
+						bool isRef = strcmp(op, "$ref") == 0;
+						if ((isRef && strcmp(bson_iter_key(&refIterator), "$id") == 0) ||
+							(!isRef && strcmp(bson_iter_key(&refIterator), "$ref") == 0))
+						{
+							processValueFunc(context, key, bson_iter_value(
+												 queryDocument));
+							break;
+						}
 					}
 					else
 					{

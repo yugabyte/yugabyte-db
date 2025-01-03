@@ -2141,10 +2141,19 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 				}
 				else
 				{
-					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-										"unknown operator: %s", mongoOperatorName),
-									errdetail_log("unknown operator: %s",
-												  mongoOperatorName)));
+					if (isRef && strlen(bson_iter_key(&refIterator)) > 0 && bson_iter_key(
+							&refIterator)[0] != '$')
+					{
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION55), errmsg(
+											"The DBRef $ref field must be followed by a $id field")));
+					}
+					else
+					{
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
+											"unknown operator: %s", mongoOperatorName),
+										errdetail_log("unknown operator: %s",
+													  mongoOperatorName)));
+					}
 				}
 			}
 
