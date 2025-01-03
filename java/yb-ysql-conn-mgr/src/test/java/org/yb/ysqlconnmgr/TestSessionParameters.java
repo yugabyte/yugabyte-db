@@ -45,6 +45,10 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       {
         put("ysql_conn_mgr_max_conns_per_db",
           Integer.toString(isTestRunningInWarmupRandomMode() ? 3 : 2));
+        // TODO(#25284): Enable the feature eventually. We need to decide whether the multi route
+        // pool feature needs to honor the ysql_conn_mgr_max_conns_per_db GFlag and update the test
+        // accordingly.
+        put("ysql_conn_mgr_enable_multi_route_pool", "false");
       }
     };
 

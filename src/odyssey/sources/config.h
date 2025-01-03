@@ -80,7 +80,9 @@ struct od_config {
 	od_list_t listen;
 
 	/* YB */
+	int yb_ysql_max_connections;
 	int yb_use_auth_backend;
+	int yb_enable_multi_route_pool;
 };
 
 void od_config_init(od_config_t *);
