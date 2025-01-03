@@ -3439,6 +3439,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public BackupTableParams getBackupTableParams(
       BackupRequestParams backupRequestParams, Set<String> tablesToBackup) {
     BackupTableParams backupTableParams = new BackupTableParams(backupRequestParams);
+    backupHelper.maybeSetBackupRevertToPreRolesBehaviour(backupTableParams, getUniverse());
     List<BackupTableParams> backupTableParamsList = new ArrayList<>();
     HashMap<String, BackupTableParams> keyspaceMap = new HashMap<>();
     // Todo: add comments. Backup the whole keyspace.
@@ -4230,6 +4231,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("RestoreBackupYbc");
     RestoreBackupYbc task = createTask(RestoreBackupYbc.class);
     RestoreBackupYbc.Params restoreParams = new RestoreBackupYbc.Params(taskParams);
+    backupHelper.maybeSetRestoreRevertToPreRolesBehaviour(restoreParams, getUniverse());
     restoreParams.index = index;
     task.initialize(restoreParams);
     task.setUserTaskUUID(getUserTaskUUID());
