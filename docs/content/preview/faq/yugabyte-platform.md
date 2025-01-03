@@ -92,9 +92,9 @@ For software prerequisites for YugabyteDB data nodes, refer to [Software prerequ
 
 ### How does the YugabyteDB Anywhere UI interact with YugabyteDB data nodes?
 
-YugabyteDB Anywhere communicates with nodes using a service installed on each node called the [YugabyteDB Anywhere node agent](#what-is-a-node-agent). The node agent is an RPC service, and once installed on a node, YugabyteDB Anywhere does not require SSH or elevated (root) permissions to interact with the data nodes.
+YugabyteDB Anywhere communicates with nodes using a service installed on each node called the [YugabyteDB Anywhere node agent](#what-is-a-node-agent). The node agent is an RPC service, allowing YugabyteDB Anywhere to interact with data nodes without the need for SSH.
 
-For universes deployed using earlier versions of YugabyteDB Anywhere, YugabyteDB Anywhere creates a passwordless SSH connection to interact with the data nodes.
+For universes deployed using earlier versions of YugabyteDB Anywhere (that is, prior to the introduction of node agent), YugabyteDB Anywhere creates a passwordless SSH connection to interact with the data nodes.
 
 ### Can I access the database machines that get spawned in public clouds?
 
@@ -131,15 +131,13 @@ Node agent is an RPC service running on a YugabyteDB node, and is used to manage
 - Invoke shell commands directly on the remote host, similar to running commands over SSH. Like SSH, the agent also does shell-login such that any previous command modifying the environment in the resource files (for example, `~/.bashrc`) gets reflected in the subsequent command.
 - Additionally, for on-premises (manually provisioned nodes) deployments, node agent also functions as a utility to run preflight checks, and add node instances.
 
-After node agent is installed on a node, YugabyteDB Anywhere no longer requires SSH or elevated (root) privileges to communicate with the node.
-
 ### How is node agent installed on a YugabyteDB node?
 
 Installation depends on how you choose to prepare the nodes.
 
 #### Run the provisioning script
 
-After creating VMs and installing a supported Linux operating system and additional software (such as Python), you download the YugabyteDB Anywhere node agent package to the VM, modify the configuration file, and run the included script (node-agent-provision.sh) as root or via sudo.
+After creating VMs and installing a supported Linux operating system and additional software (such as Python) (see [Software requirements for nodes](../../yugabyte-platform/prepare/server-nodes-software/)), you download the YugabyteDB Anywhere node agent package to the VM, modify the configuration file, and run the included script (node-agent-provision.sh) as root or via sudo.
 
 This process prepares the node for YugabyteDB, including installation of node agent on the node.
 
