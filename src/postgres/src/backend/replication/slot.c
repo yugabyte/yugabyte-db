@@ -107,6 +107,10 @@ int			max_replication_slots = 0;	/* the maximum number of replication
 const char* YB_OUTPUT_PLUGIN = "yboutput";
 const char* PG_OUTPUT_PLUGIN = "pgoutput";
 
+/* Constants for replication slot LSN types */
+const char* LSN_TYPE_SEQUENCE = "SEQUENCE";
+const char* LSN_TYPE_HYBRID_TIME = "HYBRID_TIME";
+
 static void ReplicationSlotDropAcquired(void);
 static void ReplicationSlotDropPtr(ReplicationSlot *slot);
 
@@ -230,7 +234,8 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 					  ReplicationSlotPersistency persistency,
 					  char *yb_plugin_name,
 					  CRSSnapshotAction yb_snapshot_action,
-					  uint64_t *yb_consistent_snapshot_time)
+					  uint64_t *yb_consistent_snapshot_time,
+					  CRSLsnType lsn_type)
 {
 	ReplicationSlot *slot = NULL;
 	int			i;
@@ -249,7 +254,7 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 		int32_t max_clock_skew;
 
 		YBCCreateReplicationSlot(name, yb_plugin_name, yb_snapshot_action,
-								 yb_consistent_snapshot_time);
+								 yb_consistent_snapshot_time, lsn_type);
 
 		/*
 		 * The creation of a replication slot establishes a boundry between the

@@ -28,6 +28,10 @@ DEFINE_NON_RUNTIME_bool(enable_pg_cron, false,
     "Enables the pg_cron extension. Jobs will be run on a single tserver node. The node should be "
     "assumed to be selected randomly.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_allow_replication_slot_lsn_types, kLocalPersisted, false, true,
+    "Enable LSN types to be specified while creating replication slots.");
+
 // This autoflag was introduced in commit 80def06f8c19ad7cbc52f41b4be48d158157a418, but it had some
 // flaws and the feature required a regular gFlag. As of 27.11.2024 there does not exist an infra to
 // remove or demote an autoflag, therefore this flag is going to be a dummy flag. A new gFlag

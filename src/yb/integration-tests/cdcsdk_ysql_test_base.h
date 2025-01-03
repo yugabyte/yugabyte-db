@@ -12,6 +12,7 @@
 
 #pragma once
 #include <algorithm>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -801,6 +802,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       xrepl::StreamId stream_id, YBTableName table,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
       CDCSDKCheckpointPB checkpoint, GetChangesResponsePB* change_resp);
+
+  void TestCreateReplicationSlotWithLsnType(const std::string lsn_type);
 
   void TestTableIdAndPkInCDCRecords(bool colocated_db);
 

@@ -49,6 +49,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/clock.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
@@ -74,6 +75,7 @@
 
 #include "yb/server/clock.h"
 
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/util/enums.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
@@ -607,7 +609,8 @@ class YBClient {
       CoarseTimePoint deadline = CoarseTimePoint(),
       const CDCSDKDynamicTablesOption& dynamic_tables_option =
           CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
-      uint64_t* consistent_snapshot_time_out = nullptr);
+      uint64_t* consistent_snapshot_time_out = nullptr,
+      const std::optional<ReplicationSlotLsnType>& lsn_type = std::nullopt);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -649,7 +652,8 @@ class YBClient {
       std::optional<uint64_t>* stream_creation_time = nullptr,
       std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map = nullptr,
       std::optional<std::string>* replication_slot_name = nullptr,
-      std::vector<TableId>* unqualified_table_ids = nullptr);
+      std::vector<TableId>* unqualified_table_ids = nullptr,
+      std::optional<ReplicationSlotLsnType>* lsn_type = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,

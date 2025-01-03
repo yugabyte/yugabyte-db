@@ -2227,6 +2227,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_allow_replication_slot_lsn_types", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Allow specifying LSN type while creating replication slot"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_replication_slot_lsn_types,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_binary_restore", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL binary restore."),
 			NULL,

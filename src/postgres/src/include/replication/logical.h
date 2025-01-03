@@ -143,4 +143,7 @@ extern bool filter_by_origin_cb_wrapper(LogicalDecodingContext *ctx, RepOriginId
 
 extern void YBValidateOutputPlugin(char *plugin);
 
+extern void YBValidateLsnType(char *lsn_type);
+extern CRSLsnType YBParseLsnType(char *lsn_type);
+
 #endif
