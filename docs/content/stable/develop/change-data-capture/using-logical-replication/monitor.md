@@ -69,9 +69,9 @@ Provides a list of all replication slots that currently exist on the database cl
 | yb_stream_id | text | UUID of the CDC stream |
 | yb_restart_commit_ht | int8 | A uint64 representation of the commit Hybrid Time corresponding to the `restart_lsn`. This can be used by the client (like YugabyteDB connector) to perform a consistent snapshot (as of the `consistent_point`) in the case when a replication slot already exists. |
 
-## CDC Service metrics
+## CDC service metrics
 
-Provide information about CDC service in YugabyteDB.
+Provide information about the CDC service in YugabyteDB.
 
 | Metric name | Type | Description |
 | :---- | :---- | :---- |

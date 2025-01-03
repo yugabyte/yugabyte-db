@@ -71,9 +71,9 @@ curl -X GET localhost:8083/connectors/<connector-name>/tasks/<task-id>/status
 
 In addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide, the YugabyteDB source connector provides the following types of metrics.
 
-### CDC Service metrics
+### CDC service metrics
 
-Provide information about CDC service in YugabyteDB.
+Provide information about the CDC service in YugabyteDB.
 
 | Metric name | Type | Description |
 | :---- | :---- | :---- |
@@ -82,11 +82,7 @@ Provide information about CDC service in YugabyteDB.
 | cdcsdk_sent_lag_micros | `long` | The LAG metric is calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the CDC connector. |
 | cdcsdk_expiry_time_ms | `long` | The time left to read records from WAL is tracked by the Stream Expiry Time (ms). |
 
-{{< note title="Note" >}}
-
 CDC service metrics are calculated for every tablet that is of interest for a replication slot. In the scenario where you aren't interested in polling all the tables (and consequently all the tablets) in a database, the metrics are calculated considering the unpolled tablets until [cdcsdk_tablet_not_of_interest_timeout_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-tablet-not-of-interest-timeout-secs) interval.
-
-{{< /note >}}
 
 ### Snapshot metrics
 
