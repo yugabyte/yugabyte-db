@@ -131,6 +131,30 @@ public class RestoreBackupParams extends UniverseTaskParams {
     @Getter
     @Setter
     private boolean useTablespaces = false;
+
+    // During restore, alter tables/schemas to be owned by the restored roles.
+    @ApiModelProperty(value = "Backup global ysql roles", hidden = true)
+    @Getter
+    @Setter
+    private Boolean useRoles = true;
+
+    // When set, ybc backups will ignore all new flags that came with roles backup. Useful for
+    // taking
+    // backups on older universes.
+    @ApiModelProperty(hidden = true)
+    @Getter
+    @Setter
+    private Boolean revertToPreRolesBehaviour = false;
+
+    /* Error handling flags */
+
+    // This will be be harcoded to true if success marker does not have dump_role_checks set to
+    // true.
+    // Default true until testing is complete.
+    @ApiModelProperty(value = "Ignore all restore errors")
+    @Getter
+    @Setter
+    private Boolean ignoreErrors = true;
   }
 
   public RestoreBackupParams(

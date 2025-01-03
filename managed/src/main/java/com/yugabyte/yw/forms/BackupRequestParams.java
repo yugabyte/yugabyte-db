@@ -143,6 +143,15 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Parallel DB backups")
   public int parallelDBBackups = 1;
 
+  // False until fully tested.
+  @ApiModelProperty(
+      value =
+          "Add role exists checks for roles metadata. All GRANT/REVOKE and ALTER sql commands will"
+              + " first check if the role exists")
+  @Getter
+  @Setter
+  private Boolean dumpRoleChecks = false;
+
   // Intermediate states to resume ybc backups
   public UUID backupUUID;
 
@@ -189,6 +198,7 @@ public class BackupRequestParams extends UniverseTaskParams {
     this.incrementalBackupFrequency = backupRequestParams.incrementalBackupFrequency;
     this.incrementalBackupFrequencyTimeUnit =
         backupRequestParams.incrementalBackupFrequencyTimeUnit;
+    // this.useRoles = backupRequestParams.useRoles;
 
     // Deep copy.
     if (backupRequestParams.keyspaceTableList == null) {

@@ -1622,4 +1622,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " operations",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> revertToPreRolesBehaviour =
+      new ConfKeyInfo<>(
+          "ybc.revert_to_pre_roles_behaviour",
+          ScopeType.UNIVERSE,
+          "Backup and restore to use pre roles behaviour",
+          "Have YBC use the pre roles backup and restore behaviour",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ignoreRestoreErrors =
+      new ConfKeyInfo<>(
+          "ybc.ignore_restore_errors",
+          ScopeType.UNIVERSE,
+          "Ignore errors during restore",
+          "Have YBC ignore errors during restore. When false, can be overwritten via API",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
