@@ -2101,8 +2101,10 @@ components:
         status:
           type: integer
         count_live_rows:
+          format: int64
           type: integer
         count_total_rows:
+          format: int64
           type: integer
         invocation_timestamp:
           type: string
