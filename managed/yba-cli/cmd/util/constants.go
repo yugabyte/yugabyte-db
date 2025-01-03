@@ -410,6 +410,16 @@ const (
 	CustomRoleType = "Custom"
 )
 
+// ExposingServiceState
+const (
+	// ExposedServiceState type
+	ExposedServiceState = "EXPOSED"
+	// UnexposedServiceState type
+	UnexposedServiceState = "UNEXPOSED"
+	// NoneServiceState type
+	NoneServiceState = "NONE"
+)
+
 // CompletedTaskStates returns set of states that mark the task as completed
 func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}
@@ -466,6 +476,11 @@ func AwsInstanceTypesWithEphemeralStorageOnly(instanceType string) bool {
 		}
 	}
 	return false
+}
+
+// ValidExposingServiceStates returns set of valid exposing service states
+func ValidExposingServiceStates() []string {
+	return []string{ExposedServiceState, UnexposedServiceState, NoneServiceState}
 }
 
 // IsCloudBasedProvider returns true if the provider is AWS, Azure or GCP

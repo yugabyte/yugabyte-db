@@ -37,8 +37,8 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --add-read-replica                                 [Optional] Add a read replica cluster to the universe. (default false)
       --replication-factor ints                          [Optional] Replication factor of the cluster. Provide replication-factor for each cluster as a separate flag. "--replication-factor 3 --replication-factor 5" OR "--replication-factor 3,5" refers to RF of Primary cluster = 3 and RF of Read Replica = 5. First flag always corresponds to the primary cluster. (default [3,3])
       --num-nodes ints                                   [Optional] Number of nodes in the cluster. Provide no of nodes for each cluster as a separate flag. "--num-nodes 3 --num-nodes 5" OR "--num-nodes 3,5" refers to 3 nodes in the Primary cluster and 5 nodes in the Read Replica cluster. First flag always corresponds to the primry cluster. (default [3,3])
-      --regions stringArray                              [Optional] Regions for the nodes of the cluster to be placed in. Provide comma-separated strings for each cluster as a separate flag, in the following format: "--regions 'region-1-for-primary-cluster,region-2-for-primary-cluster' --regions 'region-1-for-read-replica,region-2-for-read-replica'". Defaults to fetching the region from the provider. Throws an error if multiple regions are present.
-      --preferred-region stringArray                     [Optional] Preferred region to place the node of the cluster in. Provide preferred regions for each cluster as a separate flag. Defaults to null.
+      --regions stringArray                              [Optional] Regions for the nodes of the cluster to be placed in. Provide comma-separated strings for each cluster as a separate flag, in the following format: "--regions 'region-1-for-primary-cluster,region-2-for-primary-cluster' --regions 'region-1-for-read-replica,region-2-for-read-replica'". Defaults to fetching the regions from the provider.
+      --preferred-region stringArray                     [Optional] Preferred region to place the node of the cluster in. Provide preferred regions for each cluster as a separate flag. (default [])
       --master-gflags string                             [Optional] Master GFlags in map (JSON or YAML) format. Provide the gflags in the following formats: "--master-gflags {"master-gflag-key-1":"value-1","master-gflag-key-2":"value-2" }" or  "--master-gflags "master-gflag-key-1: value-1
                                                          master-gflag-key-2: value-2
                                                          master-gflag-key-3: value-3".
@@ -63,6 +63,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --throughput ints                                  [Optional] Desired throughput for the volumes mounted on this instance in MB/s, supported only for AWS. Provide throughput for each cluster as a separate flag or as comma separated values. (default [125,125])
       --k8s-tserver-mem-size float64Slice                [Optional] Memory size of the kubernetes tserver node in GB. Provide k8s-tserver-mem-size for each cluster as a separate flag or as comma separated values. (default [4.000000,4.000000])
       --k8s-tserver-cpu-core-count float64Slice          [Optional] CPU core count of the kubernetes tserver node. Provide k8s-tserver-cpu-core-count for each cluster as a separate flag or as comma separated values. (default [2.000000,2.000000])
+      --exposing-service stringArray                     [Optional] Exposing service for the universe clusters. Can be unique for each cluster. Provide the exposing service for each cluster as a separate flag. Allowed values: none, exposed, unexposed. Defaults to none.
       --dedicated-master-instance-type string            [Optional] Instance Type for the dedicated master nodes in the primary cluster. Defaults to "c5.large" for aws, "Standard_DS2_v2" for azure and "n1-standard-1" for gcp. Fetches the first available instance type for onprem providers.
       --dedicated-master-num-volumes int                 [Optional] Number of volumes to be mounted on master instance at the default path. (default 1)
       --dedicated-master-volume-size int                 [Optional] The size of each volume in each master instance. (default 100)
@@ -73,6 +74,8 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --dedicated-master-throughput int                  [Optional] Desired throughput for the volumes mounted on this instance in MB/s, supported only for AWS. (default 125)
       --k8s-master-mem-size float64Slice                 [Optional] Memory size of the kubernetes master node in GB. Provide k8s-tserver-mem-size for each cluster as a separate flag or as comma separated values. (default [4.000000,4.000000])
       --k8s-master-cpu-core-count float64Slice           [Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count for each cluster as a separate flag or as comma separated values. (default [2.000000,2.000000])
+      --use-spot-instance                                [Optional] Use spot instances for cloud provider based universe nodes. (default false)
+      --spot-price float                                 [Optional] Max price willing to pay for spot instances.
       --assign-public-ip                                 [Optional] Assign Public IPs to the DB servers for connections over the internet. (default true)
       --assign-static-public-ip                          [Optional] Assign Static Public IPs to the DB servers for connections over the internet. (default true)
       --enable-ysql                                      [Optional] Enable YSQL endpoint. (default true)
@@ -85,7 +88,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --root-ca string                                   [Optional] Root Certificate name for Encryption in Transit, defaults to creating new certificate for the universe if encryption in transit in enabled.
       --enable-volume-encryption                         [Optional] Enable encryption for data stored on the tablet servers. (default false)
       --kms-config string                                [Optional] Key management service config name. Required when enable-volume-encryption is set to true.
-      --enable-ipv6                                      [Optional] Enable IPV6 networking for connections between the DB Servers, supported only for Kubernetes universes (default false) 
+      --enable-ipv6                                      [Optional] Enable IPV6 networking for connections between the DB Servers, supported only for Kubernetes universes. (default false)
       --yb-db-version string                             [Optional] YugabyteDB Software Version, defaults to the latest available version. Run "yba yb-db-version list" to find the latest version.
       --use-systemd                                      [Optional] Use SystemD. (default true)
       --access-key-code string                           [Optional] Access Key code (UUID) corresponding to the provider, defaults to the provider's access key.
