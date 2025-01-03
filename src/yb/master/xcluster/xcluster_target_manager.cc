@@ -357,14 +357,14 @@ XClusterTargetManager::GetXClusterStatus() const {
     stream_status[stream_id] = PBListAsString(table_stream_status.errors(), ";");
   }
 
-  SysClusterConfigEntryPB cluster_config_pb;
-  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config_pb));
+  SysClusterConfigEntryPB cluster_config =
+      VERIFY_RESULT(catalog_manager_.GetClusterConfig());
 
   const auto replication_infos = catalog_manager_.GetAllXClusterUniverseReplicationInfos();
 
   for (const auto& replication_info : replication_infos) {
     auto replication_group_status =
-        VERIFY_RESULT(GetUniverseReplicationInfo(replication_info, cluster_config_pb));
+        VERIFY_RESULT(GetUniverseReplicationInfo(replication_info, cluster_config));
 
     for (auto& [_, tables] : replication_group_status.table_statuses_by_namespace) {
       for (auto& table : tables) {
@@ -469,8 +469,8 @@ Status XClusterTargetManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
   GetReplicationStatusRequestPB req;
   RETURN_NOT_OK(catalog_manager_.GetReplicationStatus(&req, &replication_status, /*rpc=*/nullptr));
 
-  SysClusterConfigEntryPB cluster_config;
-  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config));
+  SysClusterConfigEntryPB cluster_config =
+      VERIFY_RESULT(catalog_manager_.GetClusterConfig());
 
   jw.String("replication_status");
   jw.Protobuf(replication_status);
@@ -519,10 +519,9 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
   auto replication_info = catalog_manager_.GetUniverseReplication(replication_group_id);
   SCHECK_FORMAT(replication_info, NotFound, "Replication group $0 not found", replication_group_id);
 
-  SysClusterConfigEntryPB cluster_config_pb;
-  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config_pb));
+  auto cluster_config = VERIFY_RESULT(catalog_manager_.GetClusterConfig());
   auto l = replication_info->LockForRead();
-  return GetUniverseReplicationInfo(l->pb, cluster_config_pb);
+  return GetUniverseReplicationInfo(l->pb, cluster_config);
 }
 
 }  // namespace yb::master

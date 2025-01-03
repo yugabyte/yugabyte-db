@@ -219,11 +219,10 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
   // of order.
   master::MasterHeartbeatProxy master_proxy(
       proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
-  GetMasterClusterConfigResponsePB config_resp;
-  ASSERT_OK(catalog_mgr.GetClusterConfig(&config_resp));
+  auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
   master::TSHeartbeatRequestPB req;
   *req.mutable_common() = MakeTSToMasterCommonPB(ts.get(), ts->latest_seqno());
-  req.set_universe_uuid(config_resp.cluster_config().universe_uuid());
+  req.set_universe_uuid(cluster_config.universe_uuid());
   const auto original_latest_report_sequence_number = ts->latest_report_sequence_number();
   *req.mutable_tablet_report() = MakeTabletReportPBWithNewLeader(
       ts.get(), tablet.get(), true, original_latest_report_sequence_number + 2);
@@ -247,7 +246,7 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
   {
     // Now we send another heartbeat, but in this one the new TS was bootstrapping the tablet.
     master::TSHeartbeatRequestPB second_req;
-    second_req.set_universe_uuid(config_resp.cluster_config().universe_uuid());
+    second_req.set_universe_uuid(cluster_config.universe_uuid());
     *second_req.mutable_common() = req.common();
     second_req.set_num_live_tablets(0);
     auto* bootstrapping_report = second_req.mutable_tablet_report();
@@ -304,13 +303,12 @@ TEST_F(MasterHeartbeatITest, ProcessHeartbeatAfterTSRestart) {
   auto ts = *extra_ts_it;
   master::MasterHeartbeatProxy master_proxy(
       proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
-  GetMasterClusterConfigResponsePB config_resp;
-  ASSERT_OK(catalog_mgr.GetClusterConfig(&config_resp));
+  auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
   master::TSHeartbeatRequestPB req;
   ASSERT_GT(ts->latest_report_sequence_number(), 0);
   // Use a later sequence number to simulate the tserver restarting.
   *req.mutable_common() = MakeTSToMasterCommonPB(ts.get(), ts->latest_seqno() + 10);
-  req.set_universe_uuid(config_resp.cluster_config().universe_uuid());
+  req.set_universe_uuid(cluster_config.universe_uuid());
   *req.mutable_registration() = ts->GetTSInformationPB()->registration();
   *req.mutable_tablet_report() = MakeTabletReportPBWithNewLeader(
       ts.get(), tablet.get(), /* incremental */ false, /* report_sequence_number */ 0);
@@ -340,9 +338,9 @@ class MasterHeartbeatITestWithUpgrade : public YBTableTestBase {
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());
   }
 
-  Status GetClusterConfig(GetMasterClusterConfigResponsePB *config_resp) {
+  Result<master::SysClusterConfigEntryPB> GetClusterConfig() {
     const auto* master = VERIFY_RESULT(mini_cluster_->GetLeaderMiniMaster());
-    return master->catalog_manager().GetClusterConfig(config_resp);
+    return master->catalog_manager().GetClusterConfig();
   }
 
   Status ClearUniverseUuid() {
@@ -357,9 +355,8 @@ class MasterHeartbeatITestWithUpgrade : public YBTableTestBase {
 };
 
 TEST_F(MasterHeartbeatITestWithUpgrade, ClearUniverseUuidToRecoverUniverse) {
-  GetMasterClusterConfigResponsePB resp;
-  ASSERT_OK(GetClusterConfig(&resp));
-  auto cluster_config_version = resp.cluster_config().version();
+  auto cluster_config = ASSERT_RESULT(GetClusterConfig());
+  auto cluster_config_version = cluster_config.version();
   LOG(INFO) << "Cluster Config version : " << cluster_config_version;
 
   // Attempt to clear universe uuid. Should fail when it is not set.
@@ -370,26 +367,29 @@ TEST_F(MasterHeartbeatITestWithUpgrade, ClearUniverseUuidToRecoverUniverse) {
 
   // Wait for ClusterConfig version to increase.
   ASSERT_OK(LoggedWaitFor([&]() {
-    if (!GetClusterConfig(&resp).ok()) {
+    auto config_result = GetClusterConfig();
+    if (!config_result.ok()) {
       return false;
     }
+    auto& config = *config_result;
 
-    if (!resp.cluster_config().has_universe_uuid()) {
+    if (!config.has_universe_uuid()) {
       return false;
     }
+    cluster_config = std::move(config);
 
     return true;
   }, 60s, "Waiting for new universe uuid to be generated"));
 
-  ASSERT_GE(resp.cluster_config().version(), cluster_config_version);
-  LOG(INFO) << "Updated cluster config version:" << resp.cluster_config().version();
-  LOG(INFO) << "Universe UUID:" << resp.cluster_config().universe_uuid();
+  ASSERT_GE(cluster_config.version(), cluster_config_version);
+  LOG(INFO) << "Updated cluster config version:" << cluster_config.version();
+  LOG(INFO) << "Universe UUID:" << cluster_config.universe_uuid();
 
   // Wait for propagation of universe_uuid.
   ASSERT_OK(LoggedWaitFor([&]() {
     for (auto& ts : mini_cluster_->mini_tablet_servers()) {
       auto uuid_str = ts->server()->fs_manager()->GetUniverseUuidFromTserverInstanceMetadata();
-      if (!uuid_str.ok() || uuid_str.get() != resp.cluster_config().universe_uuid()) {
+      if (!uuid_str.ok() || uuid_str.get() != cluster_config.universe_uuid()) {
         return false;
       }
     }

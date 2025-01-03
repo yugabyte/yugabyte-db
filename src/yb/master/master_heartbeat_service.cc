@@ -131,11 +131,11 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
     // At the time of this check, we need to know that we're the master leader to access the
     // cluster config.
-    SysClusterConfigEntryPB cluster_config;
-    s = server_->catalog_manager_impl()->GetClusterConfig(&cluster_config);
-    if (!s.ok()) {
-      LOG(WARNING) << "Unable to get cluster configuration: " << s.ToString();
-      rpc.RespondFailure(s);
+    auto cluster_config_result = server_->catalog_manager_impl()->GetClusterConfig();
+    if (!cluster_config_result.ok()) {
+      LOG(WARNING) << "Unable to get cluster configuration: "
+                   << cluster_config_result.status().ToString();
+      rpc.RespondFailure(cluster_config_result.status());
       return;
     }
 
@@ -149,7 +149,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
     auto master_universe_uuid_res =  UniverseUuid::FromString(
         FLAGS_TEST_master_universe_uuid.empty() ?
-            cluster_config.universe_uuid() : FLAGS_TEST_master_universe_uuid);
+            cluster_config_result->universe_uuid() : FLAGS_TEST_master_universe_uuid);
     if (!master_universe_uuid_res) {
       LOG(WARNING) << "Could not decode cluster config universe_uuid: " <<
           master_universe_uuid_res.status().ToString();
@@ -195,7 +195,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
         rpc.RespondFailure(s);
         return;
       }
-      resp->set_cluster_uuid(cluster_config.cluster_uuid());
+      resp->set_cluster_uuid(cluster_config_result->cluster_uuid());
     }
 
     s = server_->catalog_manager_impl()->FillHeartbeatResponse(req, resp);

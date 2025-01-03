@@ -33,11 +33,9 @@ class BasicCollector : public MasterCollector {
 
   void Collect(CollectionLevel collection_level) override {
     AppendPairToJson("server_type", "master", &json_);
-
-    master::SysClusterConfigEntryPB config;
-    auto status = master()->catalog_manager()->GetClusterConfig(&config);
-    if (status.ok()) {
-      AppendPairToJson("cluster_uuid", config.cluster_uuid(), &json_);
+    auto config = master()->catalog_manager()->GetClusterConfig();
+    if (config.ok()) {
+      AppendPairToJson("cluster_uuid", config->cluster_uuid(), &json_);
     }
   }
 
