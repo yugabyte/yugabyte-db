@@ -2078,6 +2078,11 @@ FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinfo)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("bind_var_query_min_duration_ms cannot be less than 0")));
+
+	if (params->explain_dist && !params->explain_analyze)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("explain_dist cannot be true without explain_analyze")));
 }
 
 /*
