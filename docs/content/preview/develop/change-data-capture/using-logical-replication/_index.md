@@ -115,4 +115,4 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
 
-- Support for tablet splitting with logical replication is disabled from v2024.1.4 and v2024.2.1. It is tracked in issue [24918](https://github.com/yugabyte/yugabyte-db/issues/24918).
+- Support for tablet splitting with logical replication is disabled from v2024.1.4 and v2024.2.1. Tracked in issue [24918](https://github.com/yugabyte/yugabyte-db/issues/24918).
