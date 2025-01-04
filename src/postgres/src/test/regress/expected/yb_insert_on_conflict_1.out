@@ -200,6 +200,149 @@ SELECT * FROM ab_tab WHERE a < 1 OR a > 10 ORDER BY a, b;
   30 |  30
 (2 rows)
 
+--- GH-25240 (multiple arbiter indexes)
+CREATE TABLE t_multiple (c CHAR, n NUMERIC);
+CREATE UNIQUE INDEX NONCONCURRENTLY i1 ON t_multiple (c) WHERE n % 2 = 0;
+CREATE UNIQUE INDEX NONCONCURRENTLY i2 ON t_multiple (c) WHERE n < 10;
+INSERT INTO t_multiple VALUES ('a', 1), ('b', 2);
+-- ('c', false::INT::NUMERIC): not found in either index and satisfies predicate of both indexes.
+-- Result: inserted in main table and both indexes.
+-- ('d', 7), ('e', 14): not found in either index and satisfies predicate of only one index.
+-- Result: inserted in main table and only one index.
+INSERT INTO t_multiple VALUES ('c', false::INT::NUMERIC), ('d', 7), ('e', 14) ON CONFLICT DO NOTHING;
+-- ('d', 6), ('e', 4): found in one index and satisfies predicate of both indexes.
+-- Result: not inserted.
+INSERT INTO t_multiple VALUES ('d', 6), ('e', 4) ON CONFLICT DO NOTHING;
+-- ('d', 13), ('e', 15): found in one index and satisfies predicate of neither index.
+-- Result: inserted into main table, but not indexes.
+INSERT INTO t_multiple VALUES ('d', 13), ('e', 15) ON CONFLICT DO NOTHING;
+-- ('b', 4): found in both indexes and satisfies predicate of both indexes.
+-- Result: not inserted.
+-- ('b', 12), ('b', 1): found in both indexes and satisfies predicate of one index.
+-- Result: not inserted.
+-- ('b', 13): found in both indexes and satisfies predicate of neither index.
+-- Result: inserted into main table, but not indexes.
+INSERT INTO t_multiple VALUES ('b', 4), ('b', 12), ('b', 1), ('b', 13) ON CONFLICT DO NOTHING;
+-- ('a', 12), ('e', 7): found in one index and satisfies predicate of other index.
+-- Result: inserted into main table and 'other' index.
+INSERT INTO t_multiple VALUES ('a', 12), ('e', 7) ON CONFLICT DO NOTHING;
+-- ('f', 7), ('g', 12): satisfies predicate of only one index.
+-- Result: inserted in main table and only one index.
+-- ('f', 8), ('g', 8): found in one index and satisfies predicate of both indexes.
+-- Result: not inserted.
+-- ('f', 5), ('g', 14): found in one index and satisfies predicate of same index.
+-- Result: not inserted.
+-- ('f', 16), ('g', 7): found in one index and satisfies predicate of other index.
+-- Result: inserted in main table and 'other' index.
+-- ('f', 13), ('g', 13): found in both indexes and satisfies predicate of neither index.
+-- Result: inserted into main table, but not indexes.
+-- ('f', 2), ('g', 2): found in both indexes and satisfies predicate of both indexes.
+-- Result: not inserted.
+INSERT INTO t_multiple VALUES
+	('f', 7), ('g', 12),
+	('f', 8), ('g', 8),
+	('f', 5), ('g', 14),
+	('f', 16), ('g', 7),
+	('f', 13), ('g', 13),
+	('f', 2), ('g', 2)
+	ON CONFLICT DO NOTHING;
+SELECT * FROM t_multiple WHERE n % 2 = 0 ORDER BY c, n;
+ c | n
+---+----
+ a | 12
+ b |  2
+ c |  0
+ e | 14
+ f | 16
+ g | 12
+(6 rows)
+
+SELECT * FROM t_multiple WHERE n < 10 ORDER BY c, n;
+ c | n
+---+---
+ a | 1
+ b | 2
+ c | 0
+ d | 7
+ e | 7
+ f | 7
+ g | 7
+(7 rows)
+
+SELECT * FROM t_multiple ORDER BY c, n;
+ c | n
+---+----
+ a |  1
+ a | 12
+ b |  2
+ b | 13
+ c |  0
+ d |  7
+ d | 13
+ e |  7
+ e | 14
+ e | 15
+ f |  7
+ f | 13
+ f | 16
+ g |  7
+ g | 12
+ g | 13
+(16 rows)
+
+TRUNCATE t_multiple;
+DROP INDEX i2;
+-- Create a duplicate index to exercise the multiple arbiter index code path for
+-- DO UPDATE in the context of unique indexes.
+CREATE UNIQUE INDEX NONCONCURRENTLY i1_copy ON t_multiple (c) WHERE n % 2 = 0;
+INSERT INTO t_multiple VALUES ('a', 1), ('b', 2);
+-- ('a', 1): not found in the indexes, and proposed updated value into does not satisfy the predicate.
+-- Result: inserted into main table, but not the indexes.
+-- ('b', 2): found in the indexes, and updated value satisfies the predicate.
+-- Result: updated in main table and indexes.
+EXPLAIN (COSTS OFF) INSERT INTO t_multiple VALUES ('a', 1), ('b', 2) ON CONFLICT (c) WHERE n % 2 = 0 DO UPDATE SET n = EXCLUDED.n + 2;
+               QUERY PLAN
+-----------------------------------------
+ Insert on t_multiple
+   Conflict Resolution: UPDATE
+   Conflict Arbiter Indexes: i1, i1_copy
+   ->  Values Scan on "*VALUES*"
+(4 rows)
+
+INSERT INTO t_multiple VALUES ('a', 1), ('b', 2) ON CONFLICT (c) WHERE n % 2 = 0 DO UPDATE SET n = EXCLUDED.n + 2;
+SELECT * FROM t_multiple WHERE n % 2 = 0 ORDER BY c, n;
+ c | n
+---+---
+ b | 4
+(1 row)
+
+-- ('a', 1): not found in the indexes, and proposed updated value satisfies the predicate.
+-- Result: inserted in main table, but not the indexes.
+-- ('b', 2): found in the indexes, and updated value does not satisfy the predicate.
+-- Result: updated in main table and deleted from the indexes.
+INSERT INTO t_multiple VALUES ('a', 1), ('b', 2) ON CONFLICT (c) WHERE n % 2 = 0 DO UPDATE SET n = EXCLUDED.n + 3;
+-- first ('b', 2): not found in the indexes.
+-- Result: inserted into main table and indexes.
+-- second ('b', 2): found in the indexes, and contains same index key as the first row.
+-- Result: not inserted.
+INSERT INTO t_multiple VALUES ('b', 2), ('b', 2) ON CONFLICT (c) WHERE n % 2 = 0 DO UPDATE SET n = EXCLUDED.n + 3;
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+SELECT * FROM t_multiple WHERE n % 2 = 0 ORDER BY c, n;
+ c | n
+---+---
+(0 rows)
+
+SELECT * FROM t_multiple ORDER BY c, n;
+ c | n
+---+---
+ a | 1
+ a | 1
+ a | 1
+ b | 5
+(4 rows)
+
+DROP TABLE t_multiple;
 --- Multiple unique indexes but single arbiter index
 INSERT INTO ab_tab VALUES (21, 21), (22, 23);
 -- (24, 21) conflicts on b but not a and should produce a unique constraint violation.

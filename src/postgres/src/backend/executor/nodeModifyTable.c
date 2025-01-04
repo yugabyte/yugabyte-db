@@ -4040,6 +4040,9 @@ YbExecCheckIndexConstraints(EState *estate,
 	RelationPtr relationDescs;
 	IndexInfo **indexInfoArray;
 	List		*arbiterIndexes;
+	List	   *descriptors = NIL;
+	ListCell   *lc;
+	bool		retval = true;
 	YBCPgInsertOnConflictKeyState keyState;
 
 	/*
@@ -4151,7 +4154,8 @@ YbExecCheckIndexConstraints(EState *estate,
 					*ybConflictSlot = info.slot;
 				}
 
-				return false;
+				retval = false;
+				goto yb_check_constr_cleanup;
 
 			case KEY_JUST_INSERTED:
 				/*
@@ -4165,7 +4169,10 @@ YbExecCheckIndexConstraints(EState *estate,
 				 * YB: error message copied from ExecOnConflictUpdate.
 				 */
 				if (phase == DO_NOTHING)
-					return false;
+				{
+					retval = false;
+					goto yb_check_constr_cleanup;
+				}
 
 				YBCPgClearInsertOnConflictCache();
 
@@ -4176,11 +4183,17 @@ YbExecCheckIndexConstraints(EState *estate,
 					errhint("Ensure that no rows proposed for insertion within the same command have duplicate constrained values.")));
 
 			case KEY_NOT_FOUND:
-				/* Tuple is going to be inserted. Add to intent map. */
-				HandleYBStatus(YBCPgAddInsertOnConflictKeyIntent(descr));
+				descriptors = lappend(descriptors, descr);
 		}
 	}
 
-	/* The key was not found in any of the arbiter indexes. */
-	return true;
+	foreach(lc, descriptors)
+		HandleYBStatus(YBCPgAddInsertOnConflictKeyIntent(lfirst(lc)));
+
+yb_check_constr_cleanup:;
+	foreach(lc, descriptors)
+		pfree(lfirst(lc));
+
+	list_free(descriptors);
+	return retval;
 }
