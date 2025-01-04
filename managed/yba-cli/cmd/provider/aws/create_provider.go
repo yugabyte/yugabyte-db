@@ -408,7 +408,8 @@ func buildAWSImageBundles(
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
@@ -417,7 +418,8 @@ func buildAWSImageBundles(
 
 		useIMDSv2, err := strconv.ParseBool(bundle["imdsv2"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

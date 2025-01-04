@@ -394,7 +394,8 @@ func buildGCPImageBundles(imageBundles []string) []ybaclient.ImageBundle {
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
