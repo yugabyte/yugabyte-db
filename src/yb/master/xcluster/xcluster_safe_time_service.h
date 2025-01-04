@@ -154,7 +154,6 @@ class XClusterSafeTimeService {
 
   std::unique_ptr<client::TableHandle> safe_time_table_;
 
-  int64_t leader_term_ GUARDED_BY(mutex_);
   int32_t cluster_config_version_ GUARDED_BY(mutex_);
   std::map<ProducerTabletInfo, NamespaceId> producer_tablet_namespace_map_ GUARDED_BY(mutex_);
 
