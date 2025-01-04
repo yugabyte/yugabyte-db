@@ -4,7 +4,7 @@ SET search_path TO helio_api;
 /*
  * Region: RUM operators and functions
  */
- #include "udfs/rum/bson_preconsistent--1.11-0.sql"
+ #include "pg_documentdb/sql/udfs/rum/bson_preconsistent--0.11-0.sql"
 
 
 /*
@@ -24,6 +24,6 @@ SET search_path TO helio_api;
  /*
  * Region: Version utils
  */
- #include "udfs/utils/extension_version_utils--1.11-0.sql"
+ #include "pg_documentdb/sql/udfs/utils/extension_version_utils--0.11-0.sql"
 
 RESET search_path;

@@ -3,7 +3,7 @@ SET search_path TO helio_api;
  /*
  * Region: Index operator classes
  */
-#include "udfs/rum/wildcard_project_path_extensibility_functions--1.12-0.sql"
+#include "pg_documentdb/sql/udfs/rum/wildcard_project_path_extensibility_functions--0.12-0.sql"
 #include "pg_documentdb/sql/schema/wildcard_project_path_operator_class--0.12-0.sql"
  
 /*
@@ -16,15 +16,15 @@ SET search_path TO helio_api;
 * Commands propagated to helio API surface.
 */
 #include "udfs/commands_crud/insert--1.12-0.sql"
-#include "udfs/commands_crud/insert_one_helper--1.12-0.sql"
+#include "pg_documentdb/sql/udfs/commands_crud/insert_one_helper--0.12-0.sql"
 #include "udfs/commands_crud/update--1.12-0.sql"
 #include "udfs/commands_crud/delete--1.12-0.sql"
-#include "udfs/commands_crud/find_and_modify--1.12-0.sql"
-#include "udfs/commands_crud/query_cursors_aggregate--1.12-0.sql"
-#include "udfs/schema_mgmt/create_collection_view--1.12-0.sql"
-#include "udfs/schema_mgmt/coll_mod--1.12-0.sql"
+#include "pg_documentdb/sql/udfs/commands_crud/find_and_modify--0.12-0.sql"
+#include "pg_documentdb/sql/udfs/commands_crud/query_cursors_aggregate--0.12-0.sql"
+#include "pg_documentdb/sql/udfs/schema_mgmt/create_collection_view--0.12-0.sql"
+#include "pg_documentdb/sql/udfs/schema_mgmt/coll_mod--0.12-0.sql"
 #include "udfs/schema_mgmt/shard_collection--1.12-0.sql"
-#include "udfs/schema_mgmt/create_collection--1.12-0.sql"
+#include "pg_documentdb/sql/udfs/schema_mgmt/create_collection--0.12-0.sql"
 
 /*  
  * Cursor management.
@@ -40,7 +40,7 @@ SET search_path TO helio_api;
 /*
  * Region: Schema Management APIs
  */
-#include "udfs/schema_mgmt/drop_collection--1.12-0.sql"
+#include "pg_documentdb/sql/udfs/schema_mgmt/drop_collection--0.12-0.sql"
 
 /*
  * Region: Aggregation operators.
@@ -50,6 +50,6 @@ SET search_path TO helio_api;
 /*
  * Region: Index Manangement APIs
  */
-#include "udfs/index_mgmt/drop_indexes--1.12-0.sql"
+#include "pg_documentdb/sql/udfs/index_mgmt/drop_indexes--0.12-0.sql"
 
 RESET search_path;

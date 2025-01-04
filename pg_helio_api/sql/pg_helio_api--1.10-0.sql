@@ -12,9 +12,9 @@ SET search_path TO helio_api;
  #include "udfs/query/bson_query_match--1.10-0.sql"
 
 #include "udfs/query/bson_dollar_comparison--1.10-0.sql"
-#include "udfs/query/bson_dollar_array--1.10-0.sql"
-#include "udfs/query/bson_dollar_element_bitwise--1.10-0.sql"
-#include "udfs/query/bson_dollar_geospatial--1.10-0.sql"
+#include "pg_documentdb/sql/udfs/query/bson_dollar_array--0.10-0.sql"
+#include "pg_documentdb/sql/udfs/query/bson_dollar_element_bitwise--0.10-0.sql"
+#include "pg_documentdb/sql/udfs/query/bson_dollar_geospatial--0.10-0.sql"
 #include "udfs/query/bson_dollar_evaluation--1.10-0.sql"
 
 #include "udfs/query/bson_orderby--1.10-0.sql"
@@ -23,7 +23,7 @@ SET search_path TO helio_api;
 #include "udfs/projection/bson_expression--1.10-0.sql"
 
 
-#include "udfs/query/bsonquery_dollar_operators--1.10-0.sql"
+#include "pg_documentdb/sql/udfs/query/bsonquery_dollar_operators--0.10-0.sql"
 
 /*
  * Region: Query operators
@@ -42,9 +42,9 @@ SET search_path TO helio_api;
 /*
  * Region: RUM operators and functions
  */
- #include "udfs/rum/handler--1.10-0.sql"
- #include "udfs/rum/extensibility_functions--1.10-0.sql"
- #include "udfs/rum/single_path_extensibility_functions--1.10-0.sql"
+ #include "pg_documentdb/sql/udfs/rum/handler--0.10-0.sql"
+ #include "pg_documentdb/sql/udfs/rum/extensibility_functions--0.10-0.sql"
+ #include "pg_documentdb/sql/udfs/rum/single_path_extensibility_functions--0.10-0.sql"
  #include "udfs/rum/bson_preconsistent--1.10-0.sql"
  #include "pg_documentdb/sql/operators/bson_path_operators--0.10-0.sql"
 
@@ -60,27 +60,27 @@ SET search_path TO helio_api;
 /*
  * Region: Aggregation operators.
  */
-#include "udfs/aggregation/bson_aggregation_support--1.10-0.sql"
-#include "udfs/aggregation/bson_aggregation_pipeline--1.10-0.sql"
-#include "udfs/aggregation/bson_aggregation_find--1.10-0.sql"
-#include "udfs/aggregation/bson_aggregation_count--1.10-0.sql"
-#include "udfs/aggregation/bson_aggregation_distinct--1.10-0.sql"
+#include "pg_documentdb/sql/udfs/aggregation/bson_aggregation_support--0.10-0.sql"
+#include "pg_documentdb/sql/udfs/aggregation/bson_aggregation_pipeline--0.10-0.sql"
+#include "pg_documentdb/sql/udfs/aggregation/bson_aggregation_find--0.10-0.sql"
+#include "pg_documentdb/sql/udfs/aggregation/bson_aggregation_count--0.10-0.sql"
+#include "pg_documentdb/sql/udfs/aggregation/bson_aggregation_distinct--0.10-0.sql"
 
 #include "udfs/aggregation/group_aggregates_support--1.10-0.sql"
 #include "udfs/aggregation/group_aggregates--1.10-0.sql"
-#include "udfs/aggregation/bson_unwind_functions--1.10-0.sql"
+#include "pg_documentdb/sql/udfs/aggregation/bson_unwind_functions--0.10-0.sql"
 #include "udfs/aggregation/bson_lookup_functions--1.10-0.sql"
-#include "udfs/aggregation/distinct_aggregates--1.10-0.sql"
+#include "pg_documentdb/sql/udfs/aggregation/distinct_aggregates--0.10-0.sql"
 
 #include "udfs/metadata/empty_data_table--1.10-0.sql"
-#include "udfs/metadata/collection--1.10-0.sql"
+#include "pg_documentdb/sql/udfs/metadata/collection--0.10-0.sql"
 
 
 /*
  * Region: Collection Metadata
  */
 #include "udfs/metadata/collection_metadata_functions--1.10-0.sql"
-#include "udfs/metadata/collection_indexes_metadata_functions--1.10-0.sql"
+#include "pg_documentdb/sql/udfs/metadata/collection_indexes_metadata_functions--0.10-0.sql"
 
 #include "pg_documentdb/sql/schema/collection_metadata--0.10-0.sql"
 #include "pg_documentdb/sql/schema/collection_metadata_views--0.10-0.sql"
@@ -91,7 +91,7 @@ SET search_path TO helio_api;
 /*
  * Region: Sharding Metadata
 */
-#include "udfs/metadata/sharding_metadata_functions--1.10-0.sql"
+#include "pg_documentdb/sql/udfs/metadata/sharding_metadata_functions--0.10-0.sql"
 
 /*
  * Region: Schema Management APIs
@@ -103,11 +103,11 @@ SET search_path TO helio_api;
  * Region: Index Manangement APIs
  */
  #include "udfs/index_mgmt/create_indexes_non_concurrently--1.10-0.sql"
- #include "udfs/index_mgmt/create_builtin_id_index--1.10-0.sql"
- #include "udfs/index_mgmt/record_id_index--1.10-0.sql"
- #include "udfs/index_mgmt/index_build_is_in_progress--1.10-0.sql"
- #include "udfs/index_mgmt/index_spec_as_bson--1.10-0.sql"
- #include "udfs/index_mgmt/index_spec_options_are_equivalent--1.10-0.sql"
+ #include "pg_documentdb/sql/udfs/index_mgmt/create_builtin_id_index--0.10-0.sql"
+ #include "pg_documentdb/sql/udfs/index_mgmt/record_id_index--0.10-0.sql"
+ #include "pg_documentdb/sql/udfs/index_mgmt/index_build_is_in_progress--0.10-0.sql"
+ #include "pg_documentdb/sql/udfs/index_mgmt/index_spec_as_bson--0.10-0.sql"
+ #include "pg_documentdb/sql/udfs/index_mgmt/index_spec_options_are_equivalent--0.10-0.sql"
 
 /*
  * Region: Basic CRUD APIs & Commands
@@ -115,14 +115,14 @@ SET search_path TO helio_api;
 #include "udfs/commands_crud/insert--1.10-0.sql"
 #include "udfs/commands_crud/insert_one_helper--1.10-0.sql"
 
-#include "udfs/commands_crud/bson_update_document--1.10-0.sql"
+#include "pg_documentdb/sql/udfs/commands_crud/bson_update_document--0.10-0.sql"
 #include "udfs/commands_crud/update--1.10-0.sql"
 
 #include "udfs/commands_crud/delete--1.10-0.sql"
 #include "udfs/commands_crud/find_and_modify--1.10-0.sql"
 
 #include "udfs/commands_crud/query_cursors_aggregate--1.10-0.sql"
-#include "udfs/commands_crud/query_cursors_single_page--1.10-0.sql"
+#include "pg_documentdb/sql/udfs/commands_crud/query_cursors_single_page--0.10-0.sql"
 
 /*
  * Region: RBAC Metadata
