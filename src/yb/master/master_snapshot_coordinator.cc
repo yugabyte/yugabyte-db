@@ -94,6 +94,39 @@ DEFINE_RUNTIME_AUTO_bool(
     "snapshots covering the object. Snapshots also get created with a TTL when "
     "this flag value is true.");
 
+DEFINE_RUNTIME_int64(max_concurrent_snapshot_rpcs, -1,
+    "Maximum number of tablet snapshot RPCs that can be outstanding. "
+    "Only used if its value is >= 0. If its value is 0 then it means that "
+    "INT_MAX number of snapshot rpcs can be concurrent. "
+    "If its value is < 0 then the max_concurrent_snapshot_rpcs_per_tserver gflag and "
+    "the number of TServers in the primary cluster are used to determine "
+    "the number of maximum number of tablet snapshot RPCs that can be outstanding.");
+
+DEFINE_RUNTIME_int64(max_concurrent_snapshot_rpcs_per_tserver, 1,
+    "Maximum number of tablet snapshot RPCs per tserver that can be outstanding. "
+    "Only used if the value of the gflag max_concurrent_snapshot_rpcs is < 0. "
+    "When used it is multiplied with the number of TServers in the active cluster "
+    "(not read-replicas) to obtain the total maximum concurrent snapshot RPCs. If "
+    "the cluster config is not found and we are not able to determine the number of "
+    "live tservers then the total maximum concurrent snapshot RPCs is just the "
+    "value of this flag.");
+
+DEFINE_RUNTIME_int64(max_concurrent_restoration_rpcs, -1,
+    "Maximum number of tablet restoration rpcs that can be outstanding. "
+    "Only used if its value is >= 0. Value of 0 means that "
+    "INT_MAX number of restoration rpcs can be concurrent."
+    "If its value is < 0 then max_concurrent_restoration_rpcs_per_tserver "
+    "gflag is used.");
+
+DEFINE_RUNTIME_int64(max_concurrent_restoration_rpcs_per_tserver, 1,
+    "Maximum number of tablet restoration rpcs per tserver that can be outstanding."
+    "Only used if the value of gflag max_concurrent_restoration_rpcs is < 0. "
+    "When used it is multiplied with the number of TServers in the active cluster "
+    "(not read-replicas) to obtain the total maximum concurrent restoration rpcs. If "
+    "the cluster config is not found and we are not able to determine the number of "
+    "live tservers then the total maximum concurrent restoration RPCs is just the "
+    "value of this flag.");
+
 DEFINE_test_flag(int32, delay_sys_catalog_restore_on_followers_secs, 0,
                  "Sleep for these many seconds on followers during sys catalog restore");
 
@@ -147,12 +180,13 @@ struct NoOp {
 template <class Collection, class PostProcess = NoOp>
 auto MakeDoneCallback(
     std::mutex* mutex, const Collection* collection, const typename Collection::key_type& key,
-    const TabletId& tablet_id, const PostProcess& post_process = PostProcess()) {
+    const TabletId& tablet_id, int64_t serial_no, const PostProcess& post_process = PostProcess()) {
   struct DoneFunctor {
     std::mutex& mutex;
     const Collection& collection;
     typename Collection::key_type key;
     TabletId tablet_id;
+    int64_t serial_no;
     PostProcess post_process;
 
     void operator()(Result<const tserver::TabletSnapshotOpResponsePB&> resp) const {
@@ -163,8 +197,9 @@ auto MakeDoneCallback(
         return;
       }
 
-      (**it).Done(tablet_id, ResultToStatus(resp));
-      post_process(it->get(), &lock);
+      if ((**it).Done(tablet_id, serial_no, ResultToStatus(resp))) {
+        post_process(it->get(), &lock);
+      }
     }
   };
 
@@ -173,6 +208,7 @@ auto MakeDoneCallback(
       .collection = *collection,
       .key = key,
       .tablet_id = tablet_id,
+      .serial_no = serial_no,
       .post_process = post_process,
   };
 }
@@ -339,6 +375,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Status Load(tablet::Tablet* tablet) {
+    VLOG_WITH_FUNC(1);
     std::lock_guard lock(mutex_);
     RETURN_NOT_OK(LoadSnapshotEntry(tablet));
     RETURN_NOT_OK(LoadEntryOfType<SnapshotScheduleOptionsPB>(
@@ -933,6 +970,8 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   void SysCatalogLoaded(int64_t leader_term) {
+    VLOG_WITH_FUNC(1) << "leader_term: " << leader_term;
+
     if (leader_term == OpId::kUnknownTerm) {
       // Do nothing on follower.
       return;
@@ -942,6 +981,10 @@ class MasterSnapshotCoordinator::Impl {
     vector<RestorationData> postponed_restores;
     {
       std::lock_guard lock(mutex_);
+      for (auto& snapshot : snapshots_) {
+        snapshot->ResetRunning();
+      }
+
       // TODO(pitr) cancel restorations.
       for (const auto& restoration : restorations_) {
         auto snapshot = ValidateRestoreAndGetSnapshot(restoration.get());
@@ -2099,8 +2142,9 @@ class MasterSnapshotCoordinator::Impl {
     } else if (snapshot->ShouldAddToCoveringMap()) {
       AddCoveringSnapshot(*snapshot);
     }
-    VLOG(2) << "Snapshot to covering tablets dependency map "
-            << AsString(tablet_to_covering_snapshots_);
+    VLOG_WITH_FUNC(2)
+        << snapshot_id << ", snapshot to covering tablets dependency map "
+        << AsString(tablet_to_covering_snapshots_);
   }
 
   bool ShouldRetain(
@@ -2204,8 +2248,12 @@ template <>
 void MasterSnapshotCoordinator::Impl::ScheduleOperation<TabletSnapshotOperation>(
     const TabletSnapshotOperation& operation, const TabletInfoPtr& tablet_info,
     int64_t leader_term) {
+  VLOG_WITH_FUNC(3)
+      << "operation: " << operation.ToString() << ", tablet: " << tablet_info->ToString()
+      << ", leader term: " << leader_term;
+
   auto callback = MakeDoneCallback(
-      &mutex_, &snapshots_, operation.snapshot_id, operation.tablet_id,
+      &mutex_, &snapshots_, operation.snapshot_id, operation.tablet_id, operation.serial_no,
       std::bind(&Impl::UpdateSnapshot, this, _1, leader_term, _2));
   if (!tablet_info) {
     callback(STATUS_EC_FORMAT(
@@ -2238,7 +2286,7 @@ void MasterSnapshotCoordinator::Impl::ScheduleOperation<TabletRestoreOperation>(
     const TabletRestoreOperation& operation, const TabletInfoPtr& tablet_info,
     int64_t leader_term) {
   auto callback = MakeDoneCallback(
-      &mutex_, &restorations_, operation.restoration_id, operation.tablet_id,
+      &mutex_, &restorations_, operation.restoration_id, operation.tablet_id, operation.serial_no,
       std::bind(&Impl::FinishRestoration, this, _1, leader_term));
   if (!tablet_info) {
     callback(STATUS_EC_FORMAT(

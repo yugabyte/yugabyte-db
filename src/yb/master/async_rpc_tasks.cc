@@ -285,7 +285,8 @@ MonitoredTaskState RetryingRpcTask::AbortAndReturnPrevState(
     auto expected = prev_state;
     if (state_.compare_exchange_weak(expected, MonitoredTaskState::kAborted)) {
       VLOG_WITH_PREFIX_AND_FUNC(1)
-          << "Aborted with: " << status << ", prev state: " << AsString(prev_state);
+          << "Aborted with: " << status << ", prev state: " << AsString(prev_state)
+          << ", call_task_finisher: " << call_task_finisher;
       AbortIfScheduled();
       if (call_task_finisher) {
         Finished(status);

@@ -30,8 +30,7 @@
 #include "yb/util/status.h"
 #include "yb/util/tostring.h"
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 YB_STRONGLY_TYPED_BOOL(ForClient);
 
@@ -63,7 +62,7 @@ class StateWithTablets {
   bool AllTabletsDone() const;
   bool PassedSinceCompletion(const MonoDelta& duration) const;
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state);
-  void Done(const TabletId& tablet_id, Status status);
+  bool Done(const TabletId& tablet_id, int64_t serial, Status status);
   bool AllInState(SysSnapshotEntryPB::State state) const;
   bool HasInState(SysSnapshotEntryPB::State state);
   void SetInitialTabletsState(SysSnapshotEntryPB::State state);
@@ -111,20 +110,24 @@ class StateWithTablets {
   template <class Functor>
   void DoPrepareOperations(const Functor& functor) {
     auto& running_index = tablets_.get<RunningTag>();
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "tablets: " << AsString(running_index);
     for (auto it = running_index.begin(); it != running_index.end();) {
-      if (it->running) {
+      if (it->running_task_serial_no != 0) {
         // Could exit here, because we have already iterated over all non-running operations.
         break;
       }
-      bool should_run = it->state == initial_state_ && functor(*it);
+      auto running_serial = NextTaskSerialNo();
+      bool should_run = it->state == initial_state_ && functor(*it, running_serial);
       if (should_run) {
-        VLOG(4) << "Prepare operation for " << it->ToString();
+        VLOG_WITH_PREFIX_AND_FUNC(4) << "Prepare operation for " << it->ToString();
 
         // Here we modify indexed value, so iterator could be advanced to the next element.
         // Taking next before modify.
         auto new_it = it;
         ++new_it;
-        running_index.modify(it, [](TabletData& data) { data.running = true; });
+        running_index.modify(it, [running_serial](TabletData& data) {
+          data.running_task_serial_no = running_serial;
+        });
         it = new_it;
       } else {
         ++it;
@@ -150,6 +153,8 @@ class StateWithTablets {
     return status;
   }
 
+  virtual size_t ResetRunning();
+
   bool Empty() {
     return tablets().empty();
   }
@@ -159,7 +164,7 @@ class StateWithTablets {
     TabletId id;
     SysSnapshotEntryPB::State state;
     Status last_error;
-    bool running = false;
+    int64_t running_task_serial_no = 0;
     bool aborted = false;
 
     TabletData(const TabletId& id_, SysSnapshotEntryPB::State state_)
@@ -167,7 +172,8 @@ class StateWithTablets {
     }
 
     std::string ToString() const {
-      return YB_STRUCT_TO_STRING(id, state, last_error, running);
+      return YB_STRUCT_TO_STRING(
+          id, (state, SysSnapshotEntryPB::State_Name(state)), last_error, running_task_serial_no);
     }
   };
 
@@ -183,7 +189,7 @@ class StateWithTablets {
       >,
       boost::multi_index::ordered_non_unique<
         boost::multi_index::tag<RunningTag>,
-        boost::multi_index::member<TabletData, bool, &TabletData::running>
+        boost::multi_index::member<TabletData, int64_t, &TabletData::running_task_serial_no>
       >
     >
   > Tablets;
@@ -200,6 +206,8 @@ class StateWithTablets {
   SysSnapshotEntryPB::State initial_state_;
 
  private:
+  static int64_t NextTaskSerialNo();
+
   void CheckCompleteness();
 
   SnapshotCoordinatorContext& context_;
@@ -212,5 +220,4 @@ class StateWithTablets {
   CoarseTimePoint complete_at_;
 };
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

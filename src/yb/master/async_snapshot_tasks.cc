@@ -193,6 +193,7 @@ AsyncTabletSnapshotOp::HandleReplicaLookupFailure(const Status& replica_lookup_s
 }
 
 void AsyncTabletSnapshotOp::Finished(const Status& status) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "status: " << status << ", resp: " << AsString(resp_);
   if (!callback_) {
     return;
   }
