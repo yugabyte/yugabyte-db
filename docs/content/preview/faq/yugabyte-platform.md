@@ -49,7 +49,7 @@ You install YugabyteDB Anywhere using a standalone installer that you download f
 
 {{< note title="Replicated end of life" >}}
 
-YugabyteDB Anywhere was previously installed using Replicated. However, YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
+YugabyteDB Anywhere was previously installed using Replicated. However, YugabyteDB Anywhere ended support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
 
 {{< /note >}}
 
@@ -107,7 +107,7 @@ If you have configured YugabyteDB Anywhere to work with any public cloud (such a
 You need the following:
 
 - One server to install YugabyteDB Anywhere on.
-- A minimum number of servers for the data nodes as determined by the replication factor (RF). For example, one server for RF=1, and 3 servers in case of RF=3.
+- A minimum number of servers for the data nodes as determined by the [replication factor](../../architecture/key-concepts/#replication-factor-rf) (RF). For example, one server for RF=1, and 3 servers in case of RF=3.
 - A server to run the load tests on.
 
 Typically, you can saturate a database server (or three in case of RF=3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. YugabyteDB ships with some synthetic load-testers, which can simulate a few different workloads. For example, one load tester simulates a time series or IoT-style workload and another does a stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, you can use that.
