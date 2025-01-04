@@ -44,6 +44,8 @@ Options:
     we believe "address already in use" only happens a small percentage of the time.
   --test-args "<arguments>"
     Pass additional arguments to the test.
+  --vmodule "<arguments>"
+    The same as --test-args --vmodule=<arguments>. To simplify passing vmodule to the test.
   --clang
     Use binaries built with Clang (e.g. to distinguish between debug/release builds made with
     gcc vs. clang). If YB_COMPILER_TYPE is set, it will take precedence, and this option will not
@@ -156,6 +158,10 @@ while [[ $# -gt 0 ]]; do
     ;;
     --test-args)
       more_test_args+=" $2"
+      shift
+    ;;
+    --vmodule)
+      more_test_args+=" --vmodule=$2"
       shift
     ;;
     --clang)
