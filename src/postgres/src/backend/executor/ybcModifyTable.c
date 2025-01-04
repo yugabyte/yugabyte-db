@@ -544,7 +544,7 @@ YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
 	/*
 	 * TODO(jason): figure out how to enable triggers.
 	 */
-	return (yb_insert_on_conflict_read_batch_size > 1 &&
+	return (yb_insert_on_conflict_read_batch_size > 0 &&
 			IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 			!IsCatalogRelation(resultRelInfo->ri_RelationDesc) &&
 			!(resultRelInfo->ri_TrigDesc &&
