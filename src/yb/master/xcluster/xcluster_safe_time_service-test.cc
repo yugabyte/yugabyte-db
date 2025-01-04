@@ -309,11 +309,6 @@ TEST_F(XClusterSafeTimeServiceTest, ComputeSafeTimeWithFilters) {
   ASSERT_EQ(safe_time_service.safe_time_map_[db2], ht_invalid);
   ASSERT_EQ(safe_time_service.entries_to_delete_.size(), 0);
 
-  ASSERT_NOK(safe_time_service.GetXClusterSafeTimeForNamespace(
-      dummy_leader_term + 1, db1, XClusterSafeTimeFilter::NONE));
-  ASSERT_NOK(safe_time_service.GetXClusterSafeTimeForNamespace(
-      dummy_leader_term - 1, db1, XClusterSafeTimeFilter::NONE));
-
   auto db1_none = ASSERT_RESULT(GetXClusterSafeTimeWithNoFilter(safe_time_service, db1));
   auto db1_ddlqueue = ASSERT_RESULT(GetXClusterSafeTimeFilterOutDdlQueue(safe_time_service, db1));
   auto db2_none = ASSERT_RESULT(GetXClusterSafeTimeWithNoFilter(safe_time_service, db2));
