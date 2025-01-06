@@ -32,9 +32,9 @@ Stable release versions use the numbering format `YYYY.N.MAINTENANCE.PATCH` as f
   - For YugabyteDB, backward compatible bug fixes are included.
   - For YugabyteDB Anywhere, functionality may be added in a backward compatible manner.
 
-- `PATCH` - Includes bug fixes and revisions that do not break backward compatibility.
+- `PATCH` - Includes bug fixes and revisions that do not break backward compatibility. Patch releases are typically for specific issues, and only applicable to specific customers.
 
-On rare occasions, YugabyteDB may issue a hot fix release. Hot fix releases are for specific point issues, and usually offered only to specific customers. Hot fix releases append an additional number to the release versioning convention as `YYYY.N.MAINTENANCE.PATCH.HOTFIX`.
+(Prior to version 2024.1, stable releases used a convention similar to [preview releases](#preview-releases), except the MINOR integer is always even.)
 
 {{< note title="Important" >}}
 
