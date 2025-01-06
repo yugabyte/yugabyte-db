@@ -24,6 +24,8 @@ export type YBTimeFormats = typeof YBTimeFormats[keyof typeof YBTimeFormats];
 
 export const YB_INPUT_TIMESTAMP_FORMAT = 'ddd MMM DD HH:mm:ss z YYYY';
 
+export const YB_LIVE_QUERY_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH:mm:ss:SSSZ';
+
 /**
  * Converts date to RFC3339 format("yyyy-MM-dd'T'HH:mm:ss'Z'")
  * @param d Date
@@ -60,9 +62,10 @@ export const convertToISODateString = (d: Date) => {
 export const formatDatetime = (
   date: moment.MomentInput,
   timeFormat: YBTimeFormats = YBTimeFormats.YB_DEFAULT_TIMESTAMP,
-  timezone?: string
+  timezone?: string,
+  inputTimeFormat?: string
 ): string => {
-  const momentObj = getMomentObject(date);
+  const momentObj = getMomentObject(date, inputTimeFormat);
   return timezone ? momentObj.tz(timezone).format(timeFormat) : momentObj.format(timeFormat);
 };
 
@@ -92,10 +95,10 @@ export const getDiffHours = (startDateTime: any, endDateTime: any) => {
   return diffHours;
 };
 
-const getMomentObject = (date: moment.MomentInput) => {
+const getMomentObject = (date: moment.MomentInput, inputTimeFormat = YB_INPUT_TIMESTAMP_FORMAT) => {
   //charts use linux epoch as timestamps
-  return !isInteger(date) && moment(date, YB_INPUT_TIMESTAMP_FORMAT).isValid()
-    ? moment(date, YB_INPUT_TIMESTAMP_FORMAT)
+  return !isInteger(date) && moment(date, inputTimeFormat).isValid()
+    ? moment(date, inputTimeFormat)
     : moment(date);
 };
 
