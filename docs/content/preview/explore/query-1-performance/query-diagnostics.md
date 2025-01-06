@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-Use query diagnostics to troubleshoot and analyze database query performance issues. You can capture and export detailed diagnostic information across multiple dimensions, and use this information to identify and resolve database query problems.
+Use query diagnostics to capture and export detailed diagnostic information across multiple dimensions, and use this information to identify and resolve database query problems.
 
 Query diagnostics collects data about a particular query, over several executions of the query, over the duration of a specified diagnostics interval. It also manages in-flight requests during this interval, and transfers the collected data to the file system for storage and future analysis.
 
