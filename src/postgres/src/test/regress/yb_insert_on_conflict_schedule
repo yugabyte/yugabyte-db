@@ -2,3 +2,4 @@
 # which emits oid.
 test: yb_insert_on_conflict_multiplan
 test: yb_insert_on_conflict
+test: yb_insert_on_conflict_with

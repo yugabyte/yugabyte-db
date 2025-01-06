@@ -276,11 +276,10 @@ func init() {
 			"in the following format: "+
 			"\"--regions 'region-1-for-primary-cluster,region-2-for-primary-cluster' "+
 			"--regions 'region-1-for-read-replica,region-2-for-read-replica'\". "+
-			"Defaults to fetching the region from the provider. "+
-			"Throws an error if multiple regions are present.")
+			"Defaults to fetching the regions from the provider.")
 	createUniverseCmd.Flags().StringArray("preferred-region", []string{},
 		"[Optional] Preferred region to place the node of the cluster in. "+
-			"Provide preferred regions for each cluster as a separate flag. Defaults to null.")
+			"Provide preferred regions for each cluster as a separate flag. (default [])")
 
 	createUniverseCmd.Flags().String("master-gflags", "",
 		"[Optional] Master GFlags in map (JSON or YAML) format. "+
@@ -357,6 +356,11 @@ func init() {
 		"[Optional] CPU core count of the kubernetes tserver node. Provide k8s-tserver-cpu-core-count "+
 			"for each cluster as a separate flag or as comma separated values.")
 
+	createUniverseCmd.Flags().StringArray("exposing-service", []string{},
+		"[Optional] Exposing service for the universe clusters. Can be unique for each cluster. "+
+			"Provide the exposing service for each cluster as a separate flag. "+
+			"Allowed values: none, exposed, unexposed. Defaults to none.")
+
 	// if dedicated nodes is set to true
 	createUniverseCmd.Flags().String("dedicated-master-instance-type", "",
 		"[Optional] Instance Type for the dedicated master nodes in the primary cluster."+
@@ -393,6 +397,11 @@ func init() {
 	createUniverseCmd.Flags().Float64Slice("k8s-master-cpu-core-count", []float64{2, 2},
 		"[Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count "+
 			"for each cluster as a separate flag or as comma separated values.")
+
+	createUniverseCmd.Flags().Bool("use-spot-instance", false,
+		"[Optional] Use spot instances for cloud provider based universe nodes. (default false)")
+	createUniverseCmd.Flags().Float64("spot-price", 0.0,
+		"[Optional] Max price willing to pay for spot instances.")
 
 	// Advanced configuration // taken only for Primary cluster
 	createUniverseCmd.Flags().Bool("assign-public-ip", true,
@@ -434,7 +443,7 @@ func init() {
 
 	createUniverseCmd.Flags().Bool("enable-ipv6", false,
 		"[Optional] Enable IPV6 networking for connections between the DB Servers, supported "+
-			"only for Kubernetes universes (default false) ")
+			"only for Kubernetes universes. (default false)")
 	createUniverseCmd.Flags().String("yb-db-version", "",
 		"[Optional] YugabyteDB Software Version, defaults to the latest available version. "+
 			"Run \"yba yb-db-version list\" to find the latest version.")
@@ -549,6 +558,9 @@ func init() {
 	v1.BindPFlag("yql-server-rpc-port", createUniverseCmd.Flags().Lookup("yql-server-rpc-port"))
 	v1.BindPFlag("ysql-server-http-port", createUniverseCmd.Flags().Lookup("ysql-server-http-port"))
 	v1.BindPFlag("ysql-server-rpc-port", createUniverseCmd.Flags().Lookup("ysql-server-rpc-port"))
+	v1.BindPFlag("use-spot-instance", createUniverseCmd.Flags().Lookup("use-spot-instance"))
+	v1.BindPFlag("spot-price", createUniverseCmd.Flags().Lookup("spot-price"))
+	v1.BindPFlag("exposing-service", createUniverseCmd.Flags().Lookup("exposing-service"))
 
 }
 

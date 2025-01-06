@@ -1,4 +1,5 @@
 <img src="https://cloud.yugabyte.com/logo-big.png" align="center" alt="YugabyteDB" width="50%"/>
+<img referrerpolicy="no-referrer-when-downgrade" src="https://static.scarf.sh/a.png?x-pxid=0969fc8d-7684-4250-9cbd-4249c3ebb47b" />
 
 ---------------------------------------
 

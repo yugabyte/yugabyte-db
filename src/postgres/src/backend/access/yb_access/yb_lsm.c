@@ -72,7 +72,7 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Missing base table ybctid in index write request")));
+				 errmsg("missing base table ybctid in index write request")));
 	}
 
 	bool has_null_attr = false;
@@ -150,7 +150,7 @@ doAssignForIdxUpdate(YBCPgStatement stmt,
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Missing base table ybctid in index write request")));
+				 errmsg("missing base table ybctid in index write request")));
 	}
 
 	bool has_null_attr = false;

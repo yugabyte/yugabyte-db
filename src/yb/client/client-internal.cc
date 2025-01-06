@@ -2840,7 +2840,7 @@ Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
 }
 
 Status YBClient::Data::SetReplicationInfo(
-    YBClient* client, const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
+    YBClient* client, const ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
     bool* retry) {
   // If retry was not set, we'll wrap around in a retryable function.
   if (!retry) {
@@ -2879,7 +2879,7 @@ Status YBClient::Data::SetReplicationInfo(
 }
 
 Status YBClient::Data::ValidateReplicationInfo(
-    const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline) {
+    const ReplicationInfoPB& replication_info, CoarseTimePoint deadline) {
   // Validate the request config.
   ValidateReplicationInfoRequestPB req;
   ValidateReplicationInfoResponsePB resp;

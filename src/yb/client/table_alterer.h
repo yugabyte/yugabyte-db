@@ -80,7 +80,7 @@ class YBTableAlterer {
   YBTableAlterer* wait(bool wait);
 
   // Set replication info for the table.
-  YBTableAlterer* replication_info(const master::ReplicationInfoPB& ri);
+  YBTableAlterer* replication_info(const ReplicationInfoPB& ri);
 
   // The altering of this table is dependent upon the success of this higher-level transaction.
   YBTableAlterer* part_of_transaction(const TransactionMetadata* txn);
@@ -122,7 +122,7 @@ class YBTableAlterer {
 
   boost::optional<uint32_t> wal_retention_secs_;
 
-  std::unique_ptr<master::ReplicationInfoPB> replication_info_;
+  std::unique_ptr<ReplicationInfoPB> replication_info_;
 
   const TransactionMetadata* txn_ = nullptr;
 

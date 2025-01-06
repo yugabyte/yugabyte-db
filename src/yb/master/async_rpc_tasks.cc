@@ -285,7 +285,8 @@ MonitoredTaskState RetryingRpcTask::AbortAndReturnPrevState(
     auto expected = prev_state;
     if (state_.compare_exchange_weak(expected, MonitoredTaskState::kAborted)) {
       VLOG_WITH_PREFIX_AND_FUNC(1)
-          << "Aborted with: " << status << ", prev state: " << AsString(prev_state);
+          << "Aborted with: " << status << ", prev state: " << AsString(prev_state)
+          << ", call_task_finisher: " << call_task_finisher;
       AbortIfScheduled();
       if (call_task_finisher) {
         Finished(status);
@@ -606,6 +607,13 @@ void RetryingTSRpcTask::DoRpcCallback() {
       LOG_WITH_PREFIX(WARNING)
           << "TS " << target_ts_desc_->id() << " catalog lease expired. Assume backends"
           << " on that TS will be resolved to sufficient catalog version";
+      TransitionToCompleteState();
+    } else if (
+        type() == MonitoredTaskType::kObjectLock &&
+        !target_ts_desc_->HasLiveClientOperationLease()) {
+      LOG(WARNING) << "TS " << target_ts_desc_->id()
+                   << " no longer has a live lease. Ignoring this tserver for object lock task "
+                   << description() << ", rpc status: " << rpc_.status();
       TransitionToCompleteState();
     }
   } else if (state() != MonitoredTaskState::kAborted) {

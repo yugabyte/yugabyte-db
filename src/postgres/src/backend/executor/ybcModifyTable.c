@@ -539,14 +539,14 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 }
 
 bool
-YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo)
+YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
 {
 	/*
 	 * TODO(jason): figure out how to enable triggers.
 	 */
-	return (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+	return (yb_insert_on_conflict_read_batch_size > 0 &&
+			IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 			!IsCatalogRelation(resultRelInfo->ri_RelationDesc) &&
-			resultRelInfo->ri_BatchSize > 1 &&
 			!(resultRelInfo->ri_TrigDesc &&
 			  (resultRelInfo->ri_TrigDesc->trig_delete_after_row ||
 			   resultRelInfo->ri_TrigDesc->trig_delete_before_row ||
@@ -792,7 +792,7 @@ YBCExecuteDelete(Relation rel,
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				 errmsg("Missing column ybctid in DELETE request")));
+				 errmsg("missing column ybctid in DELETE request")));
 	}
 
 	MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
@@ -1017,7 +1017,7 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 	if (ybctid == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				 errmsg("Missing column ybctid in UPDATE request")));
+				 errmsg("missing column ybctid in UPDATE request")));
 
 	YBCBindTupleId(update_stmt, ybctid);
 
@@ -1299,7 +1299,7 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	if (ybctid == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				 errmsg("Missing column ybctid in UPDATE request")));
+				 errmsg("missing column ybctid in UPDATE request")));
 
 	YBCBindTupleId(update_stmt, ybctid);
 
@@ -1371,7 +1371,7 @@ YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	if (HEAPTUPLE_YBCTID(tuple) == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				 errmsg("Missing column ybctid in DELETE request to YugaByte database")));
+				 errmsg("missing column ybctid in DELETE request to Yugabyte database")));
 
 	/* Prepare DELETE statement. */
 	HandleYBStatus(YBCPgNewDelete(dboid,

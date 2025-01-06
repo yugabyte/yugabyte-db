@@ -600,7 +600,8 @@ func editGCPImageBundles(
 					if len(imageBundle["default"]) != 0 {
 						defaultBundle, err := strconv.ParseBool(imageBundle["default"])
 						if err != nil {
-							errMessage := err.Error() + " Setting default as false\n"
+							errMessage := err.Error() +
+								" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 							logrus.Errorln(
 								formatter.Colorize(errMessage, formatter.YellowColor),
 							)
@@ -654,7 +655,8 @@ func addGCPImageBundles(
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

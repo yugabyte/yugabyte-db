@@ -15,6 +15,8 @@
 #include "yb/util/metric_entity.h"
 
 #include "yb/gutil/map-util.h"
+
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
@@ -155,11 +157,62 @@ scoped_refptr<MetricEntity> MetricEntityPrototype::Instantiate(
 
 MetricEntity::MetricEntity(const MetricEntityPrototype* prototype,
                            std::string id, AttributeMap attributes,
+                           MetricsAggregator* metrics_aggregator,
                            std::shared_ptr<MemTracker> mem_tracker)
     : prototype_(prototype),
       id_(std::move(id)),
       attributes_(std::move(attributes)),
-      mem_tracker_(std::move(mem_tracker)) {
+      metrics_aggregator_(metrics_aggregator),
+      mem_tracker_(std::move(mem_tracker)),
+      default_aggregation_levels_(ReconstructPrometheusAttributes()) {}
+
+AggregationLevels MetricEntity::ReconstructPrometheusAttributes() {
+  std::lock_guard l(lock_);
+  return ReconstructPrometheusAttributesUnlocked();
+}
+
+AggregationLevels MetricEntity::ReconstructPrometheusAttributesUnlocked() {
+  auto default_aggregation_level = kNoLevel;
+
+  const std::string& prototype_type = prototype_->name();
+  prometheus_attributes_.clear();
+  if (prototype_type == "tablet" || prototype_type == "table") {
+    aggregation_id_for_pre_aggregation_ = attributes_["table_id"];
+    prometheus_attributes_["table_id"] = aggregation_id_for_pre_aggregation_;
+    prometheus_attributes_["table_name"] = attributes_["table_name"];
+    prometheus_attributes_["table_type"] = attributes_["table_type"];
+    prometheus_attributes_["namespace_name"] = attributes_["namespace_name"];
+    default_aggregation_level = kTableLevel | kServerLevel;
+  } else if (prototype_type == "server" || prototype_type == "cluster") {
+    prometheus_attributes_ = attributes_;
+    prometheus_attributes_["metric_id"] = id_;
+    default_aggregation_level = kServerLevel;
+  } else if (prototype_type == kXClusterMetricEntityName) {
+    aggregation_id_for_pre_aggregation_ = attributes_["stream_id"];
+    prometheus_attributes_["table_id"] = attributes_["table_id"];
+    prometheus_attributes_["table_name"] = attributes_["table_name"];
+    prometheus_attributes_["table_type"] = attributes_["table_type"];
+    prometheus_attributes_["namespace_name"] = attributes_["namespace_name"];
+    prometheus_attributes_["stream_id"] = aggregation_id_for_pre_aggregation_;
+    default_aggregation_level = kStreamLevel;
+  } else if (prototype_type == kCdcsdkMetricEntityName) {
+    aggregation_id_for_pre_aggregation_ = attributes_["stream_id"];
+    prometheus_attributes_["namespace_name"] = attributes_["namespace_name"];
+    prometheus_attributes_["stream_id"] = aggregation_id_for_pre_aggregation_;
+    auto it = attributes_.find("slot_name");
+    if (it != attributes_.end() && !it->second.empty()) {
+      prometheus_attributes_["slot_name"] = it->second;
+    }
+    default_aggregation_level = kStreamLevel;
+  } else if (prototype_type == "drive") {
+    prometheus_attributes_["drive_path"] = attributes_["drive_path"];
+    default_aggregation_level = kServerLevel;
+  }
+
+  prometheus_attributes_["metric_type"] = prototype_type;
+  prometheus_attributes_["exported_instance"] = FLAGS_metric_node_name;
+
+  return default_aggregation_level;
 }
 
 MetricEntity::~MetricEntity() = default;
@@ -268,93 +321,67 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 }
 
 Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
-                                        const MetricPrometheusOptions& opts,
-                                        std::vector<MetricMap>* owned_metric_map_holder) {
-  AttributeMap attrs;
-  MetricMap prometheus_metrics;
+                                        const MetricPrometheusOptions& opts) {
+  AttributeMap prometheus_attributes;
+  std::shared_ptr<const NonPreAggregatedMetrics> non_pre_aggregated_metrics;
   {
-    // Snapshot the metrics, attributes & external metrics callbacks in this metrics entity. (Note:
-    // this is not guaranteed to be a consistent snapshot).
-    std::lock_guard l(lock_);
-    prometheus_metrics = GetFilteredMetricMap(opts.general_metrics_allowlist);
-    if (prometheus_metrics.empty()) {
-      // None of the metrics are matched, or this entity has no metrics.
-      return Status::OK();
-    }
-    attrs = attributes_;
+    std::lock_guard lock(lock_);
+    RebuildNonPreAggregatedMetricsIfNeeded();
+    non_pre_aggregated_metrics = non_pre_aggregated_metrics_;
+    prometheus_attributes = prometheus_attributes_;
   }
 
-  AttributeMap prometheus_attr;
-  AggregationLevels aggregation_levels;
-  // Per tablet metrics come with tablet_id, as well as table_id and table_name attributes.
-  // We ignore the tablet part to squash at the table level.
-  if (strcmp(prototype_->name(), "tablet") == 0 || strcmp(prototype_->name(), "table") == 0) {
-    prometheus_attr["table_id"] = attrs["table_id"];
-    prometheus_attr["table_name"] = attrs["table_name"];
-    prometheus_attr["table_type"] = attrs["table_type"];
-    prometheus_attr["namespace_name"] = attrs["namespace_name"];
-    aggregation_levels = kTableLevel | kServerLevel;
-  } else if (
-      strcmp(prototype_->name(), "server") == 0 || strcmp(prototype_->name(), "cluster") == 0) {
-    prometheus_attr = attrs;
-    // This is tablet_id in the case of tablet, but otherwise names the server type, eg: yb.master
-    prometheus_attr["metric_id"] = id_;
-    aggregation_levels = kServerLevel;
-  } else if (strcmp(prototype_->name(), kXClusterMetricEntityName) == 0) {
-    prometheus_attr["table_id"] = attrs["table_id"];
-    prometheus_attr["table_name"] = attrs["table_name"];
-    prometheus_attr["table_type"] = attrs["table_type"];
-    prometheus_attr["namespace_name"] = attrs["namespace_name"];
-    prometheus_attr["stream_id"] = attrs["stream_id"];
-    aggregation_levels = kStreamLevel;
-  } else if (strcmp(prototype_->name(), kCdcsdkMetricEntityName) == 0) {
-    prometheus_attr["namespace_name"] = attrs["namespace_name"];
-    prometheus_attr["stream_id"] = attrs["stream_id"];
-    auto it = attrs.find("slot_name");
-    if (it != attrs.end() && !it->second.empty()) {
-      prometheus_attr["slot_name"] = it->second;
-    }
-    aggregation_levels = kStreamLevel;
-  } else if (strcmp(prototype_->name(), "drive") == 0) {
-    prometheus_attr["drive_path"] = attrs["drive_path"];
-    aggregation_levels = kServerLevel;
-  } else {
-    return Status::OK();
-  }
-  // This is currently tablet / table / server / cluster / cdc / cdcsdk / drive.
-  prometheus_attr["metric_type"] = prototype_->name();
-  prometheus_attr["exported_instance"] = FLAGS_metric_node_name;
-
-  for (const auto& [prototype, metric]  : prometheus_metrics) {
+  for (const auto& metric : *non_pre_aggregated_metrics) {
     WARN_NOT_OK(metric->WriteForPrometheus(
-        writer, prometheus_attr, opts, aggregation_levels),
-        Format("Failed to write $0 as Prometheus", prototype->name()));
-  }
-
-  if (owned_metric_map_holder) {
-    owned_metric_map_holder->push_back(std::move(prometheus_metrics));
+        writer, prometheus_attributes, opts, default_aggregation_levels_),
+        Format("Failed to write $0 as Prometheus", metric->prototype()->name()));
   }
 
   return Status::OK();
 }
 
-void MetricEntity::Remove(const MetricPrototype* proto) {
+void MetricEntity::RebuildNonPreAggregatedMetricsIfNeeded() {
+  if (!need_rebuild_non_pre_aggregated_metrics_) {
+    return;
+  }
+  auto new_non_pre_aggregated_metrics = std::make_shared<NonPreAggregatedMetrics>();
+  for (const auto& [prototype, metric] : metric_map_) {
+    if (!metric->IsPreAggregated()) {
+      new_non_pre_aggregated_metrics->push_back(metric);
+    }
+  }
+  // Cast to a const vector to enforce immutability
+  non_pre_aggregated_metrics_ = std::const_pointer_cast<const NonPreAggregatedMetrics>(
+      new_non_pre_aggregated_metrics);
+  need_rebuild_non_pre_aggregated_metrics_ = false;
+}
+
+void MetricEntity::RemoveFromMetricMap(const MetricPrototype* proto) {
   std::lock_guard l(lock_);
-  metric_map_.erase(proto);
+  auto it = metric_map_.find(proto);
+  if (it != metric_map_.end()) {
+    if (!it->second->IsPreAggregated()) {
+      need_rebuild_non_pre_aggregated_metrics_ = true;
+    }
+    metric_map_.erase(it);
+  }
 }
 
 void MetricEntity::RetireOldMetrics() {
   MonoTime now = MonoTime::Now();
 
   std::lock_guard l(lock_);
+  RebuildNonPreAggregatedMetricsIfNeeded();
   for (auto it = metric_map_.begin(); it != metric_map_.end();) {
     const scoped_refptr<Metric>& metric = it->second;
 
-    if (PREDICT_TRUE(!metric->HasOneRef())) {
-      // The metric is still in use. Note that, in the case of "NeverRetire()", the metric
-      // will have a ref-count of 2 because it is reffed by the 'never_retire_metrics_'
-      // collection.
-
+    // A metric is considered unused if it has only one reference held by 'metric_map_',
+    // or two references and is non-pre-aggregated, meaning it is held by both 'metric_map_' and
+    // 'non_pre_aggregated_metrics_'.  Note that, in the case of "NeverRetire()", the metric
+    // will have one extra ref-count because it is reffed by the 'never_retire_metrics_' collection.
+    bool metric_not_in_used =
+        metric->HasOneRef() || (metric->HasTwoRef() && !metric->IsPreAggregated());
+    if (PREDICT_TRUE(!metric_not_in_used)) {
       // Ensure that it is not marked for later retirement (this could happen in the case
       // that a metric is un-reffed and then re-reffed later by looking it up from the
       // registry).
@@ -382,8 +409,10 @@ void MetricEntity::RetireOldMetrics() {
       continue;
     }
 
-
     VLOG(2) << "Retiring metric " << it->first;
+    if (!metric->IsPreAggregated()) {
+      need_rebuild_non_pre_aggregated_metrics_ = true;
+    }
     metric_map_.erase(it++);
   }
 }
@@ -393,14 +422,28 @@ void MetricEntity::NeverRetire(const scoped_refptr<Metric>& metric) {
   never_retire_metrics_.push_back(metric);
 }
 
+std::string MetricEntity::LogPrefix() const {
+    return strings::Substitute("$0 Metric entity [$1]: ", prototype_->name(), id_);
+}
+
 void MetricEntity::SetAttributes(const AttributeMap& attrs) {
   std::lock_guard l(lock_);
   attributes_ = attrs;
+  ReconstructPrometheusAttributesUnlocked();
+  auto s = metrics_aggregator_->ReplaceAttributes(
+      prototype_->name(), aggregation_id_for_pre_aggregation_, prometheus_attributes_);
+  LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !s.ok() && !s.IsNotFound())
+      <<"Failed to replace prometheus attributes with error: " << s;
 }
 
 void MetricEntity::SetAttribute(const string& key, const string& val) {
   std::lock_guard l(lock_);
   attributes_[key] = val;
+  ReconstructPrometheusAttributesUnlocked();
+  auto s = metrics_aggregator_->ReplaceAttributes(
+      prototype_->name(), aggregation_id_for_pre_aggregation_, prometheus_attributes_);
+  LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !s.ok() && !s.IsNotFound())
+      <<"Failed to replace prometheus attributes with error: " << s;
 }
 
 void WriteRegistryAsJson(JsonWriter* writer) {
@@ -409,6 +452,28 @@ void WriteRegistryAsJson(JsonWriter* writer) {
 
 void RegisterMetricPrototype(const MetricPrototype* prototype) {
   MetricPrototypeRegistry::get()->AddMetric(prototype);
+}
+
+void ConvertToServerLevelAttributes(MetricEntity::AttributeMap* non_server_level_attributes) {
+  non_server_level_attributes->erase("table_id");
+  non_server_level_attributes->erase("table_name");
+  non_server_level_attributes->erase("table_type");
+  non_server_level_attributes->erase("namespace_name");
+}
+
+void AssertAttributesMatchExpectation(
+    const std::string& metric_name,
+    const std::string& aggregation_id,
+    const MetricEntity::AttributeMap& actual_attributes,
+    MetricEntity::AttributeMap expected_attributes) {
+  if (aggregation_id == kServerLevelAggregationId) {
+    ConvertToServerLevelAttributes(&expected_attributes);
+  }
+
+  LOG_IF(DFATAL, actual_attributes != expected_attributes)
+      << "Attribute match failed for metric " << metric_name << " with aggregation id "
+      << aggregation_id << ". Expected: " << AsString(expected_attributes) << ", Actual: "
+      << AsString(actual_attributes);
 }
 
 } // namespace yb

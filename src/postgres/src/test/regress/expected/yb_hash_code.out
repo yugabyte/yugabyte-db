@@ -15,13 +15,13 @@ SELECT yb_hash_code(1,2,'abc'::text);
 SELECT yb_hash_code('asdf');
 ERROR:  undefined datatype given to yb_hash_code
 SELECT yb_hash_code('{"a": {"b":{"c": "foo"}}}'::jsonb);
-ERROR:  Unsupported datatype given to yb_hash_code
-DETAIL:  Only types supported by HASH key columns are allowed
-HINT:  Use explicit casts to ensure input types are as desired
+ERROR:  unsupported datatype given to yb_hash_code
+DETAIL:  Only types supported by HASH key columns are allowed.
+HINT:  Use explicit casts to ensure input types are as desired.
 SELECT yb_hash_code(ARRAY[1,2,3]);
-ERROR:  Unsupported datatype given to yb_hash_code
-DETAIL:  Only types supported by HASH key columns are allowed
-HINT:  Use explicit casts to ensure input types are as desired
+ERROR:  unsupported datatype given to yb_hash_code
+DETAIL:  Only types supported by HASH key columns are allowed.
+HINT:  Use explicit casts to ensure input types are as desired.
 -- test basic filtering on different datatypes with yb_hash_code
 CREATE TABLE test_table_int (x INT PRIMARY KEY);
 INSERT INTO test_table_int SELECT generate_series(1, 20);

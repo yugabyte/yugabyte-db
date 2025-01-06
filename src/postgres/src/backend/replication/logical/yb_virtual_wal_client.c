@@ -223,8 +223,9 @@ InitVirtualWal(List *publication_names)
 			Assert(value);
 			if (value->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
 				ereport(ERROR,
-						(errmsg("Replica identity CHANGE is not supported for output "
-						"plugin pgoutput. Consider using output plugin yboutput instead.")));
+						(errmsg("replica identity CHANGE is not supported for output "
+								"plugin pgoutput"),
+						 errhint("Consider using output plugin yboutput instead.")));
 		}
 	}
 
@@ -625,8 +626,9 @@ YBCRefreshReplicaIdentities()
 		if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) == 0
 			&& desc->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
 			ereport(ERROR,
-						(errmsg("Replica identity CHANGE is not supported for output "
-						"plugin pgoutput. Consider using output plugin yboutput instead.")));
+					(errmsg("replica identity CHANGE is not supported for output "
+							"plugin pgoutput"),
+					 errhint("Consider using output plugin yboutput instead.")));
 
 		YBCPgReplicaIdentityDescriptor *value =
 			hash_search(MyReplicationSlot->data.yb_replica_identities,

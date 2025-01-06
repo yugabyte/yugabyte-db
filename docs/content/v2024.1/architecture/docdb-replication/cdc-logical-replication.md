@@ -18,9 +18,9 @@ Change data capture (CDC) in YugabyteDB provides technology to ensure that any c
 
 CDC using PostgreSQL protocol in YugabyteDB is based on the PostgreSQL Logical Replication model. The fundamental concept is that of the Replication Slot. A Replication Slot represents a stream of changes that can be replayed to the client in the order they were made on the origin server in a manner that preserves transactional consistency. This is the basis for the support for Transactional CDC in YugabyteDB. Where the strict requirements of Transactional CDC are not present, multiple replication slots can be used to stream changes from unrelated tables in parallel.
 
-{{<lead link="../../../explore/change-data-capture/">}}
+{{<lead link="../../../develop/change-data-capture/">}}
 
-See [Change data capture](../../../explore/change-data-capture/) in Explore for more details and limitations.
+See [Change data capture](../../../develop/change-data-capture/) for more details and limitations.
 
 {{</lead>}}
 
@@ -77,13 +77,13 @@ The walsender sends changes to the output plugin, which filters them according t
 <!--TODO (Siddharth): Fix the Links to the protocol section.
 
 {{< note title="Note" >}}
-Refer to [Replication Protocol](../../../explore/change-data-capture/using-logical-replication/#streaming-protocol) for more details.
+Refer to [Replication Protocol](../../../develop/change-data-capture/using-logical-replication/#streaming-protocol) for more details.
 
 {{< /note >}}
 
 {{< tip title="Explore" >}}
 
-See [Getting Started with Logical Replication](../../../explore/change-data-capture/using-logical-replication/getting-started/) to set up Logical Replication in YugabyteDB.
+See [Getting Started with Logical Replication](../../../develop/change-data-capture/using-logical-replication/getting-started/) to set up Logical Replication in YugabyteDB.
 
 {{< /tip >}}
 -->

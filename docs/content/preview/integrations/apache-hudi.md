@@ -14,7 +14,7 @@ type: docs
 
 The following tutorials describe how to integrate YugabyteDB with Apache Hudi:
 
-- Using real-time change data capture (CDC) with the [YugabyteDB gRPC connector](/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/) and [HoodieDeltaStreamer](https://hudi.apache.org/docs/0.10.0/hoodie_deltastreamer/) with Apache Spark.
+- Using real-time change data capture (CDC) with the [YugabyteDB gRPC connector](/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/) and [HoodieDeltaStreamer](https://hudi.apache.org/docs/0.10.0/hoodie_deltastreamer/) with Apache Spark.
 - Loading incremental data into YugabyteDB using HoodieDeltaStreamer and JDBC driver.
 
 ## Prerequisites
@@ -136,7 +136,7 @@ Launch the Confluent Control Center and verify the schema details and messages i
 
 Access the Control Center at `http://<docker_container_IP_or_VM>:9021`.
 
-Start [populating the data from YugabyteDB](/preview/explore/change-data-capture/using-logical-replication/get-started/#use-the-ysql-command-line-client), and ensure you are able to see the messages in **Control Center –> Topics –> Messages** (for example, `http://172.18.0.2:9021/clusters/management/topics/cdc.public.cdctest/message-viewer`).
+Start [populating the data from YugabyteDB](/preview/develop/change-data-capture/using-logical-replication/get-started/#use-the-ysql-command-line-client), and ensure you are able to see the messages in **Control Center –> Topics –> Messages** (for example, `http://172.18.0.2:9021/clusters/management/topics/cdc.public.cdctest/message-viewer`).
 
 ### Install Apache Hudi
 

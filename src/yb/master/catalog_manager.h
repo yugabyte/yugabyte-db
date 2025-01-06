@@ -155,11 +155,6 @@ using PlacementId = std::string;
 
 typedef std::unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
 
-typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
-  TablespaceIdToReplicationInfoMap;
-
-typedef std::unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
-
 typedef std::unordered_map<TableId, std::vector<TabletInfoPtr>> TableToTabletInfos;
 
 constexpr int32_t kInvalidClusterConfigVersion = 0;

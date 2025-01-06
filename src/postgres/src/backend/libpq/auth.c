@@ -474,7 +474,7 @@ ClientAuthentication(Port *port)
 			 */
 			ereport(FATAL,
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-					 errmsg("Cert authentication is not supported")));
+					 errmsg("cert authentication is not supported")));
 			return;
 		}
 
@@ -3730,7 +3730,7 @@ ybReadFromUrl(const char *url)
 	if (status) /* !ok */
 	{
 		ereport(LOG,
-				(errmsg("Fetching from JWT_JWKS_URL failed with error: %s",
+				(errmsg("fetching from JWT_JWKS_URL failed with error: %s",
 						YBCStatusMessageBegin(status))));
 		YBCFreeStatus(status);
 		return NULL;

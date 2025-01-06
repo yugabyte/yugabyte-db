@@ -1384,6 +1384,18 @@ Determines the window in milliseconds in which if a client has consumed the chan
 
 Default: `60000`
 
+##### --cdc_send_null_before_image_if_not_exists
+
+When true, the CDC service returns a null before-image if it is not able to find one.
+
+Default: `false`
+
+##### --cdcsdk_tablet_not_of_interest_timeout_secs
+
+Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
+Default: `14400` (4 hours)
+
 ## File expiration based on TTL flags
 
 ##### --tablet_enable_ttl_file_filter

@@ -15,9 +15,12 @@ package org.yb.ysqlconnmgr;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertTrue;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.SQLException;
@@ -157,6 +160,14 @@ protected void enableVersionMatchingAndRestartCluster(boolean higher_version_mat
 
   protected void enableVersionMatchingAndRestartCluster() throws Exception {
     enableVersionMatchingAndRestartCluster(true);
+  }
+
+  protected void disableWarmupModeAndRestartCluster() throws Exception {
+    warmup_random_mode = false;
+    destroyMiniCluster();
+    waitForProperShutdown();
+    createMiniCluster();
+    waitForDatabaseToStart();
   }
 
   protected static class Row implements Comparable<Row>, Cloneable {
@@ -483,12 +494,23 @@ protected void enableVersionMatchingAndRestartCluster(boolean higher_version_mat
     return true;
   }
 
+  protected static void executeQuery(Connection conn, String query, boolean shouldSucceed) {
+    try (Statement stmt = conn.createStatement()) {
+      ResultSet rs = stmt.executeQuery(query);
+      assertEquals(shouldSucceed, rs.next());
+      assertTrue("Expected the query to fail", shouldSucceed);
+    } catch (Exception e) {
+      LOG.info("Got an exception while executing the query", e);
+      assertFalse("Expected the query to succeed", shouldSucceed);
+    }
+  }
+
   protected abstract class TestConcurrently implements Runnable {
-    protected String dbName;
+    protected String oidObjName;
     public Boolean testSuccess;
 
-    public TestConcurrently(String dbName) {
-      this.dbName = dbName;
+    public TestConcurrently(String oidObjName) {
+      this.oidObjName = oidObjName;
       this.testSuccess = false;
     }
   }

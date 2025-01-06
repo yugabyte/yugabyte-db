@@ -41,6 +41,28 @@ if ! [[ "$1" == src/postgres/contrib/ltree/* ||
     | grep -vE 'while\((0|1)\)' \
     | sed 's/^/error:bad_spacing_after_if_else_for_while:/'
 fi
+# fn(arg1 /* bad */,
+#    arg2 /* bad */);
+# fn(arg1,	/* good */
+#    arg2);	/* good */
+# fn(arg1 /* acceptable */ ,
+#    arg2 /* acceptable */ );
+# TODO(jason): make this an error after running pgindent in the future.
+if ! [[ "$1" == src/postgres/src/interfaces/ecpg/preproc/output.c ]]; then
+  grep -nE '\s\*/' "$1" \
+    | grep -vE '\s\*/([\"[:space:]]|$)' \
+    | sed 's/^/warning:bad_spacing_after_comment:/'
+fi
+# fn(/* bad */ arg1,
+#    arg2);
+if ! [[ "$1" == src/postgres/src/include/snowball/libstemmer/header.h ||
+        "$1" == src/postgres/src/interfaces/ecpg/preproc/output.c ||
+        "$1" == src/postgres/src/interfaces/ecpg/preproc/preproc.c ||
+        "$1" == src/postgres/src/interfaces/ecpg/test/* ]]; then
+  grep -nE '/\*\s' "$1" \
+    | grep -vE '([\"[:space:]]|^\S+)/\*\s' \
+    | sed 's/^/error:bad_spacing_before_comment:/'
+fi
 
 # Comments
 grep -nE '//\s' "$1" \
@@ -139,15 +161,26 @@ if ! [[ "$1" == src/postgres/contrib/bloom/bloom.h ||
 fi
 
 # Logging
-grep -nE ',\s*errmsg(_plural)?\(' "$1" \
-  | sed 's/^/error:missing_linebreak_before_errmsg:/'
-grep -nE ',\s*errdetail(_plural)?\(' "$1" \
-  | sed 's/^/error:missing_linebreak_before_errdetail:/'
-grep -nE ',\s*errhint\(' "$1" \
-  | sed 's/^/error:missing_linebreak_before_errhint:/'
-grep -nE '\serrmsg(_plural)?\("[A-Z][a-z]' "$1" \
+if ! [[ "$1" == src/postgres/src/backend/utils/activity/pgstat_function.c ||
+        "$1" == src/postgres/src/include/postmaster/startup.h ]]; then
+  grep -nE ',\s*err(code|((msg|detail|hint)(_plural)?))\([^)]' "$1" \
+    | sed 's/^/error:missing_linebreak_before_err:/'
+fi
+grep -nE ',\s*\(err(code|((msg|detail|hint)(_plural)?))\([^)].*[^;]$' "$1" \
+  | sed 's/^/warning:missing_linebreak_before_paren_err:/'
+# The first grep misses cases such as
+#     ereport((somecondition ? ERROR : WARNING),
+# but at the time of writing, those cases don't have the issue this lint
+# warning is trying to catch.
+# Alternatively, if \w+ is substituted with .*, it would throw additional
+# errors on cases already caught by the above linebreak rules.
+grep -nEA1 '^\s*ereport\(\w+,$' "$1" \
+  | grep -E '^[0-9]+-\s+err(code|((msg|detail|hint)(_plural)?))\(' \
+  | sed -E 's/^([0-9]+)-/\1:/' \
+  | sed 's/^/warning:missing_paren_before_err:/'
+grep -nE '[([:space:]]errmsg(_plural)?\("[A-Z][-'"'"'a-z]*\s' "$1" \
   | sed 's/^/warning:likely_bad_capitalization_in_errmsg:/'
-grep -nE '\serrdetail(_plural)?\("[a-z]+[^_[:alnum:][:space:]]' "$1" \
+grep -nE '[([:space:]]errdetail(_plural)?\("[-'"'"'a-z]+[:[:space:]]' "$1" \
   | sed 's/^/warning:likely_bad_lowercase_in_errdetail:/'
-grep -nE '\serrhint\("[a-z]+[^_[:alnum:][:space:]]' "$1" \
+grep -nE '[([:space:]]errhint(_plural)?\("[-'"'"'a-z]+[:[:space:]]' "$1" \
   | sed 's/^/warning:likely_bad_lowercase_in_errhint:/'

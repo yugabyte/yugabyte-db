@@ -225,8 +225,10 @@ class MemTracker::TrackerMetrics {
   }
 
   void Init(const MemTracker& mem_tracker) {
+    // The GaugePrototype object is owned by the AtomicGauge and is also shared with
+    // MetricsAggregator or PrometheusWriter when the metric is being aggregated.
     metric_ = metric_entity_->FindOrCreateMetric<AtomicGauge<int64_t>>(
-        std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
+        std::shared_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
             metric_entity_->prototype().name(), mem_tracker.metric_name(),
             CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
             CreateMetricDescription(mem_tracker), yb::MetricLevel::kInfo)),
@@ -239,7 +241,7 @@ class MemTracker::TrackerMetrics {
   void operator=(const TrackerMetrics&) = delete;
 
   ~TrackerMetrics() {
-    metric_entity_->Remove(metric_->prototype());
+    metric_entity_->RemoveFromMetricMap(metric_->prototype());
   }
 
   MetricEntityPtr metric_entity_;

@@ -250,6 +250,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/integral_types.h"
 
@@ -259,10 +260,12 @@
 #include "yb/util/atomic.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/metrics_aggregator.h"
 #include "yb/util/metrics_writer.h"
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/striped64.h"
+#include "yb/util/threadpool.h"
 
 // Define a new entity type.
 //
@@ -454,18 +457,38 @@ class Metric : public RefCountedThreadSafe<Metric> {
 
   virtual Status WriteForPrometheus(
       PrometheusWriter* writer,
-      const MetricEntity::AttributeMap& attr,
+      const MetricEntity::AttributeMap& attributes,
       const MetricPrometheusOptions& opts,
-      const AggregationLevels aggregation_levels) const = 0;
+      AggregationLevels default_aggregation_levels) const = 0;
+
+  virtual Status SetUpPreAggregationForPrometheus(
+      MetricsAggregator* metrics_aggregator,
+      const MetricEntity::AttributeMap& attributes, AggregationLevels default_aggregation_levels,
+      const std::string& aggregation_id) {
+    return Status::OK();
+  }
+
+  virtual bool IsPreAggregated() const { return false; }
 
   const MetricPrototype* prototype() const { return prototype_; }
 
  protected:
+  // prototype is expected to live for the entire life of the program.
   explicit Metric(const MetricPrototype* prototype);
-  explicit Metric(std::unique_ptr<MetricPrototype> prototype);
+  // prototype is owned by the Metric object and is also shared with MetricsAggregator
+  // or PrometheusWriter during metric aggregation.
+  // prototype is expected to live until all metrics referencing it are destroyed.
+  explicit Metric(std::shared_ptr<MetricPrototype> prototype);
   virtual ~Metric();
 
-  std::unique_ptr<MetricPrototype> prototype_holder_;
+  Status DoWriteForPrometheus(
+      PrometheusWriter* writer,
+      const MetricEntity::AttributeMap& attributes,
+      AggregationLevels default_aggregation_levels,
+      int64_t value) const;
+
+  // This is non-null only when the metric prototype is created with OwningMetricPrototype.
+  std::shared_ptr<MetricPrototype> prototype_holder_;
   const MetricPrototype* const prototype_;
 
  private:
@@ -527,6 +550,10 @@ class MetricRegistry {
   // See MetricEntity::RetireOldMetrics().
   void RetireOldMetrics();
 
+  Status SubmitAMetricCleanupTask() const;
+
+  void RetireOldMetricsAndCleanupMetricAggregator() const;
+
   // Return the number of entities in this registry.
   size_t num_entities() const {
     std::lock_guard l(lock_);
@@ -550,7 +577,11 @@ class MetricRegistry {
 
   void get_all_prototypes(std::set<std::string>&) const;
 
+  MetricsAggregator* TEST_metrics_aggregator() { return &metrics_aggregator_; }
+
  private:
+  std::unique_ptr<ThreadPool> metric_cleanup_pool_;
+
   typedef std::unordered_map<std::string, scoped_refptr<MetricEntity> > EntityMap;
   EntityMap entities_ GUARDED_BY(lock_);
 
@@ -558,6 +589,8 @@ class MetricRegistry {
 
   // Set of tablets that have been shutdown. Protected by tablets_shutdown_lock_.
   std::set<std::string> tablets_shutdown_;
+
+  mutable MetricsAggregator metrics_aggregator_;
 
   // Returns whether a tablet has been shutdown.
   bool TabletHasBeenShutdown(const scoped_refptr<MetricEntity> entity) const;
@@ -680,7 +713,7 @@ class Gauge : public Metric {
       : Metric(prototype) {
   }
 
-  explicit Gauge(std::unique_ptr<MetricPrototype> prototype)
+  explicit Gauge(std::shared_ptr<MetricPrototype> prototype)
       : Metric(std::move(prototype)) {
   }
 
@@ -703,9 +736,10 @@ class StringGauge : public Gauge {
 
   Status WriteForPrometheus(
       PrometheusWriter* writer,
-      const MetricEntity::AttributeMap& attr,
+      const MetricEntity::AttributeMap& attributes,
       const MetricPrometheusOptions& opts,
-      const AggregationLevels aggregation_levels) const override;
+      AggregationLevels default_aggregation_levels) const override;
+
  protected:
   virtual void WriteValue(JsonWriter* writer) const override;
  private:
@@ -722,20 +756,35 @@ class AtomicGauge : public Gauge {
       : Gauge(proto), value_(initial_value) {
   }
 
-  AtomicGauge(std::unique_ptr<GaugePrototype<T>> proto, T initial_value)
+  AtomicGauge(std::shared_ptr<GaugePrototype<T>> proto, T initial_value)
       : Gauge(std::move(proto)), value_(initial_value) {}
+
+  ~AtomicGauge() {
+    if (aggregated_prometheus_value_holder_ != nullptr) {
+      aggregated_prometheus_value_holder_->IncrementBy(-value());
+    }
+  }
 
   T value() const {
     return static_cast<T>(value_.Load(kMemOrderRelease));
   }
   virtual void set_value(const T& value) {
-    value_.Store(static_cast<int64_t>(value), kMemOrderNoBarrier);
+    int64_t new_value = static_cast<int64_t>(value);
+    int64_t old_value = value_.Exchange(new_value, kMemOrderNoBarrier);
+
+    if (aggregated_prometheus_value_holder_ != nullptr) {
+      aggregated_prometheus_value_holder_->IncrementBy(new_value - old_value);
+    }
   }
   void Increment() {
-    value_.IncrementBy(1, kMemOrderNoBarrier);
+    IncrementBy(1);
   }
   virtual void IncrementBy(int64_t amount) {
     value_.IncrementBy(amount, kMemOrderNoBarrier);
+
+    if (aggregated_prometheus_value_holder_ != nullptr) {
+      aggregated_prometheus_value_holder_->IncrementBy(amount);
+    }
   }
   void Decrement() {
     IncrementBy(-1);
@@ -746,18 +795,38 @@ class AtomicGauge : public Gauge {
 
   Status WriteForPrometheus(
       PrometheusWriter* writer,
-      const MetricEntity::AttributeMap& attr,
+      const MetricEntity::AttributeMap& attributes,
       const MetricPrometheusOptions& opts,
-      const AggregationLevels aggregation_levels) const override {
-    if (prototype_->level() < opts.level) {
+      AggregationLevels default_aggregation_levels) const override {
+    if (IsPreAggregated() || prototype_->level() < opts.level) {
       return Status::OK();
     }
 
-    return writer->WriteSingleEntry(attr, prototype_->name(), value(),
-                                    prototype()->aggregation_function(),
-                                    aggregation_levels,
-                                    MetricType::PrometheusType(prototype_->type()),
-                                    prototype_->description());
+    return DoWriteForPrometheus(writer, attributes, default_aggregation_levels, value());
+  }
+
+  Status SetUpPreAggregationForPrometheus(
+      MetricsAggregator* metrics_aggregator,
+      const MetricEntity::AttributeMap& attributes,
+      AggregationLevels default_aggregation_levels,
+      const std::string& aggregation_id) override {
+    if (!metrics_aggregator->IsPreAggregationSupported(prototype_, default_aggregation_levels)) {
+      return Status::OK();
+    }
+
+    aggregated_prometheus_value_holder_ =
+        metrics_aggregator->CreateOrFindPreAggregatedMetricValueHolder(
+            attributes, prototype_holder_, prototype_->name(),
+            default_aggregation_levels, prototype_->entity_type(), aggregation_id,
+            MetricType::PrometheusType(prototype_->type()), prototype_->description());
+
+    aggregated_prometheus_value_holder_->IncrementBy(value());
+
+    return Status::OK();
+  }
+
+  bool IsPreAggregated() const override {
+    return aggregated_prometheus_value_holder_ != nullptr;
   }
 
  protected:
@@ -765,6 +834,8 @@ class AtomicGauge : public Gauge {
     writer->Value(value());
   }
   AtomicInt<int64_t> value_;
+
+  std::shared_ptr<AtomicInt<int64_t>> aggregated_prometheus_value_holder_;
  private:
   DISALLOW_COPY_AND_ASSIGN(AtomicGauge);
 };
@@ -848,18 +919,14 @@ class FunctionGauge : public Gauge {
 
   Status WriteForPrometheus(
       PrometheusWriter* writer,
-      const MetricEntity::AttributeMap& attr,
+      const MetricEntity::AttributeMap& attributes,
       const MetricPrometheusOptions& opts,
-      const AggregationLevels aggregation_levels) const override {
+      AggregationLevels default_aggregation_levels) const override {
     if (prototype_->level() < opts.level) {
       return Status::OK();
     }
 
-    return writer->WriteSingleEntry(attr, prototype_->name(), value(),
-                                    prototype()->aggregation_function(),
-                                    aggregation_levels,
-                                    MetricType::PrometheusType(prototype_->type()),
-                                    prototype_->description());
+    return DoWriteForPrometheus(writer, attributes, default_aggregation_levels, value());
   }
 
  private:
@@ -907,9 +974,17 @@ class Counter : public Metric {
 
   Status WriteForPrometheus(
       PrometheusWriter* writer,
-      const MetricEntity::AttributeMap& attr,
+      const MetricEntity::AttributeMap& attributes,
       const MetricPrometheusOptions& opts,
-      const AggregationLevels aggregation_levels) const override;
+      AggregationLevels default_aggregation_levels) const override;
+
+  Status SetUpPreAggregationForPrometheus(
+      MetricsAggregator* metrics_aggregator,
+      const MetricEntity::AttributeMap& attributes,
+      AggregationLevels default_aggregation_levels,
+      const std::string& aggregation_id) override;
+
+  bool IsPreAggregated() const override;
 
  private:
   FRIEND_TEST(MetricsTest, SimpleCounterTest);
@@ -917,9 +992,14 @@ class Counter : public Metric {
   friend class MetricEntity;
 
   explicit Counter(const CounterPrototype* proto);
-  explicit Counter(std::unique_ptr<CounterPrototype> proto);
+  explicit Counter(std::shared_ptr<CounterPrototype> proto);
+
+  ~Counter();
 
   LongAdder value_;
+
+  std::shared_ptr<AtomicInt<int64_t>> aggregated_prometheus_value_holder_;
+
   DISALLOW_COPY_AND_ASSIGN(Counter);
 };
 
@@ -954,9 +1034,9 @@ class MillisLag : public Metric {
       const MetricJsonOptions& opts) const override;
   virtual Status WriteForPrometheus(
       PrometheusWriter* writer,
-      const MetricEntity::AttributeMap& attr,
+      const MetricEntity::AttributeMap& attributes,
       const MetricPrometheusOptions& opts,
-      const AggregationLevels aggregation_levels) const override;
+      AggregationLevels default_aggregation_levels) const override;
 
  private:
   friend class MetricEntity;
@@ -988,18 +1068,14 @@ class AtomicMillisLag : public MillisLag {
 
   Status WriteForPrometheus(
       PrometheusWriter* writer,
-      const MetricEntity::AttributeMap& attr,
+      const MetricEntity::AttributeMap& attributes,
       const MetricPrometheusOptions& opts,
-      const AggregationLevels aggregation_levels) const override {
+      AggregationLevels default_aggregation_levels) const override {
     if (prototype_->level() < opts.level) {
       return Status::OK();
     }
 
-    return writer->WriteSingleEntry(attr, prototype_->name(), this->lag_ms(),
-                                    prototype()->aggregation_function(),
-                                    aggregation_levels,
-                                    MetricType::PrometheusType(prototype_->type()),
-                                    prototype_->description());
+    return DoWriteForPrometheus(writer, attributes, default_aggregation_levels, lag_ms());
   }
 
  protected:
@@ -1050,38 +1126,46 @@ class EventStatsPrototype : public MetricPrototype {
 template<typename Stats>
 class BaseStats : public Metric {
  public:
+  Stats* AsStats() {
+    return static_cast<Stats*>(this);
+  }
+
+  const Stats* AsConstStats() const {
+    return static_cast<const Stats*>(this);
+  }
+
   // Increment the histogram for the given value.
   // 'value' must be non-negative.
   void Increment(int64_t value) {
-    static_cast<Stats*>(this)->mutable_underlying()->Increment(value);
+      AsStats()->mutable_underlying()->Increment(value);
   }
 
   // Increment the histogram for the given value by the given amount.
   // 'value' and 'amount' must be non-negative.
   void IncrementBy(int64_t value, int64_t amount) {
-    static_cast<Stats*>(this)->mutable_underlying()->IncrementBy(value, amount);
+      AsStats()->mutable_underlying()->IncrementBy(value, amount);
   }
 
   // Return the total number of values added to the histogram (via Increment()
   // or IncrementBy()).
   uint64_t TotalCount() const {
-    return static_cast<const Stats*>(this)->underlying()->TotalCount();
+    return AsConstStats()->underlying()->TotalCount();
   }
 
   // Return the total sum of values added to the histogram (via Increment()
   // or IncrementBy()).
   uint64_t TotalSum() const {
-    return static_cast<const Stats*>(this)->underlying()->TotalSum();
+    return AsConstStats()->underlying()->TotalSum();
   }
 
   uint64_t MinValue() const {
-    return static_cast<const Stats*>(this)->underlying()->MinValue();
+    return AsConstStats()->underlying()->MinValue();
   }
   uint64_t MaxValue() const {
-    return static_cast<const Stats*>(this)->underlying()->MaxValue();
+    return AsConstStats()->underlying()->MaxValue();
   }
   double MeanValue() const {
-    return static_cast<const Stats*>(this)->underlying()->MeanValue();
+    return AsConstStats()->underlying()->MeanValue();
   }
 
   void Reset() const;
@@ -1091,13 +1175,23 @@ class BaseStats : public Metric {
 
   Status WriteForPrometheus(
       PrometheusWriter* writer,
-      const MetricEntity::AttributeMap& attr,
+      const MetricEntity::AttributeMap& attributes,
       const MetricPrometheusOptions& opts,
-      const AggregationLevels aggregation_levels) const override;
+      AggregationLevels default_aggregation_levels) const override;
+
+  Status SetUpPreAggregationForPrometheus(
+      MetricsAggregator* metrics_aggregator,
+      const MetricEntity::AttributeMap& attributes,
+      AggregationLevels default_aggregation_levels,
+      const std::string& aggregation_id) override;
+
+  bool IsPreAggregated() const override {
+    return AsConstStats()->IsPreAggregated();
+  }
 
  protected:
   explicit BaseStats(const MetricPrototype* proto): Metric(proto) {}
-  explicit BaseStats(std::unique_ptr<MetricPrototype> proto): Metric(std::move(proto)) {}
+  explicit BaseStats(std::shared_ptr<MetricPrototype> proto): Metric(std::move(proto)) {}
 
   // Returns a snapshot of this histogram.
   // Resets mean/min/max, but not the total count/sum.
@@ -1121,15 +1215,23 @@ class Histogram : public BaseStats<Histogram> {
  protected:
   HdrHistogram* mutable_underlying() { return histogram_.get(); }
 
+  Status SetUpPreAggregationForPrometheus(
+      MetricsAggregator* metrics_aggregator,
+      const MetricEntity::AttributeMap& attributes,
+      AggregationLevels default_aggregation_levels,
+      const std::string& aggregation_id);
+
   Status WritePercentilesForPrometheus(
       PrometheusWriter* writer,
-      MetricEntity::AttributeMap attr,
-      const AggregationLevels aggregation_levels) const;
+      MetricEntity::AttributeMap attributes,
+      AggregationLevels default_aggregation_levels) const;
 
   // Returns a snapshot of this histogram.
   // Resets mean/min/max, but not the total count/sum.
   Status GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot,
                                         const MetricJsonOptions& opts) const;
+
+  bool IsPreAggregated() const { return false; }
 
  private:
   FRIEND_TEST(MetricsTest, SimpleHistogramTest);
@@ -1137,7 +1239,7 @@ class Histogram : public BaseStats<Histogram> {
   friend class BaseStats<Histogram>;
   friend class MetricEntity;
   explicit Histogram(const HistogramPrototype* proto);
-  explicit Histogram(std::unique_ptr<HistogramPrototype> proto);
+  explicit Histogram(std::shared_ptr<HistogramPrototype> proto);
 
   const std::unique_ptr<HdrHistogram> histogram_;
   DISALLOW_COPY_AND_ASSIGN(Histogram);
@@ -1156,10 +1258,20 @@ class EventStats : public BaseStats<EventStats> {
  protected:
   AggregateStats* mutable_underlying() { return stats_.get(); }
 
+  Status SetUpPreAggregationForPrometheus(
+      MetricsAggregator* metrics_aggregator,
+      const MetricEntity::AttributeMap& attributes,
+      AggregationLevels default_aggregation_levels,
+      const std::string& aggregation_id);
+
   Status WritePercentilesForPrometheus(
       PrometheusWriter* writer,
-      MetricEntity::AttributeMap attr,
-      const AggregationLevels aggregation_levels) const;
+      MetricEntity::AttributeMap attributes,
+      AggregationLevels default_aggregation_levels) const;
+
+  bool IsPreAggregated() const {
+    return stats_->IsPreAggregatedForPrometheus();
+  }
 
  private:
   FRIEND_TEST(MetricsTest, SimpleEventStatsTest);
@@ -1167,9 +1279,12 @@ class EventStats : public BaseStats<EventStats> {
   friend class BaseStats<EventStats>;
   friend class MetricEntity;
   explicit EventStats(const EventStatsPrototype* proto);
-  explicit EventStats(std::unique_ptr<EventStatsPrototype> proto);
+  explicit EventStats(std::shared_ptr<EventStatsPrototype> proto);
+
+  ~EventStats();
 
   const std::unique_ptr<AggregateStats> stats_;
+
   DISALLOW_COPY_AND_ASSIGN(EventStats);
 };
 

@@ -46,6 +46,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/gutil/walltime.h"
 #include "yb/server/clockbound_clock.h"
 #include "yb/server/skewed_clock.h"
 
@@ -2751,6 +2752,7 @@ YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count) {
         .partition_key_start_len = tablet.partition().partition_key_start().size(),
         .partition_key_end = YBCPAllocStdString(tablet.partition().partition_key_end()),
         .partition_key_end_len = tablet.partition().partition_key_end().size(),
+        .tablet_data_state = YBCPAllocStdString(TabletDataState_Name(tablet.tablet_data_state()))
       };
       ++dest;
     }
@@ -2848,6 +2850,10 @@ YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle) {
 
 void YBCForceAllowCatalogModifications(bool allowed) {
   pgapi->ForceAllowCatalogModifications(allowed);
+}
+
+uint64_t YBCGetCurrentHybridTimeLsn() {
+  return (HybridTime::FromMicros(GetCurrentTimeMicros()).ToUint64());
 }
 
 YBCStatus YBCAcquireAdvisoryLock(

@@ -15,7 +15,7 @@ package org.yb.client;
 
 import java.util.List;
 
-import org.yb.master.CatalogEntityInfo.PlacementInfoPB;
+import org.yb.CommonNet.PlacementInfoPB;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 
 public class ModifyClusterConfigReadReplicas extends AbstractModifyMasterClusterConfig {

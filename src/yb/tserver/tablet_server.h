@@ -191,7 +191,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
-  Status BootstrapDdlObjectLocks(const master::TSHeartbeatResponsePB& heartbeat_resp);
+  Status BootstrapDdlObjectLocks(const master::ClientOperationLeaseUpdatePB& lease_update);
 
   Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const EXCLUDES(lock_) override;

@@ -128,7 +128,7 @@ bool YBTable::colocated() const {
   return info_->colocated;
 }
 
-const boost::optional<master::ReplicationInfoPB>& YBTable::replication_info() const {
+const boost::optional<ReplicationInfoPB>& YBTable::replication_info() const {
   return info_->replication_info;
 }
 

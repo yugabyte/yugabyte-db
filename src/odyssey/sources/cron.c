@@ -57,7 +57,7 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 				route->id.yb_stats_index = yb_get_stats_index(
 					instance->yb_stats,
 					(char *)route->yb_database_entry->name,
-					route->id.user);
+					(char *)route->yb_user_entry->name);
 			}
 
 			index = route->id.yb_stats_index;
@@ -66,7 +66,7 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 				DB_NAME_MAX_LEN - 1);
 			instance->yb_stats[index].database_name[DB_NAME_MAX_LEN - 1] = '\0';
 			strncpy(instance->yb_stats[index].user_name,
-				route->id.user, USER_NAME_MAX_LEN - 1);
+				(char *)route->yb_user_entry->name, USER_NAME_MAX_LEN - 1);
 			instance->yb_stats[index].user_name[USER_NAME_MAX_LEN - 1] = '\0';
 		}
 

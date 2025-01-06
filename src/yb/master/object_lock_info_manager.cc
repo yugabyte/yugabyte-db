@@ -93,10 +93,11 @@ class ObjectLockInfoManager::Impl {
       rpc::RpcContext rpc);
   void UnlockObject(
       const tserver::ReleaseObjectLockRequestPB& req, std::optional<rpc::RpcContext> context,
-      StdStatusCallback callback);
+      std::optional<LeaderEpoch> leader_epoch, StdStatusCallback callback);
 
   void ReleaseOldObjectLocks(
-      const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait);
+      const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait,
+      std::optional<LeaderEpoch> leader_epoch);
 
   Status PersistRequest(LeaderEpoch epoch, const AcquireObjectLockRequestPB& req) EXCLUDES(mutex_);
   Status PersistRequest(LeaderEpoch epoch, const ReleaseObjectLockRequestPB& req) EXCLUDES(mutex_);
@@ -296,8 +297,9 @@ void ObjectLockInfoManager::ExportObjectLockInfo(
 }
 
 void ObjectLockInfoManager::ReleaseOldObjectLocks(
-    const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait) {
-  impl_->ReleaseOldObjectLocks(tserver_uuid, current_incarnation_num, wait);
+    const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait,
+    std::optional<LeaderEpoch> leader_epoch) {
+  impl_->ReleaseOldObjectLocks(tserver_uuid, current_incarnation_num, wait, leader_epoch);
 }
 
 void ObjectLockInfoManager::UpdateObjectLocks(
@@ -551,17 +553,22 @@ void ObjectLockInfoManager::Impl::LockObject(
 void ObjectLockInfoManager::Impl::UnlockObject(
     ReleaseObjectLockRequestPB req, ReleaseObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext context) {
-  UnlockObject(req, std::move(context), [resp](const Status& s) { FillErrorIfRequired(s, resp); });
+  UnlockObject(req, std::move(context), std::nullopt, [resp](const Status& s) {
+    FillErrorIfRequired(s, resp);
+  });
 }
 
 void ObjectLockInfoManager::Impl::UnlockObject(
     const ReleaseObjectLockRequestPB& req, std::optional<rpc::RpcContext> context,
-    StdStatusCallback callback) {
+    std::optional<LeaderEpoch> leader_epoch, StdStatusCallback callback) {
   VLOG(3) << __PRETTY_FUNCTION__;
   // Release the locks locally.
   std::shared_ptr<tablet::TSLocalLockManager> local_lock_manager;
-  LeaderEpoch epoch;
-  {
+  LeaderEpoch local_epoch;
+  if (leader_epoch) {
+    local_epoch = *leader_epoch;
+    local_lock_manager = ts_local_lock_manager();
+  } else {
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
     if (!l.IsInitializedAndIsLeader()) {
       callback(STATUS(IllegalState, kNotTheMasterLeader));
@@ -570,38 +577,39 @@ void ObjectLockInfoManager::Impl::UnlockObject(
       }
       return;
     }
-    epoch = l.epoch();
+    local_epoch = l.epoch();
     local_lock_manager = ts_local_lock_manager();
-    auto s = local_lock_manager->ReleaseObjectLocks(req);
-    if (!s.ok()) {
-      LOG(WARNING) << "Failed to release object lock locally." << s;
-      callback(s.CloneAndReplaceCode(Status::kRemoteError));
-      if (context.has_value()) {
-        context->RespondSuccess();
-      }
-      return;
+  }
+  auto s = local_lock_manager->ReleaseObjectLocks(req);
+  if (!s.ok()) {
+    LOG(WARNING) << "Failed to release object lock locally." << s;
+    callback(s.CloneAndReplaceCode(Status::kRemoteError));
+    if (context.has_value()) {
+      context->RespondSuccess();
     }
+    return;
+  }
 
-    // Persist the request.
-    s = PersistRequest(epoch, req);
-    if (!s.ok()) {
-      LOG(WARNING) << "Failed to update object lock " << s;
-      callback(s.CloneAndReplaceCode(Status::kRemoteError));
-      if (context.has_value()) {
-        context->RespondSuccess();
-      }
-      return;
+  // Persist the request.
+  s = PersistRequest(local_epoch, req);
+  if (!s.ok()) {
+    LOG(WARNING) << "Failed to update object lock " << s;
+    callback(s.CloneAndReplaceCode(Status::kRemoteError));
+    if (context.has_value()) {
+      context->RespondSuccess();
     }
+    return;
   }
 
   auto unlock_objects = std::make_shared<
       UpdateAllTServers<ReleaseObjectLockRequestPB, ReleaseObjectLocksGlobalResponsePB>>(
-      epoch, master_, catalog_manager_, this, req, std::move(callback), std::move(context));
+      local_epoch, master_, catalog_manager_, this, req, std::move(callback), std::move(context));
   unlock_objects->Launch();
 }
 
 void ObjectLockInfoManager::Impl::ReleaseOldObjectLocks(
-    const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait) {
+    const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait,
+    std::optional<LeaderEpoch> leader_epoch) {
   std::vector<std::shared_ptr<ReleaseObjectLockRequestPB>> requests_per_txn;
   // We have not started using incarnation ids yet.
   // TODO: fix this when we implement it.
@@ -634,7 +642,8 @@ void ObjectLockInfoManager::Impl::ReleaseOldObjectLocks(
     // TServers. We will rely on the (TODO) Deadlock detection code path to detect this and
     // release such locks.
     UnlockObject(
-        *request, std::optional<rpc::RpcContext>(), [latch, request](const Status& s) {
+        *request, std::optional<rpc::RpcContext>(), leader_epoch,
+        [latch, request](const Status& s) {
           WARN_NOT_OK(
               s, yb::Format(
                      "Failed to release old object locks $0 $1", request->session_host_uuid(),
@@ -681,9 +690,11 @@ UpdateAllTServers<Req, Resp>::UpdateAllTServers(
 
 template <class Req, class Resp>
 void UpdateAllTServers<Req, Resp>::Done(size_t i, const Status& s) {
-  // TODO: We should check if a failing TServer has lost it's lease, and
-  // if so ignore it/consider it a success.
-  statuses_[i] = s;
+  if (ts_descriptors_[i]->HasLiveClientOperationLease()) {
+    statuses_[i] = s;
+  } else {
+    statuses_[i] = Status::OK();
+  }
   // TODO: There is a potential here for early return if s is not OK.
   if (--ts_pending_ == 0) {
     DoneAll();
@@ -710,7 +721,7 @@ UpdateAllTServers<ReleaseObjectLockRequestPB, ReleaseObjectLocksGlobalResponsePB
 
 template <class Req, class Resp>
 void UpdateAllTServers<Req, Resp>::Launch() {
-  ts_descriptors_ = master_->ts_manager()->GetAllDescriptors();
+  ts_descriptors_ = master_->ts_manager()->GetAllDescriptorsWithALiveLease();
   ts_pending_ = ts_descriptors_.size();
   statuses_ = std::vector<Status>{ts_descriptors_.size(), STATUS(Uninitialized, "")};
 

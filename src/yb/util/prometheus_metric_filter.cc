@@ -18,22 +18,39 @@
 namespace yb {
 
 PrometheusMetricFilterV1::PrometheusMetricFilterV1(const MetricPrometheusOptions& opts)
-    : priority_regex_(opts.priority_regex_string) {}
+    : priority_regex_(opts.priority_regex_string),
+      general_metrics_allowlist_(opts.general_metrics_allowlist) {}
+
+bool PrometheusMetricFilterV1::ShouldCollectMetric(const std::string& metric_name) const {
+  if (!general_metrics_allowlist_) {
+    // Metric is scraped if the general_metrics_allowlist_ is not provided.
+    return true;
+  }
+
+  for (const auto& required_metric_substring : *general_metrics_allowlist_) {
+    if (metric_name.find(required_metric_substring) != std::string::npos) {
+      // Required metric substring is found in the metric name.
+      return true;
+    }
+  }
+
+  return false;
+}
 
 AggregationLevels PrometheusMetricFilterV1::GetAggregationLevels(
-    const std::string& metric_name, AggregationLevels default_levels) {
-  auto& levels_from_regex = metric_filter_[metric_name];
+    const std::string& metric_name, AggregationLevels default_aggregation_levels) {
+  auto [levels_from_regex_it, inserted] = metric_filter_.try_emplace(metric_name, kNoLevel);
+  auto& levels_from_regex = levels_from_regex_it->second;
 
-  if (!levels_from_regex) {
+  if (inserted && ShouldCollectMetric(metric_name)) {
     // No filter for stream and server level.
     levels_from_regex = kStreamLevel | kServerLevel;
-
     if (boost::regex_match(metric_name, priority_regex_)) {
       levels_from_regex |= kTableLevel;
     }
   }
 
-  auto aggregation_level = levels_from_regex & default_levels;
+  auto aggregation_level = levels_from_regex & default_aggregation_levels;
   // If a metric will be exposed at the table level, it cannot be exposed at the server level.
   if (aggregation_level & kTableLevel) {
     aggregation_level &= ~kServerLevel;
@@ -54,13 +71,13 @@ PrometheusMetricFilterV2::PrometheusMetricFilterV2(const MetricPrometheusOptions
       server_blocklist_(opts.server_blocklist_string) {}
 
 AggregationLevels PrometheusMetricFilterV2::GetAggregationLevels(
-    const std::string& metric_name, AggregationLevels default_levels) {
-  auto& levels_from_regex = metric_filter_[metric_name];
+    const std::string& metric_name, AggregationLevels default_aggregation_levels) {
+  auto [levels_from_regex_it, inserted] = metric_filter_.try_emplace(metric_name, kNoLevel);
+  auto& levels_from_regex = levels_from_regex_it->second;
 
-  if (!levels_from_regex) {
+  if (inserted) {
     // No filter for stream level.
     levels_from_regex = kStreamLevel;
-
     if (!boost::regex_match(metric_name, table_blocklist_) &&
         boost::regex_match(metric_name, table_allowlist_)) {
       levels_from_regex |= kTableLevel;
@@ -71,7 +88,7 @@ AggregationLevels PrometheusMetricFilterV2::GetAggregationLevels(
     }
   }
 
-  return levels_from_regex & default_levels;
+  return levels_from_regex & default_aggregation_levels;
 }
 
 std::string PrometheusMetricFilterV2::Version() const {

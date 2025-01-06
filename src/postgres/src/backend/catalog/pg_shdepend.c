@@ -456,7 +456,7 @@ recordDependencyOnTablespace(Oid classId, Oid objectId, Oid tablespace)
 		if (tablespace == InvalidOid)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("Tablespace dependencies cannot be recorded on InvalidOid")));
+					 errmsg("tablespace dependencies cannot be recorded on InvalidOid")));
 
 		/*
 		 * Since the pg_default and pg_global tablespaces cannot be dropped,

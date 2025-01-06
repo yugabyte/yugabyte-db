@@ -193,8 +193,8 @@ YBTableCreator& YBTableCreator::set_range_partition_columns(
   return *this;
 }
 
-YBTableCreator& YBTableCreator::replication_info(const master::ReplicationInfoPB& ri) {
-  replication_info_ = std::make_unique<master::ReplicationInfoPB>(ri);
+YBTableCreator& YBTableCreator::replication_info(const ReplicationInfoPB& ri) {
+  replication_info_ = std::make_unique<ReplicationInfoPB>(ri);
   return *this;
 }
 

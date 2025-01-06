@@ -36,6 +36,7 @@
 #include "utils/ruleutils.h"
 
 /* YB includes. */
+#include "executor/ybcModifyTable.h"
 #include "pg_yb_utils.h"
 
 
@@ -1050,6 +1051,10 @@ ExecInitRoutingInfo(ModifyTableState *mtstate,
 			partRelInfo->ri_FdwRoutine->GetForeignModifyBatchSize(partRelInfo);
 	else
 		partRelInfo->ri_BatchSize = 1;
+
+	/* YB: also handle YB insert on conflict read batching. */
+	if (YbIsInsertOnConflictReadBatchingPossible(partRelInfo))
+		partRelInfo->ri_ybIocBatchingPossible = true;
 
 	Assert(partRelInfo->ri_BatchSize >= 1);
 

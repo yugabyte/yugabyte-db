@@ -2559,7 +2559,7 @@ AsyncTabletSnapshotOpPtr CatalogManager::CreateAsyncTabletSnapshotOp(
 }
 
 void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& task) {
-  WARN_NOT_OK(ScheduleTask(task), "Failed to send create snapshot request");
+  WARN_NOT_OK(ScheduleTask(task), Format("Failed to send snapshot task: $0", *task));
 }
 
 Result<std::unique_ptr<rocksdb::DB>> CatalogManager::RestoreSnapshotToTmpRocksDb(

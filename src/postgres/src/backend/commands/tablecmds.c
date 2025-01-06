@@ -6017,9 +6017,9 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			if (IsYBBackedRelation(OldHeap) && !yb_enable_alter_table_rewrite)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Rewriting of YB table is not yet implemented"),
+						 errmsg("rewriting of YB table is not yet implemented"),
 						 errhint("See https://github.com/yugabyte/yugabyte-db/issues/13278. "
-								 "React with thumbs up to raise its priority")));
+								 "React with thumbs up to raise its priority.")));
 
 			if (IsYBRelation(OldHeap) && !YBSuppressUnsafeAlterNotice())
 				ereport(NOTICE,
@@ -15559,11 +15559,11 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	/* Notify the user that this command is async */
 	ereport(NOTICE,
-			(errmsg("Data movement for table %s is successfully initiated.",
+			(errmsg("data movement for table %s is successfully initiated",
 					RelationGetRelationName(rel)),
 			 errdetail("Data movement is a long running asynchronous process "
 					   "and can be monitored by checking the tablet placement "
-					   "in http://<YB-Master-host>:7000/tables")));
+					   "in http://<YB-Master-host>:7000/tables.")));
 }
 
 /*
@@ -21501,10 +21501,10 @@ YbATValidateChangeForeignKeyType(HeapTuple constraint_tuple, Relation base_rel,
 		{
 			ereport(ERROR,
 				   (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("Altering type of foreign key is not supported"),
+					errmsg("altering type of foreign key is not supported"),
 					errhint("See https://github.com/yugabyte/yugabyte-db/"
 							"issues/17037. React with thumbs up to raise its "
-							"priority")));
+							"priority.")));
 		}
 	}
 }

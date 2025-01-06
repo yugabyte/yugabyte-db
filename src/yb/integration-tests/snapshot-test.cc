@@ -482,7 +482,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     for (const auto& tablet : tablets) {
       if (!coordinator->TEST_IsTabletCoveredBySnapshot(tablet->id(), snapshot_id)) {
         return STATUS_FORMAT(
-            IllegalState, "Covering snapshot for tablet $0 not found", tablet->id());
+            IllegalState, "Snapshot $0 does not cover tablet $1", snapshot_id, tablet->id());
       }
     }
     return Status::OK();

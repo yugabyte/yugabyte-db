@@ -75,6 +75,7 @@ struct od_client {
 
 	uint64_t client_id;
 	int64_t yb_db_oid;
+	int64_t yb_user_oid;
 	kiwi_fe_error_t *deploy_err;
 
 	bool yb_is_authenticating;
@@ -143,6 +144,7 @@ static inline void od_client_init(od_client_t *client)
 	client->prep_stmt_ids = NULL;
 	client->client_id = 0;
 	client->yb_db_oid = -1;
+	client->yb_user_oid = -1;
 	client->deploy_err = NULL;
 
 	client->yb_is_authenticating = false;

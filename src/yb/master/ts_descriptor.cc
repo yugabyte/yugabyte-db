@@ -50,6 +50,15 @@
 
 DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
 
+DEFINE_RUNTIME_uint32(
+    ysql_operation_lease_ttl_ms, 10 * 1000,
+    "The lifetime of client operation lease extensions. The client operation lease allows tservers "
+    "to host pg sessions and serve reads and writes to user data.");
+
+DECLARE_int32(tserver_unresponsive_timeout_ms);
+
+DECLARE_bool(TEST_enable_ysql_operation_lease);
+
 namespace yb {
 namespace master {
 
@@ -85,7 +94,7 @@ Result<std::pair<TSDescriptorPtr, TSDescriptor::WriteLock>> TSDescriptor::Create
 
 TSDescriptorPtr TSDescriptor::LoadFromEntry(
     const std::string& permanent_uuid, const SysTabletServerEntryPB& metadata,
-    CloudInfoPB&& cloud_info, rpc::ProxyCache* proxy_cache) {
+    CloudInfoPB&& cloud_info, rpc::ProxyCache* proxy_cache, HybridTime now) {
   // The RegisteredThroughHeartbeat parameter controls how last_heartbeat_ is initialized.
   // If true, last_heartbeat_ is set to now. If false, last_heartbeat_ is an uninitialized MonoTime.
   // Use true here because:
@@ -99,6 +108,10 @@ TSDescriptorPtr TSDescriptor::LoadFromEntry(
   desc->Load(metadata);
   std::lock_guard spinlock(desc->mutex_);
   desc->placement_id_ = generate_placement_id(metadata.registration().cloud_info());
+  if (metadata.live_client_operation_lease()) {
+    desc->client_operation_lease_deadline_ =
+        now.AddMilliseconds(GetAtomicFlag(&FLAGS_ysql_operation_lease_ttl_ms));
+  }
   return desc;
 }
 
@@ -125,7 +138,6 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   std::lock_guard spinlock(mutex_);
   // After re-registering, make the TS re-report its tablets.
   has_tablet_report_ = false;
-
   l.mutable_data()->pb.set_instance_seqno(instance.instance_seqno());
   *l.mutable_data()->pb.mutable_registration() = registration.common();
   *l.mutable_data()->pb.mutable_resources() = registration.resources();
@@ -135,6 +147,14 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
   proxies_.reset();
+  // The new incarnation heartbeating does not have a live lease. If the previous incarnation did,
+  // set live_client_operation_lease to false so UpdateFromHeartbeat will grant the new incarnation
+  // a new lease.
+  if (instance.instance_seqno() != latest_seqno && l->pb.live_client_operation_lease()) {
+    // todo(zdrudi): kick off an async task to clear out all locks held by the previous incarnation.
+    client_operation_lease_deadline_ = HybridTime();
+    l.mutable_data()->pb.set_live_client_operation_lease(false);
+  }
   return std::move(l);
 }
 
@@ -152,10 +172,11 @@ std::string TSDescriptor::placement_id() const {
   return placement_id_;
 }
 
-Status TSDescriptor::UpdateTSMetadataFromHeartbeat(
-    const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock) {
+Result<std::optional<ClientOperationLeaseUpdate>> TSDescriptor::UpdateFromHeartbeat(
+    const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock, HybridTime hybrid_time) {
   DCHECK_GE(req.num_live_tablets(), 0);
   DCHECK_GE(req.leader_count(), 0);
+  std::optional<ClientOperationLeaseUpdate> lease_delta;
   {
     std::lock_guard l(mutex_);
     RETURN_NOT_OK(IsReportCurrentUnlocked(
@@ -175,6 +196,12 @@ Status TSDescriptor::UpdateTSMetadataFromHeartbeat(
     if (req.has_faulty_drive()) {
       has_faulty_drive_ = req.faulty_drive();
     }
+    if (GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) {
+      lease_delta = ClientOperationLeaseUpdate();
+      client_operation_lease_deadline_ =
+          hybrid_time.AddMilliseconds(GetAtomicFlag(&FLAGS_ysql_operation_lease_ttl_ms));
+      lease_delta->lease_deadline = client_operation_lease_deadline_;
+    }
   }
   if (lock->pb.state() == SysTabletServerEntryPB::REMOVED) {
     return STATUS_FORMAT(
@@ -183,7 +210,19 @@ Status TSDescriptor::UpdateTSMetadataFromHeartbeat(
   if (lock->pb.state() != SysTabletServerEntryPB::LIVE) {
     lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::LIVE);
   }
-  return Status::OK();
+  // If this heartbeat included registration data with a later instance_seqno, the registration
+  // code signals we should grant a new lease to this tserver instance by setting
+  // live_client_operation_lease to false on the write copy of the protobuf.
+  // So we check both read and write copies here.
+  if (lease_delta && (!lock->pb.live_client_operation_lease() ||
+                      !lock.mutable_data()->pb.live_client_operation_lease())) {
+    lock.mutable_data()->pb.set_live_client_operation_lease(true);
+    uint64_t new_lease_epoch = lock->pb.lease_epoch() + 1;
+    lock.mutable_data()->pb.set_lease_epoch(new_lease_epoch);
+    lease_delta->new_lease = true;
+    lease_delta->lease_epoch = new_lease_epoch;
+  }
+  return lease_delta;
 }
 
 MonoDelta TSDescriptor::TimeSinceHeartbeat() const {
@@ -470,5 +509,44 @@ bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const
   }
   return !placement_uuid().empty();
 }
+
+std::pair<std::optional<TSDescriptor::WriteLock>, std::optional<uint64_t>>
+TSDescriptor::MaybeUpdateLiveness(MonoTime mono_time, HybridTime hybrid_time) {
+  auto proto_lock = LockForWrite();
+  bool updated = false;
+  SharedLock<decltype(mutex_)> transient_lock(mutex_);
+  std::optional<uint64_t> expired_lease_epoch;
+  if (proto_lock->pb.state() == SysTabletServerEntryPB::LIVE && last_heartbeat_ &&
+      mono_time.GetDeltaSince(last_heartbeat_).ToMilliseconds() >
+          GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
+    proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
+    updated = true;
+  }
+  if (GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) {
+    if (proto_lock->pb.live_client_operation_lease() &&
+        client_operation_lease_deadline_ < hybrid_time) {
+      proto_lock.mutable_data()->pb.set_live_client_operation_lease(false);
+      updated = true;
+      expired_lease_epoch = proto_lock->pb.lease_epoch();
+    }
+  }
+  if (updated) {
+    return std::make_pair(std::move(proto_lock), expired_lease_epoch);
+  }
+  return std::make_pair(std::nullopt, expired_lease_epoch);
+}
+
+bool TSDescriptor::HasLiveClientOperationLease() const {
+  return LockForRead()->pb.live_client_operation_lease();
+}
+
+ClientOperationLeaseUpdatePB ClientOperationLeaseUpdate::ToPB() {
+  ClientOperationLeaseUpdatePB pb;
+  pb.set_lease_deadline_ht(lease_deadline.ToUint64());
+  pb.set_new_lease(new_lease);
+  pb.set_lease_epoch(lease_epoch);
+  return pb;
+}
+
 } // namespace master
 } // namespace yb

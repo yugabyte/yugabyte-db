@@ -373,7 +373,7 @@ extern void YBReportIfYugaByteEnabled();
 		Oid computed_type_id = type_id; \
 		ereport(ERROR, \
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED), \
-					errmsg("Type not yet supported in YugaByte: %d (%s)", \
+					errmsg("type not yet supported in Yugabyte: %d (%s)", \
 						computed_type_id, YBPgTypeOidToStr(computed_type_id)))); \
 	} while (0)
 

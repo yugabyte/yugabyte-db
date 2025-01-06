@@ -1075,7 +1075,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       case Certs:
         return SubTaskGroupType.RotatingCert;
       default:
-        return SubTaskGroupType.Invalid;
+        return SubTaskGroupType.Configuring;
     }
   }
 

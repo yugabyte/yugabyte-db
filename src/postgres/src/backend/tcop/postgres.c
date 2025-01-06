@@ -84,6 +84,7 @@
 #include "utils/snapmgr.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
+#include "utils/varlena.h"
 
 #include "catalog/yb_catalog_version.h"
 #include "commands/portalcmds.h"
@@ -122,6 +123,9 @@ int			PostAuthDelay = 0;
 
 /* Time between checks that the client is still connected. */
 int			client_connection_check_interval = 0;
+
+/* flags for non-system relation kinds to restrict use */
+int			restrict_nonsystem_relation_kind;
 
 /* ----------------
  *		private typedefs etc
@@ -3790,6 +3794,66 @@ assign_max_stack_depth(int newval, void *extra)
 	max_stack_depth_bytes = newval_bytes;
 }
 
+/*
+ * GUC check_hook for restrict_nonsystem_relation_kind
+ */
+bool
+check_restrict_nonsystem_relation_kind(char **newval, void **extra, GucSource source)
+{
+	char	   *rawstring;
+	List	   *elemlist;
+	ListCell   *l;
+	int			flags = 0;
+
+	/* Need a modifiable copy of string */
+	rawstring = pstrdup(*newval);
+
+	if (!SplitIdentifierString(rawstring, ',', &elemlist))
+	{
+		/* syntax error in list */
+		GUC_check_errdetail("List syntax is invalid.");
+		pfree(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	foreach(l, elemlist)
+	{
+		char	   *tok = (char *) lfirst(l);
+
+		if (pg_strcasecmp(tok, "view") == 0)
+			flags |= RESTRICT_RELKIND_VIEW;
+		else if (pg_strcasecmp(tok, "foreign-table") == 0)
+			flags |= RESTRICT_RELKIND_FOREIGN_TABLE;
+		else
+		{
+			GUC_check_errdetail("Unrecognized key word: \"%s\".", tok);
+			pfree(rawstring);
+			list_free(elemlist);
+			return false;
+		}
+	}
+
+	pfree(rawstring);
+	list_free(elemlist);
+
+	/* Save the flags in *extra, for use by the assign function */
+	*extra = malloc(sizeof(int));
+	*((int *) *extra) = flags;
+
+	return true;
+}
+
+/*
+ * GUC assign_hook for restrict_nonsystem_relation_kind
+ */
+void
+assign_restrict_nonsystem_relation_kind(const char *newval, void *extra)
+{
+	int		   *flags = (int *) extra;
+
+	restrict_nonsystem_relation_kind = *flags;
+}
 
 /*
  * set_debug_options --- apply "-d N" command line option
@@ -4175,12 +4239,12 @@ static void YBRefreshCache()
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Cannot refresh cache within a transaction")));
+				 errmsg("cannot refresh cache within a transaction")));
 	}
 
 	if (yb_debug_log_catcache_events)
 	{
-		ereport(LOG,(errmsg("Refreshing catalog cache.")));
+		ereport(LOG,(errmsg("refreshing catalog cache.")));
 	}
 
 	/*
@@ -5108,7 +5172,7 @@ yb_perform_retry_on_error(int attempt, uint16_t txn_errcode,
 						  const char *portal_name)
 {
 	if (yb_debug_log_internal_restarts)
-		ereport(LOG, (errmsg("Performing query layer retry with attempt number: %d", attempt)));
+		ereport(LOG, (errmsg("performing query layer retry, attempt number %d", attempt)));
 
 	const bool is_read_restart = YBCIsRestartReadError(txn_errcode);
 	const bool is_conflict_error = YBCIsTxnConflictError(txn_errcode);
@@ -5315,10 +5379,10 @@ yb_exec_execute_message(long max_rows,
 static void yb_report_cache_version_restart(const char* query, ErrorData *edata)
 {
 	ereport(LOG,
-			(errmsg("Restarting statement due to catalog version mismatch:"
-					"\nQuery: %s\nError: %s",
-					query,
-					edata->message)));
+			(errmsg("restarting statement due to catalog version mismatch"),
+			 errdetail("Query: %s\nError: %s",
+					   query,
+					   edata->message)));
 }
 
 /*
@@ -6005,7 +6069,7 @@ PostgresMain(const char *dbname, const char *username)
 
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("Reloading config on control connection is not supported")));
+						 errmsg("reloading config on control connection is not supported")));
 			}
 			else
 			{

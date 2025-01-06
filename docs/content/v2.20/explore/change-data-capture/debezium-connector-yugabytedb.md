@@ -48,9 +48,10 @@ The connector is compatible with the following versions of YugabyteDB.
 
 {{< note title="Note" >}}
 
-Starting with YugabyteDB v2.20, the naming convention for releases of the connector uses the scheme *major.y.minor*, as follows:
-- *major* - Debezium release the connector is based on
-- *minor* - version of YugabyteDB the connector works with
+Starting with YugabyteDB v2.20, the naming convention for releases of the connector uses the scheme _major.y.minor_, as follows:
+
+* major - Debezium release the connector is based on
+* minor - version of YugabyteDB the connector works with
 The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise.
 
 {{< /note >}}
@@ -912,7 +913,7 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 Before using the YugabyteDB connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
-* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../admin/yb-admin#create_change_data_stream) command.
+* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../admin/yb-admin/#create-change-data-stream) command.
 * The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed. See [limitations](../../change-data-capture/cdc-overview/#known-limitations).
 
 ### WAL disk space consumption

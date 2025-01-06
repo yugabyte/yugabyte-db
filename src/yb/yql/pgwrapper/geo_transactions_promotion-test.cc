@@ -136,8 +136,8 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     return options;
   }
 
-  virtual master::ReplicationInfoPB GetClusterDefaultReplicationInfo() {
-    master::ReplicationInfoPB replication_info;
+  virtual ReplicationInfoPB GetClusterDefaultReplicationInfo() {
+    ReplicationInfoPB replication_info;
     replication_info.mutable_live_replicas()->set_num_replicas(3);
     for (size_t i = 1; i <= 3; ++i) {
       auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
@@ -171,7 +171,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     auto current_version = transaction_manager_->GetLoadedStatusTabletsVersion();
 
     std::string name = "transactions_local";
-    master::ReplicationInfoPB replication_info;
+    ReplicationInfoPB replication_info;
     auto replicas = replication_info.mutable_live_replicas();
     replicas->set_num_replicas(3);
     auto pb = replicas->add_placement_blocks();
@@ -346,8 +346,8 @@ class GeoTransactionsPromotionRF1Test : public GeoTransactionsPromotionTest {
     GeoTransactionsPromotionTest::DropTables();
   }
 
-  master::ReplicationInfoPB GetClusterDefaultReplicationInfo() override {
-    master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB GetClusterDefaultReplicationInfo() override {
+    ReplicationInfoPB replication_info;
     replication_info.mutable_live_replicas()->set_num_replicas(1);
     for (size_t i = 1; i <= 3; ++i) {
       auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();

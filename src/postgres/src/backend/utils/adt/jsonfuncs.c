@@ -869,7 +869,7 @@ validate_okeys_object_field_start(void *state, char *fname, bool isnull)
 
 	ereport(ERROR,
 		(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-		errmsg("Invalid key \"%s\" found in json object %s", fname, _state->json_text)));
+		errmsg("invalid key \"%s\" found in json object %s", fname, _state->json_text)));
 }
 
 static void
@@ -888,7 +888,7 @@ validate_okeys_object_end(void *state)
 		if (!_state->found_key[i])
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("Required key \"%s\" not specified in json object: %s",
+				errmsg("required key \"%s\" not specified in json object %s",
 					_state->required_keys[i],
 					_state->json_text)));
 	}
@@ -903,7 +903,7 @@ validate_okeys_array_start(void *state)
 	if (_state->lex->lex_level == 0)
 		ereport(ERROR,
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("Found unexpected JSON array in json object %s",
+			errmsg("found unexpected JSON array in json object %s",
 				_state->json_text)));
 }
 
@@ -916,7 +916,7 @@ validate_okeys_scalar(void *state, char *token, JsonTokenType tokentype)
 	if (_state->lex->lex_level == 0)
 		ereport(ERROR,
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("Found unexpected JSON scalar in json object %s",
+			errmsg("found unexpected JSON scalar in json object %s",
 				_state->json_text)));
 }
 
@@ -5678,7 +5678,7 @@ int json_get_int_value(text *json, char *key)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Required key \"%s\" not found", key)));
+				 errmsg("required key \"%s\" not found", key)));
 	}
 
 	char *int_str = text_to_cstring(value);
@@ -5686,8 +5686,8 @@ int json_get_int_value(text *json, char *key)
 	if (ret_value <= 0) {
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Invalid value for \"%s\" key", key),
-				 errdetail("Found %s but %s value should be an integer > 0",
+				 errmsg("invalid value for \"%s\" key", key),
+				 errdetail("Found %s but %s value should be an integer > 0.",
 						   int_str, key)));
 	}
 	return ret_value;

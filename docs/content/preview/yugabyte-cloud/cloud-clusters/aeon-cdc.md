@@ -23,7 +23,7 @@ YugabyteDB Aeon change data capture uses the [PostgreSQL Logical Replication](ht
 It works as follows:
 
 1. Create Publications in the YugabyteDB cluster as you would in PostgreSQL.
-1. Deploy the [YugabyteDB Connector](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/) in your preferred Kafka Connect environment.
+1. Deploy the [YugabyteDB Connector](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) in your preferred Kafka Connect environment.
 1. The connector uses replication slots to capture change events and publishes them directly to a Kafka topic.
 
 A _publication_ is a set of changes generated from a table or a group of tables, and might also be described as a change set or replication set. Each publication exists in only one database. Publications are different from schemas and do not affect how the table is accessed. Each table can be added to multiple publications if needed. Publications only contain tables. Tables are added explicitly, except when a publication is created for ALL TABLES. Every publication can have multiple subscribers.
@@ -34,7 +34,7 @@ A _replication slot_ represents a stream of changes that can be replayed to a cl
 
 Logical replication of a table starts with taking a snapshot of the data on the publisher database and copying that to the subscriber. After that is done, the changes on the publisher are sent to the subscriber as they occur in real-time. The subscriber applies the data in the same order as the publisher so that transactional consistency is guaranteed for publications in a single subscription. This method of data replication is sometimes referred to as transactional replication.
 
-For more information, refer to [How the connector works](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/#how-the-connector-works).
+For more information, refer to [How the connector works](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/#how-the-connector-works).
 
 ## Prerequisites
 
@@ -42,7 +42,7 @@ For more information, refer to [How the connector works](../../../explore/change
   - If you have a new cluster running v2024.1.1 or later, CDC is available automatically.
   - If you have a cluster that was upgraded to v2024.1.1 or later and want to use CDC, contact {{% support-cloud %}}.
 
-- Kafka environment. This can be a [Self-managed Kafka](../../../explore/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector), or a managed service such as [Confluent Cloud](https://www.confluent.io/confluent-cloud/) or [AWS MSK Connect](https://aws.amazon.com/msk/features/msk-connect/).
+- Kafka environment. This can be a [Self-managed Kafka](../../../develop/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector), or a managed service such as [Confluent Cloud](https://www.confluent.io/confluent-cloud/) or [AWS MSK Connect](https://aws.amazon.com/msk/features/msk-connect/).
 
 - YugabyteDB Connector v2.5.2. Download the Connector JAR file from [GitHub releases](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1).
 
@@ -60,8 +60,8 @@ YugabyteDB Aeon clusters are already configured to support CDC. To create stream
 
 If auto creation of topics is not enabled in the Kafka Connect cluster, then you need to create the following topics in Kafka manually:
 
-- Topic for each table in the format `<topic.prefix>.<schemaName>.<tableName>`. See [topic.prefix](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties/#topic-prefix).
-- Heartbeat topic in the format `<topic.heartbeat.prefix>.<topic.prefix>`. The `topic.heartbeat.prefix` has a default value of `__debezium-heartbeat`. See [topic.heartbeat.prefix](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties/#topic-heartbeat-prefix).
+- Topic for each table in the format `<topic.prefix>.<schemaName>.<tableName>`. See [topic.prefix](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector-properties/#topic-prefix).
+- Heartbeat topic in the format `<topic.heartbeat.prefix>.<topic.prefix>`. The `topic.heartbeat.prefix` has a default value of `__debezium-heartbeat`. See [topic.heartbeat.prefix](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector-properties/#topic-heartbeat-prefix).
 
 ### Configure the connector
 
@@ -109,7 +109,7 @@ The following example shows the required and common properties:
 | database.password | The user password. |
 | database.sslmode | The SSL mode to use; set to `require`. |
 | topic.prefix | Set to `yb`. Used as the topic name prefix for all Kafka topics that receive records from this connector. |
-| snapshot.mode | Specifies the criteria for performing a snapshot when the connector starts. Can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires `yb.consistent.snapshot` to be set to false. To learn more about the options for taking a snapshot when the connector starts, refer to [Snapshots](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/#snapshots). |
+| snapshot.mode | Specifies the criteria for performing a snapshot when the connector starts. Can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires `yb.consistent.snapshot` to be set to false. To learn more about the options for taking a snapshot when the connector starts, refer to [Snapshots](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/#snapshots). |
 | yb.consistent.snapshot | If you are using CDC with YugabyteDB Aeon clusters in Initial snapshot mode, this property is required and must be set to false. |
 | table.include.list | The names of the tables to monitor, comma-separated, in format `schema.table-name`. |
 | plugin.name | Set to `yboutput`. The name of the YugabyteDB logical decoding plugin. |
@@ -120,7 +120,7 @@ The following example shows the required and common properties:
 | key.converter.schemas.enable | Set to true to use schemas with JSON data format. |
 | publication.name | Provide a publication name if you have a publication already created. |
 
-For a full list of YugabyteDB Connector properties, refer to [Connector properties](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties).
+For a full list of YugabyteDB Connector properties, refer to [Connector properties](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector-properties).
 
 ### Configure the Kafka provider
 
@@ -183,8 +183,8 @@ After the connector starts, it performs a consistent snapshot of the YugabyteDB 
 
 For information on using the YugabyteDB Connector with a self-managed Kafka cluster, refer to:
 
-- [Get started with YugabyteDB Connector](../../../explore/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector)
-- [YugabyteDB Connector reference documentation](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/)
+- [Get started with YugabyteDB Connector](../../../develop/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector)
+- [YugabyteDB Connector reference documentation](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/)
 
   </div>
 
@@ -194,7 +194,7 @@ For information on using the YugabyteDB Connector with a self-managed Kafka clus
 
 YugabyteDB change data capture provides a set of views and metrics you can use to monitor replication.
 
-For more information, refer to [Monitor](../../../explore/change-data-capture/using-logical-replication/monitor/).
+For more information, refer to [Monitor](../../../develop/change-data-capture/using-logical-replication/monitor/).
 
 If you are using a managed Kafka service, you can also monitor from the connector side. Consult your Kafka service documentation.
 

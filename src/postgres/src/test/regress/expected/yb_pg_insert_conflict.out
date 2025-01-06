@@ -447,7 +447,7 @@ drop table insertconflicttest;
 create table syscolconflicttest(key int4, data text);
 insert into syscolconflicttest values (1);
 insert into syscolconflicttest values (1) on conflict (key) do update set data = excluded.ctid::text; -- YB: output shows YB error message hit first before PG one
-ERROR:  System column "ctid" is not supported yet
+ERROR:  system column "ctid" is not supported yet
 drop table syscolconflicttest;
 --
 -- Previous tests all managed to not test any expressions requiring

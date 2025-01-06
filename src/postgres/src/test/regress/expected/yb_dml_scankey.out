@@ -21,9 +21,9 @@ SELECT k FROM hashcode_rowfilter WHERE :filter;
 
 SELECT * FROM hashcode_rowfilter
          WHERE yb_hash_code(row(j, i)) = yb_hash_code(row(2, 1));
-ERROR:  Unsupported datatype given to yb_hash_code
-DETAIL:  Only types supported by HASH key columns are allowed
-HINT:  Use explicit casts to ensure input types are as desired
+ERROR:  unsupported datatype given to yb_hash_code
+DETAIL:  Only types supported by HASH key columns are allowed.
+HINT:  Use explicit casts to ensure input types are as desired.
 \set explain 'EXPLAIN (costs off)'
 \set filter 'row(i, yb_hash_code(k)) > row(1, yb_hash_code(4))'
 \set query 'SELECT * FROM hashcode_rowfilter WHERE :filter ORDER BY j'

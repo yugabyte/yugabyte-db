@@ -736,7 +736,7 @@ YBReadSequenceTuple(Relation seqrel)
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Should never reach here")));
+				 errmsg("should never reach here")));
 
 	/* Set up the tuple */
 	Datum value[SEQ_COL_LASTCOL];
@@ -1967,7 +1967,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	if (cache_value != NULL && cacheOptionOrLastCache < cacheFlag)
 		ereport(NOTICE,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Overriding cache option with cache flag or previous cache value."),
+				 errmsg("overriding cache option with cache flag or previous cache value"),
 				 errhint("Cache option cannot be set lower than "
 						 "cache flag or previous cache value.")));
 

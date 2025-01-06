@@ -454,5 +454,38 @@ TEST_F(PgTablespacesTest, TestAlterTableScaling) {
   VerifyObjectPlacement(placement_blocks);
 }
 
+TEST_F(PgTablespacesTest, TombstonedTabletInYbLocalTablets) {
+  static constexpr auto kTableName = "test_table";
+  static constexpr auto kTablespace1 = "ts1";
+  static constexpr auto kTablespace2 = "ts2";
+  const auto tablet_state_query = Format(
+      "SELECT state FROM yb_local_tablets WHERE table_name = '$0' LIMIT 1",
+      kTableName);
+
+  std::vector<PlacementBlock> placement_blocks_1;
+  std::vector<PlacementBlock> placement_blocks_2;
+
+  placement_blocks_1.emplace_back(/* regionId = */ 1, /* minNumReplicas = */ 1);
+  placement_blocks_2.emplace_back(/* regionId = */ 2, /* minNumReplicas = */ 1);
+
+  Tablespace tablespace_1(kTablespace1, /* numReplicas = */ 1, placement_blocks_1);
+  Tablespace tablespace_2(kTablespace2, /* numReplicas = */ 1, placement_blocks_2);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(tablespace_1.getCreateCmd()));
+  ASSERT_OK(conn.Execute(tablespace_2.getCreateCmd()));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT) TABLESPACE $1", kTableName, kTablespace1));
+  auto old_tablet_state = ASSERT_RESULT(
+      conn.FetchRow<std::string>(tablet_state_query));
+  ASSERT_STR_EQ(old_tablet_state, "TABLET_DATA_READY");
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 SET TABLESPACE $1", kTableName, kTablespace2));
+  SleepFor(10s * kTimeMultiplier);
+  auto new_tablet_state = ASSERT_RESULT(
+      conn.FetchRow<std::string>(tablet_state_query));
+  ASSERT_STR_EQ(new_tablet_state, "TABLET_DATA_TOMBSTONED");
+}
+
 } // namespace client
 } // namespace yb

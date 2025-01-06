@@ -32,4 +32,5 @@ func init() {
 	UniverseCmd.AddCommand(upgrade.RestartCmd)
 	UniverseCmd.AddCommand(node.NodeCmd)
 	UniverseCmd.AddCommand(security.SecurityUniverseCmd)
+	UniverseCmd.AddCommand(runSampleAppsUniverseCmd)
 }

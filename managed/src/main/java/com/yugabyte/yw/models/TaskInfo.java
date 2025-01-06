@@ -352,21 +352,15 @@ public class TaskInfo extends Model {
   public UserTaskDetails getUserTaskDetails(List<TaskInfo> subTaskInfos, TaskCache taskCache) {
     UserTaskDetails taskDetails = new UserTaskDetails();
     Map<SubTaskGroupType, SubTaskDetails> userTasksMap = new HashMap<>();
-    SubTaskGroupType lastGroupType = SubTaskGroupType.Invalid;
+    SubTaskGroupType lastGroupType = SubTaskGroupType.Configuring;
     for (TaskInfo taskInfo : subTaskInfos) {
       SubTaskGroupType subTaskGroupType = taskInfo.getSubTaskGroupType();
-      if (subTaskGroupType == SubTaskGroupType.Invalid) {
-        continue;
-      }
       SubTaskDetails subTask = null;
       if (userTasksMap.containsKey(subTaskGroupType)) {
         // The type is already seen, group it with the last task if it is present.
         // This is done not to move back the progress for the group type on the UI
         // if the type shows up later.
-        subTask =
-            lastGroupType == SubTaskGroupType.Invalid
-                ? userTasksMap.get(subTaskGroupType)
-                : userTasksMap.get(lastGroupType);
+        subTask = userTasksMap.get(lastGroupType);
       }
       if (subTask == null) {
         subTask = createSubTask(subTaskGroupType);

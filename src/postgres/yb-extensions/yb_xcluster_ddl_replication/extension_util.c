@@ -31,13 +31,13 @@ GetInt64FromVariable(const char *var, const char *var_name)
 {
 	if (!var || strcmp(var, "") == 0)
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Error parsing %s: %s", var_name, var)));
+						errmsg("error parsing %s: %s", var_name, var)));
 
 	char *endp = NULL;
 	int64 ret = strtoll(var, &endp, 10);
 	if (*endp != '\0')
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Error parsing %s: %s", var_name, var)));
+						errmsg("error parsing %s: %s", var_name, var)));
 
 	return ret;
 }

@@ -16,7 +16,7 @@ SELECT  ctid, oprcom
 FROM    pg_catalog.pg_operator fk
 WHERE   oprcom != 0 AND
         NOT EXISTS(SELECT 1 FROM pg_catalog.pg_operator pk WHERE pk.oid = fk.oprcom);
-ERROR:  System column "ctid" is not supported yet
+ERROR:  system column "ctid" is not supported yet
 SELECT  '' AS ctid, oprcom -- YB: workaround for ctid not supported
 FROM    pg_catalog.pg_operator fk -- YB
 WHERE   oprcom != 0 AND -- YB

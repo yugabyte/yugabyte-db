@@ -868,7 +868,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("cannot set connection limit for postgres"),
-					 errhint("did you mean ALTER ROLE %s CONNECTION LIMIT -1", rolename)));
+					 errhint("Did you mean ALTER ROLE %s CONNECTION LIMIT -1.", rolename)));
 		new_record[Anum_pg_authid_rolconnlimit - 1] = Int32GetDatum(connlimit);
 		new_record_repl[Anum_pg_authid_rolconnlimit - 1] = true;
 	}

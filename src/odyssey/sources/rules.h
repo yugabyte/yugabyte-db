@@ -68,6 +68,7 @@ struct od_rule {
 	int user_name_len;
 	int user_is_default;
 	int yb_db_oid;
+	int yb_user_oid;
 	od_rule_role_type_t user_role;
 
 	/* auth */

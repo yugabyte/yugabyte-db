@@ -2073,7 +2073,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	if (IsYBRelation(relation))
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Operation not allowed in YugaByte mode %s",
+				 errmsg("operation not allowed in Yugabyte mode %s",
 						__func__)));
 
 	/* Cheap, simplistic check that the tuple matches the rel's rowtype. */
@@ -2327,7 +2327,7 @@ heap_multi_insert(Relation relation, TupleTableSlot **slots, int ntuples,
 	if (IsYBRelation(relation))
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Operation not allowed in YugaByte mode")));
+				 errmsg("operation not allowed in Yugabyte mode")));
 
 	/* currently not needed (thus unsupported) for heap_multi_insert() */
 	AssertArg(!(options & HEAP_INSERT_NO_LOGICAL));

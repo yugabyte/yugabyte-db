@@ -640,7 +640,7 @@ webserver_worker_main(Datum unused)
 	if (!backendStatusArray)
 		ereport(FATAL,
 			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg("Shared memory not allocated to BackendStatusArray before starting YSQL webserver")));
+			 errmsg("shared memory not allocated to BackendStatusArray before starting YSQL webserver")));
 
 	webserver = CreateWebserver(ListenAddresses, port);
 

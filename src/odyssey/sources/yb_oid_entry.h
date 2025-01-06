@@ -9,30 +9,32 @@
 #include <argp.h>
 
 #define YB_CTRL_CONN_OID 0
+#define ROUTE_INVALID_DB_OID 1
+#define ROUTE_INVALID_ROLE_OID 2
 
-enum yb_db_status { YB_DB_ACTIVE, YB_DB_DROPPED };
+enum yb_oid_status { YB_OID_ACTIVE, YB_OID_DROPPED };
+enum yb_oid_object { YB_USER, YB_DATABASE };
 
 typedef struct {
 	volatile int name_len;
 	int oid;
 	volatile int status;
 
-	/* max db name len is 64 in yb */
+	/* max user/db name len is 64 in yb */
 	volatile char name[64];
-} yb_db_entry_t;
+} yb_oid_entry_t;
 
 extern int yb_handle_oid_pkt_server(od_instance_t *instance,
-				    od_server_t *server, machine_msg_t *msg,
-				    const char *db_name);
+				    od_server_t *server, machine_msg_t *msg);
 
-extern yb_db_entry_t *yb_get_db_entry(const int yb_db_oid);
+extern yb_oid_entry_t *yb_get_oid_obj_entry(const int obj_type, const int yb_obj_oid);
 
-extern void yb_db_list_init(od_instance_t *instance);
+extern void yb_oid_list_init(od_instance_t *instance);
 
-extern int yb_resolve_db_status(od_global_t *global, yb_db_entry_t *entry,
+extern int yb_resolve_oid_status(const int obj_type, od_global_t *global, yb_oid_entry_t *entry,
 				od_server_t *server);
 
-extern bool yb_is_route_invalid(void *route);
+extern int yb_is_route_invalid(void *route);
 
 extern int yb_handle_oid_pkt_client(od_instance_t *instance,
 				    od_client_t *client, machine_msg_t *msg);

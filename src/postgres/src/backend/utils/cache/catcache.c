@@ -1840,9 +1840,9 @@ SearchCatCacheMiss(CatCache *cache,
 					appendStringInfo(&buf, "typid=%u value=<not logged>", typid);
 			}
 			ereport(LOG,
-					(errmsg("Catalog cache miss on cache with id %d:\n"
-							"Target rel: %s (oid : %d), index oid %d\n"
-							"Search keys: %s",
+					(errmsg("catalog cache miss on cache with id %d:\n"
+							"target rel: %s (oid : %d), index oid %d\n"
+							"search keys: %s",
 							cache->id,
 							cache->cc_relname,
 							cache->cc_reloid,

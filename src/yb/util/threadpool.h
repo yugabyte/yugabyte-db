@@ -528,8 +528,8 @@ class TaskRunner {
   void Submit(F&& f) {
     ++running_tasks_;
     auto status = thread_pool_->SubmitFunc([this, f = std::forward<F>(f)]() {
-      auto status = f();
-      CompleteTask(status);
+      auto s = f();
+      CompleteTask(s);
     });
     if (!status.ok()) {
       CompleteTask(status);

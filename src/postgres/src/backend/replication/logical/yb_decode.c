@@ -535,7 +535,7 @@ YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name)
 
 	ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg("Could not find column with name %s in tuple"
+			 errmsg("could not find column with name %s in tuple"
 					" descriptor", column_name)));
 	return -1;			/* keep compiler quiet */
 }

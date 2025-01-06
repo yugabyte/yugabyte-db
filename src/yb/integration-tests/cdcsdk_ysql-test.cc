@@ -28,9 +28,9 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
-#include "yb/util/metric_entity.h"
 
 namespace yb {
 
@@ -4245,13 +4245,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleS
   int64_t total_traffic_sent = 0;
   uint64_t total_change_event_count = 0;
 
-  std::stringstream output;
-  MetricPrometheusOptions opts;
-  PrometheusWriter writer(&output, opts);
-
-  std::unordered_map<std::string, std::string> attr;
-  auto aggregation_level = kStreamLevel;
-
   for (uint32_t idx = 0; idx < num_tables; idx++) {
     ASSERT_OK(
         WriteRowsHelper(1, 50, &test_cluster_, true, 2, (kTableName + table_suffix[idx]).c_str()));
@@ -4276,20 +4269,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleS
           return current_expiry_time > metrics[idx]->cdcsdk_expiry_time_ms->value();
         },
         MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
-
-    attr["namespace_name"] = kNamespaceName;
-    attr["stream_id"] = stream_id.ToString();
-    attr["metric_type"] = "cdcsdk";
-
-    ASSERT_OK(metrics[idx]->cdcsdk_change_event_count->WriteForPrometheus(
-        &writer, attr, opts, aggregation_level));
-    ASSERT_OK(metrics[idx]->cdcsdk_traffic_sent->WriteForPrometheus(
-        &writer, attr, opts, aggregation_level));
   }
-  auto aggregated_change_event_count =
-      writer.TEST_GetAggregatedValue("cdcsdk_change_event_count", stream_id.ToString());
-  auto aggregated_traffic_sent =
-      writer.TEST_GetAggregatedValue("cdcsdk_traffic_sent", stream_id.ToString());
+
+  auto metrics_aggregator = tserver->metric_registry()->TEST_metrics_aggregator();
+  auto aggregated_change_event_count = metrics_aggregator->TEST_GetMetricPreAggregatedValue(
+      "cdcsdk_change_event_count", stream_id.ToString());
+  auto aggregated_traffic_sent = metrics_aggregator->TEST_GetMetricPreAggregatedValue(
+      "cdcsdk_traffic_sent", stream_id.ToString());
 
   ASSERT_GT(aggregated_traffic_sent, 100);
   ASSERT_GT(total_record_size, 100);

@@ -26,7 +26,7 @@ YugabyteDB Anywhere will end support for Replicated installation at the **end of
 
 For end-of-life releases, see [Releases at end of life](../ybdb-releases/#eol-releases).
 
-For information on stable release support policy, see [Stable Release support policy](../#stable-release-support-policy).
+For information on stable release support policy, see [Stable Release support policy](../versioning/#stable-release-support-policy).
 
 For information on release versioning, see [Versioning](../versioning/).
 

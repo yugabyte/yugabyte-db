@@ -84,7 +84,7 @@ typedef struct YbQueryDiagnosticsBundles
 {
 	int			index;			/* index to insert new buffer entry */
 	int			max_entries;	/* maximum # of entries in the buffer */
-	LWLock	 	lock;			/* protects circular buffer from search/modification */
+	LWLock		lock;			/* protects circular buffer from search/modification */
 	BundleInfo	bundles[FLEXIBLE_ARRAY_MEMBER]; /* circular buffer to store info about bundles */
 } YbQueryDiagnosticsBundles;
 
@@ -216,8 +216,8 @@ YbQueryDiagnosticsShmemSize(void)
 void
 YbQueryDiagnosticsShmemInit(void)
 {
-	HASHCTL 	ctl;
-	bool 		found;
+	HASHCTL		ctl;
+	bool		found;
 
 	bundles_in_progress = NULL;
 	/* Initialize the hash table control structure */
@@ -272,7 +272,7 @@ CircularBufferMaxEntries(void)
 }
 
 /*
- * InsertCompletedBundleInfo
+ * InsertBundlesIntoView
  * 		Add a query diagnostics entry to the circular buffer.
  */
 static void
@@ -446,7 +446,7 @@ OutputBundle(const YbQueryDiagnosticsMetadata metadata, const char *description,
 static void
 ProcessActiveBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 {
-	HASH_SEQ_STATUS	status;
+	HASH_SEQ_STATUS status;
 	YbQueryDiagnosticsEntry *entry;
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
@@ -738,7 +738,7 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 
 	if (entry)
 	{
-		double 		totaltime_ms;
+		double		totaltime_ms;
 
 		totaltime_ms = INSTR_TIME_GET_MILLISEC(queryDesc->totaltime->counter);
 
@@ -808,8 +808,8 @@ AccumulateBindVariablesOrConstants(YbQueryDiagnosticsEntry *entry, StringInfo pa
 static void
 AccumulatePgss(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry)
 {
-	double totaltime_ms = INSTR_TIME_GET_DOUBLE(queryDesc->totaltime->counter) * 1000;
-	int64 rows = queryDesc->estate->es_processed;
+	double		totaltime_ms = INSTR_TIME_GET_DOUBLE(queryDesc->totaltime->counter) * 1000;
+	int64		rows = queryDesc->estate->es_processed;
 	BufferUsage *bufusage = &queryDesc->totaltime->bufusage;
 
 	SpinLockAcquire(&entry->mutex);
@@ -911,7 +911,7 @@ AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry, bool exp
 	SpinLockAcquire(&entry->mutex);
 
 	/* TODO(GH#23720): Add support for handling oversized explain plans */
-	int remaining_space = sizeof(entry->explain_plan) - strlen(entry->explain_plan) - 1;
+	int			remaining_space = sizeof(entry->explain_plan) - strlen(entry->explain_plan) - 1;
 	if (remaining_space > 0)
 		snprintf(entry->explain_plan + strlen(entry->explain_plan), remaining_space,
 				 "duration: %.3f ms\nplan:\n%s\n\n", totaltime_ms, es->str->data);
@@ -959,7 +959,7 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 	if (found)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("Query diagnostics for %ld, is already being generated",
+				 errmsg("query diagnostics for %ld is already being generated",
 						metadata->params.query_id)));
 }
 
@@ -977,7 +977,7 @@ BundleEndTime(const YbQueryDiagnosticsEntry *entry)
 }
 
 void
-AppendToDescription(char *description, const char *format, ...)
+YbQueryDiagnosticsAppendToDescription(char *description, const char *format, ...)
 {
 	int			current_len = strlen(description);
 	va_list		args;
@@ -1082,10 +1082,10 @@ FlushAndCleanBundles()
 		{
 			SpinLockAcquire(&entry->mutex);
 			/*
-			* To avoid holding the lock while flushing to disk, we create a copy of the data
-			* that is to be dumped, this protects us from potential overwriting of the entry
-			* during the flushing process.
-			*/
+			 * To avoid holding the lock while flushing to disk, we create a copy of the data
+			 * that is to be dumped, this protects us from potential overwriting of the entry
+			 * during the flushing process.
+			 */
 			memcpy(&expired_entries[expired_entries_index++], entry, sizeof(YbQueryDiagnosticsEntry));
 			SpinLockRelease(&entry->mutex);
 		}
@@ -1143,7 +1143,7 @@ end_of_loop:
 		/* No queries were executed that needed to be bundled */
 		if (entry->pgss.query_len == 0)
 		{
-			AppendToDescription(description, "No query executed;");
+			YbQueryDiagnosticsAppendToDescription(description, "No query executed;");
 			goto remove_entry;
 		}
 
@@ -1165,7 +1165,7 @@ end_of_loop:
 		 * and query_len is updated.
 		 */
 		if (*yb_pgss_last_reset_time >= entry->metadata.start_time)
-			AppendToDescription(description, "pg_stat_statements was reset, " \
+			YbQueryDiagnosticsAppendToDescription(description, "pg_stat_statements was reset, " \
 													 "query string not available;");
 		else
 		{
@@ -1179,7 +1179,7 @@ end_of_loop:
 													 query_str);
 
 					if (query_str[0] == '\0')
-						AppendToDescription(description, "Error fetching "
+						YbQueryDiagnosticsAppendToDescription(description, "Error fetching "
 														 "pg_stat_statements "
 														 "normalized query "
 														 "string;");
@@ -1198,7 +1198,7 @@ end_of_loop:
 				edata = CopyErrorData();
 				FlushErrorState();
 
-				AppendToDescription(description,
+				YbQueryDiagnosticsAppendToDescription(description,
 									"Fetching pg_stat_statements normalized "
 									"query string "
 									"errored out, with the following message: "
@@ -1271,7 +1271,7 @@ end_of_loop:
 			edata = CopyErrorData();
 			FlushErrorState();
 
-			AppendToDescription(description,
+			YbQueryDiagnosticsAppendToDescription(description,
 								"Fetching schema details errored out "
 								"with the following message: %s",
 								edata->message);
@@ -1682,7 +1682,7 @@ PrintTableName(Oid oid, StringInfo schema_details)
 {
 	StartTransactionCommand();
 
-	char		*table_name = get_rel_name(oid);
+	char	   *table_name = get_rel_name(oid);
 
 	if (table_name)
 	{
@@ -2029,19 +2029,19 @@ FetchSchemaOids(List *rtable, Oid *schema_oids)
 static void
 ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata)
 {
-	uint32		rand_num =DatumGetUInt32(hash_any((unsigned char*)&metadata->start_time,
-										   sizeof(metadata->start_time)));
+	uint32		rand_num =DatumGetUInt32(hash_any((unsigned char *)&metadata->start_time,
+												  sizeof(metadata->start_time)));
 #ifdef WIN32
-	const char *format = "%s\\%s\\%ld\\%ud\\";
+	const char *format = "%s\\%s\\%ld\\%u\\";
 #else
-	const char *format = "%s/%s/%ld/%ud/";
+	const char *format = "%s/%s/%ld/%u/";
 #endif
 	if (snprintf(metadata->path, MAXPGPATH, format,
 				 DataDir, "query-diagnostics", metadata->params.query_id, rand_num) >= MAXPGPATH)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("Path to pg_data is too long"),
-				 errhint("Move the data directory to a shorter path")));
+				 errmsg("path to pg_data is too long"),
+				 errhint("Move the data directory to a shorter path.")));
 }
 
 /*
@@ -2124,7 +2124,7 @@ yb_cancel_query_diagnostics(PG_FUNCTION_ARGS)
 				 errmsg("query diagnostics is not enabled"),
 				 errhint("Set ysql_yb_enable_query_diagnostics gflag to true")));
 
-	int64			query_id = PG_GETARG_INT64(0);
+	int64		query_id = PG_GETARG_INT64(0);
 	YbQueryDiagnosticsEntry *entry;
 
 	if (query_id == 0)

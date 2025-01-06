@@ -804,6 +804,7 @@ typedef struct PgTabletsDescriptor {
   size_t partition_key_start_len;
   const char* partition_key_end;
   size_t partition_key_end_len;
+  const char* tablet_data_state;
 } YBCPgTabletsDescriptor;
 
 typedef struct MetricsInfo {

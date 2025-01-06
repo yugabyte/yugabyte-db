@@ -2077,7 +2077,7 @@ Status ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
 }
 
 Status ClusterAdminClient::FillPlacementInfo(
-    master::PlacementInfoPB* placement_info_pb, const string& placement_str) {
+    PlacementInfoPB* placement_info_pb, const string& placement_str) {
   placement_info_pb->clear_placement_blocks();
 
   std::vector<std::string> placement_info_splits = strings::Split(
@@ -2134,7 +2134,7 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
     return STATUS(InvalidCommand, "Placement cannot be modified for the global transactions table");
   }
 
-  master::PlacementInfoPB live_replicas;
+  PlacementInfoPB live_replicas;
   live_replicas.set_num_replicas(replication_factor);
   RETURN_NOT_OK(FillPlacementInfo(&live_replicas, placement_info));
 
@@ -2159,7 +2159,7 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
   master::SysClusterConfigEntryPB* sys_cluster_config_entry =
       resp_cluster_config.mutable_cluster_config();
-  master::PlacementInfoPB* live_replicas =
+  PlacementInfoPB* live_replicas =
       sys_cluster_config_entry->mutable_replication_info()->mutable_live_replicas();
   live_replicas->set_num_replicas(replication_factor);
   RETURN_NOT_OK(FillPlacementInfo(live_replicas, placement_info));

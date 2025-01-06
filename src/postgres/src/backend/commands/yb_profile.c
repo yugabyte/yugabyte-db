@@ -59,7 +59,7 @@ CheckProfileCatalogsExist()
 	if (!YbLoginProfileCatalogsExist)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Login profile system catalogs do not exist.")));
+				 errmsg("login profile system catalogs do not exist")));
 }
 
 /*

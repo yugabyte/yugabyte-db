@@ -120,7 +120,8 @@ func BuildResourceRoleDefinition(
 		}
 		allowAll, err := strconv.ParseBool(roleBinding["allow-all"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'allow-all'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

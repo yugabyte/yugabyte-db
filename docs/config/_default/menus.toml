@@ -818,7 +818,7 @@
 
 [[preview_releases]]
   name = "Releases"
-  weight = 2
+  weight = 1
   identifier = "releases"
   url = "/preview/releases/"
   [preview_releases.params]
@@ -826,24 +826,8 @@
     showSection = true
 
 [[preview_releases]]
-  name = "Versioning"
-  weight = 3
-  identifier = "release-versioning"
-  url = "/preview/releases/versioning/"
-  [preview_releases.params]
-    showSection = true
-
-[[preview_releases]]
-  name = "Tech Advisories"
-  weight = 4
-  identifier = "tech-advisories"
-  url = "/preview/releases/techadvisories/"
-  [preview_releases.params]
-    showSection = true
-
-[[preview_releases]]
   name = "YugabyteDB"
-  weight = 5
+  weight = 2
   identifier = "ybdb-releases"
   url = "/preview/releases/ybdb-releases/"
   [preview_releases.params]
@@ -859,7 +843,7 @@
 
 [[preview_releases]]
   name = "YugabyteDB Anywhere"
-  weight = 6
+  weight = 3
   identifier = "yba-releases"
   url = "/preview/releases/yba-releases/"
   [preview_releases.params]
@@ -867,7 +851,7 @@
 
 [[preview_releases]]
   name = "YugabyteDB Aeon"
-  weight = 10
+  weight = 4
   identifier = "ybm-releases"
   url = "/preview/yugabyte-cloud/release-notes/"
   [preview_releases.params]
@@ -875,19 +859,36 @@
 
 [[preview_releases]]
   name = "YugabyteDB Voyager"
-  weight = 11
+  weight = 5
   identifier = "voy-releases"
   url = "/preview/yugabyte-voyager/release-notes/"
   [preview_releases.params]
     showSection = true
+    imageUrl = "/images/migrate/migration-icon.svg"
 
 [[preview_releases]]
   name = "YugabyteDB Clients"
-  weight = 7
+  weight = 6
   identifier = "yb-clients"
   url = "/preview/releases/yugabyte-clients/"
   [preview_releases.params]
     classes = "separator"
+    showSection = true
+
+[[preview_releases]]
+  name = "Versioning"
+  weight = 10
+  identifier = "release-versioning"
+  url = "/preview/releases/versioning/"
+  [preview_releases.params]
+    showSection = true
+
+[[preview_releases]]
+  name = "Tech Advisories"
+  weight = 11
+  identifier = "tech-advisories"
+  url = "/preview/releases/techadvisories/"
+  [preview_releases.params]
     showSection = true
 
 ########## Menus (in preview) for FAQ section

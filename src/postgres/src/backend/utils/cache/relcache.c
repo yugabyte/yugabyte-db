@@ -2154,8 +2154,8 @@ YbRaiseInvalidDBConnectionError()
 {
 	ereport(FATAL,
 			(errcode(ERRCODE_CONNECTION_FAILURE),
-				errmsg("Could not reconnect to database"),
-				errhint("Database might have been dropped by another user")));
+				errmsg("could not reconnect to database"),
+				errhint("Database might have been dropped by another user.")));
 }
 
 typedef enum YbPFetchTable

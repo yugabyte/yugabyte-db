@@ -982,6 +982,10 @@ Status CatalogManager::Init() {
 
   RETURN_NOT_OK(xcluster_manager_->Init());
 
+  master_->ts_manager()->SetLeaseExpiredCallback(std::bind(
+      &ObjectLockInfoManager::ReleaseOldObjectLocks, object_lock_info_manager_.get(), _1, _2, false,
+      _3));
+
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
 

@@ -108,7 +108,7 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 		if (strcmp(error.hint, "Database might have been dropped by another user") == 0)
 		{
 			/* Reset the route and close the client */
-			((od_route_t*)server->route)->yb_database_entry->status = YB_DB_DROPPED;
+			((od_route_t*)server->route)->yb_database_entry->status = YB_OID_DROPPED;
 
 			if (yb_external_client != NULL &&
 			    ((od_client_t *)yb_external_client)->type ==
@@ -118,6 +118,15 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 					KIWI_CONNECTION_DOES_NOT_EXIST,
 					error.hint, od_io_error(&server->io));
 		}
+	}
+
+	if (strstr(error.message, "invalid role OID")) {
+		/* Reset the route and close the client */
+		((od_route_t*)server->route)->yb_user_entry->status = YB_OID_DROPPED;
+
+		if (yb_external_client != NULL &&
+			((od_client_t *)yb_external_client)->type == OD_POOL_CLIENT_EXTERNAL)
+				od_frontend_error(yb_external_client, KIWI_CONNECTION_DOES_NOT_EXIST, error.message);
 	}
 }
 
@@ -233,8 +242,8 @@ static inline int od_backend_startup(od_server_t *server,
 		strcpy(db_name, (char *)route->yb_database_entry->name);
 		db_name_len = route->yb_database_entry->name_len + 1;
 
-		strcpy(user_name, (char *)route->id.user);
-		user_name_len = route->id.user_len;
+		strcpy(user_name, (char *)route->yb_user_entry->name);
+		user_name_len = route->yb_user_entry->name_len + 1;
 
 		/*
 		 * The connection between connection manager and the backend is always
@@ -487,7 +496,7 @@ static inline int od_backend_startup(od_server_t *server,
 				/* Read the oid details */
 				rc = yb_handle_oid_pkt_client(instance, client, msg);
 			else
-				rc = yb_handle_oid_pkt_server(instance, server, msg, db_name);
+				rc = yb_handle_oid_pkt_server(instance, server, msg);
 
 			machine_msg_free(msg);
 			if (rc == -1)
