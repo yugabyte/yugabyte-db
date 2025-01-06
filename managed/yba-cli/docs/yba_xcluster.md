@@ -1,19 +1,19 @@
-## yba universe
+## yba xcluster
 
-Manage YugabyteDB Anywhere universes
+Manage YugabyteDB Anywhere xClusters
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere universes
+Manage YugabyteDB Anywhere xClusters (Asynchronous Replication)
 
 ```
-yba universe [flags]
+yba xcluster [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for universe
+  -h, --help   help for xcluster
 ```
 
 ### Options inherited from parent commands
@@ -33,13 +33,11 @@ yba universe [flags]
 ### SEE ALSO
 
 * [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba universe create](yba_universe_create.md)	 - Create YugabyteDB Anywhere universe
-* [yba universe delete](yba_universe_delete.md)	 - Delete a YugabyteDB Anywhere universe
-* [yba universe describe](yba_universe_describe.md)	 - Describe a YugabyteDB Anywhere universe
-* [yba universe list](yba_universe_list.md)	 - List YugabyteDB Anywhere universes
-* [yba universe node](yba_universe_node.md)	 - Manage YugabyteDB Anywhere universe nodes
-* [yba universe restart](yba_universe_restart.md)	 - Restart a YugabyteDB Anywhere Universe
-* [yba universe run-sample-apps](yba_universe_run-sample-apps.md)	 - Get sample apps command for a YugabyteDB Anywhere universe
-* [yba universe security](yba_universe_security.md)	 - Manage security settings for a universe
-* [yba universe upgrade](yba_universe_upgrade.md)	 - Upgrade a YugabyteDB Anywhere universe
+* [yba xcluster delete](yba_xcluster_delete.md)	 - Delete a YugabyteDB Anywhere xCluster
+* [yba xcluster describe](yba_xcluster_describe.md)	 - Describe a YugabyteDB Anywhere xcluster between two universes
+* [yba xcluster list](yba_xcluster_list.md)	 - List a YugabyteDB Anywhere xcluster between two universes
+* [yba xcluster pause](yba_xcluster_pause.md)	 - Pause a YugabyteDB Anywhere xCluster
+* [yba xcluster restart](yba_xcluster_restart.md)	 - Restart replication for databases in the YugabyteDB Anywhere sxCluster configuration
+* [yba xcluster resume](yba_xcluster_resume.md)	 - Resume a YugabyteDB Anywhere xCluster
+* [yba xcluster sync](yba_xcluster_sync.md)	 - Reconcile a YugabyteDB Anywhere xcluster configuration with database
 

@@ -246,6 +246,22 @@ const (
 	AbortedTaskStatus = "Aborted"
 )
 
+// Allowed states for XCluster Universe Lifecycle
+const (
+	// InitializedXClusterState indicates the XCluster universe is initialized
+	InitializedXClusterState = "Initialized"
+	// RunningXClusterState indicates the XCluster universe is running
+	RunningXClusterState = "Running"
+	// UpdatingXClusterState indicates the XCluster universe is updating
+	UpdatingXClusterState = "Updating"
+	// DeletedXClusterUniverseState indicates the XCluster universe has been deleted
+	DeletedXClusterUniverseState = "DeletedUniverse"
+	// DeletionFailedXClusterState indicates the XCluster universe deletion failed
+	DeletionFailedXClusterState = "DeletionFailed"
+	// FailedXClusterState indicates the XCluster universe encountered a failure
+	FailedXClusterState = "Failed"
+)
+
 // Node operations allowed on universe
 const (
 	// AddNode operation
@@ -408,6 +424,14 @@ const (
 	SystemRoleType = "System"
 	// CustomRoleType type
 	CustomRoleType = "Custom"
+)
+
+// WorkloadType
+const (
+	// YSQLWorkloadType type
+	YSQLWorkloadType = "YSQL"
+	// YCQLWorkloadType type
+	YCQLWorkloadType = "YCQL"
 )
 
 // ExposingServiceState

@@ -45,5 +45,6 @@ yba [flags]
 * [yba task](yba_task.md)	 - Manage YugabyteDB Anywhere tasks
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
 * [yba user](yba_user.md)	 - Manage YugabyteDB Anywhere users
+* [yba xcluster](yba_xcluster.md)	 - Manage YugabyteDB Anywhere xClusters
 * [yba yb-db-version](yba_yb-db-version.md)	 - Manage YugabyteDB versions
 
