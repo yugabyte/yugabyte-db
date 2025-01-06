@@ -91,25 +91,25 @@ typedef struct YbQueryDiagnosticsPgss
 typedef struct YbQueryDiagnosticsParams
 {
 	/* Hash code to identify identical normalized queries */
-	int64 		query_id;
+	int64		query_id;
 
 	/* Indicates the duration for which the bundle will run */
-	int 		diagnostics_interval_sec;
+	int			diagnostics_interval_sec;
 
 	/* Percentage of queries to be explain’ed */
-	int 		explain_sample_rate;
+	int			explain_sample_rate;
 
 	/* Whether to run EXPLAIN ANALYZE on the query */
-	bool 		explain_analyze;
+	bool		explain_analyze;
 
 	/* Whether to run EXPLAIN (DIST) on the query */
-	bool 		explain_dist;
+	bool		explain_dist;
 
 	/* Whether to run EXPLAIN (DEBUG) on the query */
-	bool 		explain_debug;
+	bool		explain_debug;
 
 	/* Minimum duration for a query to be considered for bundling bind variables */
-	int 		bind_var_query_min_duration_ms;
+	int			bind_var_query_min_duration_ms;
 } YbQueryDiagnosticsParams;
 
 /*
@@ -181,6 +181,6 @@ extern void YbQueryDiagnosticsShmemInit(void);
 extern void YbQueryDiagnosticsBgWorkerRegister(void);
 extern void YbQueryDiagnosticsMain(Datum main_arg);
 extern void YbSetPgssNormalizedQueryText(int64 query_id, const Size query_offset, int query_len);
-extern void AppendToDescription(char *description, const char *format, ...);
+extern void YbQueryDiagnosticsAppendToDescription(char *description, const char *format, ...);
 
 #endif                            /* YB_QUERY_DIAGNOSTICS_H */
