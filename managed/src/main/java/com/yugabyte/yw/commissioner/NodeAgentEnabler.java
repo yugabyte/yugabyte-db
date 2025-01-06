@@ -448,7 +448,7 @@ public class NodeAgentEnabler {
                 e.getMessage());
           }
         }
-        if (customerNodeAgentInstallers.get(customer.getUuid()) == installer) {
+        if (installer != null && customerNodeAgentInstallers.get(customer.getUuid()) == installer) {
           // Same reference means no new installer was created.
           log.info("Removing the completed installer for universe {}", installer.getUniverseUuid());
           customerNodeAgentInstallers.remove(customer.getUuid());
