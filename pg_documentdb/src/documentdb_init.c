@@ -22,6 +22,7 @@
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
 #include "vector/vector_spec.h"
+#include "commands/commands_common.h"
 
 /* --------------------------------------------------------- */
 /* Data Types & Enum values */
@@ -293,6 +294,9 @@ bool ThrowDeadlockOnCrud = DEFAULT_THROW_DEADLOCK_ON_CRUD;
 
 #define MAX_USER_LIMIT 10
 int MaxUserLimit = MAX_USER_LIMIT;
+
+/* TODO: External configs exposed here */
+
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -907,7 +911,6 @@ InstallDocumentDBApiPostgresHooks(void)
 
 	RegisterScanNodes();
 	RegisterQueryScanNodes();
-	RegisterRumJoinScanNodes();
 }
 
 

@@ -24,14 +24,11 @@ bool PEC_FeatureFlagTimeseriesMetricIndexes =
 int PEC_TransactionTimeoutLimitSeconds =
 	DEFAULT_TRANSACTION_TIMEOUT_LIMIT_SECONDS;
 
-#define DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY 500000
-int32 PEC_InternalQueryMaxAllowedDensifyDocs = DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY;
-
-int32 PEC_InternalDocumentSourceDensifyMaxMemoryBytes =
-	BSON_MAX_ALLOWED_SIZE_INTERMEDIATE;
 bool PEC_FailurePointDisablePipelineOptimization = false;
 bool PEC_InternalQueryForceClassicEngine = true;
 bool PEC_InternalQueryEnableSlotBasedExecutionEngine = false;
+
+#define DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY 500000
 
 /*
  * =================================================================================================================

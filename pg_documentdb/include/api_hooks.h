@@ -174,4 +174,12 @@ void TryCustomParseAndValidateVectorQuerySpec(const char *key,
 											  const bson_value_t *value,
 											  VectorSearchOptions *vectorSearchOptions);
 
+struct RelOptInfo;
+struct PlannerInfo;
+struct BitmapHeapPath;
+struct Path * TryOptimizePathForBitmapAnd(struct PlannerInfo *root, struct
+										  RelOptInfo *rel,
+										  RangeTblEntry *rte, struct
+										  BitmapHeapPath *heapPath);
+
 #endif

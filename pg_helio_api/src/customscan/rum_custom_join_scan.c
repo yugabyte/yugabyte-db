@@ -36,7 +36,9 @@
 #include "vector/vector_planner.h"
 #include "vector/vector_common.h"
 #include "utils/documentdb_errors.h"
+#include "api_hooks_def.h"
 
+extern void RegisterRumJoinScanNodes(void);
 
 /* --------------------------------------------------------- */
 /* Data-types */
@@ -111,6 +113,10 @@ static CustomPath * CreateCustomJoinPathCore(BitmapHeapPath *bitmapAndPath,
 											 PlannerInfo *root);
 static void InitializeBitmapHeapScanState(BitmapHeapScanState *scanState, int32_t limit);
 
+static Path * CreateRumJoinScanPathForBitmapAnd(PlannerInfo *root, RelOptInfo *rel,
+												RangeTblEntry *rte,
+												BitmapHeapPath *heapPath);
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -161,6 +167,8 @@ RegisterRumJoinScanNodes(void)
 	{
 		RegisterExtensibleNodeMethods(&InputQueryStateMethods);
 	}
+
+	try_optimize_path_for_bitmap_and_hook = CreateRumJoinScanPathForBitmapAnd;
 }
 
 
@@ -168,7 +176,7 @@ RegisterRumJoinScanNodes(void)
  * Registers a Custom Path Scan for a Bitmap And of RUM indexes
  * such that it optimizes the performance of scanning the N indexes.
  */
-Path *
+static Path *
 CreateRumJoinScanPathForBitmapAnd(PlannerInfo *root, RelOptInfo *rel,
 								  RangeTblEntry *rte,
 								  BitmapHeapPath *heapPath)
@@ -179,21 +187,8 @@ CreateRumJoinScanPathForBitmapAnd(PlannerInfo *root, RelOptInfo *rel,
 	}
 	else
 	{
-		return (Path *) heapPath;
+		return NULL;
 	}
-}
-
-
-bool
-IsRumJoinScanPath(Path *path)
-{
-	if (!IsA(path, CustomPath))
-	{
-		return false;
-	}
-
-	CustomPath *customPath = (CustomPath *) path;
-	return customPath->methods == &ExtensionRumJoinScanPathMethods;
 }
 
 

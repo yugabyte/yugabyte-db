@@ -22,6 +22,8 @@ PG_MODULE_MAGIC;
 void _PG_init(void);
 void _PG_fini(void);
 
+extern void RegisterRumJoinScanNodes(void);
+
 extern int FirstMajorVersionOffset;
 extern bool SkipDocumentDBLoad;
 bool SkipHelioApiLoad = false;
@@ -81,6 +83,7 @@ _PG_init(void)
 	InitializeDocumentDBBackgroundWorker("pg_helio_api", "helio_api");
 
 	InstallDocumentDBApiPostgresHooks();
+	RegisterRumJoinScanNodes();
 
 	ereport(LOG, (errmsg("Initialized pg_helio_api extension")));
 }

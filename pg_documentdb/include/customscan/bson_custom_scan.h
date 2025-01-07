@@ -25,11 +25,5 @@ void ValidateCursorCustomScanPlan(Plan *plan);
 void UpdatePathsWithOptimizedExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 												  RangeTblEntry *rte);
 
-Path * CreateRumJoinScanPathForBitmapAnd(PlannerInfo *root, RelOptInfo *rel,
-										 RangeTblEntry *rte, BitmapHeapPath *heapPath);
-
-
-bool IsRumJoinScanPath(Path *path);
-
 PathTarget * BuildBaseRelPathTarget(Relation tableRel, Index relIdIndex);
 #endif

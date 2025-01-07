@@ -47,6 +47,7 @@ GetIndexAmRoutine_HookType get_index_amroutine_hook = NULL;
 GetMultiAndBitmapIndexFunc_HookType get_multi_and_bitmap_func_hook = NULL;
 TryCustomParseAndValidateVectorQuerySpec_HookType
 	try_custom_parse_and_validate_vector_query_spec_hook = NULL;
+TryOptimizePathForBitmapAndHookType try_optimize_path_for_bitmap_and_hook = NULL;
 
 /*
  * Single node scenario is always a metadata coordinator
@@ -383,4 +384,17 @@ TryCustomParseAndValidateVectorQuerySpec(const char *key,
 															 value,
 															 vectorSearchOptions);
 	}
+}
+
+
+Path *
+TryOptimizePathForBitmapAnd(PlannerInfo *root, RelOptInfo *rel,
+							RangeTblEntry *rte, BitmapHeapPath *heapPath)
+{
+	if (try_optimize_path_for_bitmap_and_hook != NULL)
+	{
+		return try_optimize_path_for_bitmap_and_hook(root, rel, rte, heapPath);
+	}
+
+	return NULL;
 }

@@ -18,7 +18,6 @@
 
 #include "aggregation/bson_project.h"
 #include "commands/parse_error.h"
-#include "infrastructure/bson_external_configs.h"
 #include "io/bson_core.h"
 #include "io/bson_hash.h"
 #include "metadata/metadata_cache.h"
@@ -29,11 +28,19 @@
 #include "utils/feature_counter.h"
 #include "utils/documentdb_errors.h"
 #include "utils/date_utils.h"
+#include "commands/commands_common.h"
 
 #include "aggregation/bson_densify.h"
 
 /* GUC to enable $densify aggregation stage */
 extern bool EnableDensifyStage;
+
+
+#define DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY 500000
+int32 PEC_InternalQueryMaxAllowedDensifyDocs = DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY;
+
+int32 PEC_InternalDocumentSourceDensifyMaxMemoryBytes =
+	BSON_MAX_ALLOWED_SIZE_INTERMEDIATE;
 
 /* Enum to represent the type of Densify */
 typedef enum DensifyType

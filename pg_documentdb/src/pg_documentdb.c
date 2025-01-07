@@ -13,7 +13,6 @@
 
 #include "bson_init.h"
 #include "utils/feature_counter.h"
-#include "infrastructure/bson_external_configs.h"
 #include "documentdb_api_init.h"
 
 PG_MODULE_MAGIC;
@@ -47,7 +46,6 @@ _PG_init(void)
 
 	InstallBsonMemVTables();
 	InitApiConfigurations("documentdb", "documentdb");
-	InitializeExtensionExternalConfigs("documentdb");
 	InitializeSharedMemoryHooks();
 	MarkGUCPrefixReserved("documentdb");
 

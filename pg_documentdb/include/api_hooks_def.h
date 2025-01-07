@@ -16,6 +16,7 @@
 #include "api_hooks_common.h"
 #include <access/amapi.h>
 #include <nodes/parsenodes.h>
+#include <nodes/pathnodes.h>
 
 /* Section: General Extension points */
 
@@ -168,8 +169,6 @@ extern GetIndexAmRoutine_HookType get_index_amroutine_hook;
 typedef void *(*GetMultiAndBitmapIndexFunc_HookType)(void);
 extern GetMultiAndBitmapIndexFunc_HookType get_multi_and_bitmap_func_hook;
 
-extern bool DefaultInlineWriteOperations;
-
 /*
  * Hook for customizing the validation of vector query spec.
  */
@@ -181,5 +180,13 @@ typedef void
 													 vectorSearchOptions);
 extern TryCustomParseAndValidateVectorQuerySpec_HookType
 	try_custom_parse_and_validate_vector_query_spec_hook;
+
+
+typedef Path *(*TryOptimizePathForBitmapAndHookType)(PlannerInfo *root, RelOptInfo *rel,
+													 RangeTblEntry *rte,
+													 BitmapHeapPath *heapPath);
+extern TryOptimizePathForBitmapAndHookType try_optimize_path_for_bitmap_and_hook;
+
+extern bool DefaultInlineWriteOperations;
 
 #endif

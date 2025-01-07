@@ -33,6 +33,7 @@
 #include "catalog/pg_am.h"
 #include "commands/cursor_common.h"
 #include "customscan/bson_custom_scan_private.h"
+#include "api_hooks.h"
 
 #if (PG_VERSION_NUM >= 150000)
 
@@ -390,9 +391,12 @@ UpdatePathsWithOptimizedExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 
 				if (isAllRumIndexScans)
 				{
-					Path *customPath = CreateRumJoinScanPathForBitmapAnd(root, rel, rte,
-																		 bitmapPath);
-					lfirst(cell) = customPath;
+					Path *customPath = TryOptimizePathForBitmapAnd(root, rel, rte,
+																   bitmapPath);
+					if (customPath != NULL)
+					{
+						lfirst(cell) = customPath;
+					}
 				}
 			}
 		}
@@ -449,6 +453,22 @@ BuildBaseRelPathTarget(Relation tableRel, Index relIdIndex)
 	pathTarget->exprs = exprs;
 	pathTarget->width = get_rel_data_width(tableRel, NULL);
 	return pathTarget;
+}
+
+
+static bool
+IsValidScanPath(Path *path)
+{
+	if (!IsA(path, CustomPath))
+	{
+		return false;
+	}
+
+	CustomPath *customPath = (CustomPath *) path;
+	return strncmp(
+		customPath->methods->CustomName,
+		"DocumentDB",
+		10) == 0;
 }
 
 
@@ -659,7 +679,7 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 		if (inputPath->pathtype != T_BitmapHeapScan &&
 			inputPath->pathtype != T_TidScan &&
 			inputPath->pathtype != T_TidRangeScan &&
-			!IsRumJoinScanPath(inputPath))
+			!IsValidScanPath(inputPath))
 		{
 			/* For now just break if it's not a seq scan or bitmap scan */
 			elog(INFO, "Skipping unsupported path type %d", inputPath->pathtype);
