@@ -59,6 +59,9 @@ void od_config_init(od_config_t *config)
 	config->hba_file = NULL;
 
 	config->yb_use_auth_backend = true;
+	config->yb_enable_multi_route_pool = true;
+	// Same default as the value of ysql_max_connections.
+	config->yb_ysql_max_connections = 300;
 
 	od_list_init(&config->listen);
 }
@@ -330,6 +333,12 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 
 	od_log(logger, "config", NULL, NULL, "yb_use_auth_backend     %s",
 	       od_config_yes_no(config->yb_use_auth_backend));
+
+	od_log(logger, "config", NULL, NULL, "yb_enable_multi_route_pool     %s",
+	       od_config_yes_no(config->yb_enable_multi_route_pool));
+
+	od_log(logger, "config", NULL, NULL, "yb_ysql_max_connections     %s",
+	       config->yb_ysql_max_connections);
 
 #ifdef USE_SCRAM
 	od_log(logger, "config", NULL, NULL, "SCRAM auth metod:       OK");

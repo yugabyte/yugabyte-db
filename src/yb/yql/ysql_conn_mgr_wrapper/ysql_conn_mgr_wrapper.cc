@@ -131,6 +131,11 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_timeout, 0,
     "milliseconds for an available server. Disconnect client on timeout reach. "
     "If the value is set to zero, the client waits for the server connection indefinitely");
 
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_multi_route_pool, false,
+    "Enable the use of the dynamic multi-route pooling. "
+    "When false, the older static pool sizes are used."
+    );
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
