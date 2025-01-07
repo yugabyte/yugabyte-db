@@ -176,6 +176,7 @@ PG_FUNCTION_INFO_V1(command_authenticate_with_scram_sha256);
 PG_FUNCTION_INFO_V1(command_scram_sha256_get_salt_and_iterations);
 PG_FUNCTION_INFO_V1(command_generate_auth_message_client_proof_for_test);
 PG_FUNCTION_INFO_V1(command_generate_server_signature_for_test);
+PG_FUNCTION_INFO_V1(command_authenticate_with_pwd);
 
 
 /*
@@ -322,6 +323,56 @@ command_authenticate_with_scram_sha256(PG_FUNCTION_ARGS)
 	authResult.ok = (authResult.serverSignature != NULL) ? 1 : 0;
 
 	PG_RETURN_POINTER(BuildResponseMsgForAuthRequest(&authResult));
+}
+
+
+/*
+ * This function authenticates the provided user name with password
+ * stored in the pg_authid table.
+ * Input argument 1: User name. Type: text
+ * Input argument 2: Password. Type: text
+ * Output: true if authentication is successful; false otherwise
+ */
+Datum
+command_authenticate_with_pwd(PG_FUNCTION_ARGS)
+{
+	/* User Name */
+	if (PG_ARGISNULL(0))
+	{
+		/* To indicate as NOT AUTHORIZED when user name is passed as NULL */
+		PG_RETURN_BOOL(false);
+	}
+
+	/* Password */
+	if (PG_ARGISNULL(1))
+	{
+		/* To indicate as NOT AUTHORIZED when password is NULL */
+		PG_RETURN_BOOL(false);
+	}
+
+	/* Capture the User Name as char*. PLPGSQL sends it as TEXT */
+	char *userName = text_to_cstring(PG_GETARG_TEXT_P(0));
+	char *password = text_to_cstring(PG_GETARG_TEXT_P(1));
+
+#if (PG_VERSION_NUM >= 150000)
+	const char *logDetail = NULL;
+#else
+	char *logDetail = NULL;
+#endif
+
+	char *shadowPass;   /* Shadow password for the specific user in PG */
+
+	/* Look up the user's password. */
+	shadowPass = get_role_password(userName, &logDetail);
+	if (shadowPass == NULL)
+	{
+		/* Given user name does not exist or password is empty for that
+		 * user name */
+		PG_RETURN_BOOL(false);
+	}
+
+	bool authResult = scram_verify_plain_password(userName, password, shadowPass);
+	PG_RETURN_BOOL(authResult);
 }
 
 
