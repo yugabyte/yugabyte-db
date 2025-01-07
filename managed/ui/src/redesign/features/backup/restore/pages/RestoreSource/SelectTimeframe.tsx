@@ -100,7 +100,7 @@ export const SelectTimeframe = () => {
           <YBTag type={YBTag_Types.YB_GRAY}>
             {backupDetails?.hasIncrementalBackups && !userSelectsSingleKeyspaceToRestore
               ? ybFormatDate(restoreTimeWindow.mostRecentbackup)
-              : ybFormatDate(restoreTimeWindow.from)}
+              : ybFormatDate(restoreTimeWindow.to)}
           </YBTag>
         </>
       ),
@@ -131,7 +131,7 @@ export const SelectTimeframe = () => {
         'pitrMillis',
         restoreWindow.mostRecentbackup !== ''
           ? moment(restoreWindow.mostRecentbackup).valueOf()
-          : moment(restoreWindow.from).valueOf()
+          : moment(restoreWindow.to).valueOf()
       );
     } else {
       //selected from incremental backup's list
