@@ -14,24 +14,18 @@
 package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertNotNull;
-import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-import java.beans.Transient;
-import java.lang.Thread.State;
 import java.sql.*;
-import java.util.HashMap;
-import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
-import org.yb.ysqlconnmgr.BaseYsqlConnMgr;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestYCMConfiguration extends BaseYsqlConnMgr {
+
+  private static final String LONG_RAND_STR =
+      "randonmlongstringabcdefgergekrjbgferkjbferjkberkjghbverjkh";
 
   @Test
   public void testQuerySizeGflag() throws Exception {
@@ -41,27 +35,30 @@ public class TestYCMConfiguration extends BaseYsqlConnMgr {
                     .connect();
           Statement stmt = conn.createStatement()) {
 
-          stmt.execute("SET application_name to 'abcdefgh'");
+          stmt.execute("SET application_name to " + LONG_RAND_STR);
           ResultSet rs = stmt.executeQuery("show application_name");
 
           if (rs.next())
-            assertEquals("abcdefgh", rs.getString(1));
+            assertEquals(LONG_RAND_STR, rs.getString(1));
     }
     catch (Exception e) {
       LOG.error("Got an unexpected error: ", e);
-      fail("connection faced an unexpected issue");
+      fail("Connection faced an unexpected issue");
     }
 
     // Decrease the size of query packet and restart the cluster.
-    reduceQuerySizePacketAndRestartCluster(128);
+    // The new query size '100' has been assigned by considering the length
+    // of deploy phase query for master and 2024.2 branch. As there is slight
+    // difference in the implementation of reportGUCOption() function in guc.c
+    // file for both branches.
+    reduceQuerySizePacketAndRestartCluster(100);
 
     try (Connection conn = getConnectionBuilder()
                     .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
                     .connect();
           Statement stmt = conn.createStatement()) {
 
-          stmt.execute("SET application_name to " +
-                "randonmlongstringabcdefgergekrjbgferkjbferjkberkjghbverjkh");
+          stmt.execute("SET application_name to " + LONG_RAND_STR);
           ResultSet rs = stmt.executeQuery("show application_name");
 
           if (rs.next()) {
@@ -75,7 +72,7 @@ public class TestYCMConfiguration extends BaseYsqlConnMgr {
     }
     catch (Exception e) {
       LOG.error("Got an unexpected error: ", e);
-      fail("connection faced an unexpected issue");
+      fail("Connection faced an unexpected issue");
     }
 
   }
