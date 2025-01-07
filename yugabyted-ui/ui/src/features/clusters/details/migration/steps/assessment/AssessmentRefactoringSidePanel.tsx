@@ -7,6 +7,7 @@ import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import type { UnsupportedSqlWithDetails } from "@app/api/src";
 import WarningIcon from "@app/assets/alert-solid.svg";
 import { getMappedData } from "./refactoringUtils";
+import { formatSnakeCase, useQueryParams } from "@app/helpers";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -58,8 +59,8 @@ const useStyles = makeStyles((theme) => ({
     background: theme.palette.warning[100],
     color: theme.palette.warning[900],
     padding: `${theme.spacing(0.6)}px ${theme.spacing(1)}px`,
-    borderRadius: theme.shape.borderRadius
-  }
+    borderRadius: theme.shape.borderRadius,
+  },
 }));
 
 interface MigrationRefactoringSidePanelProps {
@@ -67,6 +68,16 @@ interface MigrationRefactoringSidePanelProps {
   onClose: () => void;
   header: string;
   title: string;
+  acknowledgedObjects?: {
+    [key: string]: {
+      [key: string]: {
+        [key: string]: {
+          [key: string]: boolean; // Final nested object with boolean values
+        };
+      };
+    };
+  };
+  toggleAcknowledgment?: (filePath: string, sqlStatement: string, reason: string) => void;
 }
 
 export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProps> = ({
@@ -74,28 +85,163 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
   onClose,
   header,
   title,
+  acknowledgedObjects,
+  toggleAcknowledgment,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
   const [page, setPage] = React.useState<number>(0);
   const [perPage, setPerPage] = React.useState<number>(5);
-
+  const [totalItemCount, setTotalItemCount] = React.useState<number>(0);
   const [search, setSearch] = React.useState<string>("");
-  const [selectedAck, setSelectedAck] = React.useState<string>("");
+  const [selectedAck, setSelectedAck] = React.useState<string>("All");
+  const [currValue, setCurrValue] = React.useState<number>(0);
+  const [selectedIssueTypeFilter, setSelectedIssueTypeFilter] = React.useState<string>("Any");
+  const [localAcknowledgedObjects, setLocalAcknowledgedObjects] = React.useState<{
+    [key: string]: {
+      [key: string]: {
+        [key: string]: {
+          [key: string]: boolean;
+        };
+      };
+    };
+  }>({});
 
-  const mappedData = getMappedData(data?.suggestions_errors, "filePath")
+  const queryParams = useQueryParams();
+  const migrationUUID: string = queryParams.get("migration_uuid") ?? "";
 
-  const filteredData = useMemo(() => {
+  React.useEffect(() => {
+    setLocalAcknowledgedObjects(acknowledgedObjects!);
+  }, [acknowledgedObjects]);
+
+  const handleLocalToggle = (filePath: string, sqlStatement: string, reason: string) => {
+    const reasonKey: string = reason.toLowerCase();
+    const fileKey: string = filePath.toLowerCase();
+    const stmtKey: string = sqlStatement.toLowerCase();
+    const migrUUID: string = migrationUUID ?? "";
+    const newAcknowledgedState =
+      acknowledgedObjects?.[migrUUID]?.[fileKey]?.[stmtKey]?.[reasonKey] ?? false;
+    setLocalAcknowledgedObjects((prev) => ({
+      ...prev,
+      [migrUUID]: {
+        ...(prev[migrUUID] || {}),
+        [fileKey]: {
+          ...(prev[migrUUID]?.[fileKey] || {}),
+          [stmtKey]: {
+            ...(prev[migrUUID]?.[fileKey]?.[stmtKey] || {}),
+            [reasonKey]: newAcknowledgedState,
+          },
+        },
+      },
+    }));
+
+    if (toggleAcknowledgment) {
+      toggleAcknowledgment(filePath, sqlStatement, reason);
+    }
+  };
+
+  const mappedData: {
+    groupKey: string;
+    sqlStatements: string[];
+    reasons: string[];
+    issueTypes: string[];
+  }[] = getMappedData(data?.suggestions_errors, "filePath");
+
+  const [searchByItem, setSearchByItem] = React.useState<string>("Any");
+
+  const filteredData: typeof mappedData = useMemo(() => {
     const searchQuery = search.toLowerCase().trim();
-    return mappedData?.filter((obj) =>
-      // TODO: Remove 'as any' once the ack functionality is implemented
-      (selectedAck ? (obj as any).ack === (selectedAck === "Acknowledged") : true) && search
-        ? obj.groupKey?.toLowerCase().includes(searchQuery) ||
-          obj.sqlStatements.some(sql => sql?.toLowerCase().includes(searchQuery))
-        : true
-    );
-  }, [data, search, selectedAck]);
+
+    const isSearchMatched = (query: string, fields: string[]): boolean => {
+      if (query.length === 0) {
+        return true;
+      }
+      for (const field of fields) {
+        if (field.toLowerCase().includes(query)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const filterItems = (item: (typeof mappedData)[0], ackType: string | "All") => {
+      const sqlStatements: string[] = [];
+      const reasons: string[] = [];
+      const issueTypes: string[] = [];
+
+      item.sqlStatements.forEach((stmt, index) => {
+        const fileKey: string = item.groupKey.toLowerCase();
+        const sqlKey: string = stmt.toLowerCase();
+        const reasonKey: string = item.reasons[index].toLowerCase();
+        const isAcknowledged =
+          acknowledgedObjects?.[migrationUUID ?? ""]?.[fileKey]?.[sqlKey]?.[reasonKey];
+        const ackMatched: boolean =
+          (ackType === "All") ||
+          (ackType === "Acknowledged" && isAcknowledged === true) ||
+          (ackType === "Not acknowledged" && !isAcknowledged);
+
+        const getSearchFields = (
+          searchByItem: string,
+          item: {
+            groupKey: string;
+            sqlStatements: string[];
+            reasons: string[];
+            issueTypes: string[];
+          },
+          index: number,
+          stmt: string
+        ): string[] => {
+          switch (searchByItem) {
+            case "Any":
+              return [
+                stmt,
+                item.reasons[index],
+                formatSnakeCase(item.issueTypes[index]),
+                item.groupKey,
+              ];
+            case "Issue type":
+              return [formatSnakeCase(item.issueTypes[index])];
+            case "SQL Statement":
+              return [stmt];
+            case "File Name":
+              return [item.groupKey];
+            case "Reason":
+              return [item.reasons[index]];
+            default:
+              return [];
+          }
+        };
+
+        const searchFields: string[] = getSearchFields(searchByItem, item, index, stmt);
+        const isIssueFilterTypeMatched: boolean =
+          selectedIssueTypeFilter === "Any" ||
+          formatSnakeCase(item.issueTypes[index]).toLowerCase() ===
+            selectedIssueTypeFilter.toLowerCase();
+
+        if (ackMatched && isIssueFilterTypeMatched && isSearchMatched(searchQuery, searchFields)) {
+          sqlStatements.push(stmt);
+          reasons.push(item.reasons[index]);
+          issueTypes.push(item.issueTypes[index]);
+        }
+      });
+
+      return sqlStatements.length > 0 && reasons.length > 0 && issueTypes.length > 0
+        ? {
+            groupKey: item.groupKey,
+            sqlStatements,
+            reasons,
+            issueTypes,
+          }
+        : null;
+    };
+
+    return mappedData.reduce((result, item) => {
+      const filteredItem = filterItems(item, selectedAck);
+      if (filteredItem) result.push(filteredItem);
+      return result;
+    }, [] as typeof mappedData);
+  }, [search, selectedAck, searchByItem, mappedData, selectedIssueTypeFilter, page]);
 
   const filteredPaginatedData = useMemo(() => {
     const startIndex = page * perPage;
@@ -105,15 +251,17 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
     var count = 0;
 
     // Paginate based on sql statements
-    var paginatedData: (typeof filteredData) = [];
+    var paginatedData: typeof filteredData = [];
     for (var i = 0; i < filteredData.length; i++) {
       var tempSqlStatements: string[] = [];
       var tempReasons: string[] = [];
+      var tempIssueTypes: string[] = [];
       for (var j = 0; j < filteredData[i].sqlStatements.length; j++) {
         if (count >= endIndex) break;
         if (count >= startIndex) {
           tempSqlStatements.push(filteredData[i].sqlStatements[j]);
-          tempReasons.push(filteredData[i].reasons[j])
+          tempReasons.push(filteredData[i].reasons[j]);
+          tempIssueTypes.push(filteredData[i].issueTypes![j]);
         }
         count++;
       }
@@ -122,6 +270,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
           groupKey: filteredData[i].groupKey,
           sqlStatements: tempSqlStatements,
           reasons: tempReasons,
+          issueTypes: tempIssueTypes,
         });
       }
       if (count >= endIndex) break;
@@ -129,19 +278,101 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
     return paginatedData;
   }, [filteredData, page, perPage]);
 
-  const totalItemCount = filteredData?.reduce((acc, obj) => acc + obj.sqlStatements.length, 0);
+  React.useEffect(() => {
+    const totalItemCount =
+      filteredData?.reduce((acc, obj) => acc + (obj.sqlStatements?.length || 0), 0) ?? 0;
+    setTotalItemCount(totalItemCount);
+
+    const count = filteredData?.reduce((acc, obj) => {
+      return (
+        acc +
+        (obj?.sqlStatements?.filter(
+          (it, index) =>
+            it &&
+            acknowledgedObjects?.[migrationUUID]?.[obj.groupKey.toLowerCase()]?.[
+              it.toLowerCase()
+            ]?.[obj.reasons?.[index].toLowerCase()] === true
+        ).length || 0)
+      );
+    }, 0);
+
+    setCurrValue(count);
+  }, [mappedData]);
+
+  const filterIssueTypes = useMemo(() => {
+    const issueTypeSet = new Set<string>();
+    for (const item of mappedData) {
+      for (const issue of item.issueTypes) {
+        issueTypeSet.add(formatSnakeCase(issue));
+      }
+    }
+
+    return Array.from(issueTypeSet);
+  }, [mappedData]);
 
   return (
     <YBModal
       open={!!data}
       title={header + (data?.unsupported_type ? `: ${data.unsupported_type}` : "")}
-      onClose={onClose}
+      onClose={() => {
+        setPage(0);
+        setSelectedAck("All");
+        setSearch("");
+        setSearchByItem("Any");
+        setSelectedIssueTypeFilter("Any");
+        onClose();
+      }}
       enableBackdropDismiss
       titleSeparator
       cancelLabel={t("common.close")}
       isSidePanel
     >
       <Box display="flex" alignItems="center" gridGap={10} my={2}>
+        <Box flex={0.75}>
+          <Typography variant="body1" className={classes.label}>
+            {t("clusterDetail.voyager.planAndAssess.refactoring.details.searchBy")}
+          </Typography>
+          <YBSelect
+            className={classes.fullWidth}
+            value={searchByItem}
+            onChange={(e) => setSearchByItem(e.target.value)}
+          >
+            <MenuItem value="Any">
+              {t("clusterDetail.voyager.planAndAssess.refactoring.details.any")}
+            </MenuItem>
+            <Divider className={classes.divider} />
+            <MenuItem value="Issue type">
+              {t("clusterDetail.voyager.planAndAssess.refactoring.details.issueType")}
+            </MenuItem>
+            <MenuItem value="SQL Statement">
+              {t("clusterDetail.voyager.planAndAssess.refactoring.details.sqlStatement")}
+            </MenuItem>
+            <MenuItem value="File Name">
+              {t("clusterDetail.voyager.planAndAssess.refactoring.details.fileName")}
+            </MenuItem>
+            <MenuItem value="Reason">
+              {t("clusterDetail.voyager.planAndAssess.refactoring.details.reason")}
+            </MenuItem>
+          </YBSelect>
+        </Box>
+        <Box flex={1.25}>
+          <Typography variant="body1" className={classes.label}>
+            {t("clusterDetail.voyager.planAndAssess.refactoring.details.filterBy")}
+          </Typography>
+          <YBSelect
+            className={classes.fullWidth}
+            value={selectedIssueTypeFilter}
+            onChange={(e) => setSelectedIssueTypeFilter(e.target.value)}
+          >
+            <MenuItem value="Any">
+              {t("clusterDetail.voyager.planAndAssess.refactoring.details.any")}
+            </MenuItem>
+            <Divider className={classes.divider} />
+            {filterIssueTypes.map((currentIssue) => (
+              <MenuItem value={currentIssue}>{currentIssue}</MenuItem>
+            ))}
+          </YBSelect>
+        </Box>
         <Box flex={3}>
           <Typography variant="body1" className={classes.label}>
             {t("clusterDetail.voyager.planAndAssess.refactoring.details.search")}
@@ -158,7 +389,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
             value={search}
           />
         </Box>
-        <Box flex={1}>
+        <Box flex={1.25}>
           <Typography variant="body1" className={classes.label}>
             {t("clusterDetail.voyager.planAndAssess.refactoring.details.acknowledged")}
           </Typography>
@@ -167,10 +398,14 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
             value={selectedAck}
             onChange={(e) => setSelectedAck(e.target.value)}
           >
-            <MenuItem value="">All</MenuItem>
+            <MenuItem value="All">{t("common.all")}</MenuItem>
             <Divider className={classes.divider} />
-            <MenuItem value="Acknowledged">Acknowledged</MenuItem>
-            <MenuItem value="Not acknowledged">Not acknowledged</MenuItem>
+            <MenuItem value="Acknowledged">
+              {t("clusterDetail.voyager.planAndAssess.refactoring.details.acknowledged")}
+            </MenuItem>
+            <MenuItem value="Not acknowledged">
+              {t("clusterDetail.voyager.planAndAssess.refactoring.details.notAcknowledged")}
+            </MenuItem>
           </YBSelect>
         </Box>
       </Box>
@@ -179,16 +414,20 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
         <YBAccordion
           titleContent={title}
           renderChips={() => (
-            <YBBadge icon={false} text={`0 / ${totalItemCount} ${title}`} variant={BadgeVariant.Light} />
+            <YBBadge
+              icon={false}
+              text={`${currValue} / ${totalItemCount} ${title}`}
+              variant={BadgeVariant.Light}
+            />
           )}
           graySummaryBg
           defaultExpanded
         >
           <Box display="flex" flexDirection="column" gridGap={10}>
-            {filteredPaginatedData?.map(({ groupKey: filePath, sqlStatements, reasons }) => (
+            {filteredPaginatedData?.map(({ groupKey, sqlStatements, reasons, issueTypes }) => (
               <Box display="flex" flexDirection="column">
                 <Box my={2}>
-                  <Typography variant="body2">{filePath}</Typography>
+                  <Typography variant="body2">{groupKey}</Typography>
                 </Box>
                 <Box display="flex" flexDirection="column" gridGap={10}>
                   {sqlStatements.map((sql, index) => (
@@ -198,15 +437,42 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
                           <Box flex={1}>
                             {sql}
                             {reasons[index] && (
-                              <Box display="flex" alignItems="center" gridGap={6} className={classes.warningBox}>
+                              <Box
+                                display="flex"
+                                alignItems="center"
+                                gridGap={6}
+                                className={classes.warningBox}
+                              >
                                 <WarningIcon className={classes.warningIcon} />
                                 {reasons[index]}
+                              </Box>
+                            )}
+                            {issueTypes[index] && (
+                              <Box
+                                display="flex"
+                                alignItems="center"
+                                gridGap={10}
+                                my={2}
+                                width="fit-content"
+                                className={classes.warningBox}
+                              >
+                                {`${t(
+                                 "clusterDetail.voyager.planAndAssess.refactoring.details.issueType"
+                                )} : ${formatSnakeCase(issueTypes[index])}`}
                               </Box>
                             )}
                           </Box>
                           <YBToggle
                             className={classes.toggleSwitch}
-                            label={t("clusterDetail.voyager.planAndAssess.refactoring.details.acknowledge")}
+                            label={t(
+                              "clusterDetail.voyager.planAndAssess.refactoring.details.acknowledge"
+                            )}
+                            checked={
+                              localAcknowledgedObjects?.[migrationUUID ?? ""]?.[
+                                groupKey.toLowerCase()
+                              ]?.[sql.toLowerCase()]?.[reasons[index].toLowerCase()] ?? false
+                            }
+                            onChange={() => handleLocalToggle(groupKey, sql, reasons[index])}
                           />
                         </Box>
                       }
