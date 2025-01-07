@@ -958,8 +958,7 @@ IpAddressToBytes(YBCPgAshConfig *ash_config)
 }
 
 void
-YBInitPostgresBackend(const char *program_name, const char *db_name,
-					  const char *user_name, uint64_t *session_id)
+YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 {
 	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
