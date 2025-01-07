@@ -835,8 +835,10 @@ components:
         count:
           type: integer
     RefactoringCount:
-      title: Count of automatic and manual refactoring
-      description: count for automatic and manual refactoring
+      title: Count of automatic, manual and invalid SQL objects
+      description: >-
+        Count of automatic, manual and invalid SQL objects displayed in Schema
+        analysis page
       type: object
       properties:
         sql_object_type:
@@ -844,6 +846,8 @@ components:
         manual:
           type: integer
         automatic:
+          type: integer
+        invalid:
           type: integer
     RecommendedRefactoringGraph:
       title: Refectoring recommendations per SQL object type
