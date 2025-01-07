@@ -20,25 +20,33 @@ Depending on your environment, you can save your YugabyteDB universe data to a v
 
 ## Amazon S3
 
-You can configure Amazon S3 as your backup target, as follows:
+You can configure Amazon S3 and S3-compatible storage as your backup target.
+
+Note: Using S3-compatible storage requires support for S3 path style access. To ensure that you can use this feature, navigate to `https://<my-yugabytedb-anywhere-ip>/features` and enable the **enablePathStyleAccess** option.
+
+To configure S3 storage, do the following:
 
 1. Navigate to **Integrations** > **Backup** > **Amazon S3**.
 
-2. Click **Create S3 Backup** to access the configuration form shown in the following illustration:
+1. Click **Create S3 Backup** to access the configuration form shown in the following illustration:
 
     ![S3 Backup](/images/yp/cloud-provider-configuration-backup-aws.png)
 
-3. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
 
-4. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the S3 backup. See [Required S3 IAM permissions](#required-s3-iam-permissions).
+1. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the S3 backup. See [Required S3 IAM permissions](#required-s3-iam-permissions).
 
-5. If **IAM Role** is disabled, enter values for the **Access Key** and **Access Secret** fields.
+1. If **IAM Role** is disabled, enter values for the **Access Key** and **Access Secret** fields.
 
-6. Enter values for the **S3 Bucket** and **S3 Bucket Host Base** fields.
+    For information on AWS access keys, see [Manage access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html).
 
-    For information on how to obtain AWS credentials, see [Understanding and getting your AWS credentials](https://docs.aws.amazon.com/general/latest/gr/aws-sec-cred-types.html).
+1. In the **S3 Bucket** field, enter the bucket name in the format `s3://bucket_name`, or `https://storage_vendor/s3-bucket-name` for S3-compatible storage.
 
-7. Click **Save**.
+1. In the **S3 Bucket Host Base** field, enter the HTTP host header (endpoint URL) of the AWS S3 or S3-compatible storage, in the form `s3.amazonaws.com` or `my.storage.com`.
+
+1. If you are using S3-conpatible storage, set the **S3 Path Style Access** option to true. (The option is only available if the **enablePathStyleAccess** feature is enabled.)
+
+1. Click **Save**.
 
 You can configure access control for the S3 bucket as follows:
 
