@@ -13,9 +13,13 @@
 #ifndef VERSION_UTILS_H
 #define VERSION_UTILS_H
 
-bool IsClusterVersionAtleastThis(int major, int minor, int patch);
+typedef enum DocumentsMajorVersion
+{
+	DocDB_V0 = 0,
+} MajorVersion;
 
-bool IsClusterVersionEqualToAndAtLeastPatch(int major, int minor, int patch);
+bool IsClusterVersionAtleast(MajorVersion major, int minor, int patch);
+bool IsClusterVersionAtLeastPatch(MajorVersion major, int minor, int patch);
 void InvalidateVersionCache(void);
 void InitializeVersionCache(void);
 

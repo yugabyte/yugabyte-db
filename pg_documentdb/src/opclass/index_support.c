@@ -287,7 +287,7 @@ OpExprForAggregationStageSupportFunction(Node *supportRequest)
 	{
 		operatorOid = BsonInMatchFunctionId();
 	}
-	else if (IsClusterVersionAtleastThis(1, 19, 0) && req->funcid ==
+	else if (IsClusterVersionAtleast(DocDB_V0, 19, 0) && req->funcid ==
 			 BsonDollarMergeJoinFunctionOid())
 	{
 		operatorOid = BsonEqualMatchIndexFunctionId();

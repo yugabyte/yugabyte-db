@@ -1213,7 +1213,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 
 	if (let.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&let))
 	{
-		if (EnableLetSupport && IsClusterVersionAtleastThis(1, 19, 0))
+		if (EnableLetSupport && IsClusterVersionAtleast(DocDB_V0, 19, 0))
 		{
 			pgbson *parsedLet = ParseAndGetTopLevelVariableSpec(&let);
 			context.variableSpec = (Expr *) MakeBsonConst(parsedLet);
@@ -1487,7 +1487,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 
 	if (let.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&let))
 	{
-		if (EnableLetSupport && IsClusterVersionAtleastThis(1, 19, 0))
+		if (EnableLetSupport && IsClusterVersionAtleast(DocDB_V0, 19, 0))
 		{
 			pgbson *parsedLet = ParseAndGetTopLevelVariableSpec(&let);
 			context.variableSpec = (Expr *) MakeBsonConst(parsedLet);
@@ -3189,7 +3189,7 @@ HandleChangeStream(const bson_value_t *existingValue, Query *query,
 	ReportFeatureUsage(FEATURE_STAGE_CHANGE_STREAM);
 
 	/* Check if change stream feature is available enabled by GUC. */
-	if (!IsClusterVersionAtleastThis(1, 20, 0) ||
+	if (!IsClusterVersionAtleast(DocDB_V0, 20, 0) ||
 		!IsChangeStreamFeatureAvailableAndCompatible())
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
@@ -4321,7 +4321,7 @@ AddSimpleGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
 	if (EnableLetSupport && BsonTypeId() != DocumentDBCoreBsonTypeId() &&
-		IsClusterVersionAtleastThis(1, 24, 0))
+		IsClusterVersionAtleast(DocDB_V0, 24, 0))
 	{
 		accumFunc = makeFuncExpr(
 			DocumentDBCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(accumFunc),
@@ -4808,7 +4808,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
 	if (EnableLetSupport && BsonTypeId() != DocumentDBCoreBsonTypeId() &&
-		IsClusterVersionAtleastThis(1, 24, 0))
+		IsClusterVersionAtleast(DocDB_V0, 24, 0))
 	{
 		groupFunc = makeFuncExpr(
 			DocumentDBCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(groupFunc),
@@ -5056,7 +5056,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$maxN"))
 		{
-			if (!IsClusterVersionAtleastThis(1, 22, 0))
+			if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 								errmsg("Accumulator $maxN is not implemented yet"),
@@ -5076,7 +5076,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$minN"))
 		{
-			if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+			if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 								errmsg("Accumulator $minN is not implemented yet"),
@@ -5149,7 +5149,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$stdDevSamp"))
 		{
-			if (!(IsClusterVersionAtleastThis(1, 20, 0)))
+			if (!(IsClusterVersionAtleast(DocDB_V0, 20, 0)))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 								errmsg("Accumulator $stdDevSamp is not implemented yet"),
@@ -5177,7 +5177,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$stdDevPop"))
 		{
-			if (!(IsClusterVersionAtleastThis(1, 20, 0)))
+			if (!(IsClusterVersionAtleast(DocDB_V0, 20, 0)))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 								errmsg("Accumulator $stdDevPop is not implemented yet"),

@@ -23,6 +23,10 @@
  */
 static ExtensionVersion *CurrentVersion = NULL;
 
+int FirstMajorVersionOffset = 0;
+
+#define MaxVersionAllowed DocDB_V0
+
 char *VersionRefreshQuery =
 	"SELECT regexp_split_to_array(extversion, '[-\\.]')::int4[] FROM pg_extension WHERE extname = 'pg_helio_api'";
 
@@ -53,11 +57,12 @@ InitializeVersionCache(void)
  * Returns true if the cluster version is exactly major.minor and >= patch
  */
 bool
-IsClusterVersionEqualToAndAtLeastPatch(int major, int minor, int patch)
+IsClusterVersionAtLeastPatch(MajorVersion major, int minor, int patch)
 {
+	Assert(major <= MaxVersionAllowed);
 	ExtensionVersion version = RefreshCurrentVersion();
 
-	if (version.Major != major)
+	if (version.Major != (int) (major + FirstMajorVersionOffset))
 	{
 		return false;
 	}
@@ -75,10 +80,12 @@ IsClusterVersionEqualToAndAtLeastPatch(int major, int minor, int patch)
  * Returns true if the cluster version is >= given major.minor.patch version
  */
 bool
-IsClusterVersionAtleastThis(int major, int minor, int patch)
+IsClusterVersionAtleast(MajorVersion majorVersion, int minor, int patch)
 {
+	Assert(majorVersion <= MaxVersionAllowed);
 	ExtensionVersion version = RefreshCurrentVersion();
 
+	int major = majorVersion + FirstMajorVersionOffset;
 	if (version.Major < major)
 	{
 		return false;
@@ -103,9 +110,11 @@ IsClusterVersionAtleastThis(int major, int minor, int patch)
  * Returns true if the given Extension Version is >= given major.minor.patch version
  */
 bool
-IsExtensionVersionAtleastThis(ExtensionVersion extVersion, int major, int minor, int
-							  patch)
+IsExtensionVersionAtleast(ExtensionVersion extVersion, MajorVersion majorVersion,
+						  int minor, int patch)
 {
+	Assert(majorVersion <= MaxVersionAllowed);
+	int major = majorVersion + FirstMajorVersionOffset;
 	if (extVersion.Major < major)
 	{
 		return false;

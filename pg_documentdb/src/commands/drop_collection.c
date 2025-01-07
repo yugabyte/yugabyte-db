@@ -168,7 +168,7 @@ command_drop_collection(PG_FUNCTION_ARGS)
 	DeleteAllCollectionIndexRecords(collection->collectionId);
 
 	bool tableExists = false;
-	if (IsClusterVersionAtleastThis(1, 12, 0))
+	if (IsClusterVersionAtleast(DocDB_V0, 12, 0))
 	{
 		tableExists = true;
 	}

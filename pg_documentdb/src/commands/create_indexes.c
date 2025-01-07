@@ -626,7 +626,7 @@ command_index_build_is_in_progress(PG_FUNCTION_ARGS)
 	}
 	int indexId = DatumGetInt32(PG_GETARG_DATUM(0));
 
-	if (!IsClusterVersionAtleastThis(1, 15, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 15, 0))
 	{
 		PG_RETURN_BOOL(false);
 	}
@@ -4903,7 +4903,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 
 	bool usingNewUniqueIndexOpClass = unique && enableLargeIndexKeys &&
 									  (ForceEnableNewUniqueOpClass ||
-									   IsClusterVersionAtleastThis(1, 24, 0));
+									   IsClusterVersionAtleast(DocDB_V0, 24, 0));
 
 	/* For unique with truncation, instead of creating a unique hash for every column, we simply create a single
 	 * value with a new operator that handles unique constraints. That way for a composite unique index, we support

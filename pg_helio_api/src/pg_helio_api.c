@@ -22,7 +22,7 @@ PG_MODULE_MAGIC;
 void _PG_init(void);
 void _PG_fini(void);
 
-
+extern int FirstMajorVersionOffset;
 extern bool SkipDocumentDBLoad;
 bool SkipHelioApiLoad = false;
 extern char *ApiExtensionName;
@@ -49,6 +49,7 @@ _PG_init(void)
 	}
 
 	SkipDocumentDBLoad = true;
+	FirstMajorVersionOffset = 1;
 
 	ApiDataSchemaName = "helio_data";
 	ApiAdminRole = "helio_admin_role";

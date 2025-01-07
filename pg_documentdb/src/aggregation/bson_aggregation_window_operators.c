@@ -1446,7 +1446,7 @@ static WindowFunc *
 HandleDollarIntegralWindowOperator(const bson_value_t *opValue,
 								   WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
@@ -1464,7 +1464,7 @@ static WindowFunc *
 HandleDollarDerivativeWindowOperator(const bson_value_t *opValue,
 									 WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
@@ -1834,7 +1834,7 @@ static WindowFunc *
 HandleDollarCovariancePopWindowOperator(const bson_value_t *opValue,
 										WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 21, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 21, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $covariancePop is not supported yet")));
@@ -1860,7 +1860,7 @@ static WindowFunc *
 HandleDollarCovarianceSampWindowOperator(const bson_value_t *opValue,
 										 WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 21, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 21, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $covarianceSamp is not supported yet")));
@@ -1885,7 +1885,7 @@ static WindowFunc *
 HandleDollarRankWindowOperator(const bson_value_t *opValue,
 							   WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 21, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 21, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$rank is not supported yet")));
@@ -1911,7 +1911,7 @@ static WindowFunc *
 HandleDollarDenseRankWindowOperator(const bson_value_t *opValue,
 									WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 21, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 21, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$denseRank is not supported yet")));
@@ -1937,7 +1937,7 @@ static WindowFunc *
 HandleDollarDocumentNumberWindowOperator(const bson_value_t *opValue,
 										 WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$documentNumber is not supported yet")));
@@ -1997,7 +1997,7 @@ static WindowFunc *
 HandleDollarExpMovingAvgWindowOperator(const bson_value_t *opValue,
 									   WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
@@ -2082,7 +2082,7 @@ static WindowFunc *
 HandleDollarLinearFillWindowOperator(const bson_value_t *opValue,
 									 WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION605001),
 						errmsg(
@@ -2149,7 +2149,7 @@ static WindowFunc *
 HandleDollarLocfFillWindowOperator(const bson_value_t *opValue,
 								   WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
@@ -2210,7 +2210,7 @@ static WindowFunc *
 HandleDollarShiftWindowOperator(const bson_value_t *opValue,
 								WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$shift is not supported yet")));
@@ -2383,7 +2383,7 @@ static WindowFunc *
 HandleDollarTopNWindowOperator(const bson_value_t *opValue,
 							   WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$topN is not supported yet")));
@@ -2412,7 +2412,7 @@ static WindowFunc *
 HandleDollarBottomNWindowOperator(const bson_value_t *opValue,
 								  WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$bottomN is not supported yet")));
@@ -2440,7 +2440,7 @@ static WindowFunc *
 HandleDollarTopWindowOperator(const bson_value_t *opValue,
 							  WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$top is not supported yet")));
@@ -2468,7 +2468,7 @@ static WindowFunc *
 HandleDollarBottomWindowOperator(const bson_value_t *opValue,
 								 WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$bottom is not supported yet")));
@@ -2605,7 +2605,7 @@ static WindowFunc *
 HandleDollarStdDevPopWindowOperator(const bson_value_t *opValue,
 									WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $stdDevPop is not supported yet")));
@@ -2631,7 +2631,7 @@ static WindowFunc *
 HandleDollarStdDevSampWindowOperator(const bson_value_t *opValue,
 									 WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $stdDevSamp is not supported yet")));
@@ -2717,7 +2717,7 @@ static WindowFunc *
 HandleDollarMaxNWindowOperator(const bson_value_t *opValue,
 							   WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $maxN is not supported yet")));
@@ -2739,7 +2739,7 @@ static WindowFunc *
 HandleDollarMinNWindowOperator(const bson_value_t *opValue,
 							   WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $minN is not supported yet")));
@@ -2762,7 +2762,7 @@ static WindowFunc *
 HandleDollarFirstWindowOperator(const bson_value_t *opValue,
 								WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$first is not supported yet")));
@@ -2792,7 +2792,7 @@ static WindowFunc *
 HandleDollarLastWindowOperator(const bson_value_t *opValue,
 							   WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$last is not supported yet")));
@@ -2829,7 +2829,7 @@ static WindowFunc *
 HandleDollarFirstNWindowOperator(const bson_value_t *opValue,
 								 WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$firstN is not supported yet")));
@@ -2866,7 +2866,7 @@ static WindowFunc *
 HandleDollarLastNWindowOperator(const bson_value_t *opValue,
 								WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$lastN is not supported yet")));

@@ -296,7 +296,7 @@ Datum
 bson_unique_index_term_equal(PG_FUNCTION_ARGS)
 {
 	/* In this case, we presume that the index is correct (for recheck purposes) */
-	if (ForceEnableNewUniqueOpClass || IsClusterVersionAtleastThis(1, 24, 0))
+	if (ForceEnableNewUniqueOpClass || IsClusterVersionAtleast(DocDB_V0, 24, 0))
 	{
 		PG_RETURN_BOOL(true);
 	}

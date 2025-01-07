@@ -9,6 +9,7 @@
  *-------------------------------------------------------------------------
  */
 #include <postgres.h>
+#include "utils/version_utils.h"
 
 #ifndef VERSION_UTILS_PRIVATE_H
 #define VERSION_UTILS_PRIVATE_H
@@ -32,6 +33,7 @@ typedef struct ExtensionVersion
 
 ExtensionVersion RefreshCurrentVersion(void);
 
-bool IsExtensionVersionAtleastThis(ExtensionVersion extVersion, int major, int minor, int
-								   patch);
+bool IsExtensionVersionAtleast(ExtensionVersion extVersion, MajorVersion major, int minor,
+							   int
+							   patch);
 #endif

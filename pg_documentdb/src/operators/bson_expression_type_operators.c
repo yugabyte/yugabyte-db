@@ -356,7 +356,7 @@ void
 HandlePreParsedDollarToHashedIndexKey(pgbson *doc, void *arguments,
 									  ExpressionResult *expressionResult)
 {
-	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$toHashedIndexkey is not supported yet")));

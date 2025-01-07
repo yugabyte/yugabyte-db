@@ -2918,7 +2918,7 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 
 			List *args;
 			Oid funcOid;
-			if (IsClusterVersionAtleastThis(1, 20, 0))
+			if (IsClusterVersionAtleast(DocDB_V0, 20, 0))
 			{
 				Expr *sourceVariableSpec = context->variableSpec;
 				if (sourceVariableSpec == NULL)

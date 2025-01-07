@@ -1360,7 +1360,7 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 	 *
 	 */
 	if (EnableSchemaValidation && schemaValidationExprEvalState != NULL &&
-		IsClusterVersionAtleastThis(1, 24, 0))
+		IsClusterVersionAtleast(DocDB_V0, 24, 0))
 	{
 		/*
 		 * If schemaValidationExprEvalState is not NULL, we need to validate the document against the schema.
