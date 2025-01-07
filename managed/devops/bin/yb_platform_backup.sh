@@ -27,6 +27,7 @@ find_python_executable() {
 SCRIPT_NAME=$(basename "$0")
 USER=$(whoami)
 PLATFORM_DUMP_FNAME="platform_dump.sql"
+PLATFORM_DUMP_SKIP_DELETE_FNAME="restore_platform_dump_yba.sql"
 PLATFORM_DB_NAME="yugaware"
 PROMETHEUS_SNAPSHOT_DIR="prometheus_snapshot"
 MIGRATION_BACKUP_DIR="migration_backup"
@@ -83,12 +84,62 @@ docker_aware_cmd() {
   fi
 }
 
+# Check whether the script is being run from a Kubernetes pod of Yugabyte Platform
+INSIDE_K8S_POD=false
+if env | grep -q 'KUBERNETES_SERVICE_HOST' && [[ "$DOCKER_BASED" = false ]]; then
+  INSIDE_K8S_POD=true
+fi
+
 run_sudo_cmd() {
   if sudo -n true 2>/dev/null; then
     sudo $1
   else
     $1
   fi
+}
+
+# Replace prometheus config with provided job config
+run_prom_reload() {
+  new_job_config="$1"
+  prometheus_config="$2"
+  prometheus_host="$3"
+  prometheus_port="$4"
+  prometheus_protocol="$5"
+  # Only for K8s currently
+  if [[ "$INSIDE_K8S_POD" = true ]] && [[ -f "${new_job_config}" ]]; then
+    run_sudo_cmd "cp ${new_job_config} ${prometheus_config}"
+    prom_reload_cmd="curl -k -X POST \
+      ${prometheus_protocol}://${prometheus_host}:${prometheus_port}/-/reload"
+    if [[ -n "${PROMETHEUS_USERNAME:-}" ]] && [[ -n "${PROMETHEUS_PASSWORD:-}" ]]; then
+      prom_reload_cmd="${prom_reload_cmd} -u ${PROMETHEUS_USERNAME}:${PROMETHEUS_PASSWORD}"
+    fi
+    run_sudo_cmd "$prom_reload_cmd"
+  fi
+}
+
+# Wait for prometheus to be up
+wait_for_prom() {
+  prometheus_host="$1"
+  prometheus_port="$2"
+  prometheus_protocol="$3"
+
+  timeout=180 # Wait for 180 seconds before timing out
+  start_time=$(date +%s)
+  while true; do
+    http_status=$(curl -k -s -o /dev/null -w "%{http_code}" \
+      "${prometheus_protocol}://${prometheus_host}:${prometheus_port}/-/ready" || echo "000")
+    if [[ "${http_status}" != 200 ]]; then
+      if (( $(date +%s) - start_time > timeout )); then
+        echo "Prometheus not ready after several retries"
+        exit 1
+      else
+        echo "Waiting for Prometheus to be up..."
+        sleep 10
+      fi
+    else
+      break
+    fi
+  done
 }
 
 # Query prometheus for it's data directory and set as env var
@@ -180,6 +231,8 @@ restore_postgres_backup() {
   yba_installer="$6"
   pgrestore_path="$7"
   skip_dump_check="$8"
+  skip_dump_file_delete="$9"
+  data_dir="$10"
   pg_restore="pg_restore"
   psql="psql"
 
@@ -196,23 +249,32 @@ restore_postgres_backup() {
   fi
 
   if grep -iq "COPY.*customer" "${backup_path}" || [[ "${skip_dump_check}" = true ]]; then
-    # Drop public schema so it is guaranteed to be a clean restore
-    drop_cmd="${psql} -h ${db_host} -p ${db_port} -U ${db_username} -d ${PLATFORM_DB_NAME} \
-      -c \"DROP SCHEMA IF EXISTS public CASCADE;CREATE SCHEMA public;\""
-    docker_aware_cmd "postgres" "${drop_cmd}"
-
-    if [[ "${verbose}" = true ]]; then
-      restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists -v \
-        -d ${PLATFORM_DB_NAME}"
+    if ([[ "${INSIDE_K8S_POD}" = true ]] && [[ "${skip_dump_file_delete}" = true ]]); then
+      # Copy sql file to new location
+      echo "Will restore Platform DB backup on restart"
+      new_dump_path="${data_dir}/${PLATFORM_DUMP_SKIP_DELETE_FNAME}"
+      echo "Copying SQL dump file to ${new_dump_path}"
+      run_sudo_cmd "cp ${backup_path} ${new_dump_path}"
     else
-      restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists \
-        -d ${PLATFORM_DB_NAME}"
-    fi
 
-    # Run pg_restore.
-    echo "Restoring Yugabyte Platform DB backup ${backup_path}..."
-    docker_aware_cmd "postgres" "${restore_cmd}" < "${backup_path}"
-    echo "Done"
+      # Drop public schema so it is guaranteed to be a clean restore
+      drop_cmd="${psql} -h ${db_host} -p ${db_port} -U ${db_username} -d ${PLATFORM_DB_NAME} \
+        -c \"DROP SCHEMA IF EXISTS public CASCADE;CREATE SCHEMA public;\""
+      docker_aware_cmd "postgres" "${drop_cmd}"
+
+      if [[ "${verbose}" = true ]]; then
+        restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists -v \
+          -d ${PLATFORM_DB_NAME}"
+      else
+        restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists \
+          -d ${PLATFORM_DB_NAME}"
+      fi
+
+      # Run pg_restore.
+      echo "Restoring Yugabyte Platform DB backup ${backup_path}..."
+      docker_aware_cmd "postgres" "${restore_cmd}" < "${backup_path}"
+      echo "Done"
+    fi
   else
     echo "${backup_path} potentially might be empty, skipping restore. Use --skip_dump_check to \
       proceed"
@@ -346,9 +408,9 @@ create_backup() {
     # Currently, this script does not support backup/restore of Prometheus data for K8s deployments.
     # On K8s deployments (unlike Replicated deployments) the prometheus data volume for snapshots is
     # not shared between the yugaware and prometheus containers.
-    exclude_flags="--exclude_prometheus"
+    exclude_flags=""
     if [[ "$exclude_releases" = true ]]; then
-      exclude_flags="${exclude_flags} --exclude_releases"
+      exclude_flags="--exclude_releases"
     fi
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
       "${backup_script} create ${verbose_flag} ${exclude_flags} --output ${K8S_BACKUP_DIR}"
@@ -487,6 +549,7 @@ restore_backup() {
   skip_old_files="${17}"
   skip_dump_check="${18}"
   prometheus_protocol="${19}"
+  skip_dump_file_delete="${20}"
   prometheus_dir_regex="\.\/${PROMETHEUS_SNAPSHOT_DIR}\/[[:digit:]]{8}T[[:digit:]]{6}Z-[[:alnum:]]{16}\/$"
 
   # Perform K8s restore.
@@ -636,6 +699,11 @@ restore_backup() {
       fi
     done
   else
+    # Remove swamper targets and rules being used from mounted location
+    if [[ "$INSIDE_K8S_POD" = true ]]; then
+      run_sudo_cmd "rm -f ${destination}/prometheus/targets/* ${destination}/prometheus/targets/*"
+    fi
+
     $tar_cmd "${input_path}" --directory "${destination}" "${skip_old_files}"
   fi
 
@@ -647,7 +715,8 @@ restore_backup() {
   else
     # do we need set +e?
     restore_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-      "${verbose}" "${yba_installer}" "${pgrestore_path}" "${skip_dump_check}"
+      "${verbose}" "${yba_installer}" "${pgrestore_path}" "${skip_dump_check}" \
+      "${skip_dump_file_delete}" "${data_dir}"
   fi
 
   # Restore prometheus swamper targets on migration always
@@ -674,7 +743,15 @@ restore_backup() {
     set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${data_dir}" \
       "${prometheus_protocol}"
     modify_service prometheus stop
-    # Find snapshot directory in backup
+
+    # Stop prometheus writes by replacing scrape configs with empty scrape job config
+    if [[ "$INSIDE_K8S_POD" = true ]]; then
+      empty_scrape_job_config="/default_prometheus_config/no_scrape.yml"
+      prometheus_config="/prometheus_configs/prometheus.yml"
+      run_prom_reload "${empty_scrape_job_config}" "${prometheus_config}" "${prometheus_host}" \
+        "${prometheus_port}" "${prometheus_protocol}"
+    fi
+
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/*"
     run_sudo_cmd "mv ${untar_dir}/${prom_snapshot:2}* ${PROMETHEUS_DATA_DIR}"
 
@@ -682,6 +759,8 @@ restore_backup() {
       run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
     elif [[ "$SERVICE_BASED" = true ]]; then
       run_sudo_cmd "chown -R ${prometheus_user}:${prometheus_user} ${PROMETHEUS_DATA_DIR}"
+    elif [[ "$INSIDE_K8S_POD" = true ]]; then
+      echo "Skipping the chown for prometheus directory in kubernetes"
     else
       run_sudo_cmd "chown -R ${NOBODY_UID}:${NOBODY_UID} ${PROMETHEUS_DATA_DIR}"
     fi
@@ -691,6 +770,23 @@ restore_backup() {
     modify_service prometheus restart
     if [[ "$DOCKER_BASED" = true ]]; then
       run_sudo_cmd "docker restart prometheus"
+    fi
+    # Reload prometheus for K8s
+    if [[ "$INSIDE_K8S_POD" = true ]]; then
+      prom_quit_cmd="curl -k -X POST \
+        ${prometheus_protocol}://${prometheus_host}:${prometheus_port}/-/quit"
+      if [[ -n "${PROMETHEUS_USERNAME:-}" ]] && [[ -n "${PROMETHEUS_PASSWORD:-}" ]]; then
+        prom_quit_cmd="${prom_quit_cmd} -u ${PROMETHEUS_USERNAME}:${PROMETHEUS_PASSWORD}"
+      fi
+      run_sudo_cmd "$prom_quit_cmd"
+
+      wait_for_prom "${prometheus_host}" "${prometheus_port}" "${prometheus_protocol}"
+
+      # Start prometheus writes by replacing scrape configs with scrape job config
+      scrape_job_config="/default_prometheus_config/prometheus.yml"
+      prometheus_config="/prometheus_configs/prometheus.yml"
+      run_prom_reload "${scrape_job_config}" "${prometheus_config}" "${prometheus_host}" \
+        "${prometheus_port}" "${prometheus_protocol}"
     fi
   fi
   # Create following directory if it wasn't created yet so restore will succeed.
@@ -772,30 +868,31 @@ print_restore_usage() {
   echo "Restore: ${SCRIPT_NAME} restore --input <input_path> [options]"
   echo "<input_path> the path to the platform backup tar.gz"
   echo "options:"
-  echo "  -o, --destination=DIRECTORY    where to un-tar the backup (default: /opt/yugabyte)"
-  echo "  -d, --data_dir=DIRECTORY       data directory (default: /opt/yugabyte)"
-  echo "  -v, --verbose                  verbose output of script (default: false)"
-  echo "  -s  --skip_restart             don't restart processes during execution (default: false)"
-  echo "  -u, --db_username=USERNAME     postgres username (default: postgres)"
-  echo "  -h, --db_host=HOST             postgres host (default: localhost)"
-  echo "  -P, --db_port=PORT             postgres port (default: 5432)"
-  echo "  -n, --prometheus_host=HOST     prometheus host (default: localhost)"
-  echo "  -t, --prometheus_port=PORT     prometheus port (default: 9090)"
-  echo "  -e, --prometheus_user=USERNAME prometheus user (default: prometheus)"
-  echo "  --prometheus_protocol          prometheus protocol (default: http)."
-  echo "  -U, --yba_user=USERNAME        yugabyte anywhere user (default: yugabyte)"
-  echo "  --k8s_namespace                kubernetes namespace"
-  echo "  --k8s_pod                      kubernetes pod"
-  echo "  --k8s_timeout                  kubernetes cp timeout duration (default: 30m)"
-  echo "  --disable_version_check        disable the backup version check (default: false)"
-  echo "  --yba_installer                yba_installer backup (default: false)"
-  echo "  --ybdb                         ybdb restore (default: false)"
-  echo "  --ysqlsh_path                  path to ysqlsh to restore ybdb (default: false)"
-  echo "  --migration                    migration from Replicated or Yugabundle (default: false)"
-  echo "  --ybai_data_dir                YBA data dir (default: /opt/yugabyte/data/yb-platform)"
-  echo "  --skip_old_files               skip old files when untarring backup"
-  echo "  --skip_dump_check              skip pg dump empty check before restore (default: false)"
-  echo "  -?, --help                     show restore help, then exit"
+  echo "  -o, --destination=DIRECTORY        where to un-tar the backup (default: /opt/yugabyte)"
+  echo "  -d, --data_dir=DIRECTORY           data directory (default: /opt/yugabyte)"
+  echo "  -v, --verbose                      verbose output of script (default: false)"
+  echo "  -s  --skip_restart                 don't restart processes during execution (default: false)"
+  echo "  -u, --db_username=USERNAME         postgres username (default: postgres)"
+  echo "  -h, --db_host=HOST                 postgres host (default: localhost)"
+  echo "  -P, --db_port=PORT                 postgres port (default: 5432)"
+  echo "  -n, --prometheus_host=HOST         prometheus host (default: localhost)"
+  echo "  -t, --prometheus_port=PORT         prometheus port (default: 9090)"
+  echo "  -e, --prometheus_user=USERNAME     prometheus user (default: prometheus)"
+  echo "  --prometheus_protocol              prometheus protocol (default: http)."
+  echo "  -U, --yba_user=USERNAME            yugabyte anywhere user (default: yugabyte)"
+  echo "  --k8s_namespace                    kubernetes namespace"
+  echo "  --k8s_pod                          kubernetes pod"
+  echo "  --k8s_timeout                      kubernetes cp timeout duration (default: 30m)"
+  echo "  --disable_version_check            disable the backup version check (default: false)"
+  echo "  --yba_installer                    yba_installer backup (default: false)"
+  echo "  --ybdb                             ybdb restore (default: false)"
+  echo "  --ysqlsh_path                      path to ysqlsh to restore ybdb (default: false)"
+  echo "  --migration                        migration from Replicated or Yugabundle (default: false)"
+  echo "  --ybai_data_dir                    YBA data dir (default: /opt/yugabyte/data/yb-platform)"
+  echo "  --skip_old_files                   skip old files when untarring backup"
+  echo "  --skip_dump_check                  skip pg dump empty check before restore (default: false)"
+  echo "  --skip_dump_file_delete            skip deleting dump file extracted from backup archive (default: false)"
+  echo "  -?, --help                         show restore help, then exit"
   echo
   echo "NOTE: If prometheus authentication is enabled, PROMETHEUS_USERNAME and PROMETHEUS_PASSWORD environment variables must be set"
   echo
@@ -995,6 +1092,7 @@ case $command in
     # Default restore options.
     destination=/opt/yugabyte
     input_path=""
+    skip_dump_file_delete=false
 
     if [[ $# -eq 0 ]]; then
       print_restore_usage
@@ -1120,6 +1218,10 @@ case $command in
           skip_dump_check=true
           shift
           ;;
+        --skip_dump_file_delete)
+          skip_dump_file_delete=true
+          shift
+          ;;
         -?|--help)
           print_restore_usage
           exit 0
@@ -1149,7 +1251,7 @@ case $command in
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
     "$prometheus_host" "$prometheus_port" "$data_dir" "$k8s_namespace" "$k8s_pod" \
     "$disable_version_check" "$pgrestore_path" "$ybdb" "$ysqlsh_path" "$ybai_data_dir" \
-    "$skip_old_files" "$skip_dump_check" "$prometheus_protocol"
+    "$skip_old_files" "$skip_dump_check" "$prometheus_protocol" "$skip_dump_file_delete"
     exit 0
     ;;
   *)
