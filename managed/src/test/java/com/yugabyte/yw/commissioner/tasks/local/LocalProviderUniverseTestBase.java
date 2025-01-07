@@ -119,6 +119,8 @@ import org.junit.Rule;
 import org.junit.rules.TestWatcher;
 import org.junit.rules.Timeout;
 import org.junit.runner.Description;
+import org.yb.CommonNet.PlacementInfoPB;
+import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
@@ -906,14 +908,14 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       CatalogEntityInfo.SysClusterConfigEntryPB config = masterClusterConfig.getConfig();
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       UniverseDefinitionTaskParams.Cluster primaryCluster = universeDetails.getPrimaryCluster();
-      CatalogEntityInfo.ReplicationInfoPB replicationInfo = config.getReplicationInfo();
-      CatalogEntityInfo.PlacementInfoPB liveReplicas = replicationInfo.getLiveReplicas();
+      ReplicationInfoPB replicationInfo = config.getReplicationInfo();
+      PlacementInfoPB liveReplicas = replicationInfo.getLiveReplicas();
       verifyCluster(universe, primaryCluster, liveReplicas);
       verifyMasterAddresses(universe);
       if (!universeDetails.getReadOnlyClusters().isEmpty()) {
         UniverseDefinitionTaskParams.Cluster asyncCluster =
             universeDetails.getReadOnlyClusters().get(0);
-        CatalogEntityInfo.PlacementInfoPB readReplicas = replicationInfo.getReadReplicas(0);
+        PlacementInfoPB readReplicas = replicationInfo.getReadReplicas(0);
         verifyCluster(universe, asyncCluster, readReplicas);
       }
       if (waitForClusterToStabilize) {
@@ -937,9 +939,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   protected void verifyCluster(
-      Universe universe,
-      UniverseDefinitionTaskParams.Cluster cluster,
-      CatalogEntityInfo.PlacementInfoPB replicas) {
+      Universe universe, UniverseDefinitionTaskParams.Cluster cluster, PlacementInfoPB replicas) {
     assertEquals(cluster.uuid.toString(), replicas.getPlacementUuid().toStringUtf8());
     assertEquals(cluster.userIntent.replicationFactor, replicas.getNumReplicas());
     Map<UUID, Integer> nodeCount = localNodeManager.getNodeCount(cluster.uuid);

@@ -1999,6 +1999,51 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
+  public Deferred<CloneNamespaceResponse> cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String targetKeyspaceName,
+      long cloneTimeInMillis) {
+    checkIsClosed();
+    CloneNamespaceRequest request =
+        new CloneNamespaceRequest(
+            this.masterTable,
+            databaseType,
+            sourceKeyspaceName,
+            targetKeyspaceName,
+            cloneTimeInMillis);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<CloneNamespaceResponse> cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String keyspaceId,
+      String targetKeyspaceName,
+      long cloneTimeInMillis) {
+    checkIsClosed();
+    CloneNamespaceRequest request =
+        new CloneNamespaceRequest(
+            this.masterTable,
+            databaseType,
+            sourceKeyspaceName,
+            keyspaceId,
+            targetKeyspaceName,
+            cloneTimeInMillis);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListClonesResponse> listClones(
+      String keyspaceId, Integer cloneSeqNo) {
+    checkIsClosed();
+    ListClonesRequest request =
+        new ListClonesRequest(this.masterTable, keyspaceId, cloneSeqNo);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
   /**
    * Validate given ReplicationInfo against current TS placement.
    *

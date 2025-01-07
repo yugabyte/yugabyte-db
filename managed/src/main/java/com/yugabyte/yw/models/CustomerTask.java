@@ -390,7 +390,10 @@ public class CustomerTask extends Model {
     EnableNodeAgent,
 
     @EnumValue("Decommission")
-    Decommission;
+    Decommission,
+
+    @EnumValue("CloneNamespace")
+    CloneNamespace;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -567,6 +570,8 @@ public class CustomerTask extends Model {
           return completed ? "Restored continuous YBA backup" : "Restoring continuous YBA backup";
         case EnableNodeAgent:
           return completed ? "Enabled node agent on" : "Enabling node agent on";
+        case CloneNamespace:
+          return completed ? "Cloned Namespace" : "Cloning Namespace";
         default:
           return null;
       }
