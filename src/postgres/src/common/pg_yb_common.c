@@ -68,6 +68,17 @@ YBIsEnabledInPostgresEnvVar()
 }
 
 bool
+YBIsLocalInitdbEnvVar()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue("YB_PG_LOCAL_NODE_INITDB");
+	}
+	return cached_value;
+}
+
+bool
 YBShouldAllowRunningAsAnyUser()
 {
 	if (YBIsEnabledInPostgresEnvVar())
