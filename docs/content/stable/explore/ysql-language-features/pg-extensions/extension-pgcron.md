@@ -19,7 +19,7 @@ If the pg_cron leader node fails, another node is automatically elected as the n
 
 ## Set up pg_cron
 
-Before you can use the feature, you must set the `enable_pg_cron` flag to true on all YB-Masters and YB-TServers.
+Before you can use the feature, you must set the `enable_pg_cron` flag to true on all YB-Masters and YB-TServers. This starts the pg_cron PostgreSQL background worker for the extension.
 
 The pg_cron extension is installed on only one database, which stores the extension data. The default cron database is `yugabyte`. You can change it by setting the `ysql_cron_database_name` flag on all YB-TServers. You can create the database after setting the flag.
 
