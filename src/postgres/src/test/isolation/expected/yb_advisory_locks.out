@@ -256,55 +256,145 @@ step s1_commit: COMMIT;
 
 starting permutation: s1_lock
 step s1_lock: SELECT pg_advisory_lock(1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_advisory_lock
+----------------
+
+(1 row)
+
 
 starting permutation: s1_lock_shared
 step s1_lock_shared: SELECT pg_advisory_lock_shared(1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_advisory_lock_shared
+-----------------------
+
+(1 row)
+
 
 starting permutation: s1_lock_bigint
 step s1_lock_bigint: SELECT pg_advisory_lock(1, 1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_advisory_lock
+----------------
+
+(1 row)
+
 
 starting permutation: s1_lock_bigint_shared
 step s1_lock_bigint_shared: SELECT pg_advisory_lock_shared(1, 1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_advisory_lock_shared
+-----------------------
+
+(1 row)
+
 
 starting permutation: s1_try_lock
 step s1_try_lock: SELECT pg_try_advisory_lock(1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_try_advisory_lock
+--------------------
+t
+(1 row)
+
 
 starting permutation: s1_try_lock_shared
 step s1_try_lock_shared: SELECT pg_try_advisory_lock_shared(1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_try_advisory_lock_shared
+---------------------------
+t
+(1 row)
+
 
 starting permutation: s1_try_lock_bigint
 step s1_try_lock_bigint: SELECT pg_try_advisory_lock(1, 1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_try_advisory_lock
+--------------------
+t
+(1 row)
+
 
 starting permutation: s1_try_lock_bigint_shared
 step s1_try_lock_bigint_shared: SELECT pg_try_advisory_lock_shared(1, 1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_try_advisory_lock_shared
+---------------------------
+t
+(1 row)
+
 
 starting permutation: s1_unlock
 step s1_unlock: SELECT pg_advisory_unlock(1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_advisory_unlock
+------------------
+t
+(1 row)
+
 
 starting permutation: s1_unlock_shared
 step s1_unlock_shared: SELECT pg_advisory_unlock_shared(1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_advisory_unlock_shared
+-------------------------
+t
+(1 row)
+
 
 starting permutation: s1_unlock_bigint
 step s1_unlock_bigint: SELECT pg_advisory_unlock(1, 1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_advisory_unlock
+------------------
+t
+(1 row)
+
 
 starting permutation: s1_unlock_bigint_shared
 step s1_unlock_bigint_shared: SELECT pg_advisory_unlock_shared(1, 1);
-ERROR:  session-level advisory locks are not yet implemented
+pg_advisory_unlock_shared
+-------------------------
+t
+(1 row)
+
 
 starting permutation: s1_unlock_all
 step s1_unlock_all: SELECT pg_advisory_unlock_all();
-ERROR:  session-level advisory locks are not yet implemented
+pg_advisory_unlock_all
+----------------------
+
+(1 row)
+
+
+starting permutation: s1_unlock s1_lock s1_unlock_shared s1_lock_shared s1_unlock_shared s1_unlock
+step s1_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+f
+(1 row)
+
+step s1_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+
+(1 row)
+
+step s1_unlock_shared: SELECT pg_advisory_unlock_shared(1);
+pg_advisory_unlock_shared
+-------------------------
+f
+(1 row)
+
+step s1_lock_shared: SELECT pg_advisory_lock_shared(1);
+pg_advisory_lock_shared
+-----------------------
+
+(1 row)
+
+step s1_unlock_shared: SELECT pg_advisory_unlock_shared(1);
+pg_advisory_unlock_shared
+-------------------------
+t
+(1 row)
+
+step s1_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t
+(1 row)
+
 
 starting permutation: s1_begin_rr s1_xact_lock s2_begin_rr s2_xact_lock s1_rollback s2_commit
 step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
