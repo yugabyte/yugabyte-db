@@ -762,6 +762,8 @@ public class PlatformReplicationManager {
         commandArgs.addAll(getYbaInstallerArgs());
         commandArgs.add("--destination");
         commandArgs.add(replicationHelper.getBaseInstall());
+      } else {
+        commandArgs.add("--skip_dump_file_delete");
       }
 
       return commandArgs;
