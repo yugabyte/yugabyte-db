@@ -2509,9 +2509,27 @@ Status PgClientSession::AcquireAdvisoryLock(
     rpc::RpcContext* context) {
   VLOG(2) << "Servicing AcquireAdvisoryLock: " << req.ShortDebugString();
   SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
-  auto setup_session_result = VERIFY_RESULT(SetupSession(
-      req.options(), context->GetClientDeadline(), HybridTime()));
+  CoarseTimePoint deadline = context->GetClientDeadline();
+  auto setup_session_result = VERIFY_RESULT(SetupSession(req.options(), deadline, HybridTime()));
   auto* session = setup_session_result.session_data.session.get();
+  auto SetBackgroundTransactionId = [&](PgClientSessionKind kind) -> Status {
+    if (auto txn = GetSessionData(kind).transaction; txn) {
+      auto background_transaction_result_future = txn->GetMetadata(deadline).get();
+      RETURN_NOT_OK(background_transaction_result_future);
+      session->SetBatcherBackgroundTransactionId(
+          background_transaction_result_future->transaction_id);
+    }
+    return Status::OK();
+  };
+  if (setup_session_result.is_plain) {
+    // Set the plain transaction to ignore conflicts with the session-level transaction.
+    RETURN_NOT_OK(SetBackgroundTransactionId(PgClientSessionKind::kPgSession));
+  } else {
+    SCHECK(req.options().needs_pg_session_transaction(), IllegalState, "Session-level advisory "
+        "lock acquisition is only supported for pg session transactions");
+    // Set the session transaction to ignore conflicts with the transaction-level transaction.
+    RETURN_NOT_OK(SetBackgroundTransactionId(PgClientSessionKind::kPlain));
+  }
   auto& txn = setup_session_result.session_data.transaction;
   for (const auto& lock : req.locks()) {
     auto lock_op = VERIFY_RESULT(advisory_locks_table_.CreateLockOp(
@@ -2534,6 +2552,7 @@ Status PgClientSession::ReleaseAdvisoryLock(
     const PgReleaseAdvisoryLockRequestPB& req, PgReleaseAdvisoryLockResponsePB* resp,
     rpc::RpcContext* context) {
   VLOG(2) << "Servicing ReleaseAdvisoryLock: " << req.ShortDebugString();
+  SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
   PgPerformOptionsPB options;
   options.set_needs_pg_session_transaction(true);
   auto setup_session_result =

@@ -1122,6 +1122,10 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   Status InitTxnMetadata(ConflictResolver* resolver) override {
     metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
+    if (write_batch_.has_background_transaction_id()) {
+      background_transaction_id_ =
+          VERIFY_RESULT(FullyDecodeTransactionId(write_batch_.background_transaction_id()));
+    }
     return Status::OK();
   }
 
@@ -1246,7 +1250,8 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   }
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
-    return other == *transaction_id_;
+    return other == *transaction_id_ ||
+           (background_transaction_id_ && other == *background_transaction_id_);
   }
 
   TransactionId transaction_id() const override {
@@ -1276,6 +1281,14 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   // Id of transaction when is writing intents, for which we are resolving conflicts.
   Result<TransactionId> transaction_id_;
+
+  // This ensures no conflicts occur between session-level and transaction-level advisory
+  // locks within the same session.
+  // - For session-level advisory lock requests: the below points to
+  //   the in-progress DocDB transaction, if any.
+  // - For transaction-level advisory lock requests: the below points to
+  //   the session-level transaction, if exists.
+  boost::optional<TransactionId> background_transaction_id_ = boost::none;
 
   TransactionMetadata metadata_;
 

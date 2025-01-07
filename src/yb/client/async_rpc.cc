@@ -365,6 +365,18 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
                  bool need_full_metadata,
                  tserver::WriteRequestPB* req) {
   SetMetadata(metadata, need_full_metadata, req->mutable_write_batch());
+  if (metadata.background_transaction_id) {
+    // Indicates an attempt to acquire either a session-level or transaction-level advisory lock.
+    // The background_transaction_id ensures no conflicts occur between session-level and
+    // transaction-level advisory locks within the same session.
+    // - For session-level advisory lock requests: background_transaction_id points to
+    //   the in-progress DocDB transaction, if any.
+    // - For transaction-level advisory lock requests: background_transaction_id points to
+    //   the session-level transaction, if exists. Note that a session level transaction is only
+    //   created on demand when we encounter a session advisory lock request.
+    req->mutable_write_batch()->set_background_transaction_id(
+        metadata.background_transaction_id->data(), metadata.background_transaction_id->size());
+  }
 }
 
 } // namespace

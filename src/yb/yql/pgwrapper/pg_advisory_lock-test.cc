@@ -120,4 +120,18 @@ TEST_F(PgAdvisoryLockTest, CleanupSessionAdvisoryLock) {
   ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
 }
 
+// Verify that session-level and transaction-level advisory locks within the same session
+// coexist without conflicts.
+TEST_F(PgAdvisoryLockTest, VerifyNoConflictBetweenSessionAndTransactionLocks) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Fetch("select pg_advisory_xact_lock(10)"));
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
+}
+
 } // namespace yb::pgwrapper

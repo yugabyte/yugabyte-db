@@ -797,6 +797,9 @@ Status WriteQuery::DoExecute() {
   auto conflict_management_policy = GetConflictManagementPolicy(
       wait_queue, write_batch, is_advisory_lock_request);
 
+  SCHECK(!write_batch.has_background_transaction_id() || is_advisory_lock_request,
+      IllegalState, "background_transaction_id should only be set for advisory lock requests.");
+
   // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
   return docdb::ResolveTransactionConflicts(
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
