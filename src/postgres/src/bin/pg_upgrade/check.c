@@ -143,11 +143,8 @@ check_and_dump_old_cluster(bool live_check)
 	 * Pre-PG 12 allowed tables to be declared WITH OIDS, which is not
 	 * supported anymore. Verify there are none, iff applicable.
 	 */
-#ifdef YB_TODO
-	/* Investigate/implement this check */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1100)
 		check_for_tables_with_oids(&old_cluster);
-#endif
 
 	/*
 	 * PG 12 changed the 'sql_identifier' type storage to be based on name,
