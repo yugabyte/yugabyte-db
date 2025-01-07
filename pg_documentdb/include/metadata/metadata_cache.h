@@ -17,17 +17,20 @@ extern PGDLLIMPORT char *ApiDataSchemaName;
 extern PGDLLIMPORT char *ApiAdminRole;
 extern PGDLLIMPORT char *ApiReadOnlyRole;
 extern PGDLLIMPORT char *ApiSchemaName;
+extern PGDLLIMPORT char *ApiSchemaNameV2;
 extern PGDLLIMPORT char *ApiInternalSchemaName;
+extern PGDLLIMPORT char *ApiInternalSchemaNameV2;
 extern PGDLLIMPORT char *ExtensionObjectPrefix;
 extern PGDLLIMPORT char *CoreSchemaName;
 extern PGDLLIMPORT char *CoreSchemaNameV2;
 extern PGDLLIMPORT char *FullBsonTypeName;
 extern PGDLLIMPORT char *ApiCatalogSchemaName;
+extern PGDLLIMPORT char *ApiCatalogSchemaNameV2;
 extern PGDLLIMPORT char *ApiToApiInternalSchemaName;
 extern PGDLLIMPORT char *ApiCatalogToApiInternalSchemaName;
 extern PGDLLIMPORT char *PostgisSchemaName;
 extern PGDLLIMPORT char *DocumentDBApiInternalSchemaName;
-extern PGDLLEXPORT char *ApiCatalogToCoreSchemaName;
+extern PGDLLIMPORT char *ApiCatalogToCoreSchemaName;
 
 extern MemoryContext DocumentDBApiMetadataCacheContext;
 

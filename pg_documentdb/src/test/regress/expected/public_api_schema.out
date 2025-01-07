@@ -1,9 +1,17 @@
+set search_path to documentdb_api, documentdb_api_internal, documentdb_api_catalog, documentdb_data;
 -- show all functions exported in documentdb_api.
 \df documentdb_api.*
                        List of functions
  Schema | Name | Result data type | Argument data types | Type 
 --------+------+------------------+---------------------+------
 (0 rows)
+
+\df documentdb_api_internal.*
+                                               List of functions
+         Schema          |     Name     | Result data type |            Argument data types             | Type 
+-------------------------+--------------+------------------+--------------------------------------------+------
+ documentdb_api_internal | cursor_state | boolean          | documentdb_core.bson, documentdb_core.bson | func
+(1 row)
 
 \df documentdb_api_catalog.*
                        List of functions
@@ -19,6 +27,12 @@
 
 -- show all aggregates exported
 \da+ documentdb_api.*
+                     List of aggregate functions
+ Schema | Name | Result data type | Argument data types | Description 
+--------+------+------------------+---------------------+-------------
+(0 rows)
+
+\da+ documentdb_api_internal.*
                      List of aggregate functions
  Schema | Name | Result data type | Argument data types | Description 
 --------+------+------------------+---------------------+-------------
@@ -43,13 +57,13 @@ List of access methods
 ------+------
 (0 rows)
 
-\dAc *documentdb*
+\dAc * *documentdb*
                   List of operator classes
  AM | Input type | Storage type | Operator class | Default? 
 ----+------------+--------------+----------------+----------
 (0 rows)
 
-\dAf *documentdb*
+\dAf * *documentdb*
         List of operator families
  AM | Operator family | Applicable types 
 ----+-----------------+------------------
@@ -63,4 +77,6 @@ List of access methods
 
 -- This is last (Tables/indexes)
 \d documentdb_api.*
+\d documentdb_api_internal.*
 \d documentdb_api_catalog.*
+\d documentdb_data.*

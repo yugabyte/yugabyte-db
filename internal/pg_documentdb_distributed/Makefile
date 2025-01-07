@@ -17,12 +17,16 @@ OSS_COMMON_SQL_HEADER = $(wildcard $(OSS_SRC_DIR)/common_header.sql)
 
 # Extension defines
 POSTGIS_SCHEMA_NAME=public
-API_SCHEMA_NAME=documentdb
-API_SCHEMA_INTERNAL_NAME=documentdb_internal
-API_CATALOG_SCHEMA_NAME=documentdb_catalog
+API_SCHEMA_NAME=documentdb_api
+API_SCHEMA_NAME_V2=documentdb_api
+API_SCHEMA_INTERNAL_NAME=documentdb_api_internal
+API_SCHEMA_INTERNAL_NAME_V2=documentdb_api_internal
+API_CATALOG_SCHEMA_NAME=documentdb_api_catalog
+API_CATALOG_SCHEMA_NAME_V2=documentdb_api_catalog
 CORE_SCHEMA_NAME=documentdb_core
 API_DATA_SCHEMA_NAME=documentdb_data
 API_ADMIN_ROLE=documentdb_admin_role
+API_READONLY_ROLE=documentdb_readonly_role
 EXTENSION_OBJECT_PREFIX=documentdb
 
 # TODO: Need to remove this with PG16 and expose only valid exports

@@ -103,29 +103,32 @@ static CacheValidityValue CacheValidity = CACHE_INVALID;
 /* session-level memory context in which we keep all cached bytes */
 MemoryContext DocumentDBApiMetadataCacheContext = NULL;
 
-PGDLLEXPORT char *ApiDataSchemaName = "helio_data";
-PGDLLEXPORT char *ApiAdminRole = "helio_admin_role";
-PGDLLEXPORT char *ApiReadOnlyRole = "helio_readonly_role";
-PGDLLEXPORT char *ApiSchemaName = "helio_api";
-PGDLLEXPORT char *ApiInternalSchemaName = "helio_api_internal";
-PGDLLEXPORT char *ExtensionObjectPrefix = "helio";
-PGDLLEXPORT char *FullBsonTypeName = "helio_core.bson";
-PGDLLEXPORT char *ApiExtensionName = "pg_helio_api";
-PGDLLEXPORT char *ApiCatalogSchemaName = "helio_api_catalog";
-PGDLLEXPORT char *ApiGucPrefix = "helio_api";
+PGDLLEXPORT char *ApiDataSchemaName = "documentdb_data";
+PGDLLEXPORT char *ApiAdminRole = "documentdb_admin_role";
+PGDLLEXPORT char *ApiReadOnlyRole = "documentdb_readonly_role";
+PGDLLEXPORT char *ApiSchemaName = "documentdb_api";
+PGDLLEXPORT char *ApiSchemaNameV2 = "documentdb_api";
+PGDLLEXPORT char *ApiInternalSchemaName = "documentdb_api_internal";
+PGDLLEXPORT char *ApiInternalSchemaNameV2 = "documentdb_api_internal";
+PGDLLEXPORT char *ExtensionObjectPrefix = "documentdb";
+PGDLLEXPORT char *FullBsonTypeName = "documentdb_core.bson";
+PGDLLEXPORT char *ApiExtensionName = "documentdb";
+PGDLLEXPORT char *ApiCatalogSchemaName = "documentdb_api_catalog";
+PGDLLEXPORT char *ApiCatalogSchemaNameV2 = "documentdb_api_catalog";
+PGDLLEXPORT char *ApiGucPrefix = "documentdb";
 PGDLLEXPORT char *PostgisSchemaName = "public";
 
 /* Schema functions migrated from a public API to an internal API schema
  * (e.g. from helio_api -> helio_api_internal)
  * TODO: These should be transition and removed in subsequent releases.
  */
-PGDLLEXPORT char *ApiToApiInternalSchemaName = "helio_api_internal";
+PGDLLEXPORT char *ApiToApiInternalSchemaName = "documentdb_api_internal";
 
-PGDLLEXPORT char *ApiCatalogToApiInternalSchemaName = "helio_api_internal";
+PGDLLEXPORT char *ApiCatalogToApiInternalSchemaName = "documentdb_api_internal";
 
-PGDLLEXPORT char *DocumentDBApiInternalSchemaName = "helio_api_internal";
+PGDLLEXPORT char *DocumentDBApiInternalSchemaName = "documentdb_api_internal";
 
-PGDLLEXPORT char *ApiCatalogToCoreSchemaName = "helio_core";
+PGDLLEXPORT char *ApiCatalogToCoreSchemaName = "documentdb_core";
 
 typedef struct HelioApiOidCacheData
 {

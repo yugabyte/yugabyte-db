@@ -1,6 +1,6 @@
-DROP TABLE IF EXISTS helio_api_catalog.helio_index_queue;
+DROP TABLE IF EXISTS __API_CATALOG_SCHEMA_V2__.__EXTENSION_OBJECT__(_index_queue);
 
-CREATE TABLE helio_api_catalog.helio_index_queue
+CREATE TABLE __API_CATALOG_SCHEMA_V2__.__EXTENSION_OBJECT__(_index_queue)
 (
     index_cmd text not null,
     cmd_type char CHECK (cmd_type IN ('C', 'R')), -- 'C' for CREATE INDEX and 'R' for REINDEX
@@ -15,8 +15,8 @@ CREATE TABLE helio_api_catalog.helio_index_queue
     user_oid Oid CHECK (user_oid IS NULL OR user_oid != '0'::oid)
 );
 
-CREATE INDEX IF NOT EXISTS helio_index_queue_indexid_cmdtype on helio_api_catalog.helio_index_queue (index_id, cmd_type);
-CREATE INDEX IF NOT EXISTS helio_index_queue_cmdtype_collectionid_cmdstatus on helio_api_catalog.helio_index_queue (cmd_type, collection_id, index_cmd_status);
+CREATE INDEX IF NOT EXISTS __EXTENSION_OBJECT__(_index_queue_indexid_cmdtype) on __API_CATALOG_SCHEMA_V2__.__EXTENSION_OBJECT__(_index_queue) (index_id, cmd_type);
+CREATE INDEX IF NOT EXISTS __EXTENSION_OBJECT__(_index_queue_cmdtype_collectionid_cmdstatus) on __API_CATALOG_SCHEMA_V2__.__EXTENSION_OBJECT__(_index_queue) (cmd_type, collection_id, index_cmd_status);
 
-GRANT SELECT ON TABLE helio_api_catalog.helio_index_queue TO public;
-GRANT ALL ON TABLE helio_api_catalog.helio_index_queue TO helio_admin_role;
+GRANT SELECT ON TABLE __API_CATALOG_SCHEMA_V2__.__EXTENSION_OBJECT__(_index_queue) TO public;
+GRANT ALL ON TABLE __API_CATALOG_SCHEMA_V2__.__EXTENSION_OBJECT__(_index_queue) TO __API_ADMIN_ROLE__;

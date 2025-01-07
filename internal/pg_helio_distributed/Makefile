@@ -15,11 +15,15 @@ OSS_COMMON_SQL_HEADER = $(wildcard $(OSS_SRC_DIR)/common_header.sql)
 # Extension defines
 POSTGIS_SCHEMA_NAME=public
 API_SCHEMA_NAME=helio_api
+API_SCHEMA_NAME_V2=helio_api
 API_SCHEMA_INTERNAL_NAME=helio_api_internal
+API_SCHEMA_INTERNAL_NAME_V2=helio_api_internal
 API_CATALOG_SCHEMA_NAME=helio_api_catalog
+API_CATALOG_SCHEMA_NAME_V2=helio_api_catalog
 CORE_SCHEMA_NAME=helio_core
 API_DATA_SCHEMA_NAME=helio_data
 API_ADMIN_ROLE=helio_admin_role
+API_READONLY_ROLE=helio_readonly_role
 EXTENSION_OBJECT_PREFIX=helio
 
 # compilation configuration

@@ -1,1 +1,1 @@
-GRANT USAGE ON SCHEMA helio_core TO helio_admin_role;
+GRANT USAGE ON SCHEMA __CORE_SCHEMA_V2__ TO __API_ADMIN_ROLE__;

@@ -46,7 +46,7 @@ CHECK ((VALUE).index_version IS NOT NULL AND
 CREATE SEQUENCE __API_CATALOG_SCHEMA__.collection_indexes_index_id_seq AS integer START WITH 1; -- let 0 mean invalid, see index.h/INVALID_INDEX_ID
 
 /*
- * i)  Maps Mongo indexes to helioapi index id's
+ * i)  Maps Mongo indexes to __API_SCHEMA__ api index id's
  * ii) Does book-keeping for index keys, options etc.
  */
 CREATE TABLE __API_CATALOG_SCHEMA__.collection_indexes (

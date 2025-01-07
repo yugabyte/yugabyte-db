@@ -15,6 +15,7 @@
 #include "utils/feature_counter.h"
 #include "infrastructure/bson_external_configs.h"
 #include "documentdb_api_init.h"
+#include "metadata/metadata_cache.h"
 
 PG_MODULE_MAGIC;
 
@@ -24,6 +25,7 @@ void _PG_fini(void);
 
 extern bool SkipDocumentDBLoad;
 bool SkipHelioApiLoad = false;
+extern char *ApiExtensionName;
 
 
 /*
@@ -47,6 +49,29 @@ _PG_init(void)
 	}
 
 	SkipDocumentDBLoad = true;
+
+	ApiDataSchemaName = "helio_data";
+	ApiAdminRole = "helio_admin_role";
+	ApiReadOnlyRole = "helio_readonly_role";
+	ApiSchemaName = "helio_api";
+	ApiSchemaNameV2 = "helio_api";
+	ApiInternalSchemaName = "helio_api_internal";
+	ApiInternalSchemaNameV2 = "helio_api_internal";
+	ApiCatalogSchemaName = "helio_api_catalog";
+	ApiCatalogSchemaNameV2 = "helio_api_catalog";
+	ExtensionObjectPrefix = "helio";
+	FullBsonTypeName = "helio_core.bson";
+	ApiExtensionName = "pg_helio_api";
+
+	/* Schema functions migrated from a public API to an internal API schema
+	 * (e.g. from helio_api -> helio_api_internal)
+	 * TODO: These should be transition and removed in subsequent releases.
+	 */
+	ApiToApiInternalSchemaName = "helio_api_internal";
+	ApiCatalogToApiInternalSchemaName = "helio_api_internal";
+	DocumentDBApiInternalSchemaName = "helio_api_internal";
+	ApiCatalogToCoreSchemaName = "helio_core";
+
 	InstallBsonMemVTables();
 	InitApiConfigurations("helio_api", "helio_api");
 	InitializeExtensionExternalConfigs("helio_api");
