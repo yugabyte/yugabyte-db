@@ -109,13 +109,13 @@ struct PgClientSessionOperation {
 
 using PgClientSessionOperations = std::vector<PgClientSessionOperation>;
 
-YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence));
+YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence)(kPgSession));
 
 YB_STRONGLY_TYPED_BOOL(IsDDL);
 
 class PgClientSession {
-  using TransactionBuilder = std::function<
-      client::YBTransactionPtr(IsDDL, client::ForceGlobalTransaction, CoarseTimePoint)>;
+  using TransactionBuilder = std::function<client::YBTransactionPtr(
+      IsDDL, client::ForceGlobalTransaction, CoarseTimePoint, client::ForceCreateTransaction)>;
   using SharedThisSource = std::shared_ptr<void>;
 
  public:
@@ -212,6 +212,9 @@ class PgClientSession {
 
   Result<SetupSessionResult> SetupSession(
       const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit);
+
+  Status BeginPgSessionLevelTxnIfNecessary(CoarseTimePoint deadline);
+
   Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);

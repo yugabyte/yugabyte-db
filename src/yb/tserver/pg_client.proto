@@ -672,6 +672,9 @@ message PgPerformOptionsPB {
   // - Clamps the read uncertainty window.
   // See the commit desc for more info.
   bool clamp_uncertainty_window = 24;
+
+  // True only in case of perform requests for session level advisory locks.
+  bool needs_pg_session_transaction = 25;
 }
 
 message PgPerformRequestPB {

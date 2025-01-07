@@ -17,6 +17,8 @@ DECLARE_bool(enable_wait_queues);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_uint32(num_advisory_locks_tablets);
+DECLARE_uint64(pg_client_session_expiration_ms);
+DECLARE_uint64(pg_client_heartbeat_interval_ms);
 
 namespace yb::pgwrapper {
 
@@ -61,6 +63,8 @@ class PgAdvisoryLockTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     PgMiniTestBase::SetUp();
   }
+
+  static constexpr int kExpiredSessionCleanupMs = 3000;
 };
 
 class PgAdvisoryLockTest : public PgAdvisoryLockTestBase {
@@ -69,6 +73,9 @@ class PgAdvisoryLockTest : public PgAdvisoryLockTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_advisory_locks_tablets) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) =
+        kExpiredSessionCleanupMs / 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = kExpiredSessionCleanupMs;
     PgAdvisoryLockTestBase::SetUp();
   }
 };
@@ -83,28 +90,34 @@ TEST_F(PgAdvisoryLockTest, AcquireXactLocksInDifferentDBs) {
   ASSERT_OK(conn.CommitTransaction());
 }
 
-class PgAdvisoryLockNotSupportedTest : public PgAdvisoryLockTestBase {
- protected:
-  void CheckStmtNotSupported(const std::string& stmt) {
+TEST_F(PgAdvisoryLockTest, SessionAdvisoryLockAndUnlock) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock_shared(10)")));
+
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock_shared(10)"));
+  ASSERT_OK(conn.Fetch("select pg_advisory_unlock_shared(10)"));
+
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock_shared(10)")));
+
+  ASSERT_OK(conn.Fetch("select pg_advisory_unlock(10)"));
+  ASSERT_OK(conn.Fetch("select pg_advisory_unlock(10)"));
+
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
+}
+
+TEST_F(PgAdvisoryLockTest, CleanupSessionAdvisoryLock) {
+  {
     auto conn = ASSERT_RESULT(Connect());
-    auto status = conn.Execute(stmt);
-    ASSERT_NOK(status);
-    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "advisory locks are not yet implemented");
+    ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
   }
+  SleepFor(2 * kExpiredSessionCleanupMs * 1ms * kTimeMultiplier);
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
+  ASSERT_OK(conn.Fetch("select pg_advisory_unlock(10)"));
 
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = false;
-    PgAdvisoryLockTestBase::SetUp();
-  }
-};
-
-TEST_F(PgAdvisoryLockNotSupportedTest, AdvisoryLockNotSupported) {
-  for (const auto& session_level_lock : session_level_locks) {
-    CheckStmtNotSupported(session_level_lock);
-  }
-  for (const auto& xact_level_lock : xact_level_locks) {
-    CheckStmtNotSupported(xact_level_lock);
-  }
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
 }
 
 } // namespace yb::pgwrapper

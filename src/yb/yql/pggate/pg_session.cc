@@ -1151,10 +1151,11 @@ Status PgSession::AcquireAdvisoryLock(
       pg_txn_manager_->GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED
           ? kHighestPriority : kLowerPriorityRange));
     pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
-    // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
-    // then it should be safe to skip set_force_global_transaction.
-    options.set_force_global_transaction(true);
   }
+  // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
+  // then it should be safe to skip set_force_global_transaction.
+  options.set_force_global_transaction(true);
+  options.set_needs_pg_session_transaction(session);
 
   tserver::PgAcquireAdvisoryLockRequestPB req;
   req.set_session_id(pg_client_.SessionID());

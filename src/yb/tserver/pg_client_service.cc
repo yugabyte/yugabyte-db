@@ -293,7 +293,8 @@ class DeferredConstructible {
 
 using TransactionBuilder = std::function<
     client::YBTransactionPtr(
-        TxnAssignment* dest, IsDDL, client::ForceGlobalTransaction, CoarseTimePoint)>;
+        TxnAssignment* dest, IsDDL, client::ForceGlobalTransaction, CoarseTimePoint,
+        client::ForceCreateTransaction)>;
 
 class SessionInfo {
  public:
@@ -2045,9 +2046,9 @@ class PgClientServiceImpl::Impl {
 
   [[nodiscard]] client::YBTransactionPtr BuildTransaction(
       TxnAssignment* dest, IsDDL is_ddl, client::ForceGlobalTransaction force_global,
-      CoarseTimePoint deadline) {
+      CoarseTimePoint deadline, client::ForceCreateTransaction force_create_txn) {
     auto watcher = std::make_shared<client::YBTransactionPtr>(
-        transaction_pool_provider_().Take(force_global, deadline));
+        transaction_pool_provider_().Take(force_global, deadline, force_create_txn));
     dest->Assign(watcher, is_ddl);
     auto* txn = &**watcher;
     return {std::move(watcher), txn};
