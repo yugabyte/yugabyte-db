@@ -85,5 +85,6 @@ extern PGShmemHeader *PGSharedMemoryCreate(Size size, int port,
 					 PGShmemHeader **shim);
 extern bool PGSharedMemoryIsInUse(unsigned long id1, unsigned long id2);
 extern void PGSharedMemoryDetach(void);
+extern void YbRemoveSharedMemory();
 
 #endif							/* PG_SHMEM_H */

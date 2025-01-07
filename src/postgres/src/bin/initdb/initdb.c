@@ -199,6 +199,9 @@ static char *authwarning = NULL;
 static const char *boot_options = "-F";
 static const char *backend_options = "--single -F -O -j -c search_path=pg_catalog -c exit_on_error=true";
 
+/* Additional switches to pass to backend (either boot or standalone) */
+static char *extra_options = "";
+
 static const char *const subdirs[] = {
 	"global",
 	"pg_wal/archive_status",
@@ -299,10 +302,9 @@ do { \
 
 #define PG_CMD_CLOSE \
 do { \
-  int exit_code = yb_pclose_check(cmdfd); \
 	/* message already printed by yb_pclose_check */ \
-	if (exit_code) \
-		exit_nicely_with_code(exit_code == YB_INITDB_ALREADY_DONE_EXIT_CODE ? 0 : 1); \
+	if (yb_pclose_check(cmdfd)) \
+		exit_nicely_with_code(1); \
 } while (0)
 
 #define PG_CMD_PUTS(line) \
@@ -355,31 +357,29 @@ static bool IsYugaByteLocalNodeInitdb()
 static int
 yb_pclose_check(FILE *stream)
 {
-	int			exitstatus;
+	int			status;
 	char	   *reason;
 
-	exitstatus = pclose(stream);
-
-	if (exitstatus == 0)
-		return 0;				/* all is well */
-
-	if (exitstatus == -1)
+	if ((status = pclose(stream)))
 	{
-		/* pclose() itself failed, and hopefully set errno */
-		fprintf(stderr, _("pclose failed: %s\n"), strerror(errno));
-		return 1;
-	}
-	else
-	{
-		if (WEXITSTATUS(exitstatus) == YB_INITDB_ALREADY_DONE_EXIT_CODE) {
+		if (status == -1)
+		{
+			/* pclose() itself failed, and hopefully set errno */
+			fprintf(stderr, _("pclose failed: %s\n"), strerror(errno));
+		}
+		else if (WEXITSTATUS(status) == YB_INITDB_ALREADY_DONE_EXIT_CODE)
+		{
 			fprintf(stderr, "initdb has already been run previously, nothing to do\n");
-		} else {
-			reason = wait_result_to_str(exitstatus);
+			status = 0;
+		}
+		else
+		{
+			reason = wait_result_to_str(status);
 			fprintf(stderr, "%s\n", reason);
 			pfree(reason);
 		}
 	}
-	return WEXITSTATUS(exitstatus);
+	return status;
 }
 
 
@@ -1064,12 +1064,12 @@ test_config_settings(void)
 		test_buffs = MIN_BUFS_FOR_CONNS(test_conns);
 
 		snprintf(cmd, sizeof(cmd),
-				 "\"%s\" --boot -x0 %s "
+				 "\"%s\" --boot -x0 %s %s "
 				 "-c max_connections=%d "
 				 "-c shared_buffers=%d "
 				 "-c dynamic_shared_memory_type=none "
 				 "< \"%s\" > \"%s\" 2>&1",
-				 backend_exec, boot_options,
+				 backend_exec, boot_options, extra_options,
 				 test_conns, test_buffs,
 				 DEVNULL, DEVNULL);
 		status = system(cmd);
@@ -1099,12 +1099,12 @@ test_config_settings(void)
 		}
 
 		snprintf(cmd, sizeof(cmd),
-				 "\"%s\" --boot -x0 %s "
+				 "\"%s\" --boot -x0 %s %s "
 				 "-c max_connections=%d "
 				 "-c shared_buffers=%d "
 				 "-c dynamic_shared_memory_type=none "
 				 "< \"%s\" > \"%s\" 2>&1",
-				 backend_exec, boot_options,
+				 backend_exec, boot_options, extra_options,
 				 n_connections, test_buffs,
 				 DEVNULL, DEVNULL);
 		status = system(cmd);
@@ -1528,11 +1528,11 @@ bootstrap_template1(void)
 	unsetenv("PGCLIENTENCODING");
 
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" --boot -x1 -X %u %s %s %s",
+			 "\"%s\" --boot -x1 -X %u %s %s %s %s",
 			 backend_exec,
 			 wal_segment_size_mb * (1024 * 1024),
 			 data_checksums ? "-k" : "",
-			 boot_options,
+			 boot_options, extra_options,
 			 debug ? "-d 5" : "");
 
 
@@ -3195,8 +3195,8 @@ initialize_data_directory(void)
 	fflush(stdout);
 
 	snprintf(cmd, sizeof(cmd),
-	         "\"%s\" %s template1 >%s",
-	         backend_exec, backend_options,
+	         "\"%s\" %s %s template1 >%s",
+	         backend_exec, backend_options, extra_options,
 	         DEVNULL);
 
 	PG_CMD_OPEN;
@@ -3448,6 +3448,12 @@ main(int argc, char *argv[])
 		}
 	}
 
+	const char *yb_log_dir = getenv("FLAGS_log_dir");
+	if (yb_log_dir && yb_log_dir[0] != '\0')
+	{
+		const char *yb_log_option = psprintf("-r %s/initdb.log", yb_log_dir);
+		extra_options = psprintf("%s %s", extra_options, yb_log_option);
+	}
 
 	/*
 	 * Non-option argument specifies data directory as long as it wasn't

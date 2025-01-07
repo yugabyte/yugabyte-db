@@ -755,6 +755,18 @@ PGSharedMemoryCreate(Size size, int port,
 	return (PGShmemHeader *) AnonymousShmem;
 }
 
+void
+YbRemoveSharedMemory()
+{
+	if (UsedShmemSegID)
+	{
+		IpcMemoryKey key = (IpcMemoryKey) UsedShmemSegID;
+		int shmid = shmget(key, 0, 0);
+		if (shmid > 0)
+			IpcMemoryDelete(0, Int32GetDatum(shmid));
+	}
+}
+
 #ifdef EXEC_BACKEND
 
 /*

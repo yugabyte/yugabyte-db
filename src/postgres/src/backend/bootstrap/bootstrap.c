@@ -47,11 +47,13 @@
 #include "utils/relmapper.h"
 #include "utils/tqual.h"
 
+/* Yugabyte includes */
 #include "bootstrap/ybcbootstrap.h"
 #include "catalog/pg_database.h"
 #include "commands/ybccmds.h"
 #include "executor/ybcModifyTable.h"
 #include "pg_yb_utils.h"
+#include "storage/pg_shmem.h"
 
 uint32		bootstrap_data_checksum_version = 0;	/* No checksum */
 
@@ -572,6 +574,8 @@ bootstrap_signals(void)
 	pqsignal(SIGINT, die);
 	pqsignal(SIGTERM, die);
 	pqsignal(SIGQUIT, die);
+	if (YBIsEnabledInPostgresEnvVar() || YBIsLocalInitdbEnvVar())
+		pqsignal(SIGABRT, YbRemoveSharedMemory);
 }
 
 /*
