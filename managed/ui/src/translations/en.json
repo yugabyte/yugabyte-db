@@ -1813,7 +1813,8 @@
       },
       "renameKeyspaces": {
         "title": "Rename keyspace/s before restoring  (Optional)",
-        "currenyKeyspacename": "Current keyspace name",
+        "searchKeyspaceName": "Search keyspace name",
+        "currentKeyspaceName": "Current keyspace name",
         "assignNewName": "Assign new name",
         "addNewName": "Add new name",
         "validationMessages": {
