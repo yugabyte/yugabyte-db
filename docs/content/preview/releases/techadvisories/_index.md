@@ -21,7 +21,7 @@ It is strongly recommended that you take appropriate measures as outlined in the
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
 | {{<ta 25193>}}
 |CDC unable to stream UPDATE/DELETE operations
-| CDC
+| [CDC](/preview/develop/change-data-capture/)
 | {{<release "2.20, 2024.1, 2024.2">}}
 | {{<nobreak "10 January 2025">}}
 |
