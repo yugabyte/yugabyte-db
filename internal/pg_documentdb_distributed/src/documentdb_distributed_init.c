@@ -23,6 +23,9 @@ bool EnableMetadataReferenceTableSync = DEFAULT_ENABLE_METADATA_REFERENCE_SYNC;
 #define DEFAULT_ENABLE_SHARD_REBALANCER false
 bool EnableShardRebalancer = DEFAULT_ENABLE_SHARD_REBALANCER;
 
+#define DEFAULT_CLUSTER_ADMIN_ROLE ""
+char *ClusterAdminRole = DEFAULT_CLUSTER_ADMIN_ROLE;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -45,5 +48,12 @@ InitDocumentDBDistributedConfigurations(const char *prefix)
 		gettext_noop(
 			"Determines whether or not to enable shard rebalancer APIs."),
 		NULL, &EnableShardRebalancer, DEFAULT_ENABLE_SHARD_REBALANCER,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomStringVariable(
+		psprintf("%s.clusterAdminRole", prefix),
+		gettext_noop(
+			"The cluster admin role."),
+		NULL, &ClusterAdminRole, DEFAULT_CLUSTER_ADMIN_ROLE,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

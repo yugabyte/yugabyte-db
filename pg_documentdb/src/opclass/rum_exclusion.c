@@ -60,7 +60,7 @@
 /* --------------------------------------------------------- */
 
 extern bool ForceEnableNewUniqueOpClass;
-extern uint64_t DefaultUniqueIndexKeyhashOverride;
+extern int DefaultUniqueIndexKeyhashOverride;
 
 static pgbson * GetShardKeyAndDocument(HeapTupleHeader input, int64_t *shardKey);
 static IndexTraverseOption GetExclusionIndexTraverseOption(void *contextOptions,
@@ -578,7 +578,7 @@ ExtractUniqueShardTermsFromInput(pgbson *input, int32_t *nentries, Pointer **ext
 			 * This is only used for testing and should not be set in production.
 			 */
 			*lastBytes = DefaultUniqueIndexKeyhashOverride > 0 ?
-						 DefaultUniqueIndexKeyhashOverride :
+						 (uint64_t) DefaultUniqueIndexKeyhashOverride :
 						 HashBsonValueComparableExtended(indexTerm, keyhash);
 
 			if (index > numTerms)
