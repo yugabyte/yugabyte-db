@@ -171,13 +171,14 @@ FormatProjections(List *targetEntries)
 static bool
 SetPointReadQualsOnIndexScan(IndexScan *indexScan, Expr *queryQuals)
 {
-	List *indexClauses = NIL;
-	List *indexClausesOrig = NIL;
 	List *runtimeClauses = NIL;
 	List *quals = make_ands_implicit(queryQuals);
 
 	ListCell *cell;
-	bool hasObjectIdFilter = false;
+	Expr *objectIdExpr = NULL;
+	Expr *objectIdOriginalExpr = NULL;
+	Expr *shardKeyExpr = NULL;
+	Expr *shardKeyOriginalExpr = NULL;
 	foreach(cell, quals)
 	{
 		Expr *expr = (Expr *) lfirst(cell);
@@ -204,24 +205,33 @@ SetPointReadQualsOnIndexScan(IndexScan *indexScan, Expr *queryQuals)
 						DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
 						opExpr->opno == BsonEqualOperatorId())
 					{
-						hasObjectIdFilter = true;
+						if (objectIdExpr != NULL)
+						{
+							return NULL;
+						}
+
 						OpExpr *newOpExpr = copyObject(opExpr);
 						Var *indexVar = makeVar(INDEX_VAR, 2, BsonTypeId(), -1,
 												InvalidOid, 0);
 						newOpExpr->args = list_make2(indexVar, lsecond(opExpr->args));
-						indexClauses = lappend(indexClauses, newOpExpr);
-						indexClausesOrig = lappend(indexClausesOrig, opExpr);
+						objectIdExpr = (Expr *) newOpExpr;
+						objectIdOriginalExpr = (Expr *) opExpr;
 					}
 					else if (firstVar->varattno ==
 							 DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
 							 opExpr->opno == BigintEqualOperatorId())
 					{
+						if (shardKeyExpr != NULL)
+						{
+							return NULL;
+						}
+
 						OpExpr *newOpExpr = copyObject(opExpr);
 						Var *indexVar = makeVar(INDEX_VAR, 1, BsonTypeId(), -1,
 												InvalidOid, 0);
 						newOpExpr->args = list_make2(indexVar, lsecond(opExpr->args));
-						indexClauses = lcons(newOpExpr, indexClauses);
-						indexClausesOrig = lcons(opExpr, indexClausesOrig);
+						shardKeyExpr = (Expr *) newOpExpr;
+						shardKeyOriginalExpr = (Expr *) opExpr;
 					}
 					else
 					{
@@ -277,13 +287,14 @@ SetPointReadQualsOnIndexScan(IndexScan *indexScan, Expr *queryQuals)
 	}
 
 	/* Not a point read */
-	if (list_length(indexClauses) != 2 || !hasObjectIdFilter)
+	/* Not a point read */
+	if (objectIdExpr == NULL || shardKeyExpr == NULL)
 	{
 		return false;
 	}
 
 	indexScan->scan.plan.qual = runtimeClauses;
-	indexScan->indexqual = indexClauses;
-	indexScan->indexqualorig = indexClausesOrig;
+	indexScan->indexqual = list_make2(shardKeyExpr, objectIdExpr);
+	indexScan->indexqualorig = list_make2(shardKeyOriginalExpr, objectIdOriginalExpr);
 	return true;
 }

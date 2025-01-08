@@ -614,6 +614,8 @@ BuildStreamingContinuationDocument(HTAB *cursorMap, pgbson *querySpec, int64_t c
 {
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
+	PgbsonWriterAppendInt64(&writer, "qi", 2, cursorId);
+	PgbsonWriterAppendBool(&writer, "qp", 2, false);
 
 	PgbsonWriterAppendInt32(&writer, "qk", 2, (int) queryKind);
 
@@ -628,8 +630,6 @@ BuildStreamingContinuationDocument(HTAB *cursorMap, pgbson *querySpec, int64_t c
 		/* For streaming cursor, save the query with "qc" key. */
 		PgbsonWriterAppendDocument(&writer, "qc", 2, querySpec);
 	}
-
-	PgbsonWriterAppendInt64(&writer, "qi", 2, cursorId);
 
 	if (isTailableCursor)
 	{
@@ -656,13 +656,12 @@ BuildPersistedContinuationDocument(const char *cursorName, int64_t cursorId, Que
 {
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
+	PgbsonWriterAppendInt64(&writer, "qi", 2, cursorId);
+	PgbsonWriterAppendBool(&writer, "qp", 2, true);
 
 	/* Add the original query spec so that getMore can reuse it */
 	PgbsonWriterAppendInt32(&writer, "qk", 2, (int) queryKind);
-
 	PgbsonWriterAppendUtf8(&writer, "qn", 2, cursorName);
-
-	PgbsonWriterAppendInt64(&writer, "qi", 2, cursorId);
 
 	/* In the response add the number of iterations (used in tests) */
 	PgbsonWriterAppendInt32(&writer, "numIters", 8, numIterations);
@@ -697,7 +696,7 @@ ParseCursorInputSpec(pgbson *cursorSpec, QueryGetMoreInfo *getMoreInfo)
 						getMoreInfo->querySpec = PgbsonInitFromDocumentBsonValue(
 							bson_iter_value(&cursorSpecIter));
 						getMoreInfo->cursorKind = CursorKind_Streaming;
-						break;
+						continue;
 					}
 
 					/* Query tailable */
@@ -708,7 +707,7 @@ ParseCursorInputSpec(pgbson *cursorSpec, QueryGetMoreInfo *getMoreInfo)
 						getMoreInfo->querySpec = PgbsonInitFromDocumentBsonValue(
 							bson_iter_value(&cursorSpecIter));
 						getMoreInfo->cursorKind = CursorKind_Tailable;
-						break;
+						continue;
 					}
 
 					/* Query cursor name */
@@ -717,7 +716,7 @@ ParseCursorInputSpec(pgbson *cursorSpec, QueryGetMoreInfo *getMoreInfo)
 						Assert(pathKey[2] == '\0');
 						getMoreInfo->cursorName = bson_iter_utf8(&cursorSpecIter, NULL);
 						getMoreInfo->cursorKind = CursorKind_Persisted;
-						break;
+						continue;
 					}
 
 					/* Query cursor id */
@@ -725,7 +724,7 @@ ParseCursorInputSpec(pgbson *cursorSpec, QueryGetMoreInfo *getMoreInfo)
 					{
 						Assert(pathKey[2] == '\0');
 						getMoreInfo->cursorId = bson_iter_int64(&cursorSpecIter);
-						break;
+						continue;
 					}
 
 					/* Query cursor kind */
@@ -734,11 +733,18 @@ ParseCursorInputSpec(pgbson *cursorSpec, QueryGetMoreInfo *getMoreInfo)
 						Assert(pathKey[2] == '\0');
 						getMoreInfo->queryKind = (QueryKind) bson_iter_int32(
 							&cursorSpecIter);
-						break;
+						continue;
+					}
+
+
+					/* Continuation persistence - ignored */
+					case 'p':
+					{
+						continue;
 					}
 				}
 
-				break;
+				continue;
 			}
 		}
 	}
