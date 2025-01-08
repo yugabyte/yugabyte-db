@@ -51,6 +51,7 @@
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
+#include "postmaster/interrupt.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -85,7 +86,7 @@ typedef struct YbQueryDiagnosticsBundles
 	int			index;			/* index to insert new buffer entry */
 	int			max_entries;	/* maximum # of entries in the buffer */
 	LWLock		lock;			/* protects circular buffer from search/modification */
-	YbBundleInfo	bundles[FLEXIBLE_ARRAY_MEMBER]; /* circular buffer to store info about bundles */
+	YbBundleInfo bundles[FLEXIBLE_ARRAY_MEMBER]; /* circular buffer to store info about bundles */
 } YbQueryDiagnosticsBundles;
 
 typedef struct
@@ -112,10 +113,6 @@ int yb_query_diagnostics_circular_buffer_size;
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static ExecutorStart_hook_type prev_ExecutorStart = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
-
-/* Flags set by interrupt handlers for later service in the main loop. */
-static volatile sig_atomic_t got_sigterm = false;
-static volatile sig_atomic_t got_sighup = false;
 
 /* Function pointers */
 YbGetNormalizedQueryFuncPtr yb_get_normalized_query = NULL;
@@ -151,8 +148,6 @@ static int DumpToFile(const char *path, const char *file_name, const char *data,
 static void FlushAndCleanBundles();
 static void AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry,
 							  bool explain_analyze, bool explain_dist, double totaltime_ms);
-static void YbQueryDiagnosticsBgWorkerSighup(SIGNAL_ARGS);
-static void YbQueryDiagnosticsBgWorkerSigterm(SIGNAL_ARGS);
 static inline TimestampTz BundleEndTime(const YbQueryDiagnosticsEntry *entry);
 static int YbQueryDiagnosticsBundlesShmemSize(void);
 static Datum CreateJsonb(const YbQueryDiagnosticsParams *params);
@@ -506,28 +501,6 @@ ProcessCompletedBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 	}
 
 	LWLockRelease(&bundles_completed->lock);
-}
-
-static void
-YbQueryDiagnosticsBgWorkerSighup(SIGNAL_ARGS)
-{
-	int			save_errno = errno;
-
-	got_sighup = true;
-	SetLatch(MyLatch);
-
-	errno = save_errno;
-}
-
-static void
-YbQueryDiagnosticsBgWorkerSigterm(SIGNAL_ARGS)
-{
-	int			save_errno = errno;
-
-	got_sigterm = true;
-	SetLatch(MyLatch);
-
-	errno = save_errno;
 }
 
 /*
@@ -1964,8 +1937,10 @@ YbQueryDiagnosticsMain(Datum main_arg)
 					 yb_query_diagnostics_bg_worker_interval_ms)));
 
 	/* Register functions for SIGTERM/SIGHUP management */
-	pqsignal(SIGHUP, YbQueryDiagnosticsBgWorkerSighup);
-	pqsignal(SIGTERM, YbQueryDiagnosticsBgWorkerSigterm);
+	pqsignal(SIGHUP, SignalHandlerForConfigReload);
+	pqsignal(SIGTERM, SignalHandlerForShutdownRequest);
+	pqsignal(SIGINT, SignalHandlerForShutdownRequest);
+	pqsignal(SIGQUIT, SignalHandlerForCrashExit);
 
 	/* Initialize the worker process */
 	BackgroundWorkerUnblockSignals();
@@ -1975,7 +1950,7 @@ YbQueryDiagnosticsMain(Datum main_arg)
 
 	pgstat_report_appname("yb_query_diagnostics bgworker");
 
-	while (!got_sigterm)
+	while (true)
 	{
 		int			rc;
 		/* Wait necessary amount of time */
@@ -1989,15 +1964,7 @@ YbQueryDiagnosticsMain(Datum main_arg)
 		if (rc & WL_POSTMASTER_DEATH)
 			proc_exit(1);
 
-		/* Process signals */
-		if (got_sighup)
-		{
-			/* Process config file */
-			got_sighup = false;
-			ProcessConfigFile(PGC_SIGHUP);
-			ereport(LOG,
-					(errmsg("bgworker yb_query_diagnostics signal: processed SIGHUP")));
-		}
+		HandleMainLoopInterrupts();
 
 		/* Check for expired entries within the shared hash table */
 		FlushAndCleanBundles();
