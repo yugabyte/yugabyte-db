@@ -1537,11 +1537,10 @@ Delete the read replica.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    delete_read_replica_placement_info [ <placement_id> ]
+    delete_read_replica_placement_info
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *placement_id*: The identifier of the read replica cluster, which can be any unique string. If not set, a randomly-generated ID will be used. Primary and read replica clusters must use different placement IDs.
 
 ---
 
