@@ -3252,6 +3252,20 @@ reaper(SIGNAL_ARGS)
 				break;
 			}
 
+			/*
+			 * We can't know what the parent of a background requires to properly clean this up.
+			 * ReportBackgroundWorkerExit seems like it should do the trick, there's complexity
+			 * caused by latches.
+			 */
+			if (proc->isBackgroundWorker)
+			{
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend worker "
+								"crash")));
+				break;
+			}
+
 			if (!proc->ybInitializationCompleted)
 			{
 				YbCrashInUnmanageableState = true;
