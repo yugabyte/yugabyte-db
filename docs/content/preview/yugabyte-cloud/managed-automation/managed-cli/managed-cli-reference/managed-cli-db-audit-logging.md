@@ -17,7 +17,7 @@ Use the `cluster db-audit-logging` resource to perform operations on a YugabyteD
 - enable, disable, and update database audit logging.
 - get information about database audit logging.
 
-For information on database audit logging settings, refer to [Database Audit Logging](../../../../cloud-monitor/logging-export/#ysql-audit-logging-settings).
+For information on database audit logging settings, refer to [Database Audit Logging](../../../../cloud-monitor/logging-export/#database-audit-logging).
 
 ## Prerequisite
 
