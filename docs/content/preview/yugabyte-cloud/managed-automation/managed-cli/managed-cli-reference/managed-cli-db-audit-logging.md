@@ -76,7 +76,7 @@ Enable database audit logging for a cluster and export the logs to the integrati
 | --cluster-name | Required. Name of the cluster whose database audit logging you want to enable. |
 | --integration-name | Required. Name of the integration that you want to use to export the logs. |
 | --ysql-config | Required. The [YSQL audit logging settings](../../../../cloud-monitor/logging-export/#ysql-audit-logging-settings), provided as key-value pairs.<br>Arguments:<ul><li>log_catalog</li><li>log_level</li><li>log_client</li><li>log_parameter</li><li>log_relation</li><li>log_statement_once</li></ul> |  
-| --statement_classes | Required. The YSQL statements to log, provided as key-value pairs.<br>Arguments:<ul><li>READ</li><li>WRITE</li><li>FUNCTION</li><li>ROLE</li><li>DDL</li><li>MISC</li></ul> For more details, see [YSQL audit logging settings](../../../../cloud-monitor/logging-export/#ysql-audit-logging-settings). |
+| --statement_classes | Required. The YSQL statements to log, provided as key-value pairs.<br>Arguments:<ul><li>READ</li><li>WRITE</li><li>FUNCTION</li><li>ROLE</li><li>DDL</li><li>MISC</li></ul> For more details, see [Database Audit Logging](../../../../cloud-monitor/logging-export/#database-audit-logging). |
 
 ### disable
 
@@ -105,4 +105,4 @@ Update the database audit logging configuration.
 | --cluster-name | Required. Name of the cluster with database audit logging configuration you want to update. |
 | --integration-name | Required. Name of the integration. |
 | --ysql-config | Required. The [YSQL audit logging settings](../../../../cloud-monitor/logging-export/#ysql-audit-logging-settings), provided as key-value pairs.<br>Arguments:<ul><li>log_catalog</li><li>log_level</li><li>log_client</li><li>log_parameter</li><li>log_relation</li><li>log_statement_once</li></ul> |
-| --statement_classes | Required. The YSQL statements to log, provided as key-value pairs.<br>Arguments:<ul><li>READ</li><li>WRITE</li><li>FUNCTION</li><li>ROLE</li><li>DDL</li><li>MISC</li></ul> For more details, see [YSQL audit logging settings](../../../../cloud-monitor/logging-export/#ysql-audit-logging-settings). |
+| --statement_classes | Required. The YSQL statements to log, provided as key-value pairs.<br>Arguments:<ul><li>READ</li><li>WRITE</li><li>FUNCTION</li><li>ROLE</li><li>DDL</li><li>MISC</li></ul> For more details, see [Database Audit Logging](../../../../cloud-monitor/logging-export/#database-audit-logging). |
