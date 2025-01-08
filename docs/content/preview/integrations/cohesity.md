@@ -53,3 +53,4 @@ Because YugabyteDB Anywhere supports S3-compatible storage, integrating Cohesity
 ## Learn more
 
 - [Back up and Restore Your Business-Critical Apps with YugabyteDB and Cohesity](https://www.yugabyte.com/blog/backup-restore-cohesity/)
+- [Cohesity Data Cloud now protects and secures YugabyteDB workloads](https://www.cohesity.com/blogs/cohesity-data-cloud-now-protects-and-secures-yugabytedb-workloads/)
