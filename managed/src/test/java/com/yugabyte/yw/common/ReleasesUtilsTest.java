@@ -35,6 +35,7 @@ public class ReleasesUtilsTest extends FakeDBApplication {
     URL url = getMockUrl("good_version_metadata.tgz");
     when(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion))
         .thenReturn(getVersionMap("2024.1.0.0-b23"));
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipYbaMinVersionCheck)).thenReturn(true);
     ExtractedMetadata em = releasesUtils.versionMetadataFromURL(url);
     assertEquals(Architecture.x86_64, em.architecture);
     assertEquals("2.0.0.0-b1", em.minimumYbaVersion);
@@ -45,6 +46,7 @@ public class ReleasesUtilsTest extends FakeDBApplication {
     URL url = getMockUrl("min_yba_version_fail.tgz");
     when(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion))
         .thenReturn(getVersionMap("2.1.0.0-b1"));
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipYbaMinVersionCheck)).thenReturn(false);
     assertThrows(PlatformServiceException.class, () -> releasesUtils.versionMetadataFromURL(url));
   }
 
