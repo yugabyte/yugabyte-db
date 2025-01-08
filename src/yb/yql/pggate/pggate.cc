@@ -1986,7 +1986,7 @@ bool PgApiImpl::IsRestartReadPointRequested() {
 
 Status PgApiImpl::CommitPlainTransaction() {
   DCHECK(pg_session_->explicit_row_lock_buffer().IsEmpty());
-  DCHECK(pg_session_->insert_on_conflict_buffer().IsEmpty());
+  DCHECK(pg_session_->IsInsertOnConflictBufferEmpty());
   pg_session_->InvalidateForeignKeyReferenceCache();
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_txn_manager_->CommitPlainTransaction();
@@ -2152,38 +2152,42 @@ Status PgApiImpl::FlushExplicitRowLockIntents(PgExplicitRowLockErrorInfo& error_
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
 Status PgApiImpl::AddInsertOnConflictKey(
-    PgOid table_id, const Slice& ybctid, const YBCPgInsertOnConflictKeyInfo& info) {
-  return pg_session_->insert_on_conflict_buffer().AddIndexKey(
+    PgOid table_id, const Slice& ybctid, void* state, const YBCPgInsertOnConflictKeyInfo& info) {
+  return pg_session_->GetInsertOnConflictBuffer(state).AddIndexKey(
       LightweightTableYbctid(table_id, ybctid), info);
 }
 
 YBCPgInsertOnConflictKeyState PgApiImpl::InsertOnConflictKeyExists(
-    PgOid table_id, const Slice& ybctid) {
-  return pg_session_->insert_on_conflict_buffer().IndexKeyExists(
+    PgOid table_id, const Slice& ybctid, void* state) {
+  return pg_session_->GetInsertOnConflictBuffer(state).IndexKeyExists(
       LightweightTableYbctid(table_id, ybctid));
 }
 
-uint64_t PgApiImpl::GetInsertOnConflictKeyCount() {
-  return pg_session_->insert_on_conflict_buffer().GetNumIndexKeys();
+uint64_t PgApiImpl::GetInsertOnConflictKeyCount(void* state) {
+  return pg_session_->GetInsertOnConflictBuffer(state).GetNumIndexKeys();
 }
 
 Result<YBCPgInsertOnConflictKeyInfo> PgApiImpl::DeleteInsertOnConflictKey(
-    PgOid table_id, const Slice& ybctid) {
-  return pg_session_->insert_on_conflict_buffer().DeleteIndexKey(
+    PgOid table_id, const Slice& ybctid, void* state) {
+  return pg_session_->GetInsertOnConflictBuffer(state).DeleteIndexKey(
       LightweightTableYbctid(table_id, ybctid));
 }
 
-Result<YBCPgInsertOnConflictKeyInfo> PgApiImpl::DeleteNextInsertOnConflictKey() {
-  return pg_session_->insert_on_conflict_buffer().DeleteNextIndexKey();
+Result<YBCPgInsertOnConflictKeyInfo> PgApiImpl::DeleteNextInsertOnConflictKey(void* state) {
+  return pg_session_->GetInsertOnConflictBuffer(state).DeleteNextIndexKey();
 }
 
 void PgApiImpl::AddInsertOnConflictKeyIntent(PgOid table_id, const Slice& ybctid) {
-  pg_session_->insert_on_conflict_buffer().AddIndexKeyIntent(
+  pg_session_->GetInsertOnConflictBuffer().AddIndexKeyIntent(
       LightweightTableYbctid(table_id, ybctid));
 }
 
-void PgApiImpl::ClearInsertOnConflictCache() {
-  pg_session_->insert_on_conflict_buffer().Clear();
+void PgApiImpl::ClearAllInsertOnConflictCaches() {
+  pg_session_->ClearAllInsertOnConflictBuffers();
+}
+
+void PgApiImpl::ClearInsertOnConflictCache(void* state) {
+  pg_session_->ClearInsertOnConflictBuffer(state);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2365,7 +2369,7 @@ void PgApiImpl::ClearSessionState() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   pg_session_->DropBufferedOperations();
   pg_session_->explicit_row_lock_buffer().Clear();
-  pg_session_->insert_on_conflict_buffer().Clear();
+  pg_session_->ClearAllInsertOnConflictBuffers();
 }
 
 bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }

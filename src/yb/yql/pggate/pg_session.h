@@ -239,7 +239,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   ExplicitRowLockBuffer& explicit_row_lock_buffer() { return explicit_row_lock_buffer_; }
 
-  InsertOnConflictBuffer& insert_on_conflict_buffer() { return insert_on_conflict_buffer_; }
+  InsertOnConflictBuffer& GetInsertOnConflictBuffer(void* plan);
+  InsertOnConflictBuffer& GetInsertOnConflictBuffer();
+  void ClearAllInsertOnConflictBuffers();
+  void ClearInsertOnConflictBuffer(void* plan);
+  bool IsInsertOnConflictBufferEmpty() const;
 
   Result<int> TabletServerCount(bool primary_only = false);
 
@@ -350,7 +354,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   OidSet fk_intent_region_local_tables_;
 
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
-  InsertOnConflictBuffer insert_on_conflict_buffer_;
+  using InsertOnConflictPlanBuffer = std::pair<void *, InsertOnConflictBuffer>;
+  std::vector<InsertOnConflictPlanBuffer> insert_on_conflict_buffers_;
 
   PgDocMetrics metrics_;
 

@@ -728,14 +728,16 @@ class PgApiImpl {
 
   // INSERT ... ON CONFLICT batching ---------------------------------------------------------------
   Status AddInsertOnConflictKey(
-      PgOid table_id, const Slice& ybctid, const YBCPgInsertOnConflictKeyInfo& info);
-  YBCPgInsertOnConflictKeyState InsertOnConflictKeyExists(PgOid table_id, const Slice& ybctid);
+      PgOid table_id, const Slice& ybctid, void* state, const YBCPgInsertOnConflictKeyInfo& info);
+  YBCPgInsertOnConflictKeyState InsertOnConflictKeyExists(
+      PgOid table_id, const Slice& ybctid, void* state);
   Result<YBCPgInsertOnConflictKeyInfo> DeleteInsertOnConflictKey(
-      PgOid table_id, const Slice& ybctid);
-  Result<YBCPgInsertOnConflictKeyInfo> DeleteNextInsertOnConflictKey();
-  uint64_t GetInsertOnConflictKeyCount();
+      PgOid table_id, const Slice& ybctid, void* state);
+  Result<YBCPgInsertOnConflictKeyInfo> DeleteNextInsertOnConflictKey(void* state);
+  uint64_t GetInsertOnConflictKeyCount(void* state);
   void AddInsertOnConflictKeyIntent(PgOid table_id, const Slice& ybctid);
-  void ClearInsertOnConflictCache();
+  void ClearAllInsertOnConflictCaches();
+  void ClearInsertOnConflictCache(void* state);
   //------------------------------------------------------------------------------------------------
 
   // Sets the specified timeout in the rpc service.

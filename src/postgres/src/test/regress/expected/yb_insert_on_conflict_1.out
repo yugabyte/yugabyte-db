@@ -649,6 +649,7 @@ SELECT * FROM pp ORDER BY i;
 (40 rows)
 
 ABORT;
+BEGIN;
 INSERT INTO pp (j) SELECT g * 7 % 40 FROM generate_series(1, 40) g ON CONFLICT (j) DO UPDATE SET i = EXCLUDED.i + 100;
 SELECT * FROM pp ORDER BY i % 100;
   i  | j
@@ -695,6 +696,7 @@ SELECT * FROM pp ORDER BY i % 100;
  199 | 33
 (40 rows)
 
+ABORT;
 --- Partitioned table with TEXT partition key
 CREATE TABLE staff (id SERIAL, name TEXT, department TEXT, PRIMARY KEY (name HASH, department ASC)) PARTITION BY LIST (department);
 CREATE TABLE staff_sales PARTITION OF staff FOR VALUES IN ('Sales');
@@ -875,6 +877,50 @@ RESET yb_enable_inplace_index_update;
 CREATE TABLE index_update (a int PRIMARY KEY, b int);
 INSERT INTO index_update VALUES (1, 2);
 INSERT INTO index_update VALUES (1, 3) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
+--- Before row triggers
+CREATE OR REPLACE FUNCTION loggingfunc() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM pp;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+-- Trigger on parent table should disable batching for child tables.
+CREATE TRIGGER loggingtrig BEFORE INSERT ON pp FOR EACH ROW EXECUTE PROCEDURE loggingfunc();
+ERROR:  "pp" is a partitioned table
+DETAIL:  Partitioned tables cannot have BEFORE / FOR EACH ROW triggers.
+BEGIN;
+INSERT INTO pp (j) SELECT g * 19 % 40 FROM generate_series(1, 5) g ON CONFLICT DO NOTHING;
+SELECT * FROM pp ORDER BY i;
+  i  | j
+-----+----
+   1 | 17
+   2 | 34
+   3 | 11
+   4 | 28
+   5 |  5
+   6 | 22
+   7 | 39
+   8 | 16
+   9 | 33
+  10 | 10
+  11 | 27
+  12 |  4
+  13 | 21
+  14 | 38
+  15 | 15
+  16 | 32
+  17 |  9
+  18 | 26
+  19 |  3
+  20 | 20
+ 101 | 19
+ 104 | 36
+(22 rows)
+
+ABORT;
 --- After row triggers
 CREATE TABLE trigger_test (i int2, PRIMARY KEY (i ASC));
 -- This test is derived from TestPgUpdatePrimaryKey.java.
@@ -1010,6 +1056,15 @@ BEGIN;
 WITH w(i) AS (
     INSERT INTO with_a VALUES (generate_series(6, 11)) ON CONFLICT (i) DO NOTHING RETURNING i
 ) INSERT INTO with_a VALUES (generate_series(10, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+TABLE with_a;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+BEGIN;
+WITH w(i) AS (
+    INSERT INTO with_a VALUES (11) RETURNING i
+) INSERT INTO with_a VALUES (generate_series(10, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
 ERROR:  duplicate key value violates unique constraint "with_a_pkey"
 TABLE with_a;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
@@ -1037,6 +1092,49 @@ TABLE with_a;
   2
   1
 (15 rows)
+
+ABORT;
+BEGIN;
+WITH w(i) AS (
+    INSERT INTO with_a VALUES (generate_series(6, 11)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 100 RETURNING i
+) INSERT INTO with_a SELECT CASE
+    WHEN u < 12 THEN u
+    WHEN u < 14 THEN -(u + (SELECT max(i) FROM w))
+    ELSE u
+    END FROM generate_series(9, 15) u ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 10;
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+TABLE with_a;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ABORT;
+BEGIN;
+WITH w(i) AS (
+    INSERT INTO with_a VALUES (generate_series(6, 10)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 100 RETURNING i
+) INSERT INTO with_a SELECT CASE
+    WHEN u < 11 THEN u
+    WHEN u < 13 THEN -(u + (SELECT max(i) FROM w))
+    ELSE u
+    END FROM generate_series(10, 15) u ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 10;
+TABLE with_a;
+  i
+------
+  110
+  109
+  108
+  107
+  106
+   15
+   14
+   13
+   10
+    5
+    4
+    3
+    2
+    1
+ -121
+ -122
+(16 rows)
 
 ABORT;
 --- GH-25070
@@ -1074,3 +1172,27 @@ TABLE copy ORDER BY a;
   9 | replaced_name_9
  10 | replaced_name_10
 (10 rows)
+
+--- GH-25296
+CREATE TABLE dupidx (a int);
+CREATE UNIQUE INDEX ON dupidx (a);
+CREATE UNIQUE INDEX ON dupidx (a);
+INSERT INTO dupidx VALUES (1);
+INSERT INTO dupidx VALUES (1) ON CONFLICT DO NOTHING;
+TABLE dupidx;
+ a
+---
+ 1
+(1 row)
+
+CREATE TABLE multidx (a int, b int);
+CREATE UNIQUE INDEX ON multidx (a);
+CREATE UNIQUE INDEX ON multidx (b);
+INSERT INTO multidx VALUES (1, 2);
+INSERT INTO multidx VALUES (1, 2) ON CONFLICT DO NOTHING;
+TABLE multidx;
+ a | b
+---+---
+ 1 | 2
+(1 row)
+

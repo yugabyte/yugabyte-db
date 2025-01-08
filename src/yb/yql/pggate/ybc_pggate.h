@@ -779,16 +779,17 @@ YBCPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
 YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
-YBCStatus YBCPgAddInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+YBCStatus YBCPgAddInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid, void* state,
                                       YBCPgInsertOnConflictKeyInfo* info);
-YBCStatus YBCPgInsertOnConflictKeyExists(const YBCPgYBTupleIdDescriptor* tupleid,
+YBCStatus YBCPgInsertOnConflictKeyExists(const YBCPgYBTupleIdDescriptor* tupleid, void* state,
                                          YBCPgInsertOnConflictKeyState* res);
-YBCStatus YBCPgDeleteInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+YBCStatus YBCPgDeleteInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid, void* state,
                                          YBCPgInsertOnConflictKeyInfo* info);
-YBCStatus YBCPgDeleteNextInsertOnConflictKey(YBCPgInsertOnConflictKeyInfo* info);
+YBCStatus YBCPgDeleteNextInsertOnConflictKey(void* state, YBCPgInsertOnConflictKeyInfo* info);
 YBCStatus YBCPgAddInsertOnConflictKeyIntent(const YBCPgYBTupleIdDescriptor* tupleid);
-void YBCPgClearInsertOnConflictCache();
-uint64_t YBCPgGetInsertOnConflictKeyCount();
+void YBCPgClearAllInsertOnConflictCaches();
+void YBCPgClearInsertOnConflictCache(void* state);
+uint64_t YBCPgGetInsertOnConflictKeyCount(void* state);
 //--------------------------------------------------------------------------------------------------
 
 bool YBCIsInitDbModeEnvVarSet();

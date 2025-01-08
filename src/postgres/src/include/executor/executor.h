@@ -634,6 +634,7 @@ extern void CheckSubscriptionRelkind(char relkind, const char *nspname,
 						 const char *relname);
 
 extern void YbBatchFetchConflictingRows(ResultRelInfo *resultRelInfo,
+										YbInsertOnConflictBatchState *yb_ioc_state,
 										EState *estate,
 										List *arbiterIndexes);
 extern bool YbShouldCheckUniqueOrExclusionIndex(IndexInfo *indexInfo,

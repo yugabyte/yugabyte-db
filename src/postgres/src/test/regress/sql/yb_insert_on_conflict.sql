@@ -265,8 +265,10 @@ BEGIN;
 INSERT INTO pp (j) SELECT g * 7 % 40 FROM generate_series(1, 40) g ON CONFLICT DO NOTHING;
 SELECT * FROM pp ORDER BY i;
 ABORT;
+BEGIN;
 INSERT INTO pp (j) SELECT g * 7 % 40 FROM generate_series(1, 40) g ON CONFLICT (j) DO UPDATE SET i = EXCLUDED.i + 100;
 SELECT * FROM pp ORDER BY i % 100;
+ABORT;
 
 --- Partitioned table with TEXT partition key
 CREATE TABLE staff (id SERIAL, name TEXT, department TEXT, PRIMARY KEY (name HASH, department ASC)) PARTITION BY LIST (department);
@@ -399,6 +401,23 @@ CREATE TABLE index_update (a int PRIMARY KEY, b int);
 INSERT INTO index_update VALUES (1, 2);
 INSERT INTO index_update VALUES (1, 3) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
 
+--- Before row triggers
+CREATE OR REPLACE FUNCTION loggingfunc() RETURNS trigger AS $$
+    DECLARE
+        count int;
+    BEGIN
+        SELECT count(*) INTO count FROM pp;
+        RAISE NOTICE '% % % % i=% count=%', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, new.i, count;
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;
+-- Trigger on parent table should disable batching for child tables.
+CREATE TRIGGER loggingtrig BEFORE INSERT ON pp FOR EACH ROW EXECUTE PROCEDURE loggingfunc();
+BEGIN;
+INSERT INTO pp (j) SELECT g * 19 % 40 FROM generate_series(1, 5) g ON CONFLICT DO NOTHING;
+SELECT * FROM pp ORDER BY i;
+ABORT;
+
 --- After row triggers
 CREATE TABLE trigger_test (i int2, PRIMARY KEY (i ASC));
 -- This test is derived from TestPgUpdatePrimaryKey.java.
@@ -457,8 +476,34 @@ TABLE with_a;
 ABORT;
 BEGIN;
 WITH w(i) AS (
+    INSERT INTO with_a VALUES (11) RETURNING i
+) INSERT INTO with_a VALUES (generate_series(10, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
+TABLE with_a;
+ABORT;
+BEGIN;
+WITH w(i) AS (
     DELETE FROM with_a WHERE i = 10 RETURNING i
 ) INSERT INTO with_a VALUES (generate_series(9, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
+TABLE with_a;
+ABORT;
+BEGIN;
+WITH w(i) AS (
+    INSERT INTO with_a VALUES (generate_series(6, 11)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 100 RETURNING i
+) INSERT INTO with_a SELECT CASE
+    WHEN u < 12 THEN u
+    WHEN u < 14 THEN -(u + (SELECT max(i) FROM w))
+    ELSE u
+    END FROM generate_series(9, 15) u ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 10;
+TABLE with_a;
+ABORT;
+BEGIN;
+WITH w(i) AS (
+    INSERT INTO with_a VALUES (generate_series(6, 10)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 100 RETURNING i
+) INSERT INTO with_a SELECT CASE
+    WHEN u < 11 THEN u
+    WHEN u < 13 THEN -(u + (SELECT max(i) FROM w))
+    ELSE u
+    END FROM generate_series(10, 15) u ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 10;
 TABLE with_a;
 ABORT;
 
@@ -470,3 +515,17 @@ INSERT INTO copy (SELECT a, b FROM main) ON CONFLICT DO NOTHING;
 TABLE copy ORDER BY a;
 INSERT INTO copy (SELECT a, b FROM main) ON CONFLICT (b, a) DO UPDATE SET b = 'replaced_' || EXCLUDED.b;
 TABLE copy ORDER BY a;
+
+--- GH-25296
+CREATE TABLE dupidx (a int);
+CREATE UNIQUE INDEX ON dupidx (a);
+CREATE UNIQUE INDEX ON dupidx (a);
+INSERT INTO dupidx VALUES (1);
+INSERT INTO dupidx VALUES (1) ON CONFLICT DO NOTHING;
+TABLE dupidx;
+CREATE TABLE multidx (a int, b int);
+CREATE UNIQUE INDEX ON multidx (a);
+CREATE UNIQUE INDEX ON multidx (b);
+INSERT INTO multidx VALUES (1, 2);
+INSERT INTO multidx VALUES (1, 2) ON CONFLICT DO NOTHING;
+TABLE multidx;
