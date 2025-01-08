@@ -32,6 +32,12 @@
 
 #include "yb/util/test_util.h"
 
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+#include <cstdlib>
+
 #include <gtest/gtest-spi.h>
 
 #include "yb/gutil/casts.h"
@@ -413,6 +419,25 @@ Status CorruptFile(
   RETURN_NOT_OK(file->Write(offset, data_read));
   RETURN_NOT_OK(file->Sync());
   return file->Close();
+}
+
+Status ForkAndRunToCompletion(const std::function<void(void)>& child,
+                              const std::function<void(void)>& parent) {
+  int pid = fork();
+  if (pid == 0) {
+    child();
+    std::exit(testing::Test::HasFailure());
+  } else {
+    if (parent) {
+      parent();
+    }
+    int wstatus;
+    waitpid(pid, &wstatus, 0 /* options */);
+    if (WEXITSTATUS(wstatus) != 0) {
+      return STATUS(RuntimeError, "Child process has test failures");
+    }
+    return Status::OK();
+  }
 }
 
 } // namespace yb
