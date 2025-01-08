@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -48,6 +49,9 @@ public class SystemdUpgrade extends UpgradeTaskBase {
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+    if (Util.isOnPremManualProvisioning(universe)) {
+      createRunEnableLinger(universe, universe.getNodes());
+    }
   }
 
   @Override

@@ -469,7 +469,6 @@ class UniverseDetail extends Component {
       isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_VM_IMAGE);
     const isUpgradeToSystemdDisabled =
       isUniverseStatusPending ||
-      onPremSkipProvisioning ||
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_TO_SYSTEMD);
     const isThirdPartySoftwareDisabled =
       isUniverseStatusPending ||

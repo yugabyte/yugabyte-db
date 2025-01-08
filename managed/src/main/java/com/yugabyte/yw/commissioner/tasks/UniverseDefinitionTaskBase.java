@@ -3405,6 +3405,29 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return createRunNodeCommandTask(universe, nodes, command, consumer, null /* shell context */);
   }
 
+  /**
+   * Run 'loginctl enable-linger yugabyte' to see if the command can be run.
+   *
+   * @param universe the universe to which the nodes belong.
+   * @param nodes the nodes.
+   * @return the subtask group.
+   */
+  protected SubTaskGroup createRunEnableLinger(Universe universe, Collection<NodeDetails> nodes) {
+    // Command is run in shell.
+    List<String> command =
+        ImmutableList.<String>builder()
+            .add("loginctl")
+            .add("enable-linger")
+            .add("yugabyte")
+            .add(">/dev/null")
+            .add("2>&1")
+            .build();
+    // Check only the exit code in shellProcessHandler.
+    return createRunNodeCommandTask(
+            universe, nodes, command, (n, r) -> {}, null /* shell context */)
+        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+  }
+
   protected <X> void addParallelTasks(
       Collection<X> vals,
       Function<X, ITask> taskInitializer,
