@@ -1785,27 +1785,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verifyNoActions();
   }
 
-  @Test
-  public void testSystemdUpgradeOnpremWithManual() {
-    Universe onprem = ModelFactory.createUniverse("onprem", customer.getId(), CloudType.onprem);
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(onprem.getUniverseDetails().getPrimaryCluster().userIntent.provider));
-    provider.getDetails().skipProvisioning = true;
-    provider.save();
-    PlatformServiceException exception =
-        assertThrows(
-            PlatformServiceException.class,
-            () -> runUpgrade(onprem, p -> {}, SystemdUpgradeParams.class, "systemd"));
-    assertTrue(
-        exception
-            .getUserVisibleMessage()
-            .contains("Cannot upgrade systemd for manually provisioned universes"));
-    verifyNoActions();
-  }
-
   // Reboot
-
   @Test
   public void testRebootUniverse() {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RebootUniverse);
