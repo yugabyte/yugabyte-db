@@ -324,6 +324,7 @@ public class NodeConfigValidator {
       case GSUTIL:
       case S3CMD:
       case YB_HOME_DIR_CLEAN:
+      case NTP_SKEW:
       case DATA_DIR_CLEAN:
         {
           return Boolean.parseBoolean(nodeConfig.getValue());

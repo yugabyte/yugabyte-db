@@ -11962,7 +11962,8 @@
             "YCQL_SERVER_RPC_PORT",
             "YSQL_SERVER_HTTP_PORT",
             "YSQL_SERVER_RPC_PORT",
-            "VM_MAX_MAP_COUNT"
+            "VM_MAX_MAP_COUNT",
+            "NTP_SKEW"
           ],
           "type" : "string"
         },
@@ -26720,7 +26721,8 @@
             "YCQL_SERVER_RPC_PORT",
             "YSQL_SERVER_HTTP_PORT",
             "YSQL_SERVER_RPC_PORT",
-            "VM_MAX_MAP_COUNT"
+            "VM_MAX_MAP_COUNT",
+            "NTP_SKEW"
           ],
           "type" : "string"
         },
