@@ -1577,4 +1577,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " session level",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipYbaMinVersionCheck =
+      new ConfKeyInfo<>(
+          "yb.skip_yba_min_version_check",
+          ScopeType.GLOBAL,
+          "Skip YBA Minimum Version Check",
+          "Skip YBA Minimum Version Check when adding a new YugabyteDB Release.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
