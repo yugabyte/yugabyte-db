@@ -129,15 +129,15 @@ You can configure Network File System (NFS) as your backup target, as follows:
 
 1. Navigate to **Integrations > Backup > Network File System**.
 
-2. Click **Create NFS Backup** to access the configuration form shown in the following illustration:
+1. Click **Create NFS Backup** to access the configuration form shown in the following illustration:
 
     ![NFS Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
 
-3. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
 
-4. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
+1. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
 
-5. Click **Save**.
+1. Click **Save**.
 
 {{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
 To avoid potential backup and restore errors, add the NFS mount to `/etc/fstab` on the nodes of universes using the backup configuration. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../back-up-universe-data/) or [restore](../restore-universe-data/).
@@ -197,13 +197,13 @@ If your YugabyteDB universe has one node, you can create a local directory on a 
 
 1. Navigate to **Universes**, select your universe, and then select **Nodes**.
 
-2. Click **Connect**.
+1. Click **Connect**.
 
-3. Take note of the services and endpoints information displayed in the **Connect** dialog, as shown in the following illustration:
+1. Take note of the services and endpoints information displayed in the **Connect** dialog, as shown in the following illustration:
 
     ![Connect dialog](/images/yp/cloud-provider-local-backup1.png)
 
-4. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`, as follows:
+1. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`, as follows:
 
     ```sh
     sudo mkdir /backup; sudo chown yugabyte /backup
