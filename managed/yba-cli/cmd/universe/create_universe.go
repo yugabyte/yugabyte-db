@@ -151,6 +151,9 @@ var createUniverseCmd = &cobra.Command{
 			cpuArch = util.X86_64
 		}
 
+		logrus.Info("Using architecture: ",
+			formatter.Colorize(cpuArch, formatter.GreenColor), "\n")
+
 		clusters, err := buildClusters(authAPI, universeName)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -498,6 +501,8 @@ func init() {
 		"[Optional] YSQL Server RPC Port.")
 
 	v1.BindPFlag("name", createUniverseCmd.Flags().Lookup("name"))
+	v1.BindPFlag("cpu-architecture", createUniverseCmd.Flags().Lookup("cpu-architecture"))
+	v1.BindPFlag("linux-version", createUniverseCmd.Flags().Lookup("linux-version"))
 	v1.BindPFlag("provider-code", createUniverseCmd.Flags().Lookup("provider-code"))
 	v1.BindPFlag("provider-name", createUniverseCmd.Flags().Lookup("provider-name"))
 	v1.BindPFlag("dedicated-nodes", createUniverseCmd.Flags().Lookup("dedicated-nodes"))
