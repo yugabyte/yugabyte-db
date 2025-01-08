@@ -18,7 +18,7 @@ Depending on your environment, you can save your YugabyteDB universe data to a v
 
 ## Amazon S3
 
-You can configure Amazon S3 and S3-compatible storage as your backup target.
+You can configure AWS S3 and S3-compatible storage as your backup target.
 
 {{< note title="S3-compatible storage requires S3 path style access" >}}
 By default, the option to use S3 path style access is not available. To ensure that you can use this feature, navigate to `https://<my-yugabytedb-anywhere-ip>/features` and enable the **enablePathStyleAccess** option.
@@ -44,7 +44,7 @@ To configure S3 storage, do the following:
 
 1. In the **S3 Bucket Host Base** field, enter the HTTP host header (endpoint URL) of the AWS S3 or S3-compatible storage, in the form `s3.amazonaws.com` or `my.storage.com`.
 
-1. If you are using S3-conpatible storage, set the **S3 Path Style Access** option to true. (The option is only available if the **enablePathStyleAccess** feature is enabled.)
+1. If you are using S3-compatible storage, set the **S3 Path Style Access** option to true. (The option is only available if the **enablePathStyleAccess** feature is enabled.)
 
 1. Click **Save**.
 
