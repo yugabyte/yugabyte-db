@@ -6,7 +6,7 @@ description: Returns the last value returned by the nextval() function for the s
 menu:
   preview_api:
     identifier: api-ysql-exprs-currval
-    parent: api-ysql-exprs
+    parent: sequence-functions
 aliases:
   - /preview/api/ysql/exprs/func_currval
 type: docs

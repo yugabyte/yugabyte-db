@@ -6,7 +6,7 @@ description: Returns the next value from the sequence cache for the current sess
 menu:
   preview_api:
     identifier: api-ysql-exprs-nextval
-    parent: api-ysql-exprs
+    parent: sequence-functions
 aliases:
   - /preview/api/ysql/exprs/func_nextval
 type: docs

@@ -6,7 +6,7 @@ description: Returns the value returned from the last call to nextval(), for any
 menu:
   preview_api:
     identifier: api-ysql-exprs-lastval
-    parent: api-ysql-exprs
+    parent: sequence-functions
 aliases:
   - /preview/api/ysql/exprs/func_lastval
 type: docs
