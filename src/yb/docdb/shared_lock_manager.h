@@ -45,14 +45,6 @@ struct TrackedLockEntryKey {
   bool operator==(const TrackedLockEntryKey& other) const = default;
 };
 
-template <typename LockManager>
-inline size_t hash_value(const TrackedLockEntryKey<LockManager>& key) noexcept {
-  size_t seed = 0;
-  boost::hash_combine(seed, key.object_lock_owner);
-  boost::hash_combine(seed, key.object_id);
-  return seed;
-}
-
 template<typename LockManager>
 struct LockManagerInternalTraits;
 
