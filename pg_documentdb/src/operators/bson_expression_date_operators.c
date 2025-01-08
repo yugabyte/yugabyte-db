@@ -428,7 +428,8 @@ static void ParseInputForDollarDateAddSubtract(const bson_value_t *inputArgument
 static void ParseDateStringWithFormat(StringView dateString, char **elements, int
 									  sizeOfSplitFormat,
 									  DollarDateFromPartsBsonValue *dateFromParts,
-									  bool *isInputValid, bool isOnErrorPresent);
+									  bool *isInputValid, bool isOnErrorPresent,
+									  bool *isOnErrorExpressionKindPath);
 static ExtensionTimezone ParseTimezone(StringView timezone);
 static int64_t ParseUtcOffset(StringView offset);
 static inline void ParseUtcOffsetForDateString(char *dateString, int sizeOfDateString,
@@ -549,7 +550,8 @@ static void ValidateInputForDateFromString(bson_value_t *dateString, bson_value_
 										   bson_value_t *timezone, bson_value_t *onError,
 										   DollarDateFromPartsBsonValue *dateFromParts,
 										   ExtensionTimezone *timezoneToApply,
-										   bool *isInputValid);
+										   bool *isInputValid,
+										   bool *isOnErrorExpressionKindPath);
 static void ValidateDatePart(DatePart datePart, bson_value_t *inputValue, char *inputKey);
 static void ValidateInputForDateFromParts(
 	DollarDateFromPartsBsonValue *dateFromPartsValue, bool isIsoWeekDate);
@@ -573,7 +575,8 @@ static void VerifyAndParseFormatStringForDateString(bson_value_t *dateString,
 													DollarDateFromPartsBsonValue *
 													dateFromParts,
 													bool *isInputValid, bool
-													isOnErrorPresent);
+													isOnErrorPresent,
+													bool *isOnErrorExpressionKindPath);
 static DateUnit GetDateUnitFromString(char *unit);
 static void SetResultForDollarDateAddSubtract(bson_value_t *startDate, DateUnit unitEum,
 											  int64 amount,
@@ -5737,6 +5740,13 @@ HandlePreParsedDollarDateFromString(pgbson *doc, void *arguments,
 				return;
 			}
 		}
+		else
+		{
+			if (dateFromStringState->dateString.value.value_type != BSON_TYPE_UTF8)
+			{
+				result = onError;
+			}
+		}
 
 		ExpressionResultSetValue(expressionResult, &result);
 		return;
@@ -5744,6 +5754,10 @@ HandlePreParsedDollarDateFromString(pgbson *doc, void *arguments,
 
 	/* This flag is used to set context that error has occurred but we still need to set the result as onError is specified. */
 	bool isInputValid = true;
+
+	bool isOnErrorExpressionKindPath = dateFromStringState->onError.kind ==
+									   AggregationExpressionKind_Path;
+
 	ExtensionTimezone timezoneToApply = {
 		.offsetInMs = 0,
 		.isUtcOffset = true
@@ -5755,7 +5769,8 @@ HandlePreParsedDollarDateFromString(pgbson *doc, void *arguments,
 
 	ValidateInputForDateFromString(&dateString, &format, &timezone, &onError,
 								   dateFromParts,
-								   &timezoneToApply, &isInputValid);
+								   &timezoneToApply, &isInputValid,
+								   &isOnErrorExpressionKindPath);
 
 	/* If isInputValid is false then we set the result as onError otherwise we would have already thrown error. */
 	if (!isInputValid)
@@ -5767,6 +5782,10 @@ HandlePreParsedDollarDateFromString(pgbson *doc, void *arguments,
 		SetResultValueForDateFromString(dateFromParts, timezoneToApply, &result);
 	}
 	pfree(dateFromParts);
+	if (result.value_type == BSON_TYPE_EOD)
+	{
+		return;
+	}
 	ExpressionResultSetValue(expressionResult, &result);
 }
 
@@ -5836,6 +5855,14 @@ ParseDollarDateFromString(const bson_value_t *argument, AggregationExpressionDat
 			{
 				result = dateFromStringArguments->onNull.value;
 			}
+			else
+			{
+				if (dateFromStringArguments->dateString.value.value_type !=
+					BSON_TYPE_UTF8)
+				{
+					result = dateFromStringArguments->onError.value;
+				}
+			}
 
 			data->value = result;
 			data->kind = AggregationExpressionKind_Constant;
@@ -5845,6 +5872,7 @@ ParseDollarDateFromString(const bson_value_t *argument, AggregationExpressionDat
 
 		/* This flag is used to set context that error has occurred but we still need to set the result as onError is specified. */
 		bool isInputValid = true;
+		bool isOnErrorExpressionKindPath = false;
 		ExtensionTimezone timezoneToApply = {
 			.offsetInMs = 0,
 			.isUtcOffset = true
@@ -5859,7 +5887,7 @@ ParseDollarDateFromString(const bson_value_t *argument, AggregationExpressionDat
 									   &dateFromStringArguments->onError.value,
 									   dateFromParts,
 									   &timezoneToApply,
-									   &isInputValid);
+									   &isInputValid, &isOnErrorExpressionKindPath);
 
 		/* If isInputValid is false then we set the result as onError otherwise we would have already thrown error. */
 		if (!isInputValid)
@@ -6150,7 +6178,7 @@ static void
 ParseDateStringWithFormat(StringView dateStringView, char **elements, int
 						  sizeOfSplitFormat,
 						  DollarDateFromPartsBsonValue *dateFromParts, bool *isInputValid,
-						  bool isOnErrorPresent)
+						  bool isOnErrorPresent, bool *isOnErrorExpressionKindPath)
 {
 	char *dateString = (char *) dateStringView.string;
 	int sizeOfDateString = dateStringView.length;
@@ -6259,18 +6287,21 @@ ParseDateStringWithFormat(StringView dateStringView, char **elements, int
 			/* Mismatch in the element at index. */
 			if (elementAtIndex[0] != dateString[indexOfDateStringIter])
 			{
-				CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																		  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-																	  errmsg(
-																		  "Error parsing date string '%s'; %d: Format literal not found '%c'",
-																		  dateString,
-																		  indexOfDateStringIter,
-																		  dateString[
-																			  indexOfDateStringIter
-																		  ]),
-																	  errdetail_log(
-																		  "Error parsing date string. Mismatch in element at index %d ",
-																		  indexOfDateStringIter))));
+				if (!*isOnErrorExpressionKindPath)
+				{
+					CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
+																			  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
+																		  errmsg(
+																			  "Error parsing date string '%s'; %d: Format literal not found '%c'",
+																			  dateString,
+																			  indexOfDateStringIter,
+																			  dateString[
+																				  indexOfDateStringIter
+																			  ]),
+																		  errdetail_log(
+																			  "Error parsing date string. Mismatch in element at index %d ",
+																			  indexOfDateStringIter))));
+				}
 				*isInputValid = false;
 				return;
 			}
@@ -6558,7 +6589,8 @@ static void
 ValidateInputForDateFromString(bson_value_t *dateString, bson_value_t *format,
 							   bson_value_t *timezone, bson_value_t *onError,
 							   DollarDateFromPartsBsonValue *dateFromParts,
-							   ExtensionTimezone *timezoneToApply, bool *isInputValid)
+							   ExtensionTimezone *timezoneToApply, bool *isInputValid,
+							   bool *isOnErrorExpressionKindPath)
 {
 	bool isOnErrorPresent = onError->value_type != BSON_TYPE_EOD;
 
@@ -6601,7 +6633,8 @@ ValidateInputForDateFromString(bson_value_t *dateString, bson_value_t *format,
 
 	VerifyAndParseFormatStringForDateString(dateString, format, dateFromParts,
 											isInputValid,
-											isOnErrorPresent);
+											isOnErrorPresent,
+											isOnErrorExpressionKindPath);
 
 	if (!(*isInputValid))
 	{
@@ -7076,7 +7109,8 @@ ValidateTimezoneOffsetForDateString(char *dateString, int sizeOfDateString,
 static void
 VerifyAndParseFormatStringForDateString(bson_value_t *dateString, bson_value_t *format,
 										DollarDateFromPartsBsonValue *dateFromParts,
-										bool *isInputValid, bool isOnErrorPresent)
+										bool *isInputValid, bool isOnErrorPresent, bool
+										*isOnErrorExpressionKindPath)
 {
 	StringView formatStr = {
 		.string = format->value.v_utf8.str,
@@ -7092,7 +7126,8 @@ VerifyAndParseFormatStringForDateString(bson_value_t *dateString, bson_value_t *
 	SplitFormatString(formatStr, elements, &sizeOfSplitFormat);
 
 	ParseDateStringWithFormat(dateStringView, elements, sizeOfSplitFormat, dateFromParts,
-							  isInputValid, isOnErrorPresent);
+							  isInputValid, isOnErrorPresent,
+							  isOnErrorExpressionKindPath);
 
 	DeepFreeFormatArray(elements, sizeOfSplitFormat);
 }
