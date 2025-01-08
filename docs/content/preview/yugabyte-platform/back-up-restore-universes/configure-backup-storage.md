@@ -20,25 +20,35 @@ Depending on your environment, you can save your YugabyteDB universe data to a v
 
 ## Amazon S3
 
-You can configure Amazon S3 as your backup target, as follows:
+You can configure AWS S3 and S3-compatible storage as your backup target.
+
+{{< note title="S3-compatible storage requires S3 path style access" >}}
+By default, the option to use S3 path style access is not available. To ensure that you can use this feature, navigate to `https://<my-yugabytedb-anywhere-ip>/features` and enable the **enablePathStyleAccess** option.
+{{< /note >}}
+
+To configure S3 storage, do the following:
 
 1. Navigate to **Integrations** > **Backup** > **Amazon S3**.
 
-2. Click **Create S3 Backup** to access the configuration form shown in the following illustration:
+1. Click **Create S3 Backup** to access the configuration form shown in the following illustration:
 
     ![S3 Backup](/images/yp/cloud-provider-configuration-backup-aws.png)
 
-3. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
 
-4. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the S3 backup. See [Required S3 IAM permissions](#required-s3-iam-permissions).
+1. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the S3 backup. See [Required S3 IAM permissions](#required-s3-iam-permissions).
 
-5. If **IAM Role** is disabled, enter values for the **Access Key** and **Access Secret** fields.
+1. If **IAM Role** is disabled, enter values for the **Access Key** and **Access Secret** fields.
 
-6. Enter values for the **S3 Bucket** and **S3 Bucket Host Base** fields.
+    For information on AWS access keys, see [Manage access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html).
 
-    For information on how to obtain AWS credentials, see [Understanding and getting your AWS credentials](https://docs.aws.amazon.com/general/latest/gr/aws-sec-cred-types.html).
+1. In the **S3 Bucket** field, enter the bucket name in the format `s3://bucket_name`, or `https://storage_vendor/s3-bucket-name` for S3-compatible storage.
 
-7. Click **Save**.
+1. In the **S3 Bucket Host Base** field, enter the HTTP host header (endpoint URL) of the AWS S3 or S3-compatible storage, in the form `s3.amazonaws.com` or `my.storage.com`.
+
+1. If you are using S3-compatible storage, set the **S3 Path Style Access** option to true. (The option is only available if the **enablePathStyleAccess** feature is enabled.)
+
+1. Click **Save**.
 
 You can configure access control for the S3 bucket as follows:
 
@@ -119,15 +129,15 @@ You can configure Network File System (NFS) as your backup target, as follows:
 
 1. Navigate to **Integrations > Backup > Network File System**.
 
-2. Click **Create NFS Backup** to access the configuration form shown in the following illustration:
+1. Click **Create NFS Backup** to access the configuration form shown in the following illustration:
 
     ![NFS Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
 
-3. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
 
-4. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
+1. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
 
-5. Click **Save**.
+1. Click **Save**.
 
 {{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
 To avoid potential backup and restore errors, add the NFS mount to `/etc/fstab` on the nodes of universes using the backup configuration. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../back-up-universe-data/) or [restore](../restore-universe-data/).
@@ -187,13 +197,13 @@ If your YugabyteDB universe has one node, you can create a local directory on a 
 
 1. Navigate to **Universes**, select your universe, and then select **Nodes**.
 
-2. Click **Connect**.
+1. Click **Connect**.
 
-3. Take note of the services and endpoints information displayed in the **Connect** dialog, as shown in the following illustration:
+1. Take note of the services and endpoints information displayed in the **Connect** dialog, as shown in the following illustration:
 
     ![Connect dialog](/images/yp/cloud-provider-local-backup1.png)
 
-4. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`, as follows:
+1. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`, as follows:
 
     ```sh
     sudo mkdir /backup; sudo chown yugabyte /backup
