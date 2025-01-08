@@ -621,12 +621,12 @@ template <typename T>
 concept Prefetcher = requires(
     T& key_provider, FilteringIterator& iterator, const dockv::ReaderProjection& projection) {
     { key_provider.Prefetch(iterator, projection) } -> std::same_as<Status>;
-}; // NOLINT
+};
 
 template <typename T>
 concept BoundsProvider = requires(T& key_provider) {
     { key_provider.Bounds() } -> std::same_as<YbctidBounds>;
-}; // NOLINT
+};
 
 template <typename T>
 YbctidBounds Bounds(const T& key_provider) {

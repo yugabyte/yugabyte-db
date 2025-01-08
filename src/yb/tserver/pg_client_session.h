@@ -360,7 +360,7 @@ class PgClientSession {
 template <class Pb>
 concept PbWith_AshMetadataPB = requires (const Pb& t) {
   t.ash_metadata();
-}; // NOLINT
+};
 
 template <PbWith_AshMetadataPB Pb>
 void TryUpdateAshWaitState(const Pb& req) {

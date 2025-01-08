@@ -101,7 +101,7 @@ namespace yb {
 
 namespace pb_util_internal {
 template <class T>
-concept TypeWithEmpty = requires(const T& t) { empty(t); };  // NOLINT
+concept TypeWithEmpty = requires(const T& t) { empty(t); };
 
 template <class T>
 concept TypeWithoutEmpty = !TypeWithEmpty<T>;  // NOLINT

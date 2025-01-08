@@ -109,7 +109,7 @@ concept TupleLikeType =
       typename std::tuple_size<T>::type;
       typename std::tuple_element_t<0, T>;
       std::get<0>(a);
-    }; // NOLINT
+    };
 
 template<typename T>
 concept NonReferenceType = !std::is_reference_v<T>;
