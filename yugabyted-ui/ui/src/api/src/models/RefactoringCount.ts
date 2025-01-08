@@ -38,6 +38,12 @@ export interface RefactoringCount  {
    * @memberof RefactoringCount
    */
   automatic?: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof RefactoringCount
+   */
+  invalid?: number;
 }
 
 
