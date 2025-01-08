@@ -131,6 +131,7 @@ set(UTIL_SRCS
   concurrent_value.cc
   condition_variable.cc
   countdown_latch.cc
+  crash_point.cc
   crc.cc
   cross_thread_mutex.cc
   crypt.cc
@@ -348,6 +349,7 @@ ADD_YB_TEST(byte_buffer-test)
 ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
+ADD_YB_TEST(crash_point-test)
 ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
 ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
