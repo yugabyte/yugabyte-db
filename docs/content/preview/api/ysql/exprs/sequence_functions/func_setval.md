@@ -7,6 +7,8 @@ menu:
   preview_api:
     identifier: api-ysql-exprs-setval
     parent: sequence-functions
+aliases:
+  - /preview/api/ysql/exprs/func_setval
 type: docs
 ---
 
@@ -82,8 +84,8 @@ yugabyte=# SELECT nextval('s');
 
 ## See also
 
-- [`CREATE SEQUENCE`](../../the-sql-language/statements/ddl_create_sequence)
-- [`DROP SEQUENCE`](../../the-sql-language/statements/ddl_drop_sequence)
+- [`CREATE SEQUENCE`](../../../the-sql-language/statements/ddl_create_sequence)
+- [`DROP SEQUENCE`](../../../the-sql-language/statements/ddl_drop_sequence)
 - [`currval()`](../func_currval)
 - [`nextval()`](../func_nextval)
 - [`lastval()`](../func_lastval)

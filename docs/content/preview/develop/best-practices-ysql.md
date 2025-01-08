@@ -55,7 +55,7 @@ If you need values in some of the columns to be unique, you can specify your ind
 When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows.
 
 {{<note>}}
-By default a NULL value is treated as a distinct value, allowing you to have multiple NULL values in a column with a unique index. This can be turned OFF by adding the [NULLS NOT DISTINCT](../api/ysql/the-sql-language/statements/ddl_create_index#nulls-not-distinct) option when creating the unique index.
+By default a NULL value is treated as a distinct value, allowing you to have multiple NULL values in a column with a unique index. This can be turned OFF by adding the [NULLS NOT DISTINCT](../../api/ysql/the-sql-language/statements/ddl_create_index#nulls-not-distinct) option when creating the unique index.
 {{</note>}}
 
 
