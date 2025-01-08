@@ -76,6 +76,12 @@ For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this w
 
 {{< /note >}}
 
+### _WHERE_
+
+The optional WHERE clause has the general form `WHERE <condition>` where condition is any expression that evaluates to a result of type boolean. Any row that does not satisfy this condition will not be inserted to the table. A row satisfies the condition if it returns true when the actual row values are substituted for any variable references.
+
+Currently, subqueries are not allowed in WHERE expressions, and the evaluation does not see any changes made by the COPY itself (this matters when the expression contains calls to VOLATILE functions).
+
 ## Copy options
 
 ### ROWS_PER_TRANSACTION

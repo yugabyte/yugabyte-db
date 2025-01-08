@@ -125,6 +125,10 @@ Specify one or more columns of the table and must be surrounded by parentheses.
 - `NULLS FIRST` - Specifies that nulls sort before non-nulls. This is the default when DESC is specified.
 - `NULLS LAST` - Specifies that nulls sort after non-nulls. This is the default when DESC is not specified.
 
+### NULLS NOT DISTINCT
+
+When creating an unique index, by default, null values are not considered equal, allowing multiple nulls in the column. The `NULLS NOT DISTINCT` option modifies this and causes the index to treat nulls as equal.
+
 ### SPLIT INTO
 
 For hash-sharded indexes, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the index. The hash range is then evenly split across those tablets.

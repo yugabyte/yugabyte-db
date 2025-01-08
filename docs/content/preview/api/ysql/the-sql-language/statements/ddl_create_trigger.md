@@ -98,7 +98,7 @@ Use the `CREATE TRIGGER` statement to create a trigger.
     SELECT * FROM posts ORDER BY id;
     ```
 
-    ```
+    ```caddyfile
      id |    content    | username |          moddate
     ----+---------------+----------+----------------------------
       1 | desc1_updated | yugabyte | 2019-09-13 16:56:27.623513
@@ -106,6 +106,18 @@ Use the `CREATE TRIGGER` statement to create a trigger.
       3 | desc3_updated | yugabyte | 2019-09-13 16:56:27.634099
       4 | desc4         | yugabyte | 2019-09-13 16:55:53.991315
     ```
+
+## Partitioned tables
+
+Creating a row-level trigger on a partitioned table automatically results in an identical trigger being created on all of its existing partitions. Additionally, any partitions that are created or attached to the table later will also receive the same trigger. If a partition already has a trigger with the same name, an error will occur unless you use the CREATE OR REPLACE TRIGGER command, which replaces the existing trigger with the new one. When a partition is detached from its parent table, the triggers associated with it are removed automatically.
+
+### BEFORE
+
+For a BEFORE trigger, the WHEN condition is evaluated immediately before the trigger function is executed, or would be executed if the condition evaluates to TRUE. This makes using the WHEN clause functionally similar to performing the same check at the start of the trigger function. The NEW row seen by the condition reflects any modifications made by earlier triggers in the same operation. However, it is important to note that WHEN conditions in BEFORE triggers cannot access system columns of the NEW row, such as ctid, because these columns have not yet been set.
+
+### AFTER
+
+In the case of an AFTER trigger, the WHEN condition is evaluated right after the row update is completed. The result of this evaluation determines whether an event is queued to fire the trigger at the end of the statement. If the WHEN condition evaluates to FALSE, no event is queued, and the trigger does not execute. This behavior can lead to significant performance improvements in statements that modify many rows, as the trigger is only fired for the rows that meet the condition.
 
 ## See also
 

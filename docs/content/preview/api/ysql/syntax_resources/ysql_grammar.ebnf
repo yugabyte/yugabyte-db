@@ -272,8 +272,8 @@ alter_materialized_view_action =
     | 'SET' 'TABLESPACE' tablespace_name ) ;
 
 (* 'ALTER' 'PUBLICATION' *)
-alter_publication = 
-  'ALTER' 'PUBLICATION' publication_name 
+alter_publication =
+  'ALTER' 'PUBLICATION' publication_name
   [ alter_publication_action { ',' alter_publication_action } ] ;
 
 alter_publication_action =
@@ -362,7 +362,8 @@ commit = 'COMMIT' [ 'TRANSACTION' | 'WORK' ] ;
 (* 'COPY' *)
 copy_from = 'COPY' table_name [ '(' column_name { ',' column_name } ')' ] \
             'FROM' ( 'filename' | 'PROGRAM' 'command' | 'STDIN' ) \
-             [ [ 'WITH' ] '(' copy_option { ',' copy_option } ')' ] ;
+             [ [ 'WITH' ] '(' copy_option { ',' copy_option } ')' ] \
+             [ 'WHERE' condition ] ;
 
 copy_to = 'COPY' ( table_name [ '(' column_names ')' ] | subquery ) \
           'TO' ( 'filename' | 'PROGRAM' 'command' | 'STDOUT' ) \
@@ -587,6 +588,7 @@ create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'CONCURRENTLY' | 'NONCONCURRENTLY
                [ 'USING' access_method_name ]
                '(' index_elem { ',' index_elem } ')' \
                [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
+               [ 'NULLS' [ 'NOT' ] 'DISTINCT' ] \
                [ 'TABLESPACE' tablespace_name ] \
                [ 'SPLIT' ( 'INTO' int_literal 'TABLETS'
                       | 'AT' 'VALUES' '(' split_row { ',' split_row } ')' ) ]
@@ -648,17 +650,17 @@ create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
 unalterable_proc_attribute = 'LANGUAGE' lang_name | 'AS' subprogram_implementation ;
 
 (* 'CREATE' 'PUBLICATION' *)
-create_publication = 
-  'CREATE' 'PUBLICATION' publication_name 
+create_publication =
+  'CREATE' 'PUBLICATION' publication_name
   [ 'FOR' publication_for_option ] ;
 
-publication_for_option = 
+publication_for_option =
   'TABLE' table_name { ',' table_name } |
   'ALL' 'TABLES' ;
 
 (* 'CREATE_REPLICATION_SLOT' *)
-create_replication_slot = 
-  'CREATE_REPLICATION_SLOT' slot_name 'LOGICAL' output_plugin 
+create_replication_slot =
+  'CREATE_REPLICATION_SLOT' slot_name 'LOGICAL' output_plugin
   [ 'NOEXPORT_SNAPSHOT' | 'USE_SNAPSHOT' ] ;
 
 (* 'CREATE' 'RULE' *)
@@ -1297,11 +1299,11 @@ show_stmt = 'SHOW' ( run_time_parameter | 'ALL' ) ;
 show_transaction = 'SHOW' 'TRANSACTION' 'ISOLATION' 'LEVEL' ;
 
 (* 'START_REPLICATION' *)
-start_replication = 
-  'START_REPLICATION' 'SLOT' slot_name 'LOGICAL' log_sequence_number 
+start_replication =
+  'START_REPLICATION' 'SLOT' slot_name 'LOGICAL' log_sequence_number
     [ '(' start_replication_option { ',' start_replication_option } ')' ] ;
 
-start_replication_option = 
+start_replication_option =
   start_replication_option_name [ start_replication_option_value ] ;
 
 (* 'START' 'TRANSACTION' *)
@@ -1519,6 +1521,7 @@ op_type = data_type ;
 storage_type = data_type ;
 using_expression = expression ;
 check_expression = expression ;
+condition = expression ;
 new_name = name ;
 version = text_literal ;
 extension_name = name ;

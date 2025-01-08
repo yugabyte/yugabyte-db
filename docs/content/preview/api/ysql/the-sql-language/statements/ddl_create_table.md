@@ -115,6 +115,18 @@ This relaxation primarily aims to provide increased flexibility for carrying out
 
 Note that the [INSERT](../dml_insert/) command can only accommodate one override clause for an entire statement. As a result, having several identity columns, each exhibiting distinct behaviours, is not effectively supported.
 
+### Stored generated columns
+
+A stored generated column is computed when it is written (inserted or updated) and occupies storage as if it were a normal column. A generated column cannot be written to directly. In INSERT or UPDATE commands, a value cannot be specified for a generated column, but the keyword DEFAULT may be specified.
+
+Several restrictions apply to the definition of generated columns and tables involving generated columns:
+
+The generation expression can only use immutable functions and cannot use subqueries or reference anything other than the current row in any way.
+
+- A generation expression cannot reference another generated column.
+- A generation expression cannot reference a system column, except tableoid.
+- A generated column cannot have a column default or an identity definition.
+- A generated column cannot be part of a partition key.
 
 ### TEMPORARY or TEMP
 
