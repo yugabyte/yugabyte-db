@@ -14,15 +14,15 @@ yba universe create [flags]
 
 ```
 yba universe create -n <universe-name> --provider-code <provider-code> \
-	--provider-name <provider-name> --yb-db-version <YugbayteDB-version> \
-	--master-gflags \
-	'{"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>",\
-	"<gflag-3>": "<value-3>","<gflag-4>": "<value-4>"}" \
-	--tserver-gflags \
-	"{"primary": {"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>"},\
-	"async": {"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>"}}' \
-	--num-nodes 1 --replication-factor 1 \
-	--user-tags <key-1>=<value-1>,<key-2>=<value-2>
+	 --provider-name <provider-name> --yb-db-version <YugbayteDB-version> \
+	 --master-gflags \
+	 '{"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>",\
+	 "<gflag-3>": "<value-3>","<gflag-4>": "<value-4>"}" \
+	 --tserver-gflags \
+	 "{"primary": {"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>"},\
+	 "async": {"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>"}}' \
+	 --num-nodes 1 --replication-factor 1 \
+	 --user-tags <key-1>=<value-1>,<key-2>=<value-2>
 ```
 
 ### Options
@@ -86,6 +86,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --enable-node-to-node-encrypt                      [Optional] Enable Node-to-Node encryption to use TLS enabled connections for communication between different Universe nodes. (default true)
       --enable-client-to-node-encrypt                    [Optional] Enable Client-to-Node encryption to use TLS enabled connection for communication between a client (ex: Database application, ysqlsh, ycqlsh) and the Universe YSQL -or- YCQL endpoint. (default true)
       --root-ca string                                   [Optional] Root Certificate name for Encryption in Transit, defaults to creating new certificate for the universe if encryption in transit in enabled.
+      --client-root-ca string                            [Optional] Client Root Certificate name for Encryption in Transit, defaults to creating new certificate for the universe if encryption in transit in enabled.
       --enable-volume-encryption                         [Optional] Enable encryption for data stored on the tablet servers. (default false)
       --kms-config string                                [Optional] Key management service config name. Required when enable-volume-encryption is set to true.
       --enable-ipv6                                      [Optional] Enable IPV6 networking for connections between the DB Servers, supported only for Kubernetes universes. (default false)
