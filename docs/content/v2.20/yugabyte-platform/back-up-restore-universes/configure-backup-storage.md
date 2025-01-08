@@ -145,7 +145,9 @@ To upgrade an existing universe with GCP IAM, refer to [Upgrade universes for GK
 
 ## Azure Storage
 
-You can configure Azure as your backup target, as follows:
+You can configure Azure as your backup target.
+
+### Configure storage on Azure
 
 1. Create a storage account in Azure, as follows:
 
@@ -173,15 +175,21 @@ You can configure Azure as your backup target, as follows:
 
         ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
 
-1. On your YugabyteDB Anywhere instance, provide the container URL and SAS token for creating a backup, as follows:
+### Create an Azure storage configuration
 
-    - Navigate to **Configs** > **Backup** > **Azure Storage**.
-    - Click **Create AZ Backup** to access the configuration form shown in the following illustration:
+In YugabyteDB Anywhere:
 
-        ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)
+1. Navigate to **Integrations > Backup > Azure Storage**.
 
-    - Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
-    - Enter values for the **Container URL** and **SAS Token** fields, and then click **Save**.
+1. Click **Create AZ Backup**.
+
+    ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)
+
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+
+1. Enter values for the **Container URL** and **SAS Token** fields.
+
+1. Click **Save**.
 
 ## Local storage
 
