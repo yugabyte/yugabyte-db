@@ -439,7 +439,7 @@ EnsureValidFieldPathString(const StringView *fieldPath)
 		else if (StringViewStartsWith(&currentFieldPath, '$') &&
 				 !StringViewContainsDbRefsField(&currentFieldPath))
 		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16410),
 							errmsg("FieldPath field names may not start with '$'. "
 								   "Consider using $getField or $setField")));
 		}

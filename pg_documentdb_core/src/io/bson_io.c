@@ -444,7 +444,7 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		if (pathView.length == 0 || StringViewStartsWith(&pathView, '$'))
 		{
 			/* We don't support dollar prefixed-paths here */
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARPREFIXEDFIELDNAME),
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40236),
 							errmsg("The field name %.*s cannot be an operator name",
 								   len, path)));
 		}
