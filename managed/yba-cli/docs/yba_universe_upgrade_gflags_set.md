@@ -20,8 +20,8 @@ yba universe upgrade gflags set -n <universe-name> \
 ### Options
 
 ```
-      --specific-gflags string               [Optional] Specific gflags to be set. Use the modified output of "yba universe upgrade gflags get" command as the flag value. Quote the string with single quotes. Provider either specific-gflags or specific-gflags-file-path
-      --specific-gflags-file-path string     [Optional] Path to modified json output file of "yba universe upgrade gflags get" command. Provider either specific-gflags or specific-gflags-file-path
+      --specific-gflags string               [Optional] Specific gflags to be set. Use the modified output of "yba universe upgrade gflags get" command as the flag value. Quote the string with single quotes. Provide either specific-gflags or specific-gflags-file-path
+      --specific-gflags-file-path string     [Optional] Path to modified json output file of "yba universe upgrade gflags get" command. Provide either specific-gflags or specific-gflags-file-path
       --upgrade-option string                [Optional] Upgrade Options, defaults to Rolling. Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime), Non-Restart (default "Rolling")
       --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). (default 18000)
       --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). (default 18000)
