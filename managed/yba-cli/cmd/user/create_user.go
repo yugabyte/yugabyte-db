@@ -154,7 +154,7 @@ func init() {
 		fmt.Sprintf(
 			"[Optional] The role of the user. "+
 				formatter.Colorize(
-					"Provider either role or role-resource-definition.",
+					"Provide either role or role-resource-definition.",
 					formatter.GreenColor)+
 				" Allowed values (case sensitive): "+
 				"ConnectOnly, ReadOnly, BackupAdmin, Admin, SuperAdmin. %s"+
@@ -166,7 +166,7 @@ func init() {
 	createUserCmd.Flags().StringArray("role-resource-definition", []string{},
 		"[Optional] Role resource bindings for the user. "+
 			formatter.Colorize(
-				"Provider either role or role-resource-definition.",
+				"Provide either role or role-resource-definition.",
 				formatter.GreenColor)+
 			" Provide the following double colon (::) separated fields as key-value pairs:"+
 			"\"role-uuid=<role-uuid>::allow-all=<true/false>::resource-type=<resource-type>"+
