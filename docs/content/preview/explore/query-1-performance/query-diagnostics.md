@@ -130,7 +130,7 @@ For more information, see [Get query statistics using pg_stat_statements](../pg-
 
 Provides information about the columns and indexes associated with unique tables mentioned in the query being diagnosed.
 
-The output is the same as that obtained using the [\d+ meta-command](../../api/ysqlsh-meta-commands/#d-s-pattern-patterns).
+The output is the same as that obtained using the [\d+ meta-command](../../../api/ysqlsh-meta-commands/#d-s-pattern-patterns).
 
 Output file: schema_details.txt
 
