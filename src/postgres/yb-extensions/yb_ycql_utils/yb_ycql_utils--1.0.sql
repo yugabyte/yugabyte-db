@@ -1,4 +1,4 @@
-/* contrib/yb_ycql_utils/yb_ycql_utils--1.0.sql */
+/* yb-extensions/yb_ycql_utils/yb_ycql_utils--1.0.sql */
 
 CREATE FUNCTION ycql_stat_statements(
     OUT queryid             int8,

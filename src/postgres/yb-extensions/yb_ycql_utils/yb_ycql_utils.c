@@ -10,6 +10,9 @@ PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(ycql_stat_statements);
 
+/* In yb_ycql_utils v1.0 the number of columns = 9 */
+static const int ycql_stat_statements_num_cols_v1_1 = 10;
+
 Datum
 ycql_stat_statements(PG_FUNCTION_ARGS)
 {
@@ -18,8 +21,15 @@ ycql_stat_statements(PG_FUNCTION_ARGS)
 	Tuplestorestate *tupstore;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
-	int	i;
-#define YCQL_STAT_STATEMENTS_COLS 9
+	int			i = 0;
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	const int	ncols = tupdesc->natts;
+	Datum		values[ncols];
+	bool		nulls[ncols];
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -50,14 +60,12 @@ ycql_stat_statements(PG_FUNCTION_ARGS)
 	MemoryContextSwitchTo(oldcontext);
 
 	YCQLStatementStats *stat_list = NULL;
-	size_t num_stats = 0;
+	size_t		num_stats = 0;
 	HandleYBStatus(YBCYcqlStatementStats(&stat_list, &num_stats));
 
 	for (i = 0; i < num_stats; ++i)
 	{
 		YCQLStatementStats *stats = (YCQLStatementStats *) stat_list + i;
-		Datum values[YCQL_STAT_STATEMENTS_COLS];
-		bool nulls[YCQL_STAT_STATEMENTS_COLS];
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
@@ -71,9 +79,11 @@ ycql_stat_statements(PG_FUNCTION_ARGS)
 		values[7] = Float8GetDatumFast(stats->mean_time);
 		values[8] = Float8GetDatumFast(stats->stddev_time);
 
+		if (ncols >= ycql_stat_statements_num_cols_v1_1)
+			values[9] = CStringGetTextDatum(stats->keyspace);
+
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
-#undef YCQL_STAT_STATEMENTS_COLS
 
 	/* clean up and return the tuplestore */
 	tuplestore_donestoring(tupstore);

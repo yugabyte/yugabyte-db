@@ -718,6 +718,7 @@ typedef struct PgYCQLStatementStats {
   double max_time;
   double mean_time;
   double stddev_time;
+  const char* keyspace;
 } YCQLStatementStats;
 
 // Struct to store ASH samples in the circular buffer.

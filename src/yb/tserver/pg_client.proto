@@ -1029,6 +1029,7 @@ message YCQLStatementStatsPB {
   double max_time = 7;
   double mean_time = 8;
   double stddev_time = 9;
+  string keyspace = 10;
 }
 
 message PgTabletsMetadataRequestPB {
