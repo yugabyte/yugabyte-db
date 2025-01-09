@@ -14,7 +14,9 @@ SET search_path TO helio_api;
 #include "pg_documentdb/sql/udfs/commands_diagnostic/db_stats--0.24-0.sql"
 #include "pg_documentdb/sql/udfs/commands_diagnostic/index_stats--0.24-0.sql"
 #include "pg_documentdb/sql/udfs/aggregation/bson_coercion_compat--0.24-0.sql"
+#include "pg_documentdb/sql/udfs/projection/bson_projection--0.24-0.sql"
 
 #include "pg_documentdb/sql/udfs/schema_validation/schema_validation--0.24-0.sql"
 #include "pg_documentdb/sql/udfs/schema_mgmt/shard_collection--0.24-0.sql"
+
 RESET search_path;

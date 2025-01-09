@@ -179,6 +179,7 @@ PG_FUNCTION_INFO_V1(bson_dollar_add_fields);
 PG_FUNCTION_INFO_V1(bson_dollar_set);
 PG_FUNCTION_INFO_V1(bson_dollar_unset);
 PG_FUNCTION_INFO_V1(bson_dollar_replace_root);
+PG_FUNCTION_INFO_V1(bson_dollar_merge_documents_at_path);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_documents);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_expression_eval_merge);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_extract_filter_expression);
@@ -593,6 +594,70 @@ bson_dollar_merge_documents(PG_FUNCTION_ARGS)
 	{
 		PG_RETURN_POINTER(ProjectDocumentWithState(document, state));
 	}
+}
+
+
+/*
+ * This is a very simplified version of $bson_dollar_merge_documents except that
+ * it accepts 2 document `left` and `right` and merges the right document into the left
+ * at the specified `path`.
+ *
+ * Note: Also unlike bson_dollar_merge_documents this function does a shallow merge of field
+ * paths within nested arrays of documents or arrays of arrays.
+ * e.g. left: {a: [{b: 1}, {b: 1}]}
+ *      right: {c: 10}
+ *      path: "a.b"
+ *      Result => { a : { b : { c: 10 } } } instead of { a : [ { b : { c: 10 } }, { b : { c: 10 } } ] }
+ *
+ */
+Datum
+bson_dollar_merge_documents_at_path(PG_FUNCTION_ARGS)
+{
+	pgbson *leftDocument = PG_GETARG_PGBSON(0);
+	pgbson *rightDocument = PG_GETARG_PGBSON(1);
+	text *path = PG_GETARG_TEXT_P(2);
+	StringView pathString = CreateStringViewFromString(text_to_cstring(path));
+
+	if (IsPgbsonEmptyDocument(rightDocument))
+	{
+		PG_RETURN_POINTER(leftDocument);
+	}
+
+	BsonIntermediatePathNode *root = MakeRootNode();
+	bool nodeCreated = false;
+	bool treatLeafDataAsConstant = true;
+	ParseAggregationExpressionContext parseContext = { 0 };
+
+	bson_value_t rightDocumentAsBsonValue = ConvertPgbsonToBsonValue(rightDocument);
+	TraverseDottedPathAndGetOrAddField(
+		&pathString,
+		&rightDocumentAsBsonValue,
+		root,
+		BsonDefaultCreateIntermediateNode,
+		BsonDefaultCreateLeafNode,
+		treatLeafDataAsConstant,
+		NULL,
+		&nodeCreated,
+		&parseContext);
+
+	pgbson_writer writer;
+	bson_iter_t documentIterator;
+	PgbsonWriterInit(&writer);
+
+	PgbsonInitIterator(leftDocument, &documentIterator);
+	bool projectNonMatchingField = true;
+	ProjectDocumentState projectDocState = {
+		.isPositionalAlreadyEvaluated = false,
+		.parentDocument = leftDocument,
+		.pendingProjectionState = NULL,
+		.skipIntermediateArrayFields = true,
+	};
+
+	bool isInNestedArray = false;
+	TraverseObjectAndAppendToWriter(&documentIterator, root, &writer,
+									projectNonMatchingField,
+									&projectDocState, isInNestedArray);
+	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
 }
 
 

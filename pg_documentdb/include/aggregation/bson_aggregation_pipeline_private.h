@@ -148,6 +148,9 @@ Query * HandleFacet(const bson_value_t *existingValue, Query *query,
 Query * HandleLookup(const bson_value_t *existingValue, Query *query,
 					 AggregationPipelineBuildContext *context);
 
+Query * HandleLookupUnwind(const bson_value_t *existingValue, Query *query,
+						   AggregationPipelineBuildContext *context);
+
 Query * HandleGraphLookup(const bson_value_t *existingValue, Query *query,
 						  AggregationPipelineBuildContext *context);
 
@@ -176,8 +179,8 @@ Query * HandleChangeStream(const bson_value_t *existingValue, Query *query,
 bool CanInlineLookupStageLookup(const bson_value_t *lookupStage,
 								const StringView *lookupPath,
 								bool hasLet);
-
-bool TryOptimizeUnwindForArrayAgg(Query *query, StringView pathView);
+bool CanInlineLookupWithUnwind(const bson_value_t *lookUpStageValue,
+							   const bson_value_t *unwindStageValue);
 
 /* vector search related aggregation stages */
 Query * HandleSearch(const bson_value_t *existingValue, Query *query,

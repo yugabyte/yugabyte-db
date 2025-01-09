@@ -613,6 +613,15 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id", "pipeline": [ { "$addFields": { "myBar": 1 } }, { "$limit": 10 }] } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
 
 
+-- UDF Unit test for merge documents at path
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path(NULL, NULL, NULL);
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{}', 'a');
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{ "b" : true}', 'a');
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{ "b" : true}', 'd');
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": { "b": "text", "c": true }}', '{ "random" : false }', 'a');
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": { "b": "text", "c": true }}', '{ "random" : false }', 'a.b');
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": [{ "b": "text", "c": true }, { "b": "text2", "c": false }]}', '{ "random" : false }', 'a.b');
+
 BEGIN;
 set local helio_api.enableLookupUnwindOptimization to on;
 SELECT document FROM bson_aggregation_pipeline('db', 

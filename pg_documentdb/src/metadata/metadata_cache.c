@@ -625,6 +625,9 @@ typedef struct HelioApiOidCacheData
 	/* OID OF the bson_dollar_merge_documents function */
 	Oid ApiInternalSchemaBsonDollarMergeDocumentsFunctionOid;
 
+	/* OID OF the bson_dollar_merge_documents_at_path function */
+	Oid ApiInternalSchemaBsonDollarMergeDocumentAtPathFunctionOid;
+
 	/* OID of the bson_dollar_merge_handle_when_matched function */
 	Oid ApiInternalBsonDollarMergeHandleWhenMatchedFunctionId;
 
@@ -3077,6 +3080,18 @@ BsonDollaMergeDocumentsFunctionOid(void)
 		"bson_dollar_merge_documents",
 		BsonTypeId(),
 		BsonTypeId(), missingOk);
+}
+
+
+Oid
+BsonDollarMergeDocumentAtPathFunctionOid(void)
+{
+	return GetOperatorFunctionIdThreeArgs(
+		&Cache.ApiInternalSchemaBsonDollarMergeDocumentAtPathFunctionOid,
+		DocumentDBApiInternalSchemaName,
+		"bson_dollar_merge_documents_at_path",
+		BsonTypeId(),
+		BsonTypeId(), TEXTOID);
 }
 
 

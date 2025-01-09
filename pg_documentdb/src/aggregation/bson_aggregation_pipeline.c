@@ -105,6 +105,63 @@ typedef bool (*CanInlineLookupStage)(const bson_value_t *stageValue, const
 
 
 /*
+ * Enums to represent all kind of aggregations stages.
+ * Please keep the list sorted within their groups for easier readability
+ */
+typedef enum
+{
+	Stage_Invalid = 0,
+
+	/* Start internal stages Mongo */
+	Stage_Internal_InhibitOptimization = 1,
+
+	/* Start Mongo Public stages */
+	Stage_AddFields = 10,
+	Stage_Bucket,
+	Stage_BucketAuto,
+	Stage_ChangeStream,
+	Stage_CollStats,
+	Stage_Count,
+	Stage_CurrentOp,
+	Stage_Densify,
+	Stage_Documents,
+	Stage_Facet,
+	Stage_Fill,
+	Stage_GeoNear,
+	Stage_GraphLookup,
+	Stage_Group,
+	Stage_IndexStats,
+	Stage_Limit,
+	Stage_ListLocalSessions,
+	Stage_ListSessions,
+	Stage_Lookup,
+	Stage_Match,
+	Stage_Merge,
+	Stage_Out,
+	Stage_Project,
+	Stage_Redact,
+	Stage_ReplaceRoot,
+	Stage_ReplaceWith,
+	Stage_Sample,
+	Stage_Search,
+	Stage_SearchMeta,
+	Stage_Set,
+	Stage_SetWindowFields,
+	Stage_Skip,
+	Stage_Sort,
+	Stage_SortByCount,
+	Stage_UnionWith,
+	Stage_Unset,
+	Stage_Unwind,
+	Stage_VectorSearch,
+
+	/* Start of pg_documentdb Custom or internal stages */
+	Stage_InverseMatch = 100,
+	Stage_LookupUnwind
+} Stage;
+
+
+/*
  * Declaration of a given aggregation pipeline stage.
  */
 typedef struct
@@ -141,6 +198,8 @@ typedef struct
 
 	/* Allow Base shard table pushdown */
 	bool allowBaseShardTablePushdown;
+
+	Stage stageEnum;
 } AggregationStageDefinition;
 
 typedef struct
@@ -244,7 +303,7 @@ static void RewriteFillToSetWindowFieldsSpec(const bson_value_t *fillSpec,
 											 bson_value_t *addFieldsForValueFill,
 											 bson_value_t *setWindowFieldsSpec,
 											 bson_value_t *partitionByFields);
-static void TryOptimizeAggregationPipelines(List *aggregationStages,
+static void TryOptimizeAggregationPipelines(List **aggregationStages,
 											AggregationPipelineBuildContext *context);
 
 #define COMPATIBLE_CHANGE_STREAM_STAGES_COUNT 8
@@ -258,6 +317,22 @@ const char *CompatibleChangeStreamPipelineStages[COMPATIBLE_CHANGE_STREAM_STAGES
 	"$set",
 	"$unset",
 	"$redact"
+};
+
+static const AggregationStageDefinition LookupUnwindStageDefinition = {
+	.stage = "$lookupUnwind",
+	.mutateFunc = &HandleLookupUnwind,
+	.requiresPersistentCursor = &RequiresPersistentCursorTrue,
+	.canInlineLookupStageFunc = &CanInlineLookupStageLookup,
+
+	/* Lookup preserves order of the Left collection */
+	.preservesStableSortOrder = true,
+	.canHandleAgnosticQueries = false,
+	.isProjectTransform = false,
+	.isOutputStage = false,
+	.pipelineCheckFunc = NULL,
+	.allowBaseShardTablePushdown = false,
+	.stageEnum = Stage_LookupUnwind,
 };
 
 /* Stages and their definitions sorted by name.
@@ -278,6 +353,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Internal_InhibitOptimization,
 	},
 	{
 		.stage = "$addFields",
@@ -290,6 +366,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_AddFields,
 	},
 	{
 		.stage = "$bucket",
@@ -302,6 +379,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Bucket,
 	},
 	{
 		.stage = "$bucketAuto",
@@ -314,6 +392,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_BucketAuto,
 	},
 	{
 		.stage = "$changeStream",
@@ -326,6 +405,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = PreCheckChangeStreamPipelineStages,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_ChangeStream,
 	},
 	{
 		.stage = "$collStats",
@@ -338,6 +418,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_CollStats,
 	},
 	{
 		.stage = "$count",
@@ -354,6 +435,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Count,
 	},
 	{
 		.stage = "$currentOp",
@@ -371,6 +453,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_CurrentOp,
 	},
 	{
 		.stage = "$densify",
@@ -383,6 +466,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Densify,
 	},
 	{
 		.stage = "$documents",
@@ -395,6 +479,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_Documents,
 	},
 	{
 		.stage = "$facet",
@@ -411,6 +496,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_Facet,
 	},
 	{
 		.stage = "$fill",
@@ -423,6 +509,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Fill,
 	},
 	{
 		.stage = "$geoNear",
@@ -435,6 +522,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_GeoNear,
 	},
 	{
 		.stage = "$graphLookup",
@@ -447,6 +535,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_GraphLookup,
 	},
 	{
 		.stage = "$group",
@@ -464,6 +553,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Group,
 	},
 	{
 		.stage = "$indexStats",
@@ -476,6 +566,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_IndexStats,
 	},
 	{
 		.stage = "$inverseMatch",
@@ -492,6 +583,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_InverseMatch,
 	},
 	{
 		.stage = "$limit",
@@ -508,6 +600,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Limit,
 	},
 	{
 		.stage = "$listLocalSessions",
@@ -520,6 +613,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_ListLocalSessions,
 	},
 	{
 		.stage = "$listSessions",
@@ -532,6 +626,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_ListSessions,
 	},
 	{
 		.stage = "$lookup",
@@ -546,6 +641,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_Lookup,
 	},
 	{
 		.stage = "$match",
@@ -562,6 +658,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Match,
 	},
 	{
 		.stage = "$merge",
@@ -574,6 +671,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = true,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_Merge,
 	},
 	{
 		.stage = "$out",
@@ -586,6 +684,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = true,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_Out,
 	},
 	{
 		.stage = "$project",
@@ -600,6 +699,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Project,
 	},
 	{
 		.stage = "$redact",
@@ -612,6 +712,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Redact,
 	},
 	{
 		.stage = "$replaceRoot",
@@ -626,6 +727,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_ReplaceRoot,
 	},
 	{
 		.stage = "$replaceWith",
@@ -640,6 +742,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_ReplaceWith,
 	},
 	{
 		.stage = "$sample",
@@ -656,6 +759,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Sample,
 	},
 	{
 		.stage = "$search",
@@ -672,6 +776,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 
 		/* vector $search is needed to be executed withing custom scan boundaries see EvaluateMetaSearchScore in vector/vector_utilities.c */
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_Search,
 	},
 	{
 		.stage = "$searchMeta",
@@ -684,6 +789,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_SearchMeta,
 	},
 	{
 		.stage = "$set",
@@ -696,6 +802,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Set,
 	},
 	{
 		.stage = "$setWindowFields",
@@ -708,6 +815,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_SetWindowFields,
 	},
 	{
 		.stage = "$skip",
@@ -724,6 +832,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Skip,
 	},
 	{
 		.stage = "$sort",
@@ -740,6 +849,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Sort,
 	},
 	{
 		.stage = "$sortByCount",
@@ -752,6 +862,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_SortByCount,
 	},
 	{
 		.stage = "$unionWith",
@@ -764,6 +875,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_UnionWith,
 	},
 	{
 		.stage = "$unset",
@@ -776,6 +888,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Unset,
 	},
 	{
 		.stage = "$unwind",
@@ -787,6 +900,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.allowBaseShardTablePushdown = true,
+		.stageEnum = Stage_Unwind,
 	},
 	{
 		.stage = "$vectorSearch",
@@ -803,6 +917,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 
 		/* $vectorSearch is needed to be executed withing custom scan boundaries see EvaluateMetaSearchScore in vector/vector_utilities.c */
 		.allowBaseShardTablePushdown = false,
+		.stageEnum = Stage_VectorSearch,
 	}
 };
 
@@ -3585,16 +3700,6 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 						errmsg("FieldPath field names may not start with '$'.")));
 	}
 
-	/* Optimization - if $unwind doesn't have options
-	 * try to see if you can find a BSON_ARRAY_AGG above with the same path
-	 */
-	if (EnableLookupUnwindSupport && !hasOptions &&
-		TryOptimizeUnwindForArrayAgg(query, StringViewSubstring(&pathView, 1)))
-	{
-		/* Query got inlined */
-		return query;
-	}
-
 	FuncExpr *resultExpr;
 
 	/* The first projector is the document */
@@ -5684,7 +5789,7 @@ ExtractAggregationStages(const bson_value_t *pipelineValue,
 
 	if (context->optimizePipelineStages)
 	{
-		TryOptimizeAggregationPipelines(aggregationStages, context);
+		TryOptimizeAggregationPipelines(&aggregationStages, context);
 	}
 
 	return aggregationStages;
@@ -6662,10 +6767,11 @@ ParseAndGetTopLevelVariableSpec(const bson_value_t *varSpec)
  *    potentially use index.
  */
 static void
-TryOptimizeAggregationPipelines(List *aggregationStages,
+TryOptimizeAggregationPipelines(List **aggregationStages,
 								AggregationPipelineBuildContext *context)
 {
-	if (aggregationStages == NIL || list_length(aggregationStages) == 0)
+	List *stagesList = *aggregationStages;
+	if (stagesList == NIL || list_length(stagesList) == 0)
 	{
 		return;
 	}
@@ -6674,15 +6780,58 @@ TryOptimizeAggregationPipelines(List *aggregationStages,
 	 * if all the stages refer to a single collection and it is not sharded, only in this case it is feasible to push
 	 * these queries directly to shard table.
 	 */
+	bool allowShardBaseTable = true;
+	int nextIndex = 0;
+	int currentIndex = 0;
+
 	ListCell *cell;
-	foreach(cell, aggregationStages)
+	foreach(cell, stagesList)
 	{
+		currentIndex = foreach_current_index(cell);
+		if (currentIndex < nextIndex)
+		{
+			continue;
+		}
+
 		AggregationStage *stage = (AggregationStage *) lfirst(cell);
 		const AggregationStageDefinition *definition = stage->stageDefinition;
-		context->allowShardBaseTable = definition->allowBaseShardTablePushdown;
-		if (!context->allowShardBaseTable)
+		if (!definition->allowBaseShardTablePushdown)
 		{
-			break;
+			/* If any stage doesn't support it the final value is not supported */
+			allowShardBaseTable = false;
 		}
+
+		if (definition->stageEnum == Stage_Lookup &&
+			EnableLookupUnwindSupport && IsClusterVersionAtleast(DocDB_V0, 24, 0))
+		{
+			/* Optimization for $lookup stage
+			 */
+			if (currentIndex < list_length(stagesList) - 1)
+			{
+				AggregationStage *nextStage =
+					(AggregationStage *) lfirst(list_nth_cell(stagesList, currentIndex +
+															  1));
+				if (nextStage->stageDefinition->stageEnum == Stage_Unwind)
+				{
+					/* If the next stage is $unwind, we can merge the $lookup and $unwind stages into a single stage.
+					 * This is because $lookup followed by $unwind is a common pattern and can be optimized to a single stage,
+					 * if $unwind is requested on the same field which is the "as" field in lookup stage.
+					 */
+					if (CanInlineLookupWithUnwind(&stage->stageValue,
+												  &nextStage->stageValue))
+					{
+						*aggregationStages = foreach_delete_current(stagesList, cell);
+						AggregationStage *lookupUnwindStage = nextStage;
+						lookupUnwindStage->stageValue = stage->stageValue;
+						lookupUnwindStage->stageDefinition =
+							(AggregationStageDefinition *) &LookupUnwindStageDefinition;
+					}
+				}
+			}
+		}
+
+		nextIndex = currentIndex + 1;
 	}
+
+	context->allowShardBaseTable = allowShardBaseTable;
 }

@@ -1569,30 +1569,26 @@ SELECT document FROM bson_aggregation_pipeline('db',
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_catalog.bson_dollar_unwind(document, '$matched_docs'::text) AS document FROM (SELECT helio_api_internal.bson_dollar_merge_documents(lookup_stage_1.document, "lookupRight_stage_1".document) AS document FROM ((SELECT collection.document, helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(helio_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM helio_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(helio_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))) agg_stage_1
+         Query: SELECT helio_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1.document, "lookupRight_stage_1".document, 'matched_docs'::text) AS document FROM ((SELECT collection.document, helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM helio_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(helio_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))
          Node: host=localhost port=58070 dbname=regression
-         ->  ProjectSet
-               Output: helio_api_catalog.bson_dollar_unwind(helio_api_internal.bson_dollar_merge_documents(collection.document, (COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson))), '$matched_docs'::text)
-               ->  Nested Loop Left Join
-                     Output: collection.document, (COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson))
-                     ->  Bitmap Heap Scan on helio_data.documents_6000_60000 collection
-                           Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
-                           Recheck Cond: (collection.shard_key_value = '6000'::bigint)
-                           ->  Bitmap Index Scan on _id_
-                                 Index Cond: (collection.shard_key_value = '6000'::bigint)
-                     ->  Aggregate
-                           Output: COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)
-                           ->  Seq Scan on helio_data.documents_6001_60016 collection_0_1
-                                 Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
-                                 Filter: (collection_0_1.object_id OPERATOR(helio_core.=) ANY (helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson)))
-(21 rows)
+         ->  Nested Loop
+               Output: helio_api_internal.bson_dollar_merge_documents_at_path(collection.document, collection_0_1.document, 'matched_docs'::text)
+               Join Filter: (collection_0_1.object_id OPERATOR(helio_core.=) ANY (helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson)))
+               ->  Seq Scan on helio_data.documents_6001_60016 collection_0_1
+                     Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+               ->  Bitmap Heap Scan on helio_data.documents_6000_60000 collection
+                     Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
+                     Recheck Cond: (collection.shard_key_value = '6000'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '6000'::bigint)
+(17 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id", "pipeline": [ { "$addFields": { "myBar": 1 } }, { "$limit": 10 }] } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
@@ -1629,77 +1625,114 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                                    Function Call: helio_api_catalog.bson_lookup_unwind((COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)), 'matched_docs'::text)
 (29 rows)
 
+-- UDF Unit test for merge documents at path
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path(NULL, NULL, NULL);
+ bson_dollar_merge_documents_at_path 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{}', 'a');
+ bson_dollar_merge_documents_at_path 
+---------------------------------------------------------------------
+ { "a" : "text" }
+(1 row)
+
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{ "b" : true}', 'a');
+ bson_dollar_merge_documents_at_path 
+---------------------------------------------------------------------
+ { "a" : { "b" : true } }
+(1 row)
+
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{ "b" : true}', 'd');
+  bson_dollar_merge_documents_at_path   
+---------------------------------------------------------------------
+ { "a" : "text", "d" : { "b" : true } }
+(1 row)
+
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": { "b": "text", "c": true }}', '{ "random" : false }', 'a');
+ bson_dollar_merge_documents_at_path 
+---------------------------------------------------------------------
+ { "a" : { "random" : false } }
+(1 row)
+
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": { "b": "text", "c": true }}', '{ "random" : false }', 'a.b');
+         bson_dollar_merge_documents_at_path          
+---------------------------------------------------------------------
+ { "a" : { "b" : { "random" : false }, "c" : true } }
+(1 row)
+
+SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": [{ "b": "text", "c": true }, { "b": "text2", "c": false }]}', '{ "random" : false }', 'a.b');
+   bson_dollar_merge_documents_at_path    
+---------------------------------------------------------------------
+ { "a" : { "b" : { "random" : false } } }
+(1 row)
+
 BEGIN;
 set local helio_api.enableLookupUnwindOptimization to on;
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
                                                                                                                                                                     document                                                                                                                                                                     
 ---------------------------------------------------------------------
- 
- 
- 
- 
- 
- 
  { "_id" : { "$numberInt" : "7" }, "item" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "matched_docs" : { "_id" : { "$numberInt" : "1" }, "sku" : "almonds", "description" : "product 1", "instock" : { "$numberInt" : "120" } } }
-(7 rows)
+(1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM (SELECT helio_api_internal.bson_dollar_merge_documents(lookup_stage_1.document, "lookupRight_stage_1".document) AS document FROM ((SELECT collection.document, helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(helio_api_catalog.bson_expression_get(lookup_right_query_stage_0.document, '{ "matched_docs" : "$$ROOT" }'::helio_core.bson, true), '{ "matched_docs" : [  ] }'::helio_core.bson) AS document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM helio_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(helio_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))) agg_stage_1
+         Query: SELECT helio_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1.document, "lookupRight_stage_1".document, 'matched_docs'::text) AS document FROM ((SELECT collection.document, helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM helio_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(helio_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))
          Node: host=localhost port=58070 dbname=regression
-         ->  Nested Loop Left Join
-               Output: helio_api_internal.bson_dollar_merge_documents(collection.document, (COALESCE(helio_api_catalog.bson_expression_get(collection_0_1.document, '{ "matched_docs" : "$$ROOT" }'::helio_core.bson, true), '{ "matched_docs" : [  ] }'::helio_core.bson)))
+         ->  Nested Loop
+               Output: helio_api_internal.bson_dollar_merge_documents_at_path(collection.document, collection_0_1.document, 'matched_docs'::text)
                Join Filter: (collection_0_1.object_id OPERATOR(helio_core.=) ANY (helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson)))
+               ->  Seq Scan on helio_data.documents_6001_60016 collection_0_1
+                     Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
                ->  Bitmap Heap Scan on helio_data.documents_6000_60000 collection
                      Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
                      Recheck Cond: (collection.shard_key_value = '6000'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '6000'::bigint)
-               ->  Materialize
-                     Output: collection_0_1.object_id, (COALESCE(helio_api_catalog.bson_expression_get(collection_0_1.document, '{ "matched_docs" : "$$ROOT" }'::helio_core.bson, true), '{ "matched_docs" : [  ] }'::helio_core.bson))
-                     ->  Seq Scan on helio_data.documents_6001_60016 collection_0_1
-                           Output: collection_0_1.object_id, COALESCE(helio_api_catalog.bson_expression_get(collection_0_1.document, '{ "matched_docs" : "$$ROOT" }'::helio_core.bson, true), '{ "matched_docs" : [  ] }'::helio_core.bson)
-(19 rows)
+(17 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id", "pipeline": [ { "$addFields": { "myBar": 1 } }, { "$limit": 10 }] } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM (SELECT helio_api_internal.bson_dollar_merge_documents(lookup_non_inlined_stage_1."left", (SELECT COALESCE(helio_api_catalog.bson_expression_get(agg_stage_sub_1_2."funcName", '{ "matched_docs" : "$$ROOT" }'::helio_core.bson, true), '{ "matched_docs" : [  ] }'::helio_core.bson) AS "funcName" FROM (SELECT helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson) AS "funcName" FROM helio_api_catalog.bson_lookup_unwind(lookup_non_inlined_stage_1."right", 'matched_docs'::text) lookup_subpipeline_substage_0(lookup_unwind) LIMIT '10'::bigint) agg_stage_sub_1_2)) AS document FROM (SELECT lookup_stage_1.document AS "left", "lookupRight_stage_1".document AS "right" FROM ((SELECT collection.document, helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(helio_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM helio_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(helio_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))) lookup_non_inlined_stage_1) agg_stage_1
+         Query: SELECT helio_api_catalog.bson_dollar_unwind(document, '$matched_docs'::text) AS document FROM (SELECT helio_api_internal.bson_dollar_merge_documents(lookup_non_inlined_stage_1."left", (SELECT COALESCE(helio_api_catalog.bson_array_agg(agg_stage_sub_1_2."funcName", 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS "funcName" FROM (SELECT helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson) AS "funcName" FROM helio_api_catalog.bson_lookup_unwind(lookup_non_inlined_stage_1."right", 'matched_docs'::text) lookup_subpipeline_substage_0(lookup_unwind) LIMIT '10'::bigint) agg_stage_sub_1_2)) AS document FROM (SELECT lookup_stage_1.document AS "left", "lookupRight_stage_1".document AS "right" FROM ((SELECT collection.document, helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(helio_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM helio_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(helio_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))) lookup_non_inlined_stage_1) agg_stage_1
          Node: host=localhost port=58070 dbname=regression
-         ->  Nested Loop Left Join
-               Output: helio_api_internal.bson_dollar_merge_documents(collection.document, (SubPlan 1))
-               ->  Bitmap Heap Scan on helio_data.documents_6000_60000 collection
-                     Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
-                     Recheck Cond: (collection.shard_key_value = '6000'::bigint)
-                     ->  Bitmap Index Scan on _id_
-                           Index Cond: (collection.shard_key_value = '6000'::bigint)
-               ->  Aggregate
-                     Output: COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)
-                     ->  Seq Scan on helio_data.documents_6001_60016 collection_0_1
-                           Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
-                           Filter: (collection_0_1.object_id OPERATOR(helio_core.=) ANY (helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson)))
+         ->  ProjectSet
+               Output: helio_api_catalog.bson_dollar_unwind(helio_api_internal.bson_dollar_merge_documents(collection.document, (SubPlan 1)), '$matched_docs'::text)
+               ->  Nested Loop Left Join
+                     Output: collection.document, (COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson))
+                     ->  Bitmap Heap Scan on helio_data.documents_6000_60000 collection
+                           Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
+                           Recheck Cond: (collection.shard_key_value = '6000'::bigint)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (collection.shard_key_value = '6000'::bigint)
+                     ->  Aggregate
+                           Output: COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)
+                           ->  Seq Scan on helio_data.documents_6001_60016 collection_0_1
+                                 Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+                                 Filter: (collection_0_1.object_id OPERATOR(helio_core.=) ANY (helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson)))
                SubPlan 1
-                 ->  Subquery Scan on agg_stage_sub_1_2
-                       Output: COALESCE(helio_api_catalog.bson_expression_get(agg_stage_sub_1_2."funcName", '{ "matched_docs" : "$$ROOT" }'::helio_core.bson, true), '{ "matched_docs" : [  ] }'::helio_core.bson)
+                 ->  Aggregate
+                       Output: COALESCE(helio_api_catalog.bson_array_agg((helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson)), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)
                        ->  Limit
                              Output: (helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson))
                              ->  Function Scan on helio_api_catalog.bson_lookup_unwind lookup_subpipeline_substage_0
                                    Output: helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson)
                                    Function Call: helio_api_catalog.bson_lookup_unwind((COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)), 'matched_docs'::text)
-(27 rows)
+(29 rows)
 
 ROLLBACK;
