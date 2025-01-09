@@ -138,6 +138,11 @@ public enum TaskType {
       CustomerTask.TaskType.CreatePitrConfig,
       CustomerTask.TargetType.Universe),
 
+  UpdatePitrConfig(
+      com.yugabyte.yw.commissioner.tasks.UpdatePitrConfig.class,
+      CustomerTask.TaskType.UpdatePitrConfig,
+      CustomerTask.TargetType.Universe),
+
   DeletePitrConfig(
       com.yugabyte.yw.commissioner.tasks.DeletePitrConfig.class,
       CustomerTask.TaskType.DeletePitrConfig,
@@ -1208,6 +1213,7 @@ public enum TaskType {
           .put(EditBackupSchedule, 101)
           .put(EditBackupScheduleKubernetes, 101)
           .put(CloneNamespace, 102)
+          .put(UpdatePitrConfig, 103)
           // Table ops (110-119):
           .put(CreateCassandraTable, 110)
           .put(CreateTableSpacesInUniverse, 111)

@@ -426,6 +426,7 @@ POST    /customers/:cUUID/universes/:uniUUID/keyspaces/:tableType/:keyspaceName/
 GET     /customers/:cUUID/universes/:uniUUID/pitr_config                                        com.yugabyte.yw.controllers.PitrController.listPitrConfigs(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/pitr                                               com.yugabyte.yw.controllers.PitrController.restore(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/universes/:uniUUID/pitr_config/:pUUID                                 com.yugabyte.yw.controllers.PitrController.deletePitrConfig(cUUID: java.util.UUID, uniUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
+PUT     /customers/:cUUID/universes/:uniUUID/pitr_config/:pUUID                                 com.yugabyte.yw.controllers.PitrController.updatePitrConfig(cUUID: java.util.UUID, uniUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
 
 # Clone APIs
 POST    /customers/:cUUID/universes/:uniUUID/keyspaces/:tableType/:keyspaceName/clone           com.yugabyte.yw.controllers.PitrController.cloneNamespace(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableType: String, keyspaceName: String, request: Request) 

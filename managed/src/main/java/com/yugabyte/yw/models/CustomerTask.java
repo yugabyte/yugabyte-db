@@ -243,6 +243,9 @@ public class CustomerTask extends Model {
     @EnumValue("CreatePitrConfig")
     CreatePitrConfig,
 
+    @EnumValue("UpdatePitrConfig")
+    UpdatePitrConfig,
+
     @EnumValue("DeletePitrConfig")
     DeletePitrConfig,
 
@@ -473,6 +476,8 @@ public class CustomerTask extends Model {
           return completed ? "Restored" : "Restoring";
         case CreatePitrConfig:
           return completed ? "Created PITR Config" : "Creating PITR Config";
+        case UpdatePitrConfig:
+          return completed ? "Updated PITR Config" : "Updating PITR Config";
         case DeletePitrConfig:
           return completed ? "Deleted PITR Config" : "Deleting PITR Config";
         case RestoreSnapshotSchedule:

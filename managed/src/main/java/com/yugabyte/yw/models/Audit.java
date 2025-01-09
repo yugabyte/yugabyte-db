@@ -461,6 +461,9 @@ public class Audit extends Model {
     @EnumValue("Create PITR Config")
     CreatePitrConfig,
 
+    @EnumValue("Update PITR Config")
+    UpdatePitrConfig,
+
     @EnumValue("Restore Snapshot Schedule")
     RestoreSnapshotSchedule,
 
