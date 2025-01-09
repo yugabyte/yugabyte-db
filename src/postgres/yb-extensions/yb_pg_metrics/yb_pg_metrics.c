@@ -1,14 +1,21 @@
-// Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
-// in compliance with the License.  You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software distributed under the License
-// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-// or implied.  See the License for the specific language governing permissions and limitations
-// under the License.
+/*-------------------------------------------------------------------------
+ *
+ * Copyright (c) YugaByte, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ *-------------------------------------------------------------------------
+ */
 
 #include "postgres.h"
 
@@ -32,6 +39,7 @@
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/proc.h"
+#include "storage/procarray.h"
 #include "storage/shmem.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -340,7 +348,7 @@ set_metric_names(void)
 	strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
 	strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
 	strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
-	// Deprecated. Names with "_"s may cause confusion to metric conumsers.
+	/* Deprecated. Names with "_"s may cause confusion to metric consumers. */
 	strcpy(ybpgm_table[Single_Shard_Transaction].name,
 		   YSQL_METRIC_PREFIX "Single_Shard_Transactions");
 	strcpy(ybpgm_table[SingleShardTransaction].name,
@@ -503,6 +511,29 @@ pullRpczEntries(void)
 				break;
 
 			rpcz[i].db_oid = beentry->st_databaseid;
+			rpcz[i].query_id = beentry->st_query_id;
+			rpcz[i].leader_pid = -1;
+			PGPROC *proc = NULL;
+
+			if (beentry->st_backendType == B_BACKEND)
+				proc = BackendPidGetProc(rpcz[i].proc_id);
+			else if (beentry->st_backendType != YB_YSQL_CONN_MGR)
+			{
+				/*
+				 * For an auxiliary process, retrieve process info from
+				 * AuxiliaryProcs stored in shared-memory.
+				 */
+				proc = AuxiliaryPidGetProc(beentry->st_procpid);
+			}
+
+			if (proc != NULL)
+			{
+				PGPROC *leader = proc->lockGroupLeader;
+				if (leader != NULL)
+				{
+					rpcz[i].leader_pid = leader->pid;
+				}
+			}
 
 			rpcz[i].query = (char *) palloc(pgstat_track_activity_query_size);
 			strcpy(rpcz[i].query, (char *) beentry->st_activity_raw);
