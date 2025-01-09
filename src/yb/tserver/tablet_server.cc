@@ -1372,7 +1372,7 @@ Status TabletServer::XClusterPopulateMasterHeartbeatRequest(
 
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     const master::TSHeartbeatResponsePB& resp) {
-  xcluster_context_->UpdateSafeTime(resp.xcluster_namespace_to_safe_time());
+  xcluster_context_->UpdateSafeTimeMap(resp.xcluster_namespace_to_safe_time());
 
   auto* xcluster_consumer = GetXClusterConsumer();
 

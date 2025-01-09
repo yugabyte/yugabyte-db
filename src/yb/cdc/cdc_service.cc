@@ -1846,7 +1846,9 @@ void CDCServiceImpl::GetChanges(
     }
   }
 
-  VLOG(1) << "T " << req->tablet_id() << " sending GetChanges response " << AsString(*resp);
+  VLOG_WITH_FUNC(1)
+      << "T " << req->tablet_id() << ", record: " << AsString(record) << " sending response: "
+      << AsString(*resp);
   if (record.GetSourceType() == CDCSDK && FLAGS_enable_cdcsdk_lag_collection) {
     LogGetChangesLagForCDCSDK(stream_id, *resp);
   }

@@ -24,8 +24,8 @@
 namespace yb {
 
 // Map[NamespaceId]:xClusterSafeTime
-typedef google::protobuf::Map<std::string, google::protobuf::uint64>
-    XClusterNamespaceToSafeTimePBMap;
+using XClusterNamespaceToSafeTimePBMap =
+    google::protobuf::Map<std::string, google::protobuf::uint64>;
 
 class XClusterSafeTimeMap {
  public:
@@ -39,7 +39,7 @@ class XClusterSafeTimeMap {
 
   bool HasNamespace(const NamespaceId& namespace_id) const;
 
-  void Update(XClusterNamespaceToSafeTimePBMap safe_time_map)
+  void Update(const XClusterNamespaceToSafeTimePBMap& safe_time_map)
       EXCLUDES(xcluster_safe_time_map_mutex_);
 
   bool empty() const { return empty_.load(std::memory_order_acquire); }

@@ -16,7 +16,10 @@
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 
 namespace yb {
+
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
+
+YB_STRONGLY_TYPED_BOOL(ExpectNoRecords);
 
 class XClusterYsqlTestBase : public XClusterTestBase {
  public:
@@ -128,13 +131,15 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   Status VerifyWrittenRecords(
       std::shared_ptr<client::YBTable> producer_table = {},
-      std::shared_ptr<client::YBTable> consumer_table = {},
-      bool verify_column_count_match = true);
+      std::shared_ptr<client::YBTable> consumer_table = {});
 
   Status VerifyWrittenRecords(
       const client::YBTableName& producer_table_name,
       const client::YBTableName& consumer_table_name,
-      bool verify_column_count_match = true);
+      ExpectNoRecords expect_no_records = ExpectNoRecords::kFalse);
+
+  Status VerifyWrittenRecords(
+      ExpectNoRecords expect_no_records);
 
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,

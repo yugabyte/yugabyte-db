@@ -244,11 +244,7 @@ HybridTime XClusterPoller::GetSafeTime() const {
     return HybridTime::kInvalid;
   }
 
-  HybridTime safe_time;
-  {
-    SharedLock lock(safe_time_lock_);
-    safe_time = producer_safe_time_;
-  }
+  auto safe_time = producer_safe_time_.load();
 
   TEST_SYNC_POINT_CALLBACK("XClusterPoller::GetSafeTime", &safe_time);
 
@@ -262,15 +258,19 @@ void XClusterPoller::UpdateSafeTime(int64 new_time) {
     return;
   }
 
-  std::lock_guard l(safe_time_lock_);
-  if (producer_safe_time_.is_special() || new_hybrid_time > producer_safe_time_) {
-    producer_safe_time_ = new_hybrid_time;
+  auto existing = producer_safe_time_.load();
+  for (;;) {
+    if (!existing.is_special() && existing > new_hybrid_time) {
+      break;
+    }
+    if (producer_safe_time_.compare_exchange_strong(existing, new_hybrid_time)) {
+      break;
+    }
   }
 }
 
 void XClusterPoller::InvalidateSafeTime() {
-  std::lock_guard l(safe_time_lock_);
-  producer_safe_time_ = HybridTime::kInvalid;
+  producer_safe_time_.store(HybridTime::kInvalid);
 }
 
 void XClusterPoller::SchedulePoll() {

@@ -57,7 +57,7 @@ class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
     return OK();
   }
 
-  Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap() override {
+  XClusterNamespaceToSafeTimeMap GetXClusterNamespaceToSafeTimeMap() override {
     return safe_time_map_;
   }
 

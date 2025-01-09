@@ -78,7 +78,6 @@ Status XClusterTargetManager::Init() {
   DCHECK(!safe_time_service_);
   safe_time_service_ = std::make_unique<XClusterSafeTimeService>(
       &master_, &catalog_manager_, master_.metric_registry());
-  RETURN_NOT_OK(safe_time_service_->Init());
 
   return Status::OK();
 }
@@ -172,8 +171,7 @@ Result<HybridTime> XClusterTargetManager::GetXClusterSafeTime(
   return HybridTime(l->pb.safe_time_map().at(namespace_id));
 }
 
-Result<XClusterNamespaceToSafeTimeMap> XClusterTargetManager::GetXClusterNamespaceToSafeTimeMap()
-    const {
+XClusterNamespaceToSafeTimeMap XClusterTargetManager::GetXClusterNamespaceToSafeTimeMap() const {
   XClusterNamespaceToSafeTimeMap result;
   auto l = safe_time_info_.LockForRead();
 

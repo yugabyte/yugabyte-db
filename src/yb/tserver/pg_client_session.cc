@@ -1575,7 +1575,7 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
   auto xcluster_safe_time = VERIFY_RESULT(xcluster_context_->GetSafeTime(namespace_id));
   if (!xcluster_safe_time) {
     // No xCluster safe time for this namespace.
-      return Status::OK();
+    return Status::OK();
   }
 
   RSTATUS_DCHECK(
@@ -2355,7 +2355,7 @@ client::YBSessionPtr& PgClientSession::EnsureSession(
     session->SetDeadline(deadline);
   }
   if (read_time) {
-    // Set the read_time only for sequence YBSession. Other types of seesions set their read_time
+    // Set the read_time only for sequence YBSession. Other types of sessions set their read_time
     // differently.
     DCHECK(kind == PgClientSessionKind::kSequence);
     VLOG(4) << Format(

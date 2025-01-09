@@ -595,7 +595,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionSpanningMultipleBa
 
   ASSERT_OK(conn.ExecuteFormat("delete from $0", table_name_str));
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
   ASSERT_OK(DeleteUniverseReplication());
 }
 
@@ -758,7 +758,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, AddServerIntraTransaction) {
   // Sleep for half the duration of the workload (30s) to ensure that the workload is running before
   // adding a server.
   SleepFor(MonoDelta::FromSeconds(15));
-  ASSERT_OK(consumer_cluster()->AddTabletServer());
+  {
+    TEST_SetThreadPrefixScoped prefix_se("C");
+    ASSERT_OK(consumer_cluster()->AddTabletServer());
+  }
   ASSERT_OK(
       consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
 
@@ -925,7 +928,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensus
   }
 
   test_thread_holder.JoinAll();
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
   ASSERT_OK(DeleteUniverseReplication());
 }
 
@@ -2063,8 +2066,7 @@ TEST_F(XClusterYsqlTest, ValidateSchemaPackingGCDuringNetworkPartition) {
     }
   }
 
-  ASSERT_OK(VerifyWrittenRecords(
-      producer_table_, consumer_table_, /*verify_column_count_match=*/false));
+  ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
 }
 
 void PrepareChangeRequest(
@@ -2752,7 +2754,7 @@ TEST_F(XClusterYsqlTest, InsertUpdateDeleteTransactionsWithUnevenTabletPartition
     ASSERT_OK(p_conn.Execute("COMMIT"));
     }
 
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
 }
 
 Status XClusterYSqlTestConsistentTransactionsTest::RunInsertUpdateDeleteTransactionWithSplitTest(

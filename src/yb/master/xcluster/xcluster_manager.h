@@ -90,7 +90,7 @@ class XClusterManager : public XClusterManagerIf,
       const LeaderEpoch& epoch);
 
   // XCluster Safe Time.
-  Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap() const override;
+  XClusterNamespaceToSafeTimeMap GetXClusterNamespaceToSafeTimeMap() const override;
   Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) override;
   Status GetXClusterSafeTime(

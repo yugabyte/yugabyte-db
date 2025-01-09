@@ -39,7 +39,7 @@ class XClusterTargetManager {
   // XCluster Safe Time.
   void CreateXClusterSafeTimeTableAndStartService();
 
-  Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap() const;
+  XClusterNamespaceToSafeTimeMap GetXClusterNamespaceToSafeTimeMap() const;
 
   Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map);

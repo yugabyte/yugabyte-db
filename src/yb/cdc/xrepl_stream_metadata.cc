@@ -236,5 +236,12 @@ void StreamMetadata::StreamTabletMetadata::PopulateStats(xrepl::StreamTabletStat
   stats_history_.PopulateStats(stats);
 }
 
+std::string StreamMetadata::ToString() const {
+  std::lock_guard lock(mutex_);
+  return YB_CLASS_TO_STRING(
+      stream_id, namespace_id, (record_type, CDCRecordType_Name(record_type_)),
+      (source_type, CDCRequestSource_Name(source_type_)));
+}
+
 }  // namespace cdc
 }  // namespace yb

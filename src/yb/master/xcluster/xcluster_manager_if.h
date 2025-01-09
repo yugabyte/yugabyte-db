@@ -48,7 +48,7 @@ class XClusterManagerIf {
       const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
       const LeaderEpoch& epoch) const = 0;
   virtual Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) = 0;
-  virtual Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap() const = 0;
+  virtual XClusterNamespaceToSafeTimeMap GetXClusterNamespaceToSafeTimeMap() const = 0;
   virtual Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) = 0;
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace(
