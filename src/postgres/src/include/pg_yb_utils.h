@@ -299,8 +299,6 @@ extern void HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table);
  * is started. Reports errors using ereport.
  */
 extern void YBInitPostgresBackend(const char *program_name,
-								  const char *db_name,
-								  const char *user_name,
 								  uint64_t *session_id);
 
 /*

@@ -2504,6 +2504,37 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public CloneNamespaceResponse cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String targetKeyspaceName,
+      long cloneTimeInMillis)
+      throws Exception {
+    Deferred<CloneNamespaceResponse> d =
+        asyncClient.cloneNamespace(
+            databaseType, sourceKeyspaceName, targetKeyspaceName, cloneTimeInMillis);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public CloneNamespaceResponse cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String keyspaceId,
+      String targetKeyspaceName,
+      long cloneTimeInMillis)
+      throws Exception {
+    Deferred<CloneNamespaceResponse> d =
+        asyncClient.cloneNamespace(
+            databaseType, sourceKeyspaceName, keyspaceId, targetKeyspaceName, cloneTimeInMillis);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public ListClonesResponse listClones(String keyspaceId, Integer cloneSeqNo)
+      throws Exception {
+    Deferred<ListClonesResponse> d = asyncClient.listClones(keyspaceId, cloneSeqNo);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   public ValidateReplicationInfoResponse validateReplicationInfo(
       ReplicationInfoPB replicationInfoPB) throws Exception {
     Deferred<ValidateReplicationInfoResponse> d =

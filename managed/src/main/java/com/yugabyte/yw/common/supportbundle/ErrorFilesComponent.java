@@ -6,13 +6,16 @@ import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -67,5 +70,22 @@ class ErrorFilesComponent implements SupportBundleComponent {
       NodeDetails node)
       throws Exception {
     this.downloadComponent(supportBundleTaskParams, customer, universe, bundlePath, node);
+  }
+
+  // This component collects two files only, so instead of getting the actual file
+  // sizes from db nodes just adding 5KB for each file. Shouldn't affect end
+  // result too much.
+  public Map<String, Long> getFilesListWithSizes(
+      Customer customer,
+      SupportBundleFormData bundleData,
+      Universe universe,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
+
+    Map<String, Long> res = new HashMap<>();
+    res.put("Sample File", 10000L);
+    return res;
   }
 }

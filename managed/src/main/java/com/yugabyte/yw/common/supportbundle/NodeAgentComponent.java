@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
@@ -15,11 +16,12 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
@@ -47,37 +49,23 @@ public class NodeAgentComponent implements SupportBundleComponent {
       Path bundlePath,
       NodeDetails node)
       throws Exception {
-    if (node.cloudInfo == null || StringUtils.isBlank(node.cloudInfo.private_ip)) {
-      log.info("Skipping node-agent log download as node IP is not available");
+    Map<String, Long> logsPathSizeMap =
+        getFilesListWithSizes(customer, null, universe, null, null, node);
+    if (logsPathSizeMap.isEmpty()) {
       return;
     }
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
-    if (!optional.isPresent()) {
-      log.info("Skipping node-agent log download as node-agent is not installed");
-      return;
-    }
     Path nodeAgentHome = Paths.get(optional.get().getHome());
     // Get target file path
     String nodeName = node.getNodeName();
     Path nodeTargetFile = Paths.get(bundlePath.toString(), getClass().getSimpleName() + ".tar.gz");
     log.debug(
-        "Gathering universe logs for node: {}, source path: {}, target path: {} ",
+        "Gathering node agent logs for node: {}, source path: {}, target path: {} ",
         nodeName,
         nodeAgentHome,
         nodeTargetFile);
-    Path nodeAgentLogDirPath = nodeAgentHome.resolve("logs");
-    if (!nodeUniverseManager.checkNodeIfFileExists(
-        node, universe, nodeAgentLogDirPath.toString())) {
-      log.info("Skipping node-agent log download as {} does not exists", nodeAgentLogDirPath);
-      return;
-    }
     List<Path> nodeAgentLogFilePaths =
-        nodeUniverseManager.getNodeFilePaths(
-            node, universe, nodeAgentLogDirPath.toString(), /*maxDepth*/ 1, /*fileType*/ "f");
-    if (CollectionUtils.isEmpty(nodeAgentLogFilePaths)) {
-      log.info("Skipping node-agent log download as no file exists in {}", nodeAgentLogDirPath);
-      return;
-    }
+        logsPathSizeMap.keySet().stream().map(Paths::get).collect(Collectors.toList());
     // Relativize from the parent to include node-agent folder in the tgz.
     Path nodeAgentHomeParent = nodeAgentHome.getParent();
     List<String> relativeLogFilePaths =
@@ -111,5 +99,36 @@ public class NodeAgentComponent implements SupportBundleComponent {
       throws Exception {
     // Simply return all the logs files as this method is just an overkill for now.
     downloadComponent(supportBundleTaskParams, customer, universe, bundlePath, node);
+  }
+
+  public Map<String, Long> getFilesListWithSizes(
+      Customer customer,
+      SupportBundleFormData bundleData,
+      Universe universe,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
+    Map<String, Long> res = new HashMap<>();
+    if (node.cloudInfo == null || StringUtils.isBlank(node.cloudInfo.private_ip)) {
+      log.info("Skipping node-agent log download as node IP is not available");
+      return res;
+    }
+    Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
+    if (!optional.isPresent()) {
+      log.info("Skipping node-agent log download as node-agent is not installed");
+      return res;
+    }
+    Path nodeAgentHome = Paths.get(optional.get().getHome());
+    Path nodeAgentLogDirPath = nodeAgentHome.resolve("logs");
+    if (!nodeUniverseManager.checkNodeIfFileExists(
+        node, universe, nodeAgentLogDirPath.toString())) {
+      log.info("Skipping node-agent log download as {} does not exists", nodeAgentLogDirPath);
+      return res;
+    }
+    res =
+        nodeUniverseManager.getNodeFilePathAndSizes(
+            node, universe, nodeAgentLogDirPath.toString(), /* maxDepth */ 1, /* fileType */ "f");
+    return res;
   }
 }

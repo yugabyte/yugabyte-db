@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesCluster;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
+import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -451,5 +452,21 @@ class K8sInfoComponent implements SupportBundleComponent {
       NodeDetails node)
       throws Exception {
     this.downloadComponent(supportBundleTaskParams, customer, universe, bundlePath, node);
+  }
+
+  // This component collects few yaml conf files only, so instead of getting the actual file
+  // sizes from db nodes just adding 300KB. Shouldn't affect end
+  // result too much.
+  public Map<String, Long> getFilesListWithSizes(
+      Customer customer,
+      SupportBundleFormData bundleData,
+      Universe universe,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
+    Map<String, Long> res = new HashMap<String, Long>();
+    res.put("default value", 300000L);
+    return res;
   }
 }

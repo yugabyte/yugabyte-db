@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
@@ -70,6 +71,7 @@ public class UniverseYbDbAdminHandler {
   @Inject PasswordPolicyService policyService;
   @Inject RuntimeConfGetter confGetter;
   @Inject UniverseTableHandler tableHandler;
+  @Inject GFlagsValidation gFlagsValidation;
 
   public UniverseYbDbAdminHandler() {}
 
@@ -264,6 +266,8 @@ public class UniverseYbDbAdminHandler {
     }
     // Verify request params
     requestParams.verifyParams(universe, true);
+    gFlagsValidation.validateConnectionPoolingGflags(
+        universe, requestParams.connectionPoolingGflags);
     requestParams.validatePassword(policyService);
     requestParams.validateYSQLTables(universe, tableHandler);
     TaskType taskType =

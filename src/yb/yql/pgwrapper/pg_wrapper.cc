@@ -1104,6 +1104,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
   CHECK_NE(conf_.tserver_shm_fd, -1);
   proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
+  proc->SetEnv("FLAGS_log_dir", FLAGS_log_dir);
 #ifdef OS_MACOSX
   // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
   if (getenv("LC_ALL") == nullptr) {

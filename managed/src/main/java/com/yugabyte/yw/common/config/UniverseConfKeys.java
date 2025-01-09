@@ -950,6 +950,24 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "to be created; otherwise, it will fail the operation",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> pitrClonePollDelay =
+      new ConfKeyInfo<>(
+          "yb.pitr.clone_poll_delay",
+          ScopeType.UNIVERSE,
+          "The delay before the next poll of the clone namespace creation status",
+          "It is the delay after which the clone namespace subtask rechecks the status of the"
+              + " clone namespace creation in each iteration",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> pitrCloneTimeout =
+      new ConfKeyInfo<>(
+          "yb.pitr.clone_timeout",
+          ScopeType.UNIVERSE,
+          "The timeout for cloning a namespace",
+          "It is the maximum time that the clone namespace subtask waits for the clone "
+              + "to be created; otherwise, it will fail the operation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",

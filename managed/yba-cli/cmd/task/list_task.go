@@ -42,7 +42,7 @@ var listTaskCmd = &cobra.Command{
 			}
 			if len(r) < 1 {
 				if util.IsOutputType(formatter.TableFormatKey) {
-					logrus.Info("No universes with name "+universeName+" found\n")
+					logrus.Info("No universes with name " + universeName + " found\n")
 				} else {
 					logrus.Info("[]\n")
 				}

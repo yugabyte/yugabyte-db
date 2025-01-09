@@ -17,7 +17,6 @@ import com.yugabyte.yw.models.Universe;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
@@ -81,7 +80,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDownloadComponentBetweenDatesTillCurrentDay() throws IOException, ParseException {
+  public void testDownloadComponentBetweenDatesTillCurrentDay() throws Exception {
     // Define start and end dates to filter
     Date startDate = dateFormat.parse("2022-03-06");
     Date endDate = mockSupportBundleUtil.getTodaysDate();
@@ -109,7 +108,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDownloadComponentBetweenDatesWithOlderDates() throws IOException, ParseException {
+  public void testDownloadComponentBetweenDatesWithOlderDates() throws Exception {
     // Define start and end dates to filter
     Date startDate = dateFormat.parse("2022-03-06");
     Date endDate = dateFormat.parse("2022-03-07");
@@ -133,7 +132,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDownloadComponentBetweenDatesPartialBounds() throws IOException, ParseException {
+  public void testDownloadComponentBetweenDatesPartialBounds() throws Exception {
     // Define start and end dates to filter
     Date startDate = dateFormat.parse("2022-03-01");
     Date endDate = dateFormat.parse("2022-03-05");
@@ -156,7 +155,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDownloadComponentBetweenDatesOutOfBounds() throws IOException, ParseException {
+  public void testDownloadComponentBetweenDatesOutOfBounds() throws Exception {
     // Define start and end dates to filter
     Date startDate = dateFormat.parse("2022-03-01");
     Date endDate = dateFormat.parse("2022-03-03");

@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
@@ -43,14 +44,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
-import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.time.DateUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -60,7 +59,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Inject private UniverseInfoHandler universeInfoHandler;
   @Inject private SupportBundleComponentFactory supportBundleComponentFactory;
   @Inject private SupportBundleUtil supportBundleUtil;
-  @Inject private Config config;
+  @Inject private Config staticConfig;
   @Inject private NodeUniverseManager nodeUniverseManager;
   @Inject RuntimeConfGetter confGetter;
 
@@ -113,30 +112,10 @@ public class CreateSupportBundle extends AbstractTaskBase {
     Files.createDirectories(bundlePath);
     log.debug("Fetching Universe {} logs", universe.getName());
 
-    // Simplified the following 4 cases to extract appropriate start and end date
-    // 1. If both of the dates are given and valid
-    // 2. If only the start date is valid, filter from startDate till the end
-    // 3. If only the end date is valid, filter from the beginning till endDate
-    // 4. Default : If no dates are specified, download all the files from last n days
-    Date startDate, endDate;
-    boolean startDateIsValid = supportBundleUtil.isValidDate(supportBundle.getStartDate());
-    boolean endDateIsValid = supportBundleUtil.isValidDate(supportBundle.getEndDate());
-    if (!startDateIsValid && !endDateIsValid) {
-      int default_date_range = config.getInt("yb.support_bundle.default_date_range");
-      endDate = supportBundleUtil.getTodaysDate();
-      startDate =
-          DateUtils.truncate(
-              supportBundleUtil.getDateNDaysAgo(endDate, default_date_range),
-              Calendar.DAY_OF_MONTH);
-    } else {
-      // Strip the date object of the time and set only the date.
-      // This will ensure that we collect files inclusive of the start date.
-      startDate =
-          startDateIsValid
-              ? DateUtils.truncate(supportBundle.getStartDate(), Calendar.DAY_OF_MONTH)
-              : new Date(Long.MIN_VALUE);
-      endDate = endDateIsValid ? supportBundle.getEndDate() : new Date(Long.MAX_VALUE);
-    }
+    Pair<Date, Date> datePair =
+        supportBundleUtil.getValidStartAndEndDates(
+            staticConfig, supportBundle.getStartDate(), supportBundle.getEndDate());
+    Date startDate = datePair.getFirst(), endDate = datePair.getSecond();
 
     // Add the supportBundle metadata into the bundle
     try {

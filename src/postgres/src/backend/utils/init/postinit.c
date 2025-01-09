@@ -839,9 +839,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 	/* Connect to YugaByte cluster. */
 	if (bootstrap)
-		YBInitPostgresBackend("postgres", "", username, yb_session_id);
+		YBInitPostgresBackend("postgres", yb_session_id);
 	else
-		YBInitPostgresBackend("postgres", in_dbname, username, yb_session_id);
+		YBInitPostgresBackend("postgres", yb_session_id);
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{

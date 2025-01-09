@@ -4899,7 +4899,7 @@ class ControlScript(object):
         status_details = []
         status_display_info = {}
 
-        # Case Scenario: When each AZ/region has only 1 node. (Most happy path)
+        # Case Scenario: When each AZ/region has only 1 node. (Happiest path)
         if len(placement_location_map) == replication_factor:
             final_status = ""
             ft_status = ""

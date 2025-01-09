@@ -31,6 +31,9 @@ import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonNet.CloudInfoPB;
+import org.yb.CommonNet.PlacementBlockPB;
+import org.yb.CommonNet.PlacementInfoPB;
+import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ProtobufHelper;
 import org.yb.client.YBClient;
@@ -109,8 +112,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
       this.targetClusterStates = targetClusterStates;
     }
 
-    public void generatePlacementInfoPB(
-        CatalogEntityInfo.PlacementInfoPB.Builder placementInfoPB, Cluster cluster) {
+    public void generatePlacementInfoPB(PlacementInfoPB.Builder placementInfoPB, Cluster cluster) {
       PlacementInfo placementInfo = cluster.placementInfo;
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
         Provider cloud = Provider.find.byId(placementCloud.uuid);
@@ -124,8 +126,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
                 .setPlacementRegion(region.getCode())
                 .setPlacementZone(az.getCode());
 
-            CatalogEntityInfo.PlacementBlockPB.Builder pbb =
-                CatalogEntityInfo.PlacementBlockPB.newBuilder();
+            PlacementBlockPB.Builder pbb = PlacementBlockPB.newBuilder();
             // Set the cloud info.
             pbb.setCloudInfo(ccb);
             // Set the minimum number of replicas in this PlacementAZ.
@@ -140,8 +141,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
     }
 
     public void addAffinitizedPlacements(
-        CatalogEntityInfo.ReplicationInfoPB.Builder replicationInfoPB,
-        PlacementInfo placementInfo) {
+        ReplicationInfoPB.Builder replicationInfoPB, PlacementInfo placementInfo) {
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
         Provider cloud = Provider.find.byId(placementCloud.uuid);
         for (PlacementRegion placementRegion : placementCloud.regionList) {
@@ -180,11 +180,10 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
           CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder(config);
 
       // Clear the replication info, as it is no longer valid.
-      CatalogEntityInfo.ReplicationInfoPB.Builder replicationInfoPB =
+      ReplicationInfoPB.Builder replicationInfoPB =
           configBuilder.clearReplicationInfo().getReplicationInfoBuilder();
       // Build the live replicas from the replication info.
-      CatalogEntityInfo.PlacementInfoPB.Builder placementInfoPB =
-          replicationInfoPB.getLiveReplicasBuilder();
+      PlacementInfoPB.Builder placementInfoPB = replicationInfoPB.getLiveReplicasBuilder();
       // Create the placement info for the universe.
       Cluster primaryCluster =
           getTargetClusterState(universe.getUniverseDetails().getPrimaryCluster());
@@ -194,8 +193,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
 
       List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
       for (Cluster cluster : readOnlyClusters) {
-        CatalogEntityInfo.PlacementInfoPB.Builder placementInfoReadPB =
-            replicationInfoPB.addReadReplicasBuilder();
+        PlacementInfoPB.Builder placementInfoReadPB = replicationInfoPB.addReadReplicasBuilder();
         generatePlacementInfoPB(placementInfoReadPB, getTargetClusterState(cluster));
       }
 
