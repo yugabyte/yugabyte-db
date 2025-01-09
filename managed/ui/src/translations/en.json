@@ -95,7 +95,7 @@
     "dashboard": {
       "nodeAgentReminderBanner": {
         "primaryText": "Automatic installation of node agent failed on some nodes.",
-        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can to upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>To proceed, verify the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph>",
+        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>To proceed, verify the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph>",
         "reinstallNodeAgentButton": "Reinstall Node Agents"
       }
     },
@@ -1658,8 +1658,8 @@
     },
     "nodeAgent": {
       "title": "Node Agents",
-      "assignedNodesTitle": "In-Use Nodes",
-      "unassignedNodesTitle": "Not-In-Use Nodes",
+      "assignedNodesTitle": "Deployed Nodes",
+      "unassignedNodesTitle": "Free Nodes",
       "viewDetailsButton": "View Details",
       "unreachableInstanceAgents": "Instance agents are unreachable",
       "contactSupport": "Contact Support",
@@ -1667,7 +1667,7 @@
       "delete": "Delete",
       "deleteNodeAgent": "Delete Node Agent",
       "confirmDeletionMessage": "Are you sure you want to delete the Node Agent associated with the provider {{provider_name}} ?",
-      "errorStatusFilterCheckbox": "Show only agents with error statues",
+      "errorStatusFilterCheckbox": "Show only agents with error status",
       "runtimeConfig": {
         "nodeAgentClientEnabledWarning": "Disabling this runtime configuration will prevent you from upgrading YugabyteDB Anywhere to future major versions."
       },
