@@ -721,7 +721,7 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* para
   read_req_->mutable_partition_column_values()->clear();
   read_req_->mutable_range_column_values()->clear();
   RETURN_NOT_OK(InitDocOp(params, /* is_concrete_row_read = */ true));
-  return UpdateRequestWithYbctids(ybctids);
+  return UpdateRequestWithYbctids(ybctids, KeepOrder(read_req_->has_is_forward_scan()));
 }
 
 // Function builds vector of ybctids from primary key binds.
