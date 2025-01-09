@@ -3867,6 +3867,7 @@ class ControlScript(object):
                     # Handle simple flags
                     yb_tserver_cmd.append("--{}".format(tserver_flag))
 
+        # Add authentication flags in tserver process
         if self.configs.saved_data.get("secure"):
             hba_conf_updated = False
             for i, flag in enumerate(yb_tserver_cmd):
@@ -9510,7 +9511,7 @@ class YBAdminProxy(object):
             return None
 
         matches = re.findall(r'\[(.*?)\]', out)
-        replication_ids = matches[0].split(',')
+        replication_ids = [replication_id.strip() for replication_id in matches[0].split(',')]
 
         return replication_ids
 
