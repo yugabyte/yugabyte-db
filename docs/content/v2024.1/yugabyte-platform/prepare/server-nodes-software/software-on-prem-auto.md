@@ -1,12 +1,12 @@
 ---
 title: YugabyteDB Anywhere on-premises node provisioning
-headerTitle: Provision on-premises nodes
-linkTitle: Provision nodes
+headerTitle: Legacy provisioning
+linkTitle: Legacy provisioning
 description: Software requirements for on-premises provider nodes.
 headContent: How to meet the software prerequisites for database nodes
 menu:
   v2024.1_yugabyte-platform:
-    identifier: software-on-prem-1-auto
+    identifier: software-on-prem-2-auto
     parent: software-on-prem
     weight: 10
 type: docs
@@ -41,11 +41,11 @@ type: docs
   </li>
 </ul>
 
-When YBA has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
+When YugabyteDB Anywhere (YBA) has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
 
 ## With Internet or Yum connectivity
 
-If your VM has Internet or Yum connectivity, you must provide to YBA a VM with the following pre-installed:
+If your VM has Internet or Yum connectivity, you must provide a VM with the following pre-installed:
 
 - [Supported Linux OS](../#linux-os) with an SSH-enabled, root-privileged user. YBA uses this user to automatically perform additional Linux configuration, such as creating the `yugabyte` user, updating the file descriptor settings via ulimits, and so on.
 - [Additional software](../#additional-software)

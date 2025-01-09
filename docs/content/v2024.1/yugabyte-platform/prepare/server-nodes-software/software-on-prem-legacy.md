@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB Anywhere on-premises node provisioning
-headerTitle: Provision on-premises nodes
-linkTitle: Provision nodes
+headerTitle: Legacy provisioning
+linkTitle: Legacy provisioning
 description: Software requirements for on-premises provider nodes.
 headContent: How to meet the software prerequisites for database nodes
 menu:
@@ -41,7 +41,7 @@ type: docs
   </li>
 </ul>
 
-How you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere to provision nodes.
+For legacy provisioning, how you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere to provision nodes.
 
 | SSH mode | Description | Notes | For more details |
 | :--- | :--- | :--- | :--- |
