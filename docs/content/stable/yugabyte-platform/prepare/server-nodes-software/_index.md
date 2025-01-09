@@ -10,6 +10,7 @@ menu:
     parent: server-nodes
     weight: 20
 type: indexpage
+showRightNav: true
 ---
 
 The Linux OS and other software components on each database cluster node must meet the following minimum software requirements.
@@ -17,7 +18,7 @@ The Linux OS and other software components on each database cluster node must me
 Depending on the [provider type](../../yba-overview/#provider-configurations) and permissions you grant, you may have to install all of these requirements manually, or YugabyteDB Anywhere will install it all automatically.
 
 {{< warning title="Using disk encryption software with YugabyteDB" >}}
-If you are using third party disk encryption software, such as Vormetric or CipherTrust, the disk encryption service must be up and running on the node before starting any YugabyteDB services. If YugabyteDB processes start _before_ the encryption service, restarting an already encrypted node can result in data corruption.
+If you are using third party disk encryption software (such as Vormetric or CipherTrust), the disk encryption service must be up and running on the node before starting any YugabyteDB services. If YugabyteDB processes start _before_ the encryption service, restarting an already encrypted node can result in data corruption.
 
 To avoid problems, [pause the universe](../../manage-deployments/delete-universe/#pause-a-universe) _before_ enabling or disabling the disk encryption service on universe nodes.
 {{< /warning >}}
@@ -32,17 +33,34 @@ AlmaLinux OS 8 disk images are used by default, but you can specify a custom dis
 
 YugabyteDB Anywhere requires the following additional software to be pre-installed on nodes:
 
-- Python 3.6-3.8
-- Install the python selinux package corresponding to your version of python. For example, using pip, you can install as follows:
-
-  `python3 -m pip install selinux`
-
-  Alternately, if you are using the default version of python3, you might be able to install the python3-libselinux package.
-
 - OpenSSH Server. Allowing SSH is recommended but optional. Using SSH can be skipped in some on-premises deployment approaches; all other workflows require it. [Tectia SSH](../../create-deployments/connect-to-universe/#enable-tectia-ssh) is also supported.
 - tar
 - unzip
 - policycoreutils-python-utils
+
+#### Python
+
+Python 3.8-3.9 must be installed on the nodes.
+
+Install the python selinux package corresponding to your version of python. You can use pip to do this. Ensure the version of pip matches the version of Python.
+
+For example, you can install Python as follows:
+
+```sh
+sudo yum install python38
+sudo pip3.8 install selinux
+sudo ln -s /usr/bin/python3.8 /usr/bin/python
+sudo rm /usr/bin/python3
+sudo ln -s /usr/bin/python3.8 /usr/bin/python3
+python3 -c "import selinux; import sys; print(sys.version)"
+```
+
+```output
+> 3.8.19 (main, Sep 11 2024, 00:00:00)
+> [GCC 11.5.0 20240719 (Red Hat 11.5.0-2)]
+```
+
+Alternately, if you are using the default version of python3, you might be able to install the python3-libselinux package.
 
 ### Additional software for airgapped deployment
 
