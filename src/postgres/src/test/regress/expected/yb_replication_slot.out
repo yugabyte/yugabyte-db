@@ -23,17 +23,24 @@ SELECT * FROM pg_create_logical_replication_slot('testslot_test_decoding', 'test
  testslot_test_decoding | 0/2
 (1 row)
 
+SELECT * FROM pg_create_logical_replication_slot('testslot_hybrid_time', 'yboutput', false, false, 'HYBRID_TIME');
+      slot_name       | lsn
+----------------------+-----
+ testslot_hybrid_time | 0/2
+(1 row)
+
 -- Cannot do SELECT * since yb_stream_id, yb_restart_commit_ht changes across runs.
 SELECT slot_name, plugin, slot_type, database, temporary, active,
-    active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn
+    active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn, yb_lsn_type
 FROM pg_replication_slots
 ORDER BY slot_name;
-       slot_name        |    plugin     | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn
-------------------------+---------------+-----------+----------+-----------+--------+------------+------+--------------+-------------+---------------------
- testslot1              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2
- testslot2              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2
- testslot_test_decoding | test_decoding | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2
-(3 rows)
+       slot_name        |    plugin     | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn | yb_lsn_type
+------------------------+---------------+-----------+----------+-----------+--------+------------+------+--------------+-------------+---------------------+-------------
+ testslot1              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | SEQUENCE
+ testslot2              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | SEQUENCE
+ testslot_hybrid_time   | yboutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | HYBRID_TIME
+ testslot_test_decoding | test_decoding | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | SEQUENCE
+(4 rows)
 
 -- drop the replication slot and create with same name again.
 SELECT * FROM pg_drop_replication_slot('testslot1');
@@ -94,6 +101,12 @@ SELECT * FROM pg_drop_replication_slot('testslot3');
 (1 row)
 
 SELECT * FROM pg_drop_replication_slot('testslot_test_decoding');
+ pg_drop_replication_slot
+--------------------------
+
+(1 row)
+
+SELECT * FROM pg_drop_replication_slot('testslot_hybrid_time');
  pg_drop_replication_slot
 --------------------------
 

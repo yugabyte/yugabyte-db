@@ -50,6 +50,7 @@
 #include "yb/server/clockbound_clock.h"
 #include "yb/server/skewed_clock.h"
 
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/util/atomic.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
@@ -73,6 +74,7 @@
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/util/pg_wire.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
@@ -165,6 +167,10 @@ DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 
 DECLARE_bool(use_fast_backward_scan);
+
+/* Constants for replication slot LSN types */
+const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
+const std::string YBC_LSN_TYPE_HYBRID_TIME = "HYBRID_TIME";
 
 namespace {
 
@@ -477,6 +483,20 @@ Status YBCGetTableKeyRangesImpl(
   }
 
   return Status::OK();
+}
+
+static Result<std::string> GetYbLsnTypeString(
+    const tserver::PGReplicationSlotLsnType yb_lsn_type, const std::string& stream_id) {
+  switch (yb_lsn_type) {
+    case tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE:
+      return YBC_LSN_TYPE_SEQUENCE;
+    case tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_HYBRID_TIME:
+      return YBC_LSN_TYPE_HYBRID_TIME;
+    default:
+      LOG(ERROR) << "Received unexpected LSN type " << yb_lsn_type << " for stream " << stream_id;
+      return STATUS_FORMAT(
+          InternalError, "Received unexpected LSN type $0 for stream $1", yb_lsn_type, stream_id);
+  }
 }
 
 inline YBCPgExplicitRowLockStatus MakePgExplicitRowLockStatus() {
@@ -2352,6 +2372,11 @@ YBCStatus YBCPgListReplicationSlots(
         replica_identity_idx++;
       }
 
+      auto lsn_type_result = GetYbLsnTypeString(info.yb_lsn_type(), info.stream_id());
+      if (!lsn_type_result.ok()) {
+        return ToYBCStatus(lsn_type_result.status());
+      }
+
       new (dest) YBCReplicationSlotDescriptor{
           .slot_name = YBCPAllocStdString(info.slot_name()),
           .output_plugin = YBCPAllocStdString(info.output_plugin_name()),
@@ -2364,7 +2389,8 @@ YBCStatus YBCPgListReplicationSlots(
           .record_id_commit_time_ht = info.record_id_commit_time_ht(),
           .replica_identities = replica_identities,
           .replica_identities_count = replica_identities_count,
-          .last_pub_refresh_time = info.last_pub_refresh_time()
+          .last_pub_refresh_time = info.last_pub_refresh_time(),
+          .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get())
       };
       ++dest;
     }
@@ -2400,6 +2426,11 @@ YBCStatus YBCPgGetReplicationSlot(
     replica_identity_idx++;
   }
 
+  auto lsn_type_result = GetYbLsnTypeString(slot_info.yb_lsn_type(), slot_info.stream_id());
+  if (!lsn_type_result.ok()) {
+    return ToYBCStatus(lsn_type_result.status());
+  }
+
   new (*replication_slot) YBCReplicationSlotDescriptor{
       .slot_name = YBCPAllocStdString(slot_info.slot_name()),
       .output_plugin = YBCPAllocStdString(slot_info.output_plugin_name()),
@@ -2412,7 +2443,8 @@ YBCStatus YBCPgGetReplicationSlot(
       .record_id_commit_time_ht = slot_info.record_id_commit_time_ht(),
       .replica_identities = replica_identities,
       .replica_identities_count = replica_identities_count,
-      .last_pub_refresh_time = slot_info.last_pub_refresh_time()
+      .last_pub_refresh_time = slot_info.last_pub_refresh_time(),
+      .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get())
   };
 
   return YBCStatusOK();
