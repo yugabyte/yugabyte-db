@@ -828,7 +828,7 @@ class PgApiImpl {
   [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);
 
-  void ForceAllowCatalogModifications(bool allowed);
+  void DdlEnableForceCatalogModification();
 
   //----------------------------------------------------------------------------------------------
   // Advisory Locks.

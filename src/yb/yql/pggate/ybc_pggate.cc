@@ -2880,8 +2880,8 @@ YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle) {
   return ToYBCStatus(pgapi->RestoreReadTimePoint(read_time_point_handle));
 }
 
-void YBCForceAllowCatalogModifications(bool allowed) {
-  pgapi->ForceAllowCatalogModifications(allowed);
+void YBCDdlEnableForceCatalogModification() {
+  pgapi->DdlEnableForceCatalogModification();
 }
 
 uint64_t YBCGetCurrentHybridTimeLsn() {

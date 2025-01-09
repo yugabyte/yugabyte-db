@@ -47,6 +47,7 @@
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 using namespace std::literals;
 
@@ -228,6 +229,16 @@ Status UpdateReadTime(tserver::PgPerformOptionsPB* options, const ReadHybridTime
   }
   actual_read_time->AddToPB(options);
   return Status::OK();
+}
+
+void ApplyForceCatalogModification(PgsqlReadOp& op) {
+
+}
+
+void ApplyForceCatalogModification(PgsqlOp& op) {
+  if (op.is_write()) {
+    down_cast<PgsqlWriteOp&>(op).write_request().set_force_catalog_modifications(true);
+  }
 }
 
 } // namespace
@@ -1040,20 +1051,30 @@ Result<PerformFuture> PgSession::DoRunAsync(
   RunHelper runner(
       this, group_session_type, in_txn_limit, force_non_bufferable,
       ForceFlushBeforeNonBufferableOp{multiple_ops_for_processing});
-  const auto is_ddl = pg_txn_manager_->IsDdlMode();
-  auto processor = [this, &runner, is_ddl, group_session_type,
-                    non_ddl_txn_for_sys_tables_allowed](const auto& table_op) -> Status {
-    DCHECK(!table_op.IsEmpty());
-    const auto& table = *table_op.table;
-    const auto& op = *table_op.operation;
-    const auto session_type = VERIFY_RESULT(GetRequiredSessionType(
-        *pg_txn_manager_, table, *op, non_ddl_txn_for_sys_tables_allowed));
-    RSTATUS_DCHECK_EQ(
-        session_type, group_session_type,
-        IllegalState, "Operations on different sessions can't be mixed");
-    has_write_ops_in_ddl_mode_ = has_write_ops_in_ddl_mode_ || (is_ddl && !IsReadOnly(*op));
-    return runner.Apply(table, op);
-  };
+  const auto ddl_force_catalog_mod_opt = pg_txn_manager_->GetDdlForceCatalogModification();
+  auto processor =
+      [this,
+       is_ddl = ddl_force_catalog_mod_opt.has_value(),
+       force_catalog_modification = is_major_pg_version_upgrade_ ||
+                                    ddl_force_catalog_mod_opt.value_or(false) ||
+                                    YBIsMajorUpgradeInitDb(),
+       group_session_type, &runner, non_ddl_txn_for_sys_tables_allowed](const auto& table_op) {
+        DCHECK(!table_op.IsEmpty());
+        const auto& table = *table_op.table;
+        const auto& op = *table_op.operation;
+        const auto session_type = VERIFY_RESULT(GetRequiredSessionType(
+            *pg_txn_manager_, table, *op, non_ddl_txn_for_sys_tables_allowed));
+        RSTATUS_DCHECK_EQ(
+            session_type, group_session_type,
+            IllegalState, "Operations on different sessions can't be mixed");
+        if (force_catalog_modification &&
+            table.schema().table_properties().is_ysql_catalog_table()) {
+          ApplyForceCatalogModification(*op);
+        }
+        has_write_ops_in_ddl_mode_ =
+            has_write_ops_in_ddl_mode_ || (is_ddl && !IsReadOnly(*op));
+        return runner.Apply(table, op);
+    };
   RETURN_NOT_OK(processor(first_table_op));
   for (; !table_op.IsEmpty(); table_op = generator()) {
     RETURN_NOT_OK(processor(table_op));
@@ -1194,10 +1215,6 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
   req.set_session_id(pg_client_.SessionID());
   req.set_db_oid(db_oid);
   return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());
-}
-
-void PgSession::SetForceAllowCatalogModifications(bool allowed) {
-  force_allow_catalog_modifications_ = allowed;
 }
 
 }  // namespace yb::pggate

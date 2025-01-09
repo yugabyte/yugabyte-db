@@ -482,7 +482,7 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   RSTATUS_DCHECK(!IsDdlMode(), IllegalState,
                  "EnterSeparateDdlTxnMode called when already in a DDL transaction");
   VLOG_TXN_STATE(2);
-  ddl_mode_.emplace();
+  ddl_state_.emplace();
   VLOG_TXN_STATE(2);
   return Status::OK();
 }
@@ -503,42 +503,57 @@ Status PgTxnManager::ExitSeparateDdlTxnMode(const std::optional<DdlCommitInfo>& 
         !commit_info, IllegalState, "Commit ddl txn called when not in a DDL transaction");
     return Status::OK();
   }
-  decltype(ddl_mode_) ddl_mode;
-  ddl_mode = ddl_mode_;
-  if (commit_info && commit_info->is_silent_altering) {
-    ddl_mode->silently_altered_db = commit_info->db_oid;
-  }
 
-  Commit commit = commit_info ? Commit::kTrue : Commit::kFalse;
-  Status status = client_->FinishTransaction(commit, ddl_mode);
+  const auto commit = commit_info ? Commit::kTrue : Commit::kFalse;
+  const auto status = client_->FinishTransaction(
+      commit,
+      DdlMode {
+          .has_docdb_schema_changes = ddl_state_->has_docdb_schema_changes,
+          .silently_altered_db =
+              commit_info && commit_info->is_silent_altering
+                  ? std::optional(commit_info->db_oid) : std::nullopt
+          });
   WARN_NOT_OK(status, Format("Failed to $0 DDL transaction", commit ? "commit" : "abort"));
   if (PREDICT_TRUE(status.ok() || !commit)) {
     // In case of an abort, reset the DDL mode here as we may later re-enter this function and retry
     // the abort as part of transaction error recovery if the status is not ok.
-    ddl_mode_.reset();
+    ddl_state_.reset();
   }
 
   return status;
 }
 
-void PgTxnManager::SetDdlHasSyscatalogChanges() {
-  if (IsDdlMode()) {
-    ddl_mode_->has_docdb_schema_changes = true;
+void PgTxnManager::DdlEnableForceCatalogModification() {
+  if (PREDICT_FALSE(!ddl_state_)) {
+    LOG(DFATAL) << "Unexpected call of " << __PRETTY_FUNCTION__ << " outside DDL";
     return;
   }
-  // There are only 2 cases where we may be performing DocDB schema changes outside of DDL mode:
-  // 1. During initdb, when we do not use a transaction at all.
-  // 2. When yb_non_ddl_txn_for_sys_tables_allowed is set. Here we would use a regular transaction.
-  // has_docdb_schema_changes is mainly used for DDL atomicity, which is disabled for the PG
-  // system catalog tables. Both cases above are primarily used for modifying the system catalog,
-  // so there is no need to set this flag here.
-  DCHECK(YBCIsInitDbModeEnvVarSet() ||
-         (IsTxnInProgress() && yb_non_ddl_txn_for_sys_tables_allowed));
+
+  ddl_state_->force_catalog_modification = true;
+}
+
+void PgTxnManager::SetDdlHasSyscatalogChanges() {
+  if (PREDICT_FALSE(!ddl_state_)) {
+    // There are only 2 cases where we may be performing DocDB schema changes outside of DDL mode:
+    // 1. During initdb, when we do not use a transaction at all.
+    // 2. When yb_non_ddl_txn_for_sys_tables_allowed is set. We would use a regular transaction.
+    // has_docdb_schema_changes is mainly used for DDL atomicity, which is disabled for the PG
+    // system catalog tables. Both cases above are primarily used for modifying the system catalog,
+    // so there is no need to set this flag here.
+    LOG_IF(
+        DFATAL,
+        !(YBCIsInitDbModeEnvVarSet() ||
+          (IsTxnInProgress() && yb_non_ddl_txn_for_sys_tables_allowed)))
+        << "Unexpected call of " << __PRETTY_FUNCTION__ << " outside DDL";
+    return;
+  }
+
+  ddl_state_->has_docdb_schema_changes = true;
 }
 
 std::string PgTxnManager::TxnStateDebugStr() const {
   return YB_CLASS_TO_STRING(
-      ddl_mode,
+      ddl_state,
       read_only,
       deferrable,
       txn_in_progress,

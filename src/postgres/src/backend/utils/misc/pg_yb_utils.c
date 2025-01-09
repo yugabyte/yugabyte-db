@@ -1894,7 +1894,6 @@ YBResetDdlState()
 	}
 	ddl_transaction_state = (struct DdlTransactionState){0};
 	YBResetEnableSpecialDDLMode();
-	YBCForceAllowCatalogModifications(false);
 	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
 	HandleYBStatus(status);
 }
@@ -1926,7 +1925,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 
 		if (yb_force_catalog_update_on_next_ddl)
 		{
-			YBCForceAllowCatalogModifications(true);
+			YBCDdlEnableForceCatalogModification();
 			yb_force_catalog_update_on_next_ddl = false;
 			if (YbIsClientYsqlConnMgr())
 				YbSendParameterStatusForConnectionManager("yb_force_catalog_update_on_next_ddl",
@@ -2004,7 +2003,6 @@ YBDecrementDdlNestingLevel()
 
 		ddl_transaction_state = (DdlTransactionState) {};
 
-		YBCForceAllowCatalogModifications(false);
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(MyDatabaseId,
 												   is_silent_altering));
 
