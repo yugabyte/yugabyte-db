@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
@@ -190,14 +191,17 @@ public class CdcStreamManager {
         if (namespaceList == null) {
           namespaceList = client.getNamespacesList().getNamespacesList();
         }
-        NamespaceIdentifierPB namespaceIdentifier =
+        Optional<NamespaceIdentifierPB> namespaceIdentifierOptional =
             namespaceList.stream()
                 .filter(
                     namespace ->
                         namespace.getId().toStringUtf8().equals(streamInfo.getNamespaceId()))
-                .findFirst()
-                .get();
-        details.databaseName = namespaceIdentifier.getName();
+                .findFirst();
+        if (!namespaceIdentifierOptional.isEmpty()) {
+          details.databaseName = namespaceIdentifierOptional.get().getName();
+        } else {
+          LOG.warn("Namespace not found for namespaceId='{}'", streamInfo.getNamespaceId());
+        }
         result.replicationSlots.add(details);
       }
       return result;
