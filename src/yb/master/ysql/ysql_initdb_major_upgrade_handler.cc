@@ -475,47 +475,46 @@ Status YsqlInitDBAndMajorUpgradeHandler::TransitionMajorCatalogUpgradeState(
 
   bool ysql_major_upgrade_done = false;
 
-  auto update_config_func = [&](SysYSQLCatalogConfigEntryPB& pb) -> Status {
-    auto* ysql_major_catalog_upgrade_info = pb.mutable_ysql_major_catalog_upgrade_info();
-    const auto current_state = ysql_major_catalog_upgrade_info->state();
-    SCHECK_NE(
-        current_state, new_state, IllegalState,
-        Format("Major upgrade state already set to $0", new_state_str));
+  auto [l, pb] = ysql_catalog_config_.LockForWrite(epoch);
 
-    const auto current_state_str = YsqlMajorCatalogUpgradeInfoPB::State_Name(current_state);
+  auto* ysql_major_catalog_upgrade_info = pb.mutable_ysql_major_catalog_upgrade_info();
 
-    SCHECK_NE(
-        current_state_str, FLAGS_TEST_fail_ysql_catalog_upgrade_state_transition_from, IllegalState,
-        "Failed due to FLAGS_TEST_fail_ysql_catalog_upgrade_state_transition_from");
+  const auto current_state = ysql_major_catalog_upgrade_info->state();
+  SCHECK_NE(
+      current_state, new_state, IllegalState,
+      Format("Major upgrade state already set to $0", new_state_str));
 
-    auto allowed_states_it = FindOrNull(kAllowedTransitions, current_state);
-    RSTATUS_DCHECK(allowed_states_it, IllegalState, Format("Invalid state $0", current_state_str));
+  const auto current_state_str = YsqlMajorCatalogUpgradeInfoPB::State_Name(current_state);
 
-    SCHECK(
-        allowed_states_it->contains(new_state), IllegalState,
-        Format("Invalid state transition from $0 to $1", current_state_str, new_state_str));
+  SCHECK_NE(
+      current_state_str, FLAGS_TEST_fail_ysql_catalog_upgrade_state_transition_from, IllegalState,
+      "Failed due to FLAGS_TEST_fail_ysql_catalog_upgrade_state_transition_from");
 
-    if (current_state == YsqlMajorCatalogUpgradeInfoPB::MONITORING &&
-        new_state == YsqlMajorCatalogUpgradeInfoPB::DONE) {
-      ysql_major_catalog_upgrade_info->set_catalog_version(VersionInfo::YsqlMajorVersion());
-      ysql_major_upgrade_done = true;
-    }
+  auto allowed_states_it = FindOrNull(kAllowedTransitions, current_state);
+  RSTATUS_DCHECK(allowed_states_it, IllegalState, Format("Invalid state $0", current_state_str));
 
-    ysql_major_catalog_upgrade_info->set_state(new_state);
+  SCHECK(
+      allowed_states_it->contains(new_state), IllegalState,
+      Format("Invalid state transition from $0 to $1", current_state_str, new_state_str));
 
-    if (!failed_status.ok()) {
-      StatusToPB(failed_status, ysql_major_catalog_upgrade_info->mutable_previous_error());
-    } else {
-      ysql_major_catalog_upgrade_info->clear_previous_error();
-    }
+  if (current_state == YsqlMajorCatalogUpgradeInfoPB::MONITORING &&
+      new_state == YsqlMajorCatalogUpgradeInfoPB::DONE) {
+    ysql_major_catalog_upgrade_info->set_catalog_version(VersionInfo::YsqlMajorVersion());
+    ysql_major_upgrade_done = true;
+  }
 
-    LOG(INFO) << "Transitioned major upgrade state from " << current_state_str << " to "
-              << new_state_str;
+  ysql_major_catalog_upgrade_info->set_state(new_state);
 
-    return Status::OK();
-  };
+  if (!failed_status.ok()) {
+    StatusToPB(failed_status, ysql_major_catalog_upgrade_info->mutable_previous_error());
+  } else {
+    ysql_major_catalog_upgrade_info->clear_previous_error();
+  }
 
-  RETURN_NOT_OK(ysql_catalog_config_.Update(epoch, update_config_func));
+  LOG(INFO) << "Transitioned major upgrade state from " << current_state_str << " to "
+            << new_state_str;
+
+  RETURN_NOT_OK(l.UpsertAndCommit());
 
   if (ysql_major_upgrade_done) {
     ysql_major_upgrade_in_progress_ = false;
@@ -523,4 +522,5 @@ Status YsqlInitDBAndMajorUpgradeHandler::TransitionMajorCatalogUpgradeState(
 
   return Status::OK();
 }
+
 }  // namespace yb::master
