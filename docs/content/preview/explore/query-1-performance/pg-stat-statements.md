@@ -247,6 +247,37 @@ p95                  | 89.6
 p90                  | 83.2
 ```
 
+## Reset statistics
+
+The `pg_stat_statements_reset(userid, dbid, queryid)` function is provided by the pg_stat_statements extension to reset the statistics collected for all tracked SQL queries in the pg_stat_statements view. This can be useful for clearing old or irrelevant statistics, starting fresh for new performance monitoring, or managing resource usage.
+
+The `pg_stat_statements_reset` function clears query statistics collected by pg_stat_statements based on the provided userid, dbid, and queryid parameters. Here's how it works:
+
+- If you specify any combination of userid, dbid, or queryid, only the matching statistics are reset.
+- If a parameter is not provided or is set to 0 (invalid), it acts as a wildcard, and statistics matching the other specified parameters are cleared. For example to clear all statistics for userid `2`,
+
+```sql
+select pg_stat_statements_reset(2);
+```
+
+- If all parameters are omitted or set to `0` (invalid), the function resets all collected statistics. For example to clear all stats you would need to just execute,
+
+```sql
+select pg_stat_statements_reset();
+```
+
+By default, only superusers can execute this function. However, you can grant access to other users using the GRANT command.
+
+The `pg_stat_statements_reset` is very useful in the following scenarios.
+
+- **After System Maintenance**: Clear old query statistics to track performance changes after upgrades, configuration changes, or schema modifications.
+
+- **Isolating specific workloads**: If you want to analyze the performance of a specific workload or test scenario, you can reset the statistics before running the workload and then examine the collected data.
+
+- **Managing Resource Usage**: If the shared memory allocated for pg_stat_statements is nearing capacity, resetting can help free space for new statistics.
+
+- **Troubleshooting**: When investigating performance issues, resetting the statistics can help to isolate the problem and focus on recent activity.
+
 ## Examples
 
 {{% explore-setup-single %}}
@@ -257,7 +288,7 @@ Describe the columns in the view:
 yugabyte=# \d pg_stat_statements;
 ```
 
-```output
+```caddyfile{.nocopy}
                      View "public.pg_stat_statements"
        Column         |       Type       | Collation | Nullable | Default
 ----------------------+------------------+-----------+----------+---------
@@ -287,7 +318,7 @@ yugabyte=# \d pg_stat_statements;
  yb_latency_histogram | jsonb            |           |          |
 ```
 
-### Top 10 I/O-intensive queries
+### I/O-intensive queries
 
 ```sql
 yugabyte=# select userid::regrole, dbid, query
@@ -296,7 +327,7 @@ yugabyte=# select userid::regrole, dbid, query
     limit 10;
 ```
 
-```output
+```caddyfile{.nocopy}
   userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select pg_stat_statements_reset()
@@ -313,7 +344,7 @@ yugabyte=# select userid::regrole, dbid, query
     limit 10;
 ```
 
-```output
+```caddyfile{.nocopy}
   userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select pg_stat_statements_reset()
@@ -325,7 +356,7 @@ c limit $1
 (4 rows)
 ```
 
-### Top 10 time-consuming queries
+### Time-consuming queries
 
 ```sql
 yugabyte=# select userid::regrole, dbid, query
@@ -334,7 +365,7 @@ yugabyte=# select userid::regrole, dbid, query
     limit 10;
 ```
 
-```output
+```caddyfile{.nocopy}
   userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
@@ -353,7 +384,7 @@ yugabyte=# select userid::regrole, dbid, query
     limit 10;
 ```
 
-```output
+```caddyfile{.nocopy}
   userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
@@ -366,7 +397,7 @@ c limit $1
 (5 rows)
 ```
 
-### Top 10 response-time outliers
+### Response-time outliers
 
 ```sql
 yugabyte=# select userid::regrole, dbid, query
@@ -375,7 +406,7 @@ yugabyte=# select userid::regrole, dbid, query
     limit 10;
 ```
 
-```output
+```caddyfile{.nocopy}
   userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
@@ -388,7 +419,7 @@ c limit $1
 (5 rows)
 ```
 
-### Top 10 queries by memory usage
+### Queries by memory usage
 
 ```sql
 yugabyte=# select userid::regrole, dbid, query
@@ -397,7 +428,7 @@ yugabyte=# select userid::regrole, dbid, query
     limit 10;
 ```
 
-```output
+```caddyfile{.nocopy}
   userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select pg_stat_statements_reset()
@@ -411,7 +442,7 @@ c limit $1
 (6 rows)
 ```
 
-### Top 10 consumers of temporary space
+### Consumers of temporary space
 
 ```sql
 yugabyte=# select userid::regrole, dbid, query
@@ -420,7 +451,7 @@ yugabyte=# select userid::regrole, dbid, query
     limit 10;
 ```
 
-```output
+```caddyfile{.nocopy}
   userid  | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
  yugabyte | 12463 | select pg_stat_statements_reset()
@@ -434,21 +465,6 @@ c limit $1
  yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (shared_blks_hit+shared_blks_dirti
 ed) desc limit $1
 (7 rows)
-```
-
-## Reset statistics
-
-`pg_stat_statements_reset` discards all statistics gathered so far by pg_stat_statements. By default, this function can only be executed by superusers.
-
-```sql
-yugabyte=# select pg_stat_statements_reset();
-```
-
-```output
- pg_stat_statements_reset
---------------------------
-
-(1 row)
 ```
 
 ## Learn more
