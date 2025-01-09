@@ -18,6 +18,8 @@
 #include <condition_variable>
 #include <mutex>
 
+#include "yb/docdb/conflict_data.h"
+
 #include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
@@ -43,8 +45,8 @@ DEFINE_RUNTIME_bool(dump_transactions, false, "Dump transactions data in debug b
 DEFINE_RUNTIME_uint64(dump_transactions_chunk_size, 10_GB,
                       "Start new transaction dump when current one reaches specified limit.");
 
-DEFINE_RUNTIME_uint64(dump_transactions_gzip, true,
-                      "Whether transaction dump should be compressed in GZip format.");
+DEFINE_RUNTIME_bool(dump_transactions_gzip, true,
+                    "Whether transaction dump should be compressed in GZip format.");
 
 DECLARE_string(tmp_dir);
 
@@ -188,6 +190,8 @@ class Dumper {
     }
     current_file_size_ = 0;
     LOG(INFO) << "Dump transactions to " << fname;
+
+    WriteHeader();
   }
 
   std::string OutDir() {
@@ -209,6 +213,11 @@ class Dumper {
       result = FLAGS_tmp_dir;
     }
     return result;
+  }
+
+  void WriteHeader() {
+    size_t conflict_data_size = sizeof(TransactionConflictData);
+    writer_->Write(pointer_cast<const char*>(&conflict_data_size), sizeof(conflict_data_size));
   }
 
   std::unique_ptr<DumpWriter> writer_;

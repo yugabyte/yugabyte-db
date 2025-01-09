@@ -341,7 +341,6 @@ Status TransactionalWriter::operator()(
     reverse_value_prefix = replicated_batches_state_;
   }
   AddIntent<kNumKeyParts>(transaction_id_, key_parts, value, handler_, reverse_value_prefix);
-
   return Status::OK();
 }
 
@@ -503,6 +502,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 }
 
 ApplyIntentsContext::ApplyIntentsContext(
+    const TabletId& tablet_id,
     const TransactionId& transaction_id,
     const ApplyTransactionState* apply_state,
     const SubtxnSet& aborted,
@@ -514,6 +514,7 @@ ApplyIntentsContext::ApplyIntentsContext(
     rocksdb::DB* intents_db)
     : IntentsWriterContext(transaction_id),
       FrontierSchemaVersionUpdater(schema_packing_provider),
+      tablet_id_(tablet_id),
       apply_state_(apply_state),
       // In case we have passed in a non-null apply_state, its aborted set will have been loaded
       // from persisted apply state, and the passed in aborted set will correspond to the aborted
@@ -640,7 +641,7 @@ Result<bool> ApplyIntentsContext::Entry(
     RegisterRecord();
 
     YB_TRANSACTION_DUMP(
-        ApplyIntent, transaction_id(), intent.doc_path.size(), intent.doc_path,
+        ApplyIntent, tablet_id_, transaction_id(), intent.doc_path.size(), intent.doc_path,
         commit_ht_, write_id_, decoded_value.body);
 
     RETURN_NOT_OK(UpdateSchemaVersion(intent.doc_path, decoded_value.body));

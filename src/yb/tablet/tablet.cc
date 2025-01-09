@@ -2195,7 +2195,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   // are still in intents db and not yet in regular db.
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
   docdb::ApplyIntentsContext context(
-      data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
+      tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
       min_running_ht, &key_bounds_, metadata_.get(), intents_db_.get());
   docdb::IntentsWriter intents_writer(
       data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
