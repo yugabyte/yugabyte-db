@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_dollar_expr(__CORE_SCHEMA
  IMMUTABLE PARALLEL SAFE STRICT
 AS 'MODULE_PATHNAME', $function$bson_dollar_expr$function$;
 
-CREATE OR REPLACE FUNCTION helio_api_internal.bson_dollar_expr(helio_core.bson, helio_core.bson, helio_core.bson)
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bson_dollar_expr(__CORE_SCHEMA_V2__.bson, __CORE_SCHEMA_V2__.bson, __CORE_SCHEMA_V2__.bson)
  RETURNS bool
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT

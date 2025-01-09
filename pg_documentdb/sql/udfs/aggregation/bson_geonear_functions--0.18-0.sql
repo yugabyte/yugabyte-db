@@ -10,7 +10,7 @@ CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_geonear_distance(__CORE_S
  IMMUTABLE PARALLEL SAFE STRICT
 AS 'MODULE_PATHNAME', $function$bson_geonear_distance$function$;
 
-CREATE OR REPLACE FUNCTION helio_api_internal.bson_geonear_within_range(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bson_geonear_within_range(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
  RETURNS bool
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT

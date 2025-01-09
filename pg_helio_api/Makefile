@@ -20,11 +20,13 @@ API_SCHEMA_INTERNAL_NAME_V2=helio_api_internal
 API_CATALOG_SCHEMA_NAME=helio_api_catalog
 API_CATALOG_SCHEMA_NAME_V2=helio_api_catalog
 CORE_SCHEMA_NAME=helio_core
+CORE_SCHEMA_NAME_V2=helio_core
 API_DATA_SCHEMA_NAME=helio_data
 API_ADMIN_ROLE=helio_admin_role
 API_READONLY_ROLE=helio_readonly_role
 POSTGIS_SCHEMA_NAME=public
 EXTENSION_OBJECT_PREFIX=helio
+API_GUC_PREFIX=helio_api
 
 # compilation configuration
 MODULE_big = $(EXTENSION)

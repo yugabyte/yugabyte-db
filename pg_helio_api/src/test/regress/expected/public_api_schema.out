@@ -26,7 +26,6 @@
  helio_api | drop_user                            | helio_core.bson  | p_spec helio_core.bson                                                                                                                                                                                                          | func
  helio_api | find_and_modify                      | record           | p_database_name text, p_message helio_core.bson, p_transaction_id text DEFAULT NULL::text, OUT p_result helio_core.bson, OUT p_success boolean                                                                                  | func
  helio_api | find_cursor_first_page               | record           | database text, commandspec helio_core.bson, cursorid bigint DEFAULT 0, OUT cursorpage helio_core.bson, OUT continuation helio_core.bson, OUT persistconnection boolean, OUT cursorid bigint                                     | func
- helio_api | heliorumhandler                      | index_am_handler | internal                                                                                                                                                                                                                        | func
  helio_api | insert                               | record           | p_database_name text, p_insert helio_core.bson, p_insert_documents helio_core.bsonsequence DEFAULT NULL::helio_core.bsonsequence, p_transaction_id text DEFAULT NULL::text, OUT p_result helio_core.bson, OUT p_success boolean | func
  helio_api | insert_one                           | helio_core.bson  | p_database_name text, p_collection_name text, p_document helio_core.bson, p_transaction_id text DEFAULT NULL::text                                                                                                              | func
  helio_api | list_collections_cursor_first_page   | record           | database text, commandspec helio_core.bson, cursorid bigint DEFAULT 0, OUT cursorpage helio_core.bson, OUT continuation helio_core.bson, OUT persistconnection boolean, OUT cursorid bigint                                     | func
@@ -41,7 +40,7 @@
  helio_api | update_user                          | helio_core.bson  | p_spec helio_core.bson                                                                                                                                                                                                          | func
  helio_api | users_info                           | helio_core.bson  | p_spec helio_core.bson                                                                                                                                                                                                          | func
  helio_api | validate                             | helio_core.bson  | database text, validatespec helio_core.bson, OUT document helio_core.bson                                                                                                                                                       | func
-(38 rows)
+(37 rows)
 
 \df helio_api_catalog.*
                                                                                                 List of functions
@@ -169,8 +168,9 @@
  helio_api_catalog | gin_bson_single_path_options            | void                  | internal                                                                                                            | func
  helio_api_catalog | gin_bson_wildcard_project_extract_value | internal              | helio_core.bson, internal                                                                                           | func
  helio_api_catalog | gin_bson_wildcard_project_options       | void                  | internal                                                                                                            | func
+ helio_api_catalog | heliorumhandler                         | index_am_handler      | internal                                                                                                            | func
  helio_api_catalog | query_match_support                     | internal              | internal                                                                                                            | func
-(123 rows)
+(124 rows)
 
 \df helio_data.*
                        List of functions

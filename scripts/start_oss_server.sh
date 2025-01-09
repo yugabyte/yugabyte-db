@@ -11,7 +11,7 @@ initSetup="false"
 help="false"
 stop="false"
 serverType="helio"
-while getopts "dt:hcs" opt; do
+while getopts "d:t:hcs" opt; do
   case $opt in
     d) postgresDirectory="$OPTARG"
     ;;

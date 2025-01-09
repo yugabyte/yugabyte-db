@@ -8,7 +8,7 @@
  *
  * Output arguments need to match data tables exactly.
  */
-CREATE OR REPLACE FUNCTION helio_api.collection(
+CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.collection(
     p_database_name text,
     p_collection_name text,
     OUT shard_key_value bigint,
@@ -19,5 +19,5 @@ RETURNS SETOF record
 LANGUAGE c
  STRICT
 AS 'MODULE_PATHNAME', $function$command_api_collection$function$;
-COMMENT ON FUNCTION helio_api.collection(text,text)
-    IS 'query a Mongo collection';
+COMMENT ON FUNCTION __API_SCHEMA_V2__.collection(text,text)
+    IS 'query a collection';

@@ -931,7 +931,7 @@ static const int MaxEvenFunctionArguments = ((int) (FUNC_MAX_ARGS / 2)) * 2;
 PG_FUNCTION_INFO_V1(command_bson_aggregation_pipeline);
 PG_FUNCTION_INFO_V1(command_api_collection);
 PG_FUNCTION_INFO_V1(command_aggregation_support);
-PG_FUNCTION_INFO_V1(helio_core_bson_to_bson);
+PG_FUNCTION_INFO_V1(documentdb_core_bson_to_bson);
 
 
 inline static void
@@ -1035,10 +1035,10 @@ command_aggregation_support(PG_FUNCTION_ARGS)
 
 
 /*
- * Converts a helio_core.bson to a bson.
+ * Converts a documentdb_core.bson to a bson.
  */
 Datum
-helio_core_bson_to_bson(PG_FUNCTION_ARGS)
+documentdb_core_bson_to_bson(PG_FUNCTION_ARGS)
 {
 	return PG_GETARG_DATUM(0);
 }

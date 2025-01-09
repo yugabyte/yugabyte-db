@@ -1,9 +1,9 @@
 /*
- * helio_api.update_user processes a Mongo wire protocol updateUser command.
+ * __API_SCHEMA_V2__.update_user processes a Mongo wire protocol updateUser command.
  */
-CREATE OR REPLACE FUNCTION helio_api.update_user(
-    p_spec helio_core.bson)
- RETURNS helio_core.bson
+CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.update_user(
+    p_spec __CORE_SCHEMA_V2__.bson)
+ RETURNS __CORE_SCHEMA_V2__.bson
  LANGUAGE C
  VOLATILE
-AS 'MODULE_PATHNAME', $$helio_extension_update_user$$;
+AS 'MODULE_PATHNAME', __CONCAT_NAME_FUNCTION__($$, __EXTENSION_OBJECT_PREFIX_V2__, _extension_update_user$$);

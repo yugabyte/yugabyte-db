@@ -24,10 +24,12 @@ API_SCHEMA_INTERNAL_NAME_V2=documentdb_api_internal
 API_CATALOG_SCHEMA_NAME=documentdb_api_catalog
 API_CATALOG_SCHEMA_NAME_V2=documentdb_api_catalog
 CORE_SCHEMA_NAME=documentdb_core
+CORE_SCHEMA_NAME_V2=documentdb_core
 API_DATA_SCHEMA_NAME=documentdb_data
 API_ADMIN_ROLE=documentdb_admin_role
 API_READONLY_ROLE=documentdb_readonly_role
 EXTENSION_OBJECT_PREFIX=documentdb
+API_GUC_PREFIX=documentdb
 
 # TODO: Need to remove this with PG16 and expose only valid exports
 ALLOW_DEFAULT_VISIBILITY=yes

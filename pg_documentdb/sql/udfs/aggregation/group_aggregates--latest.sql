@@ -8,7 +8,7 @@ CREATE OR REPLACE AGGREGATE __API_CATALOG_SCHEMA__.BSONSUM(__CORE_SCHEMA__.bson)
     mstype = bytea,
     MSFUNC = __API_CATALOG_SCHEMA__.bson_sum_avg_transition,
     MFINALFUNC = __API_CATALOG_SCHEMA__.bson_sum_final,
-    MINVFUNC = helio_api_internal.bson_sum_avg_minvtransition,
+    MINVFUNC = __API_SCHEMA_INTERNAL_V2__.bson_sum_avg_minvtransition,
     PARALLEL = SAFE
 );
 
@@ -21,7 +21,7 @@ CREATE OR REPLACE AGGREGATE __API_CATALOG_SCHEMA__.BSONAVERAGE(__CORE_SCHEMA__.b
     mstype = bytea,
     MSFUNC = __API_CATALOG_SCHEMA__.bson_sum_avg_transition,
     MFINALFUNC = __API_CATALOG_SCHEMA__.bson_avg_final,
-    MINVFUNC = helio_api_internal.bson_sum_avg_minvtransition,
+    MINVFUNC = __API_SCHEMA_INTERNAL_V2__.bson_sum_avg_minvtransition,
     PARALLEL = SAFE
 );
 
@@ -219,70 +219,70 @@ CREATE OR REPLACE AGGREGATE __API_CATALOG_SCHEMA__.BSON_ARRAY_AGG(__CORE_SCHEMA_
     mstype = bytea,
     MSFUNC = __API_CATALOG_SCHEMA__.bson_array_agg_transition,
     MFINALFUNC = __API_CATALOG_SCHEMA__.bson_array_agg_final,
-    MINVFUNC = helio_api_internal.bson_array_agg_minvtransition,
+    MINVFUNC = __API_SCHEMA_INTERNAL_V2__.bson_array_agg_minvtransition,
     PARALLEL = SAFE
 );
 
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSON_ADD_TO_SET(helio_core.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSON_ADD_TO_SET(__CORE_SCHEMA_V2__.bson)
 (
-    SFUNC = helio_api_internal.bson_add_to_set_transition,
-    FINALFUNC = helio_api_internal.bson_add_to_set_final,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_add_to_set_transition,
+    FINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_add_to_set_final,
     stype = bytea,
     PARALLEL = SAFE
 );
 
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSON_MERGE_OBJECTS_ON_SORTED(helio_core.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSON_MERGE_OBJECTS_ON_SORTED(__CORE_SCHEMA_V2__.bson)
 (
-    SFUNC = helio_api_internal.bson_merge_objects_transition_on_sorted,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_merge_objects_transition_on_sorted,
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_object_agg_final,
     stype = bytea,
     PARALLEL = SAFE
 );
 
 /*
- * This can't use helio_core.bson due to citus type checks. We can migrate once the underlying tuples use the new types.
+ * This can't use __CORE_SCHEMA_V2__.bson due to citus type checks. We can migrate once the underlying tuples use the new types.
  */
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSON_MERGE_OBJECTS(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson[], __CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSON_MERGE_OBJECTS(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson[], __CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_merge_objects_transition,
-    FINALFUNC = helio_api_internal.bson_merge_objects_final,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_merge_objects_transition,
+    FINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_merge_objects_final,
     stype = bytea,
     COMBINEFUNC = __API_CATALOG_SCHEMA__.bson_firstn_combine,
     PARALLEL = SAFE
 );
 
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONSTDDEVPOP(__CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONSTDDEVPOP(__CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_std_dev_pop_samp_transition,
-    FINALFUNC =  helio_api_internal.bson_std_dev_pop_final,
-    MSFUNC = helio_api_internal.bson_std_dev_pop_samp_transition,
-    MFINALFUNC = helio_api_internal.bson_std_dev_pop_winfunc_final,
-    MINVFUNC = helio_api_internal.bson_std_dev_pop_samp_winfunc_invtransition,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_std_dev_pop_samp_transition,
+    FINALFUNC =  __API_SCHEMA_INTERNAL_V2__.bson_std_dev_pop_final,
+    MSFUNC = __API_SCHEMA_INTERNAL_V2__.bson_std_dev_pop_samp_transition,
+    MFINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_std_dev_pop_winfunc_final,
+    MINVFUNC = __API_SCHEMA_INTERNAL_V2__.bson_std_dev_pop_samp_winfunc_invtransition,
     stype = bytea,
     mstype = bytea,
-    COMBINEFUNC = helio_api_internal.bson_std_dev_pop_samp_combine,
+    COMBINEFUNC = __API_SCHEMA_INTERNAL_V2__.bson_std_dev_pop_samp_combine,
     PARALLEL = SAFE
 );
 
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONSTDDEVSAMP(__CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONSTDDEVSAMP(__CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_std_dev_pop_samp_transition,
-    FINALFUNC = helio_api_internal.bson_std_dev_samp_final,
-    MSFUNC = helio_api_internal.bson_std_dev_pop_samp_transition,
-    MFINALFUNC = helio_api_internal.bson_std_dev_samp_winfunc_final,
-    MINVFUNC = helio_api_internal.bson_std_dev_pop_samp_winfunc_invtransition,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_std_dev_pop_samp_transition,
+    FINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_std_dev_samp_final,
+    MSFUNC = __API_SCHEMA_INTERNAL_V2__.bson_std_dev_pop_samp_transition,
+    MFINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_std_dev_samp_winfunc_final,
+    MINVFUNC = __API_SCHEMA_INTERNAL_V2__.bson_std_dev_pop_samp_winfunc_invtransition,
     stype = bytea,
     mstype = bytea,
-    COMBINEFUNC = helio_api_internal.bson_std_dev_pop_samp_combine,
+    COMBINEFUNC = __API_SCHEMA_INTERNAL_V2__.bson_std_dev_pop_samp_combine,
     PARALLEL = SAFE
 );
 
 /*
  * Additional argument to BSONFIRST corresponding to input expression for $top operator  
  */
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONFIRST(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson[], __CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONFIRST(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson[], __CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_first_transition,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_first_transition,
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_first_last_final,
     stype = bytea,
     COMBINEFUNC = __API_CATALOG_SCHEMA__.bson_first_combine,
@@ -292,9 +292,9 @@ CREATE OR REPLACE AGGREGATE helio_api_internal.BSONFIRST(__CORE_SCHEMA__.bson, _
 /*
  * Additional argument to BSONLAST corresponding to input expression for $bottom operator  
  */
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONLAST(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson[], __CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONLAST(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson[], __CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_last_transition,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_last_transition,
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_first_last_final,
     stype = bytea,
     COMBINEFUNC = __API_CATALOG_SCHEMA__.bson_last_combine,
@@ -304,9 +304,9 @@ CREATE OR REPLACE AGGREGATE helio_api_internal.BSONLAST(__CORE_SCHEMA__.bson, __
 /*
  * Additional argument to BSONFIRSTN corresponding to input expression for $topN operator  
  */
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONFIRSTN(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson[], __CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONFIRSTN(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson[], __CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_firstn_transition,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_firstn_transition,
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_firstn_lastn_final,
     stype = bytea,
     COMBINEFUNC = __API_CATALOG_SCHEMA__.bson_firstn_combine,
@@ -316,36 +316,36 @@ CREATE OR REPLACE AGGREGATE helio_api_internal.BSONFIRSTN(__CORE_SCHEMA__.bson, 
 /*
  * Additional argument to BSONLASTN corresponding to input expression for $bottomN operator  
  */
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONLASTN(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson[], __CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONLASTN(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson[], __CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_lastn_transition,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_lastn_transition,
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_firstn_lastn_final,
     stype = bytea,
     COMBINEFUNC = __API_CATALOG_SCHEMA__.bson_lastn_combine,
     PARALLEL = SAFE
 );
 
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONMAXN(__CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONMAXN(__CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_maxn_transition,
-    FINALFUNC = helio_api_internal.bson_maxminn_final,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_maxn_transition,
+    FINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_maxminn_final,
     stype = bytea,
-    COMBINEFUNC = helio_api_internal.bson_maxminn_combine,
+    COMBINEFUNC = __API_SCHEMA_INTERNAL_V2__.bson_maxminn_combine,
     PARALLEL = SAFE
 );
 
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONMINN(__CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONMINN(__CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_minn_transition,
-    FINALFUNC = helio_api_internal.bson_maxminn_final,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_minn_transition,
+    FINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_maxminn_final,
     stype = bytea,
-    COMBINEFUNC = helio_api_internal.bson_maxminn_combine,
+    COMBINEFUNC = __API_SCHEMA_INTERNAL_V2__.bson_maxminn_combine,
     PARALLEL = SAFE
 );
 
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONFIRSTONSORTED(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONFIRSTONSORTED(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_first_transition_on_sorted,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_first_transition_on_sorted,
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_first_last_final_on_sorted,
     stype = bytea,
     PARALLEL = SAFE
@@ -354,17 +354,17 @@ CREATE OR REPLACE AGGREGATE helio_api_internal.BSONFIRSTONSORTED(__CORE_SCHEMA__
 /*
 * See summary of __CORE_SCHEMA__.bsonFIRSTONSORTED()
 */
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONLASTONSORTED(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONLASTONSORTED(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_last_transition_on_sorted,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_last_transition_on_sorted,
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_first_last_final_on_sorted,
     stype = bytea,
     PARALLEL = SAFE
 );
 
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONFIRSTNONSORTED(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONFIRSTNONSORTED(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_firstn_transition_on_sorted,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_firstn_transition_on_sorted,
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_firstn_lastn_final_on_sorted,
     stype = bytea,
     PARALLEL = SAFE
@@ -373,9 +373,9 @@ CREATE OR REPLACE AGGREGATE helio_api_internal.BSONFIRSTNONSORTED(__CORE_SCHEMA_
 /*
 * See summary of __CORE_SCHEMA__.bsonFIRSTNONSORTED()
 */
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONLASTNONSORTED(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONLASTNONSORTED(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_lastn_transition_on_sorted,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_lastn_transition_on_sorted,
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_firstn_lastn_final_on_sorted,
     stype = bytea,
     PARALLEL = SAFE

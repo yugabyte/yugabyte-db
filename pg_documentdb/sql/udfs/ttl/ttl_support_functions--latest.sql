@@ -10,7 +10,7 @@
  * Param 6: Batch size
  * Param 7: Shard Id
 */
-CREATE OR REPLACE FUNCTION helio_api_internal.delete_expired_rows_for_index(
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.delete_expired_rows_for_index(
     IN collection_id bigint,
     IN index_id bigint,
     IN index_key __CORE_SCHEMA__.bson,
@@ -41,7 +41,7 @@ AS 'MODULE_PATHNAME', $function$delete_expired_rows_for_index$function$;
  *
  * IMP: This procedure is designed only to be called from pg_cron ttl purger task.
  */
-CREATE OR REPLACE PROCEDURE helio_api_internal.delete_expired_rows(IN p_batch_size int default -1)
+CREATE OR REPLACE PROCEDURE __API_SCHEMA_INTERNAL_V2__.delete_expired_rows(IN p_batch_size int default -1)
 AS $procedure$
 DECLARE
     collection_row record;
@@ -55,7 +55,7 @@ DECLARE
     exception_detail TEXT;
 BEGIN
 
-    config_value := current_setting('helio_api.SingleTTLTaskTimeBudget');
+    config_value := current_setting(__SINGLE_QUOTED_STRING__(__API_GUC_PREFIX__) || '.SingleTTLTaskTimeBudget');
     single_ttl_task_time_budget := (config_value::INTEGER * '1 millisecond'::INTERVAL);
     start_time := clock_timestamp();
 
@@ -83,7 +83,7 @@ BEGIN
         AND (dist.shardid = get_shard_id_for_distribution_column(logicalrelid, coll.collection_id) OR (coll.shard_key IS NOT NULL))
     LOOP
 
-        expired_rows_deleted:= helio_api_internal.delete_expired_rows_for_index(
+        expired_rows_deleted:= __API_SCHEMA_INTERNAL_V2__.delete_expired_rows_for_index(
             collection_row.collection_id,
             collection_row.index_id,
             collection_row.key,
@@ -96,7 +96,7 @@ BEGIN
         end_time := clock_timestamp();
         elapsed_time := end_time - start_time;
 
-        IF current_setting('helio_api.logTTLProgressActivity')::BOOLEAN IS TRUE THEN
+        IF current_setting(__SINGLE_QUOTED_STRING__(__API_GUC_PREFIX__) || '.logTTLProgressActivity')::BOOLEAN IS TRUE THEN
             RAISE LOG 'TTL task: deleted_documents=%, collection_id=%, index_id=%, shard_id=%, elapsed_time=%ms, budgeted_time=%ms',
             expired_rows_deleted,
             collection_row.collection_id,

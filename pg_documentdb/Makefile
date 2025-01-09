@@ -26,6 +26,7 @@ API_ADMIN_ROLE=documentdb_admin_role
 API_READONLY_ROLE=documentdb_readonly_role
 POSTGIS_SCHEMA_NAME=public
 EXTENSION_OBJECT_PREFIX=documentdb
+API_GUC_PREFIX=documentdb
 
 # TODO: Need to remove this with PG16 and expose only valid exports
 ALLOW_DEFAULT_VISIBILITY=yes

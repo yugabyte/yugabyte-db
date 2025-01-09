@@ -63,10 +63,10 @@ extern int ScramDefaultSaltLen;
 /* GUC that controls the max number of users allowed*/
 extern int MaxUserLimit;
 
-PG_FUNCTION_INFO_V1(helio_extension_create_user);
-PG_FUNCTION_INFO_V1(helio_extension_drop_user);
-PG_FUNCTION_INFO_V1(helio_extension_update_user);
-PG_FUNCTION_INFO_V1(helio_extension_get_users);
+PG_FUNCTION_INFO_V1(documentdb_extension_create_user);
+PG_FUNCTION_INFO_V1(documentdb_extension_drop_user);
+PG_FUNCTION_INFO_V1(documentdb_extension_update_user);
+PG_FUNCTION_INFO_V1(documentdb_extension_get_users);
 
 static CreateUserSpec * ParseCreateUserSpec(pgbson *createUserSpec);
 static char * ValidateAndObtainHelioRole(const bson_value_t *rolesDocument);
@@ -76,11 +76,11 @@ static char * ParseGetUserSpec(pgbson *getSpec);
 static char * PrehashPassword(const char *password);
 
 /*
- * helio_extension_create_user implements the
+ * documentdb_extension_create_user implements the
  * core logic to create a user
  */
 Datum
-helio_extension_create_user(PG_FUNCTION_ARGS)
+documentdb_extension_create_user(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{
@@ -349,11 +349,11 @@ ValidateAndObtainHelioRole(const bson_value_t *rolesDocument)
 
 
 /*
- * helio_extension_drop_user implements the
+ * documentdb_extension_drop_user implements the
  * core logic to drop a user
  */
 Datum
-helio_extension_drop_user(PG_FUNCTION_ARGS)
+documentdb_extension_drop_user(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{
@@ -445,7 +445,7 @@ ParseDropUserSpec(pgbson *dropSpec)
 
 
 /*
- * helio_extension_update_user implements the core logic to update a user.
+ * documentdb_extension_update_user implements the core logic to update a user.
  * In MongoDB a user with userAdmin privileges or root privileges can change
  * other users passwords. In postgres a superuser can change any users password.
  * A user with CreateRole privileges can change pwds of roles they created. Given
@@ -453,7 +453,7 @@ ParseDropUserSpec(pgbson *dropSpec)
  * a user can only change their own pwd and no one elses.
  */
 Datum
-helio_extension_update_user(PG_FUNCTION_ARGS)
+documentdb_extension_update_user(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{
@@ -557,11 +557,11 @@ ParseUpdateUserSpec(pgbson *updateSpec)
 
 
 /*
- * helio_extension_get_users implements the
+ * documentdb_extension_get_users implements the
  * core logic to get user info
  */
 Datum
-helio_extension_get_users(PG_FUNCTION_ARGS)
+documentdb_extension_get_users(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{

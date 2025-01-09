@@ -1,17 +1,17 @@
-DROP FUNCTION IF EXISTS helio_api.current_cursor_state(helio_core.bson);
+DROP FUNCTION IF EXISTS __API_SCHEMA_V2__.current_cursor_state(__CORE_SCHEMA_V2__.bson);
 
-DROP FUNCTION IF EXISTS helio_api.cursor_state(helio_core.bson, helio_core.bson);
+DROP FUNCTION IF EXISTS __API_SCHEMA_V2__.cursor_state(__CORE_SCHEMA_V2__.bson, __CORE_SCHEMA_V2__.bson);
 
 -- This function is STABLE (Not Volatile) as within 1 transaction snapshot
 -- The value given the "document" does not change.
 -- However it's not guaranteed to be the same across transaction snapshots.
-CREATE OR REPLACE FUNCTION helio_api_internal.current_cursor_state(helio_core.bson)
- RETURNS helio_core.bson
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.current_cursor_state(__CORE_SCHEMA_V2__.bson)
+ RETURNS __CORE_SCHEMA_V2__.bson
  LANGUAGE c
  STABLE
 AS 'MODULE_PATHNAME', $function$command_current_cursor_state$function$;
 
-CREATE OR REPLACE FUNCTION helio_api_internal.cursor_state(helio_core.bson, helio_core.bson)
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.cursor_state(__CORE_SCHEMA_V2__.bson, __CORE_SCHEMA_V2__.bson)
  RETURNS bool
  LANGUAGE c
  IMMUTABLE STRICT

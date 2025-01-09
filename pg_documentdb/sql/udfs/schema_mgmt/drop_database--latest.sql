@@ -1,9 +1,9 @@
 /* db.dropDatabase(writeConcern) */
-CREATE OR REPLACE FUNCTION helio_api.drop_database(
+CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.drop_database(
     p_database_name text,
-    p_write_concern helio_core.bson default null)
+    p_write_concern __CORE_SCHEMA_V2__.bson default null)
 RETURNS void
-SET search_path TO helio_core, pg_catalog
+SET search_path TO __CORE_SCHEMA_V2__, pg_catalog
 AS $fn$
 DECLARE
     v_collection record;
@@ -19,9 +19,9 @@ BEGIN
       WHERE
         database_name = p_database_name
     LOOP
-        PERFORM helio_api.drop_collection(v_collection.database_name, v_collection.collection_name);
+        PERFORM __API_SCHEMA_V2__.drop_collection(v_collection.database_name, v_collection.collection_name);
     END LOOP;
 END;
 $fn$ LANGUAGE plpgsql;
-COMMENT ON FUNCTION helio_api.drop_database(text,helio_core.bson)
-    IS 'drop a HelioAPI database';
+COMMENT ON FUNCTION __API_SCHEMA_V2__.drop_database(text,__CORE_SCHEMA_V2__.bson)
+    IS 'drop a mongo database';

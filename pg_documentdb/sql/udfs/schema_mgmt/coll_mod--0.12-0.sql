@@ -1,12 +1,12 @@
 -- collMod database command implementation for the Mongo wire protocol
-CREATE OR REPLACE FUNCTION helio_api.coll_mod(
+CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.coll_mod(
     IN p_database_name text,
     IN p_collection_name text, 
-    IN p_spec helio_core.bson)
-RETURNS helio_core.bson
+    IN p_spec __CORE_SCHEMA_V2__.bson)
+RETURNS __CORE_SCHEMA_V2__.bson
 LANGUAGE C
 VOLATILE PARALLEL UNSAFE
 AS 'MODULE_PATHNAME', $function$command_coll_mod$function$;
-COMMENT ON FUNCTION helio_api.coll_mod(text, text, helio_core.bson)
-    IS 'Updates the specification of helio collection';
+COMMENT ON FUNCTION __API_SCHEMA_V2__.coll_mod(text, text, __CORE_SCHEMA_V2__.bson)
+    IS 'Updates the specification of collection';
 

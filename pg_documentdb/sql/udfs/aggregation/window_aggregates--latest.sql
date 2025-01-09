@@ -1,44 +1,44 @@
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONCOVARIANCEPOP(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONCOVARIANCEPOP(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_covariance_pop_samp_transition,
-    FINALFUNC = helio_api_internal.bson_covariance_pop_final,
-    MSFUNC = helio_api_internal.bson_covariance_pop_samp_transition,
-    MFINALFUNC = helio_api_internal.bson_covariance_pop_final,
-    MINVFUNC = helio_api_internal.bson_covariance_pop_samp_invtransition,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_pop_samp_transition,
+    FINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_pop_final,
+    MSFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_pop_samp_transition,
+    MFINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_pop_final,
+    MINVFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_pop_samp_invtransition,
     stype = bytea,
     mstype = bytea,
-    COMBINEFUNC = helio_api_internal.bson_covariance_pop_samp_combine,
+    COMBINEFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_pop_samp_combine,
     PARALLEL = SAFE
 );
 
 
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONCOVARIANCESAMP(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONCOVARIANCESAMP(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
 (
-    SFUNC = helio_api_internal.bson_covariance_pop_samp_transition,
-    FINALFUNC = helio_api_internal.bson_covariance_samp_final,
-    MSFUNC = helio_api_internal.bson_covariance_pop_samp_transition,
-    MFINALFUNC = helio_api_internal.bson_covariance_samp_final,
-    MINVFUNC = helio_api_internal.bson_covariance_pop_samp_invtransition,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_pop_samp_transition,
+    FINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_samp_final,
+    MSFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_pop_samp_transition,
+    MFINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_samp_final,
+    MINVFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_pop_samp_invtransition,
     stype = bytea,
     mstype = bytea,
-    COMBINEFUNC = helio_api_internal.bson_covariance_pop_samp_combine,
+    COMBINEFUNC = __API_SCHEMA_INTERNAL_V2__.bson_covariance_pop_samp_combine,
     PARALLEL = SAFE
 );
 
 
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONDERIVATIVE(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson, bigint)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONDERIVATIVE(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson, bigint)
 (
-    SFUNC = helio_api_internal.bson_derivative_transition,
-    FINALFUNC = helio_api_internal.bson_integral_derivative_final,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_derivative_transition,
+    FINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_integral_derivative_final,
     stype = bytea,
     PARALLEL = SAFE
 );
 
 
-CREATE OR REPLACE AGGREGATE helio_api_internal.BSONINTEGRAL(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson, bigint)
+CREATE OR REPLACE AGGREGATE __API_SCHEMA_INTERNAL_V2__.BSONINTEGRAL(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson, bigint)
 (
-    SFUNC = helio_api_internal.bson_integral_transition,
-    FINALFUNC = helio_api_internal.bson_integral_derivative_final,
+    SFUNC = __API_SCHEMA_INTERNAL_V2__.bson_integral_transition,
+    FINALFUNC = __API_SCHEMA_INTERNAL_V2__.bson_integral_derivative_final,
     stype = bytea,
     PARALLEL = SAFE
 );
