@@ -1571,25 +1571,28 @@ ExpandAggregationFunction(Query *query, ParamListInfo boundParams, PlannedStmt *
 	QueryData queryData = { 0 };
 	queryData.batchSize = 101;
 	bool enableCursorParam = false;
+	bool setStatementTimeout = false;
 	Query *finalQuery;
 	if (aggregationFunc->funcid == ApiCatalogAggregationPipelineFunctionId())
 	{
 		finalQuery = GenerateAggregationQuery(databaseConst->constvalue, pipeline,
 											  &queryData,
-											  enableCursorParam);
+											  enableCursorParam, setStatementTimeout);
 	}
 	else if (aggregationFunc->funcid == ApiCatalogAggregationFindFunctionId())
 	{
 		finalQuery = GenerateFindQuery(databaseConst->constvalue, pipeline, &queryData,
-									   enableCursorParam);
+									   enableCursorParam, setStatementTimeout);
 	}
 	else if (aggregationFunc->funcid == ApiCatalogAggregationCountFunctionId())
 	{
-		finalQuery = GenerateCountQuery(databaseConst->constvalue, pipeline);
+		finalQuery = GenerateCountQuery(databaseConst->constvalue, pipeline,
+										setStatementTimeout);
 	}
 	else if (aggregationFunc->funcid == ApiCatalogAggregationDistinctFunctionId())
 	{
-		finalQuery = GenerateDistinctQuery(databaseConst->constvalue, pipeline);
+		finalQuery = GenerateDistinctQuery(databaseConst->constvalue, pipeline,
+										   setStatementTimeout);
 	}
 	else
 	{

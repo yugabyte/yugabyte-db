@@ -76,21 +76,24 @@ typedef struct
 } QueryData;
 
 
-Query * GenerateFindQuery(Datum database, pgbson *findSpec, QueryData *queryData, bool
-						  addCursorParams);
-Query * GenerateCountQuery(Datum database, pgbson *countSpec);
-Query * GenerateDistinctQuery(Datum database, pgbson *distinctSpec);
+Query * GenerateFindQuery(Datum database, pgbson *findSpec, QueryData *queryData,
+						  bool addCursorParams, bool setStatementTimeout);
+Query * GenerateCountQuery(Datum database, pgbson *countSpec, bool setStatementTimeout);
+Query * GenerateDistinctQuery(Datum database, pgbson *distinctSpec, bool
+							  setStatementTimeout);
 Query * GenerateListCollectionsQuery(Datum database, pgbson *listCollectionsSpec,
 									 QueryData *queryData,
-									 bool addCursorParams);
+									 bool addCursorParams, bool setStatementTimeout);
 Query * GenerateListIndexesQuery(Datum database, pgbson *listIndexesSpec,
 								 QueryData *queryData,
-								 bool addCursorParams);
+								 bool addCursorParams, bool setStatementTimeout);
 
 Query * GenerateAggregationQuery(Datum database, pgbson *aggregationSpec,
-								 QueryData *queryData, bool addCursorParams);
+								 QueryData *queryData, bool addCursorParams,
+								 bool setStatementTimeout);
 
-int64_t ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData);
+int64_t ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData, bool
+					 setStatementTimeout);
 
 void ValidateAggregationPipeline(Datum databaseDatum, const StringView *baseCollection,
 								 const bson_value_t *pipelineValue);

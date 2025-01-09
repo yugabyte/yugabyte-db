@@ -107,6 +107,10 @@ bool EnableMergeAcrossDB = DEFAULT_ENABLE_MERGE_ACROSS_DB;
 #define DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN false
 bool EnableMultiIndexRumJoin = DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN;
 
+/* Whether or not to enforce a per command backend timeout */
+#define DEFAULT_ENABLE_STATEMENT_TIMEOUT false
+bool EnableBackendStatementTimeout = DEFAULT_ENABLE_STATEMENT_TIMEOUT;
+
 void
 InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix)
 {
@@ -312,5 +316,12 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		gettext_noop(
 			"Whether to enable OR filter based detection for the shard key."),
 		NULL, &EnableShardingOrFilters, DEFAULT_ENABLE_SHARDING_OR_FILTERS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableStatementTimeout", newGucPrefix),
+		gettext_noop(
+			"Whether to enable per statement backend timeout override in the backend."),
+		NULL, &EnableBackendStatementTimeout, DEFAULT_ENABLE_STATEMENT_TIMEOUT,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

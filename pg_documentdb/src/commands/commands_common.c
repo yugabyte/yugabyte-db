@@ -23,9 +23,12 @@
 #include "aggregation/bson_query.h"
 #include "metadata/metadata_cache.h"
 #include "planner/documentdb_planner.h"
+#include "utils/timeout.h"
 
 
 extern bool ThrowDeadlockOnCrud;
+extern bool EnableBackendStatementTimeout;
+extern int MaxCustomCommandTimeout;
 
 /*
  *  This is a list of Mongo command options that are not currently supported.
@@ -165,6 +168,23 @@ IsCommonSpecIgnoredField(const char *fieldName)
 									 NumberOfIgnoredFields,
 									 sizeof(char *), CompareStringsCaseInsensitive);
 	return (pItem != NULL);
+}
+
+
+void
+SetExplicitStatementTimeout(int timeoutMilliseconds)
+{
+	if (!EnableBackendStatementTimeout)
+	{
+		return;
+	}
+
+	if (MaxCustomCommandTimeout > 0)
+	{
+		timeoutMilliseconds = Min(MaxCustomCommandTimeout, timeoutMilliseconds);
+	}
+
+	enable_timeout_after(STATEMENT_TIMEOUT, timeoutMilliseconds);
 }
 
 

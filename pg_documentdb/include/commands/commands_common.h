@@ -81,5 +81,6 @@ pgbson * RewriteDocumentWithCustomObjectId(pgbson *document,
 										   pgbson *objectIdToWrite);
 
 void ValidateIdField(const bson_value_t *idValue);
+void SetExplicitStatementTimeout(int timeoutMilliseconds);
 
 #endif

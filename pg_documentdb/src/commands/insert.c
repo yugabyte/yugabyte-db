@@ -332,6 +332,13 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 
 			bypassDocumentValidation = bson_iter_bool(insertCommandIter);
 		}
+		else if (strcmp(field, "maxTimeMS") == 0)
+		{
+			EnsureTopLevelFieldIsNumberLike("insert.maxTimeMS", bson_iter_value(
+												insertCommandIter));
+			SetExplicitStatementTimeout(BsonValueAsInt32(bson_iter_value(
+															 insertCommandIter)));
+		}
 		else if (IsCommonSpecIgnoredField(field))
 		{
 			elog(DEBUG1, "Unrecognized command field: insert.%s", field);

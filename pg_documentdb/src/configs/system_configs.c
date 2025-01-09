@@ -91,6 +91,10 @@ bool ThrowDeadlockOnCrud = DEFAULT_THROW_DEADLOCK_ON_CRUD;
 #define DEFAULT_LOCALHOST_CONN_STR "host=localhost"
 char *LocalhostConnectionString = DEFAULT_LOCALHOST_CONN_STR;
 
+/* Currently timeout max at 3 hours */
+#define DEFAULT_MAX_CUSTOM_COMMAND_TIMEOUT (3600 * 3 * 1000)
+int MaxCustomCommandTimeout = DEFAULT_MAX_CUSTOM_COMMAND_TIMEOUT;
+
 
 void
 InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
@@ -247,6 +251,15 @@ InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
 		gettext_noop("The default number of users allowed."),
 		NULL, &MaxUserLimit,
 		MAX_USER_LIMIT, 1, 100,
+		PGC_SUSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.maxCustomCommandTimeoutLimit", newGucPrefix),
+		gettext_noop("The max allowed custom command limit in milliseconds."),
+		NULL, &MaxCustomCommandTimeout,
+		DEFAULT_MAX_CUSTOM_COMMAND_TIMEOUT, 0, INT_MAX,
 		PGC_SUSET,
 		0,
 		NULL, NULL, NULL);

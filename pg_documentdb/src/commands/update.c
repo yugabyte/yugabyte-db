@@ -635,6 +635,13 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 
 			bypassDocumentValidation = bson_iter_bool(updateCommandIter);
 		}
+		else if (strcmp(field, "maxTimeMS") == 0)
+		{
+			EnsureTopLevelFieldIsNumberLike("update.maxTimeMS", bson_iter_value(
+												updateCommandIter));
+			SetExplicitStatementTimeout(BsonValueAsInt32(bson_iter_value(
+															 updateCommandIter)));
+		}
 		else if (IsCommonSpecIgnoredField(field))
 		{
 			elog(DEBUG1, "Unrecognized command field: update.%s", field);

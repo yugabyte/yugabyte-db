@@ -338,6 +338,12 @@ ParseFindAndModifyMessage(pgbson *message)
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg("findAndModify.collation is not implemented yet")));
 		}
+		else if (strcmp(key, "maxTimeMS") == 0)
+		{
+			EnsureTopLevelFieldIsNumberLike("findAndModify.maxTimeMS", bson_iter_value(
+												&messageIter));
+			SetExplicitStatementTimeout(BsonValueAsInt32(bson_iter_value(&messageIter)));
+		}
 		else
 		{
 			knownField = false;

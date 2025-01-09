@@ -106,7 +106,8 @@ GenerateBaseAgnosticQuery(Datum databaseDatum, AggregationPipelineBuildContext *
  */
 Query *
 GenerateListCollectionsQuery(Datum databaseDatum, pgbson *listCollectionsSpec,
-							 QueryData *queryData, bool addCursorParams)
+							 QueryData *queryData, bool addCursorParams,
+							 bool setStatementTimeout)
 {
 	AggregationPipelineBuildContext context = { 0 };
 	context.databaseNameDatum = databaseDatum;
@@ -152,6 +153,11 @@ GenerateListCollectionsQuery(Datum databaseDatum, pgbson *listCollectionsSpec,
 		{
 			/* TODO: Handle this */
 		}
+		else if (setStatementTimeout && StringViewEqualsCString(&keyView, "maxTimeMS"))
+		{
+			EnsureTopLevelFieldIsNumberLike("listCollections.maxTimeMS", value);
+			SetExplicitStatementTimeout(BsonValueAsInt32(value));
+		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
@@ -187,7 +193,7 @@ GenerateListCollectionsQuery(Datum databaseDatum, pgbson *listCollectionsSpec,
 Query *
 GenerateListIndexesQuery(Datum databaseDatum, pgbson *listIndexesSpec,
 						 QueryData *queryData,
-						 bool addCursorParams)
+						 bool addCursorParams, bool setStatementTimeout)
 {
 	AggregationPipelineBuildContext context = { 0 };
 	context.databaseNameDatum = databaseDatum;
@@ -209,6 +215,12 @@ GenerateListIndexesQuery(Datum databaseDatum, pgbson *listIndexesSpec,
 		else if (StringViewEqualsCString(&keyView, "cursor"))
 		{
 			ParseCursorDocument(&listIndexesIter, queryData);
+		}
+		else if (setStatementTimeout && StringViewEqualsCString(&keyView, "maxTimeMS"))
+		{
+			const bson_value_t *value = bson_iter_value(&listIndexesIter);
+			EnsureTopLevelFieldIsNumberLike("listIndexes.maxTimeMS", value);
+			SetExplicitStatementTimeout(BsonValueAsInt32(value));
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{

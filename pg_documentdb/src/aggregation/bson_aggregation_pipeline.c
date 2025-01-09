@@ -153,7 +153,6 @@ typedef struct
 } AggregationStage;
 
 
-static void TryHandleSimplifyAggregationRequest(SupportRequestSimplify *simplifyRequest);
 static void AddCursorFunctionsToQuery(Query *query, Query *baseQuery,
 									  QueryData *queryData,
 									  AggregationPipelineBuildContext *context,
@@ -909,27 +908,11 @@ command_api_collection(PG_FUNCTION_ARGS)
 
 
 /*
- * This is a support function for any aggregation functions
- * - aggregation pipeline
- * - find
- * - count
- * - distinct
- * These during the planning phase are replaced by the actual SQL query
- * that is run during the execution phase.
+ * This function currently is pseudo-deprecated
  */
 Datum
 command_aggregation_support(PG_FUNCTION_ARGS)
 {
-	Node *supportRequest = (Node *) PG_GETARG_POINTER(0);
-	if (IsA(supportRequest, SupportRequestSimplify))
-	{
-		/* Try to convert operator/function call to index conditions */
-		SupportRequestSimplify *req =
-			(SupportRequestSimplify *) supportRequest;
-
-		TryHandleSimplifyAggregationRequest(req);
-	}
-
 	PG_RETURN_POINTER(NIL);
 }
 
@@ -1101,7 +1084,7 @@ MutateQueryWithPipeline(Query *query, List *aggregationStages,
  */
 Query *
 GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *queryData,
-						 bool addCursorParams)
+						 bool addCursorParams, bool setStatementTimeout)
 {
 	AggregationPipelineBuildContext context = { 0 };
 	context.databaseNameDatum = database;
@@ -1190,6 +1173,12 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 									BSON_TYPE_DOCUMENT);
 			ReportFeatureUsage(FEATURE_COLLATION);
 			ParseAndGetCollationString(value, context.collationString);
+		}
+		else if (setStatementTimeout &&
+				 StringViewEqualsCString(&keyView, "maxTimeMS"))
+		{
+			EnsureTopLevelFieldIsNumberLike("find.maxTimeMS", value);
+			SetExplicitStatementTimeout(BsonValueAsInt32(value));
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
@@ -1304,7 +1293,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
  */
 Query *
 GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, bool
-				  addCursorParams)
+				  addCursorParams, bool setStatementTimeout)
 {
 	AggregationPipelineBuildContext context = { 0 };
 	context.databaseNameDatum = databaseDatum;
@@ -1441,6 +1430,12 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 								   keyView.length, keyView.string),
 							errdetail_log("key %.*s is not supported yet",
 										  keyView.length, keyView.string)));
+		}
+		else if (setStatementTimeout &&
+				 StringViewEqualsCString(&keyView, "maxTimeMS"))
+		{
+			EnsureTopLevelFieldIsNumberLike("find.maxTimeMS", value);
+			SetExplicitStatementTimeout(BsonValueAsInt32(value));
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
@@ -1600,7 +1595,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
  * Generates a query that is akin to the MongoDB $count query command
  */
 Query *
-GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
+GenerateCountQuery(Datum databaseDatum, pgbson *countSpec, bool setStatementTimeout)
 {
 	AggregationPipelineBuildContext context = { 0 };
 	context.databaseNameDatum = databaseDatum;
@@ -1648,6 +1643,11 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 				 StringViewEqualsCString(&keyView, "fields"))
 		{
 			/* We ignore this for now (TODO Support this?) */
+		}
+		else if (setStatementTimeout && StringViewEqualsCString(&keyView, "maxTimeMS"))
+		{
+			EnsureTopLevelFieldIsNumberLike("distinct.maxTimeMS", value);
+			SetExplicitStatementTimeout(BsonValueAsInt32(value));
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
@@ -1785,7 +1785,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
  * Generates a query that is akin to the MongoDB $distinct query command
  */
 Query *
-GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec)
+GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec, bool setStatementTimeout)
 {
 	AggregationPipelineBuildContext context = { 0 };
 	context.databaseNameDatum = databaseDatum;
@@ -1823,6 +1823,11 @@ GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec)
 			/* Validation handled in the stage processing */
 			EnsureTopLevelFieldType("key", &distinctIter, BSON_TYPE_UTF8);
 			distinctKey.string = bson_iter_utf8(&distinctIter, &distinctKey.length);
+		}
+		else if (setStatementTimeout && StringViewEqualsCString(&keyView, "maxTimeMS"))
+		{
+			EnsureTopLevelFieldIsNumberLike("distinct.maxTimeMS", value);
+			SetExplicitStatementTimeout(BsonValueAsInt32(value));
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
@@ -1876,7 +1881,8 @@ GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec)
  * with it. Also updates the queryData with cursor related information.
  */
 int64_t
-ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData)
+ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData, bool
+			 setStatementTimeout)
 {
 	bson_iter_t cursorSpecIter;
 	PgbsonInitIterator(getMoreSpec, &cursorSpecIter);
@@ -1906,6 +1912,12 @@ ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData)
 			};
 			queryData->namespaceName = CreateNamespaceName(databaseName,
 														   &nameView);
+		}
+		else if (setStatementTimeout && strcmp(pathKey, "maxTimeMS") == 0)
+		{
+			const bson_value_t *value = bson_iter_value(&cursorSpecIter);
+			EnsureTopLevelFieldIsNumberLike("getMore.maxTimeMS", value);
+			SetExplicitStatementTimeout(BsonValueAsInt32(value));
 		}
 		else if (!IsCommonSpecIgnoredField(pathKey))
 		{
@@ -6417,128 +6429,6 @@ ParseCursorDocument(bson_iter_t *iterator, QueryData *queryData)
 							errmsg("Unrecognized field: %s",
 								   path)));
 		}
-	}
-}
-
-
-/*
- * Simplify an Aggregation request. Checks that the RTE
- * of the query is a function RTE for the query operation
- * If the RTE is for the specified function, then replaces
- * the original RTE with the specified query as a subquery.
- *
- * Note that this creates a new RTE and does not modify the existing one
- * since the existing one Must still be a Function RTE.
- */
-static void
-TryHandleSimplifyAggregationRequest(SupportRequestSimplify *simplifyRequest)
-{
-	if (list_length(simplifyRequest->root->parse->rtable) != 1)
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg(
-							"Query pipeline function must be the only entry in the FROM clause")));
-	}
-
-	RangeTblEntry *rte = (RangeTblEntry *) linitial(simplifyRequest->root->parse->rtable);
-	if (rte->rtekind != RTE_FUNCTION || list_length(rte->functions) != 1)
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg(
-							"Query pipeline FROM clause must have exactly 1 function")));
-	}
-
-	RangeTblFunction *rangeTableFunc = linitial(rte->functions);
-	FuncExpr *funcExpr = (FuncExpr *) rangeTableFunc->funcexpr;
-	if (!equal(funcExpr, simplifyRequest->fcall))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg("Query pipeline function must be in the FROM clause")));
-	}
-
-	/* Now that we know that the query pipeline function is the only Function in the RTE */
-	/* We replace the RTE with the query from it */
-	Node *databaseArg = linitial(funcExpr->args);
-	Node *secondArg = lsecond(funcExpr->args);
-	if (!IsA(secondArg, Const) || !IsA(databaseArg, Const))
-	{
-		/* Let the runtime deal with this (This will either go to the runtime function and fail, or noop due to prepared and come back here
-		 * to be evaluated during the EXECUTE)
-		 */
-		return;
-	}
-
-	Const *databaseConst = (Const *) databaseArg;
-	Const *aggregationConst = (Const *) secondArg;
-	if (databaseConst->constisnull || aggregationConst->constisnull)
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg(
-							"Query pipeline arguments should not be null.")));
-	}
-
-	if (simplifyRequest->fcall->funcid == ApiCatalogAggregationPipelineFunctionId())
-	{
-		pgbson *pipeline = DatumGetPgBson(aggregationConst->constvalue);
-		QueryData queryData = { 0 };
-		bool enableCursorParam = false;
-		Query *aggregationQuery = GenerateAggregationQuery(databaseConst->constvalue,
-														   pipeline, &queryData,
-														   enableCursorParam);
-
-		/* Now that we have the query, swap out the RTE with this */
-		RangeTblEntry *newEntry = MakeSubQueryRte(aggregationQuery, 0, 0, "topQuery",
-												  true);
-		simplifyRequest->root->parse->rtable = list_make1(newEntry);
-	}
-	else if (simplifyRequest->fcall->funcid == ApiCatalogAggregationFindFunctionId())
-	{
-		pgbson *pipeline = DatumGetPgBson(aggregationConst->constvalue);
-		QueryData queryData = { 0 };
-		bool enableCursorParam = false;
-		Query *findQuery = GenerateFindQuery(databaseConst->constvalue, pipeline,
-											 &queryData,
-											 enableCursorParam);
-
-		/* Now that we have the query, swap out the RTE with this */
-		RangeTblEntry *newEntry = MakeSubQueryRte(findQuery, 0, 0, "topQuery", true);
-		simplifyRequest->root->parse->rtable = list_make1(newEntry);
-	}
-	else if (simplifyRequest->fcall->funcid == ApiCatalogAggregationCountFunctionId())
-	{
-		pgbson *pipeline = DatumGetPgBson(aggregationConst->constvalue);
-		Query *countQuery = GenerateCountQuery(databaseConst->constvalue, pipeline);
-
-		/* Now that we have the query, swap out the RTE with this */
-		RangeTblEntry *newEntry = MakeSubQueryRte(countQuery, 0, 0, "topQuery", true);
-		simplifyRequest->root->parse->rtable = list_make1(newEntry);
-	}
-	else if (simplifyRequest->fcall->funcid == ApiCatalogAggregationDistinctFunctionId())
-	{
-		pgbson *pipeline = DatumGetPgBson(aggregationConst->constvalue);
-		Query *distinctQuery = GenerateDistinctQuery(databaseConst->constvalue, pipeline);
-
-		/* Now that we have the query, swap out the RTE with this */
-		RangeTblEntry *newEntry = MakeSubQueryRte(distinctQuery, 0, 0, "topQuery", true);
-		simplifyRequest->root->parse->rtable = list_make1(newEntry);
-	}
-	else if (simplifyRequest->fcall->funcid == ApiCollectionFunctionId())
-	{
-		AggregationPipelineBuildContext baseContext = { 0 };
-		baseContext.databaseNameDatum = databaseConst->constvalue;
-		text *collectionText = DatumGetTextP(aggregationConst->constvalue);
-		StringView collectionView = CreateStringViewFromText(collectionText);
-
-		pg_uuid_t *collectionUuid = NULL;
-		Query *collectionQuery = GenerateBaseTableQuery(databaseConst->constvalue,
-														&collectionView,
-														collectionUuid,
-														&baseContext);
-
-		/* Now that we have the query, swap out the RTE with this */
-		RangeTblEntry *newEntry = MakeSubQueryRte(collectionQuery, 0, 0, "collection",
-												  true);
-		simplifyRequest->root->parse->rtable = list_make1(newEntry);
 	}
 }
 

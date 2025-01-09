@@ -306,6 +306,13 @@ BuildBatchDeletionSpec(bson_iter_t *deleteCommandIter, pgbsonsequence *deleteDoc
 
 			isOrdered = bson_iter_bool(deleteCommandIter);
 		}
+		else if (strcmp(field, "maxTimeMS") == 0)
+		{
+			EnsureTopLevelFieldIsNumberLike("delete.maxTimeMS", bson_iter_value(
+												deleteCommandIter));
+			SetExplicitStatementTimeout(BsonValueAsInt32(bson_iter_value(
+															 deleteCommandIter)));
+		}
 		else if (IsCommonSpecIgnoredField(field))
 		{
 			elog(DEBUG1, "Unrecognized command field: delete.%s", field);

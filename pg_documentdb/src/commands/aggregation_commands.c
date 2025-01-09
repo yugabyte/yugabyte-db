@@ -173,9 +173,10 @@ command_aggregate_cursor_first_page(PG_FUNCTION_ARGS)
 	int64_t cursorId = PG_ARGISNULL(2) ? 0 : PG_GETARG_INT64(2);
 
 	bool generateCursorParams = true;
+	bool setStatementTimeout = true;
 	QueryData queryData = GenerateFirstPageQueryData();
 	Query *query = GenerateAggregationQuery(database, aggregationSpec, &queryData,
-											generateCursorParams);
+											generateCursorParams, setStatementTimeout);
 
 	Datum response = HandleFirstPageRequest(
 		fcinfo, DatumGetTextP(database), aggregationSpec, cursorId, &queryData,
@@ -199,8 +200,10 @@ command_find_cursor_first_page(PG_FUNCTION_ARGS)
 	/* Parse the find spec for the purposes of query execution */
 	QueryData queryData = GenerateFirstPageQueryData();
 	bool generateCursorParams = true;
+	bool setStatementTimeout = true;
 	Query *query = GenerateFindQuery(database, findSpec, &queryData,
-									 generateCursorParams);
+									 generateCursorParams,
+									 setStatementTimeout);
 
 	Datum response = HandleFirstPageRequest(
 		fcinfo, DatumGetTextPP(database), findSpec, cursorId, &queryData,
@@ -221,8 +224,10 @@ command_list_collections_cursor_first_page(PG_FUNCTION_ARGS)
 	pgbson *listCollectionsSpec = PG_GETARG_PGBSON(1);
 	QueryData queryData = GenerateFirstPageQueryData();
 	bool generateCursorParams = false;
+	bool setStatementTimeout = true;
 	Query *query = GenerateListCollectionsQuery(database, listCollectionsSpec, &queryData,
-												generateCursorParams);
+												generateCursorParams,
+												setStatementTimeout);
 
 	/* TODO: Remove these restrictions */
 	queryData.cursorKind = QueryCursorType_SingleBatch;
@@ -248,8 +253,9 @@ command_list_indexes_cursor_first_page(PG_FUNCTION_ARGS)
 	pgbson *listIndexesSpec = PG_GETARG_PGBSON(1);
 	QueryData queryData = GenerateFirstPageQueryData();
 	bool generateCursorParams = false;
+	bool setStatementTimeout = true;
 	Query *query = GenerateListIndexesQuery(database, listIndexesSpec, &queryData,
-											generateCursorParams);
+											generateCursorParams, setStatementTimeout);
 
 	/* TODO: Remove these restrictions */
 	queryData.cursorKind = QueryCursorType_SingleBatch;
@@ -324,17 +330,21 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 			{
 				case QueryKind_Find:
 				{
+					bool setStatementTimeout = false;
 					query = GenerateFindQuery(PointerGetDatum(database),
 											  getMoreInfo.querySpec, &queryData,
-											  generateCursorParams);
+											  generateCursorParams,
+											  setStatementTimeout);
 					break;
 				}
 
 				case QueryKind_Aggregate:
 				{
+					bool setStatementTimeout = false;
 					query = GenerateAggregationQuery(PointerGetDatum(database),
 													 getMoreInfo.querySpec, &queryData,
-													 generateCursorParams);
+													 generateCursorParams,
+													 setStatementTimeout);
 					break;
 				}
 
@@ -370,9 +380,10 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 			bool generateCursorParams = true;
 			QueryData queryData = { 0 };
 			isTailableCursor = true;
+			bool setStatementTimeout = false;
 			query = GenerateAggregationQuery(PointerGetDatum(database),
 											 getMoreInfo.querySpec, &queryData,
-											 generateCursorParams);
+											 generateCursorParams, setStatementTimeout);
 			HTAB *cursorMap = CreateTailableCursorHashSet();
 			BuildTailableCursorContinuationMap(cursorSpec, cursorMap);
 			int numIterations = 0;
@@ -415,7 +426,8 @@ command_distinct_query(PG_FUNCTION_ARGS)
 	Datum database = PG_GETARG_DATUM(0);
 	pgbson *distinctSpec = PG_GETARG_PGBSON(1);
 
-	Query *query = GenerateDistinctQuery(database, distinctSpec);
+	bool setStatementTimeout = true;
+	Query *query = GenerateDistinctQuery(database, distinctSpec, setStatementTimeout);
 
 	pgbson *response = DrainSingleResultQuery(query);
 
@@ -442,7 +454,8 @@ command_count_query(PG_FUNCTION_ARGS)
 	Datum database = PG_GETARG_DATUM(0);
 	pgbson *countSpec = PG_GETARG_PGBSON(1);
 
-	Query *query = GenerateCountQuery(database, countSpec);
+	bool setStatementTimeout = true;
+	Query *query = GenerateCountQuery(database, countSpec, setStatementTimeout);
 
 	pgbson *response = DrainSingleResultQuery(query);
 	if (response == NULL)
@@ -764,7 +777,9 @@ ParseGetMoreSpec(text *databaseName, pgbson *getMoreSpec, pgbson *cursorSpec,
 	ParseCursorInputSpec(cursorSpec, getMoreInfo);
 
 	/* Parses the wire protocol getMore */
-	int64_t cursorId = ParseGetMore(databaseName, getMoreSpec, &getMoreInfo->queryData);
+	bool setStatementTimeout = true;
+	int64_t cursorId = ParseGetMore(databaseName, getMoreSpec, &getMoreInfo->queryData,
+									setStatementTimeout);
 	if (cursorId != getMoreInfo->cursorId)
 	{
 		ereport(ERROR, (errmsg(
