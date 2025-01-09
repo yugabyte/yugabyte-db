@@ -169,7 +169,7 @@ You can configure Azure as your backup target.
 
     - Navigate to **Storage account > Shared access signature**, as shown in the following illustration. (NOTE: the SAS Token must be generated on the Storage Account, not the Container. Generating the SAS Token on the container will prevent the configuration from being applied.)
     - Under **Allowed resource types**, select **Container** and **Object**.
-    - Click **Generate SAS and connection string** and copy the SAS token. Note that the token should start with `?sv=`.
+    - Click **Generate SAS and connection string** and copy the SAS token.
 
         ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
 
@@ -186,6 +186,9 @@ In YugabyteDB Anywhere:
 1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
 
 1. Enter values for the **Container URL** and **SAS Token** fields.
+
+    - Container URL can be found on container page **Settings > Properties > URL**
+    - SAS Token is copied directly from **Shared access signature** page.
 
 1. Click **Save**.
 
