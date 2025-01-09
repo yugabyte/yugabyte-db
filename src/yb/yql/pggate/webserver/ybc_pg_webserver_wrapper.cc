@@ -379,6 +379,14 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
       if (strlen(entry->query) > 0) {
         writer.String("query");
         writer.String(entry->query);
+
+        writer.String("query_id");
+        writer.Uint64(entry->query_id);
+      }
+
+      if (entry->leader_pid != -1) {
+        writer.String("leader_pid");
+        writer.Int(entry->leader_pid);
       }
 
       WriteAsJsonTimestampAndRunningForMs(

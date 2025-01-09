@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <sys/types.h>
 #ifdef __cplusplus
 #include <atomic>
 using int64 = int64_t;
@@ -56,6 +57,8 @@ typedef struct YbcRpczEntry {
   int64 process_start_timestamp;
   int64 transaction_start_timestamp;
   int64 query_start_timestamp;
+  uint64 query_id;
+  pid_t leader_pid;
   char *backend_type;
   uint8 backend_active;
   char *backend_status;
