@@ -803,7 +803,7 @@ create_table_as = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS
 
 
 (* CREATE TRIGGER *)
-create_trigger = 'CREATE' 'TRIGGER' name
+create_trigger = 'CREATE' [ 'OR' 'REPLACE' ] 'TRIGGER' name
                   ( 'BEFORE' | 'AFTER' | 'INSTEAD' 'OF' ) ( event { 'OR' event } )
                       'ON' table_name
                       [ 'FROM' table_name ] \
