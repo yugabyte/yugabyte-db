@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/master/master_admin.pb.h"
 #include "yb/util/status_fwd.h"
 
 #include "yb/master/master_fwd.h"
@@ -64,6 +65,8 @@ class YsqlInitDBAndMajorUpgradeHandler {
   bool IsYsqlMajorUpgradeInProgress() const { return ysql_major_upgrade_in_progress_; }
 
   bool IsYsqlMajorCatalogUpgradeInProgress() const;
+
+  Result<YsqlMajorCatalogUpgradeState> GetYsqlMajorCatalogUpgradeState() const;
 
   // Are we allowed to perform updates to the ysql catalog?
   // True for the current version if the ysql major upgrade completed.

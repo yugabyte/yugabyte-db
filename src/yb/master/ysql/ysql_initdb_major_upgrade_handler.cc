@@ -171,6 +171,31 @@ bool YsqlInitDBAndMajorUpgradeHandler::IsYsqlMajorCatalogUpgradeInProgress() con
   return !IsYsqlMajorCatalogUpgradeDone().done();
 }
 
+Result<YsqlMajorCatalogUpgradeState>
+YsqlInitDBAndMajorUpgradeHandler::GetYsqlMajorCatalogUpgradeState() const {
+  const auto state = ysql_catalog_config_.GetMajorCatalogUpgradeState();
+  switch (state) {
+    case YsqlMajorCatalogUpgradeInfoPB::INVALID:
+      // Bad enum, fail the call.
+      break;
+    case YsqlMajorCatalogUpgradeInfoPB::DONE:
+      return ysql_major_upgrade_in_progress_ ? YSQL_MAJOR_CATALOG_UPGRADE_PENDING
+                                             : YSQL_MAJOR_CATALOG_UPGRADE_DONE;
+    case YsqlMajorCatalogUpgradeInfoPB::FAILED:
+      return YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK;
+    case YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB:
+      FALLTHROUGH_INTENDED;
+    case YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE:
+      return YSQL_MAJOR_CATALOG_UPGRADE_IN_PROGRESS;
+    case YsqlMajorCatalogUpgradeInfoPB::MONITORING:
+      return YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK;
+    case YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK:
+      return YSQL_MAJOR_CATALOG_UPGRADE_ROLLBACK_IN_PROGRESS;
+  }
+
+  return STATUS_FORMAT(IllegalState, "Unknown ysql major upgrade state: $0", state);
+}
+
 bool YsqlInitDBAndMajorUpgradeHandler::IsWriteToCatalogTableAllowed(
     const TableId& table_id, bool is_forced_update) const {
   // During the upgrade only allow special updates to the catalog.

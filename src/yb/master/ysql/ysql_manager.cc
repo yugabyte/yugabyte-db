@@ -185,6 +185,15 @@ Status YsqlManager::RollbackYsqlMajorCatalogVersion(
   return Status::OK();
 }
 
+Status YsqlManager::GetYsqlMajorCatalogUpgradeState(
+    const GetYsqlMajorCatalogUpgradeStateRequestPB* req,
+    GetYsqlMajorCatalogUpgradeStateResponsePB* resp, rpc::RpcContext* rpc) {
+  auto state =
+      VERIFY_RESULT(ysql_initdb_and_major_upgrade_helper_->GetYsqlMajorCatalogUpgradeState());
+  resp->set_state(state);
+  return Status::OK();
+}
+
 Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch) {
   if (advisory_locks_table_created_ || !FLAGS_enable_ysql || !FLAGS_ysql_yb_enable_advisory_locks) {
     return Status::OK();

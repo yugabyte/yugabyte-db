@@ -1235,6 +1235,16 @@ Status rollback_ysql_major_version_upgrade_action(const ClusterAdminCli::CLIArgu
   return Status::OK();
 }
 
+const auto get_ysql_major_version_catalog_upgrade_state_args = "";
+Status get_ysql_major_version_catalog_upgrade_state_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
+  RETURN_NOT_OK_PREPEND(
+      client->GetYsqlMajorCatalogUpgradeState(),
+      "Unable to determine ysql major catalog upgrade state");
+  return Status::OK();
+}
+
 // Today we have a weird pattern recognization for table name.
 // The expected input argument for the <table> is:
 // <db type>.<namespace> <table name>
@@ -2909,6 +2919,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(ysql_major_version_catalog_upgrade);
   REGISTER_COMMAND(finalize_ysql_major_version_catalog_upgrade);
   REGISTER_COMMAND(rollback_ysql_major_version_upgrade);
+  REGISTER_COMMAND(get_ysql_major_version_catalog_upgrade_state);
 
   // SysCatalog util commands
   REGISTER_COMMAND(dump_sys_catalog_entries);

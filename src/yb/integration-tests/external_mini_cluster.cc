@@ -2238,16 +2238,20 @@ LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) 
   daemon_->SetLogListener(this);
 }
 
-Status ExternalMiniCluster::CallYbAdmin(const std::vector<std::string>& args, MonoDelta timeout) {
+Status ExternalMiniCluster::CallYbAdmin(
+    const std::vector<std::string>& args, MonoDelta timeout, std::string* output) {
   auto command = ToStringVector(
       GetToolPath("yb-admin"), "-master_addresses", GetMasterAddresses(), "-timeout_ms",
       timeout.ToMilliseconds());
   command.insert(command.end(), args.begin(), args.end());
 
   LOG(INFO) << "Running " << ToString(command);
-  std::string output, error;
-  auto status = Subprocess::Call(command, &output, &error);
-  LOG(INFO) << "yb-admin Output: " << output;
+  std::string output_internal, error;
+  if (!output) {
+    output = &output_internal;
+  }
+  auto status = Subprocess::Call(command, output, &error);
+  LOG(INFO) << "yb-admin Output: " << *output;
   if (!error.empty()) {
     LOG(INFO) << "yb-admin Error: " << error;
   }

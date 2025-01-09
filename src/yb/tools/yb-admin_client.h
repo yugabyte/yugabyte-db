@@ -329,6 +329,8 @@ class ClusterAdminClient {
 
   Status RollbackYsqlMajorCatalogVersion();
 
+  Status GetYsqlMajorCatalogUpgradeState();
+
   // Set WAL retention time in secs for a table name.
   Status SetWalRetentionSecs(
     const client::YBTableName& table_name, const uint32_t wal_ret_secs);
