@@ -2483,6 +2483,7 @@ YBCStatus YBCYcqlStatementStats(YCQLStatementStats** stats, size_t* num_stats) {
           .max_time = info.max_time(),
           .mean_time = info.mean_time(),
           .stddev_time = info.stddev_time(),
+          .keyspace = YBCPAllocStdString(info.keyspace()),
       };
       ++dest;
     }
