@@ -83,17 +83,16 @@ typedef struct BsonProjectionQueryState
 
 
 /*
- * Cached state for ReplaceRoot.
+ * Cached state for ReplaceRoot and Redact.
  */
-typedef struct BsonReplaceRootState
+typedef struct BsonReplaceRootRedactState
 {
 	/* The aggregation expression data */
 	AggregationExpressionData *expressionData;
 
 	/* The variable context for let if any */
 	ExpressionVariableContext *variableContext;
-} BsonReplaceRootState;
-
+} BsonReplaceRootRedactState;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -142,8 +141,10 @@ static pgbson * BsonLookUpGetFilterExpression(pgbson *sourceDocument,
 static pgbson * BsonLookUpProject(pgbson *sourceDocument, int numMatchedDocuments,
 								  Datum *mathedArray, char *matchedDocsFieldName);
 static void PopulateReplaceRootExpressionDataFromSpec(
-	BsonReplaceRootState *expressionData, pgbson *pathSpec, pgbson *variableSpec);
+	BsonReplaceRootRedactState *expressionData, pgbson *pathSpec, pgbson *variableSpec);
 
+static void BuildRedactState(BsonReplaceRootRedactState *redactState, const
+							 bson_value_t *redactValue, pgbson *variableSpec);
 static void BuildBsonPathTreeForDollarProject(BsonProjectionQueryState *state,
 											  BsonProjectionContext *context);
 static void BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
@@ -166,6 +167,12 @@ static void PostProcessParseProjectNode(void *state, const StringView *path,
 										bool *hasFieldsForIntermediate);
 static pgbson * ProjectGeonearDocument(const GeonearDistanceState *state,
 									   pgbson *document);
+static pgbson * EvaluateRedactDocument(pgbson *document, const
+									   BsonReplaceRootRedactState *state,
+									   bool *shouldPrune);
+static void EvaluateRedactArray(const bson_value_t *array, const
+								BsonReplaceRootRedactState *state,
+								pgbson_array_writer *array_Writer);
 static void SetVariableSpec(ExpressionVariableContext **state, pgbson *variableSpec);
 static inline bool IsBsonDollarProjectFunctionOid(Oid functionOid);
 static inline bool IsBsonDollarAddFieldsFunctionOid(Oid functionOid);
@@ -180,6 +187,7 @@ PG_FUNCTION_INFO_V1(bson_dollar_set);
 PG_FUNCTION_INFO_V1(bson_dollar_unset);
 PG_FUNCTION_INFO_V1(bson_dollar_replace_root);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_documents_at_path);
+PG_FUNCTION_INFO_V1(bson_dollar_redact);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_documents);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_expression_eval_merge);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_extract_filter_expression);
@@ -724,12 +732,12 @@ bson_dollar_replace_root(PG_FUNCTION_ARGS)
 		numArgs = 2;
 	}
 
-	BsonReplaceRootState localState = { 0 };
-	const BsonReplaceRootState *replaceRootExpression;
+	BsonReplaceRootRedactState localState = { 0 };
+	const BsonReplaceRootRedactState *replaceRootExpression;
 
 	SetCachedFunctionStateMultiArgs(
 		replaceRootExpression,
-		BsonReplaceRootState,
+		BsonReplaceRootRedactState,
 		argPositions,
 		numArgs,
 		PopulateReplaceRootExpressionDataFromSpec,
@@ -1066,6 +1074,269 @@ GetProjectionStateForBsonUnset(const bson_value_t *unsetValue, bool forceProject
 	BsonProjectionQueryState *projectionState = palloc0(sizeof(BsonProjectionQueryState));
 	BuildBsonPathTreeForDollarUnset(projectionState, unsetValue, forceProjectId);
 	return projectionState;
+}
+
+
+/*
+ * bson_dollar_redact performs a projection with fields visibility controlled by defined conditions.
+ */
+Datum
+bson_dollar_redact(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON(0);
+	pgbson *redactSpec = PG_GETARG_PGBSON(1);
+	char *redactSpecText = text_to_cstring(PG_GETARG_TEXT_PP(2));
+	pgbson *variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(3);
+
+	bson_value_t redactValue = { 0 };
+
+	if (IsPgbsonEmptyDocument(redactSpec) && (strcmp(redactSpecText, "") != 0))
+	{
+		redactValue.value_type = BSON_TYPE_UTF8;
+		redactValue.value.v_utf8.str = redactSpecText;
+		redactValue.value.v_utf8.len = strlen(redactSpecText);
+	}
+	else
+	{
+		redactValue = ConvertPgbsonToBsonValue(redactSpec);
+	}
+
+	int argPositions[3] = { 1, 2, 3 };
+	int numArgs = 3;
+
+	if (variableSpec == NULL)
+	{
+		variableSpec = PgbsonInitEmpty();
+	}
+
+	const BsonReplaceRootRedactState *redactState;
+	SetCachedFunctionStateMultiArgs(
+		redactState,
+		BsonReplaceRootRedactState,
+		argPositions,
+		numArgs,
+		BuildRedactState,
+		&redactValue,
+		variableSpec);
+
+	pgbson *result;
+	bool shouldPrune = false;
+	if (redactState == NULL)
+	{
+		BsonReplaceRootRedactState newState = { 0 };
+		BuildRedactState(&newState, &redactValue, variableSpec);
+		result = EvaluateRedactDocument(document, &newState, &shouldPrune);
+	}
+	else
+	{
+		result = EvaluateRedactDocument(document, redactState, &shouldPrune);
+	}
+
+	if (shouldPrune)
+	{
+		PG_RETURN_NULL();
+	}
+	PG_RETURN_POINTER(result);
+}
+
+
+/* Parse $redact stage argument and build state.
+ * { $redact: <expression> }
+ * The argument can be any expression, only need to check evaluation result of expression.
+ */
+static void
+BuildRedactState(BsonReplaceRootRedactState *redactState, const bson_value_t *redactValue,
+				 pgbson *variableSpec)
+{
+	ParseAggregationExpressionContext context = { allowRedactVariables: true };
+	redactState->expressionData = palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(redactState->expressionData, redactValue, &context);
+
+	SetVariableSpec(&redactState->variableContext, variableSpec);
+}
+
+
+/*
+ * Given a document and a redact state, evaluate the document with the redact expression in state.
+ * Recursively evaluate any nested documents or documents in arrays when the result returned is $$DESCEND.
+ * Set boolean shouldPrune to true if the result returned is $$PRUNE, so that we can go back and prune the document along with its key at upper level.
+ * see redact.md for more details.
+ */
+static pgbson *
+EvaluateRedactDocument(pgbson *document, const BsonReplaceRootRedactState *state,
+					   bool *shouldPrune)
+{
+	StringView path = { .string = "", .length = 0 };
+	pgbson_writer evaluatedResultWriter;
+	PgbsonWriterInit(&evaluatedResultWriter);
+	bool isNullOnEmpty = false;
+
+	if (state->expressionData->kind == AggregationExpressionKind_SystemVariable)
+	{
+		switch (state->expressionData->systemVariable.kind)
+		{
+			case AggregationExpressionSystemVariableKind_Keep:
+			case AggregationExpressionSystemVariableKind_Descend:
+			{
+				/* include current document to result, and stop process any nest fields. */
+				return document;
+			}
+
+			case AggregationExpressionSystemVariableKind_Prune:
+			{
+				/* current document and its key(if available) should be excluded in the result. */
+				*shouldPrune = true;
+				return PgbsonInitEmpty();
+			}
+
+			default:
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17053),
+								errmsg(
+									"$redact's expression should not return anything aside from the variables $$KEEP, $$DESCEND, and $$PRUNE, but returned '%s'.",
+									BsonValueToJsonForLogging(
+										&(state->expressionData->value)))));
+				break;
+			}
+		}
+	}
+
+	EvaluateAggregationExpressionDataToWriter(state->expressionData, document, path,
+											  &evaluatedResultWriter,
+											  state->variableContext,
+											  isNullOnEmpty);
+
+	pgbson *evaluatedResult = PgbsonWriterGetPgbson(&evaluatedResultWriter);
+	pgbsonelement evaluatedResultElement = { 0 };
+	PgbsonToSinglePgbsonElement(evaluatedResult, &evaluatedResultElement);
+
+	AggregationExpressionData *parsedValue = palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionContext context = { allowRedactVariables: true };
+	ParseAggregationExpressionData(parsedValue, &evaluatedResultElement.bsonValue,
+								   &context);
+	if (parsedValue->kind == AggregationExpressionKind_SystemVariable)
+	{
+		switch (parsedValue->systemVariable.kind)
+		{
+			case AggregationExpressionSystemVariableKind_Keep:
+			{
+				/* include current document to result, and stop process any nest fields. */
+				return document;
+			}
+
+			case AggregationExpressionSystemVariableKind_Prune:
+			{
+				/* current document and its key(if available) should be excluded in the result. */
+				*shouldPrune = true;
+			}
+
+			case AggregationExpressionSystemVariableKind_Descend:
+			{
+				/* iterate all fields and find any nested document or arrays to continue evaluation. */
+				pgbson_writer writer;
+				PgbsonWriterInit(&writer);
+				bson_iter_t docIter;
+				PgbsonInitIterator(document, &docIter);
+				while (bson_iter_next(&docIter))
+				{
+					if (BSON_ITER_HOLDS_DOCUMENT(&docIter))
+					{
+						/* recursively evaluate nested document */
+						bool shouldPrune = false;
+						pgbson *subDocument = EvaluateRedactDocument(
+							PgbsonInitFromDocumentBsonValue(bson_iter_value(&docIter)),
+							state, &shouldPrune);
+						if (shouldPrune)
+						{
+							/* skip this field, do not write the key and its value. */
+							continue;
+						}
+						else
+						{
+							PgbsonWriterAppendDocument(&writer, bson_iter_key(&docIter),
+													   strlen(bson_iter_key(&docIter)),
+													   subDocument);
+						}
+					}
+					else if (BSON_ITER_HOLDS_ARRAY(&docIter))
+					{
+						/* recursively evaluate nested arrays */
+						pgbson_array_writer array_Writer;
+						PgbsonWriterStartArray(&writer, bson_iter_key(&docIter),
+											   strlen(bson_iter_key(&docIter)),
+											   &array_Writer);
+						EvaluateRedactArray(bson_iter_value(&docIter), state,
+											&array_Writer);
+						PgbsonWriterEndArray(&writer, &array_Writer);
+					}
+					else
+					{
+						/* write current field to result */
+						PgbsonWriterAppendValue(&writer, bson_iter_key(&docIter), strlen(
+													bson_iter_key(&docIter)),
+												bson_iter_value(&docIter));
+					}
+				}
+				pgbson *result = PgbsonWriterGetPgbson(&writer);
+				return result;
+			}
+
+			default:
+			{
+				break;
+			}
+		}
+	}
+
+	pfree(parsedValue);
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17053),
+					errmsg(
+						"$redact's expression should not return anything aside from the variables $$KEEP, $$DESCEND, and $$PRUNE, but returned '%s'.",
+						BsonValueToJsonForLogging(&evaluatedResultElement.bsonValue))));
+}
+
+
+/*
+ * Handles the projection of an array field for the $redact stage.
+ * There is a recursive call to EvaluateRedactDocument for nested documents and recursive calls to EvaluateRedactArray for nested arrays.
+ */
+static void
+EvaluateRedactArray(const bson_value_t *array, const BsonReplaceRootRedactState *state,
+					pgbson_array_writer *array_Writer)
+{
+	/* recursively evaluate nested documents in array */
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(array, &arrayIter);
+
+	while (bson_iter_next(&arrayIter))
+	{
+		const bson_value_t *arrayElement = bson_iter_value(
+			&arrayIter);
+		if (BSON_ITER_HOLDS_DOCUMENT(&arrayIter))
+		{
+			bool shouldPrune = false;
+			pgbson *nestedDocument = EvaluateRedactDocument(
+				PgbsonInitFromDocumentBsonValue(arrayElement), state, &shouldPrune);
+			if (!shouldPrune)
+			{
+				PgbsonArrayWriterWriteDocument(array_Writer,
+											   nestedDocument);
+			}
+		}
+		else if (BSON_ITER_HOLDS_ARRAY(&arrayIter))
+		{
+			pgbson_array_writer child_array_writer;
+			PgbsonArrayWriterStartArray(array_Writer,
+										&child_array_writer);
+			EvaluateRedactArray(arrayElement, state, &child_array_writer);
+			PgbsonArrayWriterEndArray(array_Writer, &child_array_writer);
+		}
+		else
+		{
+			PgbsonArrayWriterWriteValue(array_Writer,
+										arrayElement);
+		}
+	}
 }
 
 
@@ -2252,7 +2523,7 @@ FilterNodeToWrite(void *state, int currentIndex)
 
 /* Populates the aggregation expression data for a replace root stage based on the pathSpec specified to $replaceRoot. */
 static void
-PopulateReplaceRootExpressionDataFromSpec(BsonReplaceRootState *expressionData,
+PopulateReplaceRootExpressionDataFromSpec(BsonReplaceRootRedactState *expressionData,
 										  pgbson *pathSpec, pgbson *variableSpec)
 {
 	bson_iter_t pathSpecIter;

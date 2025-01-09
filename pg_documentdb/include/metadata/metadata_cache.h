@@ -280,6 +280,7 @@ Oid BsonDollarProjectGeonearFunctionOid(void);
 Oid BsonDollarInverseMatchFunctionId(void);
 Oid BsonDollarProjectFunctionOid(void);
 Oid BsonDollarProjectWithLetFunctionOid(void);
+Oid BsonDollarRedactWithLetFunctionOid(void);
 Oid BsonDollarMergeHandleWhenMatchedFunctionOid(void);
 Oid BsonDollarMergeAddObjectIdFunctionOid(void);
 Oid BsonDollarMergeGenerateObjectId(void);

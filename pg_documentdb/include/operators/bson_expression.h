@@ -205,6 +205,9 @@ typedef struct ParseAggregationExpressionContext
 {
 	/* Function that is called after every aggregation expression is parsed. */
 	ValidateParsedAggregationExpression validateParsedExpressionFunc;
+
+	/* Only $redact is allowed to use the $$KEEP,$$PRUNE, and $$DESCEND system variables. Use this boolean to prevent other operators from using these three variables.*/
+	bool allowRedactVariables;
 } ParseAggregationExpressionContext;
 
 

@@ -1779,24 +1779,48 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 				}
 				else if (StringViewEqualsCString(&expressionView, "$$DESCEND"))
 				{
-					expressionData->kind = AggregationExpressionKind_SystemVariable;
-					expressionData->systemVariable.kind =
-						AggregationExpressionSystemVariableKind_Descend;
-					expressionData->systemVariable.pathSuffix = dottedSuffix;
+					if (context->allowRedactVariables)
+					{
+						expressionData->kind = AggregationExpressionKind_SystemVariable;
+						expressionData->systemVariable.kind =
+							AggregationExpressionSystemVariableKind_Descend;
+						expressionData->systemVariable.pathSuffix = dottedSuffix;
+					}
+					else
+					{
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17276),
+										errmsg("Use of undefined variable: DESCEND")));
+					}
 				}
 				else if (StringViewEqualsCString(&expressionView, "$$PRUNE"))
 				{
-					expressionData->kind = AggregationExpressionKind_SystemVariable;
-					expressionData->systemVariable.kind =
-						AggregationExpressionSystemVariableKind_Prune;
-					expressionData->systemVariable.pathSuffix = dottedSuffix;
+					if (context->allowRedactVariables)
+					{
+						expressionData->kind = AggregationExpressionKind_SystemVariable;
+						expressionData->systemVariable.kind =
+							AggregationExpressionSystemVariableKind_Prune;
+						expressionData->systemVariable.pathSuffix = dottedSuffix;
+					}
+					else
+					{
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17276),
+										errmsg("Use of undefined variable: PRUNE")));
+					}
 				}
 				else if (StringViewEqualsCString(&expressionView, "$$KEEP"))
 				{
-					expressionData->kind = AggregationExpressionKind_SystemVariable;
-					expressionData->systemVariable.kind =
-						AggregationExpressionSystemVariableKind_Keep;
-					expressionData->systemVariable.pathSuffix = dottedSuffix;
+					if (context->allowRedactVariables)
+					{
+						expressionData->kind = AggregationExpressionKind_SystemVariable;
+						expressionData->systemVariable.kind =
+							AggregationExpressionSystemVariableKind_Keep;
+						expressionData->systemVariable.pathSuffix = dottedSuffix;
+					}
+					else
+					{
+						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17276),
+										errmsg("Use of undefined variable: KEEP")));
+					}
 				}
 				else if (StringViewEqualsCString(&expressionView, "$$SEARCH_META"))
 				{
@@ -2261,22 +2285,30 @@ EvaluateAggregationExpressionSystemVariable(const AggregationExpressionData *dat
 			return;
 		}
 
+		/* $$KEEP $$DESCEND $$PRUNE can only be used by stage $redact and gated by boolean allowRedactVariables.
+		 * Return the variable string as we handle the logics at stage level.*/
 		case AggregationExpressionSystemVariableKind_Descend:
 		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-							errmsg("Variable $$DESCEND not supported yet")));
+			variableValue.value_type = BSON_TYPE_UTF8;
+			variableValue.value.v_utf8.str = "$$DESCEND";
+			variableValue.value.v_utf8.len = 9;
+			break;
 		}
 
 		case AggregationExpressionSystemVariableKind_Prune:
 		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-							errmsg("Variable $$PRUNE not supported yet")));
+			variableValue.value_type = BSON_TYPE_UTF8;
+			variableValue.value.v_utf8.str = "$$PRUNE";
+			variableValue.value.v_utf8.len = 7;
+			break;
 		}
 
 		case AggregationExpressionSystemVariableKind_Keep:
 		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-							errmsg("Variable $$KEEP not supported yet")));
+			variableValue.value_type = BSON_TYPE_UTF8;
+			variableValue.value.v_utf8.str = "$$KEEP";
+			variableValue.value.v_utf8.len = 6;
+			break;
 		}
 
 		case AggregationExpressionSystemVariableKind_SearchMeta:

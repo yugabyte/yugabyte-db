@@ -280,6 +280,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_STAGE_OUT] = "out",
 	[FEATURE_STAGE_PROJECT] = "project",
 	[FEATURE_STAGE_PROJECT_FIND] = "project_find",
+	[FEATURE_STAGE_REDACT] = "redact",
 	[FEATURE_STAGE_REPLACE_ROOT] = "replace_root",
 	[FEATURE_STAGE_REPLACE_WITH] = "replace_with",
 	[FEATURE_STAGE_SAMPLE] = "sample",

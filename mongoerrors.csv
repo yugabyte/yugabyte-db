@@ -113,6 +113,7 @@ MongoError,ErrorName
 17047,Location17047
 17048,Location17048
 17049,Location17049
+17053,Location17053
 17080,DollarCondMissingIfParameter
 17081,DollarCondMissingThenParameter
 17082,DollarCondMissingElseParameter

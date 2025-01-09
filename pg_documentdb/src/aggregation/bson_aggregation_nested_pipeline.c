@@ -687,6 +687,7 @@ CreateInverseMatchFromCollectionQuery(InverseMatchArgs *inverseMatchArgs,
 	subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 	subPipelineContext.databaseNameDatum = context->databaseNameDatum;
 	subPipelineContext.variableSpec = context->variableSpec;
+	subPipelineContext.parentStageName = ParentStageName_INVERSEMATCH;
 	strncpy((char *) subPipelineContext.collationString, context->collationString,
 			MAX_ICU_COLLATION_LENGTH);
 
@@ -964,6 +965,7 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 		subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 		subPipelineContext.databaseNameDatum = context->databaseNameDatum;
 		subPipelineContext.variableSpec = context->variableSpec;
+		subPipelineContext.parentStageName = ParentStageName_UNIONWITH;
 		strncpy((char *) subPipelineContext.collationString, context->collationString,
 				MAX_ICU_COLLATION_LENGTH);
 
@@ -980,6 +982,7 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 		subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 		subPipelineContext.databaseNameDatum = context->databaseNameDatum;
 		subPipelineContext.variableSpec = context->variableSpec;
+		subPipelineContext.parentStageName = ParentStageName_UNIONWITH;
 		strncpy((char *) subPipelineContext.collationString, context->collationString,
 				MAX_ICU_COLLATION_LENGTH);
 
@@ -1154,6 +1157,7 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 		nestedContext.databaseNameDatum = parentContext->databaseNameDatum;
 		nestedContext.sortSpec = *sortSpec;
 		nestedContext.variableSpec = parentContext->variableSpec;
+		nestedContext.parentStageName = ParentStageName_FACET;
 		strncpy((char *) nestedContext.collationString, parentContext->collationString,
 				MAX_ICU_COLLATION_LENGTH);
 
@@ -1211,6 +1215,7 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 			nestedContext.databaseNameDatum = parentContext->databaseNameDatum;
 			nestedContext.sortSpec = *sortSpec;
 			nestedContext.variableSpec = parentContext->variableSpec;
+			nestedContext.parentStageName = ParentStageName_FACET;
 			strncpy((char *) nestedContext.collationString,
 					parentContext->collationString, MAX_ICU_COLLATION_LENGTH);
 			nestedContext.mongoCollection = parentContext->mongoCollection;
@@ -1841,6 +1846,7 @@ OptimizeLookup(LookupArgs *lookupArgs,
 	optimizationArgs->rightQueryContext.variableSpec = leftQueryContext->variableSpec;
 	strncpy((char *) optimizationArgs->rightQueryContext.collationString,
 			leftQueryContext->collationString, MAX_ICU_COLLATION_LENGTH);
+	optimizationArgs->rightQueryContext.parentStageName = ParentStageName_LOOKUP;
 
 	optimizationArgs->isLookupAgnostic = lookupArgs->from.length == 0;
 	optimizationArgs->isLookupUncorrelated = !lookupArgs->hasLookupMatch;
@@ -2506,6 +2512,7 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 		projectorQueryContext.mongoCollection =
 			optimizationArgs.rightQueryContext.mongoCollection;
 		projectorQueryContext.variableSpec = letExpr;
+		projectorQueryContext.parentStageName = ParentStageName_LOOKUP;
 		strncpy((char *) projectorQueryContext.collationString, context->collationString,
 				MAX_ICU_COLLATION_LENGTH);
 

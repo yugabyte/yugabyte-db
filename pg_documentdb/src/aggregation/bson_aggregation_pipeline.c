@@ -245,6 +245,8 @@ static Query * HandleProject(const bson_value_t *existingValue, Query *query,
 static Query * HandleProjectFind(const bson_value_t *existingValue,
 								 const bson_value_t *queryValue, Query *query,
 								 AggregationPipelineBuildContext *context);
+static Query * HandleRedact(const bson_value_t *existingValue, Query *query,
+							AggregationPipelineBuildContext *context);
 static Query * HandleReplaceRoot(const bson_value_t *existingValue, Query *query,
 								 AggregationPipelineBuildContext *context);
 static Query * HandleReplaceWith(const bson_value_t *existingValue, Query *query,
@@ -703,12 +705,12 @@ static const AggregationStageDefinition StageDefinitions[] =
 	},
 	{
 		.stage = "$redact",
-		.mutateFunc = NULL,
+		.mutateFunc = &HandleRedact,
 		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
-		.isProjectTransform = false,
+		.isProjectTransform = true,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
 		.allowBaseShardTablePushdown = true,
@@ -2892,6 +2894,94 @@ HandleProject(const bson_value_t *existingValue, Query *query,
 	return HandleSimpleProjectionStage(existingValue, query, context, "$project",
 									   BsonDollarProjectFunctionOid(),
 									   BsonDollarProjectWithLetFunctionOid);
+}
+
+
+/*
+ * Mutates the query for the $redact stage
+ */
+static Query *
+HandleRedact(const bson_value_t *existingValue, Query *query,
+			 AggregationPipelineBuildContext *context)
+{
+	ReportFeatureUsage(FEATURE_STAGE_REDACT);
+
+	/* Check if redact feature is available according to version. */
+	if (!IsClusterVersionAtleast(DocDB_V0, 24, 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+						errmsg(
+							"Stage $redact is not supported yet in native pipeline"),
+						errdetail_log(
+							"Stage $redact is not supported yet in native pipeline")));
+	}
+
+	Const *redactSpec;
+	Const *redactSpecText;
+
+	if (existingValue->value_type == BSON_TYPE_DOCUMENT)
+	{
+		redactSpec = MakeBsonConst(PgbsonInitFromDocumentBsonValue(existingValue));
+		redactSpecText = MakeTextConst("", 0);
+	}
+	else if (existingValue->value_type == BSON_TYPE_UTF8)
+	{
+		redactSpec = MakeBsonConst(PgbsonInitEmpty());
+		redactSpecText = MakeTextConst(
+			existingValue->value.v_utf8.str, existingValue->value.v_utf8.len);
+	}
+	else
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17053),
+						errmsg(
+							"$redact's parameter must be an expression or string valued as $$KEEP, $$DESCEND, and $$PRUNE, but input as '%s'.",
+							BsonValueToJsonForLogging(existingValue)),
+						errdetail_log(
+							"$redact's parameter must be an expression or string valued as $$KEEP, $$DESCEND, and $$PRUNE.")));
+	}
+
+	/* The first projector is the document */
+	TargetEntry *firstEntry = linitial(query->targetList);
+	Expr *currentProjection = firstEntry->expr;
+
+	/*
+	 * There is two kind of $redact parameters:
+	 * a. like "$redact: { $cond: { if: { $eq: ["$level", "public"] }, then: "$$KEEP", else: "$$PRUNE" }"
+	 * existingValue->value_type is BSON_TYPE_DOCUMENT.
+	 * BsonDollarRedactWithLetFunctionOid() takes four parameters, currentProjection, redactSpec, redactSpecText, variableSpec.
+	 * redactSpec is the document and redactSpecText is empty
+	 * b. like "$redact: "$$PRUNE"
+	 * existingValue->value.value_type is BSON_TYPE_UTF8.
+	 * In this case, BsonDollarRedactWithLetFunctionOid() takes four parameters, currentProjection, redactSpec, redactSpecText, variableSpec.
+	 * redactSpec is set to empty document and redactSpecText is the string.
+	 */
+	List *args = list_make4(currentProjection, redactSpec, redactSpecText,
+							context->variableSpec == NULL ? (Expr *) MakeBsonConst(
+								PgbsonInitEmpty()) : context->variableSpec);
+
+	FuncExpr *resultExpr = makeFuncExpr(
+		BsonDollarRedactWithLetFunctionOid(), BsonTypeId(), args, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	firstEntry->expr = (Expr *) resultExpr;
+
+	/* The following code addresses nested redact handling.
+	 * The behavior of $lookup and $facet with nested redact differs from $unionWith:
+	 * $lookup and $facet result in unexpected null values, use COALESCE to return an empty value instead.
+	 * For $unionWith, it will still return null as redact does.
+	 */
+	if (context->nestedPipelineLevel > 0 && context->parentStageName !=
+		ParentStageName_UNIONWITH)
+	{
+		CoalesceExpr *coalesceExpr = makeNode(CoalesceExpr);
+		coalesceExpr->args = list_make2(resultExpr, MakeBsonConst(PgbsonInitEmpty()));
+		coalesceExpr->coalescetype = BsonTypeId();
+		coalesceExpr->coalescecollid = InvalidOid;
+
+		firstEntry->expr = (Expr *) coalesceExpr;
+	}
+
+	return query;
 }
 
 

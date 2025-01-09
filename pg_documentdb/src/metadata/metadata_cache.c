@@ -649,6 +649,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_dollar_project function */
 	Oid ApiCatalogBsonDollarProjectFunctionOid;
 
+	/* OID of the bson_dollar_redact(bson, bson, text, bson) function */
+	Oid ApiInternalBsonDollarRedactWithLetFunctionOid;
+
 	/* OID of the bson_dollar_project function with let */
 	Oid ApiCatalogBsonDollarProjectWithLetFunctionOid;
 
@@ -3111,6 +3114,18 @@ BsonDollarProjectWithLetFunctionOid(void)
 		DocumentDBApiInternalSchemaName, "bson_dollar_project",
 		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(),
 		DocumentDBCoreBsonTypeId());
+}
+
+
+Oid
+BsonDollarRedactWithLetFunctionOid(void)
+{
+	return GetOperatorFunctionIdFourArgs(
+		&Cache.ApiInternalBsonDollarRedactWithLetFunctionOid,
+		DocumentDBApiInternalSchemaName,
+		"bson_dollar_redact",
+		BsonTypeId(), BsonTypeId(),
+		TEXTOID, BsonTypeId());
 }
 
 

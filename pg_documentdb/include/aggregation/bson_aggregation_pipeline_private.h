@@ -19,6 +19,17 @@
 #ifndef BSON_AGGREGATION_PIPELINE_PRIVATE_H
 #define BSON_AGGREGATION_PIPELINE_PRIVATE_H
 
+/*
+ * for nested stage, use this to record its parent stage name
+ */
+typedef enum ParentStageName
+{
+	ParentStageName_NOPARENT = 0,
+	ParentStageName_LOOKUP,
+	ParentStageName_FACET,
+	ParentStageName_UNIONWITH,
+	ParentStageName_INVERSEMATCH,
+} ParentStageName;
 
 /*
  * Shared context during aggregation pipeline build phase.
@@ -102,6 +113,9 @@ typedef struct
 
 	/* Whether or not it's a point read query */
 	bool isPointReadQuery;
+
+	/*Parent Stage Name*/
+	ParentStageName parentStageName;
 } AggregationPipelineBuildContext;
 
 

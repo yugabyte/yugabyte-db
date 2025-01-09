@@ -497,3 +497,4 @@ Location40229,M00DQ,495
 UserCountLimitExceeded,M00DR,496
 Location55,M00DS,497
 Location40236,M00DT,498
+Location17053,M00DU,499
