@@ -309,6 +309,8 @@ message GetTransactionStatusResponsePB {
   // When re-using transactions, coordinator replies with the current active reuse version of the
   // transaction, and the receiver can drop all requests/locks corresponding to older versions.
   repeated uint64 min_active_txn_reuse_version = 10;
+
+  repeated uint64 pg_session_req_version = 11;
 }
 
 message GetOldTransactionsRequestPB {
@@ -369,6 +371,7 @@ message UpdateTransactionWaitingForStatusRequestPB {
     repeated BlockingTransaction blocking_transaction = 2;
     optional fixed64 wait_start_time = 3;
     optional int64 request_id = 4;
+    optional uint64 pg_session_req_version = 5;
   }
 
   optional fixed64 propagated_hybrid_time = 1;
@@ -424,6 +427,10 @@ message ProbeTransactionDeadlockResponsePB {
     optional bytes detector_id = 3;
 
     optional fixed64 txn_start_us = 4;
+
+    optional bool is_pg_session_txn = 5;
+
+    optional uint64 pg_session_req_version = 6;
   }
 
   repeated DeadlockedTxnInfo deadlock = 4;

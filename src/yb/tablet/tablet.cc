@@ -2467,6 +2467,10 @@ Status Tablet::RemoveAdvisoryLock(
       intents_db_.get(), &context, /* ignore_metadata= */ true, advisory_lock_key);
   RETURN_NOT_OK(writer.Apply(handler));
   LOG_IF(DFATAL, !writer.key_applied()) << "Lock not found for " << key.ToDebugString();
+  // TODO (advisory-locks): The waiters would get scheduled for resumption (async), but the required
+  // shared in-memory locks are still held by this request. Don't see a better way of signaling the
+  // wait-queue on all peers post a session level advisory unlock request for now.
+  transaction_participant_->ForceRefreshWaitersForBlocker(transaction_id);
   return Status::OK();
 }
 
@@ -2490,6 +2494,10 @@ Status Tablet::RemoveAdvisoryLocks(const TransactionId& id, rocksdb::DirectWrite
     }
     apply_state = std::move(context.apply_state());
   }
+  // TODO (advisory-locks): The waiters would get scheduled for resumption (async), but the required
+  // shared in-memory locks are still held by this request. Don't see a better way of signaling the
+  // wait-queue on all peers post a session level advisory unlock request for now.
+  transaction_participant_->ForceRefreshWaitersForBlocker(id);
   return Status::OK();
 }
 

@@ -377,6 +377,13 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
     req->mutable_write_batch()->set_background_transaction_id(
         metadata.background_transaction_id->data(), metadata.background_transaction_id->size());
   }
+  if (metadata.pg_session_req_version) {
+    // Populate the current request version for a session level transaction. This is used to unblock
+    // requests that were involved in a deadlock. Note that unlike regular distributed docdb txns,
+    // session level transactions aren't aborted on a deadlock and hence we need the write rpc to
+    // keep track of the request version which it was launched with.
+    req->mutable_write_batch()->set_pg_session_req_version(*metadata.pg_session_req_version);
+  }
 }
 
 } // namespace

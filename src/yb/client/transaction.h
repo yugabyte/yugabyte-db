@@ -191,6 +191,11 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   bool OldTransactionAborted() const;
 
+  // For docdb transactions of type PgClientSessionKind::kPgSession, initializes the metadata
+  // necessary for deadlock detection etc. This info is plugged in into write rpcs and the target
+  // tablet's wait-queue relies on this information to resume deadlocked session advisory lock reqs.
+  void InitPgSessionRequestVersion();
+
   // Sets the transaction's reuse_version_ to the value observed by Perform rpc(s)
   // at pg_client_session.
   void SetCurrentReuseVersion(TxnReuseVersion reuse_version);

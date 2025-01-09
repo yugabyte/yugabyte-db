@@ -144,6 +144,10 @@ class ConflictResolverContext {
 
   virtual bool IsSingleShardTransaction() const = 0;
 
+  virtual boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const {
+    return boost::none;
+  }
+
   std::string LogPrefix() const {
     return ToString() + ": ";
   }
@@ -689,7 +693,8 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
-        serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
+        serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_,
+        context_->PgSessionRequestVersion(), deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
@@ -710,7 +715,8 @@ class WaitOnConflictResolver : public ConflictResolver {
     RETURN_NOT_OK(wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
-        context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
+        context_->GetTxnStartUs(), request_start_us_, request_id_,
+        context_->PgSessionRequestVersion(), deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2)));
     MaybeSetWaitStartTime();
@@ -1267,6 +1273,13 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   bool IsSingleShardTransaction() const override {
     return false;
+  }
+
+  boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const override {
+    if (write_batch_.has_pg_session_req_version() && write_batch_.pg_session_req_version()) {
+      return write_batch_.pg_session_req_version();
+    }
+    return boost::none;
   }
 
   std::string ToString() const override {

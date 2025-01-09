@@ -40,9 +40,10 @@ TransactionStatusResult::TransactionStatusResult(
 
 TransactionStatusResult::TransactionStatusResult(
     TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
-    Status expected_deadlock_status_) : status(status_), status_time(status_time_),
-        aborted_subtxn_set(aborted_subtxn_set_),
-        expected_deadlock_status(expected_deadlock_status_) {
+    Status expected_deadlock_status_, PgSessionRequestVersion pg_session_req_version_)
+    : status(status_), status_time(status_time_), aborted_subtxn_set(aborted_subtxn_set_),
+      expected_deadlock_status(expected_deadlock_status_),
+      pg_session_req_version(pg_session_req_version_) {
   DCHECK(status == TransactionStatus::ABORTED || status_time.is_valid())
       << "Status: " << status << ", status_time: " << status_time;
 }

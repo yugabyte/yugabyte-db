@@ -134,4 +134,37 @@ TEST_F(PgAdvisoryLockTest, VerifyNoConflictBetweenSessionAndTransactionLocks) {
   ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
 }
 
+TEST_F(PgAdvisoryLockTest, SessionAdvisoryLocksDeadlock) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(10)"));
+
+  {
+    auto conn2 = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn2.Fetch("select pg_advisory_lock(11)"));
+
+    auto status_future = std::async(std::launch::async, [&]() -> Status {
+      RETURN_NOT_OK(conn1.Fetch("select pg_advisory_lock(11)"));
+      return Status::OK();
+    });
+    ASSERT_NOK(conn2.Fetch("select pg_advisory_lock(10)"));
+    ASSERT_NOK(status_future.get());
+  }
+  SleepFor(2 * kExpiredSessionCleanupMs * 1ms * kTimeMultiplier);
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(11)"));
+}
+
+TEST_F(PgAdvisoryLockTest, SessionAdvisoryLockReleaseUnlocksWaiters) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(10)"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Fetch("select pg_advisory_lock(10)"));
+    return Status::OK();
+  });
+
+  ASSERT_OK(conn1.Fetch("select pg_advisory_unlock(10)"));
+  ASSERT_OK(status_future.get());
+}
+
 } // namespace yb::pgwrapper

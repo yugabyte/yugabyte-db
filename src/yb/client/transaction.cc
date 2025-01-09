@@ -29,6 +29,7 @@
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/advisory_locks_error.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
@@ -463,6 +464,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // Populate the transaction's metadata alone for the passed 'ops_info'.
     // 'ops_info->metadata.subtransaction_pb' has already been set upsteam in Batcher::FlushAsync.
     ops_info->metadata.transaction = metadata_;
+    // For resolving session advisory lock requests involved in a deadlock, the underlying tablet's
+    // wait queue requires this field.
+    if (pg_session_req_version_) {
+      ops_info->metadata.pg_session_req_version = pg_session_req_version_;
+    }
     return true;
   }
 
@@ -533,7 +539,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           }
         }
       } else {
-        if (CanAbortTransaction(status, metadata_, subtransaction_pb)) {
+        // Do not abort pg session level transaction despite failure on flush path, i.e attempt to
+        // obtain advisory locks. If it was indeed aborted at the coordinator, the heartbeat would
+        // realize it and set the status accordingly, failing subsequent Prepare(s).
+        if (CanAbortTransaction(status, metadata_, subtransaction_pb) &&
+            !pg_session_req_version_) {
           auto state = state_.load(std::memory_order_acquire);
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
           if (state == TransactionState::kRunning) {
@@ -1110,6 +1120,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     reuse_version_ = reuse_version;
   }
 
+  void InitPgSessionRequestVersion() {
+    pg_session_req_version_ = 1;
+  }
+
  private:
   void CompleteConstruction() {
     LOG_IF(FATAL, !IsAcceptableAtomicImpl(log_prefix_.tag));
@@ -1230,6 +1244,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                           << aborted_set_for_rollback_heartbeat.value().ToString();
 
       aborted_set_for_rollback_heartbeat.value().ToPB(state.mutable_aborted()->mutable_set());
+    }
+
+    if (pg_session_req_version_) {
+      state.set_pg_session_req_version(pg_session_req_version_);
     }
 
     return UpdateTransaction(
@@ -1985,6 +2003,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
         return;
       }
+      if (status.IsTryAgain() && status.ErrorData(AdvisoryLocksErrorTag::kCategory)) {
+        auto new_pg_session_req_version = AdvisoryLocksError(status).value();
+        LOG_WITH_PREFIX(INFO)
+            << "PgSessionRequestVersion changed from " << pg_session_req_version_
+            << " to " << new_pg_session_req_version;
+        pg_session_req_version_ = new_pg_session_req_version;
+      }
       // Other errors could have different causes, but we should just retry sending heartbeat
       // in this case.
       SendHeartbeat(transaction_status, metadata_.transaction_id, transaction, send_to_new_tablet);
@@ -2387,6 +2412,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // tablets. It is propagated to the status tablet, which helps in releasing inactive object
   // locks and pruning inactive wait-for probes that originated from TSLocalLockManager.
   TxnReuseVersion reuse_version_ GUARDED_BY(mutex_) = 0;
+
+  // Session level advisory lock requests launch a docdb distributed txn that lives for the lifetime
+  // of the pg session. The below field keeps track of the active request version as seen on the
+  // the txn's status tablet. The same is embedded into session advisory lock requests and is used
+  // by the wait-queue to resume deadlocked requests.
+  std::atomic<PgSessionRequestVersion> pg_session_req_version_{0};
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -2574,6 +2605,10 @@ bool YBTransaction::OldTransactionAborted() const {
 
 void YBTransaction::SetCurrentReuseVersion(TxnReuseVersion reuse_version) {
   impl_->SetCurrentReuseVersion(reuse_version);
+}
+
+void YBTransaction::InitPgSessionRequestVersion() {
+  return impl_->InitPgSessionRequestVersion();
 }
 
 } // namespace client

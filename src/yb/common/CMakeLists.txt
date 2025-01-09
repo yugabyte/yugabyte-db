@@ -75,6 +75,7 @@ ADD_YB_LIBRARY(yb_common_base
   DEPS ${COMMON_BASE_LIBS})
 
 set(COMMON_SRCS
+  advisory_locks_error.cc
   clock.cc
   colocated_util.cc
   common_consensus_util.cc

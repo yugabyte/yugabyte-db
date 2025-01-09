@@ -1623,6 +1623,7 @@ Status PgClientSession::BeginPgSessionLevelTxnIfNecessary(CoarseTimePoint deadli
         IsDDL::kFalse, client::ForceGlobalTransaction::kTrue, deadline,
         client::ForceCreateTransaction::kTrue);
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
+    txn->InitPgSessionRequestVersion();
     // Isolation level doesn't matter but we need to set it for conflict resolution to not treat
     // it as a single shard/fast-path transaction.
     RETURN_NOT_OK(txn->Init(IsolationLevel::READ_COMMITTED));
@@ -1833,6 +1834,8 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
   // the assumption that all session advisory locks taken in the past are active till the ysql
   // session ends, then we need to explicitly check status of pg_session_transaction_, if exists,
   // and fail all read/write ops if pg_session_transaction_ has failed.
+  //
+  // Refer https://github.com/yugabyte/yugabyte-db/issues/25566 for details.
   if (isolation == IsolationLevel::NON_TRANSACTIONAL) {
     return Status::OK();
   }

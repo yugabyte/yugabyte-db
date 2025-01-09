@@ -78,6 +78,9 @@ struct InFlightOpsTransactionMetadata {
   // It's used to prevent conflicts between session and transaction level advisory locks
   // within the same session.
   boost::optional<TransactionId> background_transaction_id;
+  // When acquiring a session advisory lock, we need the below to release waiting requests
+  // involved in a deadlock.
+  boost::optional<PgSessionRequestVersion> pg_session_req_version;
 };
 
 struct InFlightOpsGroupsWithMetadata {
