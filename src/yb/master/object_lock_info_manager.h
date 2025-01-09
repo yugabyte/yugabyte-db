@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 
 namespace yb::rpc {
@@ -35,9 +36,13 @@ class DdlLockEntriesPB;
 }  // namespace yb::tserver
 
 namespace yb::master {
+class AcquireObjectLocksGlobalRequestPB;
+class AcquireObjectLocksGlobalResponsePB;
+class ReleaseObjectLocksGlobalRequestPB;
+class ReleaseObjectLocksGlobalResponsePB;
 
-struct LeaderEpoch;
 class ObjectLockInfo;
+struct ExpiredLeaseInfo;
 
 class ObjectLockInfoManager {
  public:
@@ -45,22 +50,24 @@ class ObjectLockInfoManager {
   virtual ~ObjectLockInfoManager();
 
   void LockObject(
-      const tserver::AcquireObjectLockRequestPB& req, tserver::AcquireObjectLockResponsePB* resp,
+      const AcquireObjectLocksGlobalRequestPB& req, AcquireObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
 
   void UnlockObject(
-      const tserver::ReleaseObjectLockRequestPB& req, tserver::ReleaseObjectLockResponsePB* resp,
+      const ReleaseObjectLocksGlobalRequestPB& req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
 
   void ExportObjectLockInfo(const std::string& tserver_uuid, tserver::DdlLockEntriesPB* resp);
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info);
   void Clear();
   std::shared_ptr<tablet::TSLocalLockManager> TEST_ts_local_lock_manager();
+  std::shared_ptr<tablet::TSLocalLockManager> ts_local_lock_manager();
 
   // Releases any object locks that may have been taken by the specified tservers's previous
   // incarnations.
   void ReleaseOldObjectLocks(
-      const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait = false);
+      const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait = false,
+      std::optional<LeaderEpoch> leader_epoch = std::nullopt);
 
  private:
   template <class Req, class Resp>

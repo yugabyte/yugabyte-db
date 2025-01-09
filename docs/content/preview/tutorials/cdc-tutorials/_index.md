@@ -52,4 +52,4 @@ type: indexpage
 
 ## Learn more
 
-For more information on YugabyteDB CDC, see [Change Data Capture](../../explore/change-data-capture/).
+For more information on YugabyteDB CDC, see [Change Data Capture](../../develop/change-data-capture/).

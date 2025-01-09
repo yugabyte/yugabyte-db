@@ -144,11 +144,17 @@ void PgMiniTestBase::StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx) {
   ASSERT_OK(pg_supervisor_->Start());
 }
 
+Status PgMiniTestBase::RecreatePgSupervisor() {
+  pg_supervisor_ = std::make_unique<PgSupervisor>(
+      VERIFY_RESULT(CreatePgProcessConf(pg_host_port_.port(), /* ts_idx */ 0)),
+      /* tserver */ nullptr);
+  return Status::OK();
+}
+
 Status PgMiniTestBase::RestartCluster() {
   pg_supervisor_->Stop();
   RETURN_NOT_OK(cluster_->RestartSync());
-  pg_supervisor_ = std::make_unique<PgSupervisor>(VERIFY_RESULT(
-      CreatePgProcessConf(pg_host_port_.port(), /* ts_idx */ 0)), /* tserver */ nullptr);
+  RETURN_NOT_OK(RecreatePgSupervisor());
   return pg_supervisor_->Start();
 }
 
@@ -157,6 +163,13 @@ Status PgMiniTestBase::RestartMaster() {
   auto mini_master_ = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
   RETURN_NOT_OK(mini_master_->Restart());
   return mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests();
+}
+
+Status PgMiniTestBase::RestartPostgres() {
+  LOG(INFO) << "Restarting PostgreSQL server";
+  pg_supervisor_->Stop();
+  RETURN_NOT_OK(RecreatePgSupervisor());
+  return pg_supervisor_->Start();
 }
 
 void PgMiniTestBase::OverrideMiniClusterOptions(MiniClusterOptions* options) {}

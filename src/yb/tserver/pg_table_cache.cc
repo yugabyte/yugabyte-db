@@ -72,7 +72,7 @@ using CacheEntryPtr = std::shared_ptr<CacheEntry>;
 class PgTableCache::Impl {
  public:
   explicit Impl(std::shared_future<client::YBClient*> client_future)
-      : client_future_(client_future) {}
+      : client_future_(std::move(client_future)) {}
 
   Status GetInfo(
       const TableId& table_id,
@@ -197,8 +197,7 @@ PgTableCache::PgTableCache(std::shared_future<client::YBClient*> client_future)
     : impl_(new Impl(std::move(client_future))) {
 }
 
-PgTableCache::~PgTableCache() {
-}
+PgTableCache::~PgTableCache() = default;
 
 Status PgTableCache::GetInfo(
     const TableId& table_id,

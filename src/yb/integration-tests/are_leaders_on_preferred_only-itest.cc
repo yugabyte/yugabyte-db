@@ -52,7 +52,7 @@ class AreLeadersOnPreferredOnlyTest : public MiniClusterTestWithClient<MiniClust
   }
 
   void CreateTable(
-      const master::ReplicationInfoPB& replication_info, const std::string& table_name) {
+      const ReplicationInfoPB& replication_info, const std::string& table_name) {
     const auto yb_table_name = std::make_unique<client::YBTableName>(
         YQLDatabase::YQL_DATABASE_CQL,
         "test_are_leaders_on_preferred_only" /* namespace_name */,
@@ -72,8 +72,8 @@ class AreLeadersOnPreferredOnlyTest : public MiniClusterTestWithClient<MiniClust
                   .Create());
   }
 
-  master::ReplicationInfoPB GetReplicationInfoWithPreferredZoneAtTServer(const int ts_index) {
-    master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB GetReplicationInfoWithPreferredZoneAtTServer(const int ts_index) {
+    ReplicationInfoPB replication_info;
     replication_info.mutable_live_replicas()->set_num_replicas(kNumTservers);
     auto* leader_cloud_info = replication_info.add_affinitized_leaders();
     leader_cloud_info->set_placement_cloud(PlacementCloud(ts_index));
@@ -107,7 +107,7 @@ class AreLeadersOnPreferredOnlyTest : public MiniClusterTestWithClient<MiniClust
     ASSERT_OK(yb_admin_client_->Init());
 
     ASSERT_OK(client_->SetReplicationInfo(GetReplicationInfoWithPreferredZoneAtTServer(0)));
-    CreateTable(master::ReplicationInfoPB(), "global_table");
+    CreateTable(ReplicationInfoPB(), "global_table");
 
     const auto tablespace_replication_info = GetReplicationInfoWithPreferredZoneAtTServer(1);
     CreateTable(tablespace_replication_info, "tablespace_table");

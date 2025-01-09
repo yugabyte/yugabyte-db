@@ -162,7 +162,6 @@ yb_pg_inherits_beginscan(Relation inhrel, ScanKey key, int nkeys, Oid indexId)
 	}
 
 	YbChildScan scan = palloc0(sizeof(YbChildScanData));
-	scan->cache_entry = GetYbPgInheritsChildCacheEntry(
-		DatumGetObjectId(key[0].sk_argument));
+	scan->cache_entry = GetYbPgInheritsChildCacheEntry(DatumGetObjectId(key[0].sk_argument));
 	return YbInitSysScanDesc(&scan->base, &yb_child_scan);
 }

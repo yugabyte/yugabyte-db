@@ -2559,7 +2559,7 @@ AsyncTabletSnapshotOpPtr CatalogManager::CreateAsyncTabletSnapshotOp(
 }
 
 void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& task) {
-  WARN_NOT_OK(ScheduleTask(task), "Failed to send create snapshot request");
+  WARN_NOT_OK(ScheduleTask(task), Format("Failed to send snapshot task: $0", *task));
 }
 
 Result<std::unique_ptr<rocksdb::DB>> CatalogManager::RestoreSnapshotToTmpRocksDb(
@@ -2703,12 +2703,12 @@ Status CatalogManager::RestoreSysCatalogFastPitr(
 
   if (state.IsYsqlRestoration()) {
     // Set Hybrid Time filter for pg catalog tables.
-    tablet::TabletScopedRWOperationPauses op_pauses = tablet->StartShutdownRocksDBs(
+    tablet::TabletScopedRWOperationPauses op_pauses = tablet->StartShutdownStorages(
         tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kTrue);
 
     std::lock_guard<std::mutex> lock(tablet->create_checkpoint_lock_);
 
-    tablet->CompleteShutdownRocksDBs(op_pauses);
+    tablet->CompleteShutdownStorages(op_pauses);
 
     rocksdb::Options rocksdb_opts;
     tablet->InitRocksDBOptions(&rocksdb_opts, tablet->LogPrefix());

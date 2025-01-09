@@ -171,7 +171,15 @@ bool IsActive(const tablet::TabletPeer& peer) {
 }
 
 bool IsForTable(const tablet::TabletPeer& peer, const TableId& table_id) {
-  return peer.tablet_metadata()->table_id() == table_id;
+  if (table_id.empty()) {
+    return true;
+  }
+  for (const auto& table : peer.tablet_metadata()->GetAllColocatedTables()) {
+    if (table == table_id) {
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace

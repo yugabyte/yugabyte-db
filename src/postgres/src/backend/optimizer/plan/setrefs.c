@@ -2399,8 +2399,8 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 
 			YbBNLHashClauseInfo *valid_bnl_hinfos = batchednl->hashClauseInfos;
 			int num_invalid = 0;
-			while(num_invalid < batchednl->num_hashClauseInfos &&
-				  !OidIsValid(valid_bnl_hinfos->hashOp))
+			while (num_invalid < batchednl->num_hashClauseInfos &&
+				   !OidIsValid(valid_bnl_hinfos->hashOp))
 			{
 				valid_bnl_hinfos++;
 				num_invalid++;

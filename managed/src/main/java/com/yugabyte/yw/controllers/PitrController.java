@@ -10,12 +10,12 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil.ApiType;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.CloneNamespaceParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -54,6 +54,8 @@ import play.mvc.Result;
 public class PitrController extends AuthenticatedController {
 
   public static final String PITR_COMPATIBLE_DB_VERSION = "2.14.0.0-b1";
+  public static final String PITR_CLONE_COMPATIBLE_PREVIEW_DB_VERSION = "2.25.1.0-b1";
+  public static final String PITR_CLONE_COMPATIBLE_STABLE_DB_VERSION = "2024.2.0.0-b1";
 
   Commissioner commissioner;
   YBClientService ybClientService;
@@ -122,17 +124,7 @@ public class PitrController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "PITR Config is already present");
     }
 
-    UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    if (type != null) {
-      if (type.equals(TableType.YQL_TABLE_TYPE) && !primaryClusterUserIntent.enableYCQL) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Cannot enable PITR on YCQL tables when API is disabled");
-      } else if (type.equals(TableType.PGSQL_TABLE_TYPE) && !primaryClusterUserIntent.enableYSQL) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Cannot enable PITR on YSQL tables when API is disabled");
-      }
-    }
+    BackupUtil.checkApiEnabled(type, universe.getUniverseDetails().getPrimaryCluster().userIntent);
 
     taskParams.setUniverseUUID(universeUUID);
     taskParams.customerUUID = customerUUID;
@@ -212,7 +204,7 @@ public class PitrController extends AuthenticatedController {
           long minTimeInMillis =
               Math.max(
                   currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
-                  pitrConfig.getCreateTime().getTime());
+                  pitrConfig.getUpdateTime().getTime());
           pitrConfig.setMinRecoverTimeInMillis(minTimeInMillis);
           pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
           pitrConfig.setState(pitrStatus ? State.COMPLETE : State.FAILED);
@@ -373,6 +365,24 @@ public class PitrController extends AuthenticatedController {
     }
   }
 
+  private void checkCloneCompatibleYbVersion(String ybVersion) {
+    if (Util.compareYBVersions(
+            ybVersion,
+            PITR_CLONE_COMPATIBLE_STABLE_DB_VERSION,
+            PITR_CLONE_COMPATIBLE_PREVIEW_DB_VERSION,
+            true)
+        < 0) {
+      String minimumSupportedVersion =
+          Util.isStableVersion(ybVersion, true)
+              ? PITR_CLONE_COMPATIBLE_STABLE_DB_VERSION
+              : PITR_CLONE_COMPATIBLE_PREVIEW_DB_VERSION;
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "PITR Clone feature not supported on universe DB version lower than "
+              + minimumSupportedVersion);
+    }
+  }
+
   private List<PitrConfig> createPitrConfigsWithUnknownState(UUID universeUUID) {
     List<PitrConfig> pitrConfigList = PitrConfig.getByUniverseUUID(universeUUID);
     long currentTimeMillis = System.currentTimeMillis();
@@ -384,5 +394,117 @@ public class PitrController extends AuthenticatedController {
               p.setMaxRecoverTimeInMillis(currentTimeMillis);
             });
     return pitrConfigList;
+  }
+
+  @ApiOperation(
+      value = "Create clone of a namespace in a universe",
+      nickname = "cloneNamespace",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "namespaceClone",
+          value = "post namespace clone",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.CloneNamespaceParams",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result cloneNamespace(
+      UUID customerUUID,
+      UUID universeUUID,
+      String tableType,
+      String keyspaceName,
+      Http.Request request) {
+    // Validate customer UUID
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot clone a namespace when the universe is in paused state");
+    } else if (universe.getUniverseDetails().updateInProgress) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot clone a namespace when the universe is in locked state");
+    }
+
+    checkCloneCompatibleYbVersion(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+    CloneNamespaceParams taskParams = parseJsonAndValidate(request, CloneNamespaceParams.class);
+
+    // Validate that a snapshot schedule exists for the database that needs to be cloned.
+    TableType type = BackupUtil.API_TYPE_TO_TABLE_TYPE_MAP.get(ApiType.valueOf(tableType));
+    Optional<PitrConfig> pitrConfigOptional = PitrConfig.maybeGet(universeUUID, type, keyspaceName);
+    if (!pitrConfigOptional.isPresent()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "PITR Config must be present for the database to be cloned.");
+    }
+    PitrConfig pitrConfig = pitrConfigOptional.get();
+    String masterHostPorts = universe.getMasterAddresses();
+    String certificate = universe.getCertificateNodetoNode();
+    ListSnapshotSchedulesResponse scheduleResp;
+    List<SnapshotScheduleInfo> scheduleInfoList = null;
+    YBClient client = null;
+    try {
+      client = ybClientService.getClient(masterHostPorts, certificate);
+      scheduleResp = client.listSnapshotSchedules(pitrConfig.getUuid());
+      scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
+    } catch (Exception ex) {
+      log.error(ex.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
+    } finally {
+      ybClientService.closeClient(client, masterHostPorts);
+    }
+
+    if (scheduleInfoList == null || scheduleInfoList.size() != 1) {
+      throw new PlatformServiceException(BAD_REQUEST, "Snapshot schedule is invalid");
+    }
+
+    long currentTimeMillis = System.currentTimeMillis();
+    long minTimeInMillis =
+        Math.max(
+            currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
+            pitrConfig.getCreateTime().getTime());
+    if (taskParams.cloneTimeInMillis != null
+        && (taskParams.cloneTimeInMillis <= 0L
+            || taskParams.cloneTimeInMillis > currentTimeMillis
+            || taskParams.cloneTimeInMillis < minTimeInMillis)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Time to clone that has been specified is incorrect");
+    }
+
+    BackupUtil.checkApiEnabled(type, universe.getUniverseDetails().getPrimaryCluster().userIntent);
+
+    taskParams.setUniverseUUID(universeUUID);
+    taskParams.customerUUID = customerUUID;
+    taskParams.tableType = type;
+    taskParams.keyspaceName = keyspaceName;
+    if (taskParams.cloneTimeInMillis == null) {
+      taskParams.cloneTimeInMillis = currentTimeMillis;
+    }
+    UUID taskUUID = commissioner.submit(TaskType.CloneNamespace, taskParams);
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.CloneNamespace,
+        universe.getName());
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.CloneNamespace,
+            Json.toJson(taskParams),
+            taskUUID);
+    return new YBPTask(taskUUID).asResult();
   }
 }

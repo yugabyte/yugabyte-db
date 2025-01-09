@@ -42,6 +42,7 @@
 #include "pg_yb_utils.h"
 #include "storage/dsm_impl.h"
 #include "storage/procarray.h"
+#include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
 
@@ -93,10 +94,10 @@ attach_shmem(int shmem_id, char **shmem_ptr)
 	{
 		int			save_errno = errno;
 
-		ereport(WARNING, (errmsg("Error at shmat for shared memory segment with "
-							   "id '%d'. "
-							   "%s",
-							   shmem_id, strerror(save_errno))));
+		ereport(WARNING,
+				(errmsg("error at shmat for shared memory segment with id %d",
+						shmem_id),
+				 errdetail("%s", strerror(save_errno))));
 		return -1;
 	}
 	return 0;
@@ -109,10 +110,10 @@ detach_shmem(int shmem_id, void *shmem_ptr)
 	{
 		int			save_errno = errno;
 
-		ereport(WARNING, (errmsg("Error at shmdt for shared memory segment with "
-							   "id '%d'. "
-							   "%s",
-							   shmem_id, strerror(save_errno))));
+		ereport(WARNING,
+				(errmsg("error at shmdt for shared memory segment with id %d",
+						shmem_id),
+				 errdetail("%s", strerror(save_errno))));
 		return -1;
 	}
 	return 0;
@@ -192,12 +193,13 @@ YbAddToChangedSessionParametersList(const char *session_parameter_name)
 		/* TODO (janand) GH #18302 Handle this exception at the Ysql Conn Mgr
 		 * side.
 		 */
-		ereport(WARNING, (errmsg("Unable to store session parameter '%s' in the "
-							   "shared memory. Length of session parameter "
-							   "(%d) exceeds the max limit(%d).",
-							   session_parameter_name,
-							   (int) (strlen(session_parameter_name)),
-							   SHMEM_MAX_STRING_LEN)));
+		ereport(WARNING,
+				(errmsg("unable to store session parameter %s in shared memory",
+						session_parameter_name),
+				 errdetail("Length of session parameter "
+						   "(%d) exceeds the max limit (%d).",
+						   (int) (strlen(session_parameter_name)),
+						   SHMEM_MAX_STRING_LEN)));
 		return;
 	}
 
@@ -212,8 +214,8 @@ YbAddToChangedSessionParametersList(const char *session_parameter_name)
 			return;
 	}
 
-	temp_list = (struct changed_session_parameters_list *) malloc(
-		sizeof(struct changed_session_parameters_list));
+	temp_list = (struct changed_session_parameters_list *)
+		malloc(sizeof(struct changed_session_parameters_list));
 	strncpy(temp_list->session_parameter_name, session_parameter_name,
 			SHMEM_MAX_STRING_LEN);
 	temp_list->next = yb_changed_session_parameters;
@@ -247,9 +249,10 @@ yb_shmem_resize(const key_t shmem_id, const long new_array_size)
 	{
 		int			save_errno = errno;
 
-		ereport(WARNING, (errmsg("Error at shmctl for shared memory with key "
-							   "'%d', while resizing the shared memory. %s",
-							   shmem_id, strerror(save_errno))));
+		ereport(WARNING,
+				(errmsg("error at shmctl for shared memory with key %d while resizing the shared memory",
+						shmem_id),
+				 errdetail("%s", strerror(save_errno))));
 		return -1;
 	}
 
@@ -259,9 +262,10 @@ yb_shmem_resize(const key_t shmem_id, const long new_array_size)
 	{
 		int			save_errno = errno;
 
-		ereport(WARNING, (errmsg("Error at shmctl for shared memory with key "
-							   "'%d', while resizing the shared memory. %s",
-							   shmem_id, strerror(save_errno))));
+		ereport(WARNING,
+				(errmsg("error at shmctl for shared memory with key %d while resizing the shared memory",
+						shmem_id),
+				 errdetail("%s", strerror(save_errno))));
 		return -1;
 	}
 
@@ -269,7 +273,7 @@ yb_shmem_resize(const key_t shmem_id, const long new_array_size)
 		return -1;
 
 	ereport(DEBUG5,
-			(errmsg("Resized shared memory size with id '%d'", shmem_id)));
+			(errmsg("resized shared memory size with id %d", shmem_id)));
 	return 0;
 }
 
@@ -331,9 +335,10 @@ resize_shmem_if_needed(const key_t shmem_id)
 	{
 		int			save_errno = errno;
 
-		ereport(WARNING, (errmsg("Error while resizing the shared memory segment "
-							   "with key %d (%s).",
-							   shmem_id, strerror(save_errno))));
+		ereport(WARNING,
+				(errmsg("error while resizing the shared memory segment with key %d",
+						shmem_id),
+				 errdetail("%s", strerror(save_errno))));
 		return -1;
 	}
 
@@ -341,10 +346,10 @@ resize_shmem_if_needed(const key_t shmem_id)
 }
 
 static int
-update_session_parameter_value(
-	struct shmem_session_parameter *shmem_parameter_list,
-	const char *session_parameter_name, const uint32_t max_array_len,
-	uint32_t *shmem_itr)
+update_session_parameter_value(struct shmem_session_parameter *shmem_parameter_list,
+							   const char *session_parameter_name,
+							   const uint32_t max_array_len,
+							   uint32_t *shmem_itr)
 {
 	for (*shmem_itr = 0; *shmem_itr < max_array_len;
 		 *shmem_itr = *shmem_itr + 1)
@@ -358,7 +363,7 @@ update_session_parameter_value(
 
 			if (strlen(value) >= SHMEM_MAX_STRING_LEN)
 			{
-				ereport(WARNING, (errmsg("Value `%s` for session parameter `%s`, "
+				ereport(WARNING, (errmsg("value `%s` for session parameter %s "
 									   "exceeds the max allowable length",
 									   value, session_parameter_name)));
 				return ERROR_WHILE_STORING_SESSION_PARAMETER;
@@ -375,10 +380,10 @@ update_session_parameter_value(
 			return NEED_TO_ADD_NEW_ELEMENT_IN_SHMEM_ARRAY;
 	}
 
-	ereport(WARNING, (errmsg("Unable to add the session parameter `%s` in the "
-						   "shared memory "
-						   ", needs to resize the array.",
-						   session_parameter_name)));
+	ereport(WARNING,
+			(errmsg("unable to add the session parameter %s in shared memory"
+					session_parameter_name),
+			 errdetail("Need to resize the array.")));
 	return SHMEM_RESIZE_NEEDED;
 }
 
@@ -393,7 +398,7 @@ add_session_parameter(struct shmem_session_parameter *shmem_parameter_list,
 	char *value = GetConfigOptionByName(session_parameter_name, NULL, false);
 	if (strlen(value) >= SHMEM_MAX_STRING_LEN)
 	{
-		ereport(WARNING, (errmsg("Value `%s` for session parameter `%s`, exceeds "
+		ereport(WARNING, (errmsg("value `%s` for session parameter %s exceeds "
 							   "the max allowable length",
 							   value, session_parameter_name)));
 		return -1;
@@ -430,7 +435,7 @@ update_session_parameters(struct shmem_session_parameter *shmem_parameter_list,
 
 			case ERROR_WHILE_STORING_SESSION_PARAMETER:
 				// Error while storing the session parameter
-				ereport(WARNING, (errmsg("Unable to store the session parameter "
+				ereport(WARNING, (errmsg("unable to store the session parameter "
 									   "%s",
 									   session_parameter_name)));
 				break;
@@ -440,15 +445,15 @@ update_session_parameters(struct shmem_session_parameter *shmem_parameter_list,
 				if (add_session_parameter(shmem_parameter_list,
 										  session_parameter_name,
 										  shmem_itr) < 0)
-					ereport(WARNING, (errmsg("Unable to store the session "
+					ereport(WARNING, (errmsg("unable to store the session "
 										   "parameter %s",
 										   session_parameter_name)));
 				break;
 
 			case SUCCESSFULLY_UPDATED_SHMEM_VALUE:
 				// Session parameter is updated successfully.
-				ereport(DEBUG5, (errmsg("Successfully stored the session "
-										"parameter value %s",
+				ereport(DEBUG5, (errmsg("successfully stored the session "
+										"parameter %s",
 										session_parameter_name)));
 				break;
 
@@ -494,10 +499,10 @@ YbUpdateSharedMemory()
 	struct ysql_conn_mgr_shmem_header shmem_header;
 	memcpy(&shmem_header, shmem_ptr, sizeof(shmem_header));
 
-	update_session_parameters(
-		(struct shmem_session_parameter
-			 *) (shmem_ptr + sizeof(struct ysql_conn_mgr_shmem_header)),
-		shmem_header.session_parameter_array_len);
+	update_session_parameters((struct shmem_session_parameter *)
+							  (shmem_ptr +
+							   sizeof(struct ysql_conn_mgr_shmem_header)),
+							  shmem_header.session_parameter_array_len);
 
 	detach_shmem(shmem_id, shmem_ptr);
 #endif
@@ -516,9 +521,10 @@ yb_shmem_get(const Oid user, const char *user_name, bool is_superuser,
 		 * Use FATAL, to avoid any edge case of allocating any incorrect
 		 * privilege.
 		 */
-		ereport(FATAL, ((errmsg("Length of the user name '%s' is exceeds the "
-								"max supported length",
-								user_name))));
+		ereport(FATAL,
+				(errmsg("length of the user name '%s' is exceeds the "
+						"max supported length",
+						user_name)));
 	}
 
 	shmem_id = shmget(IPC_PRIVATE, get_shmem_size(DEFAULT_SHMEM_ARR_LEN),
@@ -608,9 +614,10 @@ DeleteSharedMemory(int client_shmem_key)
 	{
 		int			save_errno = errno;
 
-		ereport(WARNING, (errmsg("Error at shmctl while trying to delete the "
-							   "shared memory segment, %s",
-							   strerror(save_errno))));
+		ereport(WARNING,
+				(errmsg("error at shmctl while trying to delete the "
+						"shared memory segment"),
+				 errdetail("%s", strerror(save_errno))));
 	}
 
 	yb_logical_client_shmem_key = -1;
@@ -628,9 +635,9 @@ YbHandleSetSessionParam(int yb_client_id)
 	 * authentication.
 	 */
 	if (yb_client_id == 0)
-		ereport(FATAL, (errmsg("Create shared memory for client is handled "
+		ereport(FATAL, (errmsg("create shared memory for client is handled "
 							   "only during the handling of authentication "
-							   "passthrough request.")));
+							   "passthrough request")));
 
 	/* Reset all the session parameters */
 	ResetAllOptions();
@@ -756,16 +763,25 @@ send_oid_info(const char oid_type, const int oid)
 }
 
 static void
-YbSendDatabaseOidAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superuser)
+YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superuser)
 {
-	/* Send back the database oid */
+	/* Send back database and role oids */
 	send_oid_info('d', database_oid);
+	send_oid_info('u', user);
 	if (database_oid == InvalidOid)
 	{
 		YbSendFatalForLogicalConnectionPacket();
 		ereport(WARNING,
 				(errmsg("database \"%s\" does not exist",
 						MyProcPort->database_name)));
+		return;
+	}
+
+	if (user == InvalidOid)
+	{
+		YbSendFatalForLogicalConnectionPacket();
+		ereport(WARNING,
+				(errmsg("role \"%s\" does not exist", MyProcPort->user_name)));
 		return;
 	}
 
@@ -785,7 +801,7 @@ YbSendDatabaseOidAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superu
 	if (new_client_id > 0)
 		ereport(NOTICE, (errhint("shmkey=%d", new_client_id)));
 	else
-		ereport(FATAL, (errmsg("Unable to create the shared memory block")));
+		ereport(FATAL, (errmsg("unable to create the shared memory block")));
 }
 
 void
@@ -804,7 +820,7 @@ YbCreateClientId(void)
 
 	database = get_database_oid(MyProcPort->database_name, true);
 
-	YbSendDatabaseOidAndSetupSharedMemory(database, user, is_superuser);
+	YbSendDbRoleOidsAndSetupSharedMemory(database, user, is_superuser);
 }
 
 void
@@ -822,7 +838,7 @@ YbCreateClientIdWithDatabaseOid(Oid database_oid)
 										   &user) < 0)
 		return;
 
-	YbSendDatabaseOidAndSetupSharedMemory(database_oid, user, is_superuser);
+	YbSendDbRoleOidsAndSetupSharedMemory(database_oid, user, is_superuser);
 }
 
 /*
@@ -902,6 +918,7 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 		!yb_is_auth_backend)
 	{
 		send_oid_info('d', get_database_oid(MyProcPort->database_name, false));
+		send_oid_info('u', get_role_oid(MyProcPort->user_name, false));
 		SendLogicalClientCacheVersionToFrontend();
 	}
 }

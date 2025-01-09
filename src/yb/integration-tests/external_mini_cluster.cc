@@ -861,7 +861,7 @@ Status ExternalMiniCluster::GetMinReplicaCountForPlacementBlock(
         cloud, region, zone));
   }
 
-  const master::PlacementInfoPB& pi = config.replication_info().live_replicas();
+  const PlacementInfoPB& pi = config.replication_info().live_replicas();
 
   int found_index = -1;
   bool found = false;

@@ -100,9 +100,10 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
 
   private Set<String> doCheckServers(YBClient ybClient, Universe universe, boolean cloudEnabled) {
     Set<String> errors = new HashSet<>();
+    long maxWaitTime = taskParams().isRunOnlyPrechecks() ? 1 : MAX_WAIT_TIME_MS;
     doWithConstTimeout(
         DELAY_BETWEEN_RETRIES_MS,
-        MAX_WAIT_TIME_MS,
+        maxWaitTime,
         () -> {
           errors.clear();
           try {

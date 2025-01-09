@@ -435,7 +435,7 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
 
     // Verify that for each of the table's tablets, a new row in cdc_state table with the
     // returned id was inserted.
-    cdc::CDCStateTable cdc_state_table(producer_client());
+    auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
     Status s;
     auto table_range = VERIFY_RESULT(
         cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));

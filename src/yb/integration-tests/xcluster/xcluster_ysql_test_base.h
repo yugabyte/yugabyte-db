@@ -128,11 +128,14 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   Status VerifyWrittenRecords(
       std::shared_ptr<client::YBTable> producer_table = {},
-      std::shared_ptr<client::YBTable> consumer_table = {});
+      std::shared_ptr<client::YBTable> consumer_table = {},
+      bool verify_column_count_match = true);
 
   Status VerifyWrittenRecords(
       const client::YBTableName& producer_table_name,
-      const client::YBTableName& consumer_table_name);
+      const client::YBTableName& consumer_table_name,
+      bool verify_column_count_match = true);
+
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
       XClusterTestBase::Cluster* cluster);

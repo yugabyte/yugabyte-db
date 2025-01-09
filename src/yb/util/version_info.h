@@ -64,6 +64,8 @@ class VersionInfo {
   // Init version data.
   static Status Init();
 
+  static uint32 YsqlMajorVersion();
+
  private:
   // Get the git hash for this build. If the working directory was dirty when
   // YB was built, also appends "-dirty".

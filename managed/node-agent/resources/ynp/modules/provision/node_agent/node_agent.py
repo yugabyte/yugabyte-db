@@ -187,6 +187,9 @@ class InstallNodeAgent(BaseYnpModule):
                 os.remove(file_path)
 
     def render_templates(self, context):
+        if context.get('is_cloud'):
+            return super().render_templates(context)
+
         node_agent_enabled = False
         yba_url = context.get('url')
         skip_tls_verify = not yba_url.lower().startswith('https')

@@ -20,7 +20,6 @@
 
 #include "yb/integration-tests/packed_row_test_base.h"
 
-#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/db/db_impl.h"
@@ -1044,7 +1043,7 @@ TEST_P(PgPackedRowTest, RestorePITRSnapshotAfterOldSchemaGC) {
 
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
 
-  auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
+  auto hybrid_time = cluster_->mini_master(0)->Now();
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id, hybrid_time));
 
   ASSERT_OK(cluster_->CompactTablets());

@@ -36,6 +36,7 @@
 #include "utils/ruleutils.h"
 
 /* YB includes. */
+#include "executor/ybcModifyTable.h"
 #include "pg_yb_utils.h"
 
 
@@ -831,8 +832,7 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 											  partrelDesc,
 											  econtext,
 											  onconfl->oc_ProjSlot,
-											  &mtstate->ps,
-											  node->ybUseScanTupleInUpdate);
+											  &mtstate->ps);
 
 				/*
 				 * If there is a WHERE clause, initialize state where it will
@@ -953,8 +953,7 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 												  RelationGetDescr(leaf_part_rri->ri_RelationDesc),
 												  econtext,
 												  leaf_part_rri->ri_newTupleSlot,
-												  NULL,
-												  node->ybUseScanTupleInUpdate);
+												  NULL);
 					break;
 				case CMD_DELETE:
 					break;
@@ -1052,6 +1051,10 @@ ExecInitRoutingInfo(ModifyTableState *mtstate,
 			partRelInfo->ri_FdwRoutine->GetForeignModifyBatchSize(partRelInfo);
 	else
 		partRelInfo->ri_BatchSize = 1;
+
+	/* YB: also handle YB insert on conflict read batching. */
+	if (YbIsInsertOnConflictReadBatchingPossible(partRelInfo))
+		partRelInfo->ri_ybIocBatchingPossible = true;
 
 	Assert(partRelInfo->ri_BatchSize >= 1);
 

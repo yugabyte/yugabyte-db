@@ -34,9 +34,6 @@ static void check_for_new_tablespace_dir(ClusterInfo *new_cluster);
 static void check_for_user_defined_encoding_conversions(ClusterInfo *cluster);
 static char *get_canonical_locale_name(int category, const char *locale);
 
-/* Yugabyte-specific checks */
-static void yb_check_system_databases_exist(ClusterInfo *cluster);
-
 /*
  * fix_path_separator
  * For non-Windows, just return the argument.
@@ -94,7 +91,6 @@ check_and_dump_old_cluster(bool live_check)
 	/* Extract a list of databases and tables from the old cluster */
 	get_db_and_rel_infos(&old_cluster);
 
-#ifdef YB_TODO
 	/* Enable these checks and other functions to initialize new node */
 	init_tablespaces();
 
@@ -104,13 +100,7 @@ check_and_dump_old_cluster(bool live_check)
 	/*
 	 * Check for various failure cases
 	 */
-	/*
-	 * YB: this check requires the following conditions:
-	 * 	1. The logged in user is 'postgres' (oid = 10)
-	 * 	2. New cluster does not have any users
-	 */
 	check_is_install_user(&old_cluster);
-#endif
 	check_proper_datallowconn(&old_cluster);
 	if (!is_yugabyte_enabled())
 		/* Yugabyte does not support prepared transactions, see #1125 */
@@ -153,11 +143,8 @@ check_and_dump_old_cluster(bool live_check)
 	 * Pre-PG 12 allowed tables to be declared WITH OIDS, which is not
 	 * supported anymore. Verify there are none, iff applicable.
 	 */
-#ifdef YB_TODO
-	/* Investigate/implement this check */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1100)
 		check_for_tables_with_oids(&old_cluster);
-#endif
 
 	/*
 	 * PG 12 changed the 'sql_identifier' type storage to be based on name,
@@ -191,10 +178,6 @@ check_and_dump_old_cluster(bool live_check)
 	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
 		old_9_3_check_for_line_data_type_usage(&old_cluster);
 
-	/* Yugabyte checks */
-	if (is_yugabyte_enabled())
-		yb_check_system_databases_exist(&old_cluster);
-
 	/*
 	 * While not a check option, we do this now because this is the only time
 	 * the old server is running.
@@ -215,7 +198,9 @@ check_new_cluster(void)
 	check_new_cluster_is_empty();
 	check_databases_are_compatible();
 
-	check_loadable_libraries();
+	if (!is_yugabyte_enabled())
+		/* YB: would fail with ERROR:  LOAD not supported yet. */
+		check_loadable_libraries();
 
 	switch (user_opts.transfer_mode)
 	{
@@ -229,10 +214,8 @@ check_new_cluster(void)
 			break;
 	}
 
-#ifdef YB_TODO
-	/* Investigate/implement this check */
 	check_is_install_user(&new_cluster);
-#endif
+
 	check_for_prepared_transactions(&new_cluster);
 
 	check_for_new_tablespace_dir(&new_cluster);
@@ -674,6 +657,14 @@ create_script_for_old_cluster_deletion(char **deletion_script_file_name)
 static void
 check_is_install_user(ClusterInfo *cluster)
 {
+	if (is_yugabyte_enabled())
+		/*
+		 * YB: Since there are a few different yugabyte users that might run the
+		 * upgrade, we disable this check rather than trying to modify it to
+		 * work for every possible YB case.
+		 */
+		return;
+
 	PGresult   *res;
 	PGconn	   *conn = connectToServer(cluster, "template1");
 
@@ -1550,50 +1541,4 @@ get_canonical_locale_name(int category, const char *locale)
 	pg_free(save);
 
 	return res;
-}
-
-/*
- * yb_check_system_databases_exist()
- *
- *	All the 5 system database should exist before upgrading
- */
-static void
-yb_check_system_databases_exist(ClusterInfo *cluster)
-{
-	PGresult   *res;
-	PGconn	   *conn = connectToServer(cluster, "template1");
-
-	const char *system_dbs[] = {"postgres", "system_platform", "template0",
-								"template1", "yugabyte"};
-	const int num_system_dbs = lengthof(system_dbs);
-
-	prep_status("Checking for all 5 system databases");
-
-	res = executeQueryOrDie(conn, "SELECT datname FROM pg_database;");
-	int ntups = PQntuples(res);
-
-	for (int i = 0; i < num_system_dbs; i++)
-	{
-		bool found = false;
-		for (int dbnum = 0; dbnum < ntups; dbnum++)
-		{
-			char *datname = PQgetvalue(res, dbnum, 0);
-			if (strcmp(datname, system_dbs[i]) == 0)
-			{
-				found = true;
-				break;
-			}
-		}
-		if (!found)
-		{
-			pg_fatal("The source cluster does not have the database: \"%s\"\n",
-					 system_dbs[i]);
-		}
-	}
-
-	PQclear(res);
-
-	PQfinish(conn);
-
-	check_ok();
 }

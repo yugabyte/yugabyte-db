@@ -608,7 +608,7 @@ TEST_F(XClusterDbScopedYsqlIndexProducerOnlyTest, IndexCheckpointLocation) {
   ASSERT_OK(producer_cluster_.client_->GetTablets(index_table_name, (int32_t)1, &tablet_ids, NULL));
   ASSERT_EQ(tablet_ids.size(), 1);
 
-  cdc::CDCStateTable cdc_state_table(producer_client());
+  auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
   LOG(INFO) << "Fetching CDC state for tablet " << tablet_ids.front() << " and stream "
             << stream_id;
   auto key = cdc::CDCStateTableKey(tablet_ids.front(), stream_id);

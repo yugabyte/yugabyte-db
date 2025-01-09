@@ -114,7 +114,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = 1 WHER
 
 -- TODO: Fix bug here
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = h WHERE h = 1;
-ERROR:  Missing column ybctid in DELETE request
+ERROR:  missing column ybctid in DELETE request
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = v1 WHERE h = 1;
                                        QUERY PLAN
 ----------------------------------------------------------------------------------------

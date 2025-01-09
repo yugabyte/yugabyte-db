@@ -290,8 +290,8 @@ yb_get_const_colrefs_for_distinct_pushdown(PlannerInfo *root,
 		 */
 		if (indexcol >= index->nhashcolumns &&
 			IsA(tle->expr, Var) &&
-			yb_is_const_clause_for_distinct_pushdown(
-				root, index, index_clauses, indexcol, tle->expr))
+			yb_is_const_clause_for_distinct_pushdown(root, index, index_clauses,
+													 indexcol, tle->expr))
 			const_colrefs = bms_add_member(const_colrefs,
 				((Var *) tle->expr)->varattno -
 				YBFirstLowInvalidAttributeNumber);

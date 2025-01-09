@@ -1104,10 +1104,10 @@ YBCheckDeferrableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 	}
 
 	ereport(ERROR,
-			 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("%s", message),
 			 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1129. "
-			         "React with thumbs up to raise its priority"),
+					 "React with thumbs up to raise its priority"),
 			 parser_errposition(cxt->pstate, constraint->location)));
 }
 
@@ -2508,10 +2508,9 @@ transformIndexConstraints(CreateStmtContext *cxt)
 			 * Even though index creation would do that anyway, we do this ahead
 			 * to spare DocDB from rolling back table creation.
 			 */
-			Oid oid = GetTableOidFromRelOptions(
-				index->options,
-				cxt->yb_tablespaceOid,
-				cxt->relation->relpersistence);
+			Oid oid = GetTableOidFromRelOptions(index->options,
+												cxt->yb_tablespaceOid,
+												cxt->relation->relpersistence);
 
 			if (!OidIsValid(oid))
 				elog(ERROR, "system indexes must specify table_oid "
@@ -3917,10 +3916,9 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 								 */
 								if (!YbDdlRollbackEnabled())
 									ereport(ERROR,
-											(errcode(
-												ERRCODE_FEATURE_NOT_SUPPORTED),
-											errmsg("This ALTER TABLE command is"
-												   " not yet supported.")));
+											(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+											errmsg("this ALTER TABLE command is"
+												   " not yet supported")));
 								break;
 							case CONSTR_UNIQUE:
 								/*
@@ -3932,10 +3930,12 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 								 * values, they may still error out if referenced column has no
 								 * unique constraint so we disallow them too).
 								 */
-								if (!YbDdlRollbackEnabled() && (def->is_not_null || def->raw_default
-								    || cxt.ckconstraints || cxt.fkconstraints))
-									ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-												errmsg("This ALTER TABLE command is not yet supported.")));
+								if (!YbDdlRollbackEnabled() &&
+									(def->is_not_null || def->raw_default ||
+									 cxt.ckconstraints || cxt.fkconstraints))
+									ereport(ERROR,
+											(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+											 errmsg("this ALTER TABLE command is not yet supported")));
 								break;
 
 							default:
@@ -4982,7 +4982,7 @@ YBTransformPartitionSplitValue(ParseState *pstate,
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("Number of SPLIT values cannot be greater than number of SPLIT columns")));
+				 errmsg("number of SPLIT values cannot be greater than number of SPLIT columns")));
 	}
 
 	ListCell *lc;

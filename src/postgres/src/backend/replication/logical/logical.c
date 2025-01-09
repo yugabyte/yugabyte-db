@@ -747,7 +747,7 @@ LoadOutputPlugin(OutputPluginCallbacks *callbacks, const char *plugin)
 			load_external_function(PG_OUTPUT_PLUGIN,"_PG_output_plugin_init", false, NULL);
 	else
 		plugin_init = (LogicalOutputPluginInit)
-		  load_external_function(plugin, "_PG_output_plugin_init", false, NULL);	
+		  load_external_function(plugin, "_PG_output_plugin_init", false, NULL);
 
 	if (plugin_init == NULL)
 		elog(ERROR, "output plugins have to declare the _PG_output_plugin_init symbol");

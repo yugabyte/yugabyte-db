@@ -55,6 +55,7 @@ The valid *arguments* for assess migration are described in the following table:
 | [--source-ssl-mode](../yb-voyager-cli/#ssl-connectivity) | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](../yb-voyager-cli/#ssl-connectivity) | Path of the file containing source SSL Root Certificate. |
 | --start-clean | Cleans up the project directory for schema or data files depending on the export command. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1. |
+| --target-db-version | Specifies the target version of YugabyteDB in the format `A.B.C.D`.<br>Default: latest stable version | 
 | -y, --yes | Assume answer to all prompts during migration. <br>Default: false |
 
 ### Example

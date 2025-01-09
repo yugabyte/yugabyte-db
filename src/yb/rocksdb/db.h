@@ -102,8 +102,6 @@ struct Range {
   Range(const Slice& s, const Slice& l) : start(s), limit(l) { }
 };
 
-YB_DEFINE_ENUM(FlushAbility, (kNoNewData)(kHasNewData)(kAlreadyFlushing))
-
 // A collections of table properties objects, where
 //  key: is the table's file name.
 //  value: the table properties object of the given table.

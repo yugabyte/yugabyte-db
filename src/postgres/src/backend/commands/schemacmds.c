@@ -424,7 +424,7 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		if (!is_member_of_role(GetUserId(), newOwnerId) && !IsYbDbAdminUser(GetUserId()))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 	errmsg("must be member of role \"%s\"",
+					 errmsg("must be member of role \"%s\"",
 							GetUserNameFromId(newOwnerId, false))));
 
 		/*

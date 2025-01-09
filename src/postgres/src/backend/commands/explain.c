@@ -165,9 +165,9 @@ static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
 static void
 YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
 									 const YbInstrumentation *instr);
-static void YbExplainDistinctPrefixLen(
-	PlanState *planstate, List *indextlist, int yb_distinct_prefixlen,
-	ExplainState *es, List *ancestors);
+static void YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
+									   int yb_distinct_prefixlen,
+									   ExplainState *es, List *ancestors);
 static void show_ybtidbitmap_info(YbBitmapTableScanState *planstate,
 								  ExplainState *es);
 static Node* yb_fix_indexpr_mutator(Node *node, int *newvarno);
@@ -2650,9 +2650,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			 * Shown after ORDER BY clause and before storage filters since
 			 * that's currently the order of operations in DocDB.
 			 */
-			YbExplainDistinctPrefixLen(
-				planstate, ((IndexScan *) plan)->indextlist,
-				((IndexScan *) plan)->yb_distinct_prefixlen, es, ancestors);
+			YbExplainDistinctPrefixLen(planstate,
+									   ((IndexScan *) plan)->indextlist,
+									   ((IndexScan *) plan)->yb_distinct_prefixlen,
+									   es, ancestors);
 			show_scan_qual(((IndexScan *) plan)->yb_idx_pushdown.quals,
 						   "Storage Index Filter", planstate, ancestors, es);
 			show_scan_qual(((IndexScan *) plan)->yb_rel_pushdown.quals,
@@ -2679,9 +2680,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			 * Shown after ORDER BY clause and before storage filters since
 			 * that's currently the order of operations in DocDB.
 			 */
-			YbExplainDistinctPrefixLen(
-				planstate, ((IndexOnlyScan *) plan)->indextlist,
-				((IndexOnlyScan *) plan)->yb_distinct_prefixlen, es, ancestors);
+			YbExplainDistinctPrefixLen(planstate,
+									   ((IndexOnlyScan *) plan)->indextlist,
+									   ((IndexOnlyScan *) plan)->yb_distinct_prefixlen,
+									   es, ancestors);
 			/*
 			 * Storage filter is applied first, so it is output first.
 			 */
@@ -6281,8 +6283,8 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 			indextle = (TargetEntry *) lfirst(tlelc);
 
 			/* Fix the varno of prefix to scanrelid after making a copy. */
-			indexpr = yb_fix_indexpr_mutator(
-				(Node *) indextle->expr, (void *) &scanrelid);
+			indexpr = yb_fix_indexpr_mutator((Node *) indextle->expr,
+											 (void *) &scanrelid);
 			/* Deparse the expression, showing any top-level cast */
 			exprstr = deparse_expression(indexpr, context, useprefix, true);
 			resetStringInfo(&distinct_prefix_key_buf);
@@ -6317,6 +6319,6 @@ yb_fix_indexpr_mutator(Node *node, int *newvarno)
 		return (Node *) var;
 	}
 
-	return expression_tree_mutator(
-		node, yb_fix_indexpr_mutator, (void *) newvarno);
+	return expression_tree_mutator(node, yb_fix_indexpr_mutator,
+								   (void *) newvarno);
 }

@@ -413,12 +413,7 @@ Result<size_t> Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bo
   }
 
   if (!batch) {
-    s = OutboundQueued();
-    if (!s.ok()) {
-      outbound_data->Transferred(s, shared_from_this());
-      // The connection shutdown has already been triggered by OutboundQueued.
-      return s;
-    }
+    RETURN_NOT_OK(OutboundQueued());
   }
 
   return *result;

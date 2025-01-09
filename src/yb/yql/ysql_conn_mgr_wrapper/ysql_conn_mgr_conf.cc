@@ -31,6 +31,7 @@
 DECLARE_bool(logtostderr);
 DECLARE_bool(ysql_conn_mgr_use_unix_conn);
 DECLARE_bool(ysql_conn_mgr_use_auth_backend);
+DECLARE_bool(ysql_conn_mgr_enable_multi_route_pool);
 DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_uint32(ysql_conn_mgr_max_client_connections);
 DECLARE_uint32(ysql_conn_mgr_max_conns_per_db);
@@ -46,6 +47,13 @@ DECLARE_string(ysql_conn_mgr_log_settings);
 DECLARE_uint32(ysql_conn_mgr_server_lifetime);
 DECLARE_uint64(ysql_conn_mgr_log_max_size);
 DECLARE_uint64(ysql_conn_mgr_log_rotate_interval);
+DECLARE_uint32(ysql_conn_mgr_readahead_buffer_size);
+DECLARE_uint32(ysql_conn_mgr_tcp_keepalive);
+DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval);
+DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_probes);
+DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout);
+DECLARE_uint32(ysql_conn_mgr_control_connection_pool_size);
+DECLARE_uint32(ysql_conn_mgr_pool_timeout);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -200,6 +208,16 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_use_unix_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "" : "#"},
     {"{%yb_use_tcp_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "#" : ""},
     {"{%yb_use_auth_backend%}", BoolToString(FLAGS_ysql_conn_mgr_use_auth_backend)},
+    {"{%readahead_buffer_size%}", std::to_string(FLAGS_ysql_conn_mgr_readahead_buffer_size)},
+    {"{%tcp_keepalive%}", std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive)},
+    {"{%tcp_keepalive_keep_interval%}",
+     std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_keep_interval)},
+    {"{%tcp_keepalive_probes%}", std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_probes)},
+    {"{%tcp_keepalive_usr_timeout%}",
+     std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_usr_timeout)},
+    {"{%pool_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_pool_timeout)},
+    {"{%yb_enable_multi_route_pool%}", BoolToString(FLAGS_ysql_conn_mgr_enable_multi_route_pool)},
+    {"{%yb_ysql_max_connections%}", std::to_string(ysql_max_connections_)},
     {"{%unix_socket_dir%}",
       PgDeriveSocketDir(postgres_address_)}}; // Return unix socket
             //  file path = "/tmp/.yb.host_ip:port"
@@ -260,7 +278,11 @@ void YsqlConnMgrConf::UpdateConfigFromGFlags() {
   if (global_pool_size_ == 0) {
     global_pool_size_ = maxConnections * 9 / 10;
   }
-  control_connection_pool_size_ = (maxConnections) / 10;
+  control_connection_pool_size_ = FLAGS_ysql_conn_mgr_control_connection_pool_size;
+  if (control_connection_pool_size_ == 0) {
+    control_connection_pool_size_ = (maxConnections) / 10;
+  }
+  ysql_max_connections_ = maxConnections;
 
   CHECK_OK(postgres_address_.ParseString(
       FLAGS_pgsql_proxy_bind_address, pgwrapper::PgProcessConf().kDefaultPort));

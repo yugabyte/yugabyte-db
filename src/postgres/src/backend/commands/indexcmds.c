@@ -533,9 +533,6 @@ WaitForOlderSnapshots(TransactionId limitXmin, bool progress)
  * 'quiet': suppress the NOTICE chatter ordinarily provided for constraints.
  *
  * Returns the object address of the created index.
- *
- * YB_TODO(later): "safe_index" and calls to "pgstat_*()" are new in PG13.
- * Need to check if these changes are also necessary for Yugabyte.
  */
 ObjectAddress
 DefineIndex(Oid relationId,
@@ -967,9 +964,9 @@ DefineIndex(Oid relationId,
 			if (stmtTablespace != tablespaceId)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						errmsg("Tablespace for a primary key index must "
+						errmsg("tablespace for a primary key index must "
 							   " always match the tablespace of the "
-							   " indexed table.")));
+							   " indexed table")));
 		}
 	}
 	else if (stmt->tableSpace)
@@ -1060,10 +1057,9 @@ DefineIndex(Oid relationId,
 				 * will be colocation_restore_tablegroupId, while default tablegroup's
 				 * name would still be default.
 				 */
-				tablegroup_name = binary_upgrade_next_tablegroup_default ?
-									DEFAULT_TABLEGROUP_NAME :
-									get_restore_tablegroup_name(
-										binary_upgrade_next_tablegroup_oid);
+				tablegroup_name = (binary_upgrade_next_tablegroup_default ?
+								   DEFAULT_TABLEGROUP_NAME :
+								   get_restore_tablegroup_name(binary_upgrade_next_tablegroup_oid));
 				binary_upgrade_next_tablegroup_default = false;
 				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
 			}
@@ -1589,12 +1585,12 @@ DefineIndex(Oid relationId,
 	/* Check for WITH (table_oid = x). */
 	if (!OidIsValid(indexRelationId) && stmt->relation)
 	{
-		indexRelationId = GetTableOidFromRelOptions(
-			stmt->options, tablespaceId, stmt->relation->relpersistence);
+		indexRelationId = GetTableOidFromRelOptions(stmt->options, tablespaceId,
+													stmt->relation->relpersistence);
 	}
 
-	if (IsYugaByteEnabled() && stmt->relation &&
-		stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+	if (IsYugaByteEnabled() &&
+		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 		YBCForceAllowCatalogModifications(true);
 
 	indexRelationId =
@@ -3282,7 +3278,7 @@ ExecReindex(ParseState *pstate, ReindexStmt *stmt, bool isTopLevel)
 	if (IsYugaByteEnabled() && (concurrently || tablespacename))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("Only REINDEX with VERBOSE option is supported")));
+				 errmsg("only REINDEX with VERBOSE option is supported")));
 
 	if (concurrently)
 		PreventInTransactionBlock(isTopLevel,
@@ -4923,8 +4919,7 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 			* child. If clearing the entry for the child, then invalidate the
 			* entry in the cache pertaining to the child and its old parent.
 			*/
-			YbPgInheritsCacheInvalidate(
-				OidIsValid(parentOid) ? parentOid : partRelid);
+			YbPgInheritsCacheInvalidate(OidIsValid(parentOid) ? parentOid : partRelid);
 		}
 
 		/*

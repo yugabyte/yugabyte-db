@@ -477,7 +477,7 @@ void RemoteBootstrapITest::BootstrapFromClosestPeerSetUp(int bootstrap_idle_time
   LOG(INFO) << "Started an RF5 cluster with 3 tservers in c.r.z0,c.r.z1,c.r.z2 and 1 master";
 
   // Modify placement info to contain at least one replica in each of the three zones.
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   auto* placement_info = replication_info.mutable_live_replicas();
   PreparePlacementInfo({{"z0", 1}, {"z1", 2}, {"z2", 2}}, 5, placement_info);
 

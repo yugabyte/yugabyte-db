@@ -114,7 +114,7 @@ static void InitPostgresImpl(const char *in_dbname, Oid dboid,
 							 bool load_session_libraries,
 							 bool override_allow_connections,
 							 char *out_dbname,
-							 uint64_t *session_id,
+							 uint64_t *yb_session_id,
 							 bool* yb_sys_table_prefetching_started);
 static void YbEnsureSysTablePrefetchingStopped();
 
@@ -690,7 +690,7 @@ BaseInit(void)
  * We expect that InitProcess() was already called, so we already have a
  * PGPROC struct ... but it's not completely filled in yet.
  *
- * YB extension: session_id. If greater than zero, connect local YbSession
+ * YB extension: yb_session_id. If greater than zero, connect local YbSession
  * to existing YBClientSession instance in TServer, rather than requesting new.
  * Helpful to initialize background worker backends that need to share state.
  *
@@ -698,25 +698,21 @@ BaseInit(void)
  *		Be very careful with the order of calls in the InitPostgres function.
  * --------------------------------
  */
-/* YB_TODO(neil) Double check the merged in this file.
- * Both Postgres and Yb refactor code, so merging mistakes are possible.
- * NOTE: Latest change in master might not be merged. Check "YB::master" code again for new changes.
- */
 void
 InitPostgres(const char *in_dbname, Oid dboid,
 			 const char *username, Oid useroid,
 			 bool load_session_libraries,
 			 bool override_allow_connections,
 			 char *out_dbname,
-			 uint64_t *session_id)
+			 uint64_t *yb_session_id)
 {
 	bool sys_table_prefetching_started = false;
 	PG_TRY();
 	{
-		InitPostgresImpl(
-			in_dbname, dboid, username, useroid, load_session_libraries,
-			override_allow_connections, out_dbname, session_id,
-			&sys_table_prefetching_started);
+		InitPostgresImpl(in_dbname, dboid, username, useroid,
+						 load_session_libraries, override_allow_connections,
+						 out_dbname, yb_session_id,
+						 &sys_table_prefetching_started);
 	}
 	PG_CATCH();
 	{
@@ -733,7 +729,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 				 bool load_session_libraries,
 				 bool override_allow_connections,
 				 char *out_dbname,
-				 uint64_t *session_id,
+				 uint64_t *yb_session_id,
 				 bool* yb_sys_table_prefetching_started)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
@@ -843,9 +839,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 	/* Connect to YugaByte cluster. */
 	if (bootstrap)
-		YBInitPostgresBackend("postgres", "", username, session_id);
+		YBInitPostgresBackend("postgres", yb_session_id);
 	else
-		YBInitPostgresBackend("postgres", in_dbname, username, session_id);
+		YBInitPostgresBackend("postgres", yb_session_id);
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
@@ -865,10 +861,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
-			YbRegisterSysTableForPrefetching(
-				YbProfileRelationId);     // pg_yb_profile
-			YbRegisterSysTableForPrefetching(
-				YbRoleProfileRelationId); // pg_yb_role_profile
+			YbRegisterSysTableForPrefetching(YbProfileRelationId);	// pg_yb_profile
+			YbRegisterSysTableForPrefetching(YbRoleProfileRelationId);	// pg_yb_role_profile
 		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 
@@ -986,8 +980,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 * In YSQL upgrade mode (uses tserver auth method), we allow connecting to
 		 * databases with disabled connections (normally it's just template0).
 		 */
-		override_allow_connections = override_allow_connections ||
-									 MyProcPort->yb_is_tserver_auth_method;
+		if (IsYugaByteEnabled())
+			override_allow_connections = override_allow_connections ||
+										 MyProcPort->yb_is_tserver_auth_method;
 	}
 
 	/*
@@ -1254,8 +1249,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 */
 	// See if tablegroup catalog exists - needs to happen before cache fully initialized.
 	if (IsYugaByteEnabled() && !bootstrap)
-		HandleYBStatus(YBCPgTableExists(
-			MyDatabaseId, YbTablegroupRelationId, &YbTablegroupCatalogExists));
+		HandleYBStatus(YBCPgTableExists(MyDatabaseId, YbTablegroupRelationId,
+										&YbTablegroupCatalogExists));
 
 	RelationCacheInitializePhase3();
 

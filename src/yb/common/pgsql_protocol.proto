@@ -162,6 +162,8 @@ message PgsqlSamplingStatePB {
   optional int32 numrows = 2;
   // number of rows considered for sample across all blocks
   optional double samplerows = 3;
+  // number of total rows estimated
+  optional double estimated_total_rows = 8;
   // current number of rows to skip
   optional double rowstoskip = 4;
   // reservoir state W
@@ -170,6 +172,8 @@ message PgsqlSamplingStatePB {
   reserved 6;
   // 128 bits of sampler random state.
   optional PgsqlRandState rand_state = 7;
+  optional YsqlSamplingAlgorithm sampling_algorithm = 9;
+  optional DocDbBlocksSamplingMethod docdb_blocks_sampling_method = 10;
 }
 
 message PgsqlFetchSequenceParamsPB {

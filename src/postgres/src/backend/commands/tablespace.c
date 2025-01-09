@@ -117,7 +117,7 @@ validatePlacementConfiguration(const char *value)
 {
 	if (value == NULL)
 	{
-		ereport(ERROR,(errmsg("Placement configuration cannot be empty")));
+		ereport(ERROR,(errmsg("placement configuration cannot be empty")));
 		return;
 	}
 
@@ -127,13 +127,13 @@ validatePlacementConfiguration(const char *value)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Required key \"placement_blocks\" not found")));
+				 errmsg("required key \"placement_blocks\" not found")));
 	}
 
 	const int length = get_json_array_length(json_array);
 	if (length < 1) {
 		ereport(ERROR,
-				(errmsg("Invalid number of placement blocks %d", length)));
+				(errmsg("invalid number of placement blocks %d", length)));
 		return;
 	}
 
@@ -171,10 +171,10 @@ validatePlacementConfiguration(const char *value)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Invalid value for \"leader_preference\" key"),
+						errmsg("invalid value for \"leader_preference\" key"),
 						errdetail("The set of leader_preference values should "
 								  "consist of contiguous integers starting at 1."
-								  " Preference value %d is invalid. ",
+								  " Preference value %d is invalid.",
 							priority)));
 			}
 			has_priority = true;
@@ -190,9 +190,9 @@ validatePlacementConfiguration(const char *value)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("Invalid value for \"num_replicas\" key"),
-				errdetail("num_replicas: %d is lesser than the total of "
-						"min_num_replicas fields %d", num_replicas,
+				errmsg("invalid value for \"num_replicas\" key"),
+				errdetail("num_replicas=%d is lesser than the total of "
+						"min_num_replicas fields %d.", num_replicas,
 						sum_min_replicas)));
 	}
 	if (sum_min_replicas < num_replicas)
@@ -219,7 +219,7 @@ validatePlacementConfiguration(const char *value)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Invalid value for \"leader_preference\" key"),
+						errmsg("invalid value for \"leader_preference\" key"),
 						errdetail("The set of leader_preference values should "
 								  "consist of contiguous integers starting at 1."
 								  " Preference value %d is missing.",
@@ -363,7 +363,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 				 errmsg("permission denied to create tablespace \"%s\"",
 						stmt->tablespacename),
 				 errhint("Must be superuser or a member of the yb_db_admin "
-				 		 "role to create a tablespace.")));
+						 "role to create a tablespace.")));
 
 	/* However, the eventual owner of the tablespace need not be */
 	if (stmt->owner)
@@ -630,20 +630,18 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 				 errdetail_log("%s", detail_log)));
 	}
 
-  /* Check if there are snapshot schedules, disallow dropping in such cases */
+	/* Check if there are snapshot schedules, disallow dropping in such cases */
 	if (IsYugaByteEnabled())
 	{
 		bool is_active;
-    HandleYBStatus(YBCPgCheckIfPitrActive(&is_active));
-    if (is_active)
-    {
-      ereport(ERROR,
-			    (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-				   errmsg("tablespace \"%s\" cannot be dropped. "
-					   "Dropping tablespaces is not allowed on clusters "
-						 "with Point in Time Restore activated.",
-             tablespacename)));
-    }
+		HandleYBStatus(YBCPgCheckIfPitrActive(&is_active));
+		if (is_active)
+			ereport(ERROR,
+					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+					 errmsg("tablespace \"%s\" cannot be dropped. "
+							"Dropping tablespaces is not allowed on clusters "
+							"with Point in Time Restore activated.",
+							tablespacename)));
 	}
 
 	/* DROP hook for the tablespace being removed */

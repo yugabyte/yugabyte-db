@@ -446,12 +446,12 @@ class YBClient::Data {
   // retry. It is otherwise used in a RetryFunc to indicate if to keep retrying or not, if we get a
   // version mismatch on setting the config.
   Status SetReplicationInfo(
-      YBClient* client, const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
+      YBClient* client, const ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
       bool* retry = nullptr);
 
   // Validate replication info as satisfiable for the cluster data.
   Status ValidateReplicationInfo(
-        const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
+        const ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
 
   // Get disk size of table, calculated as WAL + SST file size.
   // It does not take replication factor into account

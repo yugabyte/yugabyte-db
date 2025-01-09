@@ -16,6 +16,8 @@
 
 #include <boost/optional/optional.hpp>
 
+#include "yb/common/common_net.pb.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_fwd.h"
@@ -25,13 +27,6 @@
 namespace yb {
 
 namespace master {
-
-// Maps tablespace id -> placement policies.
-typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
-    TablespaceIdToReplicationInfoMap;
-
-// Maps table id -> tablespace id.
-typedef std::unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
 // Number of default tablespaces created by PG upon startup. Postgres creates 'pg_default'
 // which is the default tablespace associated with tables/indexes unless the user explicitly

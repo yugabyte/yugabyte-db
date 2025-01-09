@@ -717,11 +717,11 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	/* See if we have any unbatchable filters. */
 	List *pclauses = NIL;
 	if (!bms_is_empty(batchedrelids)) {
-		pclauses = generate_join_implied_equalities(
-			root,
-			bms_union(batchedrelids, index->rel->relids),
-			batchedrelids,
-			rel);
+		pclauses = generate_join_implied_equalities(root,
+													bms_union(batchedrelids,
+															  index->rel->relids),
+													batchedrelids,
+													rel);
 
 		/*
 		 * Anything in joininfo that can be pushed down to this scan
@@ -3177,7 +3177,7 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		if (is_yb_hash_code_call(leftop) &&
 			!yb_hash_code_call_matches_indexcol(leftop, index, indexcol))
 		{
-			if(!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause))
+			if (!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause))
 				return NULL;
 
 			iclause = makeNode(IndexClause);
@@ -4690,19 +4690,16 @@ yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index)
 	 */
 	if (index->rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
 		otherrels = bms_difference(root->all_baserels,
-								   find_childrel_parents(
-										root, index->rel));
+								   find_childrel_parents(root, index->rel));
 	else
 		otherrels = bms_difference(root->all_baserels, index->rel->relids);
 
 	/* Collect join clauses and implied join clauses. */
-	joininfo = list_concat(
-		list_copy(index->rel->joininfo),
-		generate_join_implied_equalities(
-			root,
-			bms_union(index->rel->relids, otherrels),
-			otherrels,
-			index->rel));
+	joininfo = list_concat(list_copy(index->rel->joininfo),
+						   generate_join_implied_equalities(root,
+															bms_union(index->rel->relids, otherrels),
+															otherrels,
+															index->rel));
 
 	clause_list = NIL;
 	foreach(lc, joininfo)

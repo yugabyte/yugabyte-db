@@ -192,7 +192,6 @@ client::TransactionPool& MasterTabletServer::TransactionPool() {
 }
 
 rpc::Messenger* MasterTabletServer::GetMessenger(ash::Component component) const {
-  LOG(WARNING) << "Unexpected call of GetMessenger()";
   return nullptr;
 }
 
@@ -228,6 +227,10 @@ Result<pgwrapper::PGConn> MasterTabletServer::CreateInternalPGConn(
 
 bool MasterTabletServer::SkipCatalogVersionChecks() {
   return master_->catalog_manager()->SkipCatalogVersionChecks();
+}
+
+const std::string& MasterTabletServer::permanent_uuid() const {
+  return master_->permanent_uuid();
 }
 
 } // namespace master

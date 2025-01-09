@@ -346,7 +346,7 @@ shdepChangeDep(Relation sdepRel,
 }
 
 void
-shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId) 
+shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId)
 {
 	Oid databaseId;
 	ScanKeyData key[2];
@@ -359,19 +359,19 @@ shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId)
 	sdepRel = table_open(SharedDependRelationId, RowExclusiveLock);
 
 
-	ScanKeyInit(&key[0], Anum_pg_shdepend_dbid, 
+	ScanKeyInit(&key[0], Anum_pg_shdepend_dbid,
 	BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(databaseId));
 
-	ScanKeyInit(&key[1], Anum_pg_shdepend_classid, 
+	ScanKeyInit(&key[1], Anum_pg_shdepend_classid,
 	BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(YbTablegroupRelationId));
 
 	scan = systable_beginscan(sdepRel, SharedDependDependerIndexId, true, NULL, 2, key);
 
-	while (HeapTupleIsValid(tup = systable_getnext(scan))) 
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
 		Form_pg_shdepend shdepForm = (Form_pg_shdepend) GETSTRUCT(tup);
-		if (shdepForm->refobjid == tablespaceId) 
-    {
+		if (shdepForm->refobjid == tablespaceId)
+		{
 			*tablegroupId = shdepForm->objid;
 			break;
 		}
@@ -456,7 +456,7 @@ recordDependencyOnTablespace(Oid classId, Oid objectId, Oid tablespace)
 		if (tablespace == InvalidOid)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("Tablespace dependencies cannot be recorded on InvalidOid")));
+					 errmsg("tablespace dependencies cannot be recorded on InvalidOid")));
 
 		/*
 		 * Since the pg_default and pg_global tablespaces cannot be dropped,
@@ -1377,20 +1377,18 @@ storeObjectDescription(StringInfo descs,
 				appendStringInfo(descs, _("privileges for %s"), objdesc);
 			else if (deptype == SHARED_DEPENDENCY_POLICY)
 				appendStringInfo(descs, _("target of %s"), objdesc);
-			else if (deptype == SHARED_DEPENDENCY_TABLESPACE) 
-      {
+			else if (deptype == SHARED_DEPENDENCY_TABLESPACE)
+			{
 				char implicit_tablegroup_name[33];
 				sprintf(implicit_tablegroup_name, "tablegroup colocation_%u", refobjid);
-				
+
 				/*
 				 * Do not report dependency from implicit tablegroup to tablespace.
 				 * This would be fine since implicit tablegroup will be dropped if no tables
 				 * are present in it.
 				 */
-				if (strcmp(implicit_tablegroup_name, objdesc) != 0) 
-        {
+				if (strcmp(implicit_tablegroup_name, objdesc) != 0)
 					appendStringInfo(descs, _("tablespace for %s"), objdesc);
-				}
 			}
 			else if (deptype == SHARED_DEPENDENCY_PROFILE)
 				appendStringInfo(descs, _("profile of %s"), objdesc);

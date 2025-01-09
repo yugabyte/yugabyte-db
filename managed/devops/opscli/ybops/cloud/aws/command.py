@@ -17,7 +17,8 @@ from ybops.cloud.aws.method import AwsProvisionInstancesMethod, AwsCreateInstanc
     AwsDeleteDnsEntryMethod, AwsListDnsEntryMethod, AwsTagsMethod, AwsPauseInstancesMethod, \
     AwsResumeInstancesMethod, AwsCreateRootVolumesMethod, AwsReplaceRootVolumeMethod, \
     AwsChangeInstanceTypeMethod, AwsUpdateMountedDisksMethod, AwsQueryImageMethod, \
-    AwsDeleteRootVolumesMethod, AwsHardRebootInstancesMethod, AwsUpdateDiskMethod
+    AwsDeleteRootVolumesMethod, AwsHardRebootInstancesMethod, AwsUpdateDiskMethod, \
+    AwsQueryDeviceNames
 from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCommand, \
     QueryCommand, DnsCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, AccessCreateVaultMethod, \
@@ -94,6 +95,7 @@ class AwsQueryCommand(QueryCommand):
         self.add_method(AwsQueryVPCMethod(self))
         self.add_method(AwsQuerySpotPricingMethod(self))
         self.add_method(AwsQueryImageMethod(self))
+        self.add_method(AwsQueryDeviceNames(self))
 
 
 class AwsDnsCommand(DnsCommand):

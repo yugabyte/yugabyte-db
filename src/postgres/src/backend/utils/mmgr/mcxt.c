@@ -142,8 +142,9 @@ YbPgMemAddConsumption(Size sz)
 	 * the root MemTracker is initiated, to compensate the missed memory
 	 * consumption since the process starts.
 	 */
-	PgMemTracker.pggate_alive = YBCTryMemConsume(
-		PgMemTracker.pggate_alive ? sz : PgMemTracker.pg_cur_mem_bytes);
+	PgMemTracker.pggate_alive = YBCTryMemConsume(PgMemTracker.pggate_alive ?
+												 sz :
+												 PgMemTracker.pg_cur_mem_bytes);
 
 	if (yb_run_with_explain_analyze)
 		/* Only update max memory when memory is increasing */

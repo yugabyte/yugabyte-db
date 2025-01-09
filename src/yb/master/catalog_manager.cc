@@ -982,6 +982,10 @@ Status CatalogManager::Init() {
 
   RETURN_NOT_OK(xcluster_manager_->Init());
 
+  master_->ts_manager()->SetLeaseExpiredCallback(std::bind(
+      &ObjectLockInfoManager::ReleaseOldObjectLocks, object_lock_info_manager_.get(), _1, _2, false,
+      _3));
+
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
 
@@ -2315,8 +2319,8 @@ Status CatalogManager::ValidateTableReplicationInfo(
 }
 
 Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTablespaceInfo() {
-  auto table_info =
-      GetTableInfo(VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgTablespaceTableId)));
+  auto table_info = GetTableInfo(
+      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgTablespaceTableId)));
   if (table_info == nullptr) {
     return STATUS(InternalError, "pg_tablespace table info not found");
   }
@@ -2490,8 +2494,9 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
                    << nsid << " with error: " << table_tablespace_status.ToString();
     }
 
-    const TableId tablegroup_table_id = VERIFY_RESULT(
-        GetVersionSpecificCatalogTableId(GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid)));
+    const TableId tablegroup_table_id =
+        VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(
+            GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid)));
     const bool pg_yb_tablegroup_exists =
         VERIFY_RESULT(DoesTableExist(FindTableById(tablegroup_table_id)));
 
@@ -3823,15 +3828,17 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   if (!orig_req->old_rewrite_table_id().empty()) {
     auto table_id = orig_req->old_rewrite_table_id();
+    auto namespace_id = VERIFY_RESULT(GetTableById(table_id))->LockForRead()->namespace_id();
+    auto automatic_ddl_mode = xcluster_manager_->IsNamespaceInAutomaticDDLMode(namespace_id);
     SharedLock lock(mutex_);
-    // Fail rewrites on tables that are part of CDC or XCluster replication, except for
-    // TRUNCATEs on CDC tables when FLAGS_enable_truncate_cdcsdk_table is enabled.
-    if (xcluster_manager_->IsTableReplicated(table_id) ||
+    // Fail rewrites on tables that are part of CDC or non-automatic mode XCluster replication,
+    // except for TRUNCATEs on CDC tables when FLAGS_enable_truncate_cdcsdk_table is enabled.
+    if ((xcluster_manager_->IsTableReplicated(table_id) && !automatic_ddl_mode)  ||
         (IsTablePartOfCDCSDK(table_id) &&
          (!orig_req->is_truncate() || !FLAGS_enable_truncate_cdcsdk_table))) {
       return STATUS(
           NotSupported,
-          "cannot rewrite a table that is a part of CDC or XCluster replication."
+          "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication"
           " See https://github.com/yugabyte/yugabyte-db/issues/16625.");
     }
   }
@@ -6231,8 +6238,8 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   return Status::OK();
 }
 
-void CatalogManager::AcquireObjectLocks(
-    const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+void CatalogManager::AcquireObjectLocksGlobal(
+    const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
   VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
@@ -6244,8 +6251,8 @@ void CatalogManager::AcquireObjectLocks(
   object_lock_info_manager_->LockObject(*req, resp, std::move(rpc));
 }
 
-void CatalogManager::ReleaseObjectLocks(
-    const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+void CatalogManager::ReleaseObjectLocksGlobal(
+    const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
   VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
@@ -8523,17 +8530,9 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
           //
           // So in case #2, we must accept only current-version catalog tables.
           const auto& table_id = table->id();
-          if (IsPgsqlId(table_id) && CHECK_RESULT(GetPgsqlDatabaseOid(table_id)) == *source_oid) {
-            if (IsYsqlMajorCatalogUpgradeInProgress()) {
-              if (!IsCurrentVersionCatalogId(table_id)) {
-                continue;
-              }
-            } else {
-              // YB_TODO: Remove when we support cleanup of prior-version catalog tables after the
-              // YSQL major version upgrade.
-              if (IsPriorVersionCatalogId(table_id)) {
-                continue;
-              }
+          if (IsPgsqlId(table_id) && VERIFY_RESULT(GetPgsqlDatabaseOid(table_id)) == *source_oid) {
+            if (IsPriorVersionYsqlCatalogTable(table_id)) {
+              continue;
             }
             // Since indexes have dependencies on the base tables, put the tables in the front.
             const bool is_table = table->indexed_table_id().empty();
@@ -9267,7 +9266,7 @@ Status CatalogManager::DeleteYsqlDBTables(
       //  * The rollback deletes all current-version catalog tables in order to prepare for the next
       //    upgrade attempt.
       // In both cases, we delete only the current version's catalog tables.
-      if (is_ysql_major_upgrade && !IsCurrentVersionCatalogId(table->id())) {
+      if (is_ysql_major_upgrade && !IsCurrentVersionYsqlCatalogTable(table->id())) {
         continue;
       }
       if (table->namespace_id() != database->id()) {
@@ -9912,13 +9911,12 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
 Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
                                                uint64_t* catalog_version,
                                                uint64_t* last_breaking_version) {
-  auto table_id = VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
+  auto table_id =
+      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
   auto table_info = GetTableInfo(table_id);
   if (table_info != nullptr) {
-    RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(table_id,
-                                                         db_oid,
-                                                         catalog_version,
-                                                         last_breaking_version));
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(
+        kPgYbCatalogVersionTableId, db_oid, catalog_version, last_breaking_version));
     // If the version is properly initialized, we're done.
     if ((!catalog_version || *catalog_version > 0) &&
         (!last_breaking_version || *last_breaking_version > 0)) {
@@ -9942,10 +9940,11 @@ Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
 }
 
 Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions) {
-  auto table_id = VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
+  auto table_id =
+      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
   auto table_info = GetTableInfo(table_id);
   if (table_info != nullptr) {
-    RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(table_id, versions));
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId, versions));
   } else {
     versions->clear();
   }
@@ -12253,7 +12252,12 @@ Status CatalogManager::CollectTable(
     return Status::OK();
   }
   if (flags.Test(CollectFlag::kIncludeParentColocatedTable) && lock->pb.colocated()) {
-    if (!IsColocationParentTableId(table_description.table_info->id())) {
+    bool add_parent = !IsColocationParentTableId(table_description.table_info->id());
+    if (add_parent && lock->is_vector_index()) {
+      auto indexed_table = VERIFY_RESULT(FindTableById(lock->indexed_table_id()));
+      add_parent = indexed_table->LockForRead()->pb.colocated();
+    }
+    if (add_parent) {
       // If a table is colocated, add its parent colocated table as well.
       TableId parent_table_id = VERIFY_RESULT(
           GetParentTableIdForColocatedTable(table_description.table_info));
@@ -12663,31 +12667,28 @@ Result<TableId> CatalogManager::GetParentTableIdForColocatedTable(
 }
 
 Result<TableId> CatalogManager::GetParentTableIdForColocatedTableUnlocked(
-    const scoped_refptr<TableInfo>& table) {
+    const TableInfoPtr& table) {
   DCHECK(table->colocated());
   DCHECK(!IsColocationParentTableId(table->id()));
 
-  auto ns_info = VERIFY_RESULT(FindNamespaceByIdUnlocked(table->namespace_id()));
-  TableId parent_table_id;
+  auto table_lock = table->LockForRead();
+  auto ns_info = VERIFY_RESULT(FindNamespaceByIdUnlocked(table_lock->namespace_id()));
 
   auto tablegroup = tablegroup_manager_->FindByTable(table->id());
   if (ns_info->colocated()) {
     // Two types of colocated database: (1) pre-Colocation GA (2) Colocation GA
     // Colocated databases created before Colocation GA don't use tablegroup
     // to manage its colocated tables.
-    if (tablegroup)
-      parent_table_id = GetColocationParentTableId(tablegroup->id());
-    else
-      parent_table_id = GetColocatedDbParentTableId(table->namespace_id());
-  } else {
-    RSTATUS_DCHECK(tablegroup != nullptr,
-                   Corruption,
-                   Format("Not able to find the tablegroup for a colocated table $0 whose database "
-                          "is not colocated.", table->id()));
-    parent_table_id = GetTablegroupParentTableId(tablegroup->id());
+    if (tablegroup) {
+      return GetColocationParentTableId(tablegroup->id());
+    }
+    return GetColocatedDbParentTableId(table_lock->namespace_id());
   }
-
-  return parent_table_id;
+  RSTATUS_DCHECK(tablegroup != nullptr,
+                 Corruption,
+                 Format("Not able to find the tablegroup for a colocated table $0 whose database "
+                        "is not colocated.", table->id()));
+  return GetTablegroupParentTableId(tablegroup->id());
 }
 
 Result<std::optional<cdc::ConsumerRegistryPB>> CatalogManager::GetConsumerRegistry() {
@@ -13385,22 +13386,6 @@ Result<TSDescriptorPtr> CatalogManager::GetClosestLiveTserver(bool* local_ts) co
 
 bool CatalogManager::IsYsqlMajorCatalogUpgradeInProgress() const {
   return ysql_manager_->IsYsqlMajorCatalogUpgradeInProgress();
-}
-
-Result<TableId> CatalogManager::GetVersionSpecificCatalogTableId(const TableId& table_id) const {
-  if (!ysql_manager_->IsCurrentVersionCatalogEstablished()) {
-    // When a yb-master goes through the ysql major catalog upgrade process, the process begins
-    // before the current version's initdb and catalog upgrade have been run, so we can't depend on
-    // the existence of valid current-version catalog tables. We therefore utilize prior-version
-    // catalog tables while initdb and the catalog upgrade are in progress. Once we enter the
-    // MONITORING state, we switch to the current version's catalogs so that they can be exercised
-    // and tested.
-    uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_id));
-    uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
-    return GetPgsqlTableIdPriorVersion(database_oid, table_oid);
-  } else {
-    return table_id;
-  }
 }
 
 bool CatalogManager::SkipCatalogVersionChecks() {

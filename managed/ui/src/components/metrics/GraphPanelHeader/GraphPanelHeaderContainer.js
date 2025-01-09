@@ -14,6 +14,7 @@ import {
 } from '../../../actions/graph';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 import { closeDialog, openDialog } from '../../../actions/modal';
+import { fetchCustomerRunTimeConfigs, fetchCustomerRunTimeConfigsResponse } from '../../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -21,6 +22,11 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(fetchUniverseList()).then((response) => {
         dispatch(fetchUniverseListResponse(response.payload));
       });
+    },
+    fetchCustomerRunTimeConfigs: () => {
+      return dispatch(fetchCustomerRunTimeConfigs(true)).then((response) =>
+        dispatch(fetchCustomerRunTimeConfigsResponse(response.payload))
+      );
     },
     changeGraphQueryFilters: (filterParams) => {
       dispatch(changeGraphQueryPeriod(filterParams));

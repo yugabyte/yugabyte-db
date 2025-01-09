@@ -308,10 +308,9 @@ do { \
 
 #define PG_CMD_CLOSE \
 do { \
-  int exit_code = yb_pclose_check(cmdfd); \
 	/* message already printed by yb_pclose_check */ \
-	if (exit_code) \
-		exit_nicely_with_code(exit_code == YB_INITDB_ALREADY_DONE_EXIT_CODE ? 0 : 1); \
+	if (yb_pclose_check(cmdfd)) \
+		exit_nicely_with_code(1); \
 } while (0)
 
 #define PG_CMD_PUTS(line) \
@@ -352,31 +351,29 @@ static bool IsYugaByteLocalNodeInitdb()
 static int
 yb_pclose_check(FILE *stream)
 {
-	int			exitstatus;
+	int			status;
 	char	   *reason;
 
-	exitstatus = pclose(stream);
-
-	if (exitstatus == 0)
-		return 0;				/* all is well */
-
-	if (exitstatus == -1)
+	if ((status = pclose(stream)))
 	{
-		/* pclose() itself failed, and hopefully set errno */
-		fprintf(stderr, _("pclose failed: %s\n"), strerror(errno));
-		return 1;
-	}
-	else
-	{
-		if (WEXITSTATUS(exitstatus) == YB_INITDB_ALREADY_DONE_EXIT_CODE) {
+		if (status == -1)
+		{
+			/* pclose() itself failed, and hopefully set errno */
+			fprintf(stderr, _("pclose failed: %s\n"), strerror(errno));
+		}
+		else if (WEXITSTATUS(status) == YB_INITDB_ALREADY_DONE_EXIT_CODE)
+		{
 			fprintf(stderr, "initdb has already been run previously, nothing to do\n");
-		} else {
-			reason = wait_result_to_str(exitstatus);
+			status = 0;
+		}
+		else
+		{
+			reason = wait_result_to_str(status);
 			fprintf(stderr, "%s\n", reason);
 			pfree(reason);
 		}
 	}
-	return WEXITSTATUS(exitstatus);
+	return status;
 }
 
 
@@ -1501,12 +1498,12 @@ bootstrap_template1(void)
 
 	PG_CMD_OPEN;
 
-  for (line = bki_lines; *line != NULL; line++)
-  {
-    if (!IsYugaByteLocalNodeInitdb())
-      PG_CMD_PUTS(*line);
-    free(*line);
-  }
+	for (line = bki_lines; *line != NULL; line++)
+	{
+		if (!IsYugaByteLocalNodeInitdb())
+			PG_CMD_PUTS(*line);
+		free(*line);
+	}
 
 	PG_CMD_CLOSE;
 
@@ -2385,12 +2382,11 @@ setlocales(void)
 
 		locale = pg_strdup(kYBDefaultLocaleForEncoding);
 		lc_collate = pg_strdup(kYBDefaultLocaleForSortOrder);
-		fprintf(
-			stderr,
-			_("In YugabyteDB, setting LC_COLLATE to %s and all other locale settings to %s "
-			  "by default. Locale support will be enhanced as part of addressing "
-			  "https://github.com/yugabyte/yugabyte-db/issues/1557\n"),
-			lc_collate, locale);
+		fprintf(stderr,
+				_("In YugabyteDB, setting LC_COLLATE to %s and all other locale settings to %s "
+				  "by default. Locale support will be enhanced as part of addressing "
+			  	  "https://github.com/yugabyte/yugabyte-db/issues/1557\n"),
+				lc_collate, locale);
 	}
 
 	/* set empty lc_* values to locale config if set */
@@ -3343,6 +3339,12 @@ main(int argc, char *argv[])
 		}
 	}
 
+	const char *yb_log_dir = getenv("FLAGS_log_dir");
+	if (yb_log_dir && yb_log_dir[0] != '\0')
+	{
+		const char *yb_log_option = psprintf("-r %s/initdb.log", yb_log_dir);
+		extra_options = psprintf("%s %s", extra_options, yb_log_option);
+	}
 
 	/*
 	 * Non-option argument specifies data directory as long as it wasn't

@@ -35,7 +35,7 @@ struct YBTableInfo {
   boost::optional<qlexpr::IndexInfo> index_info;
   YBTableType table_type;
   bool colocated; // Accounts for databases and tablegroups but not for YSQL system tables.
-  boost::optional<master::ReplicationInfoPB> replication_info;
+  boost::optional<ReplicationInfoPB> replication_info;
   boost::optional<uint32> wal_retention_secs;
   // Explicitly stores the PG table id (incase the table was rewritten).
   TableId pg_table_id;

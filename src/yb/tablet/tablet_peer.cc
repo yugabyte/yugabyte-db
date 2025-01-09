@@ -949,7 +949,11 @@ Result<OpId> TabletPeer::MaxPersistentOpId() const {
     return OpId::Min();
   }
   auto flush_op_ids = VERIFY_RESULT(tablet->MaxPersistentOpId());
-  return OpId::MinValid(flush_op_ids.intents, flush_op_ids.regular);
+  auto result = OpId::MinValid(flush_op_ids.intents, flush_op_ids.regular);
+  for (const auto& op_id : flush_op_ids.vector_indexes) {
+    result = OpId::MinValid(result, op_id);
+  }
+  return result;
 }
 
 Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {

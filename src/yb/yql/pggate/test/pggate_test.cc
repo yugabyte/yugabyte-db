@@ -362,6 +362,10 @@ static_assert(static_cast<int>(PersistentDataType::UINT64) ==
                   static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_UINT64),
               "DataType::UINT64 does not match YBCPgDataType::UINT64");
 
+static_assert(static_cast<int>(PersistentDataType::VECTOR) ==
+                  static_cast<int>(YBCPgDataType::YB_YQL_DATA_TYPE_VECTOR),
+              "DataType::VECTOR does not match YBCPgDataType::VECTOR");
+
 // End of data type enum consistency checking
 // ------------------------------------------------------------------------------------------------
 

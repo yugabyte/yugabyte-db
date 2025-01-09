@@ -26,7 +26,7 @@ Find resources for getting started, migrating existing databases, using your dat
     </a>
   </li>
   <li>
-    <a href="https://communityinviter.com/apps/yugabyte-db/register" class="orange">
+    <a href="https://inviter.co/yugabytedb" class="orange">
       <img src="/icons/slack.svg"></i>
       Join Us on Slack
     </a>

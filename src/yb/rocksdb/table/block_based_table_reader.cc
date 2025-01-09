@@ -63,6 +63,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
@@ -80,6 +81,10 @@ DEFINE_RUNTIME_uint64(rocksdb_iterator_sequential_disk_reads_for_auto_readahead,
     "will be enabled with the first disk read. If set to N > 1, iterator readahead will be used "
     "with the Nth sequential disk read.");
 
+DEFINE_RUNTIME_uint64(
+    rocksdb_iterator_sequential_disk_reads_factor, 1,
+    "Treat read as sequential for readahead purposes if next read operation is skipping up to "
+    "readahead window size multiplied by rocksdb_iterator_sequential_disk_reads_factor bytes.");
 TAG_FLAG(rocksdb_iterator_sequential_disk_reads_for_auto_readahead, advanced);
 
 DEFINE_RUNTIME_uint64(rocksdb_iterator_init_readahead_size, 32_KB,
@@ -344,15 +349,18 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
     }
     auto block_res = table_->GetBlockFromCache(read_options_, block_info);
     const auto& handle = block_info.handle;
+    const auto is_sequential_read = IsSequentialRead(handle);
     VLOG_WITH_FUNC(5) << "handle: " << handle.ToDebugString()
                       << " num_sequential_disk_reads_: " << num_sequential_disk_reads_
                       << " prev_offset_: " << prev_offset_ << " prev_length_: " << prev_length_
+                      << " skip_size: "
+                      << static_cast<int64_t>(handle.offset() - prev_offset_ - prev_length_)
+                      << " is_sequential_read: " << is_sequential_read
                       << " block from cache: "
                       << (block_res.ok() ? yb::AsString(static_cast<void*>(block_res->value))
                                          : AsString(block_res.status()))
                       << " for file: " << block_info.file_reader->file()->filename();
 
-    const auto is_sequential_read = IsSequentialRead(handle);
     if (!is_sequential_read &&
         (num_sequential_disk_reads_ > 0 || readahead_limit_ > 0)) {
       VLOG_WITH_FUNC(4) << "handle: " << handle.ToDebugString() << " prev_offset_: " << prev_offset_
@@ -361,6 +369,9 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
                         << " readahead_size_: " << readahead_size_
                         << ". Resetting readahead for iterator for file: "
                         << block_info.file_reader->file()->filename();
+      if (VLOG_IS_ON(6)) {
+        YB_LOG_EVERY_N_SECS(INFO, 1) << "Resetting readahead at: " << yb::GetStackTrace();
+      }
       ResetReadahead();
     }
 
@@ -437,7 +448,10 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
   }
 
   bool IsSequentialRead(BlockHandle handle) {
-    return handle.offset() == prev_offset_ + prev_length_;
+    const auto prev_read_end = prev_offset_ + prev_length_;
+    return (handle.offset() >= prev_read_end) &&
+           (handle.offset() <=
+            prev_read_end + readahead_size_ * FLAGS_rocksdb_iterator_sequential_disk_reads_factor);
   }
 
   // Don't own table_. BlockEntryIteratorState should only be stored in iterators or in

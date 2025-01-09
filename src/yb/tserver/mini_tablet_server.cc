@@ -367,5 +367,10 @@ const MemTrackerPtr& MiniTabletServer::mem_tracker() const {
   return server_->mem_tracker();
 }
 
+HybridTime MiniTabletServer::Now() const {
+  CHECK(started_);
+  return server_->clock()->Now();
+}
+
 } // namespace tserver
 } // namespace yb

@@ -221,7 +221,7 @@ Result<DocHybridTime> GetTableTombstoneTime(
 
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, table_id, rocksdb::kDefaultQueryId, txn_op_context,
-      read_operation_data);
+      read_operation_data.WithStatistics(nullptr));
   iter->Seek(table_id, SeekFilter::kAll);
   const auto& entry_data = VERIFY_RESULT_REF(iter->Fetch());
   if (!entry_data || !entry_data.value.FirstByteIs(dockv::ValueEntryTypeAsChar::kTombstone) ||

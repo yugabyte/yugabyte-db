@@ -19,11 +19,12 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.fwd.h"
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/dockv/intent.h"
+#include "yb/docdb/storage_set.h"
 
 #include "yb/rocksdb/write_batch.h"
 
@@ -245,7 +246,8 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
       rocksdb::DB* intents_db,
-      const VectorIndexesPtr& vector_indexes);
+      const VectorIndexesPtr& vector_indexes,
+      const StorageSet& apply_to_storages);
 
   void Start(const boost::optional<Slice>& first_key) override;
 
@@ -261,6 +263,14 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
   template <class Decoder>
   Status ProcessVectorIndexesForPackedRow(size_t prefix_size, Slice key, Slice value);
 
+  bool ApplyToRegularDB() const {
+    return apply_to_storages_.TestRegularDB();
+  }
+
+  bool ApplyToVectorIndex(size_t index) const {
+    return apply_to_storages_.TestVectorIndex(index);
+  }
+
   const TabletId& tablet_id_;
   const ApplyTransactionState* apply_state_;
   const SubtxnSet& aborted_;
@@ -269,6 +279,7 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
   IntraTxnWriteId write_id_;
   const KeyBounds* key_bounds_;
   VectorIndexesPtr vector_indexes_;
+  StorageSet apply_to_storages_;
   BoundedRocksDbIterator intent_iter_;
   // TODO(vector_index) Optimize memory management
   std::vector<VectorIndexInsertEntries> vector_index_batches_;

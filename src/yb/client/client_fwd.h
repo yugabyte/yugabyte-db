@@ -124,6 +124,7 @@ YB_STRONGLY_TYPED_BOOL(ForceConsistentRead);
 YB_STRONGLY_TYPED_BOOL(ForceGlobalTransaction);
 YB_STRONGLY_TYPED_BOOL(Initial);
 YB_STRONGLY_TYPED_BOOL(UseCache);
+YB_STRONGLY_TYPED_BOOL(ForceCreateTransaction);
 
 namespace internal {
 

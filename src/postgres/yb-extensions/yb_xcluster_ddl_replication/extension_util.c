@@ -23,21 +23,21 @@
 #include "utils/relcache.h"
 
 const char *kManualReplicationErrorMsg =
-    "To manually replicate, run DDL on the source followed by the target with "
-    "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true";
+	"To manually replicate, run DDL on the source followed by the target with "
+	"SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true";
 
 int64
 GetInt64FromVariable(const char *var, const char *var_name)
 {
 	if (!var || strcmp(var, "") == 0)
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Error parsing %s: %s", var_name, var)));
+						errmsg("error parsing %s: %s", var_name, var)));
 
 	char *endp = NULL;
 	int64 ret = strtoll(var, &endp, 10);
 	if (*endp != '\0')
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Error parsing %s: %s", var_name, var)));
+						errmsg("error parsing %s: %s", var_name, var)));
 
 	return ret;
 }
@@ -56,8 +56,9 @@ XClusterExtensionOwner(void)
 	ScanKeyInit(&entry[0], Anum_pg_extension_extname, BTEqualStrategyNumber,
 				F_NAMEEQ, CStringGetDatum(EXTENSION_NAME));
 
-	SysScanDesc scanDescriptor = systable_beginscan(
-		extensionRelation, ExtensionNameIndexId, true, NULL, 1, entry);
+	SysScanDesc scanDescriptor = systable_beginscan(extensionRelation,
+													ExtensionNameIndexId, true,
+													NULL, 1, entry);
 
 	HeapTuple extensionTuple = systable_getnext(scanDescriptor);
 	if (!HeapTupleIsValid(extensionTuple))

@@ -7100,7 +7100,9 @@ yb_get_docdb_result_width(Path *path, PlannerInfo* root, bool is_index_path,
 			/* Collect the attributes used in each expression in the local filters. */
 			foreach(lc, local_clauses)
 			{
-				Expr *local_qual = (Expr*) lfirst(lc);
+				Node *node = lfirst(lc);
+				Expr *local_qual = IsA(node, RestrictInfo) ?
+					((RestrictInfo *) node)->clause: (Expr *) node;
 				pull_varattnos_min_attr((Node*) local_qual, baserel->relid, &attrs,
 										YBFirstLowInvalidAttributeNumber + 1);
 			}
@@ -7174,7 +7176,6 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cost		per_merge_cost = 0.0;
 	Cost		per_seek_cost = 0.0;
 	Cost		per_next_cost = 0.0;
-	List	   *all_filter_clauses = NIL;
 	List	   *pushed_down_clauses = NIL;
 	List	   *local_clauses = NIL;
 	ListCell   *lc;
@@ -7183,6 +7184,12 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	int 		num_nexts;
 	int 		num_seeks;
 	int			docdb_result_width;
+
+	/* Mark the path with the correct row estimate */
+	if (param_info)
+		path->rows = param_info->ppi_rows;
+	else
+		path->rows = baserel->rows;
 
 	if (!enable_seqscan)
 	{
@@ -7220,9 +7227,9 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
 
 		if (ri->yb_pushable)
-			pushed_down_clauses = lappend(pushed_down_clauses, ri->clause);
+			pushed_down_clauses = lappend(pushed_down_clauses, ri);
 		else
-			local_clauses = lappend(local_clauses, ri->clause);
+			local_clauses = lappend(local_clauses, ri);
 	}
 
 	cost_qual_eval(&qual_cost, pushed_down_clauses, root);
@@ -7269,13 +7276,6 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	cost_qual_eval(&qual_cost, local_clauses, root);
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * remote_filtered_rows;
-	all_filter_clauses = list_concat(pushed_down_clauses, local_clauses);
-
-	path->rows =
-		clamp_row_est(baserel->tuples *
-					  clauselist_selectivity(root, all_filter_clauses,
-											 baserel->relid, JOIN_INNER, NULL));
-
 	path->startup_cost = startup_cost;
 	path->total_cost = startup_cost + run_cost;
 	yb_parallel_cost(path);
@@ -7659,13 +7659,15 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		{
 			Oid rel_oid = is_primary_index ? baserel_oid :
 											 path->indexinfo->indexoid;
-			path->path.parallel_workers = yb_compute_parallel_worker(
-				baserel, YbGetTableDistribution(rel_oid),
-				max_parallel_workers_per_gather);
+			path->path.parallel_workers =
+				yb_compute_parallel_worker(baserel,
+										   YbGetTableDistribution(rel_oid),
+										   max_parallel_workers_per_gather);
 		}
 		else
-			path->path.parallel_workers = compute_parallel_worker(
-				baserel, -1, -1, max_parallel_workers_per_gather);
+			path->path.parallel_workers =
+				compute_parallel_worker(baserel, -1, -1,
+										max_parallel_workers_per_gather);
 
 		/*
 		 * Fall out if workers can't be assigned for parallel scan, because in
@@ -7745,8 +7747,10 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			if (path->path.param_info)
 			{
 				Relids batched = YB_PATH_REQ_OUTER_BATCHED(&path->path);
-				RestrictInfo *batched_rinfo = yb_get_batched_restrictinfo(
-				rinfo, batched, path->path.parent->relids);
+				RestrictInfo *batched_rinfo;
+				batched_rinfo =
+					yb_get_batched_restrictinfo(rinfo, batched,
+												path->path.parent->relids);
 				if (batched_rinfo)
 				rinfo = batched_rinfo;
 			}
@@ -8017,8 +8021,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	else
 		all_conditions_and_remote_filters_selectivity = 1.0;
 
-	double num_docdb_result_rows = clamp_row_est(
-		index->rel->tuples * all_conditions_and_remote_filters_selectivity);
+	double num_docdb_result_rows = clamp_row_est(index->rel->tuples *
+												 all_conditions_and_remote_filters_selectivity);
 
 	/*
 	 * Each result page causes one additional seek and next. Estimate the
@@ -8177,8 +8181,9 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 
 		foreach(l, apath->bitmapquals)
 		{
-			List *subindexqual = yb_get_bitmap_index_quals(
-				root, (Path *) lfirst(l), scan_clauses);
+			List *subindexqual = yb_get_bitmap_index_quals(root,
+														   (Path *) lfirst(l),
+														   scan_clauses);
 
 			subindexquals = list_concat_unique(subindexquals, subindexqual);
 		}
@@ -8193,8 +8198,9 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 
 		foreach(l, opath->bitmapquals)
 		{
-			List *subindexqual = yb_get_bitmap_index_quals(
-				root, (Path *) lfirst(l), scan_clauses);
+			List *subindexqual = yb_get_bitmap_index_quals(root,
+														   (Path *) lfirst(l),
+														   scan_clauses);
 
 			subindexquals = lappend(subindexquals,
 									make_ands_explicit(subindexqual));

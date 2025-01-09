@@ -132,6 +132,11 @@ DEFINE_NON_RUNTIME_bool(TEST_ysql_hide_catalog_version_increment_log, false,
     "Hide catalog version increment log messages.");
 TAG_FLAG(TEST_ysql_hide_catalog_version_increment_log, hidden);
 
+DEFINE_test_flag(bool, enable_object_locking_for_table_locks, false,
+    "This test flag enables the object lock APIs provided by tservers and masters - "
+    "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
+    "implement pg table locks.");
+
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They
 // are used for generic placement policies on table creation and tablet load balancing, to
@@ -235,6 +240,11 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_skip_redundant_update_ops, true,
                        "SET clause of YSQL UPDATE queries to skip redundant secondary index "
                        "updates and redundant constraint checks.");
 TAG_FLAG(ysql_yb_skip_redundant_update_ops, advanced);
+
+DEFINE_RUNTIME_bool(cdc_disable_sending_composite_values,
+                    true,
+                    "When this flag is set to true, cdc service will send null values for columns "
+                    "of composite types");
 
 namespace yb {
 

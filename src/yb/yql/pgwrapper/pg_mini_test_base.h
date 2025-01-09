@@ -71,6 +71,8 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   Status RestartMaster();
 
+  Status RestartPostgres();
+
   const HostPort& pg_host_port() const {
     return pg_host_port_;
   }
@@ -91,6 +93,7 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
  private:
   Result<PgProcessConf> CreatePgProcessConf(uint16_t port, size_t ts_idx);
+  Status RecreatePgSupervisor();
 
   HostPort pg_host_port_;
 };

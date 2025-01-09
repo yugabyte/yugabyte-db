@@ -157,8 +157,9 @@ YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
 	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetRelfileNodeId(rel), &ybc_table_desc));
 	Bitmapset *pkey    = YBGetTableFullPrimaryKeyBms(rel);
 	AttrNumber minattr = YBSystemFirstLowInvalidAttributeNumber + 1;
-	YBCPgYBTupleIdDescriptor *descr = YBCCreateYBTupleIdDescriptor(
-		dboid, YbGetRelfileNodeId(rel), bms_num_members(pkey));
+	YBCPgYBTupleIdDescriptor *descr = YBCCreateYBTupleIdDescriptor(dboid,
+																   YbGetRelfileNodeId(rel),
+																   bms_num_members(pkey));
 	YBCPgAttrValueDescriptor *next_attr = descr->attrs;
 	int col = -1;
 	while ((col = bms_next_member(pkey, col)) >= 0)
@@ -533,29 +534,19 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 	 * transaction that targets a single row (i.e. single-row-modify txn), and
 	 * there are no indices or triggers on the target table.
 	 */
-	YBCExecuteInsertForDb(
-			dboid, resultRelationDesc, slot, ONCONFLICT_NONE, NULL /* ybctid */,
-			transaction_setting);
+	YBCExecuteInsertForDb(dboid, resultRelationDesc, slot, ONCONFLICT_NONE,
+						  NULL /* ybctid */, transaction_setting);
 }
 
 bool
-YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo)
+YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
 {
 	/*
 	 * TODO(jason): figure out how to enable triggers.
 	 */
-	/*
-	 * TODO(GH#24834): Enable INSERT ON CONFLICT batching for null-not-distinct
-	 * indexes.
-	 */
-	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
-	{
-		if (resultRelInfo->ri_IndexRelationInfo[i]->ii_NullsNotDistinct)
-			return false;
-	}
-	return (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+	return (yb_insert_on_conflict_read_batch_size > 0 &&
+			IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 			!IsCatalogRelation(resultRelInfo->ri_RelationDesc) &&
-			resultRelInfo->ri_BatchSize > 1 &&
 			!(resultRelInfo->ri_TrigDesc &&
 			  (resultRelInfo->ri_TrigDesc->trig_delete_after_row ||
 			   resultRelInfo->ri_TrigDesc->trig_delete_before_row ||
@@ -577,7 +568,7 @@ YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo)
  * secondary index.
  */
 YBCPgYBTupleIdDescriptor *
-YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
+YBCBuildUniqueIndexYBTupleId(Relation unique_index, Datum *values, bool *nulls)
 {
 	Assert(IsYBRelation(unique_index));
 
@@ -605,6 +596,7 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 	YBCPgYBTupleIdDescriptor* result = YBCCreateYBTupleIdDescriptor(dboid,
 		relfileNodeId, nattrs + (is_pkey ? 0 : 1));
 	YBCPgAttrValueDescriptor *next_attr = result->attrs;
+	bool has_null = false;
 	for (int i = 0; i < nattrs; ++i)
 	{
 		AttrNumber attnum;
@@ -638,7 +630,8 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 		next_attr->collation_id = ybc_get_attcollation(tupdesc, attnum);
 		next_attr->attr_num = attnum;
 		next_attr->datum = values[i];
-		next_attr->is_null = false;
+		next_attr->is_null = nulls == NULL ? false : nulls[i];
+		has_null = has_null || next_attr->is_null;
 		YBCPgColumnInfo column_info = {0};
 		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
 												   attnum,
@@ -649,7 +642,16 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 
 	/* Primary keys do not have the YBUniqueIdxKeySuffix attribute */
 	if (!is_pkey)
+	{
+		/*
+		 * If unique_index is not PK, this function should be used only for
+		 * indexes that use nulls-not-distinct mode or for the index tuples with
+		 * non-null values for all the index key columns. YBUniqueIdxKeySuffix
+		 * is null in both these cases.
+		 */
+		Assert(unique_index->rd_index->indnullsnotdistinct || !has_null);
 		YBCFillUniqueIndexNullAttribute(result);
+	}
 
 	return result;
 }
@@ -670,7 +672,8 @@ YBCForeignKeyReferenceCacheDeleteIndex(Relation index, Datum *values, bool *isnu
 			if (isnulls[i])
 				return;
 
-		YBCPgYBTupleIdDescriptor* descr = YBCBuildNonNullUniqueIndexYBTupleId(index, values);
+		YBCPgYBTupleIdDescriptor *descr =
+			YBCBuildUniqueIndexYBTupleId(index, values, NULL);
 		HandleYBStatus(YBCPgForeignKeyReferenceCacheDelete(descr));
 		pfree(descr);
 	}
@@ -714,9 +717,11 @@ YBCExecuteInsertIndexForDb(Oid dboid,
 	const bool is_backfill = (backfill_write_time != NULL);
 	const bool is_non_distributed_txn_write =
 		is_backfill || (!IsSystemRelation(index) && yb_disable_transactional_writes);
-	HandleYBStatus(YBCPgNewInsert(
-		dboid, YbGetRelfileNodeId(index), YBCIsRegionLocal(index), &insert_stmt,
-		is_non_distributed_txn_write ? YB_NON_TRANSACTIONAL : YB_TRANSACTIONAL));
+	HandleYBStatus(YBCPgNewInsert(dboid, YbGetRelfileNodeId(index),
+								  YBCIsRegionLocal(index), &insert_stmt,
+								  (is_non_distributed_txn_write ?
+								   YB_NON_TRANSACTIONAL :
+								   YB_TRANSACTIONAL)));
 
 	callback(insert_stmt, indexstate, index, values, isnull,
 			 RelationGetNumberOfAttributes(index),
@@ -787,7 +792,7 @@ YBCExecuteDelete(Relation rel,
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				 errmsg("Missing column ybctid in DELETE request")));
+				 errmsg("missing column ybctid in DELETE request")));
 	}
 
 	MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
@@ -1012,7 +1017,7 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 	if (ybctid == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				 errmsg("Missing column ybctid in UPDATE request")));
+				 errmsg("missing column ybctid in UPDATE request")));
 
 	YBCBindTupleId(update_stmt, ybctid);
 
@@ -1294,7 +1299,7 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	if (ybctid == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				 errmsg("Missing column ybctid in UPDATE request")));
+				 errmsg("missing column ybctid in UPDATE request")));
 
 	YBCBindTupleId(update_stmt, ybctid);
 
@@ -1366,7 +1371,7 @@ YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	if (HEAPTUPLE_YBCTID(tuple) == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				 errmsg("Missing column ybctid in DELETE request to YugaByte database")));
+				 errmsg("missing column ybctid in DELETE request to Yugabyte database")));
 
 	/* Prepare DELETE statement. */
 	HandleYBStatus(YBCPgNewDelete(dboid,
@@ -1450,9 +1455,11 @@ YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple,
 		 * Since we are assign values to non-primary-key columns, pass InvalidOid as
 		 * collation_id to skip computing collation sortkeys.
 		 */
-		YBCPgExpr ybc_expr = YBCNewConstant(
-			update_stmt, TupleDescAttr(tupleDesc, idx)->atttypid, InvalidOid /* collation_id */,
-			d, is_null);
+		YBCPgExpr ybc_expr = YBCNewConstant(update_stmt,
+											TupleDescAttr(tupleDesc, idx)->atttypid,
+											InvalidOid /* collation_id */,
+											d,
+											is_null);
 		HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 	}
 

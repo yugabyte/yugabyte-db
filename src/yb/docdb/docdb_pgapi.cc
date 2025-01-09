@@ -39,6 +39,8 @@
 
 using std::string;
 
+DECLARE_bool(cdc_disable_sending_composite_values);
+
 namespace yb::docdb {
 
 using pggate::PgValueToDatum;
@@ -1377,6 +1379,14 @@ Status SetValueFromQLBinaryHelper(
       break;
     }
     case RECORDOID: {
+      if (FLAGS_cdc_disable_sending_composite_values) {
+        // TODO(#25221): We break early for the composite types since the decoding logic is broken.
+        // This will result in sending null values for composite columns. Set
+        // FLAGS_cdc_disable_sending_composite_values to false once the decoding logic is fixed.
+        VLOG(3) << "The flag cdc_disable_sending_composite_values is set to true, will send null "
+                   "value for composite column";
+        break;
+      }
       string record_val = ql_value.binary_value();
       size = record_val.size();
       val = const_cast<char *>(record_val.c_str());

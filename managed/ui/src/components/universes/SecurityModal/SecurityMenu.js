@@ -7,12 +7,13 @@ import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 
 export function SecurityMenu({
   backToMainMenu,
-  isItKubernetesUniverse,
   editTLSAvailability,
   showTLSConfigurationModal,
   showManageKeyModal,
   manageKeyAvailability,
-  allowedTasks
+  allowedTasks,
+  isEncryptionAtTransitEnabled,
+  isItKubernetesUniverse
 }) {
   const { test, released } = useSelector((state) => state.featureFlags);
 
@@ -34,7 +35,7 @@ export function SecurityMenu({
         availability={tlsAvailability}
         disabled={
           isActionFrozen(allowedTasks, UNIVERSE_TASKS.ENCRYPTION_IN_TRANSIT) ||
-          isItKubernetesUniverse
+          (isItKubernetesUniverse && !isEncryptionAtTransitEnabled)
         }
       >
         Encryption in-Transit

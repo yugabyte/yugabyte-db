@@ -27,7 +27,7 @@ The server and CA certificates must adhere to the following criteria:
 
 - Be stored in a `.crt` file, with both the certificate and the private key being in the PEM format.
 
-  If your certificates and keys are stored in the PKCS12 format, you can [convert them to the PEM format](#convert-certificates-and-keys-from-pkcs12-to-pem-format).
+  If your certificates and keys are stored in the PKCS12 format, you can [convert them to the PEM format](../add-certificate-self#convert-certificates-and-keys-from-pkcs12-to-pem-format).
 
 The server certificates must adhere to the following criteria:
 

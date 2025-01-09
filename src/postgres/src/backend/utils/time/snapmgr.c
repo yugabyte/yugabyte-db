@@ -244,8 +244,7 @@ YBCOnActiveSnapshotChange()
 {
 	const SnapshotData *snap = ActiveSnapshot ? ActiveSnapshot->as_snap : NULL;
 	if (snap && snap->yb_read_time_point_handle.has_value)
-		HandleYBStatus(YBCRestoreReadTimePoint(
-			snap->yb_read_time_point_handle.value));
+		HandleYBStatus(YBCRestoreReadTimePoint(snap->yb_read_time_point_handle.value));
 }
 
 /*

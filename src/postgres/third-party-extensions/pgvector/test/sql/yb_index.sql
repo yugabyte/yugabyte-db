@@ -1,3 +1,7 @@
+SELECT oid FROM pg_type where typname = 'vector';
+SET yb_enable_docdb_vector_type = false;
+CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));
+SET yb_enable_docdb_vector_type = true;
 CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON items USING ybdummyann (embedding vector_l2_ops);
 INSERT INTO items VALUES (1, '[1.0, 0.4, 0.3]');

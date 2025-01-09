@@ -112,7 +112,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   bool colocated() const;
 
   // Returns the replication info for the table.
-  const boost::optional<master::ReplicationInfoPB>& replication_info() const;
+  const boost::optional<ReplicationInfoPB>& replication_info() const;
 
   std::string ToString() const;
   //------------------------------------------------------------------------------------------------

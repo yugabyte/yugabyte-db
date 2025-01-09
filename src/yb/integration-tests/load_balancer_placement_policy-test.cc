@@ -186,7 +186,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {
   ASSERT_OK(b.Build(&schema));
 
   // Set placement policy for the new table that is different from the cluster placement policy.
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(2);
   auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
   auto* cloud_info = placement_block->mutable_cloud_info();
@@ -245,7 +245,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithNondefaultMinNumReplicas)
 
   // ModifyTablePlacementInfo defaults to 1 min_num_replica, so test table placement with a
   // non-default value of 2.
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(3);
   auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
   auto* cloud_info = placement_block->mutable_cloud_info();
@@ -819,7 +819,7 @@ TEST_P(LoadBalancerReadReplicaPlacementPolicyBlacklistTest, Test) {
 
   DeleteTable();
   if (use_empty_table_placement) {
-    master::ReplicationInfoPB ri;
+    ReplicationInfoPB ri;
     ASSERT_OK(NewTableCreator()->table_name(table_name())
         .schema(&schema_).replication_info(ri).Create());
   } else {

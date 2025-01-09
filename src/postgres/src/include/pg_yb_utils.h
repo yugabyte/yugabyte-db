@@ -299,8 +299,6 @@ extern void HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table);
  * is started. Reports errors using ereport.
  */
 extern void YBInitPostgresBackend(const char *program_name,
-								  const char *db_name,
-								  const char *user_name,
 								  uint64_t *session_id);
 
 /*
@@ -373,7 +371,7 @@ extern void YBReportIfYugaByteEnabled();
 		Oid computed_type_id = type_id; \
 		ereport(ERROR, \
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED), \
-					errmsg("Type not yet supported in YugaByte: %d (%s)", \
+					errmsg("type not yet supported in Yugabyte: %d (%s)", \
 						computed_type_id, YBPgTypeOidToStr(computed_type_id)))); \
 	} while (0)
 
@@ -446,16 +444,7 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
 /*
  * Return whether to use wholerow junk attribute for YB relations.
  */
-extern bool YbUseWholeRowJunkAttribute(Relation relation,
-									   Bitmapset *updatedCols,
-									   CmdType operation,
-									   List *returningList);
-
-/*
- * Return whether to use scanned "old" tuple to reconstruct the new tuple during
- * UPDATE operations for YB relations. See function definition for details.
- */
-extern bool YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols, List *returningList);
+extern bool YbWholeRowAttrRequired(Relation relation, CmdType operation);
 
 /*
  * Return whether the returning list for an UPDATE statement is a subset of the columns being
@@ -604,6 +593,11 @@ extern bool yb_enable_fkey_catcache;
  */
 extern bool yb_enable_nop_alter_role_optimization;
 
+/*
+ * Compatibility option to ignore FREEZE with COPY FROM.
+ */
+extern bool yb_ignore_freeze_with_copy;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -717,6 +711,11 @@ extern bool yb_use_hash_splitting_by_default;
  */
 extern bool yb_enable_inplace_index_update;
 
+/*
+ * Enable the advisory lock feature.
+ */
+extern bool yb_enable_advisory_locks;
+
 typedef struct YBUpdateOptimizationOptions
 {
 	bool has_infra;
@@ -728,11 +727,15 @@ typedef struct YBUpdateOptimizationOptions
 /* GUC variables to control the behavior of optimizing update queries. */
 extern YBUpdateOptimizationOptions yb_update_optimization_options;
 
+extern bool yb_enable_docdb_vector_type;
+
 /*
  * GUC to allow user to silence the error saying that advisory locks are not
  * supported.
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
+
+extern bool yb_skip_data_insert_for_table_rewrite;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -813,8 +816,8 @@ typedef struct YbDdlModeOptional
 	YbDdlMode value;
 } YbDdlModeOptional;
 
-YbDdlModeOptional YbGetDdlMode(
-	PlannedStmt *pstmt, ProcessUtilityContext context);
+extern YbDdlModeOptional YbGetDdlMode(PlannedStmt *pstmt,
+									  ProcessUtilityContext context);
 void YBAddModificationAspects(YbDdlMode mode);
 
 extern void YBBeginOperationsBuffering();
@@ -883,12 +886,10 @@ char *YBDetailSorted(char *input);
 /*
  * For given collation, type and value, setup collation info.
  */
-void YBGetCollationInfo(
-	Oid collation_id,
-	const YBCPgTypeEntity *type_entity,
-	Datum datum,
-	bool is_null,
-	YBCPgCollationInfo *collation_info);
+extern void YBGetCollationInfo(Oid collation_id,
+							   const YBCPgTypeEntity *type_entity, Datum datum,
+							   bool is_null,
+							   YBCPgCollationInfo *collation_info);
 
 /*
  * Setup collation info in attr.
@@ -1005,7 +1006,7 @@ extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
 extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
 												GucSource source);
 extern void assign_yb_xcluster_consistency_level(const char *newval,
-												 void		*extra);
+												 void *extra);
 
 /*
  * Updates the session stats snapshot with the collected stats and copies the
@@ -1086,10 +1087,13 @@ LockWaitPolicy YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy);
 
 const char *yb_fetch_current_transaction_priority(void);
 
-void GetStatusMsgAndArgumentsByCode(
-	const uint32_t pg_err_code, uint16_t txn_err_code, YBCStatus s,
-	const char **msg_buf, size_t *msg_nargs, const char ***msg_args,
-	const char **detail_buf, size_t *detail_nargs, const char ***detail_args);
+void GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
+									uint16_t txn_err_code, YBCStatus s,
+									const char **msg_buf, size_t *msg_nargs,
+									const char ***msg_args,
+									const char **detail_buf,
+									size_t *detail_nargs,
+									const char ***detail_args);
 
 bool YbIsBatchedExecution();
 void YbSetIsBatchedExecution(bool value);
@@ -1123,18 +1127,18 @@ OptSplit *YbGetSplitOptions(Relation rel);
 		YBCStatus _status = (status); \
 		if (_status) \
 		{ \
-			const int 		adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
-			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
-			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
-			const char	   *filename = YBCStatusFilename(_status); \
-			int				lineno = YBCStatusLineNumber(_status); \
-			const char	   *funcname = YBCStatusFuncname(_status); \
-			const char	   *msg_buf = NULL; \
-			const char	   *detail_buf = NULL; \
-			size_t		    msg_nargs = 0; \
-			size_t		    detail_nargs = 0; \
-			const char	  **msg_args = NULL; \
-			const char	  **detail_args = NULL; \
+			const int adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
+			const uint32_t pg_err_code = YBCStatusPgsqlError(_status); \
+			const uint16_t txn_err_code = YBCStatusTransactionError(_status); \
+			const char *filename = YBCStatusFilename(_status); \
+			int lineno = YBCStatusLineNumber(_status); \
+			const char *funcname = YBCStatusFuncname(_status); \
+			const char *msg_buf = NULL; \
+			const char *detail_buf = NULL; \
+			size_t msg_nargs = 0; \
+			size_t detail_nargs = 0; \
+			const char **msg_args = NULL; \
+			const char **detail_args = NULL; \
 			GetStatusMsgAndArgumentsByCode(pg_err_code, txn_err_code, _status, \
 										   &msg_buf, &msg_nargs, &msg_args, \
 										   &detail_buf, &detail_nargs, \

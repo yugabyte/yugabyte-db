@@ -94,7 +94,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // Retrieves the next key to read after the iterator finishes for the given page.
   Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) override;
 
-  Slice GetRowKey() const;
+  Slice GetRowKey() const override;
 
   void set_debug_dump(bool value) { debug_dump_ = value; }
 
@@ -103,10 +103,6 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   }
 
   const dockv::SchemaPackingStorage& schema_packing_storage();
-
-  SkipTableTombstoneCheck skip_table_tombstone_check() const {
-    return doc_read_context_.skip_table_tombstone_check();
-  }
 
  private:
   virtual void InitIterator(

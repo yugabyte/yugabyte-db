@@ -265,7 +265,7 @@ func init() {
 			" The default for SSH Port is 22, IMDSv2 ("+
 			"This should be true if the Image bundle requires Instance Metadata Service v2)"+
 			" is false. Default marks the image bundle as default for the provider. "+
-			"Allowed values for architecture are x86_64 and arm64."+
+			"Allowed values for architecture are x86_64 and arm64/aarch64."+
 			"Each image bundle can be added using separate --image-bundle flag. "+
 			"Example: --image-bundle image-bundle-name=<name>::"+
 			"ssh-user=<ssh-user>::ssh-port=22")
@@ -408,7 +408,8 @@ func buildAWSImageBundles(
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
@@ -417,7 +418,8 @@ func buildAWSImageBundles(
 
 		useIMDSv2, err := strconv.ParseBool(bundle["imdsv2"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

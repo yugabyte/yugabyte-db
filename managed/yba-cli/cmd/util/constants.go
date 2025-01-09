@@ -249,6 +249,22 @@ const (
 	AbortedTaskStatus = "Aborted"
 )
 
+// Allowed states for XCluster Universe Lifecycle
+const (
+	// InitializedXClusterState indicates the XCluster universe is initialized
+	InitializedXClusterState = "Initialized"
+	// RunningXClusterState indicates the XCluster universe is running
+	RunningXClusterState = "Running"
+	// UpdatingXClusterState indicates the XCluster universe is updating
+	UpdatingXClusterState = "Updating"
+	// DeletedXClusterUniverseState indicates the XCluster universe has been deleted
+	DeletedXClusterUniverseState = "DeletedUniverse"
+	// DeletionFailedXClusterState indicates the XCluster universe deletion failed
+	DeletionFailedXClusterState = "DeletionFailed"
+	// FailedXClusterState indicates the XCluster universe encountered a failure
+	FailedXClusterState = "Failed"
+)
+
 // Node operations allowed on universe
 const (
 	// AddNode operation
@@ -413,6 +429,24 @@ const (
 	CustomRoleType = "Custom"
 )
 
+// WorkloadType
+const (
+	// YSQLWorkloadType type
+	YSQLWorkloadType = "YSQL"
+	// YCQLWorkloadType type
+	YCQLWorkloadType = "YCQL"
+)
+
+// ExposingServiceState
+const (
+	// ExposedServiceState type
+	ExposedServiceState = "EXPOSED"
+	// UnexposedServiceState type
+	UnexposedServiceState = "UNEXPOSED"
+	// NoneServiceState type
+	NoneServiceState = "NONE"
+)
+
 // CompletedTaskStates returns set of states that mark the task as completed
 func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}
@@ -475,6 +509,11 @@ func AwsInstanceTypesWithEphemeralStorageOnly(instanceType string) bool {
 	// instance types with a 'd' in the first part of their name
 	match, _ = regexp.MatchString("[^.]*d[^.]*\\..*", instanceType)
 	return match
+}
+
+// ValidExposingServiceStates returns set of valid exposing service states
+func ValidExposingServiceStates() []string {
+	return []string{ExposedServiceState, UnexposedServiceState, NoneServiceState}
 }
 
 // IsCloudBasedProvider returns true if the provider is AWS, Azure or GCP

@@ -120,9 +120,9 @@ static bool
 YbIsColumnComparisonAllowed(const Bitmapset *modified_cols,
 							const Bitmapset *unmodified_cols)
 {
-	return (
-		(bms_num_members(modified_cols) + bms_num_members(unmodified_cols)) <=
-		yb_update_optimization_options.num_cols_to_compare);
+	return ((bms_num_members(modified_cols) +
+			 bms_num_members(unmodified_cols)) <=
+			yb_update_optimization_options.num_cols_to_compare);
 }
 
 /* ----------------------------------------------------------------
@@ -223,9 +223,9 @@ YBIsColumnModified(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
 	Datum old_value = heap_getattr(oldtuple, attnum, relTupdesc, &old_is_null);
 	Datum new_value = heap_getattr(newtuple, attnum, relTupdesc, &new_is_null);
 
-	return (
-		(old_is_null != new_is_null) ||
-		(!old_is_null && !YBAreDatumsStoredIdentically(old_value, new_value, attdesc)));
+	return ((old_is_null != new_is_null) ||
+			(!old_is_null &&
+			 !YBAreDatumsStoredIdentically(old_value, new_value, attdesc)));
 }
 
 /* ----------------------------------------------------------------
@@ -324,8 +324,8 @@ YbUpdateHandleModifiedField(YbBitMatrix *matrix, Bitmapset **modified_entities,
 	 * that this entity is the first one that references this column.
 	 */
 	int local_entity_idx = entity_idx - 1;
-	while ((local_entity_idx = YbGetNextEntityFromBitMatrix(
-		matrix, field_idx, local_entity_idx)) >= 0)
+	while ((local_entity_idx = YbGetNextEntityFromBitMatrix(matrix, field_idx,
+															local_entity_idx)) >= 0)
 		*modified_entities = bms_add_member(*modified_entities, entity_idx);
 
 	*modified_cols = bms_add_member(*modified_cols, bms_idx);
@@ -417,8 +417,9 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
 		bool is_modified = bms_is_member(entity_idx, modified_entities);
 
 		int field_idx = -1;
-		while (!is_modified && (field_idx = YbGetNextFieldFromBitMatrix(
-									&matrix, entity_idx, field_idx)) >= 0)
+		while (!is_modified &&
+			   (field_idx = YbGetNextFieldFromBitMatrix(&matrix, entity_idx,
+														field_idx)) >= 0)
 		{
 			AttrNumber attnum = affected_entities->col_info_list[field_idx].attnum;
 			const int idx = YBBmsIndexToAttnum(rel, attnum);
@@ -457,8 +458,8 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
 			}
 		}
 		else
-			YbUpdateHandleUnmodifiedEntity(
-				affected_entities, entity_idx, skip_entities);
+			YbUpdateHandleUnmodifiedEntity(affected_entities, entity_idx,
+										   skip_entities);
 	}
 
 	YbLogOptimizationSummary(affected_entities->entity_list, modified_entities,

@@ -31,7 +31,6 @@
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
@@ -916,10 +915,9 @@ Status XClusterTestBase::WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName
   if (namespace_names.empty()) {
     namespace_names = {namespace_name};
   }
-  auto producer_master = VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->master();
-  HybridTime now = producer_master->clock()->Now();
+  HybridTime now = VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->Now();
   for (auto ts : producer_cluster()->mini_tablet_servers()) {
-    now.MakeAtLeast(ts->server()->clock()->Now());
+    now.MakeAtLeast(ts->Now());
   }
 
   for (const auto& name : namespace_names) {

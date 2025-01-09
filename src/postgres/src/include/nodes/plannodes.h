@@ -300,7 +300,7 @@ typedef struct YbUpdateAffectedEntities
 		AttrNumber attnum;
 
 		/*
-		 * A list of entities that reference the column. 
+		 * A list of entities that reference the column.
 		 * Entities are identified by their index in the entity_list.
 		 */
 		List *entity_refs;
@@ -367,8 +367,6 @@ typedef struct ModifyTable
 	List	   *ybReturningColumns;	/* columns to fetch from DocDB */
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
-	bool 		ybUseScanTupleInUpdate; /* use old scan tuple in UPDATE to construct the new tuple */
-	bool		ybHasWholeRowAttribute; /* whether subplan tlist contains wholerow junk attribute */
 
 	/*
 	 * A collection of entities that are impacted by the ModifyTable query, and

@@ -192,6 +192,9 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_locks, kLocalVolatile, false, tru
     "Enable the pg_locks view. This view provides information about the locks held by "
     "active postgres sessions.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_docdb_vector_type, kExternal, false, true,
+    "Enable using the DocDB Vector type from YSQL.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
     "Sets the minimum transaction age for results from pg_locks.");
 
@@ -1101,6 +1104,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
   CHECK_NE(conf_.tserver_shm_fd, -1);
   proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
+  proc->SetEnv("FLAGS_log_dir", FLAGS_log_dir);
 #ifdef OS_MACOSX
   // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
   if (getenv("LC_ALL") == nullptr) {

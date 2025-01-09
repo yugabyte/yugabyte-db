@@ -869,7 +869,7 @@ validate_okeys_object_field_start(void *state, char *fname, bool isnull)
 
 	ereport(ERROR,
 		(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-		errmsg("Invalid key \"%s\" found in json object %s", fname, _state->json_text)));
+		errmsg("invalid key \"%s\" found in json object %s", fname, _state->json_text)));
 }
 
 static void
@@ -888,7 +888,7 @@ validate_okeys_object_end(void *state)
 		if (!_state->found_key[i])
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("Required key \"%s\" not specified in json object: %s",
+				errmsg("required key \"%s\" not specified in json object %s",
 					_state->required_keys[i],
 					_state->json_text)));
 	}
@@ -903,7 +903,7 @@ validate_okeys_array_start(void *state)
 	if (_state->lex->lex_level == 0)
 		ereport(ERROR,
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("Found unexpected JSON array in json object %s",
+			errmsg("found unexpected JSON array in json object %s",
 				_state->json_text)));
 }
 
@@ -916,7 +916,7 @@ validate_okeys_scalar(void *state, char *token, JsonTokenType tokentype)
 	if (_state->lex->lex_level == 0)
 		ereport(ERROR,
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("Found unexpected JSON scalar in json object %s",
+			errmsg("found unexpected JSON scalar in json object %s",
 				_state->json_text)));
 }
 
@@ -949,15 +949,15 @@ jsonb_object_field(PG_FUNCTION_ARGS)
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	text	   *key = PG_GETARG_TEXT_PP(1);
 	JsonbValue *v;
- 	JsonbValue	vbuf;
+	JsonbValue	vbuf;
 
 	if (!JB_ROOT_IS_OBJECT(jb))
 		PG_RETURN_NULL();
 
- 	v = getKeyJsonValueFromContainer(&jb->root,
- 									 VARDATA_ANY(key),
- 									 VARSIZE_ANY_EXHDR(key),
- 									 &vbuf);
+	v = getKeyJsonValueFromContainer(&jb->root,
+									 VARDATA_ANY(key),
+									 VARSIZE_ANY_EXHDR(key),
+									 &vbuf);
 
 	if (v != NULL)
 		PG_RETURN_JSONB_P(JsonbValueToJsonb(v));
@@ -987,16 +987,15 @@ jsonb_object_field_text(PG_FUNCTION_ARGS)
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	text	   *key = PG_GETARG_TEXT_PP(1);
 	JsonbValue *v;
- 	JsonbValue	vbuf;
+	JsonbValue	vbuf;
 
 	if (!JB_ROOT_IS_OBJECT(jb))
 		PG_RETURN_NULL();
 
- 	v = getKeyJsonValueFromContainer(&jb->root,
- 									 VARDATA_ANY(key),
- 									 VARSIZE_ANY_EXHDR(key),
- 									 &vbuf);
-
+	v = getKeyJsonValueFromContainer(&jb->root,
+									 VARDATA_ANY(key),
+									 VARSIZE_ANY_EXHDR(key),
+									 &vbuf);
 
 	if (v != NULL && v->type != jbvNull)
 		PG_RETURN_TEXT_P(JsonbValueAsText(v));
@@ -3300,8 +3299,8 @@ JsObjectGetField(JsObject *obj, char *field, JsValue *jsv)
 	else
 	{
 		jsv->val.jsonb = !obj->val.jsonb_cont ? NULL :
- 			getKeyJsonValueFromContainer(obj->val.jsonb_cont, field, strlen(field),
- 										 NULL);
+			getKeyJsonValueFromContainer(obj->val.jsonb_cont, field, strlen(field),
+										 NULL);
 
 		return jsv->val.jsonb != NULL;
 	}
@@ -5679,7 +5678,7 @@ int json_get_int_value(text *json, char *key)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Required key \"%s\" not found", key)));
+				 errmsg("required key \"%s\" not found", key)));
 	}
 
 	char *int_str = text_to_cstring(value);
@@ -5687,8 +5686,8 @@ int json_get_int_value(text *json, char *key)
 	if (ret_value <= 0) {
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Invalid value for \"%s\" key", key),
-				 errdetail("Found %s but %s value should be an integer > 0",
+				 errmsg("invalid value for \"%s\" key", key),
+				 errdetail("Found %s but %s value should be an integer > 0.",
 						   int_str, key)));
 	}
 	return ret_value;

@@ -145,9 +145,9 @@
 
 enum progress_type
 {
-    CP_IN_PROG,
-    CP_ERROR,
-    CP_SUCCESS
+	CP_IN_PROG,
+	CP_ERROR,
+	CP_SUCCESS
 };
 
 /* Commands of COPY (as advertised via PROGRESS_COPY_COMMAND) */

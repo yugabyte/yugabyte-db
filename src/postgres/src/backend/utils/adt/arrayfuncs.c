@@ -2996,13 +2996,13 @@ array_set_slice(Datum arraydatum,
 			/* addedafter = upperIndx[0] - (dim[0] + lb[0]) + 1; */
 			/* dim[0] += addedafter; */
 			if (pg_sub_s32_overflow(upperIndx[0], dim[0] + lb[0], &addedafter) ||
- 				pg_add_s32_overflow(addedafter, 1, &addedafter) ||
- 				pg_add_s32_overflow(dim[0], addedafter, &dim[0]))
- 				ereport(ERROR,
- 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
- 						 errmsg("array size exceeds the maximum allowed (%d)",
- 								(int) MaxArraySize)));
- 			if (addedafter > 1)
+				pg_add_s32_overflow(addedafter, 1, &addedafter) ||
+				pg_add_s32_overflow(dim[0], addedafter, &dim[0]))
+				ereport(ERROR,
+						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+						 errmsg("array size exceeds the maximum allowed (%d)",
+								(int) MaxArraySize)));
+			if (addedafter > 1)
 				newhasnulls = true;
 		}
 	}

@@ -1560,4 +1560,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait for GFlag Sync in K8s universe",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableYNPProvisioning =
+      new ConfKeyInfo<>(
+          "yb.node_agent.use_ynp_provisioning",
+          ScopeType.GLOBAL,
+          "Use YNP for provisioning",
+          "If enabled use YNP for provisioning",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableMetricsTimezone =
+      new ConfKeyInfo<>(
+          "yb.ui.metrics.enable_timezone",
+          ScopeType.GLOBAL,
+          "Enable viewing metrics in timezone selected at the metrics page",
+          "Enable viewing metrics in timezone selected at the metrics page and will be preserved at"
+              + " session level",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -2227,8 +2227,9 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 						 * creation. So we overwrite the replica identity of the
 						 * relation to what it existed at that time.
 						 */
-						relation = YbGetRelationWithOverwrittenReplicaIdentity(
-							reloid, YBCGetReplicaIdentityForRelation(reloid));
+						relation =
+							YbGetRelationWithOverwrittenReplicaIdentity(reloid,
+																		YBCGetReplicaIdentityForRelation(reloid));
 					}
 					else
 					{
@@ -4249,7 +4250,7 @@ ReorderBufferRestoreChanges(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 	XLByteToSeg(txn->final_lsn, last_segno, wal_segment_size);
 
-	while ((restored < 
+	while ((restored <
 			(IsYugaByteEnabled() ? yb_reorderbuffer_max_changes_in_memory : max_changes_in_memory))
 		  && (*segno <= last_segno))
 	{

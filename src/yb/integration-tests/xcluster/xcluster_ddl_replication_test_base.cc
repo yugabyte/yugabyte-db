@@ -20,10 +20,8 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
 
 DECLARE_bool(enable_xcluster_api_v2);
@@ -180,10 +178,9 @@ void XClusterDDLReplicationTestBase::InsertRowsIntoProducerTableAndVerifyConsume
 }
 
 Status XClusterDDLReplicationTestBase::WaitForSafeTimeToAdvanceToNowWithoutDDLQueue() {
-  auto producer_master = VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->master();
-  HybridTime now = producer_master->clock()->Now();
+  HybridTime now = VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->Now();
   for (auto ts : producer_cluster()->mini_tablet_servers()) {
-    now.MakeAtLeast(ts->server()->clock()->Now());
+    now.MakeAtLeast(ts->Now());
   }
   auto namespace_id = VERIFY_RESULT(GetNamespaceId(consumer_client()));
 

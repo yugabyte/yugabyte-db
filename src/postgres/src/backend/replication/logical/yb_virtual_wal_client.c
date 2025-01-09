@@ -204,13 +204,12 @@ InitVirtualWal(List *publication_names)
 		 "Setting yb_read_time to last_pub_refresh_time for "
 		 "InitVirtualWal: %" PRIu64,
 		 MyReplicationSlot->data.yb_last_pub_refresh_time);
-	YBCUpdateYbReadTimeAndInvalidateRelcache(
-		MyReplicationSlot->data.yb_last_pub_refresh_time);
+	YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_last_pub_refresh_time);
 
 	tables = YBCGetTables(publication_names);
 	table_oids = YBCGetTableOids(tables);
 
-	/* 
+	/*
 	 * Throw an error if the plugin being used is pgoutput and there exist a
 	 * table in publication with YB specific replica identity (CHANGE).
 	 */
@@ -224,9 +223,10 @@ InitVirtualWal(List *publication_names)
 			Assert(value);
 			if (value->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
 				ereport(ERROR,
-						(errmsg("Replica identity CHANGE is not supported for output "
-						"plugin pgoutput. Consider using output plugin yboutput instead.")));
-		}		
+						(errmsg("replica identity CHANGE is not supported for output "
+								"plugin pgoutput"),
+						 errhint("Consider using output plugin yboutput instead.")));
+		}
 	}
 
 	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
@@ -235,8 +235,7 @@ InitVirtualWal(List *publication_names)
 	elog(DEBUG2,
 		 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
 		 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
-	YBCUpdateYbReadTimeAndInvalidateRelcache(
-		MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+	YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
 
 	pfree(table_oids);
 	list_free(tables);
@@ -620,15 +619,16 @@ YBCRefreshReplicaIdentities()
 		YBCPgReplicaIdentityDescriptor *desc =
 			&yb_replication_slot->replica_identities[replica_identity_idx];
 
-		/* 
+		/*
 		 * Throw an error if the plugin being used is pgoutput and there exist a
 		 * table with YB specific replica identity (CHANGE).
 		 */
-		if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) == 0 
+		if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) == 0
 			&& desc->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
 			ereport(ERROR,
-						(errmsg("Replica identity CHANGE is not supported for output "
-						"plugin pgoutput. Consider using output plugin yboutput instead.")));
+					(errmsg("replica identity CHANGE is not supported for output "
+							"plugin pgoutput"),
+					 errhint("Consider using output plugin yboutput instead.")));
 
 		YBCPgReplicaIdentityDescriptor *value =
 			hash_search(MyReplicationSlot->data.yb_replica_identities,

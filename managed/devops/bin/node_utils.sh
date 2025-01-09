@@ -61,7 +61,7 @@ check_file_exists() {
   fi
 }
 
-find_paths_in_dir() {
+get_paths_and_sizes() {
   remote_dir_path=$1
   shift
   max_depth=$1
@@ -70,12 +70,13 @@ find_paths_in_dir() {
   shift
   temp_file_path=$1
 
-  find "$remote_dir_path" -maxdepth "$max_depth" -type "$file_type" > "$temp_file_path"
+  find "$remote_dir_path" -maxdepth "$max_depth" -type "$file_type" \
+  -exec ls -ltp {} + | awk '{print $5, $9}' > "$temp_file_path"
 }
 
-# This function returns a list of file paths and their respective sizes, in a given directory.
+# This function returns a list of file names and their respective sizes, in a given directory.
 # Sorts the list by modification time, with newest first.
-get_paths_and_sizes() {
+get_paths_and_sizes_within_dates() {
   remote_dir_path=$1
   shift
   temp_file_path=$1

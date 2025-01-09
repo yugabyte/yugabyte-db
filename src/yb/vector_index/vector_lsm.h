@@ -42,10 +42,6 @@ struct VectorLSMSearchEntry {
   }
 };
 
-struct VectorLSMSearchOptions {
-  size_t max_num_results;
-};
-
 template<IndexableVectorType Vector>
 struct VectorLSMInsertEntry {
   VectorId  vertex_id;
@@ -72,7 +68,6 @@ struct VectorLSMTypes {
   using InsertEntries = std::vector<InsertEntry>;
   using Options = VectorLSMOptions<Vector, DistanceResult>;
   using InsertRegistry = VectorLSMInsertRegistry<Vector, DistanceResult>;
-  using SearchOptions = VectorLSMSearchOptions;
   using VertexWithDistance = vector_index::VertexWithDistance<DistanceResult>;
 };
 
@@ -123,18 +118,20 @@ class VectorLSM {
   using InsertEntries = typename Types::InsertEntries;
   using Options = typename Types::Options;
   using InsertRegistry = typename Types::InsertRegistry;
-  using SearchOptions = typename Types::SearchOptions;
 
   VectorLSM();
   ~VectorLSM();
 
   Status Open(Options options);
+  Status CreateCheckpoint(const std::string& out);
 
   rocksdb::UserFrontierPtr GetFlushedFrontier();
+  rocksdb::FlushAbility GetFlushAbility();
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 
-  Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
+  Result<SearchResults> Search(
+      const Vector& query_vector, const SearchOptions& options) const;
 
   Status Flush(bool wait);
   Status WaitForFlush();
@@ -146,6 +143,8 @@ class VectorLSM {
   bool TEST_HasBackgroundInserts() const;
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const;
+
+  const Options& options() const;
 
   struct MutableChunk;
   struct ImmutableChunk;

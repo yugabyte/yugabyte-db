@@ -45,6 +45,7 @@
 #include "parser/parse_clause.h"
 #include "parser/parsetree.h"
 #include "partitioning/partprune.h"
+#include "tcop/tcopprot.h"
 #include "utils/selfuncs.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -1044,9 +1045,8 @@ yb_get_actual_batched_clauses(PlannerInfo *root,
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
 		RestrictInfo *tmp_batched =
-			yb_get_batched_restrictinfo(rinfo,
-											 	 root->yb_cur_batched_relids,
-												 inner_path->parent->relids);
+			yb_get_batched_restrictinfo(rinfo, root->yb_cur_batched_relids,
+										inner_path->parent->relids);
 
 		if (tmp_batched)
 		{
@@ -1613,12 +1613,11 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 		{
 			List	   *prmquals = best_path->path.param_info->ppi_clauses;
 
-			prmquals =
-				!bms_is_empty(root->yb_cur_batched_relids) && IsYugaByteEnabled()
-					? yb_get_actual_batched_clauses(root,
-															  prmquals,
-															  (Path *) best_path)
-          : get_actual_clauses(prmquals);
+			prmquals = ((!bms_is_empty(root->yb_cur_batched_relids) &&
+						 IsYugaByteEnabled()) ?
+						yb_get_actual_batched_clauses(root, prmquals,
+													  (Path *) best_path) :
+						get_actual_clauses(prmquals));
 
 			prmquals = (List *) replace_nestloop_params(root,
 														(Node *) prmquals);
@@ -3062,19 +3061,20 @@ static TargetEntry *make_dummy_tle(AttrNumber attr_num, bool is_null)
 	dummy_tle = makeNode(TargetEntry);
 	dummy_tle->resno = attr_num;
 	dummy_tle->expr = (Expr *) makeConst(INT4OID /* consttype */,
-	                                    -1 /* consttypmod */,
-	                                    InvalidOid /* constcollid */,
-	                                    sizeof(int32) /* constlen */,
-	                                    (Datum) 0 /* constvalue */,
-	                                    is_null /* constisnull */,
-	                                    true /* constbyval */);
+										 -1 /* consttypmod */,
+										 InvalidOid /* constcollid */,
+										 sizeof(int32) /* constlen */,
+										 (Datum) 0 /* constvalue */,
+										 is_null /* constisnull */,
+										 true /* constbyval */);
 
 	return dummy_tle;
 }
 
-static bool has_applicable_indices(Relation relation,
-                                   Bitmapset *updated_attrs,
-                                   List **no_update_index_list)
+static bool
+has_applicable_indices(Relation relation,
+					   Bitmapset *updated_attrs,
+					   List **no_update_index_list)
 {
 	if (!relation->rd_rel->relhasindex)
 		return false;
@@ -3158,7 +3158,7 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
 			for (int j = 0; j < numfks; j++)
 			{
 				if ((con_is_base_rel && bms_is_member(conkey[j] - attr_offset, updated_attrs)) ||
-				    (!con_is_base_rel && bms_is_member(confkey[j] - attr_offset, updated_attrs)))
+					(!con_is_base_rel && bms_is_member(confkey[j] - attr_offset, updated_attrs)))
 				{
 					ReleaseSysCache(tp);
 					return true;
@@ -3609,8 +3609,9 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 			/* indexcols is only set for RowCompareExpr. */
 			Assert(iclause->indexcols == NULL);
-			op_strategy = get_op_opfamily_strategy(
-				clause_op, index_path->indexinfo->opfamily[iclause->indexcol]);
+			op_strategy =
+				get_op_opfamily_strategy(clause_op,
+										 index_path->indexinfo->opfamily[iclause->indexcol]);
 			Assert(op_strategy != 0);  /* not a member of opfamily?? */
 			/* Only pushdown equal operators. */
 			if (op_strategy != BTEqualStrategyNumber)
@@ -3859,10 +3860,13 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	 * running outside of a transaction and thus cannot rely on the results from a
 	 * separately executed operation.
 	 */
-	yb_is_single_row_update_or_delete = yb_single_row_update_or_delete_path(
-		root, best_path, &modify_tlist, &column_refs, &result_tlist,
-		&returning_cols, &no_row_trigger,
-		best_path->operation == CMD_UPDATE ? &no_update_index_list : NULL);
+	yb_is_single_row_update_or_delete =
+		yb_single_row_update_or_delete_path(root, best_path, &modify_tlist,
+											&column_refs, &result_tlist,
+											&returning_cols, &no_row_trigger,
+											(best_path->operation == CMD_UPDATE ?
+											 &no_update_index_list :
+											 NULL));
 	if (yb_is_single_row_update_or_delete)
 	{
 		subplan = (Plan *) make_result(result_tlist, NULL, NULL);
@@ -3954,9 +3958,10 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 		 */
 		if (rel->rd_rel->relkind == RELKIND_RELATION)
 		{
-			updatedCols = bms_add_members(
-				get_dependent_generated_columns(root, rt_index, rte->updatedCols),
-				rte->updatedCols);
+			updatedCols =
+				bms_add_members(get_dependent_generated_columns(root, rt_index,
+																rte->updatedCols),
+								rte->updatedCols);
 			plan->yb_update_affected_entities =
 				YbComputeAffectedEntitiesForRelation(plan, rel, updatedCols);
 			bms_free(updatedCols);
@@ -4191,8 +4196,8 @@ YbFixHashCodeFuncArgsWalker(Node *node, IndexOptInfo* indexinfo)
 			return false;
 		}
 	}
-	return expression_tree_walker(
-		node, &YbFixHashCodeFuncArgsWalker, (void *) indexinfo);
+	return expression_tree_walker(node, &YbFixHashCodeFuncArgsWalker,
+								  (void *) indexinfo);
 }
 
 static bool
@@ -4213,12 +4218,12 @@ YbHasHashCodeFuncWalker(Node *node, void *context)
 static List*
 YbBuildIndexqualForRecheck(List *indexquals, IndexOptInfo* indexinfo)
 {
-	if (expression_tree_walker(
-		(Node *) indexquals, YbHasHashCodeFuncWalker, NULL))
+	if (expression_tree_walker((Node *) indexquals, YbHasHashCodeFuncWalker,
+							   NULL))
 	{
 		List *result = copyObject(indexquals);
-		expression_tree_walker(
-			(Node *) result, YbFixHashCodeFuncArgsWalker, indexinfo);
+		expression_tree_walker((Node *) result, YbFixHashCodeFuncArgsWalker,
+							   indexinfo);
 		return result;
 	}
 	return NIL;
@@ -4693,7 +4698,7 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 		if (!contain_mutable_functions(clause) &&
 			predicate_implied_by(list_make1(clause), allindexquals, false))
 			continue;			/* provably implied by indexquals or
-			                     * indexpushdownquals */
+								 * indexpushdownquals */
 		qpqual = lappend(qpqual, rinfo);
 	}
 
@@ -5861,7 +5866,7 @@ create_nestloop_plan(PlannerInfo *root,
 	Relids batched_relids = yb_get_batched_relids(best_path);
 
 	root->yb_cur_batched_relids = bms_union(root->yb_cur_batched_relids,
-										    batched_relids);
+											batched_relids);
 
 	yb_is_batched = yb_is_nestloop_batched(best_path);
 
@@ -5934,7 +5939,7 @@ create_nestloop_plan(PlannerInfo *root,
 				Assert(is_opclause(rinfo->clause));
 				RestrictInfo *batched_rinfo =
 					yb_get_batched_restrictinfo(rinfo, batched_outerrelids,
-											 	inner_relids);
+												inner_relids);
 				hashOpno = ((OpExpr *) rinfo->clause)->opno;
 				if (!bms_equal(batched_rinfo->left_relids, rinfo->left_relids))
 					hashOpno = get_commutator(hashOpno);
@@ -6565,8 +6570,8 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 		for (size_t i = 0; i < yb_bnl_batch_size; i++)
 		{
 			root->yb_cur_batch_no = i;
-			Node *elem = replace_nestloop_params_mutator(
-				(Node *) copyObject(bexpr->orig_expr), root);
+			Node *elem = replace_nestloop_params_mutator((Node *) copyObject(bexpr->orig_expr),
+														 root);
 			batched_elems = lappend(batched_elems, elem);
 		}
 		root->yb_cur_batch_no = -1;
@@ -6624,7 +6629,7 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 	if (IsA(node, RowCompareExpr))
 	{
 		RowCompareExpr *rcexpr = (RowCompareExpr *) node;
-		if(rcexpr->rctype == ROWCOMPARE_EQ)
+		if (rcexpr->rctype == ROWCOMPARE_EQ)
 		{
 			RowCompareExpr *rcexpr_new = copyObject(rcexpr);
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
@@ -6649,8 +6654,8 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 	if (IsA(node, OpExpr))
 	{
 		OpExpr *opexpr = (OpExpr*) node;
-		if(list_length(opexpr->args) >= 2 &&
-		   IsA(lsecond(opexpr->args), YbBatchedExpr))
+		if (list_length(opexpr->args) >= 2 &&
+			IsA(lsecond(opexpr->args), YbBatchedExpr))
 		{
 			ScalarArrayOpExpr *saop = makeNode(ScalarArrayOpExpr);
 			saop->opno = opexpr->opno;
@@ -6728,9 +6733,10 @@ yb_get_batched_indexquals(PlannerInfo *root, IndexPath *index_path,
 
 					stripped_indexquals = lappend(stripped_indexquals, op);
 					op = copyObject(op);
-					linitial(op->args) = fix_indexqual_operand(
-						linitial(op->args), index_path->indexinfo,
-						iclause->indexcol);
+					linitial(op->args) =
+						fix_indexqual_operand(linitial(op->args),
+											  index_path->indexinfo,
+											  iclause->indexcol);
 					fixed_indexquals = lappend(fixed_indexquals, op);
 				}
 			}
@@ -9057,7 +9063,19 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 			Assert(rte->rtekind == RTE_RELATION);
 			Assert(operation != CMD_MERGE);
 			if (rte->relkind == RELKIND_FOREIGN_TABLE)
+			{
+				/* Check if the access to foreign tables is restricted */
+				if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_FOREIGN_TABLE) != 0))
+				{
+					/* there must not be built-in foreign tables */
+					Assert(rte->relid >= FirstNormalObjectId);
+					ereport(ERROR,
+							(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+							 errmsg("access to non-system foreign table is restricted")));
+				}
+
 				fdwroutine = GetFdwRoutineByRelId(rte->relid);
+			}
 			else
 				fdwroutine = NULL;
 		}
@@ -9100,25 +9118,6 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	node->yb_skip_entities = NULL;
 	node->yb_update_affected_entities = NULL;
 	node->no_row_trigger = false;
-
-	/*
-	 * It suffices to use the first entry of resultRelations to compute
-	 * ybUseScanTupleInUpdate.
-	 * resultRelations contains more than one entry for partitioned relations
-	 * and ybUseScanTupleInUpdate is true for all partitioned relations.
-	 */
-	Index rti = linitial_int(resultRelations);
-	RangeTblEntry *rte = root->simple_rte_array[rti];
-	Relation relation = RelationIdGetRelation(rte->relid);
-	Bitmapset *updatedCols = bms_add_members(
-		get_dependent_generated_columns(root, rti, rte->updatedCols),
-		rte->updatedCols);
-	node->ybUseScanTupleInUpdate = YbUseScanTupleInUpdate(
-		relation, updatedCols, root->parse->returningList);
-	node->ybHasWholeRowAttribute = YbUseWholeRowJunkAttribute(
-		relation, updatedCols, operation, root->parse->returningList);
-	bms_free(updatedCols);
-	RelationClose(relation);
 	return node;
 }
 

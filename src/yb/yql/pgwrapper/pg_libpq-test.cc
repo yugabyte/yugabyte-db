@@ -3610,7 +3610,8 @@ TEST_P(PgOidCollisionTest, MaterializedViewPgOidCollisionFromTservers) {
 // -- danger OID: 16385 (same as table id of deleted table tbl)
 // Conn2: CREATE TABLE danger (k INT, v INT);
 // Conn2: INSERT INTO danger SELECT i, i from generate_series(1, 100) i;
-TEST_P(PgOidCollisionTest, MetaCachePgOidCollisionFromTservers) {
+// This test will fail in DEBUG builds because table ID reuse will trigger certain DCHECK failure.
+TEST_P(PgOidCollisionTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MetaCachePgOidCollisionFromTservers)) {
   const bool ysql_enable_pg_per_database_oid_allocator = GetParam();
   RestartClusterWithOidAllocator(ysql_enable_pg_per_database_oid_allocator);
   const string dbname = "db2";
@@ -4453,6 +4454,160 @@ TEST_F(PgLibPqTest, CollationWithPartitionedTable) {
   ASSERT_OK(conn.Execute("CREATE TABLE t_e PARTITION of t (a, PRIMARY KEY (a HASH)) "
                          "FOR VALUES FROM ('M') TO ('Zzzzzz') TABLESPACE e_tablespace"));
   conn = ASSERT_RESULT(ConnectToDB("a"));
+}
+
+class PgLibPqBlockDangerousRolesTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_block_dangerous_roles=true");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, BlockDangerousRoles, PgLibPqBlockDangerousRolesTest) {
+  PGConn conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_yugabyte.Execute("CREATE USER admin WITH CREATEROLE ROLE yb_db_admin"));
+  PGConn conn_admin = ASSERT_RESULT(ConnectToDBAsUser("" /* db_name */, "admin"));
+  ASSERT_OK(conn_admin.Execute("CREATE ROLE r"));
+
+  for (const auto& granted_role : {"pg_read_all_data", "pg_write_all_data", "pg_read_server_files",
+                                   "pg_write_server_files", "pg_execute_server_program"}) {
+    LOG(INFO) << "granted_role: " << granted_role;
+    ASSERT_NOK_PG_ERROR_CODE(conn_admin.ExecuteFormat("GRANT $0 TO r", granted_role),
+                             YBPgErrorCode::YB_PG_INSUFFICIENT_PRIVILEGE);
+    ASSERT_OK(conn_yugabyte.ExecuteFormat("GRANT $0 to r", granted_role));
+    ASSERT_OK(conn_admin.ExecuteFormat("REVOKE $0 FROM r", granted_role));
+    // Avoid catalog version mismatch by refreshing session.
+    conn_yugabyte.Reset();
+    for (const auto& option : {"IN ROLE", "IN GROUP"}) {
+      LOG(INFO) << "option: " << option;
+      ASSERT_NOK_PG_ERROR_CODE(conn_admin.ExecuteFormat("CREATE ROLE invalid WITH $0 $1",
+                                                        option, granted_role),
+                               YBPgErrorCode::YB_PG_INSUFFICIENT_PRIVILEGE);
+      ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE ROLE \"invalid$0$1\" WITH $0 $1",
+                                            option, granted_role));
+    }
+    for (const auto& option : {"ROLE", "ADMIN"}) {
+      LOG(INFO) << "option: " << option;
+      // While it is bad if a user role has the privileges of a dangerous role, the opposite is ok.
+      ASSERT_OK(conn_admin.ExecuteFormat("CREATE ROLE valid$0$1 WITH $0 $1", option, granted_role));
+    }
+  }
+
+  for (const auto& granted_role : {"pg_checkpoint", "pg_read_all_stats", "yb_db_admin", "admin"}) {
+    LOG(INFO) << "granted_role: " << granted_role;
+    ASSERT_OK(conn_admin.ExecuteFormat("GRANT $0 TO r", granted_role));
+  }
+
+  // Avoid catalog version mismatch by refreshing session.
+  conn_admin.Reset();
+  ASSERT_OK(conn_admin.Execute("ALTER GROUP r ADD USER pg_read_all_data"));
+  ASSERT_OK(conn_admin.Execute("ALTER GROUP r DROP USER pg_read_all_data"));
+  ASSERT_OK(conn_admin.Execute("ALTER ROLE r WITH USER pg_read_all_data"));
+  ASSERT_NOK_PG_ERROR_CODE(conn_admin.Execute("ALTER GROUP pg_read_all_data ADD USER r"),
+                           YBPgErrorCode::YB_PG_RESERVED_NAME);
+  ASSERT_NOK_PG_ERROR_CODE(conn_admin.Execute("ALTER ROLE pg_read_all_data WITH USER r"),
+                           YBPgErrorCode::YB_PG_RESERVED_NAME);
+}
+
+class BatchInsertOnConflictTest : public PgLibPqTestRF1 {
+ protected:
+  void RunConflictingIOCTxn(PGConn& conn, IsolationLevel isolation_level, int32_t expected_price) {
+    thread_holder_.AddThreadFunctor([this, &conn, isolation_level, expected_price]() -> void {
+      ASSERT_OK(conn.StartTransaction(isolation_level));
+      ASSERT_OK(conn.Execute(kIOCQuery));
+      const int32_t price = ASSERT_RESULT(conn.FetchRow<int32_t>(
+          "SELECT price FROM products WHERE id = 1"));
+
+      ASSERT_EQ(price, expected_price);
+      ASSERT_OK(conn.CommitTransaction());
+    });
+  }
+
+  void StartMainTxn(PGConn& conn, IsolationLevel isolation_level = READ_COMMITTED) {
+    ASSERT_OK(conn.StartTransaction(isolation_level));
+    ASSERT_OK(conn.Execute("UPDATE products SET price = price + 5 WHERE id = 1"));
+  }
+
+  void CommitMainTxnAfterWait(PGConn& conn) {
+    std::this_thread::sleep_for(RandomUniformInt(1, 10) * 100ms);
+    ASSERT_OK(conn.CommitTransaction());
+  }
+
+  constexpr static auto kInsertOnConflictBatchSize = 1024;
+  const std::vector<IsolationLevel> kIsolationLevels = {
+    READ_COMMITTED, SNAPSHOT_ISOLATION, SERIALIZABLE_ISOLATION
+  };
+  const std::string kIOCQuery = "INSERT INTO products VALUES (1, 'oats', 10) ON CONFLICT (id) "
+                                "DO UPDATE SET price = products.price + 5";
+  TestThreadHolder thread_holder_;
+};
+
+TEST_F(BatchInsertOnConflictTest, InsertOnConflictWithQueryRestart) {
+  PGConn conn1 = ASSERT_RESULT(Connect());
+  PGConn conn2 = ASSERT_RESULT(Connect());
+  int32_t expected_price = 10;
+
+  // Setup
+  ASSERT_OK(conn1.Execute("DROP TABLE IF EXISTS products"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE products (id INT PRIMARY KEY, name TEXT, price INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO products VALUES (1, 'oats', 10)"));
+  ASSERT_OK(conn2.Execute(
+      Format("SET yb_insert_on_conflict_read_batch_size TO $0", kInsertOnConflictBatchSize)));
+
+  // Test that a query retried due to a kConflict error correctly clears the insert on conflict
+  // buffer between retries. Not clearing the buffer would result in an incorrect "command cannot
+  // affect row a second time" error.
+  for (IsolationLevel isolation_level : kIsolationLevels) {
+    expected_price += 10;
+    StartMainTxn(conn1);
+    RunConflictingIOCTxn(conn2, isolation_level, expected_price);
+    CommitMainTxnAfterWait(conn1);
+    thread_holder_.WaitAndStop(2s * kTimeMultiplier);
+  }
+}
+
+// https://github.com/yugabyte/yugabyte-db/issues/24320.
+TEST_F(PgLibPqTest, TableRewriteOidCollision) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_binary_restore = true"));
+  ASSERT_OK(conn.Execute("SET yb_ignore_pg_class_oids = false"));
+
+  uint32_t next_oid = 16384;
+
+  // Simulating some table/index restore operations.
+  for (const auto& table : {"t1", "t2", "t3"}) {
+    ASSERT_RESULT(conn.FetchFormat(
+      "SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('$0'::pg_catalog.oid)", next_oid++));
+    ASSERT_RESULT(conn.FetchFormat(
+      "SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('$0'::pg_catalog.oid)",
+      next_oid++));
+    ASSERT_RESULT(conn.FetchFormat(
+      "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('$0'::pg_catalog.oid)",
+      next_oid++));
+    // Restore table.
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(id int)", table));
+
+    ASSERT_RESULT(conn.FetchFormat(
+      "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
+      next_oid++));
+    // Restore first index of the table.
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 on $1(id)", table, table));
+
+    ASSERT_RESULT(conn.FetchFormat(
+      "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
+      next_oid++));
+    // Restore second index of the table.
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 on $1(id)", table, table));
+  }
+
+  // Turn off restore simulation and run regular "ALTER TABLE" operation.
+  ASSERT_OK(conn.ExecuteFormat("SET yb_binary_restore = false"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_ignore_pg_class_oids = true"));
+  // This DDL used to show "Duplicate table" error due to OID collision because the OID
+  // 16393 was already used by yugabyte.t2_idx2 and is reused as relfilenode for t3_idx1
+  // during table rewrite.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t3 ALTER COLUMN id TYPE TEXT"));
 }
 
 } // namespace pgwrapper

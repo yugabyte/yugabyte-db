@@ -88,9 +88,8 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 		Datum		value   = values[attnum - 1];
 		bool		is_null = isnull[attnum - 1];
 
-		YbBindDatumToColumn(
-			stmt, attnum, type_id, collation_id,
-				value, is_null, &YBCGinNullTypeEntity);
+		YbBindDatumToColumn(stmt, attnum, type_id, collation_id, value,
+							is_null, &YBCGinNullTypeEntity);
 	}
 
 	/* Gin indexes cannot be unique. */

@@ -180,7 +180,7 @@ Status FsTool::ListLogSegmentsForTablet(const string& tablet_id) {
 Status FsTool::ListAllTablets() {
   DCHECK(initialized_);
 
-  vector<string> tablets = VERIFY_RESULT(fs_manager_->ListTabletIds());
+  auto tablets = VERIFY_RESULT(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kFalse));
   for (const string& tablet : tablets) {
     if (detail_level_ >= HEADERS_ONLY) {
       std::cout << "Tablet: " << tablet << std::endl;

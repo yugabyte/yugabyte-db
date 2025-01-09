@@ -322,9 +322,8 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			break;
 
 		case T_YbBatchedNestLoop:
-			result = (PlanState *) ExecInitYbBatchedNestLoop(
-				(YbBatchedNestLoop *) node,
-				estate, eflags);
+			result = (PlanState *) ExecInitYbBatchedNestLoop((YbBatchedNestLoop *) node,
+															 estate, eflags);
 			break;
 
 		case T_MergeJoin:
@@ -553,8 +552,7 @@ MultiExecProcNode(PlanState *node)
 			break;
 
 		case T_YbBitmapIndexScanState:
-			result = MultiExecYbBitmapIndexScan(
-				(YbBitmapIndexScanState *) node);
+			result = MultiExecYbBitmapIndexScan((YbBitmapIndexScanState *) node);
 			break;
 
 		case T_BitmapAndState:

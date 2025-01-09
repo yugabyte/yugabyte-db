@@ -16,25 +16,25 @@ DETAIL:  Expected ":", but found "}".
 CONTEXT:  JSON data, line 1: [{"cloud"}...
 -- num_replicas field missing.
 CREATE TABLESPACE x WITH (replica_placement='{"placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}');
-ERROR:  Required key "num_replicas" not found
+ERROR:  required key "num_replicas" not found
 -- placement_blocks field missing.
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3}');
-ERROR:  Required key "placement_blocks" not found
+ERROR:  required key "placement_blocks" not found
 -- Invalid value for num_replicas.
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":"three", "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}');
-ERROR:  Invalid value for "num_replicas" key
-DETAIL:  Found "three" but num_replicas value should be an integer > 0
+ERROR:  invalid value for "num_replicas" key
+DETAIL:  Found "three" but num_replicas value should be an integer > 0.
 -- Invalid value for min_num_replicas.
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":"three"}]}');
-ERROR:  Invalid value for "min_num_replicas" key
-DETAIL:  Found "three" but min_num_replicas value should be an integer > 0
+ERROR:  invalid value for "min_num_replicas" key
+DETAIL:  Found "three" but min_num_replicas value should be an integer > 0.
 -- Invalid keys in the placement policy.
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3,"invalid_key":"invalid_value"}]}');
-ERROR:  Invalid key "invalid_key" found in json object {"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3,"invalid_key":"invalid_value"}
+ERROR:  invalid key "invalid_key" found in json object {"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3,"invalid_key":"invalid_value"}
 -- Sum of min_num_replicas greater than num_replicas.
 CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');
-ERROR:  Invalid value for "num_replicas" key
-DETAIL:  num_replicas: 3 is lesser than the total of min_num_replicas fields 4
+ERROR:  invalid value for "num_replicas" key
+DETAIL:  num_replicas=3 is lesser than the total of min_num_replicas fields 4.
 -- Positive cases
 -- Tablespace without replica_placement option.
 CREATE TABLESPACE x LOCATION '/data';
@@ -220,8 +220,8 @@ Indexes:
     "using_index3_a_key" UNIQUE CONSTRAINT, lsm (a HASH), tablespace "regress_tblspace"
 
 ALTER INDEX testschema.using_index2_a_key SET TABLESPACE pg_default;
-NOTICE:  Data movement for table using_index2_a_key is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table using_index2_a_key is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 \d testschema.using_index2;
           Table "testschema.using_index2"
  Column |  Type   | Collation | Nullable | Default
@@ -244,8 +244,8 @@ CREATE TABLE testschema.part (a int) PARTITION BY LIST (a);
 CREATE TABLE testschema.part12 PARTITION OF testschema.part FOR VALUES IN(1,2) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
 CREATE TABLE testschema.part12_1 PARTITION OF testschema.part12 FOR VALUES IN (1);
 ALTER TABLE testschema.part12 SET TABLESPACE pg_default;
-NOTICE:  Data movement for table part12 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table part12 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 CREATE TABLE testschema.part12_2 PARTITION OF testschema.part12 FOR VALUES IN (2);
 -- Ensure part12_1 defaulted to regress_tblspace and part12_2 defaulted to pg_default.
 SELECT relname, spcname FROM pg_catalog.pg_class c
@@ -301,8 +301,8 @@ SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
 CREATE TABLE testschema.part34 PARTITION OF testschema.part FOR VALUES IN (3, 4) PARTITION BY LIST (a);
 CREATE TABLE testschema.part3 PARTITION OF testschema.part34 FOR VALUES IN (3);
 ALTER INDEX testschema.part34_a_idx SET TABLESPACE pg_default;
-NOTICE:  Data movement for table part34_a_idx is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table part34_a_idx is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 CREATE TABLE testschema.part4 PARTITION OF testschema.part34 FOR VALUES IN (4);
 SELECT relname, spcname FROM pg_catalog.pg_class c LEFT OUTER JOIN pg_catalog.pg_tablespace t
     ON c.reltablespace = t.oid WHERE c.relname LIKE 'part%_idx' ORDER BY relname;
@@ -474,11 +474,11 @@ DROP TABLE testschema.test_tab;
 CREATE TABLE testschema.atable AS VALUES (1), (2);
 CREATE UNIQUE INDEX anindex ON testschema.atable(column1);
 ALTER TABLE testschema.atable SET TABLESPACE regress_tblspace;
-NOTICE:  Data movement for table atable is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table atable is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 ALTER INDEX testschema.anindex SET TABLESPACE regress_tblspace;
-NOTICE:  Data movement for table anindex is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table anindex is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 \d testschema.atable
              Table "testschema.atable"
  Column  |  Type   | Collation | Nullable | Default
@@ -501,8 +501,8 @@ Indexes:
 Number of partitions: 3 (Use \d+ to list them.)
 
 ALTER INDEX testschema.part_a_idx SET TABLESPACE pg_default;
-NOTICE:  Data movement for table part_a_idx is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table part_a_idx is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 \d testschema.part
         Partitioned table "testschema.part"
  Column |  Type   | Collation | Nullable | Default
@@ -514,8 +514,8 @@ Indexes:
 Number of partitions: 3 (Use \d+ to list them.)
 
 ALTER INDEX testschema.part_a_idx SET TABLESPACE regress_tblspace;
-NOTICE:  Data movement for table part_a_idx is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table part_a_idx is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 \d testschema.part
         Partitioned table "testschema.part"
  Column |  Type   | Collation | Nullable | Default
@@ -675,12 +675,12 @@ CREATE TABLE tbl (x int, y int) TABLESPACE tblspace;
 DROP TABLE tbl;
 -- Verify yb_db_admin role can assign tablespace to tables
 ALTER TABLE tbl_other SET TABLESPACE tblspace_other;
-NOTICE:  Data movement for table tbl_other is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table tbl_other is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 CREATE TABLE tbl (x int, y int);
 ALTER TABLE tbl SET TABLESPACE tblspace;
-NOTICE:  Data movement for table tbl is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table tbl is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 DROP TABLE tbl;
 -- Verify yb_db_admin_role can assign tablespace to index
 CREATE TABLE tbl(x int, y int);
@@ -705,23 +705,23 @@ DETAIL:  Expected JSON value, but found "}".
 CONTEXT:  JSON data, line 1: ...zone1","min_num_replicas":1,"leader_preference":}...
 -- Negative leader_preference
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":-1}]}');
-ERROR:  Invalid value for "leader_preference" key
-DETAIL:  Found -1 but leader_preference value should be an integer > 0
+ERROR:  invalid value for "leader_preference" key
+DETAIL:  Found -1 but leader_preference value should be an integer > 0.
 -- Zero as leader_preference
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":0}]}');
-ERROR:  Invalid value for "leader_preference" key
-DETAIL:  Found 0 but leader_preference value should be an integer > 0
+ERROR:  invalid value for "leader_preference" key
+DETAIL:  Found 0 but leader_preference value should be an integer > 0.
 -- No leader_preference 1
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":2}]}');
-ERROR:  Invalid value for "leader_preference" key
+ERROR:  invalid value for "leader_preference" key
 DETAIL:  The set of leader_preference values should consist of contiguous integers starting at 1. Preference value 2 is invalid.
 -- No leader_preference 2
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1,"leader_preference":3}]}');
-ERROR:  Invalid value for "leader_preference" key
+ERROR:  invalid value for "leader_preference" key
 DETAIL:  The set of leader_preference values should consist of contiguous integers starting at 1. Preference value 2 is missing.
 -- No leader_preference 2 and no preference set
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1,"leader_preference":3}]}');
-ERROR:  Invalid value for "leader_preference" key
+ERROR:  invalid value for "leader_preference" key
 DETAIL:  The set of leader_preference values should consist of contiguous integers starting at 1. Preference value 2 is missing.
 -- Positive case
 -- Some zones with no leader_preference set
@@ -731,8 +731,8 @@ CREATE TABLESPACE valid_tablespace WITH (replica_placement='{"num_replicas":2,"p
 CREATE TABLE foo (i int) TABLESPACE valid_tablespace;
 CREATE TABLE bar(i int);
 ALTER TABLE bar SET TABLESPACE valid_tablespace;
-NOTICE:  Data movement for table bar is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table bar is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 DROP TABLE foo;
 DROP TABLE bar;
 DROP TABLESPACE valid_tablespace;
@@ -747,16 +747,16 @@ CREATE INDEX index_1 ON table_1(b) TABLESPACE tsp2;
 CREATE MATERIALIZED VIEW mat_view TABLESPACE tsp1 AS SELECT * FROM table_1;
 -- Moving Table will also move the Primary Key indexes as the primary key index is an intrinsic part of its base table itself.
 ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp2;
-NOTICE:  Data movement for table table_1 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-NOTICE:  Data movement for table table_2 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table table_1 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+NOTICE:  data movement for table table_2 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 ALTER INDEX ALL IN TABLESPACE tsp2 SET TABLESPACE tsp1;
-NOTICE:  Data movement for table index_1 is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table index_1 is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 ALTER MATERIALIZED VIEW ALL IN TABLESPACE tsp1 SET TABLESPACE tsp3;
-NOTICE:  Data movement for table mat_view is successfully initiated.
-DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  data movement for table mat_view is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 -- View all relations present in pg_class in tablespace tsp1, tsp2 and tsp3 and if the relations were moved to the intended tablespaces.
 SELECT c.relname, ts.spcname FROM
     pg_class c

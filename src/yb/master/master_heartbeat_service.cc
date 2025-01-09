@@ -231,11 +231,11 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
   Status ValidateTServerUniverseOrRespond(
       const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp, rpc::RpcContext* rpc);
 
-  Result<TSDescriptorPtr> UpdateAndReturnTSDescriptorOrRespond(
+  Result<HeartbeatResult> UpdateAndReturnTSDescriptorOrRespond(
       const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
       rpc::RpcContext* rpc);
 
-  Result<TSDescriptorPtr> RegisterTServerOrRespond(
+  Result<HeartbeatResult> RegisterTServerOrRespond(
       const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
       rpc::RpcContext* rpc);
 
@@ -322,7 +322,15 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
   if (!desc_result.ok()) {
     return;
   }
-  TSDescriptorPtr ts_desc = std::move(*desc_result);
+  TSDescriptorPtr ts_desc;
+  ClientOperationLeaseUpdate lease_update;
+  ts_desc = std::move(desc_result->desc);
+  if (desc_result->lease_update) {
+    *resp->mutable_op_lease_update() = desc_result->lease_update->ToPB();
+    server_->catalog_manager_impl()->ExportObjectLockInfo(
+        req->common().ts_instance().permanent_uuid(),
+        resp->mutable_op_lease_update()->mutable_ddl_lock_entries());
+  }
 
   resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
 
@@ -1446,20 +1454,14 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
   return Status::OK();
 }
 
-Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
+Result<HeartbeatResult>
+MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
     const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
     rpc::RpcContext* rpc) {
   auto desc_result = server_->ts_manager()->RegisterFromHeartbeat(
       req, epoch, server_->MakeCloudInfoPB(), &server_->proxy_cache());
   if (desc_result.ok()) {
-    // Populate the response to bootstrap object locks.
-    // TODO: This would also need to be done whenever a tablet server with an
-    // expired lease gets a new lease. YSQL Leases are yet to be implemented.
-    // when that happens, we should re-bootstrap the TServer and bump up
-    // it's incarnation id (similar to how instance_seqno behaves across restarts).
     LOG(INFO) << "Registering " << req.common().ts_instance().ShortDebugString();
-    server_->catalog_manager_impl()->ExportObjectLockInfo(
-        req.common().ts_instance().permanent_uuid(), resp->mutable_ddl_lock_entries());
     return std::move(*desc_result);
   }
   auto status = std::move(desc_result.status());
@@ -1482,7 +1484,7 @@ Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
   return status;
 }
 
-Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::UpdateAndReturnTSDescriptorOrRespond(
+Result<HeartbeatResult> MasterHeartbeatServiceImpl::UpdateAndReturnTSDescriptorOrRespond(
     const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
     rpc::RpcContext* rpc) {
   if (req.has_registration()) {

@@ -2,7 +2,7 @@
 title: Configure database authentication in YugabyteDB Anywhere
 headerTitle: Database authentication
 linkTitle: Database authentication
-headcontent: Secure your YugabyteDB universes
+headcontent: Manage authentication in YugabyteDB Anywhere using LDAP or OIDC
 description: Database authentication in YugabyteDB Anywhere.
 menu:
   stable_yugabyte-platform:

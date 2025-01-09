@@ -256,6 +256,7 @@ export interface Resources {
   numCores: number;
   numNodes: number;
   masterNumNodes?: number;
+  pricingKnown: boolean;
   pricePerHour: number;
   volumeCount: number;
   volumeSizeGB: number;
@@ -274,6 +275,7 @@ export interface RollMaxBatchSize {
 export interface Universe {
   creationDate: string;
   name: string;
+  pricePerHour: number;
   resources: Resources;
   universeConfig: UniverseConfig;
   universeDetails: UniverseDetails;

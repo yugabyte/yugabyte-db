@@ -817,7 +817,7 @@ Default: `true`
 
 ## Security flags
 
-For details on enabling server-to-server encryption, see [Server-server encryption](../../../secure/tls-encryption/server-to-server/).
+For details on enabling encryption in transit, see [Encryption in transit](../../../secure/tls-encryption/).
 
 ##### --certs_dir
 
@@ -825,9 +825,15 @@ Directory that contains certificate authority, private key, and certificates for
 
 Default: `""` (uses `<data drive>/yb-data/master/data/certs`.)
 
+##### --certs_for_client_dir
+
+The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
+
+Default: `""` (Use the same directory as certs_dir.)
+
 ##### --allow_insecure_connections
 
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled.
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [use_node_to_node_encryption](#use-node-to-node-encryption) to be enabled and [use_client_to_server_encryption](#use-client-to-server-encryption) to be enabled.
 
 Default: `true`
 
@@ -837,9 +843,17 @@ Adds certificate entries, including IP addresses and hostnames, to log for hands
 
 Default: `false`
 
+##### --use_client_to_server_encryption
+
+Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs.
+
+Default: `false`
+
 ##### --use_node_to_node_encryption
 
-Enables server-server or node-to-node encryption between YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) flag enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) flag must be disabled.
+Enables server-server (node-to-node) encryption between YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-TServer servers must also have their [--use_node_to_node_encryption](../yb-tserver/#use-node-to-node-encryption) flag enabled.
+
+When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
 
 Default: `false`
 
@@ -877,6 +891,32 @@ Default: `DEFAULTS`
 
 For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
 
+##### --ssl_protocols
+
+Specifies an explicit allow-list of TLS protocols for YugabyteDB's internal RPC communication.
+
+Default: An empty string, which is equivalent to allowing all protocols except "ssl2" and "ssl3".
+
+You can pass a comma-separated list of strings, where the strings can be one of "ssl2", "ssl3", "tls10", "tls11", "tls12", and "tls13".
+
+You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, set the flag to tls12 as follows:
+
+```sh
+--ssl_protocols = tls12
+```
+
+To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set to tls12, tls13, and all available subsequent versions.
+
+```sh
+--ssl_protocols = tls12,tls13
+```
+
+In addition, as this setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag as follows:
+
+```sh
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
+```
+
 ## Change data capture (CDC) flags
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
@@ -902,6 +942,12 @@ Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user 
 ##### --enable_truncate_cdcsdk_table
 
 By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables.
+
+Default: `false`
+
+##### --enable_tablet_split_of_replication_slot_streamed_tables
+
+Toggle automatic tablet splitting for tables under replication slot.
 
 Default: `false`
 
@@ -999,12 +1045,12 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ##### --allowed_preview_flags_csv
 
-This is a comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 
 {{<warning>}}
-Inclusion in this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You'll still need to configure the flag separately after adding it to this list.
+Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
 {{</warning>}}
 
 ##### --ysql_index_backfill_rpc_timeout_ms

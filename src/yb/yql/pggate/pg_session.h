@@ -295,10 +295,16 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
 
+  Status AcquireAdvisoryLock(
+      const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode, bool wait, bool session);
+  Status ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode);
+  Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
 
   void SetForceAllowCatalogModifications(bool allowed);
 
   bool AreCatalogModificationsForceAllowed() const { return force_allow_catalog_modifications_; }
+
+  bool IsMajorPgVersionUpgrade() const { return is_major_pg_version_upgrade_; }
 
  private:
   Result<PgTableDescPtr> DoLoadTable(

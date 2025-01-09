@@ -29,10 +29,21 @@ public class YBAError {
   @ApiModelProperty(value = "Error message", accessMode = READ_ONLY)
   private String message;
 
+  @ApiModelProperty(value = "Origin error message", accessMode = READ_ONLY)
+  private String originMessage;
+
+  public YBAError(Code code, String message) {
+    this(code, message, message);
+  }
+
   @JsonCreator
-  public YBAError(@JsonProperty("code") Code code, @JsonProperty("message") String message) {
+  public YBAError(
+      @JsonProperty("code") Code code,
+      @JsonProperty("message") String message,
+      @JsonProperty("originMessage") String originMessage) {
     this.code = Objects.requireNonNull(code);
     this.message = Objects.requireNonNull(message);
+    this.originMessage = originMessage;
   }
 
   /** Define all the task error codes here. */
@@ -44,7 +55,8 @@ public class YBAError {
     PLATFORM_RESTARTED,
     INSTALLATION_ERROR,
     SERVICE_START_ERROR,
-    CONNECTION_ERROR;
+    CONNECTION_ERROR,
+    TIMED_OUT;
 
     @JsonValue
     public String serialize() {

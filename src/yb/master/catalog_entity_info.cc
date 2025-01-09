@@ -1182,6 +1182,10 @@ bool PersistentTableInfo::is_index() const {
   return !indexed_table_id().empty();
 }
 
+bool PersistentTableInfo::is_vector_index() const {
+  return pb.index_info().has_vector_idx_options();
+}
+
 const std::string& PersistentTableInfo::indexed_table_id() const {
   static const std::string kEmptyString;
   return pb.has_index_info()

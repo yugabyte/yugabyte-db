@@ -134,6 +134,24 @@ func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
 }
 
+// FindCommonStringElements finds common elements in two string slices
+func FindCommonStringElements(list1, list2 []string) []string {
+	// Create a map to store elements from list1
+	elementMap := make(map[string]bool)
+	for _, val := range list1 {
+		elementMap[val] = true
+	}
+
+	// Find common elements
+	var common []string
+	for _, val := range list2 {
+		if elementMap[val] {
+			common = append(common, val)
+		}
+	}
+	return common
+}
+
 // GetFloat64SliceFromString returns a slice of float64 from a string
 func GetFloat64SliceFromString(in string) ([]float64, error) {
 	if in == "" {

@@ -46,6 +46,7 @@ class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
   uint16_t global_pool_size_ = 10;
   uint16_t control_connection_pool_size_;
   uint num_resolver_threads_ = 1;
+  int ysql_max_connections_ = 0;
 
   bool log_debug_ = false;
   bool log_config_ = false;

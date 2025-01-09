@@ -88,8 +88,8 @@ YBCPgExpr YBCNewTupleExpr(YBCPgStatement ybc_stmt,
 						  const YBCPgTypeAttrs *type_attrs, int num_elems, YBCPgExpr *elems) {
 	YBCPgExpr expr = NULL;
 	const YBCPgTypeEntity *tuple_type_entity = YBCPgFindTypeEntity(RECORDOID);
-	HandleYBStatus(
-		YBCPgNewTupleExpr(ybc_stmt, tuple_type_entity, type_attrs, num_elems, elems, &expr));
+	HandleYBStatus(YBCPgNewTupleExpr(ybc_stmt, tuple_type_entity, type_attrs,
+									 num_elems, elems, &expr));
 	return expr;
 }
 
@@ -128,8 +128,9 @@ Node *yb_expr_instantiate_params_mutator(Node *node, EState *estate)
 			ParamExternData *prm = NULL;
 			ParamExternData prmdata;
 			if (estate->es_param_list_info->paramFetch != NULL)
-				prm = estate->es_param_list_info->paramFetch(
-					estate->es_param_list_info, param->paramid, true, &prmdata);
+				prm = estate->es_param_list_info->paramFetch(estate->es_param_list_info,
+															 param->paramid,
+															 true, &prmdata);
 			else
 				prm = &estate->es_param_list_info->params[param->paramid - 1];
 

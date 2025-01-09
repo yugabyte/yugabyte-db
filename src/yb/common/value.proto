@@ -134,6 +134,7 @@ enum PersistentDataType {
   UINT64 = 103;
 
   GIN_NULL = 104;
+  VECTOR = 105;
 }
 
 // Expression operators.

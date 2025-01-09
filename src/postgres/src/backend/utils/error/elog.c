@@ -412,7 +412,7 @@ yb_errfinish(const char *filename, int lineno, const char *funcname)
 			 */
 			const char *filename = YbgStatusGetFilename(status);
 			int lineno = YbgStatusGetLineNumber(status);
-			YBCLogImpl(/* severity (3=FATAL) */ 3, filename, lineno,
+			YBCLogImpl(3 /* severity (3=FATAL) */ , filename, lineno,
 					   YBShouldLogStackTraceOnError(),
 					   "PG error reporting has not been set up");
 		}
@@ -883,10 +883,9 @@ errfinish(const char *filename, int lineno, const char *funcname)
 	/* YB_TODO(neil@yugabyte) Check if this is still needed and the right place for reporting */
 	if (YBShouldLogStackTraceOnError() && elevel >= ERROR)
 	{
-		YBCLogImpl(
-			/* severity (2=ERROR) */ 2,
-			filename, lineno, /* stack_trace */ true,
-			"Postgres error: %s", YBPgErrorLevelToString(elevel));
+		YBCLogImpl(2 /* severity (2=ERROR) */ , filename, lineno,
+				   /* stack_trace */ true, "Postgres error: %s",
+				   YBPgErrorLevelToString(elevel));
 	}
 
 	/* Emit the message to the right places */
@@ -2354,7 +2353,7 @@ ReThrowError(ErrorData *edata)
 	{
 		/* This call should not return because elevel is ERROR */
 		ybg_status_from_edata(edata);
-		YBCLogImpl(/* severity (3=FATAL) */ 3, edata->filename, edata->lineno,
+		YBCLogImpl(3 /* severity (3=FATAL) */ , edata->filename, edata->lineno,
 				   YBShouldLogStackTraceOnError(),
 				   "Unexpected return from ybg_status_from_edata()");
 		pg_unreachable();
@@ -2448,7 +2447,7 @@ pg_re_throw(void)
 				filename = YbgStatusGetFilename(status);
 				lineno = YbgStatusGetLineNumber(status);
 			}
-			YBCLogImpl(/* severity (3=FATAL) */ 3, filename, lineno,
+			YBCLogImpl(3 /* severity (3=FATAL) */ , filename, lineno,
 					   YBShouldLogStackTraceOnError(),
 					   "PG error reporting has not been set up");
 			pg_unreachable();

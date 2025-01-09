@@ -29,6 +29,7 @@ DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(transaction_tables_use_preferred_zones);
+DECLARE_bool(TEST_skip_election_when_fail_detected);
 
 using namespace std::literals;
 
@@ -308,14 +309,21 @@ TEST_F(PgTablespacesTest, TestPreferredZone) {
   auto mv_uuids = std::vector<TabletId>(mv_tablet_uuid_set.begin(), mv_tablet_uuid_set.end());
 
   WaitForStatusTabletsVersion(++current_version);
-  WaitForLoadBalanceCompletion();
 
   // Verify that all the tablet leaders are in region 1.
   auto status_tablet_ids = ASSERT_RESULT(GetStatusTablets(1, ExpectedLocality::kLocal));
-  ValidateAllTabletLeaderinZone(table_uuids, 1);
-  ValidateAllTabletLeaderinZone(index_uuids, 1);
-  ValidateAllTabletLeaderinZone(mv_uuids, 1);
-  ValidateAllTabletLeaderinZone(status_tablet_ids, 1);
+  auto WaitAllInZone = [&](int zone) {
+    return WaitFor([&, zone] {
+      // Now the tablet leaders should be in region 1, which is the next most preferred block
+      // for tablespace 2.
+      return AllTabletLeaderInZone(table_uuids, zone) &&
+             AllTabletLeaderInZone(mv_uuids, zone) &&
+             AllTabletLeaderInZone(index_uuids, zone) &&
+             AllTabletLeaderInZone(status_tablet_ids, zone);
+    }, 30s, Format("All in zone $0", zone));
+  };
+
+  ASSERT_OK(WaitAllInZone(1));
 
   /*
    * Move the table/index/matview to tablespace2.
@@ -325,28 +333,17 @@ TEST_F(PgTablespacesTest, TestPreferredZone) {
   ASSERT_OK(conn.ExecuteFormat("ALTER MATERIALIZED VIEW $0 SET TABLESPACE tablespace2", mv_name));
 
   WaitForStatusTabletsVersion(++current_version);
-  WaitForLoadBalanceCompletion();
 
   // Now the tablet leaders should be in region 3, which is the most preferred block
   // for tablespace 2.
   status_tablet_ids = ASSERT_RESULT(GetStatusTablets(2, ExpectedLocality::kLocal));
-  ValidateAllTabletLeaderinZone(table_uuids, 3);
-  ValidateAllTabletLeaderinZone(mv_uuids, 3);
-  ValidateAllTabletLeaderinZone(index_uuids, 3);
-  ValidateAllTabletLeaderinZone(status_tablet_ids, 3);
+  ASSERT_OK(WaitAllInZone(3));
 
   /*
    * Shut down region 3.
    */
   ASSERT_OK(ShutdownTabletServersByRegion(3));
-  WaitForLoadBalanceCompletion();
-
-  // Now the tablet leaders should be in region 1, which is the next most preferred block
-  // for tablespace 2.
-  ValidateAllTabletLeaderinZone(table_uuids, 1);
-  ValidateAllTabletLeaderinZone(mv_uuids, 1);
-  ValidateAllTabletLeaderinZone(index_uuids, 1);
-  ValidateAllTabletLeaderinZone(status_tablet_ids, 1);
+  ASSERT_OK(WaitAllInZone(1));
 }
 
 // Test that we can ALTER TABLE SET TABLESPACE to a tablespace that has a majority, but not all,
@@ -452,6 +449,39 @@ TEST_F(PgTablespacesTest, TestAlterTableScaling) {
   WaitForLoadBalanceCompletion();
 
   VerifyObjectPlacement(placement_blocks);
+}
+
+TEST_F(PgTablespacesTest, TombstonedTabletInYbLocalTablets) {
+  static constexpr auto kTableName = "test_table";
+  static constexpr auto kTablespace1 = "ts1";
+  static constexpr auto kTablespace2 = "ts2";
+  const auto tablet_state_query = Format(
+      "SELECT state FROM yb_local_tablets WHERE table_name = '$0' LIMIT 1",
+      kTableName);
+
+  std::vector<PlacementBlock> placement_blocks_1;
+  std::vector<PlacementBlock> placement_blocks_2;
+
+  placement_blocks_1.emplace_back(/* regionId = */ 1, /* minNumReplicas = */ 1);
+  placement_blocks_2.emplace_back(/* regionId = */ 2, /* minNumReplicas = */ 1);
+
+  Tablespace tablespace_1(kTablespace1, /* numReplicas = */ 1, placement_blocks_1);
+  Tablespace tablespace_2(kTablespace2, /* numReplicas = */ 1, placement_blocks_2);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(tablespace_1.getCreateCmd()));
+  ASSERT_OK(conn.Execute(tablespace_2.getCreateCmd()));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT) TABLESPACE $1", kTableName, kTablespace1));
+  auto old_tablet_state = ASSERT_RESULT(
+      conn.FetchRow<std::string>(tablet_state_query));
+  ASSERT_STR_EQ(old_tablet_state, "TABLET_DATA_READY");
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 SET TABLESPACE $1", kTableName, kTablespace2));
+  SleepFor(10s * kTimeMultiplier);
+  auto new_tablet_state = ASSERT_RESULT(
+      conn.FetchRow<std::string>(tablet_state_query));
+  ASSERT_STR_EQ(new_tablet_state, "TABLET_DATA_TOMBSTONED");
 }
 
 } // namespace client

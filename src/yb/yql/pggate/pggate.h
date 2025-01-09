@@ -773,6 +773,10 @@ class PgApiImpl {
 
   void RestoreSessionState(const YBCPgSessionState& session_data);
 
+  void RollbackSubTransactionScopedSessionState();
+  void RollbackTransactionScopedSessionState();
+  Status CommitTransactionScopedSessionState();
+
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.
 
@@ -826,9 +830,16 @@ class PgApiImpl {
 
   void ForceAllowCatalogModifications(bool allowed);
 
- private:
-  void ClearSessionState();
+  //----------------------------------------------------------------------------------------------
+  // Advisory Locks.
+  //----------------------------------------------------------------------------------------------
 
+  Status AcquireAdvisoryLock(
+      const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode, bool wait, bool session);
+  Status ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode);
+  Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
+
+ private:
   Result<bool> RetrieveYbctidsImpl(
       PgDmlRead& dml_read, int natts, size_t max_mem_bytes, std::vector<Slice>& ybctids);
 

@@ -162,6 +162,7 @@ inline void TrimLastInternalComponent(std::string* internal_key) {
 
 yb::Result<std::pair<std::string, std::string>>
 DataBlockAwareIndexIteratorImpl::GetCurrentDataBlockBounds() const {
+  DCHECK(internal_index_iter_->Valid());
   auto bounds =
       VERIFY_RESULT(internal_index_iter_->GetCurrentIterator()->GetCurrentDataBlockBounds());
   for (auto* bound : {&bounds.first, &bounds.second}) {

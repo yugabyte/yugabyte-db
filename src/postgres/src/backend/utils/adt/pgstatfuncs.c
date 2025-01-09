@@ -649,8 +649,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 	YBCPgSessionTxnInfo *txn_infos = NULL;
 	if (YBIsEnabledInPostgresEnvVar() && yb_enable_pg_locks)
 	{
-		txn_infos = (YBCPgSessionTxnInfo *) palloc0(
-			sizeof(YBCPgSessionTxnInfo) * num_backends);
+		txn_infos = (YBCPgSessionTxnInfo *)
+			palloc0(sizeof(YBCPgSessionTxnInfo) * num_backends);
 		/* 1-based index */
 		for (curr_backend = 1; curr_backend <= num_backends; ++curr_backend)
 		{

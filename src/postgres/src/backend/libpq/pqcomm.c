@@ -130,10 +130,12 @@ static char *PqSendBuffer;
 static int	PqSendBufferSize;	/* Size send buffer */
 static int	PqSendPointer;		/* Next index to store a byte in PqSendBuffer */
 static int	PqSendStart;		/* Next index to send a byte in PqSendBuffer */
-static int	PqSendYbSavedBufPos;/* Value of PqSendPointer to restore during statement restart */
-static bool PqSendYbNonRestartableData;	/* Indicates whether data sent to user should be treated as
-										 * preventing transparent restarts.
-										 * This should be false e.g. for BEGIN statement. */
+static int	PqSendYbSavedBufPos;	/* Value of PqSendPointer to restore during
+									 * statement restart */
+static bool PqSendYbNonRestartableData;	/* Indicates whether data sent to user
+										 * should be treated as preventing
+										 * transparent restarts. This should be
+										 * false e.g. for BEGIN statement. */
 
 static char PqRecvBuffer[PQ_RECV_BUFFER_SIZE];
 static int	PqRecvPointer;		/* Next index to read a byte from PqRecvBuffer */

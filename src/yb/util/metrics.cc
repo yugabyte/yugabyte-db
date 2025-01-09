@@ -47,6 +47,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/flags.h"
 
 DEFINE_UNKNOWN_bool(expose_metric_histogram_percentiles, true,
@@ -185,9 +186,16 @@ const char* MetricLevelName(MetricLevel level) {
 //
 
 MetricRegistry::MetricRegistry() {
+  CHECK_OK(ThreadPoolBuilder("metric cleanup").set_max_threads(1).Build(&metric_cleanup_pool_));
 }
 
 MetricRegistry::~MetricRegistry() {
+  metric_cleanup_pool_->Shutdown();
+}
+
+Status MetricRegistry::SubmitAMetricCleanupTask() const {
+  return metric_cleanup_pool_->SubmitClosure(
+      Bind(&MetricRegistry::RetireOldMetricsAndCleanupMetricAggregator, Unretained(this)));
 }
 
 bool MetricRegistry::TabletHasBeenShutdown(const scoped_refptr<MetricEntity> entity) const {
@@ -224,36 +232,38 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
   // small, and one might consider it a feature: if monitoring stops polling for
   // metrics, we should keep them around until the next poll.
   entities.clear(); // necessary to deref metrics we just dumped before doing retirement scan.
-  const_cast<MetricRegistry*>(this)->RetireOldMetrics();
+  RETURN_NOT_OK(SubmitAMetricCleanupTask());
   return Status::OK();
 }
 
 Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
                                           const MetricPrometheusOptions& opts) const {
   EntityMap entities;
-  {
-    std::lock_guard l(lock_);
-    entities = entities_;
-  }
-
-  std::vector<MetricEntity::MetricMap> owning_metric_maps;
-  for (const EntityMap::value_type& e : entities) {
-    if (TabletHasBeenShutdown(e.second)) {
-      continue;
+  VLOG_TIMING(1, "Handle non-pre-aggregated metrics") {
+    // Non-pre-aggregated metrics are processed as follows:
+    // - Metrics that need to be aggregated at scrape time are aggregated in this step.
+    // - Metrics that do not require aggregation are flushed directly in this step.
+    {
+      std::lock_guard l(lock_);
+      entities = entities_;
     }
 
-    WARN_NOT_OK(e.second->WriteForPrometheus(writer, opts, &owning_metric_maps),
-                Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
+    for (const EntityMap::value_type& e : entities) {
+      if (TabletHasBeenShutdown(e.second)) {
+        continue;
+      }
+
+      WARN_NOT_OK(e.second->WriteForPrometheus(writer, opts),
+                  Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
+    }
   }
 
   TEST_PAUSE_IF_FLAG(TEST_pause_flush_aggregated_metrics);
 
-  RETURN_NOT_OK(writer->FlushAggregatedValues());
-
-  RETURN_NOT_OK(writer->FlushNumberOfEntriesCutOff());
-
-  // Once all metrics have been flushed, we can release the ownership of all metrics.
-  owning_metric_maps.clear();
+  VLOG_TIMING(1, "flush aggregated metrics") {
+    // Pre-aggregated and scrape-time-aggregated metrics are flushed in this step.
+    RETURN_NOT_OK(writer->Finish(metrics_aggregator_));
+  }
 
   // Rather than having a thread poll metrics periodically to retire old ones,
   // we'll just retire them here. The only downside is that, if no one is polling
@@ -261,8 +271,15 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
   // small, and one might consider it a feature: if monitoring stops polling for
   // metrics, we should keep them around until the next poll.
   entities.clear(); // necessary to deref metrics we just dumped before doing retirement scan.
-  const_cast<MetricRegistry*>(this)->RetireOldMetrics();
+  RETURN_NOT_OK(SubmitAMetricCleanupTask());
+
   return Status::OK();
+}
+
+void MetricRegistry::RetireOldMetricsAndCleanupMetricAggregator() const {
+  auto mutable_this = const_cast<MetricRegistry*>(this);
+  mutable_this->RetireOldMetrics();
+  mutable_this->metrics_aggregator_.CleanupRetiredMetricsAndCorrespondingAttributes();
 }
 
 void MetricRegistry::get_all_prototypes(std::set<std::string>& prototypes) const {
@@ -344,7 +361,8 @@ scoped_refptr<MetricEntity> MetricRegistry::FindOrCreateEntity(
   std::lock_guard l(lock_);
   scoped_refptr<MetricEntity> e = FindPtrOrNull(entities_, id);
   if (!e) {
-    e = new MetricEntity(prototype, id, initial_attributes, std::move(mem_tracker));
+    e = new MetricEntity(
+        prototype, id, initial_attributes, &metrics_aggregator_, std::move(mem_tracker));
     InsertOrDie(&entities_, id, e);
   } else {
     e->SetAttributes(initial_attributes);
@@ -359,13 +377,24 @@ Metric::Metric(const MetricPrototype* prototype)
   : prototype_(prototype) {
 }
 
-Metric::Metric(std::unique_ptr<MetricPrototype> prototype)
+Metric::Metric(std::shared_ptr<MetricPrototype> prototype)
   : prototype_holder_(std::move(prototype)), prototype_(prototype_holder_.get()) {
 }
 
 Metric::~Metric() {
 }
 
+Status Metric::DoWriteForPrometheus(
+    PrometheusWriter* writer,
+    const MetricEntity::AttributeMap& attributes,
+    AggregationLevels default_aggregation_levels,
+    int64_t value) const {
+  return writer->WriteSingleEntry(
+      attributes, prototype_->name(), value, prototype_->aggregation_function(),
+      default_aggregation_levels, prototype_->entity_type(),
+      MetricType::PrometheusType(prototype_->type()),
+      prototype_->description(), prototype_holder_);
+}
 //
 // Gauge
 //
@@ -411,15 +440,9 @@ void StringGauge::WriteValue(JsonWriter* writer) const {
 
 Status StringGauge::WriteForPrometheus(
     PrometheusWriter* writer,
-    const MetricEntity::AttributeMap& attr,
+    const MetricEntity::AttributeMap& attributes,
     const MetricPrometheusOptions& opts,
-    const AggregationLevels aggregation_levels) const {
-  if (prototype_->level() < opts.level) {
-    return Status::OK();
-  }
-
-  // TODO(bogdan): don't think we need this?
-  // return writer->WriteSingleEntry(attr, prototype_->name(), value());
+    AggregationLevels default_aggregation_levels) const {
   return Status::OK();
 }
 
@@ -436,7 +459,7 @@ scoped_refptr<Counter> CounterPrototype::Instantiate(
 Counter::Counter(const CounterPrototype* proto) : Metric(proto) {
 }
 
-Counter::Counter(std::unique_ptr<CounterPrototype> proto) : Metric(std::move(proto)) {
+Counter::Counter(std::shared_ptr<CounterPrototype> proto) : Metric(std::move(proto)) {
 }
 
 int64_t Counter::value() const {
@@ -449,6 +472,10 @@ void Counter::Increment() {
 
 void Counter::IncrementBy(int64_t amount) {
   value_.IncrementBy(amount);
+
+  if (aggregated_prometheus_value_holder_ != nullptr) {
+    aggregated_prometheus_value_holder_->IncrementBy(amount);
+  }
 }
 
 Status Counter::WriteAsJson(JsonWriter* writer,
@@ -470,18 +497,44 @@ Status Counter::WriteAsJson(JsonWriter* writer,
 
 Status Counter::WriteForPrometheus(
     PrometheusWriter* writer,
-    const MetricEntity::AttributeMap& attr,
+    const MetricEntity::AttributeMap& attributes,
     const MetricPrometheusOptions& opts,
-    const AggregationLevels aggregation_levels) const {
-  if (prototype_->level() < opts.level) {
+    AggregationLevels default_aggregation_levels) const {
+  if (IsPreAggregated() || prototype_->level() < opts.level) {
     return Status::OK();
   }
 
-  return writer->WriteSingleEntry(attr, prototype_->name(), value(),
-                                  prototype()->aggregation_function(),
-                                  aggregation_levels,
-                                  MetricType::PrometheusType(prototype_->type()),
-                                  prototype_->description());
+  return DoWriteForPrometheus(writer, attributes, default_aggregation_levels, value());
+}
+
+Status Counter::SetUpPreAggregationForPrometheus(
+    MetricsAggregator* metrics_aggregator,
+    const MetricEntity::AttributeMap& attributes,
+    AggregationLevels default_aggregation_levels,
+    const std::string& aggregation_id) {
+  if (!metrics_aggregator->IsPreAggregationSupported(prototype_, default_aggregation_levels)) {
+    return Status::OK();
+  }
+
+  aggregated_prometheus_value_holder_ =
+      metrics_aggregator->CreateOrFindPreAggregatedMetricValueHolder(
+          attributes, prototype_holder_, prototype_->name(),
+          default_aggregation_levels, prototype_->entity_type(), aggregation_id,
+          MetricType::PrometheusType(prototype_->type()), prototype_->description());
+
+  aggregated_prometheus_value_holder_->IncrementBy(value());
+
+  return Status::OK();
+}
+
+Counter::~Counter() {
+  if (aggregated_prometheus_value_holder_ != nullptr) {
+    aggregated_prometheus_value_holder_->IncrementBy(-value());
+  }
+}
+
+bool Counter::IsPreAggregated() const {
+  return aggregated_prometheus_value_holder_ != nullptr;
 }
 
 //
@@ -517,18 +570,14 @@ Status MillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions& opts)
 
 Status MillisLag::WriteForPrometheus(
     PrometheusWriter* writer,
-    const MetricEntity::AttributeMap& attr,
+    const MetricEntity::AttributeMap& attributes,
     const MetricPrometheusOptions& opts,
-    const AggregationLevels aggregation_levels) const {
+    AggregationLevels default_aggregation_levels) const {
   if (prototype_->level() < opts.level) {
     return Status::OK();
   }
 
-  return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms(),
-                                  prototype()->aggregation_function(),
-                                  aggregation_levels,
-                                  MetricType::PrometheusType(prototype_->type()),
-                                  prototype_->description());
+  return DoWriteForPrometheus(writer, attributes, default_aggregation_levels, lag_ms());
 }
 
 AtomicMillisLag::AtomicMillisLag(const MillisLagPrototype* proto)
@@ -608,7 +657,7 @@ Status BaseStats<Stats>::WriteAsJson(
   }
 
   HistogramSnapshotPB snapshot;
-  RETURN_NOT_OK(static_cast<const Stats*>(this)->GetAndResetHistogramSnapshotPB(
+  RETURN_NOT_OK(AsConstStats()->GetAndResetHistogramSnapshotPB(
       &snapshot, opts));
   writer->Protobuf(snapshot);
   return Status::OK();
@@ -617,32 +666,32 @@ Status BaseStats<Stats>::WriteAsJson(
 template<typename Stats>
 Status BaseStats<Stats>::WriteForPrometheus(
     PrometheusWriter* writer,
-    const MetricEntity::AttributeMap& attr,
+    const MetricEntity::AttributeMap& attributes,
     const MetricPrometheusOptions& opts,
-    const AggregationLevels aggregation_levels) const {
-  if (prototype_->level() < opts.level) {
+    AggregationLevels default_aggregation_levels) const {
+  if (AsConstStats()->IsPreAggregated() || prototype_->level() < opts.level) {
     return Status::OK();
   }
 
   // Representing the sum and count require suffixed names.
-  std::string hist_name = prototype_->name();
+  std::string histogram_name = prototype_->name();
   const char* description = prototype_->description();
   const char* counter_type = MetricType::PrometheusType(MetricType::kCounter);
-  auto copy_of_attr = attr;
+  auto copy_of_attributes = attributes;
   // For #HELP and #TYPE, we need to print them for each entry, since our
   // histogram doesn't really get exported as histograms.
   RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_sum", TotalSum(),
-        prototype()->aggregation_function(), aggregation_levels,
-        counter_type, description));
+        copy_of_attributes, histogram_name + "_sum", TotalSum(),
+        prototype()->aggregation_function(), default_aggregation_levels, prototype_->entity_type(),
+        counter_type, description, prototype_holder_));
   RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_count", TotalCount(),
-        prototype()->aggregation_function(), aggregation_levels,
-        counter_type, description));
+        copy_of_attributes, histogram_name + "_count", TotalCount(),
+        prototype()->aggregation_function(), default_aggregation_levels, prototype_->entity_type(),
+        counter_type, description, prototype_holder_));
 
   if (FLAGS_expose_metric_histogram_percentiles) {
-    RETURN_NOT_OK(static_cast<const Stats*>(this)->WritePercentilesForPrometheus(
-            writer, std::move(copy_of_attr), aggregation_levels));
+    RETURN_NOT_OK(AsConstStats()->WritePercentilesForPrometheus(
+            writer, std::move(copy_of_attributes), default_aggregation_levels));
   }
 
   // HdrHistogram reports percentiles based on all the data points from the
@@ -686,6 +735,16 @@ Status BaseStats<Stats>::GetAndResetHistogramSnapshotPB(
   return Status::OK();
 }
 
+template<typename Stats>
+Status BaseStats<Stats>::SetUpPreAggregationForPrometheus(
+    MetricsAggregator* metrics_aggregator,
+    const MetricEntity::AttributeMap& attributes,
+    AggregationLevels default_aggregation_levels,
+    const std::string& aggregation_id) {
+  return AsStats()->SetUpPreAggregationForPrometheus(
+      metrics_aggregator, attributes, default_aggregation_levels, aggregation_id);
+}
+
 template class BaseStats<Histogram>;
 template class BaseStats<EventStats>;
 
@@ -698,7 +757,7 @@ Histogram::Histogram(const HistogramPrototype* proto)
     histogram_(new HdrHistogram(proto->max_trackable_value(), proto->num_sig_digits())) {
 }
 
-Histogram::Histogram(std::unique_ptr<HistogramPrototype> proto)
+Histogram::Histogram(std::shared_ptr<HistogramPrototype> proto)
   : BaseStats<Histogram>(std::move(proto)),
     histogram_(new HdrHistogram(
         down_cast<const HistogramPrototype*>(prototype_)->max_trackable_value(),
@@ -709,45 +768,36 @@ uint64_t Histogram::CountInBucketForValueForTests(uint64_t value) const {
   return histogram_->CountInBucketForValue(value);
 }
 
+Status Histogram::SetUpPreAggregationForPrometheus(
+    MetricsAggregator* metrics_aggregator,
+    const MetricEntity::AttributeMap& attributes,
+    AggregationLevels default_aggregation_levels,
+    const std::string& aggregation_id) {
+  return Status::OK();
+}
+
 Status Histogram::WritePercentilesForPrometheus(
     PrometheusWriter* writer,
-    MetricEntity::AttributeMap attr,
-    const AggregationLevels aggregation_levels) const {
-  std::string hist_name = prototype_->name();
+    MetricEntity::AttributeMap attributes,
+    AggregationLevels default_aggregation_levels) const {
+  std::string histogram_name = prototype_->name();
   const char* description = prototype_->description();
   const char* gauge_type = MetricType::PrometheusType(MetricType::kGauge);
-  attr["quantile"] = "p50";
-  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
-                                         underlying()->ValueAtPercentile(50),
-                                         prototype()->aggregation_function(),
-                                         aggregation_levels, gauge_type, description));
-  attr["quantile"] = "p95";
-  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
-                                         underlying()->ValueAtPercentile(95),
-                                         prototype()->aggregation_function(),
-                                         aggregation_levels, gauge_type, description));
-  attr["quantile"] = "p99";
-  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
-                                         underlying()->ValueAtPercentile(99),
-                                         prototype()->aggregation_function(),
-                                         aggregation_levels, gauge_type, description));
 
-  attr["quantile"] = "mean";
-  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
-                                         underlying()->MeanValue(),
-                                         prototype()->aggregation_function(),
-                                         aggregation_levels, gauge_type, description));
-  attr["quantile"] = "max";
-  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
-                                         underlying()->MaxValue(),
-                                         prototype()->aggregation_function(),
-                                         aggregation_levels, gauge_type, description));
+  auto WriteQuantile = [&](const std::string& quantile_name, double value) -> yb::Status {
+    attributes["quantile"] = quantile_name;
+    return writer->WriteSingleEntry(
+        attributes, histogram_name, value, prototype_->aggregation_function(),
+        default_aggregation_levels, prototype_->entity_type(), gauge_type,
+        description, prototype_holder_);
+  };
 
-  attr["quantile"] = "min";
-  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
-                                         underlying()->MinValue(),
-                                         prototype()->aggregation_function(),
-                                         aggregation_levels, gauge_type, description));
+  RETURN_NOT_OK(WriteQuantile("p50", underlying()->ValueAtPercentile(50)));
+  RETURN_NOT_OK(WriteQuantile("p95", underlying()->ValueAtPercentile(95)));
+  RETURN_NOT_OK(WriteQuantile("p99", underlying()->ValueAtPercentile(99)));
+  RETURN_NOT_OK(WriteQuantile("mean", underlying()->MeanValue()));
+  RETURN_NOT_OK(WriteQuantile("max", underlying()->MaxValue()));
+  RETURN_NOT_OK(WriteQuantile("min", underlying()->MinValue()));
   return Status::OK();
 }
 
@@ -785,17 +835,47 @@ EventStats::EventStats(const EventStatsPrototype* proto)
     stats_(new AggregateStats()) {
 }
 
-EventStats::EventStats(std::unique_ptr<EventStatsPrototype> proto)
+EventStats::EventStats(std::shared_ptr<EventStatsPrototype> proto)
   : BaseStats<EventStats>(std::move(proto)),
     stats_(new AggregateStats()) {
 }
 
 Status EventStats::WritePercentilesForPrometheus(
     PrometheusWriter* writer,
-    MetricEntity::AttributeMap attr,
-    const AggregationLevels aggregation_levels) const {
+    MetricEntity::AttributeMap attributes,
+    AggregationLevels default_aggregation_levels) const {
   return Status::OK();
 }
+
+Status EventStats::SetUpPreAggregationForPrometheus(
+    MetricsAggregator* metrics_aggregator,
+    const MetricEntity::AttributeMap& attributes,
+    AggregationLevels default_aggregation_levels,
+    const std::string& aggregation_id) {
+  if (!metrics_aggregator->IsPreAggregationSupported(prototype_, default_aggregation_levels)) {
+    return Status::OK();
+  }
+
+  std::string event_stats_name = prototype_->name();
+  const char* description = prototype_->description();
+  const char* counter_type = MetricType::PrometheusType(MetricType::kCounter);
+
+  auto aggregated_prometheus_sum_value_holder =
+      metrics_aggregator->CreateOrFindPreAggregatedMetricValueHolder(
+          attributes, prototype_holder_, event_stats_name + "_sum", default_aggregation_levels,
+          prototype_->entity_type(), aggregation_id, counter_type, description);
+
+  auto aggregated_prometheus_count_value_holder =
+      metrics_aggregator->CreateOrFindPreAggregatedMetricValueHolder(
+          attributes, prototype_holder_, event_stats_name + "_count", default_aggregation_levels,
+          prototype_->entity_type(), aggregation_id, counter_type, description);
+
+  // Let stats_ maintain the pre-aggregated sum and count values for prometheus.
+  return stats_->SetUpPreAggregationForPrometheus(
+      aggregated_prometheus_sum_value_holder, aggregated_prometheus_count_value_holder);
+}
+
+EventStats::~EventStats() {}
 
 /////////////////////////////////////////////////
 // ScopedLatencyMetric

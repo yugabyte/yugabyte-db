@@ -593,8 +593,10 @@ retry:
 			YBCPgReplicaIdentityDescriptor *desc =
 				&yb_replication_slot->replica_identities[replica_identity_idx];
 
-			YBCPgReplicaIdentityDescriptor *value = hash_search(
-				replica_identities, &desc->table_oid, HASH_ENTER, NULL);
+			YBCPgReplicaIdentityDescriptor *value = hash_search(replica_identities,
+																&desc->table_oid,
+																HASH_ENTER,
+																NULL);
 			value->table_oid = desc->table_oid;
 			value->identity_type = desc->identity_type;
 		}

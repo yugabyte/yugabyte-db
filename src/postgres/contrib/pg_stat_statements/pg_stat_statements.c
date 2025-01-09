@@ -740,14 +740,12 @@ getYsqlStatementStats(void *cb_arg)
 			WriteDoubleToJson(cb_arg, "mean_plan_time", entry->counters.mean_time[PGSS_PLAN]);
 			WriteDoubleToJson(cb_arg, "mean_exec_time", entry->counters.mean_time[PGSS_EXEC]);
 
-			WriteDoubleToJson(
-				cb_arg, "stddev_plan_time",
-				calc_stddev(entry->counters.calls[PGSS_PLAN],
-							entry->counters.sum_var_time[PGSS_PLAN]));
-			WriteDoubleToJson(
-				cb_arg, "stddev_exec_time",
-				calc_stddev(entry->counters.calls[PGSS_EXEC],
-							entry->counters.sum_var_time[PGSS_EXEC]));
+			WriteDoubleToJson(cb_arg, "stddev_plan_time",
+							  calc_stddev(entry->counters.calls[PGSS_PLAN],
+										  entry->counters.sum_var_time[PGSS_PLAN]));
+			WriteDoubleToJson(cb_arg, "stddev_exec_time",
+							  calc_stddev(entry->counters.calls[PGSS_EXEC],
+										  entry->counters.sum_var_time[PGSS_EXEC]));
 
 			WriteIntToJson(cb_arg, "rows", entry->counters.rows);
 
@@ -3117,8 +3115,7 @@ yb_lwlock_crash_after_acquire_pg_stat_statements_reset()
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
-		cached_value = YBCIsEnvVarTrue(
-			"FLAGS_TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset");
+		cached_value = YBCIsEnvVarTrue("FLAGS_TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset");
 	}
 	return cached_value;
 
@@ -3508,8 +3505,8 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level
 
 	if (!is_allowed_role && userid != GetUserId())
 	{
-		ereport(ERROR, (errmsg(
-			"Insufficient privilege to read this query detail.")));
+		ereport(ERROR,
+				(errmsg("insufficient privilege to read this query detail")));
 		PG_RETURN_DATUM(0);
 	}
 
@@ -3517,9 +3514,9 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level
 
 	if (!entry)
 	{
-		ereport(ERROR, (errmsg(
-			"Invalid combination of queryid, userid, dbid and top_level.\n" \
-			"Please refer to pg_stat_statements for the correct details.")));
+		ereport(ERROR,
+				(errmsg("invalid combination of queryid, userid, dbid, and top_level"),
+				 errhint("Please refer to pg_stat_statements for the correct details.")));
 		PG_RETURN_DATUM(0);
 	}
 
@@ -3585,8 +3582,8 @@ static void yb_add_hdr_jsonb_object(JsonbParseState *state, char *buf,
 {
 	pair->key.val.string.len = strlen(buf);
 	pair->key.val.string.val = pstrdup(buf);
-	pair->value.val.numeric = DatumGetNumeric(
-		DirectFunctionCall1(int8_numeric, (int64_t) count));
+	pair->value.val.numeric = DatumGetNumeric(DirectFunctionCall1(int8_numeric,
+																  (int64_t) count));
 
 	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 	(void) pushJsonbValue(&state, WJB_KEY, &pair->key);

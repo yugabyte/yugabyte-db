@@ -117,6 +117,11 @@ class PgsqlWriteOperation :
       const DocOperationApplyData& data, const PgsqlColumnValuePB& column_value,
       RowPackContext* pack_context);
 
+  template <typename Value>
+  Status DoUpdateColumn(
+      const DocOperationApplyData& data, ColumnId column_id, const ColumnSchema& column,
+      Value&& value, RowPackContext* pack_context);
+
   Status UpdateColumn(
       const DocOperationApplyData& data, const dockv::PgTableRow& table_row,
       const PgsqlColumnValuePB& column_value, dockv::PgTableRow* returning_table_row,
@@ -203,6 +208,8 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Result<std::tuple<size_t, bool>> ExecuteSample();
 
+  Result<std::tuple<size_t, bool>> ExecuteSampleBlockBased();
+
   void BindReadTimeToPagingState(const ReadHybridTime& read_time);
 
   Status PopulateResultSet(const dockv::PgTableRow& table_row,
@@ -217,8 +224,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   Result<bool> SetPagingState(
       YQLRowwiseIteratorIf* iter, const Schema& schema, const ReadHybridTime& read_time);
 
-  Result<size_t> ExecuteVectorLSMSearch(
-      const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options);
+  Result<size_t> ExecuteVectorLSMSearch(const PgVectorReadOptionsPB& options);
 
   void InitTargetEncoders(
       const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& targets,

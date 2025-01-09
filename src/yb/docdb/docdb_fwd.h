@@ -50,6 +50,7 @@ class RedisWriteOperation;
 class ScanChoices;
 class SchemaPackingProvider;
 class SharedLockManager;
+class StorageSet;
 class TableInfoProvider;
 class TransactionStatusCache;
 class VectorIndex;

@@ -28,7 +28,6 @@
 #include "yb/common/colocated_util.h"
 
 #include "yb/common/wire_protocol.h"
-#include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
@@ -241,7 +240,7 @@ TEST_F(SnapshotScheduleTest, Index) {
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
 
   CreateIndex(Transactional::kTrue, 1, false);
-  auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
+  auto hybrid_time = cluster_->mini_master(0)->Now();
   constexpr int kTransaction = 0;
   constexpr auto op_type = WriteOpType::INSERT;
 
@@ -307,7 +306,7 @@ TEST_F(SnapshotScheduleTest, RestoreSchema) {
   auto schedule_id = ASSERT_RESULT(
     snapshot_util_->CreateSchedule(table_, kTableName.namespace_type(),
                                    kTableName.namespace_name()));
-  auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
+  auto hybrid_time = cluster_->mini_master(0)->Now();
   auto old_schema = table_.schema();
   auto alterer = client_->NewTableAlterer(table_.name());
   auto* column = alterer->AddColumn("new_column");
@@ -342,9 +341,9 @@ TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
   auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
       table_, kTableName.namespace_type(), kTableName.namespace_name(),
       WaitSnapshot::kTrue, kInterval, kRetention));
-  auto before_index_ht = cluster_->mini_master(0)->master()->clock()->Now();
+  auto before_index_ht = cluster_->mini_master(0)->Now();
   CreateIndex(Transactional::kTrue, 1, false);
-  auto after_time_ht = cluster_->mini_master(0)->master()->clock()->Now();
+  auto after_time_ht = cluster_->mini_master(0)->Now();
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id, after_time_ht));
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->PickSuitableSnapshot(schedule_id,
                                                                         before_index_ht));
@@ -395,7 +394,7 @@ TEST_F(SnapshotScheduleTest, DeletedNamespace) {
   ASSERT_TRUE(schedule[0].options().filter().tables().tables(0).namespace_().has_id());
 
   // Restore should not fatal.
-  auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
+  auto hybrid_time = cluster_->mini_master(0)->Now();
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id, hybrid_time));
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->PickSuitableSnapshot(
       schedule_id, hybrid_time));
@@ -416,12 +415,12 @@ TEST_F(SnapshotScheduleTest, MasterHistoryRetentionNoSchedule) {
   // Since FLAGS_timestamp_syscatalog_history_retention_interval_sec is 120,
   // history retention should be t-120 where t is the current time obtained by
   // GetRetentionDirective() call.
-  auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
+  auto& sys_catalog = cluster_->mini_master(0)->sys_catalog();
   auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet_safe());
   auto directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
   // current_time-120 should be >= t-120 since current_time >= t.
   // We bound this error by 1s * kTimeMultiplier.
-  HybridTime expect = cluster_->mini_master(0)->master()->clock()->Now().AddSeconds(
+  HybridTime expect = cluster_->mini_master(0)->Now().AddSeconds(
       -FLAGS_timestamp_syscatalog_history_retention_interval_sec);
   ASSERT_GE(expect, directive.primary_cutoff_ht);
   ASSERT_LE(expect, directive.primary_cutoff_ht.AddSeconds(1 * kTimeMultiplier));
@@ -443,7 +442,7 @@ TEST_F(SnapshotScheduleTest, MasterHistoryRetentionNoSchedule) {
   directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
   // current_time-120 should be >= t-120 since current_time >= t.
   // We bound this error by 1s * kTimeMultiplier.
-  expect = cluster_->mini_master(0)->master()->clock()->Now().AddSeconds(
+  expect = cluster_->mini_master(0)->Now().AddSeconds(
       -FLAGS_timestamp_history_retention_interval_sec);
   ASSERT_GE(expect, directive.primary_cutoff_ht);
   ASSERT_LE(expect, directive.primary_cutoff_ht.AddSeconds(1 * kTimeMultiplier));
@@ -471,7 +470,7 @@ TEST_F(SnapshotScheduleTest, MasterHistoryRetentionWithSchedule) {
   // last_snapshot_time for all the tables except docdb metadata table
   // for which it should be t-kRetention where t is the current time
   // obtained by AllowedHistoryCutoffProvider().
-  auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
+  auto& sys_catalog = cluster_->mini_master(0)->sys_catalog();
   auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet_safe());
   // Because the snapshot interval is quite high (10s), at some point
   // the returned history retention should become equal to last snapshot time.
@@ -480,7 +479,7 @@ TEST_F(SnapshotScheduleTest, MasterHistoryRetentionWithSchedule) {
   // GetRetentionDirective() very frequently, at some point it should catch up.
   ASSERT_OK(WaitFor([&tablet, this, schedule_id, kRetention]() -> Result<bool> {
     auto directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
-    auto expect = cluster_->mini_master(0)->master()->clock()->Now().AddDelta(-kRetention);
+    auto expect = cluster_->mini_master(0)->Now().AddDelta(-kRetention);
     auto schedules = VERIFY_RESULT(snapshot_util_->ListSchedules(schedule_id));
     RSTATUS_DCHECK_EQ(schedules.size(), 1, Corruption, "There should be only one schedule");
     HybridTime most_recent = HybridTime::kMin;

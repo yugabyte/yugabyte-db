@@ -339,19 +339,18 @@ extern void DefineCustomIntVariable(const char *name,
 									GucIntAssignHook assign_hook,
 									GucShowHook show_hook);
 
-extern void DefineCustomOidVariable(
-						const char *name,
-						const char *short_desc,
-						const char *long_desc,
-						Oid *valueAddr,
-						Oid bootValue,
-						Oid minValue,
-						Oid maxValue,
-						GucContext context,
-						int flags,
-						GucOidCheckHook check_hook,
-						GucOidAssignHook assign_hook,
-						GucShowHook show_hook);
+extern void DefineCustomOidVariable(const char *name,
+									const char *short_desc,
+									const char *long_desc,
+									Oid *valueAddr,
+									Oid bootValue,
+									Oid minValue,
+									Oid maxValue,
+									GucContext context,
+									int flags,
+									GucOidCheckHook check_hook,
+									GucOidAssignHook assign_hook,
+									GucShowHook show_hook);
 
 extern void DefineCustomRealVariable(const char *name,
 									 const char *short_desc,

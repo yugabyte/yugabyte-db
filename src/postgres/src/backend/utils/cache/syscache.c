@@ -1388,11 +1388,11 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	TupleDesc tupdesc       = RelationGetDescr(relation);
 
 	SysScanDesc scandesc = systable_beginscan(relation,
-	                                          cache->cc_indexoid,
-	                                          false /* indexOK */,
-	                                          NULL /* snapshot */,
-	                                          0  /* nkeys */,
-	                                          NULL /* key */);
+											  cache->cc_indexoid,
+											  false /* indexOK */,
+											  NULL /* snapshot */,
+											  0  /* nkeys */,
+											  NULL /* key */);
 
 	while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
 	{
@@ -1433,8 +1433,9 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 					List *fnlist = lfirst(lc);
 					HeapTuple otp = linitial(fnlist);
 					Datum odt = heap_getattr(otp, key.sk_attno, tupdesc, &is_null);
-					Datum key_matches = FunctionCall2Coll(
-						&key.sk_func, key.sk_collation, ndt, odt);
+					Datum key_matches = FunctionCall2Coll(&key.sk_func,
+														  key.sk_collation,
+														  ndt, odt);
 					if (DatumGetBool(key_matches))
 					{
 						dest_list = fnlist;
@@ -1545,9 +1546,8 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 
 	/* Done: mark cache(s) as loaded. */
 	if (!YBCIsInitDbModeEnvVarSet() &&
-		(IS_NON_EMPTY_STR_FLAG(
-			YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
-			*YBCGetGFlags()->ysql_catalog_preload_additional_tables))
+		(IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
+		 *YBCGetGFlags()->ysql_catalog_preload_additional_tables))
 	{
 		cache->yb_cc_is_fully_loaded = true;
 		if (idx_cache)
@@ -1665,7 +1665,7 @@ SearchSysCache(int cacheId,
 	if (IsMultiThreadedMode())
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errmsg("catalog cache lookup is not allowed in multithread mode"),
 				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
@@ -1680,7 +1680,7 @@ SearchSysCache1(int cacheId,
 	if (IsMultiThreadedMode())
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errmsg("catalog cache lookup is not allowed in multithread mode"),
 				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
@@ -1696,7 +1696,7 @@ SearchSysCache2(int cacheId,
 	if (IsMultiThreadedMode())
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errmsg("catalog cache lookup is not allowed in multithread mode"),
 				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
@@ -1712,7 +1712,7 @@ SearchSysCache3(int cacheId,
 	if (IsMultiThreadedMode())
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errmsg("catalog cache lookup is not allowed in multithread mode"),
 				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
@@ -1728,7 +1728,7 @@ SearchSysCache4(int cacheId,
 	if (IsMultiThreadedMode())
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errmsg("catalog cache lookup is not allowed in multithread mode"),
 				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));

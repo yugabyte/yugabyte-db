@@ -450,8 +450,8 @@ yb_toast_compress_tuple(HeapTuple tup, TupleDesc tupleDesc)
 		 * Look at non-null varlena attributes that are over the toast threshold in size
 		 * and whose attstorage is marked for compression.
 		 */
-		if (!toast_isnull[i] && 
-			TupleDescAttr(tupleDesc, i)->attlen == -1 && 
+		if (!toast_isnull[i] &&
+			TupleDescAttr(tupleDesc, i)->attlen == -1 &&
 			(TupleDescAttr(tupleDesc, i)->attstorage == 'm' ||
 			 TupleDescAttr(tupleDesc, i)->attstorage == 'x'))
 		{

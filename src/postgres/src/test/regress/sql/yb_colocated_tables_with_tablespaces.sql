@@ -24,6 +24,14 @@ DROP TABLE partitioned_table;
 -- Implicit tablegroups must be deleted since it has no tables
 SELECT COUNT(*) FROM pg_yb_tablegroup;
 
+-- Test non-colocated children tables of a partitioned table
+CREATE TABLE partitioned_table2 (name varchar, region varchar, PRIMARY KEY(name, region)) PARTITION BY LIST(region);
+CREATE TABLE partition_in_dc1_2 PARTITION OF partitioned_table2 FOR VALUES IN ('region1')  WITH (COLOCATION=FALSE) TABLESPACE tsp1;
+\d partition_in_dc1_2;
+CREATE TABLE partition_in_dc2_2 PARTITION OF partitioned_table2 FOR VALUES IN ('region2') TABLESPACE tsp2;
+\d partition_in_dc2_2;
+DROP TABLE partitioned_table2;
+
 -- Users must be able to create tables in the implicit tablegroup as long as they have required permission.
 -- Requires permission to create table in schema and to create a table in the tablespace
 CREATE ROLE user1;

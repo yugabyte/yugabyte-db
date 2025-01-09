@@ -59,7 +59,7 @@ CheckProfileCatalogsExist()
 	if (!YbLoginProfileCatalogsExist)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Login profile system catalogs do not exist.")));
+				 errmsg("login profile system catalogs do not exist")));
 }
 
 /*
@@ -547,7 +547,7 @@ YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 				 errmsg("permission denied to attach role \"%s\" to profile \"%s\"",
 						rolename, prfname),
 				 errhint("Must be superuser or a member of the yb_db_admin "
-				 		 "role to attach a profile.")));
+						 "role to attach a profile.")));
 
 	/*
 	 * Check that there is a profile by this name.

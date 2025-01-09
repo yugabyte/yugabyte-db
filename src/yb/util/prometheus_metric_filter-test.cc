@@ -146,6 +146,20 @@ TEST_F(PrometheusMetricFilterTest, TestV1Default) {
   ASSERT_EQ(kServerLevel, names_to_levels[kServerMetricName]);
 }
 
+TEST_F(PrometheusMetricFilterTest, TestV1GeneralMetricsAllowlist) {
+  MetricPrometheusOptions opts;
+  ASSERT_EQ(kFilterVersionOne, opts.version);
+  std::vector<std::string> allowlist_ = {"tablet_", "server_"};
+  opts.general_metrics_allowlist = allowlist_;
+
+  auto names_to_levels = ASSERT_RESULT(GetAndParseMetricOutput(opts));
+
+  ASSERT_EQ(kTableLevel, names_to_levels[kTabletMetricName1]);
+  ASSERT_EQ(kTableLevel, names_to_levels[kTabletMetricName2]);
+  ASSERT_EQ(kNoLevel, names_to_levels[kTableMetricName]);
+  ASSERT_EQ(kServerLevel, names_to_levels[kServerMetricName]);
+}
+
 TEST_F(PrometheusMetricFilterTest, TestV1PriorityRegex) {
   MetricPrometheusOptions opts;
   ASSERT_EQ(kFilterVersionOne, opts.version);
@@ -240,7 +254,7 @@ TEST_F(PrometheusMetricFilterTest, TestV2ServerLevel) {
   ASSERT_EQ(kTableLevel | kServerLevel, names_to_levels[kTabletMetricName1]);
   ASSERT_EQ(kTableLevel, names_to_levels[kTabletMetricName2]);
   ASSERT_EQ(kTableLevel | kServerLevel, names_to_levels[kTableMetricName]);
-  ASSERT_EQ(0, names_to_levels[kServerMetricName]);
+  ASSERT_EQ(kNoLevel, names_to_levels[kServerMetricName]);
 
   // Now, table_metric is in both server allowlist and blocklist.
   opts.server_blocklist_string = "table_.*c";
@@ -249,7 +263,7 @@ TEST_F(PrometheusMetricFilterTest, TestV2ServerLevel) {
   ASSERT_EQ(kTableLevel | kServerLevel, names_to_levels[kTabletMetricName1]);
   ASSERT_EQ(kTableLevel, names_to_levels[kTabletMetricName2]);
   ASSERT_EQ(kTableLevel, names_to_levels[kTableMetricName]);
-  ASSERT_EQ(0, names_to_levels[kServerMetricName]);
+  ASSERT_EQ(kNoLevel, names_to_levels[kServerMetricName]);
 
   // Reset the server allowlist to only test server blocklist.
   opts.server_allowlist_string = ".*";
@@ -267,7 +281,7 @@ TEST_F(PrometheusMetricFilterTest, TestV2ServerLevel) {
   ASSERT_EQ(kTableLevel, names_to_levels[kTabletMetricName1]);
   ASSERT_EQ(kTableLevel, names_to_levels[kTabletMetricName2]);
   ASSERT_EQ(kTableLevel, names_to_levels[kTableMetricName]);
-  ASSERT_EQ(0, names_to_levels[kServerMetricName]);
+  ASSERT_EQ(kNoLevel, names_to_levels[kServerMetricName]);
 
   opts.server_allowlist_string = "";
   names_to_levels = ASSERT_RESULT(GetAndParseMetricOutput(opts));
@@ -275,7 +289,7 @@ TEST_F(PrometheusMetricFilterTest, TestV2ServerLevel) {
   ASSERT_EQ(kTableLevel, names_to_levels[kTabletMetricName1]);
   ASSERT_EQ(kTableLevel, names_to_levels[kTabletMetricName2]);
   ASSERT_EQ(kTableLevel, names_to_levels[kTableMetricName]);
-  ASSERT_EQ(0, names_to_levels[kServerMetricName]);
+  ASSERT_EQ(kNoLevel, names_to_levels[kServerMetricName]);
 }
 
 TEST_F(PrometheusMetricFilterTest, TestLimitMaxMetricEntries) {

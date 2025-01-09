@@ -149,6 +149,8 @@ typedef enum {
 
 	/* YB */
 	OD_YB_USE_AUTH_BACKEND,
+	OD_YB_ENABLE_MULTI_ROUTE_POOL,
+	OD_YB_YSQL_MAX_CONNECTIONS,
 } od_lexeme_t;
 
 static od_keyword_t od_config_keywords[] = {
@@ -322,6 +324,8 @@ static od_keyword_t od_config_keywords[] = {
 
 	/* YB */
 	od_keyword("yb_use_auth_backend", OD_YB_USE_AUTH_BACKEND),
+	od_keyword("yb_enable_multi_route_pool", OD_YB_ENABLE_MULTI_ROUTE_POOL),
+	od_keyword("yb_ysql_max_connections", OD_YB_YSQL_MAX_CONNECTIONS),
 
 	{ 0, 0, 0 },
 };
@@ -2417,6 +2421,20 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 		case OD_YB_USE_AUTH_BACKEND:
 			if (!od_config_reader_yes_no(reader,
 						     &config->yb_use_auth_backend)) {
+				goto error;
+			}
+			continue;
+		/* yb_enable_multi_route_pool */
+		case OD_YB_ENABLE_MULTI_ROUTE_POOL:
+			if (!od_config_reader_yes_no(reader,
+						     &config->yb_enable_multi_route_pool)) {
+				goto error;
+			}
+			continue;
+		/* yb_ysql_max_connections */
+		case OD_YB_YSQL_MAX_CONNECTIONS:
+			if (!od_config_reader_number(reader,
+						     &config->yb_ysql_max_connections)) {
 				goto error;
 			}
 			continue;

@@ -66,7 +66,6 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   docdb::HistoryCutoff SanitizeHistoryCutoff(
       docdb::HistoryCutoff proposed_history_cutoff) REQUIRES(mutex_);
 
-  void MakeAtLeast(docdb::HistoryCutoff value) REQUIRES(mutex_);
   HybridTime GetEarliestAllowedReadHt() REQUIRES(mutex_);
 
   const std::string& LogPrefix() const {

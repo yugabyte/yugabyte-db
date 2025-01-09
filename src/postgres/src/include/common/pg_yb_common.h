@@ -47,6 +47,8 @@ extern bool YBCIsEnvVarTrueWithDefault(const char *env_var_name,
  */
 extern bool YBIsEnabledInPostgresEnvVar();
 
+extern bool YBIsLocalInitdbEnvVar();
+
 /**
  * Returns true to allow running PostgreSQL server and initdb as any user. This
  * is needed by some Docker/Kubernetes environments.
@@ -150,11 +152,6 @@ extern const bool kTestOnlyUseOSDefaultCollation;
  * Returns whether colocation is enabled by default for each database.
  */
 extern bool YBColocateDatabaseByDefault();
-
-/**
- * Returns whether we're doing an initdb for a ysql major upgrade.
- */
-extern bool YBIsMajorUpgradeInitDb();
 
 /**
  * Returns the OID for database_name from the environment, if it exists and is

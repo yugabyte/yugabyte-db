@@ -141,7 +141,7 @@ class ServicePoolImpl final : public InboundCallHandler {
           EscapeMetricNameForPrometheus(&id);
           string description = id + " metric for ServicePoolImpl";
           rpcs_in_queue_ = entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
-              std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
+              std::shared_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
                   entity->prototype().name(), std::move(id),
                   description, MetricUnit::kRequests, description, MetricLevel::kInfo)),
               static_cast<int64>(0) /* initial_value */);

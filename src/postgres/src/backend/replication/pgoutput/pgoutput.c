@@ -99,9 +99,9 @@ static void send_repl_origin(LogicalDecodingContext *ctx,
 static void update_replication_progress(LogicalDecodingContext *ctx,
 										bool skipped_xact);
 
-/* 
+/*
  * This indicates whether the plugin being used is yboutput or pgoutput. In
- * yboutput mode, we also support yb-specific replica identity 
+ * yboutput mode, we also support yb-specific replica identity
  * (CHANGE for now).
  */
 static bool yb_is_yboutput_mode;

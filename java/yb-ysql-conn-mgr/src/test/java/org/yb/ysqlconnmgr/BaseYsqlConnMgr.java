@@ -15,8 +15,12 @@ package org.yb.ysqlconnmgr;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertTrue;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.SQLException;
@@ -25,6 +29,7 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -105,17 +110,34 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     return warmup_random_mode;
   }
 
-  protected void enableStickySuperuserConnsAndRestartCluster() throws Exception {
-    ysql_conn_mgr_superuser_sticky = true;
+  private void restartClusterWithAdditionalFlags(
+      Map<String, String> additionalMasterFlags,
+      Map<String, String> additionalTserverFlags) throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    Map<String, String> masterFlags = getMasterFlags();
+    tserverFlags.putAll(additionalTserverFlags);
+    masterFlags.putAll(additionalMasterFlags);
+
     destroyMiniCluster();
     waitForProperShutdown();
-    createMiniCluster();
+    createMiniCluster(masterFlags, tserverFlags);
     waitForDatabaseToStart();
+  }
+
+  protected void enableStickySuperuserConnsAndRestartCluster() throws Exception {
+    ysql_conn_mgr_superuser_sticky = true;
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
+  }
+
+  protected void reduceQuerySizePacketAndRestartCluster(int query_sz) throws Exception {
+    Map<String, String> myMap = new HashMap<>();
+    myMap.put("ysql_conn_mgr_max_query_size", Integer.toString(query_sz));
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), myMap);
   }
 
 protected void enableVersionMatchingAndRestartCluster(boolean higher_version_matching)
         throws Exception {
-    Map<String, String> tsFlagMap = getTServerFlags();
+    Map<String, String> tsFlagMap = new HashMap<>();
     tsFlagMap.put("allowed_preview_flags_csv",
             ",enable_ysql_conn_mgr,ysql_conn_mgr_version_matching");
     tsFlagMap.put("enable_ysql_conn_mgr", "true");
@@ -133,15 +155,19 @@ protected void enableVersionMatchingAndRestartCluster(boolean higher_version_mat
         tsFlagMap.put("ysql_conn_mgr_version_matching_connect_higher_version", "false");
     }
 
-    Map<String, String> masterFlagMap = getMasterFlags();
-    destroyMiniCluster();
-    waitForProperShutdown();
-    createMiniCluster(masterFlagMap, tsFlagMap);
-    waitForDatabaseToStart();
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tsFlagMap);
   }
 
   protected void enableVersionMatchingAndRestartCluster() throws Exception {
     enableVersionMatchingAndRestartCluster(true);
+  }
+
+  protected void disableWarmupModeAndRestartCluster() throws Exception {
+    warmup_random_mode = false;
+    destroyMiniCluster();
+    waitForProperShutdown();
+    createMiniCluster();
+    waitForDatabaseToStart();
   }
 
   protected static class Row implements Comparable<Row>, Cloneable {
@@ -468,13 +494,50 @@ protected void enableVersionMatchingAndRestartCluster(boolean higher_version_mat
     return true;
   }
 
+  protected static void executeQuery(Connection conn, String query, boolean shouldSucceed) {
+    try (Statement stmt = conn.createStatement()) {
+      ResultSet rs = stmt.executeQuery(query);
+      assertEquals(shouldSucceed, rs.next());
+      assertTrue("Expected the query to fail", shouldSucceed);
+    } catch (Exception e) {
+      LOG.info("Got an exception while executing the query", e);
+      assertFalse("Expected the query to succeed", shouldSucceed);
+    }
+  }
+
   protected abstract class TestConcurrently implements Runnable {
-    protected String dbName;
+    protected String oidObjName;
     public Boolean testSuccess;
 
-    public TestConcurrently(String dbName) {
-      this.dbName = dbName;
+    public TestConcurrently(String oidObjName) {
+      this.oidObjName = oidObjName;
       this.testSuccess = false;
     }
+  }
+
+  protected void assertConnectionStickyState(Statement stmt,
+                                           boolean expectedSticky)
+                                           throws Exception {
+    HashSet<Integer> pids = new HashSet<>();
+    ResultSet rs;
+    for (int i = 0; i < 10; i++) {
+      rs = stmt.executeQuery("SELECT pg_backend_pid()");
+      assertTrue(rs.next());
+      pids.add(rs.getInt(1));
+    }
+   if (expectedSticky)
+    assertTrue(pids.size() == 1);
+   else
+    assertTrue(pids.size() > 1);
+  }
+
+  protected void restartClusterWithFlags(
+      Map<String, String> additionalMasterFlags,
+      Map<String, String> additionalTserverFlags) throws Exception {
+    destroyMiniCluster();
+    waitForProperShutdown();
+
+    createMiniCluster(additionalMasterFlags, additionalTserverFlags);
+    waitForDatabaseToStart();
   }
 }

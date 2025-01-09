@@ -363,3 +363,21 @@ class GcpTagsMethod(AbstractInstancesMethod):
 
     def callback(self, args):
         self.cloud.modify_tags(args)
+
+
+class GcpQueryDeviceNames(AbstractMethod):
+    def __init__(self, base_command):
+        super(GcpQueryDeviceNames, self).__init__(base_command, "device_names")
+
+    def add_extra_args(self):
+        super(GcpQueryDeviceNames, self).add_extra_args()
+        self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
+                                 default="scratch", help="Storage type for GCP instances.")
+        self.parser.add_argument("--instance_type",
+                                 required=False,
+                                 help="The instance type to act on")
+        self.parser.add_argument("--num_volumes", type=int, default=0,
+                                 help="number of volumes to mount at the default path (/mnt/d#)")
+
+    def callback(self, args):
+        print(json.dumps(self.cloud.get_device_names(args)))

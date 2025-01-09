@@ -656,7 +656,7 @@ Status TSTabletManager::Init() {
   CleanupCheckpoints();
 
   // Search for tablets in the metadata dir.
-  vector<string> tablet_ids = VERIFY_RESULT(fs_manager_->ListTabletIds());
+  auto tablet_ids = VERIFY_RESULT(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
 
   InitLocalRaftPeerPB();
 
@@ -3260,8 +3260,7 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
   return Status::OK();
 }
 
-docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
-    tablet::RaftGroupMetadata* metadata) {
+docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
   HybridTime result = HybridTime::kMax;
   // CDC SDK safe time
   if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
@@ -3287,25 +3286,16 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
     result.MakeAtMost(*opt_xcluster_safe_time);
   }
 
+  // This logic in required to cleanup snapshot schedules that were removed at master.
   auto schedules = metadata->SnapshotSchedules();
   if (!schedules.empty()) {
     std::vector<SnapshotScheduleId> schedules_to_remove;
-    auto se = ScopeExit([&schedules_to_remove, metadata]() {
-      if (schedules_to_remove.empty()) {
-        return;
-      }
-      bool any_removed = false;
-      for (const auto& schedule_id : schedules_to_remove) {
-        any_removed = metadata->RemoveSnapshotSchedule(schedule_id) || any_removed;
-      }
-      if (any_removed) {
-        WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
-      }
-    });
-    std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
-    for (const auto& schedule_id : schedules) {
-      auto it = snapshot_schedule_allowed_history_cutoff_.find(schedule_id);
-      if (it == snapshot_schedule_allowed_history_cutoff_.end()) {
+    {
+      std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+      for (const auto& schedule_id : schedules) {
+        if (snapshot_schedule_allowed_history_cutoff_.contains(schedule_id)) {
+          continue;
+        }
         // We don't know this schedule.
         auto emplace_result =
             missing_snapshot_schedules_.emplace(schedule_id, snapshot_schedules_version_);
@@ -3317,18 +3307,18 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
           // One round is not enough, because schedule could be added after heartbeat processed on
           // master, but response not yet received on TServer.
           schedules_to_remove.push_back(schedule_id);
-          continue;
         }
-        return { HybridTime::kInvalid, HybridTime::kMin };
       }
-      if (!it->second) {
-        // Schedules does not have snapshots yet.
-        return { HybridTime::kInvalid, HybridTime::kMin };
-      }
-      result.MakeAtMost(it->second);
+    }
+    bool any_removed = false;
+    for (const auto& schedule_id : schedules_to_remove) {
+      any_removed = metadata->RemoveSnapshotSchedule(schedule_id) || any_removed;
+    }
+    if (any_removed) {
+      WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
     }
   }
-  VLOG(1) << "Setting the allowed historycutoff: " << result
+  VLOG(1) << "Setting the allowed history cutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
   return { HybridTime::kInvalid, result };
 }

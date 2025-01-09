@@ -666,10 +666,7 @@ class PgDocReadOp : public PgDocOp {
   // Template operation, used to fill in pgsql_ops_ by either assigning or cloning.
   PgsqlReadOpPtr read_op_;
 
-  // While sampling is in progress, number of scanned row is accumulated in this variable.
-  // After completion the value is extrapolated to account for not scanned partitions and estimate
-  // total number of rows in the table.
-  double sample_rows_ = 0;
+  double estimated_total_rows_ = 0;
 
   // Used internally for PopulateNextHashPermutationOps to keep track of which permutation should
   // be used to construct the next read_op.

@@ -24,6 +24,7 @@
 #include "yb/gutil/callback_forward.h"
 #include "yb/gutil/map-util.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory_usage.h"
@@ -34,6 +35,8 @@ namespace yb {
 
 static const char* const kXClusterMetricEntityName = "xcluster";
 static const char* const kCdcsdkMetricEntityName = "cdcsdk";
+
+static const char* const kServerLevelAggregationId = "server_level";
 
 class JsonWriter;
 
@@ -55,6 +58,7 @@ enum class MetricLevel {
 };
 
 using AggregationLevels = unsigned int;
+constexpr AggregationLevels kNoLevel = 0;
 constexpr AggregationLevels kServerLevel = 1 << 0;
 constexpr AggregationLevels kStreamLevel = 1 << 1;
 constexpr AggregationLevels kTableLevel = 1 << 2;
@@ -112,6 +116,11 @@ struct MetricPrometheusOptions : public MetricOptions {
   std::string server_blocklist_string = "";
 };
 
+struct MetricHelpAndType {
+  const char* help;
+  const char* type;
+};
+
 class MetricEntityPrototype {
  public:
   explicit MetricEntityPrototype(const char* name);
@@ -143,8 +152,9 @@ enum AggregationFunction {
 
 class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
  public:
-  typedef std::map<const MetricPrototype*, scoped_refptr<Metric> > MetricMap;
-  typedef std::unordered_map<std::string, std::string> AttributeMap;
+  using MetricMap = std::map<const MetricPrototype*, scoped_refptr<Metric>>;
+  using AttributeMap = std::unordered_map<std::string, std::string>;
+  using NonPreAggregatedMetrics = std::vector<scoped_refptr<Metric>>;
 
   template<typename Metric, typename PrototypePtr, typename ...Args>
   scoped_refptr<Metric> FindOrCreateMetric(PrototypePtr proto, Args&&... args);
@@ -161,8 +171,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
                      const MetricJsonOptions& opts) const;
 
   Status WriteForPrometheus(PrometheusWriter* writer,
-                            const MetricPrometheusOptions& opts,
-                            std::vector<MetricMap>* owned_metric_map_holder = nullptr);
+                            const MetricPrometheusOptions& opts);
 
   const MetricMap& UnsafeMetricsMapForTests() const { return metric_map_; }
 
@@ -192,7 +201,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   const MetricEntityPrototype& prototype() const { return *prototype_; }
 
-  void Remove(const MetricPrototype* proto);
+  void RemoveFromMetricMap(const MetricPrototype* proto);
 
   bool TEST_ContainsMetricName(const std::string& metric_name) const;
 
@@ -202,9 +211,20 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   friend class MetricRegistry;
   friend class RefCountedThreadSafe<MetricEntity>;
 
-  MetricEntity(const MetricEntityPrototype* prototype, std::string id, AttributeMap attributes,
-               std::shared_ptr<MemTracker> mem_tracker = nullptr);
+  MetricEntity(
+      const MetricEntityPrototype* prototype,
+      std::string id,
+      AttributeMap attributes,
+      MetricsAggregator* metrics_aggregator,
+      std::shared_ptr<MemTracker> mem_tracker = nullptr);
+
   ~MetricEntity();
+
+  // Update the prometheus_attributes_ based on current attributes_.
+  // Return AggregationLevels that this entity should be aggregated at.
+  AggregationLevels ReconstructPrometheusAttributes() EXCLUDES(lock_);
+
+  AggregationLevels ReconstructPrometheusAttributesUnlocked() REQUIRES(lock_);
 
   // Ensure that the given metric prototype is allowed to be instantiated
   // within this entity. This entity's type must match the expected entity
@@ -217,21 +237,48 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   MetricMap GetFilteredMetricMap(
       const std::optional<std::vector<std::string>>& match_params_optional) const REQUIRES(lock_);
 
+  std::string LogPrefix() const;
+
+  void RebuildNonPreAggregatedMetricsIfNeeded() REQUIRES(lock_);
+
   const MetricEntityPrototype* const prototype_;
   const std::string id_;
 
   mutable simple_spinlock lock_;
 
-  // Map from metric name to Metric object. Protected by lock_.
-  MetricMap metric_map_;
+  // Map from metric prototype to Metric object. Metrics in this map can either be pre-aggregated
+  // metrics managed by aggregator_, or non-pre-aggregated metrics whose prototypes are stored in
+  // non_pre_aggregated_metrics_.
+  // Invariant: need_rebuild_non_pre_aggregated_metrics_ must be set to true whenever
+  // a non-pre-aggregated metric is added to or removed from metric_map_.
+  MetricMap metric_map_ GUARDED_BY(lock_);
 
-  // The key/value attributes. Protected by lock_
-  AttributeMap attributes_;
+  bool need_rebuild_non_pre_aggregated_metrics_ GUARDED_BY(lock_) = true;
+
+  // Vector holding metric prototypes from metric_map_ that are not pre-aggregated.
+  // These metrics can either be scrape time aggregated metric or require no aggregation.
+  // Invariant: Valid only when need_rebuild_non_pre_aggregated_metrics_ is false.
+  std::shared_ptr<const NonPreAggregatedMetrics> non_pre_aggregated_metrics_
+      GUARDED_BY(lock_);
+
+  // The key/value attributes.
+  AttributeMap attributes_ GUARDED_BY(lock_);
+
+  // prometheus_attributes_ holds both Prometheus-specific, and general attributes
+  // from attributes_. It's used for Prometheus metric scraping.
+  AttributeMap prometheus_attributes_ GUARDED_BY(lock_);
+
+  // Empty value means metrics under this entity should not be pre-aggregated.
+  std::string aggregation_id_for_pre_aggregation_ GUARDED_BY(lock_);
+
+  MetricsAggregator* metrics_aggregator_;
 
   std::weak_ptr<MemTracker> mem_tracker_ GUARDED_BY(lock_);
 
-  // The set of metrics which should never be retired. Protected by lock_.
-  std::vector<scoped_refptr<Metric> > never_retire_metrics_;
+  const AggregationLevels default_aggregation_levels_;
+
+  // The set of metrics which should never be retired.
+  std::vector<scoped_refptr<Metric>> never_retire_metrics_ GUARDED_BY(lock_);
 };
 
 template<typename T>
@@ -248,6 +295,19 @@ scoped_refptr<Metric> MetricEntity::FindOrCreateMetric(PrototypePtr proto, Args&
   auto m = down_cast<Metric*>(FindPtrOrNull(metric_map_, std::to_address(proto)).get());
   if (!m) {
     m = new Metric(std::move(proto), std::forward<Args>(args)...);
+
+    if (!aggregation_id_for_pre_aggregation_.empty()) {
+      WARN_NOT_OK(m->SetUpPreAggregationForPrometheus(
+          metrics_aggregator_, prometheus_attributes_, default_aggregation_levels_,
+          aggregation_id_for_pre_aggregation_),
+          Format("Failed to setup pre-aggregation for metric: $0", m->prototype()->name()));
+    }
+
+    if (!m->IsPreAggregated()) {
+      // non_pre_aggregated_metrics_ will be rebuilt during the next Prometheus scrape.
+      need_rebuild_non_pre_aggregated_metrics_ = true;
+    }
+
     InsertOrDie(&metric_map_, m->prototype(), m);
     AddConsumption(*m);
   }
@@ -261,5 +321,16 @@ scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype)
 }
 
 void WriteRegistryAsJson(JsonWriter* writer);
+
+void ConvertToServerLevelAttributes(MetricEntity::AttributeMap* non_server_level_attributes);
+
+// Asserts that the actual attributes match the expected attributes.
+// Note that if aggregation_id is at the server level then ignores expected attributes that
+// are not at the server level attributes by calling ConvertToServerLevelAttributes.
+void AssertAttributesMatchExpectation(
+    const std::string& metric_name,
+    const std::string& aggregation_id,
+    const MetricEntity::AttributeMap& actual_attributes,
+    MetricEntity::AttributeMap expected_attributes);
 
 } // namespace yb

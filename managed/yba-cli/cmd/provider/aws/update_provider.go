@@ -390,7 +390,7 @@ func init() {
 			" The default for SSH Port is 22, IMDSv2 ("+
 			"This should be true if the Image bundle requires Instance Metadata Service v2)"+
 			" is false. Default marks the image bundle as default for the provider. "+
-			"Allowed values for architecture are x86_64 and arm64."+
+			"Allowed values for architecture are x86_64 and arm64/aarch64."+
 			"Each image bundle can be added using separate --add-image-bundle flag.")
 	updateAWSProviderCmd.Flags().StringArray("add-image-bundle-region-override", []string{},
 		"[Optional] Add Image bundle region overrides associated with the provider. "+
@@ -709,7 +709,8 @@ func editAWSImageBundles(
 					if len(imageBundle["imdsv2"]) != 0 {
 						useIMDSv2, err := strconv.ParseBool(imageBundle["imdsv2"])
 						if err != nil {
-							errMessage := err.Error() + " Setting default as false\n"
+							errMessage := err.Error() +
+								" Invalid or missing value provided for 'imdsv2'. Setting it to 'false'.\n"
 							logrus.Errorln(
 								formatter.Colorize(errMessage, formatter.YellowColor),
 							)
@@ -722,7 +723,8 @@ func editAWSImageBundles(
 					if len(imageBundle["default"]) != 0 {
 						defaultBundle, err := strconv.ParseBool(imageBundle["default"])
 						if err != nil {
-							errMessage := err.Error() + " Setting default as false\n"
+							errMessage := err.Error() +
+								" Invalid or missing value provided for 'imdsv2'. Setting it to 'false'.\n"
 							logrus.Errorln(
 								formatter.Colorize(errMessage, formatter.YellowColor),
 							)
@@ -800,7 +802,8 @@ func addAWSImageBundles(
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
@@ -809,7 +812,8 @@ func addAWSImageBundles(
 
 		useIMDSv2, err := strconv.ParseBool(bundle["imdsv2"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

@@ -768,6 +768,7 @@ static char *recovery_target_string;
 static char *recovery_target_xid_string;
 static char *recovery_target_name_string;
 static char *recovery_target_lsn_string;
+static char *restrict_nonsystem_relation_kind_string;
 
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
@@ -2369,12 +2370,11 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_silence_advisory_locks_not_supported_error", PGC_USERSET, LOCK_MANAGEMENT,
 			gettext_noop("Silence the advisory locks not supported error message."),
-			gettext_noop(
-					"Enable this with high caution. It was added to avoid disruption for users who were "
-					"already using advisory locks but seeing success messages without the lock really being "
-					"acquired. Such users should take the necessary steps to modify their application to "
-					"remove usage of advisory locks. See https://github.com/yugabyte/yugabyte-db/issues/3642 "
-					"for details."),
+			gettext_noop("Enable this with high caution. It was added to avoid disruption for users who were "
+						 "already using advisory locks but seeing success messages without the lock really being "
+						 "acquired. Such users should take the necessary steps to modify their application to "
+						 "remove usage of advisory locks. See https://github.com/yugabyte/yugabyte-db/issues/3642 "
+						 "for details."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_silence_advisory_locks_not_supported_error,
@@ -2593,6 +2593,19 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_fail_next_ddl,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_skip_data_insert_for_table_rewrite", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("If enabled, any DDL operations that cause a table rewrite "
+						 "will skip the data loading phase. "
+						 "WARNING: Incorrect usage will result in data loss."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_skip_data_insert_for_table_rewrite,
 		false,
 		NULL, NULL, NULL
 	},
@@ -3046,6 +3059,39 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_query_diagnostics,
 		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Enable advisory lock feature"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_advisory_locks,
+		false,
+	},
+
+	{
+		{"yb_ignore_freeze_with_copy", PGC_USERSET, ERROR_HANDLING_OPTIONS,
+			gettext_noop("Ignore the FREEZE flag on COPY FROM command."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ignore_freeze_with_copy,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_docdb_vector_type", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Autoflag to enable using the DocDB Vector type. "
+						 "Not to be touched by users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_docdb_vector_type,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -4682,11 +4728,11 @@ static struct config_int ConfigureNamesInt[] =
 		/* TODO(jason): once it becomes stable, this can be PGC_USERSET. */
 		{"yb_insert_on_conflict_read_batch_size", PGC_SUSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Maximum batch size for arbiter index reads during INSERT ON CONFLICT."),
-			gettext_noop("A value of 1 disables this feature."),
+			gettext_noop("A value of 0 disables this feature."),
 			0
 		},
 		&yb_insert_on_conflict_read_batch_size,
-		1, 1, INT_MAX,
+		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -5218,10 +5264,9 @@ static struct config_real ConfigureNamesReal[] =
 	},
 	{
 		{"yb_transaction_priority", PGC_INTERNAL, CLIENT_CONN_STATEMENT,
-			gettext_noop(
-					"[DEPRECATED - instead use the yb_get_current_transaction_priority() function]. Gets the "
-					"transaction priority used by the current active distributed transaction in the session. "
-					"If no distributed transaction is active, return 0"),
+			gettext_noop("[DEPRECATED - instead use the yb_get_current_transaction_priority() function]. Gets the "
+						 "transaction priority used by the current active distributed transaction in the session. "
+						 "If no distributed transaction is active, return 0"),
 			NULL
 		},
 		&yb_transaction_priority,
@@ -5765,10 +5810,9 @@ static struct config_string ConfigureNamesString[] =
 
 	{
 		{"yb_effective_transaction_isolation_level", PGC_INTERNAL, CLIENT_CONN_STATEMENT,
-			gettext_noop(
-					"[DEPRECATED - instead use the yb_get_effective_transaction_isolation_level() function]. "
-					"Shows the effective YugabyteDB transaction isolation level used by the current active "
-					"transaction in the session."),
+			gettext_noop("[DEPRECATED - instead use the yb_get_effective_transaction_isolation_level() function]. "
+						 "Shows the effective YugabyteDB transaction isolation level used by the current active "
+						 "transaction in the session."),
 			NULL,
 			GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
@@ -5789,16 +5833,14 @@ static struct config_string ConfigureNamesString[] =
 
 	{
 		{"yb_read_time", PGC_SUSET, CLIENT_CONN_STATEMENT,
-			gettext_noop(
-				"Allows querying the database as of a point in time in the past."
-				" Takes a unix timestamp in microseconds."
-				" Zero means reading data as of current time."),
-			gettext_noop(
-				"User should set this variable with caution. Currently, it can"
-				" only read old data without schema changes. In other words, it should not be"
-				" set to a timestamp before a DDL operation has been performed."
-				" Potential corruption can happen in case (1) the variable is set to a timestamp"
-				" before most recent DDL. (2) DDL is performed while it is set to nonzero.")
+			gettext_noop("Allows querying the database as of a point in time in the past."
+						 " Takes a unix timestamp in microseconds."
+						 " Zero means reading data as of current time."),
+			gettext_noop("User should set this variable with caution. Currently, it can"
+						 " only read old data without schema changes. In other words, it should not be"
+						 " set to a timestamp before a DDL operation has been performed."
+						 " Potential corruption can happen in case (1) the variable is set to a timestamp"
+						 " before most recent DDL. (2) DDL is performed while it is set to nonzero.")
 		},
 		&yb_read_time_string,
 		"0",
@@ -6092,6 +6134,17 @@ static struct config_string ConfigureNamesString[] =
 		&backtrace_functions,
 		"",
 		check_backtrace_functions, assign_backtrace_functions, NULL
+	},
+
+	{
+		{"restrict_nonsystem_relation_kind", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets relation kinds of non-system relation to restrict use"),
+			NULL,
+			GUC_LIST_INPUT | GUC_NOT_IN_SAMPLE
+		},
+		&restrict_nonsystem_relation_kind_string,
+		"",
+		check_restrict_nonsystem_relation_kind, assign_restrict_nonsystem_relation_kind, NULL
 	},
 
 	{
@@ -6578,19 +6631,18 @@ static struct config_enum ConfigureNamesEnum[] =
 		{
 			"yb_read_after_commit_visibility", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Control read-after-commit-visibility guarantee."),
-			gettext_noop(
-				"This GUC is intended as a crutch for users migrating from PostgreSQL and new to"
-				" read restart errors. Users can now largely avoid these errors when"
-				" read-after-commit-visibility guarantee is not a strong requirement."
-				" This option cannot be set from within a transaction block."
-				" Configure one of the following options:"
-				" (a) strict: Default Behavior. The read-after-commit-visibility guarantee is"
-				" maintained by the database. However, users may see read restart errors that"
-				" show \"ERROR:  Query error: Restart read required at: ...\". The database"
-				" attempts to retry on such errors internally but that is not always possible."
-				" (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
-				" relaxed. Read only statements/transactions do not see read restart errors but"
-				" may miss recent updates with staleness bounded by clock skew."
+			gettext_noop("This GUC is intended as a crutch for users migrating from PostgreSQL and new to"
+						 " read restart errors. Users can now largely avoid these errors when"
+						 " read-after-commit-visibility guarantee is not a strong requirement."
+						 " This option cannot be set from within a transaction block."
+						 " Configure one of the following options:"
+						 " (a) strict: Default Behavior. The read-after-commit-visibility guarantee is"
+						 " maintained by the database. However, users may see read restart errors that"
+						 " show \"ERROR:  Query error: Restart read required at: ...\". The database"
+						 " attempts to retry on such errors internally but that is not always possible."
+						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
+						 " relaxed. Read only statements/transactions do not see read restart errors but"
+						 " may miss recent updates with staleness bounded by clock skew."
 			),
 			0
 		},
@@ -10912,7 +10964,7 @@ void
 ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 {
 	GucAction	action = stmt->is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET;
-	bool 		YbDbAdminCanSet = false;
+	bool YbDbAdminCanSet = false;
 
 	if (IsYbDbAdminUser(GetUserId()))
 	{
@@ -15110,8 +15162,8 @@ check_transaction_priority_lower_bound(double *newval, void **extra, GucSource s
 						(errmsg("priorities don't exist for read committed isolation transations, the "
 										"transaction will wait for conflicting transactions to commit before "
 										"proceeding"),
-						 errdetail("this also applies to other isolation levels if using Wait-on-Conflict "
-											"concurrency control")));
+						 errdetail("This also applies to other isolation levels if using Wait-on-Conflict "
+											"concurrency control.")));
 	}
 	return true;
 }
@@ -15131,8 +15183,8 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 						(errmsg("priorities don't exist for read committed isolation transations, the "
 										"transaction will wait for conflicting transactions to commit before "
 										"proceeding"),
-						 errdetail("this also applies to other isolation levels if using Wait-on-Conflict "
-											"concurrency control")));
+						 errdetail("This also applies to other isolation levels if using Wait-on-Conflict "
+											"concurrency control.")));
 	}
 	return true;
 }

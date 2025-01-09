@@ -571,7 +571,7 @@ TEST_F_EX(ClientStressTest, IncreaseReplicationFactorUnderLoad, RF1ClientStressT
 
   ASSERT_OK(cluster_->AddTabletServer(/* start_cql_proxy= */ false, {"--time_source=skewed,-500"}));
 
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(2);
   ASSERT_OK(work.client().SetReplicationInfo(replication_info));
 

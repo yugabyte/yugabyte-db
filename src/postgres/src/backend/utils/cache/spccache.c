@@ -201,8 +201,8 @@ get_tablespace(Oid spcid)
 GeolocationDistance get_tablespace_distance(Oid spcid)
 {
 	Assert(IsYugaByteEnabled());
-    if (spcid == InvalidOid)
-       return UNKNOWN_DISTANCE;
+	if (spcid == InvalidOid)
+		return UNKNOWN_DISTANCE;
 
 	TableSpaceCacheEntry *spc = get_tablespace(spcid);
 	if (spc->opts.yb_opts == NULL)
@@ -267,12 +267,18 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 			continue;
 
 		GeolocationDistance current_dist;
-		const char *tsp_cloud = text_to_cstring(
-			json_get_denormalized_value(json_element, cloudKey));
-		const char *tsp_region = text_to_cstring(
-			json_get_denormalized_value(json_element, regionKey));
-		const char *tsp_zone = text_to_cstring(
-			json_get_denormalized_value(json_element, zoneKey));
+		const char *tsp_cloud;
+		const char *tsp_region;
+		const char *tsp_zone;
+		tsp_cloud =
+			text_to_cstring(json_get_denormalized_value(json_element,
+														cloudKey));
+		tsp_region =
+			text_to_cstring(json_get_denormalized_value(json_element,
+														regionKey));
+		tsp_zone =
+			text_to_cstring(json_get_denormalized_value(json_element,
+														zoneKey));
 
 
 		/* are the current cloud and the given cloud the same */

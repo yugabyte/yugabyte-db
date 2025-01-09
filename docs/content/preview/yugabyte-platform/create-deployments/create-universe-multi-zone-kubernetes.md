@@ -96,9 +96,9 @@ Optionally, complete the **G-Flags** section as follows:
 
   - [Edit configuration flags](../../manage-deployments/edit-config-flags)
 
-  - [YB-Master configuration flags](../../../reference/configuration/yb-master/#configuration-flags)
+  - [YB-Master configuration flags](../../../reference/configuration/yb-master/)
 
-  - [YB-TServer configuration flags](../../../reference/configuration/yb-tserver/#configuration-flags)
+  - [YB-TServer configuration flags](../../../reference/configuration/yb-tserver/)
 
 ### Configure Helm overrides
 

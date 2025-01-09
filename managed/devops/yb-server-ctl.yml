@@ -69,6 +69,19 @@
           - name: Reload daemon
             shell: "{{ systemd_prefix }} daemon-reload"
           when: command != "stop-destroy"
+        - name: Check if the logs cleanup script exists
+          stat:
+            path: "{{ yb_home_dir }}/bin/zip_purge_yb_logs.sh"
+          register: logs_cleanup_script
+        - name: Update the logs purge script if it already exists
+          template:
+            src: "roles/configure-cluster-server/templates/zip_purge_yb_logs.sh.j2"
+            dest: "{{ yb_home_dir }}/bin/zip_purge_yb_logs.sh"
+            force: yes
+            mode: 0755
+            owner: "{{ user_name }}"
+            group: "{{ user_name }}"
+          when: logs_cleanup_script.stat.exists
 
         - name: Stop the {{ systemd_process }} process with systemd on destroy
           block:

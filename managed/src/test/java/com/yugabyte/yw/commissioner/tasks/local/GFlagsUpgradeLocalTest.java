@@ -33,8 +33,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.io.BufferedReader;
-import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -488,7 +486,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
   public void testNodesAreSafeToTakeDownFails() throws InterruptedException, IOException {
     // So that we will do only one check.
     RuntimeConfigEntry.upsertGlobal(
-        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "5s");
+        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "65s");
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = getGFlags("TEST_set_tablet_follower_lag_ms", "20000");
     Universe universe = createUniverse(userIntent);
@@ -566,7 +564,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
   public void testUpgradeFailsDuringExecution() throws InterruptedException, IOException {
     // So that we will do only one check.
     RuntimeConfigEntry.upsertGlobal(
-        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "5s");
+        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "65s");
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(new HashMap<>(), new HashMap<>());
     Universe universe = createUniverse(userIntent);
@@ -682,8 +680,8 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     upgadeParams.upgradeOption = upgradeOption;
     upgadeParams.expectedUniverseVersion = universe.getVersion();
     upgadeParams.clusters = universe.getUniverseDetails().clusters;
-    upgadeParams.sleepAfterMasterRestartMillis = 10000;
     upgadeParams.sleepAfterTServerRestartMillis = 10000;
+    upgadeParams.sleepAfterMasterRestartMillis = 10000;
     return upgadeParams;
   }
 
@@ -717,28 +715,5 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             });
       }
     }
-  }
-
-  private Map<String, String> getDiskFlags(
-      NodeDetails nodeDetails, Universe universe, UniverseTaskBase.ServerType serverType) {
-    Map<String, String> results = new HashMap<>();
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        universe.getCluster(nodeDetails.placementUuid).userIntent;
-    String gflagsFile =
-        localNodeManager.getNodeGFlagsFile(
-            userIntent, serverType, localNodeManager.getNodeInfo(nodeDetails));
-    try (FileReader fr = new FileReader(gflagsFile);
-        BufferedReader br = new BufferedReader(fr)) {
-      String line;
-      while ((line = br.readLine()) != null) {
-        String[] split = line.split("=");
-        String key = split[0].substring(2);
-        String val = split.length == 1 ? "" : split[1];
-        results.put(key, val);
-      }
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-    return results;
   }
 }

@@ -32,6 +32,10 @@ tmp_directory = {{ ynp_config['ynp'].tmp_directory }}
 
 [Preprovision]
 
+[MountEpemeralDrive]
+
+[InstallPackages]
+
 [ConfigureChrony]
 chrony_servers = "{{ ynp_config['ynp'].chrony_servers | join(', ') }}"
 
@@ -67,6 +71,8 @@ stack = 8192
 cpu = unlimited
 nproc = 12000
 locks = unlimited
+
+[BackupUtils]
 
 [ConfigureNodeExporter]
 prometheus_user = prometheus

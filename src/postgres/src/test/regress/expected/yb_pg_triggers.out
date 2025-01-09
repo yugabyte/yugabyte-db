@@ -3079,7 +3079,8 @@ CREATE TRIGGER tbl_insert_trigger AFTER INSERT
   ON tbl FOR EACH ROW EXECUTE PROCEDURE trigger_func();
 -- A warning should be shown disabling the ROWS_PER_TRANSACTION value.
 COPY tbl FROM STDIN WITH (ROWS_PER_TRANSACTION 2);
-WARNING:  Batched COPY is not supported on table with non RI trigger. Defaulting to using one transaction for the entire copy.
+WARNING:  batched COPY is not supported on table with non RI trigger
+DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Set rows_per_transaction option to `0` to disable batching and remove this warning.
 DROP TRIGGER tbl_insert_trigger ON tbl;
 DROP TABLE shadow_tbl;

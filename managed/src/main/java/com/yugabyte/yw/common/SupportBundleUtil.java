@@ -17,6 +17,7 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.KubernetesManager.RoleData;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Audit;
@@ -50,6 +51,7 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -130,6 +132,34 @@ public class SupportBundleUtil {
     return dateNMinutesAgo;
   }
 
+  /**
+   * Simplified the following 4 cases to extract appropriate start and end date 1. If both of the
+   * dates are given and valid 2. If only the start date is valid, filter from startDate till the
+   * end 3. If only the end date is valid, filter from the beginning till endDate 4. Default : If no
+   * dates are specified, download all the files from last n days
+   */
+  public Pair<Date, Date> getValidStartAndEndDates(Config config, Date sDate, Date eDate)
+      throws Exception {
+    Date startDate, endDate;
+    boolean startDateIsValid = isValidDate(sDate);
+    boolean endDateIsValid = isValidDate(eDate);
+    if (!startDateIsValid && !endDateIsValid) {
+      int default_date_range = config.getInt("yb.support_bundle.default_date_range");
+      endDate = getTodaysDate();
+      startDate =
+          DateUtils.truncate(getDateNDaysAgo(endDate, default_date_range), Calendar.DAY_OF_MONTH);
+    } else {
+      // Strip the date object of the time and set only the date.
+      // This will ensure that we collect files inclusive of the start date.
+      startDate =
+          startDateIsValid
+              ? DateUtils.truncate(sDate, Calendar.DAY_OF_MONTH)
+              : new Date(Long.MIN_VALUE);
+      endDate = endDateIsValid ? eDate : new Date(Long.MAX_VALUE);
+    }
+    return new Pair<Date, Date>(startDate, endDate);
+  }
+
   public List<String> sortDatesWithPattern(List<String> datesList, String sdfPattern) {
     // Sort the list of dates based on the given 'SimpleDateFormat' pattern
     List<String> sortedList = new ArrayList<String>(datesList);
@@ -158,11 +188,11 @@ public class SupportBundleUtil {
    * @param regexList list of regex strings to match against any of them
    * @return list of paths after regex filtering
    */
-  public List<Path> filterList(List<Path> list, List<String> regexList) {
-    List<Path> result = new ArrayList<Path>();
-    for (Path entry : list) {
+  public List<String> filterList(List<String> list, List<String> regexList) {
+    List<String> result = new ArrayList<String>();
+    for (String entry : list) {
       for (String regex : regexList) {
-        if (entry.toString().matches(regex)) {
+        if (entry.matches(regex)) {
           result.add(entry);
         }
       }
@@ -282,12 +312,12 @@ public class SupportBundleUtil {
    * @return list of paths after filtering based on dates.
    * @throws ParseException
    */
-  public List<Path> filterFilePathsBetweenDates(
-      List<Path> logFilePaths, List<String> fileRegexList, Date startDate, Date endDate)
+  public List<String> filterFilePathsBetweenDates(
+      List<String> logFilePaths, List<String> fileRegexList, Date startDate, Date endDate)
       throws ParseException {
 
     // Final filtered log paths
-    List<Path> filteredLogFilePaths = new ArrayList<>();
+    List<String> filteredLogFilePaths = new ArrayList<>();
 
     // Initial filtering of the file names based on regex
     logFilePaths = filterList(logFilePaths, fileRegexList);
@@ -300,22 +330,21 @@ public class SupportBundleUtil {
     //     "/mnt/d0/master/logs/log.INFO.20221121-000000.log"]}
     // The reason we don't use a map of <fileType, List<Date>> is because we need to return the
     // entire path.
-    Map<String, List<Path>> fileTypeToDate =
+    Map<String, List<String>> fileTypeToDate =
         logFilePaths.stream()
             .collect(
-                Collectors.groupingBy(
-                    p -> extractFileTypeFromFileNameAndRegex(p.toString(), fileRegexList)));
+                Collectors.groupingBy(p -> extractFileTypeFromFileNameAndRegex(p, fileRegexList)));
 
     // Loop through each file type
     for (String fileType : fileTypeToDate.keySet()) {
       // Sort the files in descending order of extracted date
       Collections.sort(
           fileTypeToDate.get(fileType),
-          new Comparator<Path>() {
+          new Comparator<String>() {
             @Override
-            public int compare(Path path1, Path path2) {
-              Date date1 = extractDateFromFileNameAndRegex(path1.toString(), fileRegexList);
-              Date date2 = extractDateFromFileNameAndRegex(path2.toString(), fileRegexList);
+            public int compare(String path1, String path2) {
+              Date date1 = extractDateFromFileNameAndRegex(path1, fileRegexList);
+              Date date2 = extractDateFromFileNameAndRegex(path2, fileRegexList);
               return date2.compareTo(date1);
             }
           });
@@ -323,9 +352,8 @@ public class SupportBundleUtil {
       // Filter file paths according to start and end dates
       // Add filtered date paths to final list
       Date extraStartDate = null;
-      for (Path filePathToCheck : fileTypeToDate.get(fileType)) {
-        Date dateToCheck =
-            extractDateFromFileNameAndRegex(filePathToCheck.toString(), fileRegexList);
+      for (String filePathToCheck : fileTypeToDate.get(fileType)) {
+        Date dateToCheck = extractDateFromFileNameAndRegex(filePathToCheck, fileRegexList);
         if (checkDateBetweenDates(dateToCheck, startDate, endDate)) {
           filteredLogFilePaths.add(filePathToCheck);
         }
@@ -337,7 +365,6 @@ public class SupportBundleUtil {
         }
       }
     }
-
     return filteredLogFilePaths;
   }
 
@@ -791,7 +818,7 @@ public class SupportBundleUtil {
   public void getCustomerMetadata(Customer customer, String destDir) {
     // Gather metadata.
     JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(customer), RedactionTarget.APIS);
+        RedactingService.filterSecretFields(Json.toJson(customer), RedactionTarget.LOGS);
 
     // Save the above collected metadata.
     saveMetadata(customer, destDir, jsonData, "customer.json");
@@ -802,7 +829,7 @@ public class SupportBundleUtil {
     List<UniverseResp> universes =
         customer.getUniverses().stream().map(u -> new UniverseResp(u)).collect(Collectors.toList());
     JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(universes), RedactionTarget.APIS);
+        RedactingService.filterSecretFields(Json.toJson(universes), RedactionTarget.LOGS);
 
     // Save the above collected metadata.
     saveMetadata(customer, destDir, jsonData, "universes.json");
@@ -813,7 +840,7 @@ public class SupportBundleUtil {
     List<Provider> providers = Provider.getAll(customer.getUuid());
     providers.forEach(CloudInfoInterface::mayBeMassageResponse);
     JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(providers), RedactionTarget.APIS);
+        RedactingService.filterSecretFields(Json.toJson(providers), RedactionTarget.LOGS);
 
     // Save the above collected metadata.
     saveMetadata(customer, destDir, jsonData, "providers.json");
@@ -823,7 +850,7 @@ public class SupportBundleUtil {
     // Gather metadata.
     List<Users> users = Users.getAll(customer.getUuid());
     JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(users), RedactionTarget.APIS);
+        RedactingService.filterSecretFields(Json.toJson(users), RedactionTarget.LOGS);
 
     // Save the above collected metadata.
     saveMetadata(customer, destDir, jsonData, "users.json");
@@ -867,7 +894,7 @@ public class SupportBundleUtil {
             .filter(it -> providerUUIDs.contains(it.getProvider().getUuid()))
             .collect(Collectors.toList());
     JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(instanceTypes), RedactionTarget.APIS);
+        RedactingService.filterSecretFields(Json.toJson(instanceTypes), RedactionTarget.LOGS);
 
     // Save the above collected metadata.
     saveMetadata(customer, destDir, jsonData, "instance_type.json");

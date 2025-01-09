@@ -40,7 +40,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestBatchCopyFrom.class);
 
   private static final String INVALID_BATCH_OPTION_USAGE_WARNING_MSG =
-      "Batched COPY is not supported";
+      "batched COPY is not supported";
   private static final String INVALID_BATCH_SIZE_ERROR_MSG =
       "argument to option \"rows_per_transaction\" must be a positive integer";
   private static final String INVALID_NUM_SKIPPED_ROWS_ERROR_MSG =
@@ -724,8 +724,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
         statement,
         String.format("COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)", tableName, absFilePath),
         Arrays.asList(
-          "Batched COPY is not supported on table with non RI trigger. " +
-            "Defaulting to using one transaction for the entire copy.",
+          "batched COPY is not supported on table with non RI trigger",
           "trigger_func(before_ins_stmt) called: action = INSERT, when = BEFORE, level = STATEMENT",
           "trigger_func(after_ins_stmt) called: action = INSERT, when = AFTER, level = STATEMENT"));
 

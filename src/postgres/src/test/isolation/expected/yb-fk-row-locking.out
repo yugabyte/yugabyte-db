@@ -3,10 +3,10 @@ Parsed test spec with 2 sessions
 
 starting permutation: s1_priority s2_priority s1_serializable_txn s1_fk_pkey_insert s2_update s1_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s1_fk_pkey_insert:
@@ -23,10 +23,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_repeatable_read_txn s1_fk_pkey_insert s2_update s1_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1_fk_pkey_insert:
@@ -43,10 +43,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_read_committed_txn s1_fk_pkey_insert s2_update s1_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s1_fk_pkey_insert:
@@ -63,10 +63,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_serializable_txn s2_serializable_txn s1_fk_pkey_insert s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s2_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
@@ -85,10 +85,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_repeatable_read_txn s2_repeatable_read_txn s1_fk_pkey_insert s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
@@ -107,10 +107,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_read_committed_txn s2_read_committed_txn s1_fk_pkey_insert s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
@@ -129,10 +129,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_serializable_txn s2_serializable_txn s1_select_for_key_share s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s2_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
@@ -155,10 +155,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_read_committed_txn s2_read_committed_txn s1_select_for_key_share s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
@@ -180,10 +180,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_repeatable_read_txn s2_repeatable_read_txn s1_select_for_key_share s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
@@ -205,10 +205,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_read_committed_txn s2_read_committed_txn s1_select_for_share s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
@@ -231,10 +231,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_repeatable_read_txn s2_repeatable_read_txn s1_select_for_share s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
@@ -257,10 +257,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_read_committed_txn s2_read_committed_txn s1_select_for_no_key_update s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
@@ -283,10 +283,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_repeatable_read_txn s2_repeatable_read_txn s1_select_for_no_key_update s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
@@ -309,10 +309,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_read_committed_txn s2_read_committed_txn s1_select_for_update s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
@@ -335,10 +335,10 @@ product_id|date_added              |name|price|discounted_price
 
 starting permutation: s1_priority s2_priority s1_repeatable_read_txn s2_repeatable_read_txn s1_select_for_update s2_update s1_commit s2_commit s1_select
 s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_priority: SET yb_transaction_priority_lower_bound = .9;
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
-DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_priority: SET yb_transaction_priority_upper_bound= .1;
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;

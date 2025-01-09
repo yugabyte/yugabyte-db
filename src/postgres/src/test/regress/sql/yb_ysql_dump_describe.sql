@@ -15,3 +15,5 @@
  \d p2
  SELECT yb_get_range_split_clause('c1'::regclass);
  SELECT num_tablets FROM yb_table_properties('c2'::regclass);
+ -- indexes
+ select * from pg_indexes where schemaname != 'pg_catalog';

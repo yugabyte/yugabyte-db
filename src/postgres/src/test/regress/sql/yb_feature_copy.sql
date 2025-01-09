@@ -430,6 +430,18 @@ copy main_table from stdin with (format csv, disable_fk_check);
 
 select * from main_table order by a;
 
+-- FREEZE
+truncate copy_options;
+copy copy_options from stdin with (format csv, freeze);
+1,1
+2,2
+3,3
+4,4
+5,5
+\.
+
+select * from copy_options order by a;
+
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE x;

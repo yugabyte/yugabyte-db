@@ -115,24 +115,6 @@ using dockv::SchemaPackingStorage;
 namespace {
 YB_DEFINE_ENUM(OpType, (INSERT)(UPDATE)(DELETE));
 
-Result<TransactionStatusResult> GetTransactionStatus(
-    const TransactionId& txn_id,
-    const HybridTime& hybrid_time,
-    tablet::TransactionParticipant* txn_participant) {
-  static const std::string reason = "cdc";
-
-  std::promise<Result<TransactionStatusResult>> txn_status_promise;
-  auto future = txn_status_promise.get_future();
-  auto callback = [&txn_status_promise](Result<TransactionStatusResult> result) {
-    txn_status_promise.set_value(std::move(result));
-  };
-
-  txn_participant->RequestStatusAt(
-      {&txn_id, hybrid_time, hybrid_time, 0, &reason, TransactionLoadFlags{}, callback});
-  future.wait();
-  return future.get();
-}
-
 void SetOperation(RowMessage* row_message, OpType type, const Schema& schema) {
   switch (type) {
     case OpType::INSERT:
@@ -2757,7 +2739,6 @@ Status GetChangesForCDCSDK(
         break;
       }
 
-      auto txn_participant = tablet_ptr->transaction_participant();
       have_more_messages = HaveMoreMessages(true);
 
       Schema current_schema = *tablet_ptr->metadata()->schema();
@@ -2842,7 +2823,6 @@ Status GetChangesForCDCSDK(
             if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
               auto txn_id = VERIFY_RESULT(
                   FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
-              auto result = GetTransactionStatus(txn_id, tablet_peer->Now(), txn_participant);
 
               // It is possible for a transaction to have two APPLYs in WAL. This check
               // prevents us from streaming the same transaction twice in the same GetChanges

@@ -131,6 +131,8 @@ using google::protobuf::RepeatedPtrField;
 using std::make_pair;
 using std::string;
 using std::vector;
+using yb::master::AcquireObjectLocksGlobalRequestPB;
+using yb::master::AcquireObjectLocksGlobalResponsePB;
 using yb::master::AddTransactionStatusTabletRequestPB;
 using yb::master::AddTransactionStatusTabletResponsePB;
 using yb::master::AlterRoleRequestPB;
@@ -214,12 +216,12 @@ using yb::master::ListTabletServersResponsePB_Entry;
 using yb::master::MasterBackupProxy;
 using yb::master::MasterDdlProxy;
 using yb::master::MasterReplicationProxy;
-using yb::master::PlacementInfoPB;
 using yb::master::RedisConfigGetRequestPB;
 using yb::master::RedisConfigGetResponsePB;
 using yb::master::RedisConfigSetRequestPB;
 using yb::master::RedisConfigSetResponsePB;
-using yb::master::ReplicationInfoPB;
+using yb::master::ReleaseObjectLocksGlobalRequestPB;
+using yb::master::ReleaseObjectLocksGlobalResponsePB;
 using yb::master::ReservePgsqlOidsRequestPB;
 using yb::master::ReservePgsqlOidsResponsePB;
 using yb::master::TableIdentifierPB;
@@ -1976,7 +1978,7 @@ void YBClient::GetTableLocations(
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only,
                                    bool use_cache,
                                    const std::string* tablespace_id,
-                                   const master::ReplicationInfoPB* replication_info) {
+                                   const ReplicationInfoPB* replication_info) {
   // Must make an RPC call if replication info must be fetched
   // (ie. cannot use the tserver count cache)
   bool is_replication_info_required = tablespace_id || replication_info;
@@ -2105,8 +2107,8 @@ Result<bool> YBClient::IsLoadBalancerIdle() {
 }
 
 Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
-                                          master::PlacementInfoPB&& live_replicas) {
-  master::ReplicationInfoPB replication_info;
+                                          PlacementInfoPB&& live_replicas) {
+  ReplicationInfoPB replication_info;
   // Merge the obtained info with the existing table replication info.
   std::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK_PREPEND(OpenTable(table_name, &table), "Fetching table schema failed!");
@@ -2135,7 +2137,7 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
 }
 
 Status YBClient::CreateTransactionsStatusTable(
-    const string& table_name, const master::ReplicationInfoPB* replication_info) {
+    const string& table_name, const ReplicationInfoPB* replication_info) {
   if (table_name.rfind(kTransactionTablePrefix, 0) != 0) {
     return STATUS_FORMAT(
         InvalidArgument, "Name '$0' for transaction table does not start with '$1'", table_name,
@@ -2843,7 +2845,7 @@ bool YBClient::IsMultiMaster() const {
 Result<int> YBClient::NumTabletsForUserTable(
     TableType table_type,
     const std::string* tablespace_id,
-    const master::ReplicationInfoPB* replication_info) {
+    const ReplicationInfoPB* replication_info) {
   if (table_type == TableType::PGSQL_TABLE_TYPE &&
         FLAGS_ysql_num_tablets > 0) {
     VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ysql_num_tablets
@@ -3033,6 +3035,39 @@ int64_t YBClient::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
 
 void YBClient::RequestAbortAllRpcs() {
   data_->rpcs_.RequestAbortAll();
+}
+
+Status YBClient::AcquireObjectLocksGlobal(const tserver::AcquireObjectLockRequestPB& lock_req) {
+  LOG_WITH_FUNC(INFO) << lock_req.ShortDebugString();
+  AcquireObjectLocksGlobalRequestPB req;
+  AcquireObjectLocksGlobalResponsePB resp;
+  req.set_txn_id(lock_req.txn_id());
+  req.set_txn_reuse_version(lock_req.txn_reuse_version());
+  req.set_subtxn_id(lock_req.subtxn_id());
+  req.set_session_host_uuid(lock_req.session_host_uuid());
+  req.mutable_object_locks()->CopyFrom(lock_req.object_locks());
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, AcquireObjectLocksGlobal);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status YBClient::ReleaseObjectLocksGlobal(const tserver::ReleaseObjectLockRequestPB& release_req) {
+  LOG_WITH_FUNC(INFO) << release_req.ShortDebugString();
+  ReleaseObjectLocksGlobalRequestPB req;
+  ReleaseObjectLocksGlobalResponsePB resp;
+  req.set_txn_id(release_req.txn_id());
+  req.set_txn_reuse_version(release_req.txn_reuse_version());
+  req.set_subtxn_id(release_req.subtxn_id());
+  req.set_session_host_uuid(release_req.session_host_uuid());
+  req.mutable_object_locks()->CopyFrom(release_req.object_locks());
+  req.set_release_all_locks(release_req.release_all_locks());
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ReleaseObjectLocksGlobal);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
 }
 
 }  // namespace client

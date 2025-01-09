@@ -2678,8 +2678,7 @@ agg_retrieve_direct(AggState *aggstate)
 						 * Sum results from each response for COUNT. It is safe to do this
 						 * directly on the datum as it is guaranteed to be an int64.
 						 */
-						oldContext = MemoryContextSwitchTo(
-							aggstate->curaggcontext->ecxt_per_tuple_memory);
+						oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
 						pergroupstate->transValue += value;
 						MemoryContextSwitchTo(oldContext);
 					}
@@ -2699,8 +2698,7 @@ agg_retrieve_direct(AggState *aggstate)
 						 * The checking code is taken from int8_avg()
 						 * in numeric.c.
 						 */
-						oldContext = MemoryContextSwitchTo(
-							aggstate->curaggcontext->ecxt_per_tuple_memory);
+						oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
 						Int8TransTypeData *transdata;
 						ArrayType *transarray = (ArrayType *)(pergroupstate->transValue);
 

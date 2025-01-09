@@ -231,9 +231,7 @@ DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
     "Minimum consecutive number of times that a tserver is allowed to ignore an older catalog "
     "version that is retrieved from a tserver-master heartbeat response.");
 
-DEFINE_test_flag(bool, enable_object_locking_for_table_locks, false,
-                 "The test flag enables a mechanism using which a tserver could serve an object "
-                 "lock request by acquiring corresponding locks at the local TSLocalLockManager.");
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 DECLARE_bool(enable_pg_cron);
 
@@ -754,12 +752,13 @@ void TabletServer::Shutdown() {
   LOG(INFO) << "TabletServer shut down complete. Bye!";
 }
 
-Status TabletServer::BootstrapDdlObjectLocks(const master::TSHeartbeatResponsePB& heartbeat_resp) {
+Status TabletServer::BootstrapDdlObjectLocks(
+    const master::ClientOperationLeaseUpdatePB& lease_update) {
   VLOG(2) << __func__;
-  if (!heartbeat_resp.has_ddl_lock_entries() || !ts_local_lock_manager_) {
+  if (!lease_update.has_ddl_lock_entries() || !ts_local_lock_manager_) {
     return Status::OK();
   }
-  return ts_local_lock_manager_->BootstrapDdlObjectLocks(heartbeat_resp.ddl_lock_entries());
+  return ts_local_lock_manager_->BootstrapDdlObjectLocks(lease_update.ddl_lock_entries());
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {

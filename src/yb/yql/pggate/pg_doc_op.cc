@@ -1223,9 +1223,9 @@ Result<bool> PgDocReadOp::PopulateSamplingOps() {
 }
 
 EstimatedRowCount PgDocReadOp::GetEstimatedRowCount() const {
-  VLOG(1) << "Returning liverows " << sample_rows_;
+  VLOG(1) << "Returning liverows " << estimated_total_rows_;
   // TODO count dead tuples while sampling
-  return EstimatedRowCount{.live = sample_rows_, .dead = 0};
+  return EstimatedRowCount{.live = estimated_total_rows_, .dead = 0};
 }
 
 // When postgres requests to scan a specific partition, set the partition parameter accordingly.
@@ -1299,7 +1299,9 @@ Status PgDocReadOp::CompleteProcessResponse() {
 
     if (res.has_sampling_state()) {
       VLOG(1) << "Received sampling state: " << res.sampling_state().ShortDebugString();
-      sample_rows_ = res.sampling_state().samplerows();
+      estimated_total_rows_ = res.sampling_state().has_estimated_total_rows()
+                                  ? res.sampling_state().estimated_total_rows()
+                                  : res.sampling_state().samplerows();
 
       // Copy sampling state from the response to propagate in later requests for continuing further
       // sampling.

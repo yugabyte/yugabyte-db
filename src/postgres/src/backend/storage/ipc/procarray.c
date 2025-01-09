@@ -592,8 +592,8 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 		ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
 						  errmsg("inconsistent state due to pgxactoff mismatch "
 								 "for process with pid %d", proc->pid),
-						  errdetail("provided proc's pgxactoff is %d, whereas "
-									"found proc's pgxactoff is %d",
+						  errdetail("Provided proc's pgxactoff is %d, whereas "
+									"found proc's pgxactoff is %d.",
 									myoff, foundoff)));
 	Assert(ProcGlobal->allProcs[arrayP->pgprocnos[myoff]].pgxactoff == myoff);
 

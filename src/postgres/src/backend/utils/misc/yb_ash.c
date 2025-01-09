@@ -700,7 +700,7 @@ YbAshMain(Datum main_arg)
 	while (true)
 	{
 		TimestampTz	sample_time;
-		int 		rc;
+		int			rc;
 		/* Wait necessary amount of time */
 		rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
 					   yb_ash_sampling_interval_ms, WAIT_EVENT_YB_ASH_MAIN);
@@ -972,12 +972,12 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		else
 			nulls[j++] = true;
 
-		values[j++] = CStringGetTextDatum(
-			YBCGetWaitEventComponent(sample->encoded_wait_event_code));
-		values[j++] = CStringGetTextDatum(
-			YBCGetWaitEventClass(sample->encoded_wait_event_code));
-		values[j++] = CStringGetTextDatum(
-			pgstat_get_wait_event(sample->encoded_wait_event_code));
+		values[j++] =
+			CStringGetTextDatum(YBCGetWaitEventComponent(sample->encoded_wait_event_code));
+		values[j++] =
+			CStringGetTextDatum(YBCGetWaitEventClass(sample->encoded_wait_event_code));
+		values[j++] =
+			CStringGetTextDatum(pgstat_get_wait_event(sample->encoded_wait_event_code));
 
 		uchar_to_uuid(sample->top_level_node_id, &top_level_node_id);
 		values[j++] = UUIDPGetDatum(&top_level_node_id);
@@ -1017,8 +1017,8 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		values[j++] = Float4GetDatum(sample->sample_weight);
 
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V2)
-			values[j++] = CStringGetTextDatum(
-				pgstat_get_wait_event_type(sample->encoded_wait_event_code));
+			values[j++] =
+				CStringGetTextDatum(pgstat_get_wait_event_type(sample->encoded_wait_event_code));
 
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V3)
 			values[j++] = ObjectIdGetDatum(metadata->database_id);
@@ -1095,7 +1095,7 @@ GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time
 
 	Assert(start_time < end_time);
 
-	YbAshAcquireBufferLock(false /* exclusive*/);
+	YbAshAcquireBufferLock(false /* exclusive */);
 
 	GetAshRangeIndexes(start_time, end_time, query_id, &start_index,
 					   &end_index, description);
@@ -1172,7 +1172,7 @@ GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
 	/* Time range is not there in the buffer */
 	if (start_time > buffer_max_time || end_time < buffer_min_time)
 	{
-		AppendToDescription(description, (end_time < buffer_min_time) ?
+		YbQueryDiagnosticsAppendToDescription(description, (end_time < buffer_min_time) ?
 							"ASH circular buffer has wrapped around, unable to fetch ASH data;" :
 							"No data available in ASH for the given time range;");
 		return;

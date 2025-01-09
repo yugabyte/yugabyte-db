@@ -2713,9 +2713,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testRevokeLoginMidSession() throws Exception {
-    // (DB-12741) Skip this test if running with connection manager.
-    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
-
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
 

@@ -1448,8 +1448,9 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueEntryType value_type,
 
   RETURN_NOT_OK(GetRedisSubDocument(iterator_.get(), data, /* projection */ nullptr,
                                SeekFwdSuffices::kFalse));
-  if (return_array_response)
+  if (return_array_response) {
     response_.set_allocated_array_response(new RedisArrayPB());
+  }
 
   if (!doc_found) {
     response_.set_code(RedisResponsePB::OK);

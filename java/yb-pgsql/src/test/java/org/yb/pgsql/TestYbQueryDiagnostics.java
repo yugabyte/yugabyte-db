@@ -1564,9 +1564,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         try (Statement statement = connection.createStatement()) {
             /* Run query diagnostics on the prepared stmt */
-            String queryId1 = String.valueOf((int) (Math.random() * 1000));
+            String queryId1 = generateUniqueQueryId();
             String queryId2 = getQueryIdFromPgStatStatements(statement, "PREPARE%");
-            String queryId3 = String.valueOf((int) (Math.random() * 1000));
+            String queryId3 = generateUniqueQueryId();
 
             /* Start processing query diagnostics bundles */
             Path bundleDataPath1 = runQueryDiagnostics(statement, queryId1, params1);
@@ -1734,6 +1734,33 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                                            StandardCharsets.UTF_8));
             validateAshData(ashPath);
             validatePgssData(pgssPath, queryId, 1);
+        }
+    }
+
+    @Test
+    public void testExplainDistWithoutExplainAnalyze() throws Exception {
+        QueryDiagnosticsParams params = new QueryDiagnosticsParams(
+            2, /* diagnosticsInterval */
+            100, /* explainSampleRate */
+            false, /* explainAnalyze */
+            true, /* explainDist */
+            false, /* explainDebug */
+            0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            String queryId = generateUniqueQueryId();
+            String query = String.format(
+                "SELECT yb_query_diagnostics(%s, %d, %d, %b, %b, %b, %d)",
+                queryId,
+                params.diagnosticsInterval,
+                params.explainSampleRate,
+                params.explainAnalyze,
+                params.explainDist,
+                params.explainDebug,
+                params.bindVarQueryMinDuration);
+
+            runInvalidQuery(statement, query,
+                    "explain_dist cannot be true without explain_analyze");
         }
     }
 }

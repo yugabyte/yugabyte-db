@@ -363,8 +363,8 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 				default:
 					/* Planner should ensure we never get here. */
 					ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-						"Unsupported boolop received by DocDB")));
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("unsupported boolop received by DocDB")));
 					break;
 			}
 			return true;
@@ -379,8 +379,8 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			 */
 			if (ce->arg)
 				ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-					"Unsupported CASE expression received by DocDB")));
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("unsupported CASE expression received by DocDB")));
 			/*
 			 * Evaluate WHEN clause expressions one by one, if any evaluation
 			 * result is true, evaluate and return respective result expression
@@ -415,8 +415,8 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 		default:
 			/* Planner should ensure we never get here. */
 			ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-				"Unsupported YSQL expression received by DocDB")));
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("unsupported YSQL expression received by DocDB")));
 			break;
 	}
 	*is_null = true;
@@ -449,10 +449,11 @@ YbgStatus YbgExprContextReset(YbgExprContext expr_ctx)
 	PG_STATUS_OK();
 }
 
-YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
-                                    int32_t attno,
-                                    uint64_t datum,
-                                    bool is_null)
+YbgStatus
+YbgExprContextAddColValue(YbgExprContext expr_ctx,
+						  int32_t attno,
+						  uint64_t datum,
+						  bool is_null)
 {
 	PG_SETUP_ERROR_REPORTING();
 
@@ -519,9 +520,8 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 	ArrayType  *arr = DatumGetArrayTypeP((Datum)datum);
 
 	if (ARR_NDIM(arr) != 1 || ARR_HASNULL(arr) || ARR_ELEMTYPE(arr) != type)
-		return YbgStatusCreateError(
-				"Type of given datum array does not match the given type",
-				__FILE__, __LINE__);
+		return YbgStatusCreateError("Type of given datum array does not match the given type",
+									__FILE__, __LINE__);
 
 	int16_t elmlen;
 	bool elmbyval;
@@ -532,12 +532,11 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 	 */
 	if (!YbTypeDetails(type, &elmlen, &elmbyval, &elmalign))
 	{
-		return YbgStatusCreateError(
-				"Only Text type supported for split of datum of array types",
-				__FILE__, __LINE__);
+		return YbgStatusCreateError("Only Text type supported for split of datum of array types",
+									__FILE__, __LINE__);
 	}
 	deconstruct_array(arr, type, elmlen, elmbyval, elmalign,
-			  (Datum**)result_datum_array, NULL /* nullsp */, nelems);
+					  (Datum**) result_datum_array, NULL /* nullsp */, nelems);
 	PG_STATUS_OK();
 }
 

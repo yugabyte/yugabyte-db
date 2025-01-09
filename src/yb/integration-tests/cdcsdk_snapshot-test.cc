@@ -640,8 +640,8 @@ TEST_F(CDCSDKYsqlTest, InsertedRowInbetweenSnapshot) {
   }
   ASSERT_EQ(count, 100);
 
-  // Read the cdc_state table veriy that checkpoint set is non-zero
-  CDCStateTable cdc_state_table(test_client());
+  // Read the cdc_state table verify that checkpoint set is non-zero
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   for (auto row_result : ASSERT_RESULT(
            cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {

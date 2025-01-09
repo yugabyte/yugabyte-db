@@ -46,6 +46,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/gutil/walltime.h"
 #include "yb/server/clockbound_clock.h"
 #include "yb/server/skewed_clock.h"
 
@@ -111,6 +112,15 @@ DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "none",
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
   "If enabled, make superuser connections sticky in Ysql Connection Manager.");
 
+DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_query_size, 4096,
+  "Maximum size of the query which connection manager can process in the deploy phase or while"
+  "forwarding the client query");
+
+DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_wait_timeout_ms, 10000,
+  "ysql_conn_mgr_wait_timeout_ms denotes the waiting time in ms, before getting timeout while "
+  "sending/receiving the packets at the socket in ysql connection manager. It is seen"
+  " asan builds requires large wait timeout than other builds");
+
 // This gflag should be deprecated but kept to avoid breaking some customer
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
@@ -144,6 +154,11 @@ DEFINE_RUNTIME_PREVIEW_bool(
     ysql_conn_mgr_version_matching_connect_higher_version, true,
     "If ysql_conn_mgr_version_matching is enabled is enabled, then connect to higher version "
     "server if this flag is set to true");
+
+DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
+    "Block roles that can potentially be used to escalate to superuser privileges. Intended to be "
+    "used with superuser login disabled, such as in YBM. When true, this assumes those blocked "
+    "roles are not already in use.");
 
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
@@ -517,8 +532,8 @@ void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallback
 }
 
 void YBCDestroyPgGate() {
-  LOG_IF(DFATAL, !is_main_thread())
-    << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
+  LOG_IF(FATAL, !is_main_thread())
+      << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
 
   if (pgapi_shutdown_done.exchange(true)) {
     LOG(DFATAL) << __PRETTY_FUNCTION__ << " should only be called once";
@@ -532,8 +547,8 @@ void YBCDestroyPgGate() {
 }
 
 void YBCInterruptPgGate() {
-  LOG_IF(DFATAL, !is_main_thread())
-    << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
+  LOG_IF(FATAL, !is_main_thread())
+      << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
 
   pgapi->Interrupt();
 }
@@ -2065,6 +2080,11 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_version_matching = &FLAGS_ysql_conn_mgr_version_matching,
       .ysql_conn_mgr_version_matching_connect_higher_version =
           &FLAGS_ysql_conn_mgr_version_matching_connect_higher_version,
+      .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
+      .ysql_sequence_cache_method = FLAGS_ysql_sequence_cache_method.c_str(),
+      .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
+      .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
+      .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
   };
   // clang-format on
   return &accessor;
@@ -2732,6 +2752,7 @@ YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count) {
         .partition_key_start_len = tablet.partition().partition_key_start().size(),
         .partition_key_end = YBCPAllocStdString(tablet.partition().partition_key_end()),
         .partition_key_end_len = tablet.partition().partition_key_end().size(),
+        .tablet_data_state = YBCPAllocStdString(TabletDataState_Name(tablet.tablet_data_state()))
       };
       ++dest;
     }
@@ -2831,6 +2852,23 @@ void YBCForceAllowCatalogModifications(bool allowed) {
   pgapi->ForceAllowCatalogModifications(allowed);
 }
 
-}  // extern "C"
+uint64_t YBCGetCurrentHybridTimeLsn() {
+  return (HybridTime::FromMicros(GetCurrentTimeMicros()).ToUint64());
+}
+
+YBCStatus YBCAcquireAdvisoryLock(
+    YBAdvisoryLockId lock_id, YBAdvisoryLockMode mode, bool wait, bool session) {
+  return ToYBCStatus(pgapi->AcquireAdvisoryLock(lock_id, mode, wait, session));
+}
+
+YBCStatus YBCReleaseAdvisoryLock(YBAdvisoryLockId lock_id, YBAdvisoryLockMode mode) {
+  return ToYBCStatus(pgapi->ReleaseAdvisoryLock(lock_id, mode));
+}
+
+YBCStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid) {
+  return ToYBCStatus(pgapi->ReleaseAllAdvisoryLocks(db_oid));
+}
+
+} // extern "C"
 
 } // namespace yb::pggate

@@ -738,6 +738,14 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
+{{< note title="NOT VALID constraints are not imported" >}}
+
+Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
+
+To add the constraints back, you run the `import schema` command after data import. See [Cutover to the target](#cutover-to-the-target).
+
+{{< /note >}}
+
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
 ### Export data from source
@@ -885,7 +893,7 @@ During cutover, you switch your application over from the source database to the
 
 Keep monitoring the metrics displayed for export data from source and import data to target processes. After you notice that the import of events is catching up to the exported events, you are ready to perform a cutover. You can use the "Remaining events" metric displayed in the import data to target process to help you determine the cutover.
 
-<!--When initiating cutover, you can choose the change data capture replication protocol to use using the [--use-yb-grpc-connector](../../reference/cutover-archive/cutover/) flag. By default the flag is true, and migration will use the gRPC replication protocol to export data from target. For YugabyteDB v2024.1.1 or later, you can set the flag to false to choose the PostgreSQL replication protocol. Before importing the schema you need to ensure that there aren't any ALTER TABLE commands that rewrite the table. You can merge the ALTER TABLE commands into their respective CREATE TABLE commands. For more information on CDC in YugabyteDB, refer to [Change data capture](../../../explore/change-data-capture/).-->
+<!--When initiating cutover, you can choose the change data capture replication protocol to use using the [--use-yb-grpc-connector](../../reference/cutover-archive/cutover/) flag. By default the flag is true, and migration will use the gRPC replication protocol to export data from target. For YugabyteDB v2024.1.1 or later, you can set the flag to false to choose the PostgreSQL replication protocol. Before importing the schema you need to ensure that there aren't any ALTER TABLE commands that rewrite the table. You can merge the ALTER TABLE commands into their respective CREATE TABLE commands. For more information on CDC in YugabyteDB, refer to [Change data capture](../../../develop/change-data-capture/).-->
 
 Perform the following steps as part of the cutover process:
 
@@ -897,7 +905,7 @@ Perform the following steps as part of the cutover process:
     yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back true
     ```
 
-    Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-initiate) for details about the arguments.
+    Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
 
     As part of the cutover process, the following occurs in the background:
 
@@ -921,6 +929,19 @@ The `export data from target` command may result in duplicated events if you res
     ```
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
+
+1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `import schema` with the `post-snapshot-import` flag:
+
+    ```sh
+    # Replace the argument values with those applicable for your migration.
+    yb-voyager import schema --export-dir <EXPORT_DIR> \
+            --target-db-host <TARGET_DB_HOST> \
+            --target-db-user <TARGET_DB_USER> \
+            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+            --target-db-name <TARGET_DB_NAME> \
+            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+            --post-snapshot-import true
+    ```
 
 1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them using the following command:
 

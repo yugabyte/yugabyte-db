@@ -1769,7 +1769,7 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 
 	if (parsedline->auth_method == uaYbJWT)
 	{
-		if(!(parsedline->yb_jwt_jwks_url || parsedline->yb_jwt_jwks_path))
+		if (!(parsedline->yb_jwt_jwks_url || parsedline->yb_jwt_jwks_path))
 		{
 			ereport(elevel,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
@@ -1830,7 +1830,7 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 
 		/*
 		 * Caching various string lengths
-		 */		
+		 */
 		size_t total_len = strlen(parsedline->rawline);
 		size_t prefix_len = passfield - parsedline->rawline;
 		size_t passkey_len = strlen(passkey);
@@ -1846,13 +1846,13 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 		head += copy_size;
 
 		copy_size = pass_replacement_string_len;
-		strncpy(parsedline->maskedline + head, 
+		strncpy(parsedline->maskedline + head,
 				pass_replacement_string, copy_size);
 		head += copy_size;
 
 		copy_size = total_len - prefix_len - passkey_len
 					- passwd_len;
-		strncpy(parsedline->maskedline + head, 
+		strncpy(parsedline->maskedline + head,
 				passfield + passkey_len
 				+ passwd_len, copy_size);
 		head += copy_size;
@@ -2299,8 +2299,8 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 							val),
 					 errcontext("line %d of configuration file \"%s\"",
 								line_num, HbaFileName)));
-			*err_msg = psprintf(
-				"could not parse JWT audience list: \"%s\"", val);
+			*err_msg = psprintf("could not parse JWT audience list: \"%s\"",
+								val);
 			return false;
 		}
 
@@ -2323,8 +2323,8 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 							val),
 					 errcontext("line %d of configuration file \"%s\"",
 								line_num, HbaFileName)));
-			*err_msg = psprintf(
-				"could not parse JWT issuer list: \"%s\"", val);
+			*err_msg = psprintf("could not parse JWT issuer list: \"%s\"",
+								val);
 			return false;
 		}
 

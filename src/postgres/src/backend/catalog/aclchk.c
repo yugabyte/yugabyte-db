@@ -5010,7 +5010,7 @@ pg_tablegroup_aclmask(Oid grp_oid, Oid roleid,
 	if (!YbTablegroupCatalogExists) {
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
+				 errmsg("tablegroup system catalog does not exist")));
 	}
 
 	/* Superusers bypass all permission checking. */
@@ -5024,7 +5024,7 @@ pg_tablegroup_aclmask(Oid grp_oid, Oid roleid,
 	if (!HeapTupleIsValid(tuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-		 			 errmsg("tablegroup with OID %u does not exist", grp_oid)));
+					 errmsg("tablegroup with OID %u does not exist", grp_oid)));
 
 	ownerId = ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->grpowner;
 
@@ -5838,7 +5838,7 @@ pg_tablegroup_ownercheck(Oid grp_oid, Oid roleid)
 	if (!YbTablegroupCatalogExists) {
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
+				 errmsg("tablegroup system catalog does not exist")));
 	}
 
 	/* Superusers and yb_db_admin role bypass all permission checking. */

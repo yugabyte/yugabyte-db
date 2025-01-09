@@ -16,6 +16,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"golang.org/x/exp/slices"
 )
 
 var checkInterfaceType []interface{}
@@ -119,6 +120,9 @@ func buildClusters(
 		noOfClusters = 2
 	}
 
+	useSpotInstance := v1.GetBool("use-spot-instance")
+	spotPrice := v1.GetFloat64("spot-price")
+
 	linuxVersionsInterface := v1.Get("linux-version")
 	var linuxVersionsInput []string
 	if linuxVersionsInterface != nil {
@@ -153,6 +157,11 @@ func buildClusters(
 				imageBundleUUIDs = append(imageBundleUUIDs, ib.GetUuid())
 			}
 		}
+	}
+
+	imageBundleLen = len(imageBundleUUIDs)
+	for i := 0; i < noOfClusters-imageBundleLen; i++ {
+		imageBundleUUIDs = append(imageBundleUUIDs, "")
 	}
 
 	logrus.Info("Using image bundles: ", imageBundleUUIDs, "\n")
@@ -344,6 +353,33 @@ func buildClusters(
 
 	logrus.Info("Using preferred regions: ", preferredRegions, "\n")
 
+	exposingServicesInputInterface := v1.Get("exposing-service")
+	var exposingServicesInput []string
+	if reflect.TypeOf(exposingServicesInputInterface) == reflect.TypeOf(checkInterfaceType) {
+		exposingServicesInput = *util.StringSlice(exposingServicesInputInterface.([]interface{}))
+	} else {
+		exposingServicesInput = exposingServicesInputInterface.([]string)
+	}
+
+	exposingServices := make([]string, 0)
+
+	for _, r := range exposingServicesInput {
+		r = strings.ToUpper(r)
+		if slices.Contains(util.ValidExposingServiceStates(), r) {
+			exposingServices = append(exposingServices, r)
+		} else {
+			exposingServices = append(exposingServices, util.NoneServiceState)
+		}
+	}
+
+	exposingServicesLen := len(exposingServices)
+
+	for i := 0; i < noOfClusters-exposingServicesLen; i++ {
+		exposingServices = append(exposingServices, util.NoneServiceState)
+	}
+
+	logrus.Info("Exposing services: ", exposingServices, "\n")
+
 	deviceInfo, err := buildDeviceInfo(
 		providerType,
 		noOfClusters,
@@ -512,9 +548,13 @@ func buildClusters(
 			InheritFromPrimary: util.GetBoolPointer(false),
 			PerProcessFlags: &ybaclient.PerProcessFlags{
 				Value: map[string]map[string]string{
-					util.MasterServerType: masterGFlags,
+					util.MasterServerType:  {},
+					util.TserverServerType: {},
 				},
 			},
+		}
+		if len(masterGFlags) != 0 {
+			specificGFlags.PerProcessFlags.Value[util.MasterServerType] = masterGFlags
 		}
 		specificGFlagsList[i] = specificGFlags
 	}
@@ -539,7 +579,9 @@ func buildClusters(
 			tserverGFlagsList[0] = v
 			perProcessFlags := specificGFlagsList[0].GetPerProcessFlags()
 			value := perProcessFlags.GetValue()
-			value[util.TserverServerType] = v
+			if len(v) != 0 {
+				value[util.TserverServerType] = v
+			}
 			perProcessFlags.SetValue(value)
 			specificGFlagsList[0].SetPerProcessFlags(perProcessFlags)
 		} else if strings.Compare(
@@ -548,7 +590,9 @@ func buildClusters(
 				tserverGFlagsList[1] = v
 				perProcessFlags := specificGFlagsList[1].GetPerProcessFlags()
 				value := perProcessFlags.GetValue()
-				value[util.TserverServerType] = v
+				if len(v) != 0 {
+					value[util.TserverServerType] = v
+				}
 				perProcessFlags.SetValue(value)
 				specificGFlagsList[1].SetPerProcessFlags(perProcessFlags)
 				specificGFlagsList[1].SetInheritFromPrimary(false)
@@ -613,6 +657,8 @@ func buildClusters(
 				UniverseOverrides: util.GetStringPointer(k8sUniverseOverrides),
 				AzOverrides:       util.StringtoStringMap(k8sAZOverridesMap),
 				SpecificGFlags:    &specificGFlagsList[i],
+
+				EnableExposingService: util.GetStringPointer(exposingServices[i]),
 			},
 		}
 		if providerType == util.K8sProviderType {
@@ -646,6 +692,8 @@ func buildClusters(
 		if util.IsCloudBasedProvider(providerType) {
 			userIntent := c.GetUserIntent()
 			userIntent.SetImageBundleUUID(imageBundleUUIDs[i])
+			userIntent.SetUseSpotInstance(useSpotInstance)
+			userIntent.SetSpotPrice(spotPrice)
 			c.SetUserIntent(userIntent)
 		}
 		res = append(res, c)

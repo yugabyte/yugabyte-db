@@ -56,29 +56,35 @@ int od_deploy(od_client_t *client, char *context)
 	int query_count;
 	query_count = 0;
 
-	char query[OD_QRY_MAX_SZ];
+	char *query = malloc(yb_max_query_size + 1);
+	query[yb_max_query_size] = '\0';
 	int query_size;
 	query_size = kiwi_vars_cas(&client->vars, &server->vars, query,
-				   sizeof(query) - 1);
+				   yb_max_query_size);
 
 	if (query_size > 0) {
 		query[query_size] = 0;
 		query_size++;
 		machine_msg_t *msg;
 		msg = kiwi_fe_write_query(NULL, query, query_size);
-		if (msg == NULL)
+		if (msg == NULL) {
+			free(query);
 			return -1;
+		}
 
 		int rc;
 		rc = od_write(&server->io, msg);
-		if (rc == -1)
+		if (rc == -1) {
+			free(query);
 			return -1;
+		}
 
 		query_count++;
 		client->server->synced_settings = false;
 
 		od_debug(&instance->logger, context, client, server,
 			 "deploy: %s", query);
+		free(query);
 	} else {
 		client->server->synced_settings = true;
 	}

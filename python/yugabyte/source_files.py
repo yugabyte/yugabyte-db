@@ -88,6 +88,11 @@ def get_file_category(rel_path: str) -> SourceFileCategory:
         raise IOError("Relative path expected, got an absolute path: %s" % rel_path)
     basename = os.path.basename(rel_path)
 
+    # Adding the check for yugabyted file before running the check for
+    # DIRECTORIES_THAT_DO_NOT_AFFECT_TESTS which contains the bin directory.
+    if rel_path.startswith('bin/yugabyted'):
+        return SourceFileCategory.JAVA
+
     if rel_path.split(os.sep)[0] in DIRECTORIES_THAT_DO_NOT_AFFECT_TESTS:
         return SourceFileCategory.DOES_NOT_AFFECT_TESTS
 

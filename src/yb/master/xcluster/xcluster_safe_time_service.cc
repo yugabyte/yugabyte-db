@@ -139,26 +139,35 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
   }
 
   auto leader_term_result = GetLeaderTermFromCatalogManager();
-  if (!leader_term_result.ok()) {
-    VLOG_WITH_FUNC(1) << "Going into idle mode due to master leader change";
-    EnterIdleMode("master leader change");
-    return;
-  }
-  int64_t leader_term = leader_term_result.get();
+  if (leader_term_result.ok()) {
+    // Compute safe time now and also update the metrics.
+    bool further_computation_needed = true;
+    auto result = ComputeSafeTime(*leader_term_result, /* update_metrics */ true);
+    if (result.ok()) {
+      further_computation_needed = result.get();
+    } else {
+      LOG(WARNING) << "Failure in XClusterSafeTime task: " << result;
+    }
 
-  // Compute safe time now and also update the metrics.
-  bool further_computation_needed = true;
-  auto result = ComputeSafeTime(leader_term, /* update_metrics */ true);
-  if (result.ok()) {
-    further_computation_needed = result.get();
+    if (!further_computation_needed) {
+      VLOG_WITH_FUNC(1) << "Going into idle mode due to lack of work";
+      EnterIdleMode("no more work left");
+      return;
+    }
   } else {
-    LOG(WARNING) << "Failure in XClusterSafeTime task: " << result;
-  }
+    // We can fail to get the term due to transient errors like a stale lease. In these cases we can
+    // recover without losing the leadership or changing the term. So check again to see if we are
+    // the leader.
+    auto leader_status = catalog_manager_->CheckIsLeaderAndReady();
+    if (!leader_status.ok()) {
+      LOG_WITH_FUNC(INFO) << "Going into idle mode due to master leader change: " << leader_status;
+      EnterIdleMode("master leader change");
+      return;
+    }
 
-  if (!further_computation_needed) {
-    VLOG_WITH_FUNC(1) << "Going into idle mode due to lack of work";
-    EnterIdleMode("no more work left");
-    return;
+    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 60, 1)
+        << "Skip xCluster safe time computation since this is not a healthy master leader: "
+        << leader_term_result.status();
   }
 
   // Delay before before running the task again.
@@ -230,7 +239,6 @@ Result<HybridTime> XClusterSafeTimeService::GetXClusterSafeTimeForNamespace(
     const XClusterSafeTimeFilter& filter) {
   SharedLock lock(mutex_);
   SCHECK(safe_time_table_ready_, IllegalState, "Safe time table is not ready yet.");
-  SCHECK_EQ(leader_term_, leader_term, IllegalState, "Received unexpected leader term");
 
   const XClusterNamespaceToSafeTimeMap& safe_time_map =
       VERIFY_RESULT(GetFilteredXClusterSafeTimeMap(filter));
@@ -478,7 +486,6 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
   // and setting the new config. Its important to make sure that the config we persist is accurate
   // as only that protects the safe time from going backwards.
   RETURN_NOT_OK(SetXClusterSafeTime(leader_term, namespace_safe_time_map));
-  leader_term_ = leader_term;
 
   if (update_metrics) {
     // Update the metrics using the newly computed maps.

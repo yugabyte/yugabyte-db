@@ -41,7 +41,7 @@ static bool
 yb_log_or_fail(bool throw)
 {
 	ereport(throw ? ERROR : LOG,
-			(errmsg("Another ereport while composing an error")));
+			(errmsg("another ereport while composing an error")));
 	/* Unreachable when throw is true */
 	return true;
 }
@@ -59,7 +59,7 @@ yb_try_or_fail(bool rethrow)
 	PG_TRY();
 	{
 		ereport(ERROR,
-				(errmsg("Nested PG_TRY with ereport")));
+				(errmsg("nested PG_TRY with ereport")));
 	}
 	PG_CATCH();
 	{
@@ -97,36 +97,36 @@ yb_test(YbGateTestCase case_no)
 		case YBGATE_TEST_EREPORT_LOG:
 			/* Plain ereport(LOG) */
 			ereport(LOG,
-					(errmsg("Log message")));
+					(errmsg("log message")));
 			break;
 		case YBGATE_TEST_EREPORT_WARN:
 			/* Plain ereport(WARNING) */
 			ereport(WARNING,
-					(errmsg("Warning message")));
+					(errmsg("warning message")));
 			break;
 		case YBGATE_TEST_EREPORT_ERROR:
 			/* Plain ereport(ERROR) */
 			ereport(ERROR,
-					(errmsg("Error message")));
+					(errmsg("error message")));
 			break;
 		case YBGATE_TEST_EREPORT_FATAL:
 			/* Plain ereport(FATAL) */
 			ereport(FATAL,
-					(errmsg("Fatal message")));
+					(errmsg("fatal message")));
 			break;
 		case YBGATE_TEST_EREPORT_PANIC:
 			/* Plain ereport(PANIC) */
 			ereport(PANIC,
-					(errmsg("Panic message")));
+					(errmsg("panic message")));
 			break;
 		case YBGATE_TEST_EREPORT_ERROR_LOCATION:
 			/* one line ereport(ERROR) to avoid __LINE__ ambiguity */
-			ereport(ERROR, (errmsg("Error message with param: %d", 1)));
+			ereport(ERROR, (errmsg("error message with param: %d", 1)));
 			break;
 		case YBGATE_TEST_EREPORT_ERROR_CODE:
 			/* Error with extra fields */
 			ereport(ERROR,
-					(errmsg("Error message: %s", "OK"),
+					(errmsg("error message: %s", "OK"),
 					 errcode(ERRCODE_DIVISION_BY_ZERO)));
 			break;
 		case YBGATE_TEST_EREPORT_FORMAT:
@@ -201,7 +201,7 @@ yb_test(YbGateTestCase case_no)
 			 */
 			bool throw = case_no == YBGATE_TEST_EREPORT_AND_ERROR;
 			ereport(ERROR,
-					(errmsg("Error message: %s",
+					(errmsg("error message: %s",
 							yb_log_or_fail(throw) ? "OK" : "nope")));
 			break;
 		}
@@ -211,7 +211,7 @@ yb_test(YbGateTestCase case_no)
 			 * produces ERROR in PG_TRY/PG_CATCH block, without rethrow
 			 */
 			ereport(ERROR,
-					(errmsg("Error message: %s",
+					(errmsg("error message: %s",
 							(yb_try_or_fail(false) ? "OK" : "nope"))));
 			break;
 		case YBGATE_TEST_TRY_CATCH:
@@ -223,7 +223,7 @@ yb_test(YbGateTestCase case_no)
 			PG_TRY();
 			{
 				ereport(ERROR,
-						(errmsg("Error message with param: %d", 3)));
+						(errmsg("error message with param: %d", 3)));
 			}
 			PG_CATCH();
 			{
@@ -241,12 +241,12 @@ yb_test(YbGateTestCase case_no)
 			PG_TRY();
 			{
 				ereport(ERROR,
-						(errmsg("Error message with param: %d", 5)));
+						(errmsg("error message with param: %d", 5)));
 			}
 			PG_CATCH();
 			{
 				ereport(case_no == YBGATE_TEST_TRY_CATCH_LOG ? LOG : ERROR,
-						(errmsg("Another ereport while handling an error")));
+						(errmsg("another ereport while handling an error")));
 			}
 			PG_END_TRY();
 			break;
@@ -259,13 +259,13 @@ yb_test(YbGateTestCase case_no)
 			PG_TRY();
 			{
 				ereport(ERROR,
-						(errmsg("This should not be visible"),
+						(errmsg("this should not be visible"),
 						 yb_log_or_fail(true)));
 			}
 			PG_CATCH();
 			{
 				ereport(LOG,
-						(errmsg("This should go to log")));
+						(errmsg("this should go to log")));
 			}
 			PG_END_TRY();
 			break;
@@ -274,9 +274,9 @@ yb_test(YbGateTestCase case_no)
 			/* Nested PG_TRY/PG_CATCH in PG_TRY block, either rethrow or not */
 			PG_TRY();
 			{
-				yb_try_or_fail(
-					case_no == YBGATE_TEST_NESTED_TRY_TRY_CATCH_RETHROW);
-				ereport(ERROR, (errmsg("Direct error")));
+				yb_try_or_fail(case_no ==
+							   YBGATE_TEST_NESTED_TRY_TRY_CATCH_RETHROW);
+				ereport(ERROR, (errmsg("direct error")));
 			}
 			PG_CATCH();
 			{
@@ -292,12 +292,12 @@ yb_test(YbGateTestCase case_no)
 			PG_TRY();
 			{
 				ereport(ERROR,
-						(errmsg("Direct error")));
+						(errmsg("direct error")));
 			}
 			PG_CATCH();
 			{
-				yb_try_or_fail(
-					case_no == YBGATE_TEST_NESTED_CATCH_TRY_CATCH_RETHROW);
+				yb_try_or_fail(case_no ==
+							   YBGATE_TEST_NESTED_CATCH_TRY_CATCH_RETHROW);
 			}
 			PG_END_TRY();
 			break;
@@ -306,7 +306,7 @@ yb_test(YbGateTestCase case_no)
 			PG_TRY();
 			{
 				ereport(ERROR,
-						(errmsg("Direct error")));
+						(errmsg("direct error")));
 			}
 			PG_CATCH();
 			{
@@ -351,8 +351,9 @@ void YbgTestNoReporting(YbGateTestCase case_no)
 	yb_test(case_no);
 }
 
-bool YbTypeDetailsTest(
-	unsigned int elmtype, int16_t *elmlen, bool *elmbyval, char *elmalign)
+bool
+YbTypeDetailsTest(unsigned int elmtype, int16_t *elmlen, bool *elmbyval,
+				  char *elmalign)
 {
 	return YbTypeDetails(elmtype, elmlen, elmbyval, elmalign);
 }

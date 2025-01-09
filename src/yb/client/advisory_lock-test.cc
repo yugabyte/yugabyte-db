@@ -11,6 +11,9 @@
 // under the License.
 //
 
+#include <future>
+#include <optional>
+
 #include "yb/client/meta_cache.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -18,24 +21,30 @@
 #include "yb/client/transaction_pool.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/transaction_error.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/master/master_defaults.h"
+
+#include "yb/rpc/sidecars.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
-#include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
-#include "yb/rpc/sidecars.h"
+#include "yb/util/std_util.h"
 #include "yb/util/test_thread_holder.h"
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_uint32(num_advisory_locks_tablets);
-DECLARE_bool(yb_enable_advisory_lock);
+DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb {
 
@@ -79,7 +88,7 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
     ASSERT_OK(cluster_->Start());
 
     ASSERT_OK(CreateClient());
-    if (ANNOTATE_UNPROTECTED_READ(FLAGS_yb_enable_advisory_lock)) {
+    if (ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_enable_advisory_locks)) {
       ASSERT_OK(WaitForCreateTableToFinishAndLoadTable());
     }
     sidecars_ = std::make_unique<rpc::Sidecars>();
@@ -87,10 +96,11 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
 
   Status WaitForCreateTableToFinishAndLoadTable() {
     client::YBTableName table_name(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, kPgAdvisoryLocksTableName);
+        YQL_DATABASE_CQL, master::kSystemNamespaceName,
+        std::string(tserver::kPgAdvisoryLocksTableName));
     RETURN_NOT_OK(client_->WaitForCreateTableToFinish(
         table_name, CoarseMonoClock::Now() + 10s * kTimeMultiplier));
-    advisory_locks_table_ = GetYsqlAdvisoryLocksTable();
+    advisory_locks_table_.emplace(ValueAsFuture(client_.get()));
     table_ = VERIFY_RESULT(advisory_locks_table_->GetTable());
     return Status::OK();
   }
@@ -104,16 +114,11 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
 
   Result<std::vector<client::internal::RemoteTabletPtr>> GetTablets() {
     CHECK_NOTNULL(table_.get());
-    auto future = client_->LookupAllTabletsFuture(table_, CoarseMonoClock::Now() + 10s);
-    return future.get();
-  }
-
-  std::unique_ptr<YsqlAdvisoryLocksTable> GetYsqlAdvisoryLocksTable() {
-    return std::make_unique<YsqlAdvisoryLocksTable>(*client_.get());
+    return client_->LookupAllTabletsFuture(table_, CoarseMonoClock::Now() + 10s).get();
   }
 
   Result<client::YBTablePtr> GetTable() {
-    return GetYsqlAdvisoryLocksTable()->GetTable();
+    return tserver::YsqlAdvisoryLocksTable(ValueAsFuture(client_.get())).GetTable();
   }
 
   Result<client::YBTransactionPtr> StartTransaction(
@@ -125,20 +130,19 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
     return txn;
   }
 
-  Status Commit(client::YBTransactionPtr txn) {
-    auto commit_future = txn->CommitFuture(TransactionRpcDeadline());
-    return commit_future.get();
+  static Status Commit(client::YBTransactionPtr txn) {
+    return txn->CommitFuture(TransactionRpcDeadline()).get();
   }
 
  protected:
   virtual void SetFlags() {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_advisory_lock) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_advisory_locks_tablets) = kNumAdvisoryLocksTablets;
   }
 
   std::unique_ptr<rpc::Sidecars> sidecars_;
-  std::unique_ptr<YsqlAdvisoryLocksTable> advisory_locks_table_;
   client::YBTablePtr table_;
+  std::optional<tserver::YsqlAdvisoryLocksTable> advisory_locks_table_;
 };
 
 TEST_F(AdvisoryLockTest, TestAdvisoryLockTableCreated) {
@@ -422,7 +426,7 @@ class AdvisoryLocksDisabledTest : public AdvisoryLockTest {
  protected:
   void SetFlags() override {
     AdvisoryLockTest::SetFlags();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_advisory_lock) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = false;
   }
 };
 
@@ -432,7 +436,7 @@ TEST_F(AdvisoryLocksDisabledTest, ToggleAdvisoryLockFlag) {
   auto res = GetTable();
   ASSERT_NOK(res);
   ASSERT_TRUE(res.status().IsNotSupported());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_advisory_lock) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = true;
   ASSERT_OK(WaitForCreateTableToFinishAndLoadTable());
   ASSERT_OK(CheckNumTablets());
 }

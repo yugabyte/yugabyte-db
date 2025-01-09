@@ -2,26 +2,26 @@
 -- Test case for CREATE DATABASE unsupported options
 --
 CREATE DATABASE test IS_TEMPLATE = TRUE;
-ERROR:  Value other than default or false for is_template option is not yet supported
+ERROR:  value other than default or false for is_template option is not yet supported
 LINE 1: CREATE DATABASE test IS_TEMPLATE = TRUE;
                              ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues.
 CREATE DATABASE test LC_COLLATE = "C";
 CREATE DATABASE test LC_CTYPE = "C";
-ERROR:  Value other than 'en_US.UTF-8' for lc_ctype option is not yet supported
+ERROR:  value other than 'en_US.UTF-8' for lc_ctype option is not yet supported
 LINE 1: CREATE DATABASE test LC_CTYPE = "C";
                              ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues.
 CREATE DATABASE test ENCODING = LATIN5;
-ERROR:  Value other than unicode or utf8 for encoding option is not yet supported
+ERROR:  value other than unicode or utf8 for encoding option is not yet supported
 LINE 1: CREATE DATABASE test ENCODING = LATIN5;
                              ^
-HINT:  Please report the issue on https://github.com/yugabyte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/yugabyte/yugabyte-db/issues.
 CREATE DATABASE test TABLESPACE = some_space;
-ERROR:  Value other than default for tablespace option is not yet supported
+ERROR:  value other than default for tablespace option is not yet supported
 LINE 1: CREATE DATABASE test TABLESPACE = some_space;
                              ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues.
 --
 -- Test case for CREATE DATABASE supported options
 --
@@ -34,15 +34,15 @@ CREATE DATABASE test_5 ENCODING = UTF8;
 -- Test case for ALTER DATABASE unsupported options
 --
 ALTER DATABASE test_1 IS_TEMPLATE = true;
-ERROR:  Altering is_template option is not yet supported
+ERROR:  altering is_template option is not yet supported
 LINE 1: ALTER DATABASE test_1 IS_TEMPLATE = true;
                               ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues.
 ALTER DATABASE test_1 TABLESPACE = some_space;
-ERROR:  Altering tablespace option is not yet supported
+ERROR:  altering tablespace option is not yet supported
 LINE 1: ALTER DATABASE test_1 TABLESPACE = some_space;
                               ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues.
 ALTER DATABASE test_1 SET TABLESPACE some_space;
 ERROR:  ALTER DATABASE SET TABLESPACE not supported yet
 LINE 1: ALTER DATABASE test_1 SET TABLESPACE some_space;

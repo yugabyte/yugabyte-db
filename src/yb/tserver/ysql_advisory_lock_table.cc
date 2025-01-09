@@ -13,20 +13,23 @@
 //
 //
 
-#include <yb/tserver/ysql_advisory_lock_table.h>
-#include "yb/client/yb_table_name.h"
 #include "yb/client/client.h"
+
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/master/master_defaults.h"
 
-DECLARE_bool(yb_enable_advisory_lock);
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
-namespace yb {
+DECLARE_bool(ysql_yb_enable_advisory_locks);
 
+namespace yb::tserver {
 namespace {
 
-void SetLockId(PgsqlAdvisoryLockPB& lock, uint32_t db_oid, uint32_t class_oid,
-               uint32_t objid, uint32_t objsubid) {
+void SetLockId(
+    PgsqlAdvisoryLockPB& lock, uint32_t db_oid, uint32_t class_oid,
+    uint32_t objid, uint32_t objsubid) {
   lock.add_lock_partition_column_values()->mutable_value()->set_uint32_value(db_oid);
   lock.add_lock_range_column_values()->mutable_value()->set_uint32_value(class_oid);
   lock.add_lock_range_column_values()->mutable_value()->set_uint32_value(objid);
@@ -35,19 +38,15 @@ void SetLockId(PgsqlAdvisoryLockPB& lock, uint32_t db_oid, uint32_t class_oid,
 
 } // namespace
 
-YsqlAdvisoryLocksTable::YsqlAdvisoryLocksTable(client::YBClient& client)
-    : client_(client) {}
-
-YsqlAdvisoryLocksTable::~YsqlAdvisoryLocksTable() {
-}
+YsqlAdvisoryLocksTable::YsqlAdvisoryLocksTable(std::shared_future<client::YBClient*> client_future)
+    : client_future_(std::move(client_future)) {}
 
 Result<client::YBTablePtr> YsqlAdvisoryLocksTable::GetTable() {
-  SCHECK(FLAGS_yb_enable_advisory_lock, NotSupported, "Advisory locks are not enabled");
+  SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "Advisory locks are not enabled");
   std::lock_guard<std::mutex> l(mutex_);
   if (!table_) {
-    static const client::YBTableName table_name(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, kPgAdvisoryLocksTableName);
-    table_ = VERIFY_RESULT(client_.OpenTable(table_name));
+    table_ = VERIFY_RESULT(client_future_.get()->OpenTable(client::YBTableName{
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, std::string(kPgAdvisoryLocksTableName)}));
   }
   return table_;
 }
@@ -56,9 +55,10 @@ Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::CreateLockOp(
     uint32_t db_oid, uint32_t class_oid, uint32_t objid, uint32_t objsubid,
     PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, bool wait, rpc::Sidecars* sidecars) {
   auto lock = client::YBPgsqlLockOp::NewLock(VERIFY_RESULT(GetTable()), sidecars);
-  SetLockId(*lock->mutable_request()->mutable_lock_id(), db_oid, class_oid, objid, objsubid);
-  lock->mutable_request()->set_lock_mode(mode);
-  lock->mutable_request()->set_wait(wait);
+  auto& lock_req = *lock->mutable_request();
+  SetLockId(*lock_req.mutable_lock_id(), db_oid, class_oid, objid, objsubid);
+  lock_req.set_lock_mode(mode);
+  lock_req.set_wait(wait);
   return lock;
 }
 
@@ -66,8 +66,9 @@ Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::CreateUnlockOp(
     uint32_t db_oid, uint32_t class_oid, uint32_t objid, uint32_t objsubid,
     PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, rpc::Sidecars* sidecars) {
   auto unlock = client::YBPgsqlLockOp::NewUnlock(VERIFY_RESULT(GetTable()), sidecars);
-  SetLockId(*unlock->mutable_request()->mutable_lock_id(), db_oid, class_oid, objid, objsubid);
-  unlock->mutable_request()->set_lock_mode(mode);
+  auto& unlock_req = *unlock->mutable_request();
+  SetLockId(*unlock_req.mutable_lock_id(), db_oid, class_oid, objid, objsubid);
+  unlock_req.set_lock_mode(mode);
   return unlock;
 }
 
@@ -79,4 +80,4 @@ Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::CreateUnlockAllOp(
   return unlock;
 }
 
-} // namespace yb
+} // namespace yb::tserver

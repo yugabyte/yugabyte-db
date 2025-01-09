@@ -624,6 +624,11 @@ public enum TaskType {
       CustomerTask.TaskType.Decommission,
       CustomerTask.TargetType.Node),
 
+  CloneNamespace(
+      com.yugabyte.yw.commissioner.tasks.CloneNamespace.class,
+      CustomerTask.TaskType.CloneNamespace,
+      CustomerTask.TargetType.Universe),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -1104,6 +1109,9 @@ public enum TaskType {
 
   CheckNodeReachable(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable.class),
 
+  SupportBundleComponentDownload(
+      com.yugabyte.yw.commissioner.tasks.subtasks.SupportBundleComponentDownload.class),
+
   WaitStartingFromTime(WaitStartingFromTime.class),
 
   RemoveNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent.class),
@@ -1112,7 +1120,11 @@ public enum TaskType {
 
   RunNodeCommand(com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand.class),
 
-  MasterLeaderStepdown(com.yugabyte.yw.commissioner.tasks.subtasks.MasterLeaderStepdown.class);
+  MasterLeaderStepdown(com.yugabyte.yw.commissioner.tasks.subtasks.MasterLeaderStepdown.class),
+
+  SetupYNP(com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP.class),
+
+  YNPProvisioning(com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1195,6 +1207,7 @@ public enum TaskType {
           .put(DeleteBackupScheduleKubernetes, 100)
           .put(EditBackupSchedule, 101)
           .put(EditBackupScheduleKubernetes, 101)
+          .put(CloneNamespace, 102)
           // Table ops (110-119):
           .put(CreateCassandraTable, 110)
           .put(CreateTableSpacesInUniverse, 111)

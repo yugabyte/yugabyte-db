@@ -454,6 +454,12 @@ typedef struct ResultRelInfo
 	 */
 	AttrNumber	ri_RowIdAttNo;
 
+	/*
+	 * YB note: For non-fast path UPDATE, the attribute number of the wholerow junk attribute
+	 * in the source plan's output tuples. This stores the old tuple.
+	 */
+	AttrNumber	ri_YbWholeRowAttNo;
+
 	/* Projection to generate new tuple in an INSERT/UPDATE */
 	ProjectionInfo *ri_projectNew;
 	/* Slot to hold that tuple */
@@ -563,6 +569,14 @@ typedef struct ResultRelInfo
 	 * one of its ancestors; see ExecCrossPartitionUpdateForeignKey().
 	 */
 	List	   *ri_ancestorResultRels;
+
+	/*
+	 * YB: is INSERT ON CONFLICT read batching possible for this table?
+	 * Possible does not mean enabled.  It is enabled when a yb_ioc_state is
+	 * created in the ModifyTableContext, and this only happens when an ON
+	 * CONFLICT clause is found and YbAddSlotToBatch is called.
+	 */
+	bool		ri_ybIocBatchingPossible;
 } ResultRelInfo;
 
 /*
@@ -2998,6 +3012,9 @@ typedef struct LockRowsState
 	PlanState	ps;				/* its first field is NodeTag */
 	List	   *lr_arowMarks;	/* List of ExecAuxRowMarks */
 	EPQState	lr_epqstate;	/* for evaluating EvalPlanQual rechecks */
+
+	bool 		yb_are_row_marks_for_yb_rels; /* lr_arowMarks relates to YB
+											   * relations */
 } LockRowsState;
 
 /* ----------------
@@ -3045,7 +3062,7 @@ typedef struct LimitState
  *	 YbInsertOnConflictBatchState information
  *
  *		INSERT ... ON CONFLICT read batching state for Yugabyte relations.  The
- *		batch size is taken from ResultRelInfo.ri_BatchSize.
+ *		batch size is taken from GUC yb_insert_on_conflict_read_batch_size.
  * ----------------
  */
 typedef struct YbInsertOnConflictBatchState

@@ -69,6 +69,17 @@ YBIsEnabledInPostgresEnvVar()
 }
 
 bool
+YBIsLocalInitdbEnvVar()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue("YB_PG_LOCAL_NODE_INITDB");
+	}
+	return cached_value;
+}
+
+bool
 YBShouldAllowRunningAsAnyUser()
 {
 	if (YBIsEnabledInPostgresEnvVar())
@@ -131,8 +142,8 @@ YBSuppressUnsafeAlterNotice()
 {
 	static int cached_value = -1;
 	if (cached_value == -1) {
-		cached_value = YBCIsEnvVarTrue(
-			"FLAGS_ysql_suppress_unsafe_alter_notice");
+		cached_value =
+			YBCIsEnvVarTrue("FLAGS_ysql_suppress_unsafe_alter_notice");
 	}
 	return cached_value;
 }
@@ -238,13 +249,6 @@ YBColocateDatabaseByDefault()
 												  false /* default_value */);
 	}
 	return cached_value;
-}
-
-bool
-YBIsMajorUpgradeInitDb()
-{
-	return YBCIsEnvVarTrueWithDefault("YB_PG_MAJOR_UPGRADE_INITDB",
-									  false /* default_value */);
 }
 
 Oid YBGetDatabaseOidFromEnv(const char *database_name)

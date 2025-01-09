@@ -34,6 +34,7 @@ ycql_audit_log_level=NONE
 
 logs_disk_percent_max=10
 postgres_max_log_size_kb=$((100 * 1000))
+ysql_conn_mgr_max_log_size_kb=$((100 * 1000))
 logs_purge_threshold_kb=$((10 * 1000000))
 
 while [[ $# -gt 0 ]]; do
@@ -201,12 +202,19 @@ for daemon_type in $daemon_types; do
   fi
   process_plain_files "$YB_LOG_DIR" "$plain_postgres_log" $plain_pg_logs_disk_usage_kb
 
+  plain_ysql_conn_mgr_log="ysql-conn-mgr*log* ! -name *.gz"
+  plain_ysql_conn_mgr_logs_disk_usage_kb=0
+  process_plain_files "$YB_LOG_DIR" "$plain_ysql_conn_mgr_log" $plain_ysql_conn_mgr_logs_disk_usage_kb
+
   if [ "$gzip_only" == false ]; then
     server_log="yb-$daemon_type*log.*"
     postgres_log="postgres*log*"
+    ysql_conn_mgr_log="ysql-conn-mgr*log*"
     delete_or_gzip_files "$YB_LOG_DIR" "$server_log" "$server_log.gz" \
       "$permitted_disk_usage_kb" "delete"
     delete_or_gzip_files "$YB_LOG_DIR" "$postgres_log" "$postgres_log.gz" \
       "$postgres_max_log_size_kb" "delete"
+    delete_or_gzip_files "$YB_LOG_DIR" "$ysql_conn_mgr_log" "$ysql_conn_mgr_log.gz" \
+      "$ysql_conn_mgr_max_log_size_kb" "delete"
   fi
 done

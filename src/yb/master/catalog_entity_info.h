@@ -115,8 +115,8 @@ struct ExternalUDTypeSnapshotData {
 typedef std::unordered_map<UDTypeId, ExternalUDTypeSnapshotData> UDTypeMap;
 
 struct TableDescription {
-  scoped_refptr<NamespaceInfo> namespace_info;
-  scoped_refptr<TableInfo> table_info;
+  NamespaceInfoPtr namespace_info;
+  TableInfoPtr table_info;
   TabletInfos tablet_infos;
 };
 
@@ -128,6 +128,12 @@ struct TabletLeaderLeaseInfo {
   MicrosTime ht_lease_expiration = 0;
   // Number of heartbeats that current tablet leader doesn't have a valid lease.
   uint64 heartbeats_without_leader_lease = 0;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        initialized, (leader_lease_status, consensus::LeaderLeaseStatus_Name(leader_lease_status)),
+        ht_lease_expiration, heartbeats_without_leader_lease);
+  }
 };
 
 // Drive usage information on a current replica of a tablet.
@@ -452,9 +458,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.schema();
   }
 
-  const std::string& indexed_table_id() const;
+  const TableId& indexed_table_id() const;
 
   bool is_index() const;
+  bool is_vector_index() const;
 
   SchemaPB* mutable_schema() {
     return pb.mutable_schema();

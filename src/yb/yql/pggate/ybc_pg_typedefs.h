@@ -103,6 +103,7 @@ typedef enum PgDataType {
   YB_YQL_DATA_TYPE_UINT32 = 102,
   YB_YQL_DATA_TYPE_UINT64 = 103,
   YB_YQL_DATA_TYPE_GIN_NULL = 104,
+  YB_YQL_DATA_TYPE_VECTOR = 105,
 } YBCPgDataType;
 
 // Datatypes that are internally designated to be unsupported.
@@ -408,6 +409,11 @@ typedef struct PgGFlagsAccessor {
   const bool*     TEST_ysql_log_perdb_allocated_new_objectid;
   const bool*     ysql_conn_mgr_version_matching;
   const bool*     ysql_conn_mgr_version_matching_connect_higher_version;
+  const bool*     ysql_block_dangerous_roles;
+  const char*     ysql_sequence_cache_method;
+  const char*     ysql_conn_mgr_sequence_support_mode;
+  const int32_t*  ysql_conn_mgr_max_query_size;
+  const int32_t*  ysql_conn_mgr_wait_timeout_ms;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -798,6 +804,7 @@ typedef struct PgTabletsDescriptor {
   size_t partition_key_start_len;
   const char* partition_key_end;
   size_t partition_key_end_len;
+  const char* tablet_data_state;
 } YBCPgTabletsDescriptor;
 
 typedef struct MetricsInfo {
@@ -871,6 +878,18 @@ typedef enum YbInsertOnConflictKeyState {
   KEY_READ,
   KEY_JUST_INSERTED,
 } YBCPgInsertOnConflictKeyState;
+
+typedef struct {
+  uint32_t database_id;
+  uint32_t classid;
+  uint32_t objid;
+  uint32_t objsubid;
+} YBAdvisoryLockId;
+
+typedef enum YBAdvisoryLockMode {
+  YB_ADVISORY_LOCK_SHARED,
+  YB_ADVISORY_LOCK_EXCLUSIVE
+} YBAdvisoryLockMode;
 
 #ifdef __cplusplus
 }  // extern "C"

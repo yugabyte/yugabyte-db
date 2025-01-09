@@ -69,6 +69,7 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
@@ -292,7 +293,8 @@ class DeferredConstructible {
 
 using TransactionBuilder = std::function<
     client::YBTransactionPtr(
-        TxnAssignment* dest, IsDDL, client::ForceGlobalTransaction, CoarseTimePoint)>;
+        TxnAssignment* dest, IsDDL, client::ForceGlobalTransaction, CoarseTimePoint,
+        client::ForceCreateTransaction)>;
 
 class SessionInfo {
  public:
@@ -441,7 +443,7 @@ class PgClientServiceImpl::Impl {
         clock_(clock),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         messenger_(*messenger),
-        table_cache_(client_future),
+        table_cache_(client_future_),
         check_expired_sessions_(&messenger->scheduler()),
         check_object_id_allocators_(&messenger->scheduler()),
         xcluster_context_(xcluster_context),
@@ -453,10 +455,11 @@ class PgClientServiceImpl::Impl {
             METRIC_pg_client_exchange_response_size.Instantiate(metric_entity)),
         transaction_builder_([this](auto&&... args) {
           return BuildTransaction(std::forward<decltype(args)>(args)...);
-        }) {
+        }),
+        advisory_locks_table_(client_future_),
+        cdc_state_table_(client_future_) {
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
-    cdc_state_table_ = std::make_shared<cdc::CDCStateTable>(client_future);
     if (FLAGS_pg_client_use_shared_memory) {
       WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
     }
@@ -497,10 +500,10 @@ class PgClientServiceImpl::Impl {
     auto session_id = ++session_serial_no_;
     auto session_info = SessionInfo::Make(
         &txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
-        FLAGS_pg_client_session_expiration_ms * 1ms,
-        transaction_builder_, session_id, &client(), clock_, &table_cache_, xcluster_context_,
+        FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_,
+        session_id, &client(), clock_, &table_cache_, xcluster_context_,
         pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_, shared_mem_pool_,
-        stats_exchange_response_size_, messenger_.scheduler());
+        stats_exchange_response_size_, messenger_.scheduler(), advisory_locks_table_);
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);
@@ -1392,8 +1395,8 @@ class PgClientServiceImpl::Impl {
   Status ValidatePlacement(
       const PgValidatePlacementRequestPB& req, PgValidatePlacementResponsePB* resp,
       rpc::RpcContext* context) {
-    master::ReplicationInfoPB replication_info;
-    master::PlacementInfoPB* live_replicas = replication_info.mutable_live_replicas();
+    ReplicationInfoPB replication_info;
+    PlacementInfoPB* live_replicas = replication_info.mutable_live_replicas();
 
     for (const auto& block : req.placement_infos()) {
       auto pb = live_replicas->add_placement_blocks();
@@ -2043,9 +2046,9 @@ class PgClientServiceImpl::Impl {
 
   [[nodiscard]] client::YBTransactionPtr BuildTransaction(
       TxnAssignment* dest, IsDDL is_ddl, client::ForceGlobalTransaction force_global,
-      CoarseTimePoint deadline) {
+      CoarseTimePoint deadline, client::ForceCreateTransaction force_create_txn) {
     auto watcher = std::make_shared<client::YBTransactionPtr>(
-        transaction_pool_provider_().Take(force_global, deadline));
+        transaction_pool_provider_().Take(force_global, deadline, force_create_txn));
     dest->Assign(watcher, is_ddl);
     auto* txn = &**watcher;
     return {std::move(watcher), txn};
@@ -2130,8 +2133,6 @@ class PgClientServiceImpl::Impl {
   CoarseTimePoint check_expired_sessions_time_ GUARDED_BY(mutex_);
   rpc::ScheduledTaskTracker check_object_id_allocators_;
 
-  std::shared_ptr<cdc::CDCStateTable> cdc_state_table_;
-
   const TserverXClusterContextIf* xcluster_context_;
 
   PgMutationCounter* pg_node_level_mutation_counter_;
@@ -2159,6 +2160,10 @@ class PgClientServiceImpl::Impl {
   > sessions_ GUARDED_BY(mutex_);
 
   std::vector<SessionInfoPtr> stopping_sessions_ GUARDED_BY(mutex_);
+
+  YsqlAdvisoryLocksTable advisory_locks_table_;
+
+  std::optional<cdc::CDCStateTable> cdc_state_table_;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(

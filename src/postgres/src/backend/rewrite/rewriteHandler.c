@@ -40,6 +40,7 @@
 #include "rewrite/rewriteManip.h"
 #include "rewrite/rewriteSearchCycle.h"
 #include "rewrite/rowsecurity.h"
+#include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
@@ -95,9 +96,9 @@ static Query *fireRIRrules(Query *parsetree, List *activeRIRs);
 static bool view_has_instead_trigger(Relation view, CmdType event);
 
 static Bitmapset *adjust_view_column_set(Bitmapset *cols,
-                                         List *targetlist,
-                                         Relation view_rel,
-                                         Oid base_relid);
+										 List *targetlist,
+										 Relation view_rel,
+										 Oid base_relid);
 
 /*
  * AcquireRewriteLocks -
@@ -1723,6 +1724,14 @@ ApplyRetrieveRule(Query *parsetree,
 	if (rule->qual != NULL)
 		elog(ERROR, "cannot handle qualified ON SELECT rule");
 
+	/* Check if the expansion of non-system views are restricted */
+	if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_VIEW) != 0 &&
+				 RelationGetRelid(relation) >= FirstNormalObjectId))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("access to non-system view \"%s\" is restricted",
+						RelationGetRelationName(relation))));
+
 	if (rt_index == parsetree->resultRelation)
 	{
 		/*
@@ -2940,8 +2949,8 @@ relation_is_updatable(Oid reloid,
 											RelationGetRelid(rel));
 				include_cols = adjust_view_column_set(updatable_cols,
 													  viewquery->targetList,
-				                                      rel,
-				                                      base_rte->relid);
+													  rel,
+													  base_rte->relid);
 				auto_events &= relation_is_updatable(baseoid,
 													 outer_reloids,
 													 include_triggers,
@@ -2968,9 +2977,9 @@ relation_is_updatable(Oid reloid,
  */
 static Bitmapset *
 adjust_view_column_set(Bitmapset *cols,
-                       List *targetlist,
-                       Relation view_rel,
-                       Oid base_relid)
+					   List *targetlist,
+					   Relation view_rel,
+					   Oid base_relid)
 {
 	Bitmapset  *result = NULL;
 	int			col;
@@ -3003,7 +3012,7 @@ adjust_view_column_set(Bitmapset *cols,
 					continue;
 				var = castNode(Var, tle->expr);
 				result = bms_add_member(result,
-				                        var->varattno - base_lowattrno);
+										var->varattno - base_lowattrno);
 			}
 		}
 		else
@@ -3020,7 +3029,7 @@ adjust_view_column_set(Bitmapset *cols,
 				Var		   *var = (Var *) tle->expr;
 
 				result = bms_add_member(result,
-				                        var->varattno - base_lowattrno);
+										var->varattno - base_lowattrno);
 			}
 			else
 				elog(ERROR, "attribute number %d not found in view targetlist",
@@ -3105,6 +3114,14 @@ rewriteTargetView(Query *parsetree, Relation view)
 				break;
 		}
 	}
+
+	/* Check if the expansion of non-system views are restricted */
+	if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_VIEW) != 0 &&
+				 RelationGetRelid(view) >= FirstNormalObjectId))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("access to non-system view \"%s\" is restricted",
+						RelationGetRelationName(view))));
 
 	/*
 	 * For INSERT/UPDATE the modified columns must all be updatable. Note that
@@ -3306,14 +3323,14 @@ rewriteTargetView(Query *parsetree, Relation view)
 		   bms_is_empty(new_rte->updatedCols));
 
 	new_rte->insertedCols = adjust_view_column_set(view_rte->insertedCols,
-	                                               view_targetlist,
-	                                               view,
-	                                               new_rte->relid);
+												   view_targetlist,
+												   view,
+												   new_rte->relid);
 
 	new_rte->updatedCols = adjust_view_column_set(view_rte->updatedCols,
-	                                              view_targetlist,
-	                                              view,
-	                                              new_rte->relid);
+												  view_targetlist,
+												  view,
+												  new_rte->relid);
 
 	/*
 	 * Move any security barrier quals from the view RTE onto the new target

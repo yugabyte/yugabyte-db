@@ -646,6 +646,7 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_txn_locks_per_tablet=1000");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replication_commands=true");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replica_identity=true");
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_docdb_vector_type=false");
   }
 };
 
@@ -661,6 +662,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_txn_locks_per_tablet", "1000"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "true"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
 }
 
 class PgWrapperAutoFlagsTest : public PgWrapperFlagsTest {
@@ -693,6 +695,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "true"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "true"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(true /* expect_target_value */));
 }
@@ -714,6 +717,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(false /* expect_target_value */));
 }

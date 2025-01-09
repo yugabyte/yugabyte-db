@@ -61,7 +61,8 @@ const std::vector<int> kYsqlHandledSignals{
     SIGUSR1, // procsignal_sigusr1_handler
     SIGFPE, // FloatExceptionHandler
     SIGTERM, // bgworker_die
-    SIGQUIT // bgworker_quickdie
+    SIGQUIT, // bgworker_quickdie
+    SIGALRM // handle_sig_alarm
 };
 
 Result<sigset_t> ThreadYsqlSignalMaskBlock() {

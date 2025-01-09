@@ -36,8 +36,9 @@ YbLoadTupleCache(YbTupleCache *cache, Oid relid,
 	ctl.entrysize = sizeof(YbTupleCacheEntry);
 	cache->data = hash_create(cache_name, 32, &ctl, HASH_ELEM | HASH_BLOBS);
 
-	SysScanDesc scandesc = systable_beginscan(
-		cache->rel, InvalidOid, false /* indexOk */, NULL, 0, NULL);
+	SysScanDesc scandesc = systable_beginscan(cache->rel, InvalidOid,
+											  false /* indexOk */, NULL, 0,
+											  NULL);
 
 	YbTupleCacheEntry *entry = NULL;
 	HeapTuple htup;

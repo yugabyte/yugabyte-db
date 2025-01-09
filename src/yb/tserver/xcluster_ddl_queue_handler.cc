@@ -338,8 +338,11 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
     setup_query << Format("SET ROLE $0;", query_info.user);
   }
 
+  setup_query << "SET yb_skip_data_insert_for_table_rewrite=true;";
+
   RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
   RETURN_NOT_OK(RunAndLogQuery(query_info.query));
+  RETURN_NOT_OK(RunAndLogQuery("SET yb_skip_data_insert_for_table_rewrite=false"));
   return Status::OK();
 }
 
