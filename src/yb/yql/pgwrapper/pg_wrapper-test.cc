@@ -324,7 +324,7 @@ class PgWrapperOneNodeClusterTest : public PgWrapperTest {
   Result<PGConn> ConnectToDB(const std::string& dbname) const {
     return PGConnBuilder({
       .host = pg_ts->bound_rpc_addr().host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = dbname
     }).Connect();
   }

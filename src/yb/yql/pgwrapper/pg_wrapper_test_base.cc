@@ -121,7 +121,7 @@ Result<std::string> PgCommandTestBase::RunPsqlCommand(
   vector<string> argv{
       GetPostgresInstallRoot() + "/bin/ysqlsh",
       "-h", pg_ts->bind_host(),
-      "-p", std::to_string(pg_ts->pgsql_rpc_port()),
+      "-p", std::to_string(pg_ts->ysql_port()),
       "-U", "yugabyte",
       "-f", tmp_file_name
   };

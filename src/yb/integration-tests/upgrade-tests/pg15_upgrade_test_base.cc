@@ -165,7 +165,7 @@ Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlsh(
   args.push_back("--host");
   args.push_back(tserver->bind_host());
   args.push_back("--port");
-  args.push_back(AsString(tserver->pgsql_rpc_port()));
+  args.push_back(AsString(tserver->ysql_port()));
   args.push_back("-c");
   args.push_back(sql_statement);
 

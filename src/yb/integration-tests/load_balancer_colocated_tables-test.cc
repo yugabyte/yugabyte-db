@@ -136,8 +136,8 @@ class LoadBalancerColocatedTablesTest : public YBTableTestBase {
   Result<pgwrapper::PGConn> ConnectToDB(
       const std::string& dbname = "", bool simple_query_protocol = false) {
     return pgwrapper::PGConnBuilder({
-      .host = external_mini_cluster_->pgsql_hostport(0).host(),
-      .port = external_mini_cluster_->pgsql_hostport(0).port(),
+      .host = external_mini_cluster_->ysql_hostport(0).host(),
+      .port = external_mini_cluster_->ysql_hostport(0).port(),
       .dbname = dbname
     }).Connect(simple_query_protocol);
   }

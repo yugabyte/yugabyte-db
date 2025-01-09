@@ -935,11 +935,11 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
             << ", use_tserver_response_cache: " << use_tserver_response_cache;
   string conn_str_prefix = Format("host=$0 port=$1 dbname='$2'",
                                   pg_ts->bind_host(),
-                                  pg_ts->pgsql_rpc_port(),
+                                  pg_ts->ysql_port(),
                                   kYugabyteDatabase);
   auto conn_yugabyte = ASSERT_RESULT(PGConnBuilder({
       .host = pg_ts->bind_host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = kYugabyteDatabase,
       .user = "yugabyte",
       .password = "yugabyte",
@@ -955,7 +955,7 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
   RestartClusterSetDBCatalogVersionMode(per_database_mode, extra_tserver_flags);
   conn_yugabyte = ASSERT_RESULT(PGConnBuilder({
       .host = pg_ts->bind_host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = kYugabyteDatabase,
       .user = "yugabyte",
       .password = "yugabyte",
@@ -967,7 +967,7 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
       "CREATE USER $0 PASSWORD '$1'", kTestUser, kOldPassword));
   auto conn_test = ASSERT_RESULT(PGConnBuilder({
       .host = pg_ts->bind_host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = kYugabyteDatabase,
       .user = kTestUser,
       .password = kOldPassword,
@@ -982,7 +982,7 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
   // Making a new connection using the old password should fail.
   auto status = ResultToStatus(PGConnBuilder({
       .host = pg_ts->bind_host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = kYugabyteDatabase,
       .user = kTestUser,
       .password = kOldPassword,
@@ -996,7 +996,7 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
   // tserver cache would have stored the old password.
   auto conn_test_new = ASSERT_RESULT(PGConnBuilder({
       .host = pg_ts->bind_host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = kYugabyteDatabase,
       .user = kTestUser,
       .password = kNewPassword,

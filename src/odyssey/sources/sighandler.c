@@ -87,8 +87,15 @@ od_attribute_noreturn() void od_system_shutdown(od_system_t *system,
 	od_worker_pool_t *worker_pool;
 
 	worker_pool = system->global->worker_pool;
+#ifdef YB_SUPPORT_FOUND
+	// Connection manager process shuts down gracefully on receiving
+	// SIGINT signal, but logging it makes some tests fail.
+	od_log(&instance->logger, "system", NULL, NULL,
+	       "Signal received for shutting down");
+#else
 	od_log(&instance->logger, "system", NULL, NULL,
 	       "SIGINT received, shutting down");
+#endif
 
 	yb_stats_shmem_cleanup(instance);
 

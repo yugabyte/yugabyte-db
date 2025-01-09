@@ -316,7 +316,7 @@ class PggateTestSelectWithYsql : public PggateTestSelect {
     auto* ts = cluster_->tablet_server(0);
     return pgwrapper::PGConnBuilder({
       .host = ts->bind_host(),
-      .port = ts->pgsql_rpc_port(),
+      .port = ts->ysql_port(),
       .dbname = database_name,
     }).Connect();
   }
