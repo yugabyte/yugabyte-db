@@ -402,9 +402,12 @@ ExtractSubExpressionsFromElemMatchQuery(pgbson *elemMatchQuery, bytea *options)
 		return NIL;
 	}
 
+	BsonQueryOperatorContext context = { 0 };
+	BsonQueryOperatorContextCommonBuilder(&context);
+
 	/* Convert the pgbson query into a query AST that processes bson */
 	Expr *expr = CreateQualForBsonExpression(&singleElement.bsonValue,
-											 singleElement.path);
+											 singleElement.path, &context);
 
 	/* Get the underlying list of expressions that are AND-ed */
 	List *clauses = make_ands_implicit(expr);

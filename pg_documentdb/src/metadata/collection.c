@@ -1844,6 +1844,8 @@ ParseAndGetValidatorSpec(bson_iter_t *iter, const char *validatorName, bool *has
 							MaxSchemaValidatorSize / 1024)));
 	}
 
+	/* Todo - Add more validation checks(operator syntax) for the validator, work item 3466925*/
+
 	*hasValue = true;
 	return validator;
 }

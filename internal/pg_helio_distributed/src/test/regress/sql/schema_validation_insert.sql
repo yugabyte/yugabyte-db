@@ -32,9 +32,11 @@ SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col1", "docum
 SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col1", "documents":[{"_id":"2", "a":3, "b":1, "c":2}]}');
 
 -- $and
-SELECT helio_api.create_collection_view('schema_validation_insertion', '{ "create": "col2", "validator": { "$and": [ { "a": { "$gt": 2 } }, {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int"}}}} ] } }');
-SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"1", "a":3}]}');
+SELECT helio_api.create_collection_view('schema_validation_insertion', '{ "create": "col2", "validator": { "$and": [ { "a": { "$gt": 2 } }, {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int", "maximum":5}}}} ] } }');
+SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"1", "a":4}]}');
 SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"2", "a":1}]}');
+-- expect to throw error as 6 > 5 (maximum)
+SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"3", "a":6}]}');
 set helio_api.enableBypassDocumentValidation = true;
 SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"2", "a":1}], "bypassDocumentValidation": true}');
 

@@ -521,6 +521,24 @@ CreateQualsForBsonValueTopLevelQuery(const pgbson *query)
 
 
 /*
+ * BsonQueryOperatorContextCommonBuilder is a helper function to create a BsonQueryOperatorContext with common values.
+ * This is used to avoid code duplication in the query operator implementations and to ensure that the context is initialized properly.
+ * You can modify the context as needed after calling this function.
+ */
+void
+BsonQueryOperatorContextCommonBuilder(BsonQueryOperatorContext *context)
+{
+	Var *var = makeVar(1, 1, BsonTypeId(), -1, DEFAULT_COLLATION_OID, 0);
+	context->documentExpr = (Expr *) var;
+	context->inputType = MongoQueryOperatorInputType_Bson;
+	context->simplifyOperators = true;
+	context->coerceOperatorExprIfApplicable = false;
+	context->requiredFilterPathNameHashSet = NULL;
+	context->variableContext = NULL;
+}
+
+
+/*
  * Creates a parsed query AST for a given document containing
  * a query expression. The input is a documentExpr provided
  * as an input as a bson type.
@@ -531,7 +549,7 @@ CreateQualsForBsonValueTopLevelQuery(const pgbson *query)
  */
 Expr *
 CreateQualForBsonExpression(const bson_value_t *expression, const
-							char *queryPath)
+							char *queryPath, BsonQueryOperatorContext *context)
 {
 	if (expression->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -539,18 +557,9 @@ CreateQualForBsonExpression(const bson_value_t *expression, const
 							"expression should be a document")));
 	}
 
-	BsonQueryOperatorContext context = { 0 };
-	Var *var = makeVar(1, 1, BsonTypeId(), -1, DEFAULT_COLLATION_OID, 0);
-	context.documentExpr = (Expr *) var;
-	context.inputType = MongoQueryOperatorInputType_Bson;
-	context.simplifyOperators = true;
-	context.coerceOperatorExprIfApplicable = false;
-	context.requiredFilterPathNameHashSet = NULL;
-	context.variableContext = NULL;
-
 	const char *traversedPath = queryPath;
 	const char *basePath = queryPath;
-	return CreateQualForBsonValueExpressionCore(expression, &context, traversedPath,
+	return CreateQualForBsonValueExpressionCore(expression, context, traversedPath,
 												basePath);
 }
 
@@ -616,6 +625,7 @@ CreateQualForBsonValueExpressionCore(const bson_value_t *expression,
 				case QUERY_OPERATOR_TEXT:
 				case QUERY_OPERATOR_ALWAYS_FALSE:
 				case QUERY_OPERATOR_ALWAYS_TRUE:
+				case QUERY_OPERATOR_JSONSCHEMA:
 				{
 					regexFound = false;
 					addObjectArrayFilter = true;
@@ -1154,7 +1164,8 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		operatorType != QUERY_OPERATOR_TEXT &&
 		operatorType != QUERY_OPERATOR_ALWAYS_TRUE &&
 		operatorType != QUERY_OPERATOR_ALWAYS_FALSE &&
-		operatorType != QUERY_OPERATOR_SAMPLERATE)
+		operatorType != QUERY_OPERATOR_SAMPLERATE &&
+		operatorType != QUERY_OPERATOR_JSONSCHEMA)
 	{
 		/* invalid query operator such as $eq at top level of query document */
 		/* We throw feature not supported since $where and such might be specified here */
@@ -1264,6 +1275,13 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 
 	if (operatorType == QUERY_OPERATOR_TEXT)
 	{
+		if (context->hasOperatorRestrictions)
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+							errmsg(
+								"$text is not allowed in this context")));
+		}
+
 		if (context->inputType != MongoQueryOperatorInputType_Bson)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
@@ -1274,6 +1292,31 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		/* Special case for $text */
 		const char *path = "";
 		BsonValidateTextQuery(bson_iter_value(queryDocIterator));
+		return CreateFuncExprForQueryOperator(context,
+											  path,
+											  operator,
+											  bson_iter_value(queryDocIterator));
+	}
+
+	if (operatorType == QUERY_OPERATOR_JSONSCHEMA)
+	{
+		/* prevent abuse of $jsonSchema */
+		if (!context->hasOperatorRestrictions)
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+							errmsg(
+								"$jsonSchema is not allowed in this context")));
+		}
+
+		if (context->inputType != MongoQueryOperatorInputType_Bson)
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+							errmsg(
+								"$jsonSchema can only be applied to the top-level document")));
+		}
+
+		/* Special case for $jsonSchema */
+		const char *path = "";
 		return CreateFuncExprForQueryOperator(context,
 											  path,
 											  operator,
@@ -2078,6 +2121,14 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 		case QUERY_OPERATOR_NEARSPHERE:
 		case QUERY_OPERATOR_GEONEAR:
 		{
+			if (context->hasOperatorRestrictions)
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+								errmsg(
+									"$%s is not allowed in this context",
+									mongoOperatorName)));
+			}
+
 			if (!BSON_ITER_HOLDS_DOCUMENT(operatorDocIterator) &&
 				!BSON_ITER_HOLDS_ARRAY(operatorDocIterator))
 			{

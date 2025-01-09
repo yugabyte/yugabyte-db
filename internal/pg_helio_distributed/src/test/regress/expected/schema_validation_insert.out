@@ -12,21 +12,41 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col", "documents":[{"_id":"1", "a":1}]}');
-ERROR:  unknown operator: $jsonSchema
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
 -- required not supported yet, so this should be inserted
 SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col", "documents":[{"_id":"2", "b":1}]}');
-ERROR:  unknown operator: $jsonSchema
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
 -- type mismatch
 SELECT helio_api.insert('schema_validation_insertion','{"insert":"col", "documents":[{"_id":"3", "a":"hello"}]}');
-ERROR:  unknown operator: $jsonSchema
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
 -- batch insert
 SELECT helio_api.insert('schema_validation_insertion','{"insert":"col", "documents":[{"_id":"4", "a":2},{"_id":"5", "a":3}, {"_id":"6", "a":"tt"}]}');
-ERROR:  unknown operator: $jsonSchema
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""2"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
 -- 0 documents should be inserted
 SELECT shard_key_value, object_id, document from helio_api.collection('schema_validation_insertion','col') ORDER BY shard_key_value, object_id;
- shard_key_value | object_id | document 
+ shard_key_value |  object_id   |                   document                    
 ---------------------------------------------------------------------
-(0 rows)
+          177711 | { "" : "1" } | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177711 | { "" : "2" } | { "_id" : "2", "b" : { "$numberInt" : "1" } }
+          177711 | { "" : "4" } | { "_id" : "4", "a" : { "$numberInt" : "2" } }
+          177711 | { "" : "5" } | { "_id" : "5", "a" : { "$numberInt" : "3" } }
+(4 rows)
 
 -- set validationAction to warn
 SELECT helio_api.coll_mod('schema_validation_insertion', 'col', '{"collMod":"col", "validationAction": "warn"}');
@@ -43,10 +63,14 @@ SELECT helio_api.insert('schema_validation_insertion','{"insert":"col", "documen
 
 -- 1 document should be inserted
 SELECT shard_key_value, object_id, document from helio_api.collection('schema_validation_insertion','col') ORDER BY shard_key_value, object_id;
- shard_key_value |  object_id   |            document            
+ shard_key_value |  object_id   |                   document                    
 ---------------------------------------------------------------------
+          177711 | { "" : "1" } | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177711 | { "" : "2" } | { "_id" : "2", "b" : { "$numberInt" : "1" } }
+          177711 | { "" : "4" } | { "_id" : "4", "a" : { "$numberInt" : "2" } }
+          177711 | { "" : "5" } | { "_id" : "5", "a" : { "$numberInt" : "3" } }
           177711 | { "" : "7" } | { "_id" : "7", "a" : "hello" }
-(1 row)
+(5 rows)
 
 ---------------------------------------------Need top level operator-----------------------------------------------------
 -- $expr
@@ -58,21 +82,44 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col1", "documents":[{"_id":"1", "a":1, "b":1, "c":1}]}');
-ERROR:  $expr can only be applied to the top-level document
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
 SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col1", "documents":[{"_id":"2", "a":3, "b":1, "c":2}]}');
-ERROR:  $expr can only be applied to the top-level document
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
 -- $and
-SELECT helio_api.create_collection_view('schema_validation_insertion', '{ "create": "col2", "validator": { "$and": [ { "a": { "$gt": 2 } }, {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int"}}}} ] } }');
+SELECT helio_api.create_collection_view('schema_validation_insertion', '{ "create": "col2", "validator": { "$and": [ { "a": { "$gt": 2 } }, {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int", "maximum":5}}}} ] } }');
 NOTICE:  creating collection
          create_collection_view         
 ---------------------------------------------------------------------
  { "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"1", "a":3}]}');
-ERROR:  unknown top level operator: $jsonSchema. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.
+SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"1", "a":4}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
 SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"2", "a":1}]}');
-ERROR:  unknown top level operator: $jsonSchema. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- expect to throw error as 6 > 5 (maximum)
+SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"3", "a":6}]}');
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
 set helio_api.enableBypassDocumentValidation = true;
 SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"2", "a":1}], "bypassDocumentValidation": true}');
                                          insert                                         

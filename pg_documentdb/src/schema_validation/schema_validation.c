@@ -83,10 +83,10 @@ PrepareForSchemaValidation(pgbson *schemaValidationInfo, MemoryContext memoryCon
 		return NULL;
 	}
 
-	/*todo: cannot support top level query operator like $jsonSchema/$expr for now */
-	return GetExpressionEvalState(
+	bool hasOperatorRestrictions = true;
+	return GetExpressionEvalStateForBsonInput(
 		&validatorBsonValue,
-		memoryContext);
+		memoryContext, hasOperatorRestrictions);
 }
 
 
@@ -98,9 +98,7 @@ PrepareForSchemaValidation(pgbson *schemaValidationInfo, MemoryContext memoryCon
 void
 ValidateSchemaOnDocumentInsert(ExprEvalState *evalState, const bson_value_t *document)
 {
-	bool shouldRecurseIfArray = false;
-	bool matched = EvalBooleanExpressionAgainstValue(evalState, document,
-													 shouldRecurseIfArray);
+	bool matched = EvalBooleanExpressionAgainstBson(evalState, document);
 	if (!matched)
 	{
 		/* native mongo return additional information about the cause of the failure */
@@ -122,10 +120,8 @@ ValidateSchemaOnDocumentUpdate(ValidationLevels validationLevel,
 							   ExprEvalState *evalState,
 							   pgbson *sourceDocument, pgbson *targetDocument)
 {
-	bool shouldRecurseIfArray = false;
 	bson_value_t targetDocumentValue = ConvertPgbsonToBsonValue(targetDocument);
-	bool matched = EvalBooleanExpressionAgainstValue(evalState, &targetDocumentValue,
-													 shouldRecurseIfArray);
+	bool matched = EvalBooleanExpressionAgainstBson(evalState, &targetDocumentValue);
 	if (!matched)
 	{
 		if (validationLevel == ValidationLevel_Strict)
@@ -136,8 +132,7 @@ ValidateSchemaOnDocumentUpdate(ValidationLevels validationLevel,
 		else if (sourceDocument != NULL && validationLevel == ValidationLevel_Moderate)
 		{
 			bson_value_t sourceDocumentValue = ConvertPgbsonToBsonValue(sourceDocument);
-			matched = EvalBooleanExpressionAgainstValue(evalState, &sourceDocumentValue,
-														shouldRecurseIfArray);
+			matched = EvalBooleanExpressionAgainstBson(evalState, &sourceDocumentValue);
 
 			if (matched)
 			{

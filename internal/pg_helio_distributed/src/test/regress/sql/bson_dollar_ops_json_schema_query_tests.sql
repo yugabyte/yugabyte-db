@@ -409,3 +409,17 @@ SELECT bson_dollar_json_schema('{"data" : [ 1, {"a": {"x":5, "y": 6}, "b":2}, {"
 
 -- Doc is valid when "uniqueItems" is given for Non-Array fields
 SELECT bson_dollar_json_schema('{"data" : 1 }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+
+-- $jsonSchema will be supported in query condition later
+-------------------------------------------------------------------------------
+--                         $jsonSchema in query condition                    --
+-------------------------------------------------------------------------------
+
+-- All docs Match
+SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { } } }, "$db" : "db" }');
+
+-- -- No Match
+SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }, "$db" : "db" }');
+
+-- -- Matches where "vehicle" is "string"
+SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }, "$db" : "db" }');

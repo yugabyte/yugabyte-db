@@ -327,6 +327,18 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
 		true,
 	},
+	{
+		{ "$jsonSchema", QUERY_OPERATOR_JSONSCHEMA, BsonTypeId,
+		  BsonJsonSchemaFunctionId, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  FEATURE_QUERY_OPERATOR_JSONSCHEMA },
+		{ "$jsonSchema", QUERY_OPERATOR_JSONSCHEMA, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
+		true,
+	},
 
 
 	/* bitwise */

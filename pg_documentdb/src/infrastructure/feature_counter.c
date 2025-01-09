@@ -245,6 +245,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_QUERY_OPERATOR_GEOINTERSECTS] = "query_operator_geointersects",
 	[FEATURE_QUERY_OPERATOR_GEONEAR] = "query_operator_geonear",
 	[FEATURE_QUERY_OPERATOR_GEOWITHIN] = "query_operator_geowithin",
+	[FEATURE_QUERY_OPERATOR_JSONSCHEMA] = "query_operator_jsonschema",
 	[FEATURE_QUERY_OPERATOR_NEAR] = "query_operator_near",
 	[FEATURE_QUERY_OPERATOR_NEARSPHERE] = "query_operator_nearsphere",
 	[FEATURE_QUERY_OPERATOR_SAMPLERATE] = "query_operator_samplerate",

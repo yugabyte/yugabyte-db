@@ -402,6 +402,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the $expr function for bson */
 	Oid BsonExprFunctionId;
 
+	/* OID of the $jsonSchema function for bson */
+	Oid BsonJsonSchemaFunctionId;
+
 	/* OID of the $expr function for bson with let */
 	Oid BsonExprWithLetFunctionId;
 
@@ -1861,6 +1864,18 @@ BsonExprFunctionId(void)
 {
 	return GetBinaryOperatorFunctionId(&Cache.BsonExprFunctionId,
 									   "bson_dollar_expr", BsonTypeId(),
+									   BsonTypeId());
+}
+
+
+/*
+ * Returns the OID of ApiCatalogSchemaName.bson_dollar_json_schema function.
+ */
+Oid
+BsonJsonSchemaFunctionId(void)
+{
+	return GetBinaryOperatorFunctionId(&Cache.BsonJsonSchemaFunctionId,
+									   "bson_dollar_json_schema", BsonTypeId(),
 									   BsonTypeId());
 }
 

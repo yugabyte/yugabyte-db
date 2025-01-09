@@ -19,6 +19,7 @@
 #include "operators/bson_expr_eval.h"
 #include "query/query_operator.h"
 #include "utils/documentdb_errors.h"
+#include "metadata/metadata_cache.h"
 
 
 /* --------------------------------------------------------- */
@@ -32,7 +33,9 @@
 
 static Datum ExpressionEval(ExprEvalState *exprEvalState,
 							const pgbsonelement *element);
-static ExprEvalState * CreateEvalStateFromExpr(Expr *expression);
+static ExprEvalState * CreateEvalStateFromExpr(Expr *expression, Oid attributeOid);
+static Datum ExpressionEvalForBson(ExprEvalState *exprEvalState,
+								   const pgbson *bson);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -176,6 +179,21 @@ EvalBooleanExpressionAgainstValue(ExprEvalState *evalState,
 
 
 /*
+ * Evaluate a query expression against the provided value.
+ * If the value returns a match, return true. Else return false.
+ */
+bool
+EvalBooleanExpressionAgainstBson(ExprEvalState *evalState,
+								 const bson_value_t *queryValue)
+{
+	pgbson *bson = PgbsonInitFromDocumentBsonValue(queryValue);
+	bool matched = DatumGetBool(ExpressionEvalForBson(evalState, bson));
+
+	return matched;
+}
+
+
+/*
  * Evaluate a query expression against every element of the array
  * and for each element check whether the query returns a match.
  * If any element returns a match, return the value of the first
@@ -278,7 +296,7 @@ GetExpressionEvalStateFromFuncExpr(const FuncExpr *expression,
 								   MemoryContext memoryContext)
 {
 	MemoryContext originalMemoryContext = MemoryContextSwitchTo(memoryContext);
-	ExprEvalState *evalState = CreateEvalStateFromExpr((Expr *) expression);
+	ExprEvalState *evalState = CreateEvalStateFromExpr((Expr *) expression, INTERNALOID);
 	MemoryContextSwitchTo(originalMemoryContext);
 	return evalState;
 }
@@ -300,6 +318,27 @@ GetExpressionEvalState(const bson_value_t *expression, MemoryContext memoryConte
 
 /*
  * Compiles the expression pointed to by the bson value and creates an expression
+ * that can be reused to evaluate expressions for bson input values. The state object
+ * is created in the specified MemoryContext.
+ * hasOperatorRestrictions is set to true if the expression is being used for schema validation.
+ */
+ExprEvalState *
+GetExpressionEvalStateForBsonInput(const bson_value_t *expression, MemoryContext
+								   memoryContext, bool hasOperatorRestrictions)
+{
+	MemoryContext originalMemoryContext = MemoryContextSwitchTo(memoryContext);
+	BsonQueryOperatorContext context = { 0 };
+	BsonQueryOperatorContextCommonBuilder(&context);
+	context.hasOperatorRestrictions = hasOperatorRestrictions;
+	Expr *expr = CreateQualForBsonExpression(expression, NULL, &context);
+	ExprEvalState *evalState = CreateEvalStateFromExpr(expr, BsonTypeId());
+	MemoryContextSwitchTo(originalMemoryContext);
+	return evalState;
+}
+
+
+/*
+ * Compiles the expression pointed to by the bson value and creates an expression
  * object that can be reused to evaluate expressions for input values. The state object
  * is created in the specified MemoryContext.
  */
@@ -309,7 +348,7 @@ GetExpressionEvalStateWithCollation(const bson_value_t *expression, MemoryContex
 {
 	MemoryContext originalMemoryContext = MemoryContextSwitchTo(memoryContext);
 	Expr *expr = CreateQualForBsonValueExpression(expression, collationString);
-	ExprEvalState *evalState = CreateEvalStateFromExpr(expr);
+	ExprEvalState *evalState = CreateEvalStateFromExpr(expr, INTERNALOID);
 	MemoryContextSwitchTo(originalMemoryContext);
 	return evalState;
 }
@@ -360,7 +399,7 @@ FreeExprEvalState(ExprEvalState *exprEvalState, MemoryContext memoryContext)
  * that can use the query expression to evaluate conditions.
  */
 static ExprEvalState *
-CreateEvalStateFromExpr(Expr *expression)
+CreateEvalStateFromExpr(Expr *expression, Oid attributeOid)
 {
 	ExprEvalState *evalState = palloc(sizeof(ExprEvalState));
 	evalState->estate = CreateExecutorState();
@@ -373,7 +412,6 @@ CreateEvalStateFromExpr(Expr *expression)
 	/* We only have 1 attribute (the input) */
 	AttrNumber attributeNumber = (AttrNumber) 1;
 	char *attributeName = NULL;
-	Oid attributeOid = INTERNALOID;
 	int attributeTypeModifier = -1;
 
 	/* Attribute is not an array */
@@ -400,6 +438,33 @@ ExpressionEval(ExprEvalState *exprEvalState, const pgbsonelement *element)
 	bool isNull = false;
 
 	*(exprEvalState->datums) = PointerGetDatum(element);
+
+	ResetExprContext(exprEvalState->exprContext);
+	exprEvalState->tupleSlot->tts_values = exprEvalState->datums;
+	Datum result = ExecEvalExprSwitchContext(exprEvalState->exprState,
+											 exprEvalState->exprContext, &isNull);
+
+	if (isNull)
+	{
+		return (Datum) NULL;
+	}
+	else
+	{
+		return result;
+	}
+}
+
+
+/*
+ * Evaluates an expression given the expression evaluation state against a target
+ * value in the pgbson and returns the Datum that is returned by the expression.
+ */
+static Datum
+ExpressionEvalForBson(ExprEvalState *exprEvalState, const pgbson *bson)
+{
+	bool isNull = false;
+
+	*(exprEvalState->datums) = PointerGetDatum(bson);
 
 	ResetExprContext(exprEvalState->exprContext);
 	exprEvalState->tupleSlot->tts_values = exprEvalState->datums;

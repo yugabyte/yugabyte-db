@@ -66,6 +66,10 @@ ExprEvalState * GetExpressionEvalStateWithCollation(const bson_value_t *expressi
 ExprEvalState * GetExpressionEvalStateFromFuncExpr(const FuncExpr *expression,
 												   MemoryContext memoryContext);
 
+ExprEvalState * GetExpressionEvalStateForBsonInput(const bson_value_t *expression,
+												   MemoryContext memoryContext, bool
+												   hasOperatorRestrictions);
+
 void FreeExprEvalState(ExprEvalState *exprEvalState, MemoryContext memoryContext);
 
 bool EvalBooleanExpressionAgainstArray(ExprEvalState *evalState,
@@ -74,6 +78,8 @@ bool EvalBooleanExpressionAgainstArray(ExprEvalState *evalState,
 bool EvalBooleanExpressionAgainstValue(ExprEvalState *evalState,
 									   const bson_value_t *queryValue,
 									   bool shouldRecurseIfArray);
+bool EvalBooleanExpressionAgainstBson(ExprEvalState *evalState,
+									  const bson_value_t *queryValue);
 
 bson_value_t EvalExpressionAgainstArrayGetFirstMatch(ExprEvalState *evalState,
 													 const bson_value_t *queryValue);

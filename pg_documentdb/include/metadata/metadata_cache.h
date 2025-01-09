@@ -78,6 +78,7 @@ Oid BsonTypeMatchFunctionId(void);
 Oid BsonExistsMatchFunctionId(void);
 Oid BsonExprFunctionId(void);
 Oid BsonExprWithLetFunctionId(void);
+Oid BsonJsonSchemaFunctionId(void);
 Oid BsonTextFunctionId(void);
 Oid BsonEmptyDataTableFunctionId(void);
 Oid IndexSpecAsBsonFunctionId(void);

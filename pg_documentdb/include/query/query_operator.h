@@ -101,6 +101,11 @@ typedef struct BsonQueryOperatorContext
 
 	/* ICU standard colation string. See AggregationPipelineBuildContext for more details. */
 	const char *collationString;
+
+	/* The following query operators cannot be used to evaluate input values during schema validation.
+	 * $expr with $function expressions / $near / $nearSphere / $text / $where
+	 */
+	bool hasOperatorRestrictions;
 } BsonQueryOperatorContext;
 
 Var * MakeSimpleDocumentVar(void);
@@ -116,7 +121,9 @@ List * CreateQualsForBsonValueTopLevelQuery(const pgbson *query);
 Expr * CreateQualForBsonValueExpression(const bson_value_t *expression, const
 										char *collationString);
 Expr * CreateQualForBsonValueArrayExpression(const bson_value_t *expression);
-Expr * CreateQualForBsonExpression(const bson_value_t *expression, const char *queryPath);
+void BsonQueryOperatorContextCommonBuilder(BsonQueryOperatorContext *context);
+Expr * CreateQualForBsonExpression(const bson_value_t *expression, const char *queryPath,
+								   BsonQueryOperatorContext *context);
 
 Expr * CreateNonShardedShardKeyValueFilter(int collectionVarNo, const
 										   MongoCollection *collection);
