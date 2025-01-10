@@ -5,7 +5,8 @@ import MUIDataTable, {
   MUIDataTableOptions,
   MUISortOptions,
   MUIDataTableCheckboxProps,
-  MUIDataTableMeta
+  MUIDataTableMeta,
+  CustomHeadLabelRenderOptions
 } from 'mui-datatables';
 import {
     createStyles,
@@ -212,15 +213,17 @@ const cHeadRender = (
   sortOrder: MUISortOptions,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   headerProps?: (meta: ColumnMeta) => Record<any, any>,
-  sort?: boolean
+  sort?: boolean,
+  headerLabel?: (options: CustomHeadLabelRenderOptions) => string | React.ReactNode
 ) => {
   let restProps = {};
   if (headerProps) {
     restProps = { ...headerProps(header) };
   }
+  const label = !!headerLabel ? headerLabel({...header, colPos: header.index}) : header.label;
   return (
     <TableCell key={header.name} onClick={() => updateDirection(header.index)} {...restProps}>
-      {!header?.hideHeader && header.label}
+      {!header?.hideHeader && label}
       {!header?.hideHeader && sort && (
         <TableSortLabel
           active={header.name === sortOrder.name}
@@ -420,7 +423,8 @@ export const YBTable = ({
             updateDirection,
             sortOrder,
             col.options?.setCellHeaderProps,
-            col.options?.sort ?? true
+            col.options?.sort ?? true,
+            col.options?.customHeadLabelRender
         );
         if (col.customColumnSort) {
             col.options.sortCompare = col.customColumnSort;
