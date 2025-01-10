@@ -270,7 +270,7 @@ When the source universe is lost, an explicit decision must be made to switch ov
 
 ### Backups
 
-Backups are supported. However for backups on target clusters, consistency across tablets or across tables is not guaranteed.
+Backups are supported. However for backups on target clusters, if there is an active workload, consistency of the latest data is not guaranteed.
 
 ## Cross-feature interactions
 
