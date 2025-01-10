@@ -100,10 +100,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
 
     // Combine both master and tserver files to download all the files together
     List<String> allLogFilePaths =
-        getFilesListWithSizes(
-                customer, supportBundleTaskParams.bundleData, universe, startDate, endDate, node)
-            .keySet()
-            .stream()
+        getFilesListWithSizes(customer, null, universe, startDate, endDate, node).keySet().stream()
             .map(filePath -> Paths.get(nodeHomeDir).relativize(Paths.get(filePath)))
             .map(Path::toString)
             .collect(Collectors.toList());
