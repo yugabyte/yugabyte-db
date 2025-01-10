@@ -1,5 +1,6 @@
 import { FC } from 'react';
 import _ from 'lodash';
+import { toast } from 'react-toastify';
 import { browserHistory } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueries } from 'react-query';
@@ -12,6 +13,7 @@ import { fetchCDCLagMetrics } from './utils/helper';
 import { formatDuration } from '../../../../../utils/Formatters';
 import { ReplicationSlot, ReplicationSlotResponse, SlotState } from './utils/types';
 import { StatusBadge, Badge_Types } from '../../../../../components/common/badge/StatusBadge';
+import { createErrorMessage } from '../../universe-form/utils/helpers';
 import { replicationSlotStyles } from './utils/ReplicationSlotStyles';
 
 //icons
@@ -28,7 +30,12 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
 
   const { data: replicationSlotData, isLoading } = useQuery<ReplicationSlotResponse>(
     [QUERY_KEY.getReplicationSlots, universeUUID],
-    () => api.getReplicationSlots(universeUUID)
+    () => api.getReplicationSlots(universeUUID),
+    {
+      onError: (error) => {
+        toast.error(createErrorMessage(error));
+      }
+    }
   );
 
   const metricsQuery = useQueries(
