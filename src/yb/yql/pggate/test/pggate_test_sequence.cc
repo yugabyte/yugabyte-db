@@ -26,34 +26,34 @@ constexpr auto kMaxInt64 = std::numeric_limits<int64_t>::max();
 constexpr auto kMinInt64 = std::numeric_limits<int64_t>::min();
 
 class PggateTestSequence : public PggateTest {
-  static const YBCPgOid db_oid_ = kDefaultDatabaseOid;
-  static const YBCPgOid seq_oid_ = 3;
+  static const YbcPgOid db_oid_ = kDefaultDatabaseOid;
+  static const YbcPgOid seq_oid_ = 3;
   static const uint64_t catalog_version_ = 1;
 
  protected:
   // Create sequence with specified initial value and "called" status
-  static YBCStatus CreateSequence(int64_t init_val, bool is_called) {
+  static YbcStatus CreateSequence(int64_t init_val, bool is_called) {
     return YBCInsertSequenceTuple(db_oid_, seq_oid_, catalog_version_,
                                   false /*is_db_catalog_version_mode*/,
                                   init_val, is_called);
   }
 
   // Drop sequence
-  static YBCStatus DropSequence() {
-    YBCPgStatement pg_stmt(nullptr);
+  static YbcStatus DropSequence() {
+    YbcPgStatement pg_stmt(nullptr);
     CHECK_YBC_STATUS(YBCPgNewDropSequence(db_oid_, seq_oid_, &pg_stmt));
     return YBCPgExecDropSequence(pg_stmt);
   }
 
   // Read the value and "called" status from sequence
-  static YBCStatus ReadSequence(int64_t *last_val, bool *is_called) {
+  static YbcStatus ReadSequence(int64_t *last_val, bool *is_called) {
     return YBCReadSequenceTuple(db_oid_, seq_oid_, catalog_version_,
                                 false /*is_db_catalog_version_mode*/,
                                 last_val, is_called);
   }
 
   // Unconditionally update the value and "called" status of sequence
-  static YBCStatus UpdateSequence(int64_t last_val, bool is_called) {
+  static YbcStatus UpdateSequence(int64_t last_val, bool is_called) {
     bool dummy;
     return YBCUpdateSequenceTuple(db_oid_, seq_oid_, catalog_version_,
                                   false /*is_db_catalog_version_mode*/,
@@ -76,7 +76,7 @@ class PggateTestSequence : public PggateTest {
   // Fetch up to specified non-zero number of values from the sequence using specified parameters
   // (increment, limits, whether allow to wrap around) updating the state accordingly
   // Returns the range, as inclusive boundaries.
-  static YBCStatus FetchSequence(uint32_t fetch_count, int64_t increment,
+  static YbcStatus FetchSequence(uint32_t fetch_count, int64_t increment,
                           int64_t min_value, int64_t max_value, bool cycle,
                           int64_t *first_value, int64_t *last_value) {
     return YBCFetchSequenceTuple(db_oid_, seq_oid_, catalog_version_,
@@ -299,7 +299,7 @@ TEST_F(PggateTestSequence, TestSequenceFetchMisc) {
   CHECK_EQ(fetch_first_val, 101);
   CHECK_EQ(fetch_last_val, 150);
 
-  YBCStatus fail = FetchSequence(100 /* fetch_count */, 1 /* inc_by */,
+  YbcStatus fail = FetchSequence(100 /* fetch_count */, 1 /* inc_by */,
                                  1, 150, false /* limits, cycle */,
                                  &fetch_first_val, &fetch_last_val);
   EXPECT_EQ(YBCStatusPgsqlError(fail),

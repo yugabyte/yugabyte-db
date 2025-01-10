@@ -383,7 +383,7 @@ message PgsqlBackfillSpecPB {
   optional bytes next_row_key = 3;
 }
 
-// Make sure this is in sync with YBCPgMetricsCaptureType in ybc_pg_typedefs.h.
+// Make sure this is in sync with YbcPgMetricsCaptureType in ybc_pg_typedefs.h.
 enum PgsqlMetricsCaptureType {
   PGSQL_METRICS_CAPTURE_NONE = 0;
   PGSQL_METRICS_CAPTURE_ALL = 1;

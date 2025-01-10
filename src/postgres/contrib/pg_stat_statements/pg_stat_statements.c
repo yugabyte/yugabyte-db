@@ -85,7 +85,7 @@
 #include "common/pg_yb_common.h"
 
 
-#include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
+#include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 #include "yb_query_diagnostics.h"
 
 PG_MODULE_MAGIC;

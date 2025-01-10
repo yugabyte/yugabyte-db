@@ -2390,7 +2390,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		Relation rel = RelationIdGetRelation(relId);
 		if (IsYBRelation(rel))
 		{
-			YbTableProperties yb_props = YbGetTableProperties(rel);
+			YbcTableProperties yb_props = YbGetTableProperties(rel);
 
 			is_colocated    = yb_props->is_colocated;
 			tablegroupId    = yb_props->tablegroup_oid;
@@ -5068,7 +5068,7 @@ YbWaitForBackendsCatalogVersion()
 			}
 		}
 
-		YBCStatus s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
+		YbcStatus s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
 														 catalog_version,
 														 MyProcPid,
 														 &num_lagging_backends);

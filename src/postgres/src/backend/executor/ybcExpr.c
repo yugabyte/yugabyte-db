@@ -50,12 +50,12 @@ Node *yb_expr_instantiate_params_mutator(Node *node, EState *estate);
 bool yb_pushdown_walker(Node *node, List **colrefs);
 bool yb_can_pushdown_func(Oid funcid);
 
-YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num,
+YbcPgExpr YBCNewColumnRef(YbcPgStatement ybc_stmt, int16_t attr_num,
 						  int attr_typid, int attr_collation,
-						  const YBCPgTypeAttrs *type_attrs) {
-	YBCPgExpr expr = NULL;
-	const YBCPgTypeEntity *type_entity = YbDataTypeFromOidMod(attr_num, attr_typid);
-	YBCPgCollationInfo collation_info;
+						  const YbcPgTypeAttrs *type_attrs) {
+	YbcPgExpr expr = NULL;
+	const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(attr_num, attr_typid);
+	YbcPgCollationInfo collation_info;
 	YBGetCollationInfo(attr_collation, type_entity, 0 /* datum */, true /* is_null */,
 					   &collation_info);
 	HandleYBStatus(YBCPgNewColumnRef(ybc_stmt, attr_num, type_entity,
@@ -64,11 +64,11 @@ YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num,
 	return expr;
 }
 
-YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Oid collation_id,
+YbcPgExpr YBCNewConstant(YbcPgStatement ybc_stmt, Oid type_id, Oid collation_id,
 						 Datum datum, bool is_null) {
-	YBCPgExpr expr = NULL;
-	const YBCPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, type_id);
-	YBCPgCollationInfo collation_info;
+	YbcPgExpr expr = NULL;
+	const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, type_id);
+	YbcPgCollationInfo collation_info;
 	YBGetCollationInfo(collation_id, type_entity, datum, is_null, &collation_info);
 	HandleYBStatus(YBCPgNewConstant(ybc_stmt, type_entity,
 									collation_info.collate_is_valid_non_c,
@@ -77,17 +77,17 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Oid collation_id,
 	return expr;
 }
 
-YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatumKind kind) {
-	YBCPgExpr expr = NULL;
-	const YBCPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, type_id);
+YbcPgExpr YBCNewConstantVirtual(YbcPgStatement ybc_stmt, Oid type_id, YbcPgDatumKind kind) {
+	YbcPgExpr expr = NULL;
+	const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, type_id);
 	HandleYBStatus(YBCPgNewConstantVirtual(ybc_stmt, type_entity, kind, &expr));
 	return expr;
 }
 
-YBCPgExpr YBCNewTupleExpr(YBCPgStatement ybc_stmt,
-						  const YBCPgTypeAttrs *type_attrs, int num_elems, YBCPgExpr *elems) {
-	YBCPgExpr expr = NULL;
-	const YBCPgTypeEntity *tuple_type_entity = YBCPgFindTypeEntity(RECORDOID);
+YbcPgExpr YBCNewTupleExpr(YbcPgStatement ybc_stmt,
+						  const YbcPgTypeAttrs *type_attrs, int num_elems, YbcPgExpr *elems) {
+	YbcPgExpr expr = NULL;
+	const YbcPgTypeEntity *tuple_type_entity = YBCPgFindTypeEntity(RECORDOID);
 	HandleYBStatus(YBCPgNewTupleExpr(ybc_stmt, tuple_type_entity, type_attrs,
 									 num_elems, elems, &expr));
 	return expr;
@@ -573,11 +573,11 @@ bool YbIsTransactionalExpr(Node *pg_expr)
  *	  DocDB statement. Caller is supposed to ensure that expression is pushable
  *	  so DocDB can handle it.
  */
-YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt, Expr *pg_expr)
+YbcPgExpr YBCNewEvalExprCall(YbcPgStatement ybc_stmt, Expr *pg_expr)
 {
-	YBCPgExpr ybc_expr;
-	YBCPgCollationInfo collation_info;
-	const YBCPgTypeEntity *type_ent;
+	YbcPgExpr ybc_expr;
+	YbcPgCollationInfo collation_info;
+	const YbcPgTypeEntity *type_ent;
 	type_ent = YbDataTypeFromOidMod(InvalidAttrNumber,
 									exprType((Node *) pg_expr));
 	YBGetCollationInfo(exprCollation((Node *) pg_expr),
@@ -592,7 +592,7 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt, Expr *pg_expr)
 									&ybc_expr));
 
 	Datum expr_datum = CStringGetDatum(nodeToString(pg_expr));
-	YBCPgExpr expr = YBCNewConstant(ybc_stmt, CSTRINGOID, C_COLLATION_OID,
+	YbcPgExpr expr = YBCNewConstant(ybc_stmt, CSTRINGOID, C_COLLATION_OID,
 									expr_datum , /* IsNull */ false);
 	HandleYBStatus(YBCPgOperatorAppendArg(ybc_expr, expr));
 	return ybc_expr;

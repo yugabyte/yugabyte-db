@@ -270,7 +270,7 @@ ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
 	}
 
 	// Also need to disallow colocated objects until that is supported.
-	YbTableProperties table_props = YbGetTableProperties(rel);
+	YbcTableProperties table_props = YbGetTableProperties(rel);
 	bool is_colocated = table_props->is_colocated;
 	RelationClose(rel);
 	if (is_colocated)
@@ -352,7 +352,7 @@ ShouldReplicateAlterReplication(Oid rel_oid)
 	}
 
 	// Also need to disallow colocated objects until that is supported.
-	YbTableProperties table_props = YbGetTableProperties(rel);
+	YbcTableProperties table_props = YbGetTableProperties(rel);
 	bool is_colocated = table_props->is_colocated;
 	RelationClose(rel);
 	if (is_colocated && !TEST_AllowColocatedObjects)

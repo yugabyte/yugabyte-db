@@ -108,7 +108,7 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 
 void
 YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
-				  bool *retry_on_oid_collision, YbCloneInfo *yb_clone_info)
+				  bool *retry_on_oid_collision, YbcCloneInfo *yb_clone_info)
 {
 	if (YBIsDBCatalogVersionMode())
 	{
@@ -125,7 +125,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 					 errmsg("too many databases")));
 	}
 
-	YBCPgStatement handle;
+	YbcPgStatement handle;
 
 	HandleYBStatus(YBCPgNewCreateDatabase(dbname,
 										  dboid,
@@ -135,7 +135,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 										  yb_clone_info,
 										  &handle));
 
-	YBCStatus createdb_status = YBCPgExecCreateDatabase(handle);
+	YbcStatus createdb_status = YBCPgExecCreateDatabase(handle);
 	/* If OID collision happends for CREATE DATABASE, then we need to retry CREATE DATABASE. */
 	if (retry_on_oid_collision)
 	{
@@ -162,7 +162,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 static void
 YBCDropDBSequences(Oid dboid)
 {
-	YBCPgStatement sequences_handle;
+	YbcPgStatement sequences_handle;
 	HandleYBStatus(YBCPgNewDropDBSequences(dboid, &sequences_handle));
 	YBSaveDdlHandle(sequences_handle);
 }
@@ -170,7 +170,7 @@ YBCDropDBSequences(Oid dboid)
 void
 YBCDropDatabase(Oid dboid, const char *dbname)
 {
-	YBCPgStatement handle;
+	YbcPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropDatabase(dbname,
 										dboid,
@@ -210,7 +210,7 @@ YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_o
 void
 YBCCreateTablegroup(Oid grp_oid, Oid tablespace_oid)
 {
-	YBCPgStatement handle;
+	YbcPgStatement handle;
 	char *db_name = get_database_name(MyDatabaseId);
 
 	HandleYBStatus(YBCPgNewCreateTablegroup(db_name, MyDatabaseId,
@@ -221,7 +221,7 @@ YBCCreateTablegroup(Oid grp_oid, Oid tablespace_oid)
 void
 YBCDropTablegroup(Oid grpoid)
 {
-	YBCPgStatement handle;
+	YbcPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTablegroup(MyDatabaseId, grpoid, &handle));
 	if (yb_ddl_rollback_enabled)
@@ -244,7 +244,7 @@ YBCDropTablegroup(Oid grpoid)
 
 /* ------------------------------------------------------------------------- */
 /*  Table Functions. */
-static void CreateTableAddColumn(YBCPgStatement handle,
+static void CreateTableAddColumn(YbcPgStatement handle,
 								 Form_pg_attribute att,
 								 bool is_hash,
 								 bool is_primary,
@@ -252,7 +252,7 @@ static void CreateTableAddColumn(YBCPgStatement handle,
 								 bool is_nulls_first)
 {
 	const AttrNumber attnum = att->attnum;
-	const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(attnum,
+	const YbcPgTypeEntity *col_type = YbDataTypeFromOidMod(attnum,
 															att->atttypid);
 
 	if (att->atttypid == VECTOROID && !yb_enable_docdb_vector_type)
@@ -276,7 +276,7 @@ static void CreateTableAddColumn(YBCPgStatement handle,
  * key columns, then regular columns.
  */
 static void
-CreateTableAddColumns(YBCPgStatement handle, TupleDesc desc,
+CreateTableAddColumns(YbcPgStatement handle, TupleDesc desc,
 					  Constraint *primary_key, const bool colocated,
 					  const bool is_tablegroup)
 {
@@ -372,7 +372,7 @@ CreateTableAddColumns(YBCPgStatement handle, TupleDesc desc,
 }
 
 static void
-YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
+YBTransformPartitionSplitPoints(YbcPgStatement yb_stmt,
 								List *split_points,
 								Form_pg_attribute *attrs,
 								int attr_count)
@@ -389,7 +389,7 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 										datums, &datum_count);
 
 		/* Convert the values to yugabyte format and bind to statement. */
-		YBCPgExpr exprs[INDEX_MAX_KEYS];
+		YbcPgExpr exprs[INDEX_MAX_KEYS];
 		int idx;
 		for (idx = 0; idx < datum_count; idx++) {
 			switch (datums[idx]->kind)
@@ -444,10 +444,10 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 
 /* Utility function to handle split points */
 static void
-CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
+CreateTableHandleSplitOptions(YbcPgStatement handle, TupleDesc desc,
 							  OptSplit *split_options, Constraint *primary_key,
 							  const bool colocated, const bool is_tablegroup,
-							  YBCPgYbrowidMode ybrowid_mode)
+							  YbcPgYbrowidMode ybrowid_mode)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -547,7 +547,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		return; /* Nothing to do. */
 	}
 
-	YBCPgStatement handle = NULL;
+	YbcPgStatement handle = NULL;
 	ListCell       *listptr;
 	bool           is_shared_relation = tablespaceId == GLOBALTABLESPACE_OID;
 	Oid            databaseId         = YBCGetDatabaseOidFromShared(is_shared_relation);
@@ -806,7 +806,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	 * The hidden ybrowid column is added when there is no primary key.  This
 	 * column is HASH or ASC sorted depending on certain criteria.
 	 */
-	YBCPgYbrowidMode ybrowid_mode;
+	YbcPgYbrowidMode ybrowid_mode;
 	if (primary_key)
 		ybrowid_mode = PG_YBROWID_MODE_NONE;
 	else if (is_colocated_via_database || is_tablegroup ||
@@ -855,7 +855,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 void
 YBCDropTable(Relation relation)
 {
-	YbTableProperties yb_props = YbTryGetTableProperties(relation);
+	YbcTableProperties yb_props = YbTryGetTableProperties(relation);
 
 	if (!yb_props)
 	{
@@ -867,7 +867,7 @@ YBCDropTable(Relation relation)
 	 * safeguard against NotFound errors.
 	 */
 
-	YBCPgStatement handle = NULL;
+	YbcPgStatement handle = NULL;
 	Oid			databaseId = YBCGetDatabaseOid(relation);
 
 	/* Create table-level tombstone for colocated (via DB or tablegroup) tables */
@@ -929,7 +929,7 @@ YBCDropTable(Relation relation)
 void
 YBCDropSequence(Oid sequence_oid)
 {
-	YBCPgStatement handle;
+	YbcPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropSequence(MyDatabaseId, sequence_oid, &handle));
 	YBSaveDdlHandle(handle);
@@ -978,7 +978,7 @@ YbOnTruncateUpdateCatalog(Relation rel)
 void
 YbUnsafeTruncate(Relation rel)
 {
-	YBCPgStatement handle;
+	YbcPgStatement handle;
 	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
 	Oid			databaseId = YBCGetDatabaseOid(rel);
 	bool		isRegionLocal = YBCIsRegionLocal(rel);
@@ -1041,7 +1041,7 @@ YbUnsafeTruncate(Relation rel)
 
 /* Utility function to handle split points */
 static void
-CreateIndexHandleSplitOptions(YBCPgStatement handle,
+CreateIndexHandleSplitOptions(YbcPgStatement handle,
 							  TupleDesc desc,
 							  OptSplit *split_options,
 							  int16 * coloptions,
@@ -1082,7 +1082,7 @@ CreateIndexHandleSplitOptions(YBCPgStatement handle,
 }
 
 void
-YBCBindCreateIndexColumns(YBCPgStatement handle,
+YBCBindCreateIndexColumns(YbcPgStatement handle,
 						  IndexInfo *indexInfo,
 						  TupleDesc indexTupleDesc,
 						  int16 *coloptions,
@@ -1093,7 +1093,7 @@ YBCBindCreateIndexColumns(YBCPgStatement handle,
 		Form_pg_attribute     att         = TupleDescAttr(indexTupleDesc, i);
 		char                  *attname    = NameStr(att->attname);
 		AttrNumber            attnum      = att->attnum;
-		const YBCPgTypeEntity *col_type   = YbDataTypeFromOidMod(attnum, att->atttypid);
+		const YbcPgTypeEntity *col_type   = YbDataTypeFromOidMod(attnum, att->atttypid);
 
 		const bool            is_key      = (i < numIndexKeyAttrs);
 
@@ -1163,7 +1163,7 @@ YBCCreateIndex(const char *indexName,
 					 schema_name,
 					 indexName);
 
-	YBCPgStatement handle = NULL;
+	YbcPgStatement handle = NULL;
 
 	HandleYBStatus(YBCPgNewCreateIndex(db_name,
 									   schema_name,
@@ -1224,7 +1224,7 @@ ybFetchDefaultConstraintExpr(const ColumnDef *column, Relation rel)
 static List*
 YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						int* col, bool* needsYBAlter,
-						YBCPgStatement* rollbackHandle,
+						YbcPgStatement* rollbackHandle,
 						bool isPartitionOfAlteredTable,
 						List *volatile *ybAlteredTableIds)
 {
@@ -1292,13 +1292,13 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			}
 
 			order = RelationGetNumberOfAttributes(rel) + *col;
-			const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(order, typeOid);
+			const YbcPgTypeEntity *col_type = YbDataTypeFromOidMod(order, typeOid);
 
 			Assert(list_length(handles) == 1);
-			YBCPgStatement add_col_handle =
-				(YBCPgStatement) lfirst(list_head(handles));
+			YbcPgStatement add_col_handle =
+				(YbcPgStatement) lfirst(list_head(handles));
 
-			YBCPgExpr missing_value = NULL;
+			YbcPgExpr missing_value = NULL;
 			Node *default_expr = ybFetchDefaultConstraintExpr(colDef, rel);
 			if (default_expr && yb_enable_add_column_missing_default)
 			{
@@ -1375,8 +1375,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			if (YbIsAttrPrimaryKeyColumn(rel, attnum))
 				break;
 			Assert(list_length(handles) == 1);
-			YBCPgStatement drop_col_handle =
-				(YBCPgStatement) lfirst(list_head(handles));
+			YbcPgStatement drop_col_handle =
+				(YbcPgStatement) lfirst(list_head(handles));
 			HandleYBStatus(YBCPgAlterTableDropColumn(drop_col_handle,
 													 cmd->name));
 			*needsYBAlter = true;
@@ -1455,8 +1455,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			ListCell* handle = NULL;
 			foreach(handle, handles)
 			{
-				YBCPgStatement increment_schema_handle =
-					(YBCPgStatement) lfirst(handle);
+				YbcPgStatement increment_schema_handle =
+					(YbcPgStatement) lfirst(handle);
 				HandleYBStatus(YBCPgAlterTableIncrementSchemaVersion(increment_schema_handle));
 			}
 			List* dependent_rels = NIL;
@@ -1609,7 +1609,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				Relation dependent_rel = (Relation) lfirst(lc);
 				Assert(dependent_rel != NULL);
 				Oid relationId = RelationGetRelid(dependent_rel);
-				YBCPgStatement alter_cmd_handle = NULL;
+				YbcPgStatement alter_cmd_handle = NULL;
 				HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOidByRelid(relationId),
 												  YbGetRelfileNodeId(dependent_rel),
 												  &alter_cmd_handle));
@@ -1631,8 +1631,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						 errdetail("yb_enable_replica_identity is false or a "
 								   "system upgrade is in progress.")));
 
-			YBCPgStatement replica_identity_handle =
-				(YBCPgStatement) lfirst(list_head(handles));
+			YbcPgStatement replica_identity_handle =
+				(YbcPgStatement) lfirst(list_head(handles));
 			ReplicaIdentityStmt* stmt = (ReplicaIdentityStmt *) cmd->def;
 			HandleYBStatus(YBCPgAlterTableSetReplicaIdentity(replica_identity_handle,
 															 stmt->identity_type));
@@ -1671,7 +1671,7 @@ List*
 YBCPrepareAlterTable(List** subcmds,
 					 int subcmds_size,
 					 Oid relationId,
-					 YBCPgStatement *rollbackHandle,
+					 YbcPgStatement *rollbackHandle,
 					 bool isPartitionOfAlteredTable,
 					 List *volatile *ybAlteredTableIds)
 {
@@ -1685,7 +1685,7 @@ YBCPrepareAlterTable(List** subcmds,
 	}
 
 	List *handles = NIL;
-	YBCPgStatement db_handle = NULL;
+	YbcPgStatement db_handle = NULL;
 	HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOidByRelid(relationId),
 									  YbGetRelfileNodeId(rel),
 									  &db_handle));
@@ -1716,7 +1716,7 @@ YBCPrepareAlterTable(List** subcmds,
 }
 
 void
-YBCExecAlterTable(YBCPgStatement handle, Oid relationId)
+YBCExecAlterTable(YbcPgStatement handle, Oid relationId)
 {
 	if (handle)
 	{
@@ -1729,7 +1729,7 @@ YBCExecAlterTable(YBCPgStatement handle, Oid relationId)
 void
 YBCRename(RenameStmt *stmt, Oid relationId)
 {
-	YBCPgStatement	handle     = NULL;
+	YbcPgStatement	handle     = NULL;
 	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
 	char		   *db_name	   = get_database_name(databaseId);
 
@@ -1762,7 +1762,7 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 void
 YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId)
 {
-	YBCPgStatement	handle     = NULL;
+	YbcPgStatement	handle     = NULL;
 	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
 
 	switch (classForm->relkind)
@@ -1790,7 +1790,7 @@ YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId)
 void
 YBCDropIndex(Relation index)
 {
-	YbTableProperties yb_props = YbTryGetTableProperties(index);
+	YbcTableProperties yb_props = YbTryGetTableProperties(index);
 
 	if (!yb_props)
 	{
@@ -1802,7 +1802,7 @@ YBCDropIndex(Relation index)
 	 * safeguard against NotFound errors.
 	 */
 
-	YBCPgStatement handle;
+	YbcPgStatement handle;
 	Oid			indexRelfileNodeId      = YbGetRelfileNodeId(index);
 	Oid			databaseId              = YBCGetDatabaseOid(index);
 
@@ -2017,9 +2017,9 @@ YBCCreateReplicationSlot(const char *slot_name,
 						 uint64_t *consistent_snapshot_time,
 						 CRSLsnType lsn_type)
 {
-	YBCPgStatement handle;
+	YbcPgStatement handle;
 
-	YBCPgReplicationSlotSnapshotAction repl_slot_snapshot_action;
+	YbcPgReplicationSlotSnapshotAction repl_slot_snapshot_action;
 	switch (snapshot_action)
 	{
 		case CRS_NOEXPORT_SNAPSHOT:
@@ -2036,7 +2036,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 	// If lsn_type is specified as HYBRID_TIME, it would be handled
 	// in the if block, otherwise for the default case when nothing is
 	// specified or when SEQUENCE is specified, the value will stay the same.
-	YBCLsnType repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE;
+	YbcLsnType repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE;
 	if (lsn_type == CRS_HYBRID_TIME)
 		repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME;
 
@@ -2047,7 +2047,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 												 repl_slot_lsn_type,
 												 &handle));
 
-	YBCStatus status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);
+	YbcStatus status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);
 	if (YBCStatusIsAlreadyPresent(status))
 	{
 		YBCFreeStatus(status);
@@ -2070,7 +2070,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 }
 
 void
-YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
+YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 						size_t* numreplicationslots)
 {
 	HandleYBStatus(YBCPgListReplicationSlots(replication_slots,
@@ -2079,7 +2079,7 @@ YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
 
 void
 YBCGetReplicationSlot(const char *slot_name,
-					  YBCReplicationSlotDescriptor **replication_slot)
+					  YbcReplicationSlotDescriptor **replication_slot)
 {
 	char error_message[NAMEDATALEN + 64] = "";
 	snprintf(error_message, sizeof(error_message),
@@ -2093,7 +2093,7 @@ YBCGetReplicationSlot(const char *slot_name,
 void
 YBCDropReplicationSlot(const char *slot_name)
 {
-	YBCPgStatement handle;
+	YbcPgStatement handle;
 	char error_message[NAMEDATALEN + 64] = "";
 	snprintf(error_message, sizeof(error_message),
 			 "replication slot \"%s\" does not exist", slot_name);
@@ -2161,15 +2161,15 @@ YBCDestroyVirtualWalForCDC()
 
 void
 YBCGetCDCConsistentChanges(const char *stream_id,
-						   YBCPgChangeRecordBatch **record_batch,
-						   YBCTypeEntityProvider type_entity_provider)
+						   YbcPgChangeRecordBatch **record_batch,
+						   YbcTypeEntityProvider type_entity_provider)
 {
 	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch, type_entity_provider));
 }
 
 void
 YBCUpdateAndPersistLSN(const char *stream_id, XLogRecPtr restart_lsn_hint,
-					   XLogRecPtr confirmed_flush, YBCPgXLogRecPtr *restart_lsn)
+					   XLogRecPtr confirmed_flush, YbcPgXLogRecPtr *restart_lsn)
 {
 	HandleYBStatus(YBCPgUpdateAndPersistLSN(stream_id, restart_lsn_hint,
 											confirmed_flush, restart_lsn));
@@ -2210,7 +2210,7 @@ YBCDropColumn(Relation rel, AttrNumber attnum)
 	}
 	else
 	{
-		YBCPgStatement handle = NULL;
+		YbcPgStatement handle = NULL;
 		HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOidByRelid(RelationGetRelid(rel)),
 										  YbGetRelfileNodeId(rel),
 										  &handle));

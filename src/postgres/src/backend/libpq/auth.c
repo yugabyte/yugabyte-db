@@ -3583,7 +3583,7 @@ static char *ybReadFromUrl(const char *url);
 
 static void
 ybGetJwtAuthOptionsFromPortAndJwks(Port *port, char *jwks,
-								   YBCPgJwtAuthOptions *opt)
+								   YbcPgJwtAuthOptions *opt)
 {
 	HbaLine	   *hba_line = port->hba;
 
@@ -3635,10 +3635,10 @@ YbCheckJwtAuth(Port *port)
 	 * entries. We do that since there is no easy way to send the PG List to the
 	 * C++ layer.
 	 */
-	YBCPgJwtAuthOptions jwt_auth_options;
+	YbcPgJwtAuthOptions jwt_auth_options;
 	ybGetJwtAuthOptionsFromPortAndJwks(port, jwks, &jwt_auth_options);
 
-	YBCStatus s = YBCValidateJWT(jwt, &jwt_auth_options);
+	YbcStatus s = YBCValidateJWT(jwt, &jwt_auth_options);
 	auth_result = (s) ? STATUS_ERROR : STATUS_OK;
 	if (s) /* !ok */
 	{
@@ -3724,7 +3724,7 @@ ybReadFromUrl(const char *url)
 {
 	char *url_contents = NULL;
 	int len;
-	YBCStatus status;
+	YbcStatus status;
 
 	status = YBCFetchFromUrl(url, &url_contents);
 	if (status) /* !ok */

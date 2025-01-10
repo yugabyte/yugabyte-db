@@ -1267,7 +1267,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 									 allow_sync);	/* syncscan OK? */
 		if (IsYBRelation(heapRelation))
 		{
-			YBCPgExecParameters *exec_params = &estate->yb_exec_params;
+			YbcPgExecParameters *exec_params = &estate->yb_exec_params;
 			if (bfinfo)
 			{
 				if (bfinfo->bfinstr)

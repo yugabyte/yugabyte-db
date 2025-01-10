@@ -129,7 +129,7 @@ static void YbFreeRe(cached_re_str *re)
 }
 
 static void
-YbFreeReCache(YBCPgThreadLocalRegexpCache *cache)
+YbFreeReCache(YbcPgThreadLocalRegexpCache *cache)
 {
 	Assert(cache && cache->array);
 	cached_re_str *re = cache->array;
@@ -142,7 +142,7 @@ YbGetReCacheInfo()
 {
 	if (IsMultiThreadedMode())
 	{
-		YBCPgThreadLocalRegexpCache* cache = YBCPgGetThreadLocalRegexpCache();
+		YbcPgThreadLocalRegexpCache* cache = YBCPgGetThreadLocalRegexpCache();
 		if (!cache)
 		{
 			cache = YBCPgInitThreadLocalRegexpCache((sizeof(cached_re_str) *

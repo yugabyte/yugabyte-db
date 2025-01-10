@@ -56,7 +56,7 @@ typedef struct
  * Utility method to set binds for index write statement.
  */
 static void
-doBindsForIdxWrite(YBCPgStatement stmt,
+doBindsForIdxWrite(YbcPgStatement stmt,
 				   void *indexstate,
 				   Relation index,
 				   Datum *values,
@@ -135,7 +135,7 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 }
 
 static void
-doAssignForIdxUpdate(YBCPgStatement stmt,
+doAssignForIdxUpdate(YbcPgStatement stmt,
 					 Relation index,
 					 Datum *values,
 					 bool *isnull,
@@ -162,7 +162,7 @@ doAssignForIdxUpdate(YBCPgStatement stmt,
 		Datum		value   = values[attnum - 1];
 		bool		is_null = isnull[attnum - 1];
 
-		YBCPgExpr ybc_expr = YBCNewConstant(stmt, type_id, collation_id, value, is_null);
+		YbcPgExpr ybc_expr = YBCNewConstant(stmt, type_id, collation_id, value, is_null);
 
 		/*
 		 * Attrs that are a part of the index key are 'bound' to their values.
@@ -198,7 +198,7 @@ doAssignForIdxUpdate(YBCPgStatement stmt,
 	{
 		Assert(unique_index);
 
-		YBCPgExpr ybc_expr = YBCNewConstant(stmt, BYTEAOID, InvalidOid, new_ybbasectid, false);
+		YbcPgExpr ybc_expr = YBCNewConstant(stmt, BYTEAOID, InvalidOid, new_ybbasectid, false);
 		HandleYBStatus(YBCPgDmlAssignColumn(stmt, YBIdxBaseTupleIdAttributeNumber, ybc_expr));
 	}
 
@@ -428,7 +428,7 @@ static int64
 ybcgetbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm)
 {
 	size_t		new_tuples = 0;
-	SliceVector ybctids;
+	YbcSliceVector ybctids;
 	YbScanDesc	ybscan = (YbScanDesc) scan->opaque;
 	bool 		exceeded_work_mem = false;
 
@@ -700,7 +700,7 @@ ybcinendscan(IndexScanDesc scan)
 }
 
 static void
-ybcinbindschema(YBCPgStatement handle,
+ybcinbindschema(YbcPgStatement handle,
 				struct IndexInfo *indexInfo,
 				TupleDesc indexTupleDesc,
 				int16 *coloptions)

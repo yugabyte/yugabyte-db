@@ -299,7 +299,7 @@ ybginSetupBindsForPrefix(TupleDesc tupdesc, YbginScanOpaque ybso,
 	GinScanOpaque so = (GinScanOpaque) ybso;
 	Oid			colloid;
 	Oid			typoid;
-	YBCPgExpr	expr_start,
+	YbcPgExpr	expr_start,
 				expr_end;
 
 	colloid = so->ginstate.supportCollation[0];
@@ -434,7 +434,7 @@ ybginSetupBinds(IndexScanDesc scan)
 	}
 	else
 	{
-		YBCPgExpr	expr;
+		YbcPgExpr	expr;
 
 		/* Bind the one scan entry to the index column. */
 		expr = YBCNewConstant(ybso->handle,
@@ -553,7 +553,7 @@ ybginFetchNextHeapTuple(IndexScanDesc scan)
 	Datum	   *values;
 	HeapTuple	tuple = NULL;
 	TupleDesc	tupdesc;
-	YBCPgSysColumns syscols;
+	YbcPgSysColumns syscols;
 	YbginScanOpaque ybso = (YbginScanOpaque) scan->opaque;
 
 	/*

@@ -30,7 +30,7 @@
 #include "commands/ybccmds.h"
 
 static void
-ybdummyannbindcolumnschema(YBCPgStatement handle,
+ybdummyannbindcolumnschema(YbcPgStatement handle,
 						   IndexInfo *indexInfo,
 						   TupleDesc indexTupleDesc,
 						   int16 *coloptions)

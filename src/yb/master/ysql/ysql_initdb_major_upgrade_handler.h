@@ -77,7 +77,7 @@ class YsqlInitDBAndMajorUpgradeHandler {
   bool IsWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
 
  private:
-  using DbNameToOidList = std::vector<std::pair<std::string, YBCPgOid>>;
+  using DbNameToOidList = std::vector<std::pair<std::string, YbcPgOid>>;
 
   // Executes the given function asynchronously. Ensures that only one function is running at a
   // time.

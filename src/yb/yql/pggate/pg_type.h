@@ -24,13 +24,13 @@ namespace pggate {
 
 class PgTypeInfo {
  public:
-  PgTypeInfo(const YBCPgTypeEntity *YBCDataTypeTable, int count);
+  PgTypeInfo(const YbcPgTypeEntity *YBCDataTypeTable, int count);
 
-  const YBCPgTypeEntity* GetTypeEntity(int32_t type_id);
+  const YbcPgTypeEntity* GetTypeEntity(int32_t type_id);
 
  private:
   // Mapping table of YugaByte and PostgreSQL datatypes.
-  std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
+  std::unordered_map<int, const YbcPgTypeEntity *> type_map_;
 };
 
 

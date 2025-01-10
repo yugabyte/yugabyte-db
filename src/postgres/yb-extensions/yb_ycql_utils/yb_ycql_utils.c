@@ -57,13 +57,13 @@ ycql_stat_statements(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	YCQLStatementStats *stat_list = NULL;
+	YbcYCQLStatementStats *stat_list = NULL;
 	size_t		num_stats = 0;
 	HandleYBStatus(YBCYcqlStatementStats(&stat_list, &num_stats));
 
 	for (i = 0; i < num_stats; ++i)
 	{
-		YCQLStatementStats *stats = (YCQLStatementStats *) stat_list + i;
+		YbcYCQLStatementStats *stats = (YbcYCQLStatementStats *) stat_list + i;
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 

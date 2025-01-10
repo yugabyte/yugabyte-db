@@ -117,7 +117,7 @@ PerformResult Get(PerformResultFuture* future);
 
 class PgClient {
  public:
-  PgClient(const YBCPgAshConfig& ash_config,
+  PgClient(const YbcPgAshConfig& ash_config,
            std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
   ~PgClient();
 
@@ -248,7 +248,7 @@ class PgClient {
       const std::string& stream_id);
 
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
-      const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush);
+      const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 

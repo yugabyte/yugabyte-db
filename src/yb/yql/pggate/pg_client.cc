@@ -47,7 +47,7 @@
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/util/yb_guc.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/util/flags.h"
 
 DECLARE_bool(use_node_hostname_for_local_tserver);
@@ -362,7 +362,7 @@ client::VersionedTablePartitionList BuildTablePartitionList(
 
 class PgClient::Impl : public BigDataFetcher {
  public:
-  Impl(const YBCPgAshConfig& ash_config,
+  Impl(const YbcPgAshConfig& ash_config,
        std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
     : heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)),
       ash_config_(ash_config),
@@ -1273,7 +1273,7 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
-    const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush) {
+    const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush) {
     cdc::UpdateAndPersistLSNRequestPB req;
     req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
@@ -1411,7 +1411,7 @@ class PgClient::Impl : public BigDataFetcher {
   std::array<int, 2> tablet_server_count_cache_;
   MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
 
-  YBCPgAshConfig ash_config_;
+  YbcPgAshConfig ash_config_;
   const WaitEventWatcher& wait_event_watcher_;
 
   uint64_t big_shared_memory_id_;
@@ -1430,7 +1430,7 @@ void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const 
   }
 }
 
-PgClient::PgClient(const YBCPgAshConfig& ash_config,
+PgClient::PgClient(const YbcPgAshConfig& ash_config,
                    std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
     : impl_(new Impl(ash_config, wait_event_watcher)) {}
 
@@ -1688,7 +1688,7 @@ Result<cdc::GetConsistentChangesResponsePB> PgClient::GetConsistentChangesForCDC
 }
 
 Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
-    const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush) {
+    const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush) {
   return impl_->UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush);
 }
 

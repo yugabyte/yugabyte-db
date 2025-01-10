@@ -77,7 +77,7 @@ bool YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 	int current_version_attnum = Anum_pg_yb_logical_client_version_current_version;
 	Form_pg_attribute oid_attrdesc = &Desc_pg_yb_logical_client_version[oid_attnum - 1];
 
-	YBCPgStatement ybc_stmt;
+	YbcPgStatement ybc_stmt;
 
 	HandleYBStatus(YBCPgNewSelect(Template1DbOid,
 								  YBLogicalClientVersionRelationId,
@@ -86,7 +86,7 @@ bool YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 								  &ybc_stmt));
 
 	Datum oid_datum = Int32GetDatum(db_oid);
-	YBCPgExpr pkey_expr = YBCNewConstant(ybc_stmt,
+	YbcPgExpr pkey_expr = YBCNewConstant(ybc_stmt,
 										 oid_attrdesc->atttypid,
 										 oid_attrdesc->attcollation,
 										 oid_datum,
@@ -106,8 +106,8 @@ bool YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 		 * other callers.
 		 */
 		Form_pg_attribute att = &Desc_pg_yb_logical_client_version[attnum - 1];
-		YBCPgTypeAttrs type_attrs = { att->atttypmod };
-		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
+		YbcPgTypeAttrs type_attrs = { att->atttypmod };
+		YbcPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
 										   att->attcollation, &type_attrs);
 		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
 	}
@@ -118,7 +118,7 @@ bool YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 
 	Datum           *values = (Datum *) palloc0(natts * sizeof(Datum));
 	bool            *nulls  = (bool *) palloc(natts * sizeof(bool));
-	YBCPgSysColumns syscols;
+	YbcPgSysColumns syscols;
 	bool result = false;
 
 	HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
@@ -144,9 +144,9 @@ YbIncrementMasterDBLogicalClientVersionTableEntryImpl(Oid db_oid)
 {
 	Assert(YbGetLogicalClientVersionType() == LOGICAL_CLIENT_VERSION_CATALOG_TABLE);
 
-	YBCPgStatement update_stmt    = NULL;
-	YBCPgTypeAttrs type_attrs = { 0 };
-	YBCPgExpr yb_expr;
+	YbcPgStatement update_stmt    = NULL;
+	YbcPgTypeAttrs type_attrs = { 0 };
+	YbcPgExpr yb_expr;
 
 	/* The table pg_yb_catalog_version is in template1. */
 	HandleYBStatus(YBCPgNewUpdate(Template1DbOid,
@@ -159,7 +159,7 @@ YbIncrementMasterDBLogicalClientVersionTableEntryImpl(Oid db_oid)
 	Datum ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
 
 	/* Bind ybctid to identify the current row. */
-	YBCPgExpr ybctid_expr = YBCNewConstant(update_stmt, BYTEAOID, InvalidOid,
+	YbcPgExpr ybctid_expr = YBCNewConstant(update_stmt, BYTEAOID, InvalidOid,
 										   ybctid, false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(update_stmt, YBTupleIdAttributeNumber,
 									  ybctid_expr));
@@ -191,7 +191,7 @@ YbIncrementMasterDBLogicalClientVersionTableEntryImpl(Oid db_oid)
 								  COERCE_EXPLICIT_CALL);
 
 	/* INT8 OID. */
-	YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
+	YbcPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 	yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid,
@@ -249,7 +249,7 @@ void YbCreateMasterDBLogicalClientVersionTableEntry(Oid db_oid)
 	 * primary key and therefore only one insert statement is needed to insert
 	 * the row for db_oid.
 	 */
-	YBCPgStatement insert_stmt = NULL;
+	YbcPgStatement insert_stmt = NULL;
 	HandleYBStatus(YBCPgNewInsert(Template1DbOid,
 								  YBLogicalClientVersionRelationId,
 								  false /* is_region_local */,
@@ -259,14 +259,14 @@ void YbCreateMasterDBLogicalClientVersionTableEntry(Oid db_oid)
 	Relation rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
 	Datum ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
 
-	YBCPgExpr ybctid_expr = YBCNewConstant(insert_stmt, BYTEAOID, InvalidOid,
+	YbcPgExpr ybctid_expr = YBCNewConstant(insert_stmt, BYTEAOID, InvalidOid,
 										   ybctid, false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, YBTupleIdAttributeNumber,
 									  ybctid_expr));
 
 	AttrNumber attnum = Anum_pg_yb_logical_client_version_current_version;
 	Datum		initial_version = 1;
-	YBCPgExpr initial_version_expr = YBCNewConstant(insert_stmt, INT8OID,
+	YbcPgExpr initial_version_expr = YBCNewConstant(insert_stmt, INT8OID,
 													InvalidOid,
 													initial_version,
 													false /* is_null */);
@@ -297,7 +297,7 @@ void YbDeleteMasterDBLogicalClientVersionTableEntry(Oid db_oid)
 	 * primary key and therefore only one delete statement is needed to delete
 	 * the row for db_oid.
 	 */
-	YBCPgStatement delete_stmt = NULL;
+	YbcPgStatement delete_stmt = NULL;
 	HandleYBStatus(YBCPgNewDelete(Template1DbOid,
 								  YBLogicalClientVersionRelationId,
 								  false /* is_region_local */,
@@ -307,7 +307,7 @@ void YbDeleteMasterDBLogicalClientVersionTableEntry(Oid db_oid)
 	Relation rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
 	Datum ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
 
-	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
+	YbcPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
 										   ybctid, false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber,
 									  ybctid_expr));

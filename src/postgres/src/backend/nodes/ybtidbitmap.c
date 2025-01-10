@@ -46,7 +46,7 @@
 
 struct YbTBMIterator
 {
-	ConstSliceVector vector;	/* pointer to a C++ vector */
+	YbcConstSliceVector vector;	/* pointer to a C++ vector */
 	size_t		index;			/* next element of the vector to be retrieved */
 	size_t		vector_size; 	/* number of elements in the vector */
 	YbTBMIterateResult output;	/* MUST BE LAST (because variable-size) */
@@ -101,7 +101,7 @@ yb_tbm_check_work_mem(YbTIDBitmap *ybtbm, size_t new_bytes)
  * successfully added.
  */
 bool
-yb_tbm_add_tuples(YbTIDBitmap *ybtbm, ConstSliceVector ybctids)
+yb_tbm_add_tuples(YbTIDBitmap *ybtbm, YbcConstSliceVector ybctids)
 {
 	if (ybtbm->work_mem_exceeded)
 		return false;

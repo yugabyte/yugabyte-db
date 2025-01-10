@@ -45,7 +45,7 @@
 
 #include "parser/parser.h"
 
-static void YBCAddSysCatalogColumn(YBCPgStatement yb_stmt,
+static void YBCAddSysCatalogColumn(YbcPgStatement yb_stmt,
 								   IndexStmt *pkey_idx,
 								   const char *attname,
 								   int attnum,
@@ -56,7 +56,7 @@ static void YBCAddSysCatalogColumn(YBCPgStatement yb_stmt,
 
 	ListCell      *lc;
 	bool          is_key    = false;
-	const YBCPgTypeEntity *col_type  = YbDataTypeFromOidMod(attnum, type_id);
+	const YbcPgTypeEntity *col_type  = YbDataTypeFromOidMod(attnum, type_id);
 
 	if (pkey_idx)
 	{
@@ -87,7 +87,7 @@ static void YBCAddSysCatalogColumn(YBCPgStatement yb_stmt,
 	}
 }
 
-static void YBCAddSysCatalogColumns(YBCPgStatement yb_stmt,
+static void YBCAddSysCatalogColumns(YbcPgStatement yb_stmt,
 									TupleDesc tupdesc,
 									IndexStmt *pkey_idx,
 									const bool key)
@@ -116,8 +116,8 @@ YBCCreateSysCatalogTable(const char *table_name,
 	Assert(IsBootstrapProcessingMode());
 	char           *db_name     = "template1";
 	char           *schema_name = "pg_catalog";
-	YBCPgStatement yb_stmt      = NULL;
-	YBCPgYbrowidMode ybrowid_mode = (pkey_idx == NULL
+	YbcPgStatement yb_stmt      = NULL;
+	YbcPgYbrowidMode ybrowid_mode = (pkey_idx == NULL
 									 ? PG_YBROWID_MODE_RANGE
 									 : PG_YBROWID_MODE_NONE);
 

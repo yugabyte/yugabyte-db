@@ -1344,7 +1344,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 				* ensure concurrent operations do not insert any data matching
 				* this new partition into the default partition.
 				*/
-				YBCPgStatement alter_cmd_handle = NULL;
+				YbcPgStatement alter_cmd_handle = NULL;
 				HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOidByRelid(defaultPartOid),
 												  YbGetRelfileNodeId(defaultRel),
 												  &alter_cmd_handle));
@@ -4794,7 +4794,7 @@ ATController(AlterTableStmt *parsetree,
 			ListCell *lc = NULL;
 			foreach(lc, rollbackHandles)
 			{
-				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
+				YbcPgStatement handle = (YbcPgStatement) lfirst(lc);
 				YBCExecAlterTable(handle, RelationGetRelid(rel));
 			}
 		}
@@ -5228,7 +5228,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 	 */
 	AlteredTableInfo *info = (AlteredTableInfo *) linitial(*wqueue);
 	Oid main_relid = info->relid;
-	YBCPgStatement rollbackHandle = NULL;
+	YbcPgStatement rollbackHandle = NULL;
 	List *handles = YBCPrepareAlterTable(info->subcmds,
 										 AT_NUM_PASSES,
 										 main_relid,
@@ -5253,7 +5253,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		 */
 		if (childrelid == main_relid)
 			continue;
-		YBCPgStatement childRollbackHandle = NULL;
+		YbcPgStatement childRollbackHandle = NULL;
 		List *child_handles = YBCPrepareAlterTable(info->subcmds,
 												   AT_NUM_PASSES,
 												   childrelid,
@@ -5263,7 +5263,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		ListCell *listcell = NULL;
 		foreach(listcell, child_handles)
 		{
-			YBCPgStatement child = (YBCPgStatement) lfirst(listcell);
+			YbcPgStatement child = (YbcPgStatement) lfirst(listcell);
 			handles = lappend(handles, child);
 		}
 		if (childRollbackHandle)
@@ -5295,7 +5295,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		{
 			foreach(lc, handles)
 			{
-				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
+				YbcPgStatement handle = (YbcPgStatement) lfirst(lc);
 				YBCExecAlterTable(handle, main_relid);
 			}
 		}
@@ -5372,7 +5372,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		{
 			foreach (lc, handles)
 			{
-				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
+				YbcPgStatement handle = (YbcPgStatement) lfirst(lc);
 				YBCPgAlterTableSetTableId(handle,
 										  YBCGetDatabaseOidByRelid(main_relid),
 										  relfilenode_id);

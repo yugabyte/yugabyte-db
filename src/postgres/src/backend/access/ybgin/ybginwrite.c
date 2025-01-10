@@ -63,7 +63,7 @@ typedef struct
  * Utility method to set binds for index write statement.
  */
 static void
-doBindsForIdxWrite(YBCPgStatement stmt,
+doBindsForIdxWrite(YbcPgStatement stmt,
 				   void *indexstate,
 				   Relation index,
 				   Datum *values,

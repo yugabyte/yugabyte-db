@@ -6674,7 +6674,7 @@ xact_redo(XLogReaderState *record)
 }
 
 void
-YBSaveDdlHandle(YBCPgStatement handle)
+YBSaveDdlHandle(YbcPgStatement handle)
 {
 	CurrentTransactionState->YBPostponedDdlOps = lappend(CurrentTransactionState->YBPostponedDdlOps, handle);
 }

@@ -561,7 +561,7 @@ extern bool YBIsDataSentForCurrQuery(void);
  *       manager) background-cleanup job. This would eventually also roll back
  *       failed (online) alter operations (#3979).
  */
-extern void YBSaveDdlHandle(YBCPgStatement handle);
+extern void YBSaveDdlHandle(YbcPgStatement handle);
 extern List* YBGetDdlHandles(void);
 extern void YBClearDdlHandles(void);
 

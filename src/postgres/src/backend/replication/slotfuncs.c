@@ -346,7 +346,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 	currlsn = GetXLogWriteRecPtr();
 
-	YBCReplicationSlotDescriptor *yb_replication_slots = NULL;
+	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
 	size_t yb_numreplicationslots = 0;
 
 	/*
@@ -384,7 +384,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 		if (IsYugaByteEnabled())
 		{
-			YBCReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+			YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
 
 			slot_contents.data.database = slot->database_oid;
 			namestrcpy(&slot_contents.data.name, slot->slot_name);

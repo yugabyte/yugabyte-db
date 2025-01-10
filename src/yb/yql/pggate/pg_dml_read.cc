@@ -363,8 +363,8 @@ bool PgDmlRead::IsConcreteRowRead() const {
                                   read_req_->range_column_values().size())));
 }
 
-Status PgDmlRead::InitDocOp(const PgExecParameters* params, bool is_concrete_row_read) {
-  std::optional<PgExecParameters> alternative_params;
+Status PgDmlRead::InitDocOp(const YbcPgExecParameters* params, bool is_concrete_row_read) {
+  std::optional<YbcPgExecParameters> alternative_params;
   if (!is_concrete_row_read && GetRowMarkType(params) == RowMarkType::ROW_MARK_KEYSHARE) {
     // ROW_MARK_KEYSHARE creates a weak read intent on DocDB side. As a result it is only
     // applicable when the read operation reads a concrete row (by using ybctid or by specifying
@@ -392,11 +392,11 @@ Status PgDmlRead::ANNSetPrefetchSize(int32_t prefetch_size) {
   return Status::OK();
 }
 
-Status PgDmlRead::Exec(const PgExecParameters* exec_params) {
+Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
   RSTATUS_DCHECK(
       !pg_exec_params_ || pg_exec_params_ == exec_params,
       IllegalState, "Unexpected change of exec params");
-  const PgExecParameters* doc_op_init_params = nullptr;
+  const YbcPgExecParameters* doc_op_init_params = nullptr;
   if (!pg_exec_params_) {
     pg_exec_params_ = exec_params;
     doc_op_init_params = pg_exec_params_;
@@ -621,7 +621,7 @@ Status PgDmlRead::BindColumnCondIsNotNull(int attr_num) {
 }
 
 Result<dockv::DocKey> PgDmlRead::EncodeRowKeyForBound(
-    YBCPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound) {
+    YbcPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound) {
   const auto num_hash_key_columns = bind_->num_hash_key_columns();
   dockv::KeyEntryValues hashed_components;
   hashed_components.reserve(num_hash_key_columns);
@@ -648,7 +648,7 @@ Result<dockv::DocKey> PgDmlRead::EncodeRowKeyForBound(
 }
 
 Status PgDmlRead::AddRowUpperBound(
-    YBCPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
+    YbcPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
   if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
     return secondary_index->AddRowUpperBound(handle, n_col_values, col_values, is_inclusive);
   }
@@ -681,7 +681,7 @@ Status PgDmlRead::AddRowUpperBound(
 }
 
 Status PgDmlRead::AddRowLowerBound(
-    YBCPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
+    YbcPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
 
   if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
     return secondary_index->AddRowLowerBound(handle, n_col_values, col_values, is_inclusive);
@@ -713,7 +713,7 @@ Status PgDmlRead::AddRowLowerBound(
   return Status::OK();
 }
 
-Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* params) {
+Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const YbcPgExecParameters* params) {
   const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
   for (auto& col : bind_.columns()) {
     col.UnbindValue();

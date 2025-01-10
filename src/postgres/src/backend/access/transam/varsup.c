@@ -707,7 +707,7 @@ GetNewObjectId(void)
 		 * As of 2023-10-16, docdb does not allow OID wraparound so we do not
 		 * need to handle OID wraparound here.
 		 */
-		YBCStatus status = YBCGetNewObjectId(YbDatabaseIdForNewObjectId,
+		YbcStatus status = YBCGetNewObjectId(YbDatabaseIdForNewObjectId,
 											 &result);
 		if (*YBCGetGFlags()->TEST_ysql_log_perdb_allocated_new_objectid)
 			YBC_LOG_INFO("allocated new object id %u in database %u",

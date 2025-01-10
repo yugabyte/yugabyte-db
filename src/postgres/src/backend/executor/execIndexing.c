@@ -1935,8 +1935,8 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 										  existing_isnull));
 
 		oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
-		YBCPgInsertOnConflictKeyInfo info = {existing_slot};
-		YBCPgYBTupleIdDescriptor *descr =
+		YbcPgInsertOnConflictKeyInfo info = {existing_slot};
+		YbcPgYBTupleIdDescriptor *descr =
 			YBCBuildUniqueIndexYBTupleId(index, existing_values, existing_isnull);
 		HandleYBStatus(YBCPgAddInsertOnConflictKey(descr, yb_ioc_state, &info));
 		MemoryContextSwitchTo(oldcontext);

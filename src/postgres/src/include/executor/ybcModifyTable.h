@@ -42,7 +42,7 @@ extern bool yb_enable_upsert_mode;
 //------------------------------------------------------------------------------
 // YugaByte modify table API.
 
-typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
+typedef void (*yb_bind_for_write_function) (YbcPgStatement stmt,
 											void *indexstate,
 											Relation index,
 											Datum *values,
@@ -51,7 +51,7 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
 											Datum ybbasectid,
 											bool ybctid_as_value);
 
-typedef void (*yb_assign_for_write_function) (YBCPgStatement stmt,
+typedef void (*yb_assign_for_write_function) (YbcPgStatement stmt,
 											  Relation index,
 											  Datum *values,
 											  bool *isnull,
@@ -69,7 +69,7 @@ typedef void (*yb_assign_for_write_function) (YBCPgStatement stmt,
  */
 extern void YBCHeapInsert(ResultRelInfo *resultRelInfo,
 						  TupleTableSlot *slot,
-						  YBCPgStatement blockInsertStmt,
+						  YbcPgStatement blockInsertStmt,
 						  EState *estate);
 
 /*
@@ -97,16 +97,16 @@ extern void YBCExecuteInsertHeapTupleForDb(Oid dboid,
 										   HeapTuple tuple,
 										   OnConflictAction onConflictAction,
 										   Datum *ybctid,
-										   YBCPgTransactionSetting transaction_setting);
+										   YbcPgTransactionSetting transaction_setting);
 
 extern void YBCExecuteInsertForDb(Oid dboid,
 								  Relation rel,
 								  TupleTableSlot *slot,
 								  OnConflictAction onConflictAction,
 								  Datum *ybctid,
-								  YBCPgTransactionSetting transaction_setting);
+								  YbcPgTransactionSetting transaction_setting);
 
-extern void YBCApplyWriteStmt(YBCPgStatement handle, Relation relation);
+extern void YBCApplyWriteStmt(YbcPgStatement handle, Relation relation);
 
 /*
  * Execute the insert outside of a transaction.
@@ -156,7 +156,7 @@ extern bool YBCExecuteDelete(Relation rel,
 							 TupleTableSlot *planSlot,
 							 List *returning_columns,
 							 bool target_tuple_fetched,
-							 YBCPgTransactionSetting transaction_setting,
+							 YbcPgTransactionSetting transaction_setting,
 							 bool changingPart,
 							 EState *estate);
 /*
@@ -190,7 +190,7 @@ extern bool YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 							 EState *estate,
 							 ModifyTable *mt_plan,
 							 bool target_tuple_fetched,
-							 YBCPgTransactionSetting transaction_setting,
+							 YbcPgTransactionSetting transaction_setting,
 							 Bitmapset *updatedCols,
 							 bool canSetTag);
 
@@ -248,7 +248,7 @@ extern Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot);
 
 extern Datum YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot);
 
-extern YBCPgYBTupleIdDescriptor *YBCBuildUniqueIndexYBTupleId(Relation unique_index,
+extern YbcPgYBTupleIdDescriptor *YBCBuildUniqueIndexYBTupleId(Relation unique_index,
 															  Datum *values,
 															  bool *nulls);
 

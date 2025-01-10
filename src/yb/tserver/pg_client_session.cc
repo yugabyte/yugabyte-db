@@ -950,9 +950,9 @@ Status PgClientSession::CreateDatabase(
       req.source_database_name() != "" &&
       req.source_database_name() != "template0" &&
       req.source_database_name() != "template1";
-  std::optional<YbCloneInfo> yb_clone_info = std::nullopt;
+  std::optional<YbcCloneInfo> yb_clone_info = std::nullopt;
   if (is_clone) {
-    yb_clone_info = YbCloneInfo {
+    yb_clone_info = YbcCloneInfo {
       .clone_time = req.clone_time(),
       .src_db_name = req.source_database_name().c_str(),
       .src_owner = req.source_owner().c_str(),

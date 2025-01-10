@@ -95,7 +95,7 @@ extern void YbResetCatalogCacheVersion();
 
 extern uint64_t YbGetLastKnownCatalogCacheVersion();
 
-extern YBCPgLastKnownCatalogVersionInfo
+extern YbcPgLastKnownCatalogVersionInfo
 YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
@@ -280,20 +280,20 @@ extern bool YbNeedAdditionalCatalogTables();
  * the same name. So in this case we just ignore the DocDB 'NotFound' error and
  * delete our metadata.
  */
-extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
+extern void HandleYBStatusIgnoreNotFound(YbcStatus status, bool *not_found);
 
 /*
  * Handle YBStatus while logging a custom error for DocDB 'NotFound' error.
  */
 extern void
-HandleYBStatusWithCustomErrorForNotFound(YBCStatus status,
+HandleYBStatusWithCustomErrorForNotFound(YbcStatus status,
 										 const char *message_for_not_found);
 
 /*
  * Same as HandleYBStatus but delete the table description first if the
  * status is not ok.
  */
-extern void HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table);
+extern void HandleYBTableDescStatus(YbcStatus status, YbcPgTableDesc table);
 /*
  * YB initialization that needs to happen when a PostgreSQL backend process
  * is started. Reports errors using ereport.
@@ -352,10 +352,10 @@ extern Oid GetTypeId(int attrNum, TupleDesc tupleDesc);
 extern const char* YBPgTypeOidToStr(Oid type_id);
 
 /*
- * Return a string representation of the given PgDataType, or say it is unknown.
+ * Return a string representation of the given YbcPgDataType, or say it is unknown.
  * What is returned is always a static C string constant.
  */
-extern const char* YBCPgDataTypeToStr(YBCPgDataType yb_type);
+extern const char* YBCPgDataTypeToStr(YbcPgDataType yb_type);
 
 /*
  * Report an error saying the given type as not supported by YugaByte.
@@ -831,12 +831,12 @@ int32_t YBFollowerReadStalenessMs();
 bool YBFollowerReadsBehaviorBefore20482();
 
 /*
- * Allocates YBCPgYBTupleIdDescriptor with nattrs arguments by using palloc.
+ * Allocates YbcPgYBTupleIdDescriptor with nattrs arguments by using palloc.
  * Resulted object can be released with pfree.
  */
-YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_relfilenode_oid,
+YbcPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_relfilenode_oid,
 	int nattrs);
-void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
+void YBCFillUniqueIndexNullAttribute(YbcPgYBTupleIdDescriptor* descr);
 
 /*
  * Lazily loads yb_table_properties field in Relation.
@@ -855,9 +855,9 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
  *    ScanPgRelation to do a custom RPC fetching YB properties as well.
  *    However, TableDesc cache makes this low-priority.
  */
-YbTableProperties YbGetTableProperties(Relation rel);
-YbTableProperties YbGetTablePropertiesById(Oid relid);
-YbTableProperties YbTryGetTableProperties(Relation rel);
+YbcTableProperties YbGetTableProperties(Relation rel);
+YbcTableProperties YbGetTablePropertiesById(Oid relid);
+YbcTableProperties YbTryGetTableProperties(Relation rel);
 
 typedef enum YbTableDistribution
 {
@@ -887,14 +887,14 @@ char *YBDetailSorted(char *input);
  * For given collation, type and value, setup collation info.
  */
 extern void YBGetCollationInfo(Oid collation_id,
-							   const YBCPgTypeEntity *type_entity, Datum datum,
+							   const YbcPgTypeEntity *type_entity, Datum datum,
 							   bool is_null,
-							   YBCPgCollationInfo *collation_info);
+							   YbcPgCollationInfo *collation_info);
 
 /*
  * Setup collation info in attr.
  */
-void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr, const YBCPgColumnInfo *column_info);
+void YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
 
 /*
  * Check whether the collation is a valid non-C collation.
@@ -908,7 +908,7 @@ bool YBIsCollationValidNonC(Oid collation_id);
  * this function will return InvalidOid which will disable collation encoding
  * for the column string value.
  */
-Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation);
+Oid YBEncodingCollation(YbcPgStatement handle, int attr_num, Oid attcollation);
 
 /*
  * Check whether the user ID is of a user who has the yb_extension role.
@@ -1041,7 +1041,7 @@ void YbToggleSessionStatsTimer(bool timing_on);
  * Update the global flag indicating what metric changes to capture and return
  * from the tserver to PG.
  */
-void YbSetMetricsCaptureType(YBCPgMetricsCaptureType metrics_capture);
+void YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture);
 
 /*
  * If the tserver gflag --ysql_disable_server_file_access is set to
@@ -1049,7 +1049,7 @@ void YbSetMetricsCaptureType(YBCPgMetricsCaptureType metrics_capture);
  */
 extern void YBCheckServerAccessIsAllowed();
 
-void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
+void YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
 
 uint64_t YbGetSharedCatalogVersion();
 uint32_t YbGetNumberOfDatabases();
@@ -1088,7 +1088,7 @@ LockWaitPolicy YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy);
 const char *yb_fetch_current_transaction_priority(void);
 
 void GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
-									uint16_t txn_err_code, YBCStatus s,
+									uint16_t txn_err_code, YbcStatus s,
 									const char **msg_buf, size_t *msg_nargs,
 									const char ***msg_args,
 									const char **detail_buf,
@@ -1124,7 +1124,7 @@ OptSplit *YbGetSplitOptions(Relation rel);
 	do \
 	{ \
 		AssertMacro(!IsMultiThreadedMode()); \
-		YBCStatus _status = (status); \
+		YbcStatus _status = (status); \
 		if (_status) \
 		{ \
 			const int adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \

@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/yql/pggate/ysql_bench_metrics_handler/ysql_bench_metrics_handler.h"
+#include "yb/yql/pggate/ysql_bench_metrics_handler/ybc_ysql_bench_metrics_handler.h"
 
 #include <map>
 #include <vector>
@@ -29,7 +29,7 @@ using std::string;
 namespace yb::pggate {
 DECLARE_string(metric_node_name);
 
-static YsqlBenchMetricEntry *ysql_bench_metric_entry;
+static YbcYsqlBenchMetricEntry *ysql_bench_metric_entry;
 
 MetricEntity::AttributeMap prometheus_attr;
 
@@ -126,7 +126,7 @@ void InitGoogleLogging(char *prog_name) {
   yb::InitGoogleLoggingSafeBasic(prog_name);
 }
 
-void RegisterMetrics(YsqlBenchMetricEntry *metric_entry, char *metric_node_name) {
+void RegisterMetrics(YbcYsqlBenchMetricEntry *metric_entry, char *metric_node_name) {
   ysql_bench_metric_entry = metric_entry;
   initYSQLBenchDefaultLabels(metric_node_name);
 }

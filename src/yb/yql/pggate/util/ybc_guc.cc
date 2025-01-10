@@ -13,7 +13,7 @@
 // the License.
 //
 
-#include "yb/yql/pggate/util/yb_guc.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 bool yb_debug_log_docdb_requests = false;
 

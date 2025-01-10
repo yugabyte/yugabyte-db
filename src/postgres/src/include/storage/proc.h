@@ -340,7 +340,7 @@ struct PGPROC
 	 * use backendLock itself if there is no significant drop in performance.
 	 */
 	LWLock		yb_ash_metadata_lock;
-	YBCAshMetadata yb_ash_metadata;
+	YbcAshMetadata yb_ash_metadata;
 	bool		yb_is_ash_metadata_set;
 
 	/*

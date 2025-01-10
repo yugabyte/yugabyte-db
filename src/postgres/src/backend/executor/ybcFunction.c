@@ -49,10 +49,10 @@ YbNewFuncCallContext(FuncCallContext *funcctx)
 }
 
 void
-YbSetFunctionParam(YBCPgFunction handle, const char *name, int attr_typid,
+YbSetFunctionParam(YbcPgFunction handle, const char *name, int attr_typid,
 				   uint64_t datum, bool is_null)
 {
-	const YBCPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber,
+	const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber,
 															  attr_typid);
 	HandleYBStatus(YBCAddFunctionParam(handle, name, type_entity, datum,
 				   is_null));
@@ -69,9 +69,9 @@ YbSetSRFTargets(YbFuncCallContext context, TupleDesc desc)
 			continue;
 
 		const char *attr_name = NameStr(attr->attname);
-		const YBCPgTypeEntity *type_entity =
+		const YbcPgTypeEntity *type_entity =
 			YbDataTypeFromOidMod(attr->attnum, attr->atttypid);
-		const YBCPgTypeAttrs type_attrs = {.typmod = attr->atttypmod};
+		const YbcPgTypeAttrs type_attrs = {.typmod = attr->atttypmod};
 
 		HandleYBStatus(YBCAddFunctionTarget(context->handle, attr_name,
 											type_entity, type_attrs));

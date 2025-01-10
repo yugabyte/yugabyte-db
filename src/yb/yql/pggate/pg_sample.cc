@@ -31,7 +31,7 @@
 
 #include "yb/yql/pggate/pg_select_index.h"
 
-#include "yb/yql/pggate/util/yb_guc.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
     "Add this delay after each table is analyzed.");

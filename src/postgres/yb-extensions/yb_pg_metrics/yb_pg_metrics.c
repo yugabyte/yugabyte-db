@@ -38,7 +38,7 @@
 #include "utils/catcache.h"
 #include "utils/datetime.h"
 #include "utils/syscache.h"
-#include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
+#include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 
 #include "pg_yb_utils.h"
 
@@ -204,7 +204,7 @@ typedef enum statementType
   kMaxStatementType
 } statementType;
 int num_entries = kMaxStatementType;
-ybpgmEntry *ybpgm_table = NULL;
+YbcPgmEntry *ybpgm_table = NULL;
 
 /* Statement nesting level is used when setting up dml statements.
  * - Some state variables are set up for the top-level query but not the nested query.
@@ -237,7 +237,7 @@ static bool log_accesses = false;
 static bool log_tcmalloc_stats = false;
 static int webserver_profiler_sample_freq_bytes = 0;
 static int num_backends = 0;
-static rpczEntry *rpcz = NULL;
+static YbcRpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
 PgBackendStatus *backendStatusArray = NULL;
 extern int MaxConnections;
@@ -473,7 +473,7 @@ pullRpczEntries(void)
 												ALLOCSET_SMALL_SIZES);
 
 	MemoryContext oldcontext = MemoryContextSwitchTo(ybrpczMemoryContext);
-	rpcz = (rpczEntry *) palloc(sizeof(rpczEntry) * NumBackendStatSlots);
+	rpcz = (YbcRpczEntry *) palloc(sizeof(YbcRpczEntry) * NumBackendStatSlots);
 
 	num_backends = NumBackendStatSlots;
 	volatile PgBackendStatus *beentry = backendStatusArray;
@@ -646,14 +646,14 @@ webserver_worker_main(Datum unused)
 
 	RegisterMetrics(ybpgm_table, num_entries, metric_node_name);
 
-	postgresCallbacks callbacks;
+	YbcPostgresCallbacks callbacks;
 	callbacks.pullRpczEntries      = pullRpczEntries;
 	callbacks.freeRpczEntries      = freeRpczEntries;
 	callbacks.getTimestampTz       = GetCurrentTimestamp;
 	callbacks.getTimestampTzDiffMs = getElapsedMs;
 	callbacks.getTimestampTzToStr  = timestamptz_to_str;
 
-	YbConnectionMetrics conn_metrics;
+	YbcConnectionMetrics conn_metrics;
 	conn_metrics.max_conn = &MaxConnections;
 	conn_metrics.too_many_conn = yb_too_many_conn;
 	conn_metrics.new_conn = yb_new_conn;
@@ -844,7 +844,7 @@ ybpgm_startup_hook(void)
 	bool found;
 
 	ybpgm_table = ShmemInitStruct("yb_pg_metrics",
-								  num_entries * sizeof(struct ybpgmEntry),
+								  num_entries * sizeof(struct YbcPgmEntry),
 								  &found);
 	set_metric_names();
 }
@@ -1039,7 +1039,7 @@ ybpgm_memsize(void)
 {
 	Size		size;
 
-	size = MAXALIGN(num_entries * sizeof(struct ybpgmEntry));
+	size = MAXALIGN(num_entries * sizeof(struct YbcPgmEntry));
 
 	return size;
 }
@@ -1173,7 +1173,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
 static void
 ybpgm_Store(statementType type, uint64_t time, uint64_t rows) {
-	struct ybpgmEntry *entry = &ybpgm_table[type];
+	struct YbcPgmEntry *entry = &ybpgm_table[type];
 	entry->total_time += time;
 	entry->calls += 1;
 	entry->rows += rows;
@@ -1181,7 +1181,7 @@ ybpgm_Store(statementType type, uint64_t time, uint64_t rows) {
 
 static void
 ybpgm_StoreCount(statementType type, uint64_t time, uint64_t count) {
-	struct ybpgmEntry *entry = &ybpgm_table[type];
+	struct YbcPgmEntry *entry = &ybpgm_table[type];
 	entry->total_time += time;
 	entry->calls += count;
 	entry->rows += count;

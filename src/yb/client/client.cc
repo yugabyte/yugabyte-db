@@ -893,7 +893,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const TransactionMetadata* txn,
                                  const bool colocated,
                                  CoarseTimePoint deadline,
-                                 std::optional<YbCloneInfo> yb_clone_info) {
+                                 std::optional<YbcCloneInfo> yb_clone_info) {
   if (yb_clone_info) {
     RETURN_NOT_OK(CloneNamespace(
         namespace_name, database_type ? database_type.value() : YQL_DATABASE_PGSQL,
@@ -936,7 +936,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
 
 Status YBClient::CloneNamespace(const std::string& target_namespace_name,
                                 const YQLDatabase& database_type,
-                                YbCloneInfo& yb_clone_info) {
+                                YbcCloneInfo& yb_clone_info) {
   LOG(INFO) << Format(
       "Creating database $0 as clone of database $1",
       target_namespace_name, yb_clone_info.src_db_name);

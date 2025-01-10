@@ -39,7 +39,7 @@ static MemoryContext cached_records_context = NULL;
 static MemoryContext unacked_txn_list_context = NULL;
 
 /* Cached records received from the CDC service. */
-static YBCPgChangeRecordBatch *cached_records = NULL;
+static YbcPgChangeRecordBatch *cached_records = NULL;
 static size_t cached_records_last_sent_row_idx = 0;
 static bool last_getconsistentchanges_response_empty = false;
 static TimestampTz last_getconsistentchanges_response_receipt_time;
@@ -217,7 +217,7 @@ InitVirtualWal(List *publication_names)
 	{
 		for (int i = 0; i < list_length(tables); i++)
 		{
-			YBCPgReplicaIdentityDescriptor *value =
+			YbcPgReplicaIdentityDescriptor *value =
 				hash_search(MyReplicationSlot->data.yb_replica_identities,
 							&table_oids[i], HASH_FIND, NULL);
 			Assert(value);
@@ -241,7 +241,7 @@ InitVirtualWal(List *publication_names)
 	list_free(tables);
 }
 
-static const YBCPgTypeEntity *
+static const YbcPgTypeEntity *
 GetDynamicTypeEntity(int attr_num, Oid relid)
 {
 	bool is_in_txn = IsTransactionOrTransactionBlock();
@@ -253,7 +253,7 @@ GetDynamicTypeEntity(int attr_num, Oid relid)
 		elog(ERROR, "Could not open relation with OID %u", relid);
 	Oid type_oid = GetTypeId(attr_num, RelationGetDescr(rel));
 	RelationClose(rel);
-	const YBCPgTypeEntity* type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
+	const YbcPgTypeEntity* type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
 
 	if (!is_in_txn)
 		AbortCurrentTransaction();
@@ -481,7 +481,7 @@ XLogRecPtr
 YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush)
 {
 	XLogRecPtr		restart_lsn_hint = CalculateRestartLSN(confirmed_flush);
-	YBCPgXLogRecPtr	restart_lsn = InvalidXLogRecPtr;
+	YbcPgXLogRecPtr	restart_lsn = InvalidXLogRecPtr;
 
 	/* There was nothing to ack, so we can return early. */
 	if (restart_lsn_hint == InvalidXLogRecPtr)
@@ -606,7 +606,7 @@ YBCGetTableOids(List *tables)
 static void
 YBCRefreshReplicaIdentities()
 {
-	YBCReplicationSlotDescriptor 	*yb_replication_slot;
+	YbcReplicationSlotDescriptor 	*yb_replication_slot;
 	int							 	replica_identity_idx = 0;
 
 	YBCGetReplicationSlot(MyReplicationSlot->data.name.data, &yb_replication_slot);
@@ -616,7 +616,7 @@ YBCRefreshReplicaIdentities()
 	 yb_replication_slot->replica_identities_count;
 	 replica_identity_idx++)
 	{
-		YBCPgReplicaIdentityDescriptor *desc =
+		YbcPgReplicaIdentityDescriptor *desc =
 			&yb_replication_slot->replica_identities[replica_identity_idx];
 
 		/*
@@ -630,7 +630,7 @@ YBCRefreshReplicaIdentities()
 							"plugin pgoutput"),
 					 errhint("Consider using output plugin yboutput instead.")));
 
-		YBCPgReplicaIdentityDescriptor *value =
+		YbcPgReplicaIdentityDescriptor *value =
 			hash_search(MyReplicationSlot->data.yb_replica_identities,
 						&desc->table_oid, HASH_ENTER, NULL);
 		value->table_oid = desc->table_oid;

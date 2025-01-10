@@ -237,9 +237,9 @@ static void YbAddSlotToBatch(ModifyTableContext *context,
 							 ResultRelInfo *resultRelInfo,
 							 TupleTableSlot *planSlot,
 							 TupleTableSlot *slot,
-							 YBCPgStatement blockInsertStmt);
+							 YbcPgStatement blockInsertStmt);
 static TupleTableSlot *YbFlushSlotsFromBatch(ModifyTableContext *context,
-											 YBCPgStatement blockInsertStmt);
+											 YbcPgStatement blockInsertStmt);
 
 static bool YbExecCheckIndexConstraints(EState *estate,
 										ResultRelInfo *resultRelInfo,
@@ -252,11 +252,11 @@ static bool YbExecCheckIndexConstraints(EState *estate,
 static bool YbExecInsertPrologue(ModifyTableContext *context,
 								 ResultRelInfo *resultRelInfo,
 								 TupleTableSlot **slot,
-								 YBCPgStatement blockInsertStmt);
+								 YbcPgStatement blockInsertStmt);
 static TupleTableSlot *YbExecInsertAct(ModifyTableContext *context,
 									   ResultRelInfo *resultRelInfo,
 									   TupleTableSlot *slot,
-									   YBCPgStatement blockInsertStmt,
+									   YbcPgStatement blockInsertStmt,
 									   bool canSetTag,
 									   TupleTableSlot **inserted_tuple,
 									   ResultRelInfo **insert_destrel);
@@ -829,7 +829,7 @@ static bool
 YbExecInsertPrologue(ModifyTableContext *context,
 					 ResultRelInfo *resultRelInfo,
 					 TupleTableSlot **slot,
-					 YBCPgStatement blockInsertStmt)
+					 YbcPgStatement blockInsertStmt)
 {
 	ModifyTableState *mtstate = context->mtstate;
 	EState	   *estate = context->estate;
@@ -942,7 +942,7 @@ static TupleTableSlot *
 ExecInsert(ModifyTableContext *context,
 		   ResultRelInfo *resultRelInfo,
 		   TupleTableSlot *slot,
-		   YBCPgStatement blockInsertStmt,
+		   YbcPgStatement blockInsertStmt,
 		   bool canSetTag,
 		   TupleTableSlot **inserted_tuple,
 		   ResultRelInfo **insert_destrel)
@@ -1019,7 +1019,7 @@ static TupleTableSlot *
 YbExecInsertAct(ModifyTableContext *context,
 				ResultRelInfo *resultRelInfo,
 				TupleTableSlot *slot,
-				YBCPgStatement blockInsertStmt,
+				YbcPgStatement blockInsertStmt,
 				bool canSetTag,
 				TupleTableSlot **inserted_tuple,
 				ResultRelInfo **insert_destrel)
@@ -4262,7 +4262,7 @@ ExecModifyTable(PlanState *pstate)
 	context.epqstate = &node->mt_epqstate;
 	context.estate = estate;
 
-	YBCPgStatement blockInsertStmt = NULL;
+	YbcPgStatement blockInsertStmt = NULL;
 	bool hasInserts = false;
 	Relation relation = resultRelInfo->ri_RelationDesc;
 	if (IsYBRelation(relation) && operation == CMD_INSERT) {
@@ -5373,7 +5373,7 @@ YbAddSlotToBatch(ModifyTableContext *context,
 				 ResultRelInfo *resultRelInfo,
 				 TupleTableSlot *planSlot,
 				 TupleTableSlot *slot,
-				 YBCPgStatement blockInsertStmt)
+				 YbcPgStatement blockInsertStmt)
 {
 	MemoryContext oldContext;
 	EState	   *estate = context->estate;
@@ -5431,7 +5431,7 @@ YbAddSlotToBatch(ModifyTableContext *context,
  */
 static TupleTableSlot *
 YbFlushSlotsFromBatch(ModifyTableContext *context,
-					  YBCPgStatement blockInsertStmt)
+					  YbcPgStatement blockInsertStmt)
 {
 	TupleTableSlot *slot;
 	TupleTableSlot *planSlot;
@@ -5535,7 +5535,7 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 	 * in one place: slots are allocated in execIndexing and deallocated in
 	 * this function.
 	 */
-	YBCPgInsertOnConflictKeyInfo info = {NULL};
+	YbcPgInsertOnConflictKeyInfo info = {NULL};
 	const uint64_t key_count = YBCPgGetInsertOnConflictKeyCount(state);
 	for (uint64_t i = 0; i < key_count; i++)
 	{
@@ -5571,7 +5571,7 @@ YbExecCheckIndexConstraints(EState *estate,
 	List	   *descriptors = NIL;
 	ListCell   *lc;
 	bool		retval = true;
-	YBCPgInsertOnConflictKeyState keyState;
+	YbcPgInsertOnConflictKeyState keyState;
 
 	/*
 	 * Lossy or not, we recheck the condition since we don't know which
@@ -5642,7 +5642,7 @@ YbExecCheckIndexConstraints(EState *estate,
 		 * nulls into account for NULLS NOT DISTINCT), that could be a problem.
 		 * TODO(jason): revisit when exclusion constraint is supported.
 		 */
-		YBCPgYBTupleIdDescriptor *descr =
+		YbcPgYBTupleIdDescriptor *descr =
 			YBCBuildUniqueIndexYBTupleId(index, values, isnull);
 
 		/*
@@ -5684,7 +5684,7 @@ YbExecCheckIndexConstraints(EState *estate,
 				if (phase == DO_UPDATE_INSERT_PHASE)
 				{
 					Assert(ybConflictSlot && !*ybConflictSlot);
-					YBCPgInsertOnConflictKeyInfo info = {NULL};
+					YbcPgInsertOnConflictKeyInfo info = {NULL};
 					HandleYBStatus(YBCPgDeleteInsertOnConflictKey(descr,
 																  yb_ioc_state,
 																  &info));

@@ -22,7 +22,7 @@ namespace yb {
 namespace pggate {
 
 // Get current SQL query string in a form suitable for logging.
-std::string GetDebugQueryString(const PgCallbacks& callbacks);
+std::string GetDebugQueryString(const YbcPgCallbacks& callbacks);
 
 }  // namespace pggate
 }  // namespace yb

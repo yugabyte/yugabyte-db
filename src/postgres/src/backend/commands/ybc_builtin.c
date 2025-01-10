@@ -99,7 +99,7 @@ yb_heap_stats(PG_FUNCTION_ARGS)
 
 	if (yb_enable_memory_tracking)
 	{
-		YbTcmallocStats tcmallocStats;
+		YbcTcmallocStats tcmallocStats;
 		YBCGetHeapConsumption(&tcmallocStats);
 
 		values[0] = Int64GetDatum(tcmallocStats.heap_size_bytes);

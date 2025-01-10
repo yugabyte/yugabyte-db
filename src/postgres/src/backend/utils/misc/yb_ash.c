@@ -86,7 +86,7 @@ typedef struct YbAsh
 	LWLock		lock;			/* Protects the circular buffer */
 	int			index;			/* Index to insert new buffer entry */
 	int			max_entries;	/* Maximum # of entries in the buffer */
-	YBCAshSample circular_buffer[FLEXIBLE_ARRAY_MEMBER];
+	YbcAshSample circular_buffer[FLEXIBLE_ARRAY_MEMBER];
 } YbAsh;
 
 typedef struct YbAshNestedQueryIdStack
@@ -127,11 +127,11 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static const unsigned char *get_top_level_node_id();
 static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 									int samples_considered);
-static YBCWaitEventInfo YbGetWaitEventInfo(const PGPROC *proc);
+static YbcWaitEventInfo YbGetWaitEventInfo(const PGPROC *proc);
 static void copy_pgproc_sample_fields(PGPROC *proc, int index);
 static void copy_non_pgproc_sample_fields(TimestampTz sample_time, int index);
 static void YbAshIncrementCircularBufferIndex(void);
-static YBCAshSample *YbAshGetNextCircularBufferSlot(void);
+static YbcAshSample *YbAshGetNextCircularBufferSlot(void);
 
 static void uchar_to_uuid(unsigned char *in, pg_uuid_t *out);
 static void client_ip_to_string(unsigned char *client_addr, uint16 client_port,
@@ -140,9 +140,9 @@ static void PrintUuidToBuffer(StringInfo buffer, unsigned char *uuid);
 static int BinarySearchAshIndex(TimestampTz target_time, int left, int right);
 static void GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
 							   int *start_index, int *end_index, char *description);
-static void FormatAshSampleAsCsv(YBCAshSample *ash_data_buffer, int total_elements_to_dump,
+static void FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 								 StringInfo buffer);
-static YBCAshSample *ExtractAshDataFromRange(int start_index, int end_index,
+static YbcAshSample *ExtractAshDataFromRange(int start_index, int end_index,
 											 int *total_elements_to_dump);
 void GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
 										 int64 query_id, StringInfo output_buffer,
@@ -221,7 +221,7 @@ static int
 yb_ash_cb_max_entries(void)
 {
 	Assert(yb_ash_circular_buffer_size != 0);
-	return yb_ash_circular_buffer_size * 1024 / sizeof(YBCAshSample);
+	return yb_ash_circular_buffer_size * 1024 / sizeof(YbcAshSample);
 }
 
 /*
@@ -279,7 +279,7 @@ YbAshShmemSize(void)
 
 	size = offsetof(YbAsh, circular_buffer);
 	size = add_size(size, mul_size(yb_ash_cb_max_entries(),
-								   sizeof(YBCAshSample)));
+								   sizeof(YbcAshSample)));
 
 	return size;
 }
@@ -302,7 +302,7 @@ YbAshShmemInit(void)
 		LWLockInitialize(&yb_ash->lock, LWTRANCHE_YB_ASH_CIRCULAR_BUFFER);
 		yb_ash->index = 0;
 		yb_ash->max_entries = yb_ash_cb_max_entries();
-		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YBCAshSample));
+		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YbcAshSample));
 	}
 }
 
@@ -793,7 +793,7 @@ YbAshStoreSample(PGPROC *proc, int num_procs, TimestampTz sample_time, int index
 	YbAshIncrementCircularBufferIndex();
 }
 
-static YBCWaitEventInfo
+static YbcWaitEventInfo
 YbGetWaitEventInfo(const PGPROC *proc)
 {
 	static uint32 waiting_on_tserver_code = -1;
@@ -801,7 +801,7 @@ YbGetWaitEventInfo(const PGPROC *proc)
 	if (waiting_on_tserver_code == -1)
 		waiting_on_tserver_code = YBCWaitEventForWaitingOnTServer();
 
-	YBCWaitEventInfo info = {waiting_on_tserver_code, 0};
+	YbcWaitEventInfo info = {waiting_on_tserver_code, 0};
 
 	for (size_t attempt = 0; attempt < 32; ++attempt)
 	{
@@ -827,13 +827,13 @@ YbGetWaitEventInfo(const PGPROC *proc)
 static void
 copy_pgproc_sample_fields(PGPROC *proc, int index)
 {
-	YBCAshSample *cb_sample = &yb_ash->circular_buffer[index];
+	YbcAshSample *cb_sample = &yb_ash->circular_buffer[index];
 
 	LWLockAcquire(&proc->yb_ash_metadata_lock, LW_SHARED);
-	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YBCAshMetadata));
+	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YbcAshMetadata));
 	LWLockRelease(&proc->yb_ash_metadata_lock);
 
-	YBCWaitEventInfo info = YbGetWaitEventInfo(proc);
+	YbcWaitEventInfo info = YbGetWaitEventInfo(proc);
 	cb_sample->encoded_wait_event_code = info.wait_event;
 	cb_sample->aux_info[0] = info.rpc_code;
 	cb_sample->aux_info[1] = '\0';
@@ -843,7 +843,7 @@ copy_pgproc_sample_fields(PGPROC *proc, int index)
 static void
 copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 {
-	YBCAshSample *cb_sample = &yb_ash->circular_buffer[index];
+	YbcAshSample *cb_sample = &yb_ash->circular_buffer[index];
 
 	/* top_level_node_id is constant for all PG samples */
 	if (get_top_level_node_id())
@@ -885,10 +885,10 @@ YbAshFillSampleWeight(int samples_considered)
  * Returns a pointer to the circular buffer slot where the sample should be
  * inserted and increments the index.
  */
-static YBCAshSample *
+static YbcAshSample *
 YbAshGetNextCircularBufferSlot(void)
 {
-	YBCAshSample *slot = &yb_ash->circular_buffer[yb_ash->index];
+	YbcAshSample *slot = &yb_ash->circular_buffer[yb_ash->index];
 	YbAshIncrementCircularBufferIndex();
 	return slot;
 }
@@ -956,8 +956,8 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		YBCAshSample *sample = &yb_ash->circular_buffer[i];
-		YBCAshMetadata *metadata = &sample->metadata;
+		YbcAshSample *sample = &yb_ash->circular_buffer[i];
+		YbcAshMetadata *metadata = &sample->metadata;
 
 		if (sample->sample_time != 0)
 			values[j++] = TimestampTzGetDatum(sample->sample_time);
@@ -1088,7 +1088,7 @@ GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time
 									int64 query_id, StringInfo output_buffer,
 									char *description)
 {
-	YBCAshSample *ash_data_buffer = NULL;
+	YbcAshSample *ash_data_buffer = NULL;
 	int			total_elements_to_dump = 0;
 	int			start_index = -1;
 	int			end_index = -1;
@@ -1210,10 +1210,10 @@ GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
  * Returns:
  * 		Pointer to the extracted ASH data buffer
  */
-static YBCAshSample *
+static YbcAshSample *
 ExtractAshDataFromRange(int start_index, int end_index, int *total_elements_to_dump)
 {
-	YBCAshSample *ash_data_buffer;
+	YbcAshSample *ash_data_buffer;
 
 	if (start_index > end_index)
 	{
@@ -1224,33 +1224,33 @@ ExtractAshDataFromRange(int start_index, int end_index, int *total_elements_to_d
 		*total_elements_to_dump = head_segment_size + tail_segment_size;
 		Assert(*total_elements_to_dump > 0);
 
-		ash_data_buffer = (YBCAshSample *) palloc((*total_elements_to_dump) *
-												  sizeof(YBCAshSample));
+		ash_data_buffer = (YbcAshSample *) palloc((*total_elements_to_dump) *
+												  sizeof(YbcAshSample));
 		Assert(ash_data_buffer != NULL);
 
 		memcpy(ash_data_buffer, &yb_ash->circular_buffer[start_index],
-			   tail_segment_size * sizeof(YBCAshSample));
+			   tail_segment_size * sizeof(YbcAshSample));
 		memcpy(ash_data_buffer + tail_segment_size, yb_ash->circular_buffer,
-			   head_segment_size * sizeof(YBCAshSample));
+			   head_segment_size * sizeof(YbcAshSample));
 	}
 	else
 	{
 		*total_elements_to_dump = end_index - start_index + 1;
 		Assert(*total_elements_to_dump > 0);
 
-		ash_data_buffer = (YBCAshSample *) palloc((*total_elements_to_dump) *
-												  sizeof(YBCAshSample));
+		ash_data_buffer = (YbcAshSample *) palloc((*total_elements_to_dump) *
+												  sizeof(YbcAshSample));
 		Assert(ash_data_buffer != NULL);
 
 		memcpy(ash_data_buffer, &yb_ash->circular_buffer[start_index],
-			   (*total_elements_to_dump) * sizeof(YBCAshSample));
+			   (*total_elements_to_dump) * sizeof(YbcAshSample));
 	}
 
 	return ash_data_buffer;
 }
 
 static void
-FormatAshSampleAsCsv(YBCAshSample *ash_data_buffer, int total_elements_to_dump,
+FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 					 StringInfo output_buffer)
 {
 	Assert(output_buffer != NULL);
@@ -1266,7 +1266,7 @@ FormatAshSampleAsCsv(YBCAshSample *ash_data_buffer, int total_elements_to_dump,
 	for (int i = 0; i < total_elements_to_dump; ++i)
 	{
 		char		client_node_ip[48];
-		YBCAshSample *sample = &ash_data_buffer[i];
+		YbcAshSample *sample = &ash_data_buffer[i];
 
 		if (sample->metadata.addr_family == AF_INET || sample->metadata.addr_family == AF_INET6)
 			client_ip_to_string(sample->metadata.client_addr,

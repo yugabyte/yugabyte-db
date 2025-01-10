@@ -71,8 +71,8 @@ void PgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
  * CachedRegexpHolder (from regex/regex.c)
  * These are used to cache the compiled regexes
  */
-YBCPgThreadLocalRegexpCache* PgGetThreadLocalRegexpCache();
-YBCPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
-    size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup);
+YbcPgThreadLocalRegexpCache* PgGetThreadLocalRegexpCache();
+YbcPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
+    size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup);
 
 } // namespace yb::pggate

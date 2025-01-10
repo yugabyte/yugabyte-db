@@ -183,7 +183,7 @@ inline bool MaybeSleepForTests(ash::WaitStateCode wait_event, ash::PggateRPC pgg
 
 } // namespace
 
-RowMarkType GetRowMarkType(const PgExecParameters* exec_params) {
+RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params) {
   return exec_params && exec_params->rowmark > -1
       ? static_cast<RowMarkType>(exec_params->rowmark)
       : RowMarkType::ROW_MARK_ABSENT;

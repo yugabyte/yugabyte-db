@@ -132,12 +132,12 @@ Status InitGFlags(const char* argv0) {
   return Status::OK();
 }
 
-// Wraps Status object created by YBCStatus.
+// Wraps Status object created by YbcStatus.
 // Uses trick with AddRef::kFalse and DetachStruct, to avoid incrementing and decrementing
 // ref counter.
 class StatusWrapper {
  public:
-  explicit StatusWrapper(YBCStatus s) : status_(s, AddRef::kFalse) {}
+  explicit StatusWrapper(YbcStatus s) : status_(s, AddRef::kFalse) {}
 
   ~StatusWrapper() {
     status_.DetachStruct();
@@ -155,7 +155,7 @@ class StatusWrapper {
   Status status_;
 };
 
-YBPgErrorCode FetchErrorCode(YBCStatus s) {
+YBPgErrorCode FetchErrorCode(YbcStatus s) {
   StatusWrapper wrapper(s);
   const uint8_t* pg_err_ptr = wrapper->ErrorData(PgsqlErrorTag::kCategory);
   // If we have PgsqlError explicitly set, we decode it
@@ -204,12 +204,12 @@ const char* NoPrefixName(Enum value) {
 
 extern "C" {
 
-bool YBCStatusIsNotFound(YBCStatus s) {
+bool YBCStatusIsNotFound(YbcStatus s) {
   return StatusWrapper(s)->IsNotFound();
 }
 
 // Checks if the status corresponds to an "Unknown Session" error
-bool YBCStatusIsUnknownSession(YBCStatus s) {
+bool YBCStatusIsUnknownSession(YbcStatus s) {
   // The semantics of the "Unknown session" error is overloaded. It is used to indicate both:
   // 1. Session with an invalid ID
   // 2. An expired session
@@ -219,65 +219,65 @@ bool YBCStatusIsUnknownSession(YBCStatus s) {
          FetchErrorCode(s) == YBPgErrorCode::YB_PG_CONNECTION_DOES_NOT_EXIST;
 }
 
-bool YBCStatusIsDuplicateKey(YBCStatus s) {
+bool YBCStatusIsDuplicateKey(YbcStatus s) {
   return StatusWrapper(s)->IsAlreadyPresent();
 }
 
-bool YBCStatusIsSnapshotTooOld(YBCStatus s) {
+bool YBCStatusIsSnapshotTooOld(YbcStatus s) {
   return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
 }
 
-bool YBCStatusIsTryAgain(YBCStatus s) {
+bool YBCStatusIsTryAgain(YbcStatus s) {
   return StatusWrapper(s)->IsTryAgain();
 }
 
-bool YBCStatusIsAlreadyPresent(YBCStatus s) {
+bool YBCStatusIsAlreadyPresent(YbcStatus s) {
   return StatusWrapper(s)->IsAlreadyPresent();
 }
 
-bool YBCStatusIsReplicationSlotLimitReached(YBCStatus s) {
+bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s) {
   return StatusWrapper(s)->IsReplicationSlotLimitReached();
 }
 
-bool YBCStatusIsFatalError(YBCStatus s) {
+bool YBCStatusIsFatalError(YbcStatus s) {
   return YBCStatusIsUnknownSession(s);
 }
 
-uint32_t YBCStatusPgsqlError(YBCStatus s) {
+uint32_t YBCStatusPgsqlError(YbcStatus s) {
   return to_underlying(FetchErrorCode(s));
 }
 
-uint16_t YBCStatusTransactionError(YBCStatus s) {
+uint16_t YBCStatusTransactionError(YbcStatus s) {
   return to_underlying(TransactionError(*StatusWrapper(s)).value());
 }
 
-void YBCFreeStatus(YBCStatus s) {
+void YBCFreeStatus(YbcStatus s) {
   FreeYBCStatus(s);
 }
 
-const char* YBCStatusFilename(YBCStatus s) {
+const char* YBCStatusFilename(YbcStatus s) {
   return YBCPAllocStdString(StatusWrapper(s)->file_name());
 }
 
-int YBCStatusLineNumber(YBCStatus s) {
+int YBCStatusLineNumber(YbcStatus s) {
   return StatusWrapper(s)->line_number();
 }
 
-const char* YBCStatusFuncname(YBCStatus s) {
+const char* YBCStatusFuncname(YbcStatus s) {
   const std::string funcname_str =
     FuncNameTag::Decode(StatusWrapper(s)->ErrorData(FuncNameTag::kCategory));
   return funcname_str.empty() ? nullptr : YBCPAllocStdString(funcname_str);
 }
 
-size_t YBCStatusMessageLen(YBCStatus s) {
+size_t YBCStatusMessageLen(YbcStatus s) {
   return StatusWrapper(s)->message().size();
 }
 
-const char* YBCStatusMessageBegin(YBCStatus s) {
+const char* YBCStatusMessageBegin(YbcStatus s) {
   return StatusWrapper(s)->message().cdata();
 }
 
-const char* YBCMessageAsCString(YBCStatus s) {
+const char* YBCMessageAsCString(YbcStatus s) {
   size_t msg_size = YBCStatusMessageLen(s);
   char* msg_buf = static_cast<char*>(YBCPAlloc(msg_size + 1));
   memcpy(msg_buf, YBCStatusMessageBegin(s), msg_size);
@@ -285,11 +285,11 @@ const char* YBCMessageAsCString(YBCStatus s) {
   return msg_buf;
 }
 
-unsigned int YBCStatusRelationOid(YBCStatus s) {
+unsigned int YBCStatusRelationOid(YbcStatus s) {
   return RelationOidTag::Decode(StatusWrapper(s)->ErrorData(RelationOidTag::kCategory));
 }
 
-const char** YBCStatusArguments(YBCStatus s, size_t* nargs) {
+const char** YBCStatusArguments(YbcStatus s, size_t* nargs) {
   const char** result = nullptr;
   const std::vector<std::string>& args = PgsqlMessageArgsTag::Decode(
       StatusWrapper(s)->ErrorData(PgsqlMessageArgsTag::kCategory));
@@ -334,9 +334,9 @@ uint16_t YBCGetTxnConflictErrorCode() {
   return to_underlying(TransactionErrorCode::kConflict);
 }
 
-YBCStatus YBCInit(const char* argv0,
-                  YBCPAllocFn palloc_fn,
-                  YBCCStringToTextWithLenFn cstring_to_text_with_len_fn) {
+YbcStatus YBCInit(const char* argv0,
+                  YbcPallocFn palloc_fn,
+                  YbcCstringToTextWithLenFn cstring_to_text_with_len_fn) {
   YBCSetPAllocFn(palloc_fn);
   if (cstring_to_text_with_len_fn) {
     YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
@@ -483,14 +483,14 @@ const char* YBCGetWaitEventType(uint32_t wait_event_info) {
   return NoPrefixName(GetWaitStateType(static_cast<ash::WaitStateCode>(wait_event)));
 }
 
-uint8_t YBCGetConstQueryId(YBCAshConstQueryIdType type) {
+uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type) {
   switch (type) {
-    case YBCAshConstQueryIdType::QUERY_ID_TYPE_DEFAULT:
+    case YbcAshConstQueryIdType::QUERY_ID_TYPE_DEFAULT:
       return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForUncomputedQueryId);
-    case YBCAshConstQueryIdType::QUERY_ID_TYPE_BACKGROUND_WORKER:
+    case YbcAshConstQueryIdType::QUERY_ID_TYPE_BACKGROUND_WORKER:
       return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForYSQLBackgroundWorker);
   }
-  FATAL_INVALID_ENUM_VALUE(YBCAshConstQueryIdType, type);
+  FATAL_INVALID_ENUM_VALUE(YbcAshConstQueryIdType, type);
 }
 
 uint32_t YBCWaitEventForWaitingOnTServer() {
@@ -502,7 +502,7 @@ int YBCGetRandomUniformInt(int a, int b) {
   return RandomUniformInt<int>(a, b);
 }
 
-YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index) {
+YbcWaitEventDescriptor YBCGetWaitEventDescription(size_t index) {
   static const auto desc = ash::WaitStateInfo::GetWaitStatesDescription();
   if (index < desc.size()) {
     // Fill up the component bits with non-zero value so that when YBCGetWaitEventClass
@@ -528,7 +528,7 @@ int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
   return google::GetStackTrace(result, max_depth, skip_count);
 }
 
-bool YBCIsNonColocatedYbctidsOnlyFetch(const YBCPgPrepareParameters *params) {
+bool YBCIsNonColocatedYbctidsOnlyFetch(const YbcPgPrepareParameters *params) {
   return params->fetch_ybctids_only && !params->querying_colocated_table;
 }
 

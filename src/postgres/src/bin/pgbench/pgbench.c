@@ -76,7 +76,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#include "yb/yql/pggate/ysql_bench_metrics_handler/ysql_bench_metrics_handler.h"
+#include "yb/yql/pggate/ysql_bench_metrics_handler/ybc_ysql_bench_metrics_handler.h"
 
 #define ERRCODE_IN_FAILED_SQL_TRANSACTION  "25P02"
 #define ERRCODE_T_R_SERIALIZATION_FAILURE  "40001"
@@ -496,7 +496,7 @@ pg_time_usec_t epoch_shift;
 /*
  * Prometheus metrics
  */
-YsqlBenchMetricEntry *ysql_bench_metric_entry = NULL;
+YbcYsqlBenchMetricEntry *ysql_bench_metric_entry = NULL;
 
 /*
  * Struct to keep random state.
@@ -9486,7 +9486,7 @@ static void
 YbInitMetricsWebserver(char *prog_name)
 {
 	InitGoogleLogging(prog_name);
-	ysql_bench_metric_entry = (YsqlBenchMetricEntry *) pg_malloc(sizeof(YsqlBenchMetricEntry));
+	ysql_bench_metric_entry = (YbcYsqlBenchMetricEntry *) pg_malloc(sizeof(YbcYsqlBenchMetricEntry));
 	ysql_bench_metric_entry->failure_count = 0;
 	ysql_bench_metric_entry->success_count = 0;
 	ysql_bench_metric_entry->average_latency = 0;

@@ -48,7 +48,7 @@ class IndexYbctidProvider : public YbctidProvider {
 } // namespace
 
 PgDml::SecondaryIndexQueryWrapper::SecondaryIndexQueryWrapper(
-    std::unique_ptr<PgDmlRead>&& query, std::reference_wrapper<const PgExecParameters*> params)
+    std::unique_ptr<PgDmlRead>&& query, std::reference_wrapper<const YbcPgExecParameters*> params)
     : query_(std::move(query)), params_(params), is_executed_(false) {
   DCHECK(query_);
 }
@@ -328,14 +328,14 @@ Status PgDml::UpdateRequestWithYbctids(const std::vector<Slice>& ybctids, KeepOr
 }
 
 Status PgDml::Fetch(
-    int32_t natts, uint64_t* values, bool* isnulls, PgSysColumns* syscols, bool* has_data) {
+    int32_t natts, uint64_t* values, bool* isnulls, YbcPgSysColumns* syscols, bool* has_data) {
   // Each isnulls and values correspond (in order) to columns from the table schema.
   // Initialize to nulls for any columns not present in result.
   if (isnulls) {
     memset(isnulls, true, natts * sizeof(bool));
   }
   if (syscols) {
-    memset(syscols, 0, sizeof(PgSysColumns));
+    memset(syscols, 0, sizeof(YbcPgSysColumns));
   }
 
   // Keep reading until we either reach the end or get some rows.
@@ -376,7 +376,7 @@ Result<bool> PgDml::FetchDataFromServer() {
 
   // Return the output parameter back to Postgres if server wants.
   if (doc_op_->has_out_param_backfill_spec() && pg_exec_params_) {
-    PgExecOutParamValue value;
+    YbcPgExecOutParamValue value;
     value.bfoutput = doc_op_->out_param_backfill_spec();
     YBCGetPgCallbacks()->WriteExecOutParam(pg_exec_params_->out_param, &value);
   }
@@ -429,7 +429,7 @@ Result<bool> PgDml::GetNextRow(PgTuple* pg_tuple) {
   return false;
 }
 
-Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
+Result<YbcPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
   auto* secondary_index = SecondaryIndexQuery();
   return secondary_index
       ? secondary_index->GetColumnInfo(attr_num) : bind_->GetColumnInfo(attr_num);

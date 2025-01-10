@@ -154,7 +154,7 @@ YbGetLastKnownCatalogCacheVersion()
 		shared_catalog_version : yb_last_known_catalog_cache_version;
 }
 
-YBCPgLastKnownCatalogVersionInfo
+YbcPgLastKnownCatalogVersionInfo
 YbGetCatalogCacheVersionForTablePrefetching()
 {
 	/*
@@ -170,7 +170,7 @@ YbGetCatalogCacheVersionForTablePrefetching()
 		YBCPgResetCatalogReadTime();
 		version = YbGetMasterCatalogVersion();
 	}
-	return (YBCPgLastKnownCatalogVersionInfo){
+	return (YbcPgLastKnownCatalogVersionInfo){
 		.version = version,
 		.is_db_catalog_version_mode = is_db_catalog_version_mode};
 }
@@ -389,7 +389,7 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 	Oid dboid = YBCGetDatabaseOid(rel);
 	int natts = RelationGetNumberOfAttributes(rel);
 	Bitmapset *pkey = NULL;
-	YBCPgTableDesc ybc_tabledesc = NULL;
+	YbcPgTableDesc ybc_tabledesc = NULL;
 	MemoryContext oldctx;
 
 	/* Get the primary key columns 'pkey' from YugaByte. */
@@ -404,7 +404,7 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 			continue;
 		}
 
-		YBCPgColumnInfo column_info = {0};
+		YbcPgColumnInfo column_info = {0};
 		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_tabledesc,
 												   attnum,
 												   &column_info),
@@ -790,7 +790,7 @@ FetchUniqueConstraintName(Oid relation_id)
  */
 void
 GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
-							   uint16_t txn_err_code, YBCStatus s,
+							   uint16_t txn_err_code, YbcStatus s,
 							   const char **msg_buf, size_t *msg_nargs,
 							   const char ***msg_args, const char **detail_buf,
 							   size_t *detail_nargs, const char ***detail_args)
@@ -858,7 +858,7 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
 }
 
 void
-HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
+HandleYBStatusIgnoreNotFound(YbcStatus status, bool *not_found)
 {
 	if (!status)
 		return;
@@ -874,7 +874,7 @@ HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 }
 
 void
-HandleYBStatusWithCustomErrorForNotFound(YBCStatus status,
+HandleYBStatusWithCustomErrorForNotFound(YbcStatus status,
 										 const char *message_for_not_found)
 {
 	bool		not_found = false;
@@ -888,7 +888,7 @@ HandleYBStatusWithCustomErrorForNotFound(YBCStatus status,
 }
 
 void
-HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
+HandleYBTableDescStatus(YbcStatus status, YbcPgTableDesc table)
 {
 	if (!status)
 		return;
@@ -923,14 +923,14 @@ YBCheckDefinedOids()
  */
 typedef struct YbSessionStats
 {
-	YBCPgExecStatsState current_state;
-	YBCPgExecStats latest_snapshot;
+	YbcPgExecStatsState current_state;
+	YbcPgExecStats latest_snapshot;
 } YbSessionStats;
 
 static YbSessionStats yb_session_stats = {0};
 
 static void
-IpAddressToBytes(YBCPgAshConfig *ash_config)
+IpAddressToBytes(YbcPgAshConfig *ash_config)
 {
 	if (!YbAshIsClientAddrSet())
 		return;
@@ -971,10 +971,10 @@ YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 	 */
 	if (YBIsEnabledInPostgresEnvVar())
 	{
-		const YBCPgTypeEntity *type_table;
+		const YbcPgTypeEntity *type_table;
 		int count;
 		YbGetTypeTable(&type_table, &count);
-		YBCPgCallbacks callbacks;
+		YbcPgCallbacks callbacks;
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
@@ -982,7 +982,7 @@ YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
 		callbacks.PgstatReportWaitStart = &yb_pgstat_report_wait_start;
-		YBCPgAshConfig ash_config;
+		YbcPgAshConfig ash_config;
 		ash_config.metadata = &MyProc->yb_ash_metadata;
 		ash_config.yb_enable_ash = &yb_enable_ash;
 		IpAddressToBytes(&ash_config);
@@ -1064,7 +1064,7 @@ YBCAbortTransaction()
 	 * top level error recovery in PostgresMain() with the DDL txn state still
 	 * set in pggate. Clean it up in that case.
 	 */
-	 YBCStatus status = YBCPgClearSeparateDdlTxnMode();
+	 YbcStatus status = YBCPgClearSeparateDdlTxnMode();
 
 	/*
 	 * Aborting a transaction is likely to fail only when there are issues
@@ -1111,7 +1111,7 @@ YBCRollbackToSubTransaction(SubTransactionId id)
 	 * would anyway terminate the backend on failure. Revisit this approach in
 	 * case the behavior of YBCAbortTransaction changes.
 	 */
-	YBCStatus status = YBCPgRollbackToSubTransaction(id);
+	YbcStatus status = YBCPgRollbackToSubTransaction(id);
 	if (unlikely(status))
 		elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
 			id, YBCMessageAsCString(status));
@@ -1361,7 +1361,7 @@ YBPgTypeOidToStr(Oid type_id)
 }
 
 const char *
-YBCPgDataTypeToStr(YBCPgDataType yb_type)
+YBCPgDataTypeToStr(YbcPgDataType yb_type)
 {
 	switch (yb_type)
 	{
@@ -1856,7 +1856,7 @@ YBResetEnableSpecialDDLMode()
  * Release all space allocated in the yb_memctx of a context and all of
  * its descendants, but don't delete the yb_memctx themselves.
  */
-static YBCStatus
+static YbcStatus
 YbMemCtxReset(MemoryContext context)
 {
 	AssertArg(MemoryContextIsValid(context));
@@ -1864,7 +1864,7 @@ YbMemCtxReset(MemoryContext context)
 		 child != NULL;
 		 child = child->nextchild)
 	{
-		YBCStatus status = YbMemCtxReset(child);
+		YbcStatus status = YbMemCtxReset(child);
 		if (status)
 			return status;
 	}
@@ -1874,7 +1874,7 @@ YbMemCtxReset(MemoryContext context)
 static void
 YBResetDdlState()
 {
-	YBCStatus status = NULL;
+	YbcStatus status = NULL;
 	if (ddl_transaction_state.mem_context)
 	{
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
@@ -2032,14 +2032,14 @@ YBDecrementDdlNestingLevel()
 		ListCell *lc = NULL;
 		foreach(lc, handles)
 		{
-			YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
+			YbcPgStatement handle = (YbcPgStatement) lfirst(lc);
 			/*
 			 * At this point we have already applied the DDL in the YSQL layer and
 			 * executing the postponed DocDB statement is not strictly required.
 			 * Ignore 'NotFound' because DocDB might already notice applied DDL.
 			 * See comment for YBGetDdlHandles in xact.h for more details.
 			 */
-			YBCStatus status = YBCPgExecPostponedDdlStmt(handle);
+			YbcStatus status = YBCPgExecPostponedDdlStmt(handle);
 			if (YBCStatusIsNotFound(status))
 			{
 				YBCFreeStatus(status);
@@ -2784,22 +2784,22 @@ YBFollowerReadStalenessMs()
 	return yb_follower_read_staleness_ms;
 }
 
-YBCPgYBTupleIdDescriptor *
+YbcPgYBTupleIdDescriptor *
 YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_relfilenode_oid, int nattrs)
 {
-	void *mem = palloc(sizeof(YBCPgYBTupleIdDescriptor) + nattrs * sizeof(YBCPgAttrValueDescriptor));
-	YBCPgYBTupleIdDescriptor *result = mem;
+	void *mem = palloc(sizeof(YbcPgYBTupleIdDescriptor) + nattrs * sizeof(YbcPgAttrValueDescriptor));
+	YbcPgYBTupleIdDescriptor *result = mem;
 	result->nattrs = nattrs;
-	result->attrs = mem + sizeof(YBCPgYBTupleIdDescriptor);
+	result->attrs = mem + sizeof(YbcPgYBTupleIdDescriptor);
 	result->database_oid = db_oid;
 	result->table_relfilenode_oid = table_relfilenode_oid;
 	return result;
 }
 
 void
-YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor *descr)
+YBCFillUniqueIndexNullAttribute(YbcPgYBTupleIdDescriptor *descr)
 {
-	YBCPgAttrValueDescriptor *last_attr = descr->attrs + descr->nattrs - 1;
+	YbcPgAttrValueDescriptor *last_attr = descr->attrs + descr->nattrs - 1;
 	last_attr->attr_num = YBUniqueIdxKeySuffixAttributeNumber;
 	last_attr->type_entity = YbDataTypeFromOidMod(YBUniqueIdxKeySuffixAttributeNumber, BYTEAOID);
 	last_attr->collation_id = InvalidOid;
@@ -2916,7 +2916,7 @@ yb_servers(PG_FUNCTION_ARGS)
 		}
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
-		YBCServerDescriptor *servers = NULL;
+		YbcServerDescriptor *servers = NULL;
 		size_t numservers = 0;
 		HandleYBStatus(YBCGetTabletServerHosts(&servers, &numservers));
 		funcctx->max_calls = numservers;
@@ -2931,7 +2931,7 @@ yb_servers(PG_FUNCTION_ARGS)
 		HeapTuple	tuple;
 
 		int cntr = funcctx->call_cntr;
-		YBCServerDescriptor *server = (YBCServerDescriptor *)funcctx->user_fctx + cntr;
+		YbcServerDescriptor *server = (YbcServerDescriptor *)funcctx->user_fctx + cntr;
 		bool is_primary = server->is_primary;
 		const char *node_type = is_primary ? "primary" : "read_replica";
 
@@ -2968,7 +2968,7 @@ YBIsSupportedLibcLocale(const char *localebuf)
 		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
 }
 
-static YBCStatus
+static YbcStatus
 YbGetTablePropertiesCommon(Relation rel)
 {
 	if (rel->yb_table_properties)
@@ -2980,26 +2980,26 @@ YbGetTablePropertiesCommon(Relation rel)
 	Oid dbid          = YBCGetDatabaseOid(rel);
 	Oid relfileNodeId = YbGetRelfileNodeId(rel);
 
-	YBCPgTableDesc desc = NULL;
-	YBCStatus status = YBCPgGetTableDesc(dbid, relfileNodeId, &desc);
+	YbcPgTableDesc desc = NULL;
+	YbcStatus status = YBCPgGetTableDesc(dbid, relfileNodeId, &desc);
 	if (status)
 		return status;
 
 	/* Relcache entry data must live in CacheMemoryContext */
 	rel->yb_table_properties =
-		MemoryContextAllocZero(CacheMemoryContext, sizeof(YbTablePropertiesData));
+		MemoryContextAllocZero(CacheMemoryContext, sizeof(YbcTablePropertiesData));
 
 	return YBCPgGetTableProperties(desc, rel->yb_table_properties);
 }
 
-YbTableProperties
+YbcTableProperties
 YbGetTableProperties(Relation rel)
 {
 	HandleYBStatus(YbGetTablePropertiesCommon(rel));
 	return rel->yb_table_properties;
 }
 
-YbTableProperties
+YbcTableProperties
 YbGetTablePropertiesById(Oid relid)
 {
 	Relation relation     = RelationIdGetRelation(relid);
@@ -3008,7 +3008,7 @@ YbGetTablePropertiesById(Oid relid)
 	return relation->yb_table_properties;
 }
 
-YbTableProperties
+YbcTableProperties
 YbTryGetTableProperties(Relation rel)
 {
 	bool not_found = false;
@@ -3057,9 +3057,9 @@ yb_hash_code(PG_FUNCTION_ARGS)
 		}
 
 		size_t typesize;
-		const YBCPgTypeEntity *typeentity =
+		const YbcPgTypeEntity *typeentity =
 				 YbDataTypeFromOidMod(InvalidAttrNumber, argtype);
-		YBCStatus status = YBCGetDocDBKeySize(PG_GETARG_DATUM(i), typeentity,
+		YbcStatus status = YBCGetDocDBKeySize(PG_GETARG_DATUM(i), typeentity,
 							PG_ARGISNULL(i), &typesize);
 		if (unlikely(status))
 		{
@@ -3084,10 +3084,10 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	for (int i = 0; i < PG_NARGS(); i++)
 	{
 		Oid argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
-		const YBCPgTypeEntity *typeentity =
+		const YbcPgTypeEntity *typeentity =
 				 YbDataTypeFromOidMod(InvalidAttrNumber, argtype);
 		size_t written;
-		YBCStatus status = YBCAppendDatumToKey(PG_GETARG_DATUM(i), typeentity,
+		YbcStatus status = YBCAppendDatumToKey(PG_GETARG_DATUM(i), typeentity,
 							PG_ARGISNULL(i), arg_buf_pos, &written);
 		if (unlikely(status))
 		{
@@ -3134,8 +3134,8 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	Oid dbid		= YBCGetDatabaseOid(rel);
 	Oid relfileNodeId = YbGetRelfileNodeId(rel);
 
-	YBCPgTableDesc yb_tabledesc = NULL;
-	YbTablePropertiesData yb_table_properties;
+	YbcPgTableDesc yb_tabledesc = NULL;
+	YbcTablePropertiesData yb_table_properties;
 	bool not_found = false;
 	HandleYBStatusIgnoreNotFound(YBCPgGetTableDesc(dbid, relfileNodeId,
 												   &yb_tabledesc),
@@ -3163,7 +3163,7 @@ yb_table_properties(PG_FUNCTION_ARGS)
 
 	if (!not_found)
 	{
-		YbTableProperties yb_props = &yb_table_properties;
+		YbcTableProperties yb_props = &yb_table_properties;
 		values[0] = Int64GetDatum(yb_props->num_tablets);
 		values[1] = Int64GetDatum(yb_props->num_hash_key_columns);
 		values[2] = BoolGetDatum(yb_props->is_colocated);
@@ -3237,13 +3237,13 @@ yb_database_clones(PG_FUNCTION_ARGS)
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 
-	YBCPgDatabaseCloneInfo *database_clones_info = NULL;
+	YbcPgDatabaseCloneInfo *database_clones_info = NULL;
 	size_t		num_clones = 0;
 	HandleYBStatus(YBCDatabaseClones(&database_clones_info, &num_clones));
 
 	for (i = 0; i < num_clones; ++i)
 	{
-		YBCPgDatabaseCloneInfo *clone_info = (YBCPgDatabaseCloneInfo *)database_clones_info + i;
+		YbcPgDatabaseCloneInfo *clone_info = (YbcPgDatabaseCloneInfo *)database_clones_info + i;
 		Datum		values[YB_DATABASE_CLONES_COLS];
 		bool		nulls[YB_DATABASE_CLONES_COLS];
 
@@ -3456,19 +3456,19 @@ appendDatumToString(StringInfo str, uint64_t datum, Oid typid, int encoding,
  * It also stores key columns' data types in input parameters: pkeys_atttypid.
  */
 static void
-getSplitPointsInfo(Oid relid, YBCPgTableDesc yb_tabledesc,
-				   YbTableProperties yb_table_properties,
+getSplitPointsInfo(Oid relid, YbcPgTableDesc yb_tabledesc,
+				   YbcTableProperties yb_table_properties,
 				   Oid *pkeys_atttypid,
-				   YBCPgSplitDatum *split_datums,
+				   YbcPgSplitDatum *split_datums,
 				   bool *has_null, bool *has_gin_null)
 {
 	Assert(yb_table_properties->num_tablets > 1);
 
 	size_t num_range_key_columns = yb_table_properties->num_range_key_columns;
-	const YBCPgTypeEntity *type_entities[num_range_key_columns];
-	YBCPgTypeAttrs type_attrs_arr[num_range_key_columns];
+	const YbcPgTypeEntity *type_entities[num_range_key_columns];
+	YbcPgTypeAttrs type_attrs_arr[num_range_key_columns];
 	/*
-	 * Get key columns' YBCPgTypeEntity and YBCPgTypeAttrs.
+	 * Get key columns' YbcPgTypeEntity and YbcPgTypeAttrs.
 	 * For range-partitioned tables, use primary key to get key columns' type
 	 * info. For range-partitioned indexes, get key columns' type info from
 	 * indexes themselves.
@@ -3489,7 +3489,7 @@ getSplitPointsInfo(Oid relid, YBCPgTableDesc yb_tabledesc,
 											  : i);
 		type_entities[i] = YbDataTypeFromOidMod(InvalidAttrNumber,
 												attr->atttypid);
-		YBCPgTypeAttrs type_attrs;
+		YbcPgTypeAttrs type_attrs;
 		type_attrs.typmod = attr->atttypmod;
 		type_attrs_arr[i] = type_attrs;
 		pkeys_atttypid[i] = attr->atttypid;
@@ -3509,15 +3509,15 @@ getSplitPointsInfo(Oid relid, YBCPgTableDesc yb_tabledesc,
  * with more than one tablet.
  */
 static void
-rangeSplitClause(Oid relid, YBCPgTableDesc yb_tabledesc,
-				 YbTableProperties yb_table_properties, StringInfo str)
+rangeSplitClause(Oid relid, YbcPgTableDesc yb_tabledesc,
+				 YbcTableProperties yb_table_properties, StringInfo str)
 {
 	Assert(!str->len);
 	Assert(yb_table_properties->num_tablets > 1);
 	size_t num_range_key_columns = yb_table_properties->num_range_key_columns;
 	size_t num_splits = yb_table_properties->num_tablets - 1;
 	Oid pkeys_atttypid[num_range_key_columns];
-	YBCPgSplitDatum split_datums[num_splits * num_range_key_columns];
+	YbcPgSplitDatum split_datums[num_splits * num_range_key_columns];
 	StringInfo prev_split_point = makeStringInfo();
 	StringInfo cur_split_point = makeStringInfo();
 	bool has_null = false;
@@ -3633,19 +3633,19 @@ rangeSplitClause(Oid relid, YBCPgTableDesc yb_tabledesc,
  * as a list of list of Exprs.
  */
 static void
-getRangeSplitPointsList(Oid relid, YBCPgTableDesc yb_tabledesc,
-						YbTableProperties yb_table_properties,
+getRangeSplitPointsList(Oid relid, YbcPgTableDesc yb_tabledesc,
+						YbcTableProperties yb_table_properties,
 						List **split_points)
 {
 	Assert(yb_table_properties->num_tablets > 1);
 	size_t num_range_key_columns = yb_table_properties->num_range_key_columns;
 	size_t num_splits = yb_table_properties->num_tablets - 1;
 	Oid pkeys_atttypid[num_range_key_columns];
-	YBCPgSplitDatum split_datums[num_splits * num_range_key_columns];
+	YbcPgSplitDatum split_datums[num_splits * num_range_key_columns];
 	bool has_null;
 	bool has_gin_null;
 
-	/* Get Split point values as YBCPgSplitDatum. */
+	/* Get Split point values as YbcPgSplitDatum. */
 	getSplitPointsInfo(relid, yb_tabledesc, yb_table_properties,
 					   pkeys_atttypid, split_datums, &has_null, &has_gin_null);
 
@@ -3714,8 +3714,8 @@ yb_get_range_split_clause(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
 	bool		exists_in_yb = false;
-	YBCPgTableDesc yb_tabledesc = NULL;
-	YbTablePropertiesData yb_table_properties;
+	YbcPgTableDesc yb_tabledesc = NULL;
+	YbcTablePropertiesData yb_table_properties;
 	StringInfoData str;
 	char	   *range_split_clause = NULL;
 	Relation	relation = RelationIdGetRelation(relid);
@@ -3790,7 +3790,7 @@ yb_get_range_split_clause(PG_FUNCTION_ARGS)
 const char *
 yb_fetch_current_transaction_priority(void)
 {
-	TxnPriorityRequirement txn_priority_type;
+	YbcTxnPriorityRequirement txn_priority_type;
 	double txn_priority;
 	static char buf[50];
 
@@ -3836,7 +3836,7 @@ yb_get_current_transaction(PG_FUNCTION_ARGS)
 	}
 
 	txn_id = (pg_uuid_t *) palloc(sizeof(pg_uuid_t));
-	HandleYBStatus(YBCPgGetSelfActiveTransaction((YBCPgUuid *) txn_id,
+	HandleYBStatus(YBCPgGetSelfActiveTransaction((YbcPgUuid *) txn_id,
 												 &is_null));
 
 	if (is_null)
@@ -3854,7 +3854,7 @@ yb_cancel_transaction(PG_FUNCTION_ARGS)
 				 errmsg("permission denied to cancel transaction")));
 
 	pg_uuid_t *id = PG_GETARG_UUID_P(0);
-	YBCStatus status = YBCPgCancelTransaction(id->data);
+	YbcStatus status = YBCPgCancelTransaction(id->data);
 	if (status)
 	{
 		ereport(NOTICE,
@@ -4008,13 +4008,13 @@ yb_local_tablets(PG_FUNCTION_ARGS)
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 
-	YBCPgTabletsDescriptor *tablets = NULL;
+	YbcPgTabletsDescriptor *tablets = NULL;
 	size_t		num_tablets = 0;
 	HandleYBStatus(YBCLocalTablets(&tablets, &num_tablets));
 
 	for (i = 0; i < num_tablets; ++i)
 	{
-		YBCPgTabletsDescriptor *tablet = (YBCPgTabletsDescriptor *)tablets + i;
+		YbcPgTabletsDescriptor *tablet = (YbcPgTabletsDescriptor *)tablets + i;
 		Datum		values[ncols];
 		bool		nulls[ncols];
 		bytea	   *partition_key_start;
@@ -4066,7 +4066,7 @@ yb_local_tablets(PG_FUNCTION_ARGS)
 }
 
 static Datum
-GetMetricsAsJsonbDatum(YBCMetricsInfo *metrics, size_t metricsCount)
+GetMetricsAsJsonbDatum(YbcMetricsInfo *metrics, size_t metricsCount)
 {
 	JsonbParseState *state = NULL;
 	JsonbValue result;
@@ -4136,13 +4136,13 @@ yb_servers_metrics(PG_FUNCTION_ARGS)
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 
-	YBCPgServerMetricsInfo *servers_metrics_info = NULL;
+	YbcPgServerMetricsInfo *servers_metrics_info = NULL;
 	size_t num_servers = 0;
 	HandleYBStatus(YBCServersMetrics(&servers_metrics_info, &num_servers));
 
 	for (i = 0; i < num_servers; ++i)
 	{
-		YBCPgServerMetricsInfo *metricsInfo = (YBCPgServerMetricsInfo *)servers_metrics_info + i;
+		YbcPgServerMetricsInfo *metricsInfo = (YbcPgServerMetricsInfo *)servers_metrics_info + i;
 		Datum		values[YB_SERVERS_METRICS_COLS];
 		bool		nulls[YB_SERVERS_METRICS_COLS];
 
@@ -4372,10 +4372,10 @@ YBComputeNonCSortKey(Oid collation_id, const char *value, int64_t bytes)
 
 void
 YBGetCollationInfo(Oid collation_id,
-				   const YBCPgTypeEntity *type_entity,
+				   const YbcPgTypeEntity *type_entity,
 				   Datum datum,
 				   bool is_null,
-				   YBCPgCollationInfo *collation_info)
+				   YbcPgCollationInfo *collation_info)
 {
 	if (!type_entity) {
 		Assert(collation_id == InvalidOid);
@@ -4452,14 +4452,14 @@ YBGetCollationInfo(Oid collation_id,
 }
 
 static bool
-YBNeedCollationEncoding(const YBCPgColumnInfo *column_info)
+YBNeedCollationEncoding(const YbcPgColumnInfo *column_info)
 {
 	/* We only need collation encoding for range keys. */
 	return (column_info->is_primary && !column_info->is_hash);
 }
 
 void
-YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr, const YBCPgColumnInfo *column_info)
+YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info)
 {
 	if (attr->collation_id != InvalidOid && !YBNeedCollationEncoding(column_info))
 	{
@@ -4496,11 +4496,11 @@ YBIsCollationValidNonC(Oid collation_id)
 }
 
 Oid
-YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation)
+YBEncodingCollation(YbcPgStatement handle, int attr_num, Oid attcollation)
 {
 	if (attcollation == InvalidOid)
 		return InvalidOid;
-	YBCPgColumnInfo column_info = {0};
+	YbcPgColumnInfo column_info = {0};
 	HandleYBStatus(YBCPgDmlGetColumnInfo(handle, attr_num, &column_info));
 	return YBNeedCollationEncoding(&column_info) ? attcollation : InvalidOid;
 }
@@ -4943,7 +4943,7 @@ YBCheckServerAccessIsAllowed()
 }
 
 static void
-aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
+aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 {
 	/* User Table stats */
 	instr->tbl_reads.count += exec_stats->tables.reads;
@@ -4981,18 +4981,18 @@ aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
 		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
 		{
 			YbPgEventMetric *agg = &instr->storage_event_metrics[i];
-			const YBCPgExecEventMetric *val = &exec_stats->storage_event_metrics[i];
+			const YbcPgExecEventMetric *val = &exec_stats->storage_event_metrics[i];
 			agg->sum += val->sum;
 			agg->count += val->count;
 		}
 	}
 }
 
-static YBCPgExecReadWriteStats
-getDiffReadWriteStats(const YBCPgExecReadWriteStats *current,
-					  const YBCPgExecReadWriteStats *old)
+static YbcPgExecReadWriteStats
+getDiffReadWriteStats(const YbcPgExecReadWriteStats *current,
+					  const YbcPgExecReadWriteStats *old)
 {
-	return (YBCPgExecReadWriteStats)
+	return (YbcPgExecReadWriteStats)
 	{
 		current->reads - old->reads,
 		current->writes - old->writes,
@@ -5002,10 +5002,10 @@ getDiffReadWriteStats(const YBCPgExecReadWriteStats *current,
 }
 
 static void
-calculateExecStatsDiff(const YbSessionStats *stats, YBCPgExecStats *result)
+calculateExecStatsDiff(const YbSessionStats *stats, YbcPgExecStats *result)
 {
-	const YBCPgExecStats *current = &stats->current_state.stats;
-	const YBCPgExecStats *old = &stats->latest_snapshot;
+	const YbcPgExecStats *current = &stats->current_state.stats;
+	const YbcPgExecStats *old = &stats->latest_snapshot;
 
 	result->tables = getDiffReadWriteStats(&current->tables, &old->tables);
 	result->indices = getDiffReadWriteStats(&current->indices, &old->indices);
@@ -5029,9 +5029,9 @@ calculateExecStatsDiff(const YbSessionStats *stats, YBCPgExecStats *result)
 		}
 		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
 		{
-			YBCPgExecEventMetric *result_metric = &result->storage_event_metrics[i];
-			const YBCPgExecEventMetric *current_metric = &current->storage_event_metrics[i];
-			const YBCPgExecEventMetric *old_metric = &old->storage_event_metrics[i];
+			YbcPgExecEventMetric *result_metric = &result->storage_event_metrics[i];
+			const YbcPgExecEventMetric *current_metric = &current->storage_event_metrics[i];
+			const YbcPgExecEventMetric *old_metric = &old->storage_event_metrics[i];
 			result_metric->sum = current_metric->sum - old_metric->sum;
 			result_metric->count = current_metric->count - old_metric->count;
 		}
@@ -5041,8 +5041,8 @@ calculateExecStatsDiff(const YbSessionStats *stats, YBCPgExecStats *result)
 static void
 refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 {
-	const YBCPgExecStats *current = &stats->current_state.stats;
-	YBCPgExecStats *old = &stats->latest_snapshot;
+	const YbcPgExecStats *current = &stats->current_state.stats;
+	YbcPgExecStats *old = &stats->latest_snapshot;
 
 	old->tables = current->tables;
 	old->indices = current->indices;
@@ -5066,8 +5066,8 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 		}
 		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
 		{
-			YBCPgExecEventMetric *old_metric = &old->storage_event_metrics[i];
-			const YBCPgExecEventMetric *current_metric =
+			YbcPgExecEventMetric *old_metric = &old->storage_event_metrics[i];
+			const YbcPgExecEventMetric *current_metric =
 					&current->storage_event_metrics[i];
 			old_metric->sum = current_metric->sum;
 			old_metric->count = current_metric->count;
@@ -5078,7 +5078,7 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 void
 YbUpdateSessionStats(YbInstrumentation *yb_instr)
 {
-	YBCPgExecStats exec_stats = {0};
+	YbcPgExecStats exec_stats = {0};
 
 	/* Find the diff between the current stats and the last stats snapshot */
 	calculateExecStatsDiff(&yb_session_stats, &exec_stats);
@@ -5132,13 +5132,13 @@ YbToggleSessionStatsTimer(bool timing_on)
 }
 
 void
-YbSetMetricsCaptureType(YBCPgMetricsCaptureType metrics_capture)
+YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture)
 {
 	yb_session_stats.current_state.metrics_capture = metrics_capture;
 }
 
 void
-YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version)
+YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version)
 {
 	HandleYBStatus(YBIsDBCatalogVersionMode()
 		? YBCPgSetDBCatalogCacheVersion(handle, MyDatabaseId, version)
@@ -5257,7 +5257,7 @@ YbGetSplitOptions(Relation rel)
 	if (split_options->split_type == SPLIT_POINTS
 		&& rel->yb_table_properties->num_tablets > 1)
 	{
-		YBCPgTableDesc yb_desc = NULL;
+		YbcPgTableDesc yb_desc = NULL;
 		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId,
 						YbGetRelfileNodeId(rel), &yb_desc));
 		getRangeSplitPointsList(RelationGetRelid(rel), yb_desc,

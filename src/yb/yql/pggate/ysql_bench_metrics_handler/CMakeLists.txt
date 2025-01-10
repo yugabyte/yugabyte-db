@@ -14,7 +14,7 @@
 set(YB_PCH_PATH ../)
 
 set(YSQL_BENCH_METRICS_HANDLER_SRCS
-    ysql_bench_metrics_handler.cc
+    ybc_ysql_bench_metrics_handler.cc
     )
 
 set(YSQL_BENCH_METRICS_HANDLER_LIBS

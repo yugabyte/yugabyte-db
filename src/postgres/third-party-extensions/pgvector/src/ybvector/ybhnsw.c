@@ -28,7 +28,7 @@
 #include "commands/ybccmds.h"
 
 static void
-ybhnswbindcolumnschema(YBCPgStatement handle,
+ybhnswbindcolumnschema(YbcPgStatement handle,
 					   IndexInfo *indexInfo,
 					   TupleDesc indexTupleDesc,
 					   int16 *coloptions)

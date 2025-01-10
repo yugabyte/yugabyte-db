@@ -117,7 +117,7 @@ YbgStatus YbgDeleteMemoryContext()
 // Types
 //-----------------------------------------------------------------------------
 
-YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count)
+YbgStatus YbgGetTypeTable(const YbcPgTypeEntity **type_table, int *count)
 {
 	PG_SETUP_ERROR_REPORTING();
 
@@ -506,7 +506,7 @@ YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *d
 
 /* YB_TODO(Deepthi@yugabyte)
  * - Postgres 13 has added some new types. Need to update this function accordingly.
- * - It'd be best if you use the table "static const YBCPgTypeEntity YbTypeEntityTable[]". Just
+ * - It'd be best if you use the table "static const YbcPgTypeEntity YbTypeEntityTable[]". Just
  *   as the attributes that you need, such as (elmlen, elmbyval, ...), and fill the table with
  *   their values. That way, when upgrading we don't have to seek for location of datatypes every
  *   where and update the info.

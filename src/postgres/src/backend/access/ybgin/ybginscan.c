@@ -77,9 +77,9 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 			ScanKey orderbys, int norderbys)
 {
 	YbginScanOpaque	  ybso = (YbginScanOpaque) scan->opaque;
-	YbTableProperties yb_table_properties_relation =
+	YbcTableProperties yb_table_properties_relation =
 		YbGetTableProperties(scan->heapRelation);
-	YbTableProperties yb_table_properties_index =
+	YbcTableProperties yb_table_properties_index =
 		YbGetTableProperties(scan->indexRelation);
 	bool querying_colocated_table = false;
 	bool is_colocated = yb_table_properties_relation->is_colocated;
@@ -101,7 +101,7 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	}
 
 	/* Initialize ybgin scan opaque handle. */
-	YBCPgPrepareParameters prepare_params = {
+	YbcPgPrepareParameters prepare_params = {
 		.index_relfilenode_oid = YbGetRelfileNodeId(scan->indexRelation),
 		.index_only_scan = scan->xs_want_itup,
 		.querying_colocated_table = querying_colocated_table,

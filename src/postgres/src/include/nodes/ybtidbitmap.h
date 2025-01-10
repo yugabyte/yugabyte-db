@@ -44,7 +44,7 @@ typedef enum
 typedef struct YbTIDBitmap
 {
 	NodeTag		type;			/* to make it a valid Node */
-	SliceSet	ybctid_set;		/* C++ set that contains my ybctids */
+	YbcSliceSet	ybctid_set;		/* C++ set that contains my ybctids */
 	int			nentries;		/* number of entries in the bitmap */
 	YbTBMIteratingState iterating;
 								/* yb_tbm_begin_iterate called? */
@@ -55,7 +55,7 @@ typedef struct YbTIDBitmap
 /* Result structure for tbm_iterate */
 typedef struct
 {
-	ConstSliceVector	ybctid_vector;
+	YbcConstSliceVector	ybctid_vector;
 	size_t				index;
 	size_t				prefetched_index;
 } YbTBMIterateResult;
@@ -64,7 +64,7 @@ typedef struct
 
 extern YbTIDBitmap *yb_tbm_create(long maxbytes);
 
-extern bool yb_tbm_add_tuples(YbTIDBitmap *ybtbm, ConstSliceVector ybctids);
+extern bool yb_tbm_add_tuples(YbTIDBitmap *ybtbm, YbcConstSliceVector ybctids);
 
 extern void yb_tbm_union_and_free(YbTIDBitmap *a, YbTIDBitmap *b);
 extern void yb_tbm_intersect_and_free(YbTIDBitmap *a, YbTIDBitmap *b);

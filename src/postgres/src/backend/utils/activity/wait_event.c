@@ -58,8 +58,8 @@ static const char *yb_get_wait_lwlock_desc(BuiltinTrancheIds tranche_id);
 static uint32 local_my_wait_event_info;
 uint32	   *my_wait_event_info = &local_my_wait_event_info;
 
-static YBCWaitEventInfo yb_local_my_wait_event_info;
-YBCWaitEventInfoPtr yb_my_wait_event_info = {
+static YbcWaitEventInfo yb_local_my_wait_event_info;
+YbcWaitEventInfoPtr yb_my_wait_event_info = {
 	&yb_local_my_wait_event_info.wait_event,
 	&yb_local_my_wait_event_info.rpc_code};
 
@@ -102,7 +102,7 @@ pgstat_reset_wait_event_storage(void)
 void
 yb_pgstat_set_wait_event_storage(PGPROC *proc)
 {
-	yb_my_wait_event_info = (YBCWaitEventInfoPtr){
+	yb_my_wait_event_info = (YbcWaitEventInfoPtr){
 		&proc->wait_event_info,
 		&proc->yb_rpc_code};
 
@@ -119,7 +119,7 @@ yb_pgstat_set_wait_event_storage(PGPROC *proc)
 void
 yb_pgstat_reset_wait_event_storage(void)
 {
-	yb_my_wait_event_info = (YBCWaitEventInfoPtr){
+	yb_my_wait_event_info = (YbcWaitEventInfoPtr){
 		&yb_local_my_wait_event_info.wait_event,
 		&yb_local_my_wait_event_info.rpc_code};
 
@@ -1299,7 +1299,7 @@ yb_wait_event_desc(PG_FUNCTION_ARGS)
 	/* wait events defined in wait_state.h */
 	for (i = 0;; ++i)
 	{
-		YBCWaitEventDescriptor wait_event_desc = YBCGetWaitEventDescription(i);
+		YbcWaitEventDescriptor wait_event_desc = YBCGetWaitEventDescription(i);
 
 		if (wait_event_desc.code == 0 && wait_event_desc.description == NULL)
 			break;

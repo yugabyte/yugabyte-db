@@ -3302,7 +3302,7 @@ TEST_F_EX(PgLibPqTest, YB_LINUX_ONLY_TEST(TestOomScoreAdjPGWebserver), PgLibPqYS
   ASSERT_EQ(oom_score_adj, expected_webserver_oom_score);
 }
 
-TEST_F_EX(PgLibPqTest, YbTableProperties, PgLibPqTestRF1) {
+TEST_F_EX(PgLibPqTest, YbcTableProperties, PgLibPqTestRF1) {
   const string kDatabaseName = "yugabyte";
   const string kTableName = "test";
 

@@ -118,10 +118,10 @@ typedef struct YbgTypeDesc YbgTypeDesc;
  * Get the type entity table for the primtive YSQL/PG types.
  * Used for for converting between DocDB values and YSQL datums.
  */
-YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
+YbgStatus YbgGetTypeTable(const YbcPgTypeEntity **type_table, int *count);
 
 /*
- * For non-primitive types (the ones without a corresponding YBCPgTypeEntity),
+ * For non-primitive types (the ones without a corresponding YbcPgTypeEntity),
  * get the corresponding primitive type's oid.
  */
 YbgStatus YbgGetPrimitiveTypeOid(uint32_t type_oid, char typtype,

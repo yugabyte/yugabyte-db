@@ -80,7 +80,7 @@ class PgDml : public PgStatement {
 
   // Fetch a row and return it to Postgres layer.
   Status Fetch(
-      int32_t natts, uint64_t* values, bool* isnulls, PgSysColumns* syscols, bool* has_data);
+      int32_t natts, uint64_t* values, bool* isnulls, YbcPgSysColumns* syscols, bool* has_data);
 
   // Returns TRUE if docdb replies with more data.
   Result<bool> FetchDataFromServer();
@@ -92,7 +92,7 @@ class PgDml : public PgStatement {
 
   // Get column info on whether the column 'attr_num' is a hash key, a range
   // key, or neither.
-  Result<YBCPgColumnInfo> GetColumnInfo(int attr_num) const;
+  Result<YbcPgColumnInfo> GetColumnInfo(int attr_num) const;
 
   [[nodiscard]] bool has_aggregate_targets() const { return has_aggregate_targets_; }
 
@@ -100,14 +100,15 @@ class PgDml : public PgStatement {
   class SecondaryIndexQueryWrapper {
    public:
     SecondaryIndexQueryWrapper(
-        std::unique_ptr<PgDmlRead>&& query, std::reference_wrapper<const PgExecParameters*> params);
+        std::unique_ptr<PgDmlRead>&& query,
+        std::reference_wrapper<const YbcPgExecParameters*> params);
     Status Execute();
     void RequireReExecution() { is_executed_ = false; }
     PgDmlRead& query() const { return *query_; }
 
    private:
     const std::unique_ptr<PgDmlRead> query_;
-    const PgExecParameters*& params_;
+    const YbcPgExecParameters*& params_;
     bool is_executed_;
   };
 
@@ -217,7 +218,7 @@ class PgDml : public PgStatement {
 
   // Yugabyte has a few IN/OUT parameters of statement execution, "pg_exec_params_" is used to sent
   // OUT value back to postgres.
-  const PgExecParameters* pg_exec_params_ = nullptr;
+  const YbcPgExecParameters* pg_exec_params_ = nullptr;
 
  private:
   [[nodiscard]] virtual ArenaList<LWPgsqlColRefPB>& ColRefPBs() = 0;

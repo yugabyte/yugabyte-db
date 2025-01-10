@@ -49,13 +49,13 @@ YB_STRONGLY_TYPED_BOOL(EnsureReadTimeIsSet);
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
-  PgTxnManager(PgClient* pg_client, scoped_refptr<ClockBase> clock, PgCallbacks pg_callbacks);
+  PgTxnManager(PgClient* pg_client, scoped_refptr<ClockBase> clock, YbcPgCallbacks pg_callbacks);
 
   virtual ~PgTxnManager();
 
   Status BeginTransaction(int64_t start_time);
 
-  Status CalculateIsolation(bool read_only_op, TxnPriorityRequirement txn_priority_requirement);
+  Status CalculateIsolation(bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
@@ -91,10 +91,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       tserver::PgPerformOptionsPB* options, EnsureReadTimeIsSet ensure_read_time);
 
   double GetTransactionPriority() const;
-  TxnPriorityRequirement GetTransactionPriorityType() const;
+  YbcTxnPriorityRequirement GetTransactionPriorityType() const;
 
-  void DumpSessionState(YBCPgSessionState* session_data);
-  void RestoreSessionState(const YBCPgSessionState& session_data);
+  void DumpSessionState(YbcPgSessionState* session_data);
+  void RestoreSessionState(const YbcPgSessionState& session_data);
 
   [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);
@@ -143,7 +143,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status UpdateReadTimeForFollowerReadsIfRequired();
   Status RecreateTransaction(SavePriority save_priority);
 
-  static uint64_t NewPriority(TxnPriorityRequirement txn_priority_requirement);
+  static uint64_t NewPriority(YbcTxnPriorityRequirement txn_priority_requirement);
 
   std::string TxnStateDebugStr() const;
 
@@ -186,7 +186,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
 
-  PgCallbacks pg_callbacks_;
+  YbcPgCallbacks pg_callbacks_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 };

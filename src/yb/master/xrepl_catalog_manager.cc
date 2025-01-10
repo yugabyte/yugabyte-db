@@ -690,7 +690,7 @@ Status CatalogManager::BackfillMetadataForXRepl(
           set_column_pg_type->set_name(entry.first);
           uint32_t pg_type_oid = entry.second;
 
-          const YBCPgTypeEntity* type_entity =
+          const YbcPgTypeEntity* type_entity =
               docdb::DocPgGetTypeEntity({(int32_t)pg_type_oid, -1});
 
           if (type_entity == nullptr && type_oid_info_map.contains(pg_type_oid)) {

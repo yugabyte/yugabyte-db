@@ -269,7 +269,7 @@ extern void YBCAssignTransactionPriorityLowerBound(double newval, void* extra);
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
 extern double YBCGetTransactionPriority();
-extern TxnPriorityRequirement YBCGetTransactionPriorityType();
+extern YbcTxnPriorityRequirement YBCGetTransactionPriorityType();
 static bool yb_check_no_txn(int* newval, void **extra, GucSource source);
 
 static void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);

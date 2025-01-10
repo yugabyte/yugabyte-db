@@ -46,7 +46,7 @@ class PgFunctionParams {
  public:
 
   Status AddParam(
-      const std::string& name, const YBCPgTypeEntity* type_entity, uint64_t datum, bool is_null);
+      const std::string& name, const YbcPgTypeEntity* type_entity, uint64_t datum, bool is_null);
 
   size_t Size() const { return params_by_name_.size(); }
 
@@ -58,13 +58,13 @@ class PgFunctionParams {
 
  private:
   // Return a pair containing a shared pointer to the QLValuePB (internal
-  // representation of the parameter value) and the YBCPgTypeEntity (the type
+  // representation of the parameter value) and the YbcPgTypeEntity (the type
   // of the parameter) given the parameter's name.
-  Result<std::pair<std::shared_ptr<const QLValuePB>, const YBCPgTypeEntity*>> GetValueAndType(
+  Result<std::pair<std::shared_ptr<const QLValuePB>, const YbcPgTypeEntity*>> GetValueAndType(
       const std::string& name) const;
 
   std::unordered_map<
-      std::string, std::pair<std::shared_ptr<const QLValuePB>, const YBCPgTypeEntity*>>
+      std::string, std::pair<std::shared_ptr<const QLValuePB>, const YbcPgTypeEntity*>>
       params_by_name_;
 };
 
@@ -82,10 +82,10 @@ class PgFunction : public PgMemctx::Registrable {
   virtual ~PgFunction() = default;
 
   Status AddParam(
-      const std::string& name, const YBCPgTypeEntity* type_entity, uint64_t datum, bool is_null);
+      const std::string& name, const YbcPgTypeEntity* type_entity, uint64_t datum, bool is_null);
 
   Status AddTarget(
-      const std::string& name, const YBCPgTypeEntity* type_entity, const YBCPgTypeAttrs type_attrs);
+      const std::string& name, const YbcPgTypeEntity* type_entity, const YbcPgTypeAttrs type_attrs);
 
   Status FinalizeTargets();
 

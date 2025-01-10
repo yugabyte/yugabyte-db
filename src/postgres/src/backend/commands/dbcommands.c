@@ -1381,7 +1381,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	 * always go through the DB clone workflow.
 	 */
 	bool is_clone = strcmp(dbtemplate, "template0") != 0 && strcmp(dbtemplate, "template1") != 0;
-	YbCloneInfo yb_clone_info = {
+	YbcCloneInfo yb_clone_info = {
 		.clone_time = dbclonetime,
 		.src_db_name = dbtemplate,
 		.src_owner = is_clone ? GetUserNameFromId(src_owner, true /* noerr */) : NULL,
@@ -2098,7 +2098,7 @@ RenameDatabase(const char *oldname, const char *newname)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCPgStatement handle = NULL;
+		YbcPgStatement handle = NULL;
 		HandleYBStatus(YBCPgNewAlterDatabase(oldname, db_id, &handle));
 		HandleYBStatus(YBCPgAlterDatabaseRenameDatabase(handle, newname));
 		HandleYBStatus(YBCPgExecAlterDatabase(handle));

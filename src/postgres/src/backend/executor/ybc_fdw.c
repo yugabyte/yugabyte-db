@@ -308,8 +308,8 @@ ybcGetForeignPlan(PlannerInfo *root,
 typedef struct YbFdwExecState
 {
 	/* The handle for the internal YB Select statement. */
-	YBCPgStatement	handle;
-	YBCPgExecParameters *exec_params; /* execution control parameters for YugaByte */
+	YbcPgStatement	handle;
+	YbcPgExecParameters *exec_params; /* execution control parameters for YugaByte */
 	bool is_exec_done; /* Each statement should be executed exactly one time */
 } YbFdwExecState;
 
@@ -394,7 +394,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 	EState *estate = ss->ps.state;
 	ForeignScan *foreignScan = (ForeignScan *) ss->ps.plan;
 	Relation relation = ss->ss_currentRelation;
-	YBCPgStatement handle = ((YbFdwExecState *) node->fdw_state)->handle;
+	YbcPgStatement handle = ((YbFdwExecState *) node->fdw_state)->handle;
 	TupleDesc tupdesc = RelationGetDescr(relation);
 	ListCell *lc;
 

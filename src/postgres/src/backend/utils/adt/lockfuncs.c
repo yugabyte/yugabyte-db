@@ -42,10 +42,10 @@ YbRaiseAdvisoryLocksNotSupported(void)
 						 "See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.")));
 }
 
-YBAdvisoryLockId
+YbcAdvisoryLockId
 GetYBAdvisoryLockId(LOCKTAG tag)
 {
-	YBAdvisoryLockId lock;
+	YbcAdvisoryLockId lock;
 	// Current database oid.
 	lock.database_id = tag.locktag_field1;
 	// First of 2 int4 keys, or high-order half of an int8 key.
@@ -59,7 +59,7 @@ GetYBAdvisoryLockId(LOCKTAG tag)
 
 // Returns true if lock is acquired, false if lock is skipped.
 bool
-HandleStatusIgnoreSkipLocking(YBCStatus status)
+HandleStatusIgnoreSkipLocking(YbcStatus status)
 {
 	if (status && YBCIsTxnSkipLockingError(YBCStatusTransactionError(status)))
 	{

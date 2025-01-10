@@ -646,11 +646,11 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 	InitMaterializedSRF(fcinfo, 0);
 
-	YBCPgSessionTxnInfo *txn_infos = NULL;
+	YbcPgSessionTxnInfo *txn_infos = NULL;
 	if (YBIsEnabledInPostgresEnvVar() && yb_enable_pg_locks)
 	{
-		txn_infos = (YBCPgSessionTxnInfo *)
-			palloc0(sizeof(YBCPgSessionTxnInfo) * num_backends);
+		txn_infos = (YbcPgSessionTxnInfo *)
+			palloc0(sizeof(YbcPgSessionTxnInfo) * num_backends);
 		/* 1-based index */
 		for (curr_backend = 1; curr_backend <= num_backends; ++curr_backend)
 		{
@@ -1023,7 +1023,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			beentry->st_activity_start_timestamp <= yb_txn_rpc_timestamp)
 		{
 			Assert(txn_infos);
-			const YBCPgSessionTxnInfo *info = txn_infos + curr_backend - 1;
+			const YbcPgSessionTxnInfo *info = txn_infos + curr_backend - 1;
 
 			if (info->is_not_null)
 			{

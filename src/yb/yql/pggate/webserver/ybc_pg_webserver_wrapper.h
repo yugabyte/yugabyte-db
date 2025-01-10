@@ -37,7 +37,7 @@ struct WebserverWrapper;
 
 #define YB_PG_METRIC_NAME_LEN 120
 
-typedef struct ybpgmEntry {
+typedef struct YbcPgmEntry {
   char name[YB_PG_METRIC_NAME_LEN];
   char table_name[YB_PG_METRIC_NAME_LEN];
   char count_help[YB_PG_METRIC_NAME_LEN];
@@ -45,9 +45,9 @@ typedef struct ybpgmEntry {
   YB_ATOMIC_ULLONG calls;
   YB_ATOMIC_ULLONG total_time;
   YB_ATOMIC_ULLONG rows;
-} ybpgmEntry;
+} YbcPgmEntry;
 
-typedef struct rpczEntry {
+typedef struct YbcRpczEntry {
   char *query;
   char *application_name;
   int proc_id;
@@ -61,7 +61,7 @@ typedef struct rpczEntry {
   char *backend_status;
   char *host;
   char *port;
-} rpczEntry;
+} YbcRpczEntry;
 
 typedef struct {
   void (*pullRpczEntries)();
@@ -69,7 +69,7 @@ typedef struct {
   int64 (*getTimestampTz)();
   int64 (*getTimestampTzDiffMs)(int64, int64);
   const char *(*getTimestampTzToStr)(int64);
-} postgresCallbacks;
+} YbcPostgresCallbacks;
 
 typedef struct {
   /* # of connections rejected due to the connection limit. */
@@ -80,22 +80,15 @@ typedef struct {
 
   /* # of connections established since start of postmaster. */
   uint64_t *new_conn;
-} YbConnectionMetrics;
-
-typedef struct {
-  const char* name;
-  uint64_t value;
-  const char* type;
-  const char* help;
-} YsqlConnMgrMetric;
+} YbcConnectionMetrics;
 
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 void DestroyWebserver(struct WebserverWrapper *webserver);
-void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name);
+void RegisterMetrics(YbcPgmEntry *tab, int num_entries, char *metric_node_name);
 void RegisterRpczEntries(
-    postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer,
-    YbConnectionMetrics *conn_metrics_ptr);
-YBCStatus StartWebserver(struct WebserverWrapper *webserver);
+    YbcPostgresCallbacks *callbacks, int *num_backends_ptr, YbcRpczEntry **rpczEntriesPointer,
+    YbcConnectionMetrics *conn_metrics_ptr);
+YbcStatus StartWebserver(struct WebserverWrapper *webserver);
 void SetWebserverConfig(
     struct WebserverWrapper *webserver,
     bool enable_access_logging, bool enable_tcmalloc_logging,

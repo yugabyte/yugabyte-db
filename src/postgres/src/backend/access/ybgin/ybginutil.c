@@ -101,7 +101,7 @@ ybginvalidate(Oid opclassoid)
 }
 
 void
-ybginbindschema(YBCPgStatement handle,
+ybginbindschema(YbcPgStatement handle,
 				struct IndexInfo *indexInfo,
 				TupleDesc indexTupleDesc,
 				int16 *coloptions)

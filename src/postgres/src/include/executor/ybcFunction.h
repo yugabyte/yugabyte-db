@@ -28,13 +28,13 @@
 
 typedef struct YbPgFuncCallContextData
 {
-	YBCPgFunction handle;
+	YbcPgFunction handle;
 	MemoryContext per_call_ctx;
 } YbPgFuncCallContextData;
 
 typedef struct YbPgFuncCallContextData *YbFuncCallContext;
 extern YbFuncCallContext YbNewFuncCallContext(FuncCallContext *funcCallContext);
-extern void YbSetFunctionParam(YBCPgFunction handle, const char *name,
+extern void YbSetFunctionParam(YbcPgFunction handle, const char *name,
 							   int attr_typid, uint64_t datum, bool is_null);
 extern void YbSetSRFTargets(YbFuncCallContext context, TupleDesc desc);
 extern bool YbSRFGetNext(YbFuncCallContext context, uint64_t *values,

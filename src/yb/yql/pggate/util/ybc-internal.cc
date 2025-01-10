@@ -19,11 +19,11 @@ using std::string;
 namespace yb::pggate {
 
 namespace {
-YBCPAllocFn g_palloc_fn = nullptr;
-YBCCStringToTextWithLenFn g_cstring_to_text_with_len_fn = nullptr;
+YbcPallocFn g_palloc_fn = nullptr;
+YbcCstringToTextWithLenFn g_cstring_to_text_with_len_fn = nullptr;
 }  // anonymous namespace
 
-void YBCSetPAllocFn(YBCPAllocFn palloc_fn) {
+void YBCSetPAllocFn(YbcPallocFn palloc_fn) {
   CHECK_NOTNULL(palloc_fn);
   g_palloc_fn = palloc_fn;
 }
@@ -33,7 +33,7 @@ void* YBCPAlloc(size_t size) {
   return g_palloc_fn(size);
 }
 
-void YBCSetCStringToTextWithLenFn(YBCCStringToTextWithLenFn fn) {
+void YBCSetCStringToTextWithLenFn(YbcCstringToTextWithLenFn fn) {
   CHECK_NOTNULL(fn);
   g_cstring_to_text_with_len_fn = fn;
 }
@@ -43,15 +43,15 @@ void* YBCCStringToTextWithLen(const char* c, int size) {
   return g_cstring_to_text_with_len_fn(c, size);
 }
 
-YBCStatus ToYBCStatus(const Status& status) {
+YbcStatus ToYBCStatus(const Status& status) {
   return status.RetainStruct();
 }
 
-YBCStatus ToYBCStatus(Status&& status) {
+YbcStatus ToYBCStatus(Status&& status) {
   return status.DetachStruct();
 }
 
-void FreeYBCStatus(YBCStatus status) {
+void FreeYBCStatus(YbcStatus status) {
   // Create Status object that receives control over provided status, so it will be destroyed with
   // yb_status.
   Status yb_status(status, AddRef::kFalse);

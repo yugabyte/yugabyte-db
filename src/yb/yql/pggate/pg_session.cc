@@ -405,8 +405,8 @@ class PgSession::RunHelper {
 PgSession::PgSession(
     PgClient& pg_client,
     scoped_refptr<PgTxnManager> pg_txn_manager,
-    const YBCPgCallbacks& pg_callbacks,
-    YBCPgExecStatsState& stats_state,
+    const YbcPgCallbacks& pg_callbacks,
+    YbcPgExecStatsState& stats_state,
     YbctidReader&& ybctid_reader,
     bool is_pg_binary_upgrade,
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
@@ -844,7 +844,7 @@ Result<bool> PgSession::ForeignKeyReferenceExists(
   // Add the keys found in docdb to the FK cache.
   RETURN_NOT_OK(ybctid_reader_(
       database_id, ybctids, fk_intent_region_local_tables_,
-      make_lw_function([](PgExecParameters& params) {
+      make_lw_function([](YbcPgExecParameters& params) {
         params.rowmark = ROW_MARK_KEYSHARE;
       })));
   for (const auto& ybctid : ybctids) {
@@ -1161,7 +1161,7 @@ Status PgSession::SetCronLastMinute(int64_t last_minute) {
 Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMinute(); }
 
 Status PgSession::AcquireAdvisoryLock(
-    const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode, bool wait, bool session) {
+    const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session) {
   tserver::PgPerformOptionsPB options;
 
   // No need to populate the txn metadata for session level advisory locks.
@@ -1185,7 +1185,7 @@ Status PgSession::AcquireAdvisoryLock(
   lock->mutable_lock_id()->set_classid(lock_id.classid);
   lock->mutable_lock_id()->set_objid(lock_id.objid);
   lock->mutable_lock_id()->set_objsubid(lock_id.objsubid);
-  lock->set_lock_mode(mode == YBAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
+  lock->set_lock_mode(mode == YbcAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
       ? tserver::AdvisoryLockMode::LOCK_EXCLUSIVE
       : tserver::AdvisoryLockMode::LOCK_SHARE);
   req.set_wait(wait);
@@ -1194,7 +1194,7 @@ Status PgSession::AcquireAdvisoryLock(
   return pg_client_.AcquireAdvisoryLock(&req, CoarseTimePoint());
 }
 
-Status PgSession::ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode) {
+Status PgSession::ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode) {
   // ReleaseAdvisoryLock is only used for session level advisory locks, hence no need to populate
   // the req with txn meta.
   tserver::PgReleaseAdvisoryLockRequestPB req;
@@ -1204,7 +1204,7 @@ Status PgSession::ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisor
   lock->mutable_lock_id()->set_classid(lock_id.classid);
   lock->mutable_lock_id()->set_objid(lock_id.objid);
   lock->mutable_lock_id()->set_objsubid(lock_id.objsubid);
-  lock->set_lock_mode(mode == YBAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
+  lock->set_lock_mode(mode == YbcAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
       ? tserver::AdvisoryLockMode::LOCK_EXCLUSIVE
       : tserver::AdvisoryLockMode::LOCK_SHARE);
   return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());

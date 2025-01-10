@@ -95,7 +95,7 @@ typedef struct FixedParallelState
 	pid_t		parallel_leader_pid;
 	BackendId	parallel_leader_backend_id;
 	bool		parallel_master_is_yb_session;
-	YBCPgSessionState parallel_master_yb_session_state;
+	YbcPgSessionState parallel_master_yb_session_state;
 	TimestampTz xact_ts;
 	TimestampTz stmt_ts;
 	SerializableXactHandle serializable_xact_handle;

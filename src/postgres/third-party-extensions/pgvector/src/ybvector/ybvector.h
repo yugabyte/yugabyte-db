@@ -113,7 +113,7 @@ extern IndexBuildResult *ybvectorcopartitionedbackfill(Relation heap,
 IndexAmRoutine *makeBaseYbVectorHandler(bool is_copartitioned);
 
 void
-bindVectorIndexOptions(YBCPgStatement handle,
+bindVectorIndexOptions(YbcPgStatement handle,
 					   IndexInfo *indexInfo,
 					   TupleDesc indexTupleDesc,
-					   YbPgVectorIdxType ybpg_idx_type);
+					   YbcPgVectorIdxType ybpg_idx_type);

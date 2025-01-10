@@ -194,7 +194,7 @@ Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
 PgTxnManager::PgTxnManager(
     PgClient* client,
     scoped_refptr<ClockBase> clock,
-    PgCallbacks pg_callbacks)
+    YbcPgCallbacks pg_callbacks)
     : client_(client),
       clock_(std::move(clock)),
       pg_callbacks_(pg_callbacks) {
@@ -304,7 +304,7 @@ Status PgTxnManager::SetReadOnlyStmt(bool read_only_stmt) {
   return Status::OK();
 }
 
-uint64_t PgTxnManager::NewPriority(TxnPriorityRequirement txn_priority_requirement) {
+uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requirement) {
   if (txn_priority_requirement == kHighestPriority) {
     return yb::kHighPriTxnUpperBound;
   }
@@ -319,7 +319,7 @@ uint64_t PgTxnManager::NewPriority(TxnPriorityRequirement txn_priority_requireme
 }
 
 Status PgTxnManager::CalculateIsolation(
-    bool read_only_op, TxnPriorityRequirement txn_priority_requirement) {
+    bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement) {
   if (IsDdlMode()) {
     VLOG_TXN_STATE(2);
     return Status::OK();
@@ -628,7 +628,7 @@ double PgTxnManager::GetTransactionPriority() const {
                        yb::kHighPriTxnUpperBound);
 }
 
-TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
+YbcTxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
   if (priority_ <= yb::kRegularTxnUpperBound) {
     return kLowerPriorityRange;
   }
@@ -643,13 +643,13 @@ void PgTxnManager::IncTxnSerialNo() {
   active_sub_transaction_id_ = kMinSubTransactionId;
 }
 
-void PgTxnManager::DumpSessionState(YBCPgSessionState* session_data) {
+void PgTxnManager::DumpSessionState(YbcPgSessionState* session_data) {
   session_data->txn_serial_no = serial_no_.txn();
   session_data->read_time_serial_no = serial_no_.read_time();
   session_data->active_sub_transaction_id = active_sub_transaction_id_;
 }
 
-void PgTxnManager::RestoreSessionState(const YBCPgSessionState& session_data) {
+void PgTxnManager::RestoreSessionState(const YbcPgSessionState& session_data) {
   read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
   serial_no_ =
       SerialNo(session_data.txn_serial_no, session_data.read_time_serial_no);

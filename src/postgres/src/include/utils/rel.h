@@ -251,7 +251,7 @@ typedef struct RelationData
 	/* use "struct" here to avoid needing to include pgstat.h: */
 	struct PgStat_TableStatus *pgstat_info; /* statistics collection area */
 
-	YbTableProperties yb_table_properties; /* NULL if not loaded */
+	YbcTableProperties yb_table_properties; /* NULL if not loaded */
 
 	// contains all except yb system primary keys of the relation.
 	Bitmapset* primary_key_bms; /* NULL if not initialized */

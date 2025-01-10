@@ -19,7 +19,7 @@
 namespace yb {
 namespace pggate {
 
-std::string GetDebugQueryString(const PgCallbacks& callbacks) {
+std::string GetDebugQueryString(const YbcPgCallbacks& callbacks) {
   DCHECK_ONLY_NOTNULL(callbacks.GetDebugQueryString);
   const char* query_str = callbacks.GetDebugQueryString();
   if (query_str) {

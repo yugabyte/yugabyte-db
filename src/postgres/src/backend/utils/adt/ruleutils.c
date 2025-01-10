@@ -1140,7 +1140,7 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
 static void
 YbAppendIndexReloptions(StringInfo buf,
 						Oid index_oid,
-						YbTableProperties yb_table_properties)
+						YbcTableProperties yb_table_properties)
 {
 	char *str = flatten_reloptions(index_oid);
 

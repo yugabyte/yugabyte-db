@@ -19,7 +19,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "yb/yql/pggate/util/yb_guc.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #ifdef __cplusplus
@@ -29,28 +29,28 @@ struct varlena;
 
 #endif
 
-typedef struct YBCStatusStruct* YBCStatus;
+typedef struct YbcStatusStruct* YbcStatus;
 
-bool YBCStatusIsNotFound(YBCStatus s);
-bool YBCStatusIsUnknownSession(YBCStatus s);
-bool YBCStatusIsDuplicateKey(YBCStatus s);
-bool YBCStatusIsSnapshotTooOld(YBCStatus s);
-bool YBCStatusIsTryAgain(YBCStatus s);
-bool YBCStatusIsAlreadyPresent(YBCStatus s);
-bool YBCStatusIsReplicationSlotLimitReached(YBCStatus s);
-bool YBCStatusIsFatalError(YBCStatus s);
-uint32_t YBCStatusPgsqlError(YBCStatus s);
-uint16_t YBCStatusTransactionError(YBCStatus s);
-void YBCFreeStatus(YBCStatus s);
+bool YBCStatusIsNotFound(YbcStatus s);
+bool YBCStatusIsUnknownSession(YbcStatus s);
+bool YBCStatusIsDuplicateKey(YbcStatus s);
+bool YBCStatusIsSnapshotTooOld(YbcStatus s);
+bool YBCStatusIsTryAgain(YbcStatus s);
+bool YBCStatusIsAlreadyPresent(YbcStatus s);
+bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s);
+bool YBCStatusIsFatalError(YbcStatus s);
+uint32_t YBCStatusPgsqlError(YbcStatus s);
+uint16_t YBCStatusTransactionError(YbcStatus s);
+void YBCFreeStatus(YbcStatus s);
 
-const char* YBCStatusFilename(YBCStatus s);
-int YBCStatusLineNumber(YBCStatus s);
-const char* YBCStatusFuncname(YBCStatus s);
-size_t YBCStatusMessageLen(YBCStatus s);
-const char* YBCStatusMessageBegin(YBCStatus s);
-const char* YBCMessageAsCString(YBCStatus s);
-unsigned int YBCStatusRelationOid(YBCStatus s);
-const char** YBCStatusArguments(YBCStatus s, size_t* nargs);
+const char* YBCStatusFilename(YbcStatus s);
+int YBCStatusLineNumber(YbcStatus s);
+const char* YBCStatusFuncname(YbcStatus s);
+size_t YBCStatusMessageLen(YbcStatus s);
+const char* YBCStatusMessageBegin(YbcStatus s);
+const char* YBCMessageAsCString(YbcStatus s);
+unsigned int YBCStatusRelationOid(YbcStatus s);
+const char** YBCStatusArguments(YbcStatus s, size_t* nargs);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
@@ -62,17 +62,17 @@ uint16_t YBCGetTxnConflictErrorCode();
 
 void YBCResolveHostname();
 
-#define CHECKED_YBCSTATUS __attribute__ ((warn_unused_result)) YBCStatus
+#define CHECKED_YBC_STATUS __attribute__ ((warn_unused_result)) YbcStatus
 
-typedef void* (*YBCPAllocFn)(size_t size);
+typedef void* (*YbcPallocFn)(size_t size);
 
-typedef struct varlena* (*YBCCStringToTextWithLenFn)(const char* c, int size);
+typedef struct varlena* (*YbcCstringToTextWithLenFn)(const char* c, int size);
 
 // Global initialization of the YugaByte subsystem.
-CHECKED_YBCSTATUS YBCInit(
+CHECKED_YBC_STATUS YBCInit(
     const char* argv0,
-    YBCPAllocFn palloc_fn,
-    YBCCStringToTextWithLenFn cstring_to_text_with_len_fn);
+    YbcPallocFn palloc_fn,
+    YbcCstringToTextWithLenFn cstring_to_text_with_len_fn);
 
 // From glog's log_severity.h:
 // const int GLOG_INFO = 0, GLOG_WARNING = 1, GLOG_ERROR = 2, GLOG_FATAL = 3;
@@ -145,16 +145,16 @@ const char* YBCGetWaitEventName(uint32_t wait_event_info);
 const char* YBCGetWaitEventClass(uint32_t wait_event_info);
 const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
 const char* YBCGetWaitEventType(uint32_t wait_event_info);
-uint8_t YBCGetConstQueryId(YBCAshConstQueryIdType type);
+uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type);
 uint32_t YBCWaitEventForWaitingOnTServer();
 int YBCGetRandomUniformInt(int a, int b);
-YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index);
+YbcWaitEventDescriptor YBCGetWaitEventDescription(size_t index);
 int YBCGetCircularBufferSizeInKiBs();
 const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value);
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 
-bool YBCIsNonColocatedYbctidsOnlyFetch(const YBCPgPrepareParameters *params);
+bool YBCIsNonColocatedYbctidsOnlyFetch(const YbcPgPrepareParameters *params);
 
 bool YBIsMajorUpgradeInitDb();
 

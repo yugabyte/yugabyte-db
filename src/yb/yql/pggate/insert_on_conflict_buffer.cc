@@ -21,7 +21,7 @@ InsertOnConflictBuffer::InsertOnConflictBuffer()
     : keys_iter_(keys_.end()) {}
 
 Status InsertOnConflictBuffer::AddIndexKey(const LightweightTableYbctid& key,
-                                           const YBCPgInsertOnConflictKeyInfo& key_info) {
+                                           const YbcPgInsertOnConflictKeyInfo& key_info) {
     auto index_key = TableYbctid(key);
 
     SCHECK_FORMAT(
@@ -31,7 +31,7 @@ Status InsertOnConflictBuffer::AddIndexKey(const LightweightTableYbctid& key,
     return Status::OK();
 }
 
-Result<YBCPgInsertOnConflictKeyInfo> InsertOnConflictBuffer::DeleteIndexKey(
+Result<YbcPgInsertOnConflictKeyInfo> InsertOnConflictBuffer::DeleteIndexKey(
     const LightweightTableYbctid& key) {
   auto index_key = TableYbctid(key);
   if (IndexKeyExists(index_key) != KEY_READ)
@@ -42,7 +42,7 @@ Result<YBCPgInsertOnConflictKeyInfo> InsertOnConflictBuffer::DeleteIndexKey(
   return DoDeleteIndexKey(it);
 }
 
-Result<YBCPgInsertOnConflictKeyInfo> InsertOnConflictBuffer::DeleteNextIndexKey() {
+Result<YbcPgInsertOnConflictKeyInfo> InsertOnConflictBuffer::DeleteNextIndexKey() {
   SCHECK(
       !keys_.empty(), IllegalState,
       "Expected to have non-zero keys in the insert on conflict buffer, found none");
@@ -54,10 +54,10 @@ Result<YBCPgInsertOnConflictKeyInfo> InsertOnConflictBuffer::DeleteNextIndexKey(
   return DoDeleteIndexKey(keys_iter_);
 }
 
-YBCPgInsertOnConflictKeyInfo InsertOnConflictBuffer::DoDeleteIndexKey(
+YbcPgInsertOnConflictKeyInfo InsertOnConflictBuffer::DoDeleteIndexKey(
     InsertOnConflictMap::iterator& iter) {
   const auto& res = iter->second;
-  YBCPgInsertOnConflictKeyInfo key_info = res;
+  YbcPgInsertOnConflictKeyInfo key_info = res;
   keys_.erase(iter++);
   return key_info;
 }
@@ -66,20 +66,20 @@ int64_t InsertOnConflictBuffer::GetNumIndexKeys() const {
   return keys_.size();
 }
 
-YBCPgInsertOnConflictKeyState InsertOnConflictBuffer::IndexKeyExists(
+YbcPgInsertOnConflictKeyState InsertOnConflictBuffer::IndexKeyExists(
     const TableYbctid& index_key) const {
   if (IntentKeys().find(index_key) != IntentKeys().end()) {
-    return YBCPgInsertOnConflictKeyState::KEY_JUST_INSERTED;
+    return YbcPgInsertOnConflictKeyState::KEY_JUST_INSERTED;
   }
 
   if (keys_.find(index_key) != keys_.end()) {
-    return YBCPgInsertOnConflictKeyState::KEY_READ;
+    return YbcPgInsertOnConflictKeyState::KEY_READ;
   }
 
-  return YBCPgInsertOnConflictKeyState::KEY_NOT_FOUND;
+  return YbcPgInsertOnConflictKeyState::KEY_NOT_FOUND;
 }
 
-YBCPgInsertOnConflictKeyState InsertOnConflictBuffer::IndexKeyExists(
+YbcPgInsertOnConflictKeyState InsertOnConflictBuffer::IndexKeyExists(
     const LightweightTableYbctid& key) const {
   return IndexKeyExists(TableYbctid(key));
 }

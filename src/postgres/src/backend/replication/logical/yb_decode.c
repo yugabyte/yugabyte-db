@@ -253,7 +253,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	memset(before_op_is_nulls, 1, sizeof(before_op_is_nulls));
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
-		YBCPgDatumMessage *col = &yb_record->cols[col_idx];
+		YbcPgDatumMessage *col = &yb_record->cols[col_idx];
 
 		/*
 		 * Column name is null when both new and old values are omitted. If this
@@ -484,7 +484,7 @@ YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
 	memset(is_nulls, true, sizeof(is_nulls));
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
-		const YBCPgDatumMessage *col = &yb_record->cols[col_idx];
+		const YbcPgDatumMessage *col = &yb_record->cols[col_idx];
 		int attr_idx =
 			YBFindAttributeIndexInDescriptor(tupdesc, col->column_name);
 

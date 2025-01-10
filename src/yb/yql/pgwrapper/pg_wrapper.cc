@@ -1045,7 +1045,7 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
 
 Status PgWrapper::InitDbForYSQL(
     const string& master_addresses, const string& tmp_dir_base, int tserver_shm_fd,
-    std::vector<std::pair<string, YBCPgOid>> db_to_oid, bool is_major_upgrade) {
+    std::vector<std::pair<string, YbcPgOid>> db_to_oid, bool is_major_upgrade) {
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;

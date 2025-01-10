@@ -39,13 +39,11 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-struct PgExecParameters;
-
 namespace yb::pggate {
 
 class PgSession;
 
-RowMarkType GetRowMarkType(const PgExecParameters* exec_params);
+RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params);
 
 struct Bound {
   uint16_t value;
@@ -57,7 +55,7 @@ struct Bound {
 // when it goes out of scope.
 class PgWaitEventWatcher {
  public:
-  using Starter = YBCWaitEventInfo (*)(YBCWaitEventInfo info);
+  using Starter = YbcWaitEventInfo (*)(YbcWaitEventInfo info);
 
   PgWaitEventWatcher(
       Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc);
@@ -65,7 +63,7 @@ class PgWaitEventWatcher {
 
  private:
   const Starter starter_;
-  const YBCWaitEventInfo prev_wait_event_;
+  const YbcWaitEventInfo prev_wait_event_;
 
   DISALLOW_COPY_AND_ASSIGN(PgWaitEventWatcher);
 };
@@ -174,7 +172,7 @@ class TableYbctidVectorProvider {
   TableYbctidVector container_;
 };
 
-using ExecParametersMutator = LWFunction<void(PgExecParameters&)>;
+using ExecParametersMutator = LWFunction<void(YbcPgExecParameters&)>;
 
 using YbctidReader =
     std::function<Status(PgOid, TableYbctidVector&, const OidSet&, const ExecParametersMutator&)>;

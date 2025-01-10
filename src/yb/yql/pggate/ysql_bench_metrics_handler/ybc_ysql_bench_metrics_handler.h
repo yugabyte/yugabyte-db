@@ -28,21 +28,21 @@ extern "C" {
 #define YB_ATOMIC_ULLONG atomic_ullong
 #endif
 
-typedef struct ysqlBenchMetricEntry {
+typedef struct {
          YB_ATOMIC_ULLONG average_latency;
          YB_ATOMIC_ULLONG success_count;
          YB_ATOMIC_ULLONG failure_count;
          YB_ATOMIC_ULLONG latency_sum;
          YB_ATOMIC_ULLONG success_count_sum;
          YB_ATOMIC_ULLONG failure_count_sum;
-} YsqlBenchMetricEntry;
+} YbcYsqlBenchMetricEntry;
 
 struct WebserverWrapper;
 
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 int StartWebserver(struct WebserverWrapper *webserver);
 void StopWebserver(struct WebserverWrapper *webserver);
-void RegisterMetrics(YsqlBenchMetricEntry* ysql_bench_metric_entry, char *metric_node_name);
+void RegisterMetrics(YbcYsqlBenchMetricEntry* ysql_bench_metric_entry, char *metric_node_name);
 void InitGoogleLogging(char *prog_name);
 
 #ifdef __cplusplus

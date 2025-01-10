@@ -26,10 +26,10 @@ class InsertOnConflictBuffer {
 
   // Functions to manipulate the key cache
   Status AddIndexKey(
-      const LightweightTableYbctid& key, const YBCPgInsertOnConflictKeyInfo& key_info);
-  Result<YBCPgInsertOnConflictKeyInfo> DeleteIndexKey(const LightweightTableYbctid& key);
-  Result<YBCPgInsertOnConflictKeyInfo> DeleteNextIndexKey();
-  YBCPgInsertOnConflictKeyState IndexKeyExists(const LightweightTableYbctid& key) const;
+      const LightweightTableYbctid& key, const YbcPgInsertOnConflictKeyInfo& key_info);
+  Result<YbcPgInsertOnConflictKeyInfo> DeleteIndexKey(const LightweightTableYbctid& key);
+  Result<YbcPgInsertOnConflictKeyInfo> DeleteNextIndexKey();
+  YbcPgInsertOnConflictKeyState IndexKeyExists(const LightweightTableYbctid& key) const;
   int64_t GetNumIndexKeys() const;
 
   // Functions to manipulate the intents cache
@@ -41,10 +41,10 @@ class InsertOnConflictBuffer {
   bool IsEmpty() const;
 
  private:
-  using InsertOnConflictMap = TableYbctidMap<YBCPgInsertOnConflictKeyInfo>;
+  using InsertOnConflictMap = TableYbctidMap<YbcPgInsertOnConflictKeyInfo>;
 
-  YBCPgInsertOnConflictKeyState IndexKeyExists(const TableYbctid& ybctid) const;
-  YBCPgInsertOnConflictKeyInfo DoDeleteIndexKey(InsertOnConflictMap::iterator& iter);
+  YbcPgInsertOnConflictKeyState IndexKeyExists(const TableYbctid& ybctid) const;
+  YbcPgInsertOnConflictKeyInfo DoDeleteIndexKey(InsertOnConflictMap::iterator& iter);
 
   InsertOnConflictMap keys_; // a map holding tuple IDs and their corresponding index scan slots
 

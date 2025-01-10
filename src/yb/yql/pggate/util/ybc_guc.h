@@ -225,7 +225,7 @@ extern int yb_explicit_row_locking_batch_size;
 typedef enum {
   YB_STRICT_READ_AFTER_COMMIT_VISIBILITY = 0,
   YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY = 1,
-} YBReadAfterCommitVisibilityEnum;
+} YbcReadAfterCommitVisibilityEnum;
 
 /* GUC for the enum above. */
 extern int yb_read_after_commit_visibility;
@@ -236,7 +236,7 @@ extern bool yb_allow_block_based_sampling_algorithm;
 typedef enum {
   YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN = 0,
   YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING = 1,
-} YBSamplingAlgorithmEnum;
+} YbcSamplingAlgorithmEnum;
 
 extern int32_t yb_sampling_algorithm;
 

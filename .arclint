@@ -157,7 +157,25 @@
         "([.]c$)",
         "([.]h$)"
       ],
-      "script-and-regex.script": "src/postgres/ybsimplelint.sh",
+      "script-and-regex.script": "src/lint/postgres.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "ybc_pg": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/yb/yql/.+/ybc_.*[.]h$)"
+      ],
+      "script-and-regex.script": "src/lint/ybc_pg.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "yql_extern_c": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/yb/yql/.+[.]h$)"
+      ],
+      "script-and-regex.script": "src/lint/yql_extern_c.sh",
       "script-and-regex.regex":
         "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+):(?P<original>.*)/m"
     }

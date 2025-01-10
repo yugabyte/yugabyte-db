@@ -220,9 +220,9 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 		 */
 	}
 
-	YBCPgStatement update_stmt    = NULL;
-	YBCPgTypeAttrs type_attrs = { 0 };
-	YBCPgExpr yb_expr;
+	YbcPgStatement update_stmt    = NULL;
+	YbcPgTypeAttrs type_attrs = { 0 };
+	YbcPgExpr yb_expr;
 
 	/* The table pg_yb_catalog_version is in template1. */
 	HandleYBStatus(YBCPgNewUpdate(Template1DbOid,
@@ -235,7 +235,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
 	/* Bind ybctid to identify the current row. */
-	YBCPgExpr ybctid_expr = YBCNewConstant(update_stmt, BYTEAOID, InvalidOid,
+	YbcPgExpr ybctid_expr = YBCNewConstant(update_stmt, BYTEAOID, InvalidOid,
 										   ybctid, false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(update_stmt, YBTupleIdAttributeNumber,
 									  ybctid_expr));
@@ -267,7 +267,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 								  COERCE_EXPLICIT_CALL);
 
 	/* INT8 OID. */
-	YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
+	YbcPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 	yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid,
@@ -345,7 +345,7 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 	return true;
 }
 
-bool YbMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt,
+bool YbMarkStatementIfCatalogVersionIncrement(YbcPgStatement ybc_stmt,
 											  Relation rel) {
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_PROTOBUF_ENTRY)
 	{
@@ -390,7 +390,7 @@ void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	 * primary key and therefore only one insert statement is needed to insert
 	 * the row for db_oid.
 	 */
-	YBCPgStatement insert_stmt = NULL;
+	YbcPgStatement insert_stmt = NULL;
 	HandleYBStatus(YBCPgNewInsert(Template1DbOid,
 								  YBCatalogVersionRelationId,
 								  false /* is_region_local */,
@@ -400,14 +400,14 @@ void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
-	YBCPgExpr ybctid_expr = YBCNewConstant(insert_stmt, BYTEAOID, InvalidOid,
+	YbcPgExpr ybctid_expr = YBCNewConstant(insert_stmt, BYTEAOID, InvalidOid,
 										   ybctid, false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, YBTupleIdAttributeNumber,
 									  ybctid_expr));
 
 	AttrNumber attnum = Anum_pg_yb_catalog_version_current_version;
 	Datum		initial_version = 1;
-	YBCPgExpr initial_version_expr = YBCNewConstant(insert_stmt, INT8OID,
+	YbcPgExpr initial_version_expr = YBCNewConstant(insert_stmt, INT8OID,
 													InvalidOid,
 													initial_version,
 													false /* is_null */);
@@ -440,7 +440,7 @@ void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	 * primary key and therefore only one delete statement is needed to delete
 	 * the row for db_oid.
 	 */
-	YBCPgStatement delete_stmt = NULL;
+	YbcPgStatement delete_stmt = NULL;
 	HandleYBStatus(YBCPgNewDelete(Template1DbOid,
 								  YBCatalogVersionRelationId,
 								  false /* is_region_local */,
@@ -450,7 +450,7 @@ void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
-	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
+	YbcPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
 										   ybctid, false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber,
 									  ybctid_expr));
@@ -513,7 +513,7 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 	int current_version_attnum = Anum_pg_yb_catalog_version_current_version;
 	Form_pg_attribute oid_attrdesc = &Desc_pg_yb_catalog_version[oid_attnum - 1];
 
-	YBCPgStatement ybc_stmt;
+	YbcPgStatement ybc_stmt;
 
 	HandleYBStatus(YBCPgNewSelect(Template1DbOid,
 								  YBCatalogVersionRelationId,
@@ -522,7 +522,7 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 								  &ybc_stmt));
 
 	Datum oid_datum = Int32GetDatum(db_oid);
-	YBCPgExpr pkey_expr = YBCNewConstant(ybc_stmt, oid_attrdesc->atttypid,
+	YbcPgExpr pkey_expr = YBCNewConstant(ybc_stmt, oid_attrdesc->atttypid,
 										 oid_attrdesc->attcollation, oid_datum,
 										 false /* is_null */);
 
@@ -539,7 +539,7 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 
 	Datum *values = palloc0(natts * sizeof(Datum));
 	bool *nulls  = palloc(natts * sizeof(bool));
-	YBCPgSysColumns syscols;
+	YbcPgSysColumns syscols;
 	bool result = false;
 
 	if (!YBIsDBCatalogVersionMode())

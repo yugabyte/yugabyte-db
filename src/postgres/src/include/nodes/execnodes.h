@@ -726,12 +726,12 @@ typedef struct EState
 	bool yb_es_is_single_row_modify_txn; /* Is this query a single-row modify
 										  * and the only stmt in this txn. */
 	bool yb_es_is_fk_check_disabled;	/* Is FK check disabled? */
-	YBCPgExecParameters yb_exec_params;
+	YbcPgExecParameters yb_exec_params;
 
 	/*
 	 * The in_txn_limit used by all reads executed by this executor state. This is done to satisfy
 	 * requirement 1 in src/yb/yql/pggate/README i.e., all reads of a SQL statement should use the
-	 * same in_txn_limit. A pointer to this is passed down via PgExecParameters to all PgDocOp
+	 * same in_txn_limit. A pointer to this is passed down via YbcPgExecParameters to all PgDocOp
 	 * instances invoked by the SQL statement. The first read operation by the statement finds that
 	 * this is unset i.e., 0 and hence initializes the in txn limit for read operations. All future
 	 * operations see this to be non-zero and hence don't change the picked in txn limit for reads.

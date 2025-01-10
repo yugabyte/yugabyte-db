@@ -28,15 +28,15 @@
 
 namespace yb::pggate {
 
-// Convert our C++ status to YBCStatus, which can be returned to PostgreSQL C code.
-YBCStatus ToYBCStatus(const Status& status);
-YBCStatus ToYBCStatus(Status&& status);
-void FreeYBCStatus(YBCStatus status);
+// Convert our C++ status to YbcStatus, which can be returned to PostgreSQL C code.
+YbcStatus ToYBCStatus(const Status& status);
+YbcStatus ToYBCStatus(Status&& status);
+void FreeYBCStatus(YbcStatus status);
 
-void YBCSetPAllocFn(YBCPAllocFn pg_palloc_fn);
+void YBCSetPAllocFn(YbcPallocFn pg_palloc_fn);
 void* YBCPAlloc(size_t size);
 
-void YBCSetCStringToTextWithLenFn(YBCCStringToTextWithLenFn fn);
+void YBCSetCStringToTextWithLenFn(YbcCstringToTextWithLenFn fn);
 void* YBCCStringToTextWithLen(const char* c, int size);
 
 // Duplicate the given string in memory allocated using PostgreSQL's palloc.

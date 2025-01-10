@@ -64,7 +64,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     return result;
   }
 
-  Status ExecuteInit(const PgExecParameters* exec_params) override {
+  Status ExecuteInit(const YbcPgExecParameters* exec_params) override {
     return Status::OK();
   }
 
@@ -307,7 +307,7 @@ Result<PgDocResponse::Data> PgDocResponse::Get(PgSession& session) {
 PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, const Sender& sender)
     : pg_session_(pg_session), table_(*table), sender_(sender) {}
 
-Status PgDocOp::ExecuteInit(const PgExecParameters *exec_params) {
+Status PgDocOp::ExecuteInit(const YbcPgExecParameters *exec_params) {
   end_of_data_ = false;
   if (exec_params) {
     exec_params_ = *exec_params;
@@ -315,7 +315,7 @@ Status PgDocOp::ExecuteInit(const PgExecParameters *exec_params) {
   return Status::OK();
 }
 
-const PgExecParameters& PgDocOp::ExecParameters() const {
+const YbcPgExecParameters& PgDocOp::ExecParameters() const {
   return exec_params_;
 }
 
@@ -558,7 +558,7 @@ PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
                          const Sender& sender)
     : PgDocOp(pg_session, table, sender), read_op_(std::move(read_op)) {}
 
-Status PgDocReadOp::ExecuteInit(const PgExecParameters* exec_params) {
+Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
   RSTATUS_DCHECK(
       pgsql_ops_.empty() || !exec_params,
       IllegalState, "Exec params can't be changed for already created operations");

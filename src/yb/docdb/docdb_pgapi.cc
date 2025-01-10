@@ -91,7 +91,7 @@ Status DocPgInit() {
 
 class DocPgTypeAnalyzer {
  public:
-  const YBCPgTypeEntity* GetTypeEntity(int32_t type_oid) {
+  const YbcPgTypeEntity* GetTypeEntity(int32_t type_oid) {
     const auto iter = type_map_.find(type_oid);
     if (iter != type_map_.end()) {
       return iter->second;
@@ -103,18 +103,18 @@ class DocPgTypeAnalyzer {
  private:
   DocPgTypeAnalyzer() {
     // Setup type mapping.
-    const YBCPgTypeEntity *type_table;
+    const YbcPgTypeEntity *type_table;
     int count;
 
     YbgGetTypeTable(&type_table, &count);
     for (int idx = 0; idx < count; idx++) {
-        const YBCPgTypeEntity *type_entity = &type_table[idx];
+        const YbcPgTypeEntity *type_entity = &type_table[idx];
         type_map_[type_entity->type_oid] = type_entity;
     }
   }
 
   // Mapping table of YugaByte and PostgreSQL datatypes.
-  std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
+  std::unordered_map<int, const YbcPgTypeEntity *> type_map_;
 
   friend class Singleton<DocPgTypeAnalyzer>;
   DISALLOW_COPY_AND_ASSIGN(DocPgTypeAnalyzer);
@@ -124,7 +124,7 @@ class DocPgTypeAnalyzer {
 // Expressions/Values
 //-----------------------------------------------------------------------------
 
-const YBCPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type) {
+const YbcPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type) {
     return Singleton<DocPgTypeAnalyzer>::get()->GetTypeEntity(pg_type.type_id);
 }
 
@@ -190,8 +190,8 @@ Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
 // handling is available. YbGate runs within DocDB, so it requires PG_SETUP_ERROR_REPORTING macro.
 // The PG_SETUP_ERROR_REPORTING requires the surrounding function to return YbgStatus,
 // hence the wrapper.
-YbgStatus PgValueToDatumHelper(const YBCPgTypeEntity *type_entity,
-                               YBCPgTypeAttrs type_attrs,
+YbgStatus PgValueToDatumHelper(const YbcPgTypeEntity *type_entity,
+                               YbcPgTypeAttrs type_attrs,
                                const dockv::PgValue& value,
                                uint64_t* datum) {
   PG_SETUP_ERROR_REPORTING();
@@ -260,15 +260,15 @@ Result<std::vector<std::string>> ExtractVectorFromQLBinaryValueHelper(
   char *val = const_cast<char *>(ql_value.binary_value().c_str());
 
   YbgTypeDesc pg_arg_type {array_type, -1 /* typmod */};
-  const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
-  YBCPgTypeAttrs type_attrs {-1 /* typmod */};
+  const YbcPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
+  YbcPgTypeAttrs type_attrs {-1 /* typmod */};
   uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8_t *>(val), size, &type_attrs);
 
   uint64_t *datum_elements;
   int num_elems = 0;
   PG_RETURN_NOT_OK(YbgSplitArrayDatum(datum, elem_type, &datum_elements, &num_elems));
   YbgTypeDesc elem_pg_arg_type {elem_type, -1 /* typmod */};
-  const YBCPgTypeEntity *elem_arg_type = DocPgGetTypeEntity(elem_pg_arg_type);
+  const YbcPgTypeEntity *elem_arg_type = DocPgGetTypeEntity(elem_pg_arg_type);
   VLOG(4) << "Number of parsed elements: " << num_elems;
   ThreadSafeArena arena;
   std::vector<std::string> result;
@@ -565,12 +565,12 @@ char *get_range_array_string_value(
 
 void set_range_string_value(
     const QLValuePB ql_value,
-    const YBCPgTypeEntity *arg_type,
+    const YbcPgTypeEntity *arg_type,
     const int type_oid,
     char const *func_name,
     DatumMessagePB *cdc_datum_message,
     const char *timezone = nullptr) {
-  YBCPgTypeAttrs type_attrs{-1 /* typmod */};
+  YbcPgTypeAttrs type_attrs{-1 /* typmod */};
   string range_val = ql_value.binary_value();
   uint64_t size = range_val.size();
   char *val = const_cast<char *>(range_val.c_str());
@@ -583,12 +583,12 @@ void set_range_string_value(
 
 void set_array_string_value(
     const QLValuePB ql_value,
-    const YBCPgTypeEntity *arg_type,
+    const YbcPgTypeEntity *arg_type,
     const int type_oid,
     char const *func_name,
     DatumMessagePB *cdc_datum_message,
     const char *timezone = nullptr) {
-  YBCPgTypeAttrs type_attrs{-1 /* typmod */};
+  YbcPgTypeAttrs type_attrs{-1 /* typmod */};
   string vector_val = ql_value.binary_value();
   uint64_t size = vector_val.size();
   char *val = const_cast<char *>(vector_val.c_str());
@@ -599,12 +599,12 @@ void set_array_string_value(
 
 void set_range_array_string_value(
     const QLValuePB ql_value,
-    const YBCPgTypeEntity *arg_type,
+    const YbcPgTypeEntity *arg_type,
     const int type_oid,
     char const *func_name,
     DatumMessagePB *cdc_datum_message,
     const char *timezone = nullptr) {
-  YBCPgTypeAttrs type_attrs{-1 /* typmod */};
+  YbcPgTypeAttrs type_attrs{-1 /* typmod */};
   string arr_val = ql_value.binary_value();
   uint64_t size = arr_val.size();
   char *val = const_cast<char *>(arr_val.c_str());
@@ -899,9 +899,9 @@ Status SetValueFromQLBinaryHelper(
   char const* func_name = nullptr;
 
   YbgTypeDesc pg_arg_type{pg_data_type, -1 /* typmod */};
-  const YBCPgTypeEntity* arg_type = DocPgGetTypeEntity(pg_arg_type);
+  const YbcPgTypeEntity* arg_type = DocPgGetTypeEntity(pg_arg_type);
 
-  YBCPgTypeAttrs type_attrs{-1 /* typmod */};
+  YbcPgTypeAttrs type_attrs{-1 /* typmod */};
 
   cdc_datum_message->set_column_type(pg_data_type);
   switch (pg_data_type) {

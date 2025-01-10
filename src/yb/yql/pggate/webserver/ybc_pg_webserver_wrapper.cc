@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
+#include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 
 #include <sys/ipc.h>
 #include <sys/shm.h>
@@ -43,17 +43,17 @@ using std::string;
 namespace yb::pggate {
 DECLARE_string(metric_node_name);
 
-static ybpgmEntry *ybpgm_table;
+static YbcPgmEntry *ybpgm_table;
 static int ybpgm_num_entries;
 static int *num_backends;
 MetricEntity::AttributeMap prometheus_attr;
 MetricEntity::AttributeMap ysql_conn_mgr_prometheus_attr;
 static void (*pullYsqlStatementStats)(void *);
 static void (*resetYsqlStatementStats)();
-static rpczEntry **rpczResultPointer;
-static YbConnectionMetrics *conn_metrics = NULL;
+static YbcRpczEntry **rpczResultPointer;
+static YbcConnectionMetrics *conn_metrics = NULL;
 
-static postgresCallbacks pgCallbacks;
+static YbcPostgresCallbacks pgCallbacks;
 
 static const char *EXPORTED_INSTANCE = "exported_instance";
 static const char *METRIC_TYPE = "metric_type";
@@ -77,7 +77,7 @@ namespace {
 
 void emitConnectionMetrics(PrometheusWriter *pwriter) {
   pgCallbacks.pullRpczEntries();
-  rpczEntry *entry = *rpczResultPointer;
+  YbcRpczEntry *entry = *rpczResultPointer;
 
   uint64_t tot_connections = 0;
   uint64_t tot_active_connections = 0;
@@ -177,6 +177,13 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
 
   shmdt(shmp);
 }
+
+typedef struct {
+  const char* name;
+  uint64_t value;
+  const char* type;
+  const char* help;
+} YsqlConnMgrMetric;
 
 void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
   std::vector<YsqlConnMgrMetric> ysql_conn_mgr_metrics;
@@ -354,7 +361,7 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
   json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
   JsonWriter writer(output, json_mode);
-  rpczEntry *entry = *rpczResultPointer;
+  YbcRpczEntry *entry = *rpczResultPointer;
 
   writer.StartObject();
   writer.String("connections");
@@ -613,7 +620,7 @@ WebserverWrapper *CreateWebserver(char *listen_addresses, int port) {
   return reinterpret_cast<WebserverWrapper *>(new Webserver(opts, "Postgres webserver"));
 }
 
-void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name) {
+void RegisterMetrics(YbcPgmEntry *tab, int num_entries, char *metric_node_name) {
   ybpgm_table = tab;
   ybpgm_num_entries = num_entries;
   initSqlServerDefaultLabels(metric_node_name);
@@ -628,15 +635,15 @@ void RegisterResetYsqlStatStatements(void (*fn)()) {
 }
 
 void RegisterRpczEntries(
-    postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer,
-    YbConnectionMetrics *conn_metrics_ptr) {
+    YbcPostgresCallbacks *callbacks, int *num_backends_ptr, YbcRpczEntry **rpczEntriesPointer,
+    YbcConnectionMetrics *conn_metrics_ptr) {
   pgCallbacks = *callbacks;
   num_backends = num_backends_ptr;
   rpczResultPointer = rpczEntriesPointer;
   conn_metrics = conn_metrics_ptr;
 }
 
-YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
+YbcStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
   Webserver *webserver = reinterpret_cast<Webserver *>(webserver_wrapper);
   webserver->RegisterPathHandler(
       "/connections", "Ysql Connection Manager Stats", PgLogicalRpczHandler, false, false);

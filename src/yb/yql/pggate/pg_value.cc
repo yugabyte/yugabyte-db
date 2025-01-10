@@ -27,8 +27,8 @@
 namespace yb {
 namespace pggate {
 
-Status PgValueToDatum(const YBCPgTypeEntity *type_entity,
-                      YBCPgTypeAttrs type_attrs,
+Status PgValueToDatum(const YbcPgTypeEntity *type_entity,
+                      YbcPgTypeAttrs type_attrs,
                       const dockv::PgValue& value,
                       uint64_t* datum) {
   switch (type_entity->yb_type) {
@@ -101,8 +101,8 @@ Status PgValueToDatum(const YBCPgTypeEntity *type_entity,
   return Status::OK();
 }
 
-Status PBToDatum(const YBCPgTypeEntity *type_entity,
-                 YBCPgTypeAttrs type_attrs,
+Status PBToDatum(const YbcPgTypeEntity *type_entity,
+                 YbcPgTypeAttrs type_attrs,
                  const QLValuePB& value,
                  uint64_t* datum,
                  bool* is_null) {
@@ -215,7 +215,7 @@ Status PBToDatum(const YBCPgTypeEntity *type_entity,
   return Status::OK();
 }
 
-Status PgValueToPB(const YBCPgTypeEntity *type_entity,
+Status PgValueToPB(const YbcPgTypeEntity *type_entity,
                    uint64_t datum,
                    bool is_null,
                    QLValuePB* ql_value) {

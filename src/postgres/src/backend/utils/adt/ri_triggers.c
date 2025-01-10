@@ -402,7 +402,7 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
  *	in referenced and referencing relation doesn't match.
  * ----------
  */
-static YBCPgYBTupleIdDescriptor*
+static YbcPgYBTupleIdDescriptor*
 YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 							TupleTableSlot *fkslot, EState *estate)
 {
@@ -451,14 +451,14 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 
 	Oid referenced_rel_relfilenode_oid = YbGetRelfileNodeId(referenced_rel);
 	Oid referenced_dboid = YBCGetDatabaseOid(referenced_rel);
-	YBCPgYBTupleIdDescriptor *result;
+	YbcPgYBTupleIdDescriptor *result;
 	result =
 		YBCCreateYBTupleIdDescriptor(referenced_dboid,
 									 referenced_rel_relfilenode_oid,
 									 riinfo->nkeys + (using_index ? 1 : 0));
-	YBCPgAttrValueDescriptor *next_attr = result->attrs;
+	YbcPgAttrValueDescriptor *next_attr = result->attrs;
 
-	YBCPgTableDesc ybc_referenced_table_desc = NULL;
+	YbcPgTableDesc ybc_referenced_table_desc = NULL;
 	HandleYBStatus(YBCPgGetTableDesc(referenced_dboid,
 									 referenced_rel_relfilenode_oid,
 									 &ybc_referenced_table_desc));
@@ -491,7 +491,7 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 		next_attr->datum =
 			slot_getattr(fkslot, riinfo->fk_attnums[i], &next_attr->is_null);
 
-		YBCPgColumnInfo column_info = {0};
+		YbcPgColumnInfo column_info = {0};
 		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_referenced_table_desc,
 												   next_attr->attr_num,
 												   &column_info),
@@ -628,7 +628,7 @@ RI_FKey_check(TriggerData *trigdata)
 		 * relation can be build from referencing table tuple.
 		 */
 		Assert(trigdata->estate);
-		YBCPgYBTupleIdDescriptor *descr =
+		YbcPgYBTupleIdDescriptor *descr =
 			YBCBuildYBTupleIdDescriptor(riinfo, newslot, trigdata->estate);
 
 		if (descr)
@@ -3358,7 +3358,7 @@ void
 YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 							  TupleTableSlot *new_slot, EState *estate)
 {
-	YBCPgYBTupleIdDescriptor *descr;
+	YbcPgYBTupleIdDescriptor *descr;
 
 	descr =
 		YBCBuildYBTupleIdDescriptor(ri_FetchConstraintInfo(trigger,
@@ -3376,7 +3376,7 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 		 * will not be checked, no need to add it into the cache.
 		 */
 		bool null_found = false;
-		for (YBCPgAttrValueDescriptor *attr = descr->attrs,
+		for (YbcPgAttrValueDescriptor *attr = descr->attrs,
 			*end = descr->attrs + descr->nattrs;
 			attr != end && !null_found; ++attr)
 			null_found = attr->is_null && (attr->attr_num > 0);

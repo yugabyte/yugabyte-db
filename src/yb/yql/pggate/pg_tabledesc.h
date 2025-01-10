@@ -67,7 +67,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   // Find the column given the postgres attr number.
   Result<size_t> FindColumn(int attr_num) const;
 
-  Result<YBCPgColumnInfo> GetColumnInfo(int attr_number) const;
+  Result<YbcPgColumnInfo> GetColumnInfo(int attr_number) const;
 
   bool IsHashPartitioned() const;
 
@@ -108,9 +108,9 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   // True if table is colocated (including tablegroups, excluding YSQL system tables).
   bool IsColocated() const;
 
-  YBCPgOid GetColocationId() const;
+  YbcPgOid GetColocationId() const;
 
-  YBCPgOid GetTablegroupOid() const;
+  YbcPgOid GetTablegroupOid() const;
 
   uint32_t schema_version() const;
 
@@ -118,7 +118,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
  private:
   PgObjectId relfilenode_id_;
-  YBCPgOid pg_table_id_{kInvalidOid};
+  YbcPgOid pg_table_id_{kInvalidOid};
   master::GetTableSchemaResponsePB resp_;
   client::VersionedTablePartitionList table_partition_list_;
   client::PartitionListVersion latest_known_table_partition_list_version_;
@@ -130,7 +130,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   // Attr number to column index map.
   std::vector<std::pair<int, size_t>> attr_num_map_;
-  YBCPgOid tablegroup_oid_{kInvalidOid};
+  YbcPgOid tablegroup_oid_{kInvalidOid};
 };
 
 }  // namespace pggate

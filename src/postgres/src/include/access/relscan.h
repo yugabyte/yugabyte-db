@@ -188,7 +188,7 @@ typedef struct IndexScanDescData
 	 * - Postgres IndexScan function will call and pass "yb_exec_params" to PgGate to control the
 	 *   index-scan execution in YugaByte.
 	 */
-	YBCPgExecParameters *yb_exec_params;
+	YbcPgExecParameters *yb_exec_params;
 
 	/*
 	 * yb_scan_plan stores postgres scan plan for current index scan.

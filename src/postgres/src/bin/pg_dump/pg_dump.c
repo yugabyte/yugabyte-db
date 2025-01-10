@@ -358,7 +358,7 @@ static TableInfo *getRootTableInfo(const TableInfo *tbinfo);
 static Oid getDatabaseOid(Archive *fout);
 static PGresult* ybQueryDatabaseData(Archive *fout, PQExpBuffer dbQry);
 static void getYbTablePropertiesAndReloptions(Archive *fout,
-						YbTableProperties properties,
+						YbcTableProperties properties,
 						PQExpBuffer reloptions_buf, Oid reloid, const char* relname,
 						char relkind);
 static void isDatabaseColocated(Archive *fout);
@@ -15729,12 +15729,12 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		}
 
 		/* Get the table properties from YB, if relevant. */
-		YbTableProperties yb_properties = NULL;
+		YbcTableProperties yb_properties = NULL;
 		if ((dopt->include_yb_metadata || dopt->binary_upgrade) &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX
 			 || tbinfo->relkind == RELKIND_MATVIEW || tbinfo->relkind == RELKIND_PARTITIONED_TABLE))
 		{
-			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
+			yb_properties = (YbcTableProperties) pg_malloc(sizeof(YbcTablePropertiesData));
 		}
 		PQExpBuffer yb_reloptions = createPQExpBuffer();
 		getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
@@ -16724,8 +16724,8 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 
 		if (is_colocated_database && !is_legacy_colocated_database)
 		{
-			YbTableProperties yb_properties;
-			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
+			YbcTableProperties yb_properties;
+			yb_properties = (YbcTableProperties) pg_malloc(sizeof(YbcTablePropertiesData));
 			PQExpBuffer yb_reloptions = createPQExpBuffer();
 			getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
 				indxinfo->dobj.catId.oid, indxinfo->dobj.name, tbinfo->relkind);
@@ -19013,7 +19013,7 @@ getDatabaseOid(Archive *fout)
  * 					reloptions, will be '{}' if properties are not allocated.
  */
 static void
-getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
+getYbTablePropertiesAndReloptions(Archive *fout, YbcTableProperties properties,
 								  PQExpBuffer reloptions_buf,
 								  Oid reloid, const char* relname, char relkind)
 {

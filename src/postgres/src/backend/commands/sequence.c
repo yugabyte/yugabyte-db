@@ -891,7 +891,7 @@ nextval_internal(Oid relid, bool check_permissions)
 		int64_t last_val;
 		if (yb_enable_sequence_pushdown)
 		{
-			YBCStatus s = YBCFetchSequenceTuple(MyDatabaseId,
+			YbcStatus s = YBCFetchSequenceTuple(MyDatabaseId,
 												relid,
 												YbGetCatalogCacheVersion(),
 												YBIsDBCatalogVersionMode(),

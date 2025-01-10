@@ -39,7 +39,7 @@
 extern void YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid,
 							  Oid next_oid, bool colocated,
 							  bool *retry_on_oid_collision,
-							  YbCloneInfo *yb_clone_info);
+							  YbcCloneInfo *yb_clone_info);
 
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
@@ -86,7 +86,7 @@ extern void YBCCreateIndex(const char *indexName,
 						   Oid indexRelfileNodeId,
 						   Oid oldRelfileNodeId);
 
-extern void YBCBindCreateIndexColumns(YBCPgStatement handle,
+extern void YBCBindCreateIndexColumns(YbcPgStatement handle,
 									  IndexInfo *indexInfo,
 									  TupleDesc indexTupleDesc,
 									  int16 *coloptions,
@@ -97,11 +97,11 @@ extern void YBCDropIndex(Relation index);
 extern List* YBCPrepareAlterTable(List** subcmds,
 										   int subcmds_size,
 										   Oid relationId,
-										   YBCPgStatement *rollbackHandle,
+										   YbcPgStatement *rollbackHandle,
 										   bool isPartitionOfAlteredTable,
 										   List *volatile *ybAlteredTableIds);
 
-extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
+extern void YBCExecAlterTable(YbcPgStatement handle, Oid relationId);
 
 extern void YBCRename(RenameStmt* stmt, Oid relationId);
 
@@ -128,12 +128,12 @@ extern void YBCCreateReplicationSlot(const char *slot_name,
 									 CRSLsnType lsn_type);
 
 extern void
-YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
+YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 						size_t *numreplicationslots);
 
 extern void
 YBCGetReplicationSlot(const char *slot_name,
-					  YBCReplicationSlotDescriptor **replication_slot);
+					  YbcReplicationSlotDescriptor **replication_slot);
 
 extern void YBCDropReplicationSlot(const char *slot_name);
 
@@ -148,12 +148,12 @@ extern void YBCUpdatePublicationTableList(const char *stream_id,
 extern void YBCDestroyVirtualWalForCDC();
 
 extern void YBCGetCDCConsistentChanges(const char *stream_id,
-									   YBCPgChangeRecordBatch **record_batch,
-									   YBCTypeEntityProvider type_entity_provider);
+									   YbcPgChangeRecordBatch **record_batch,
+									   YbcTypeEntityProvider type_entity_provider);
 
 extern void YBCUpdateAndPersistLSN(const char *stream_id,
 								   XLogRecPtr restart_lsn_hint,
 								   XLogRecPtr confirmed_flush,
-								   YBCPgXLogRecPtr *restart_lsn);
+								   YbcPgXLogRecPtr *restart_lsn);
 
 extern void YBCDropColumn(Relation rel, AttrNumber attnum);
