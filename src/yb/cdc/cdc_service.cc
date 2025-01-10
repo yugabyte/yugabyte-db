@@ -1896,7 +1896,7 @@ void CDCServiceImpl::GetChanges(
     } else if (req->safe_hybrid_time() != -1) {
       cdc_sdk_safe_time = HybridTime::FromPB(req->safe_hybrid_time());
     } else {
-      YB_LOG_EVERY_N(WARNING, 10000)
+      YB_LOG_EVERY_N_SECS(WARNING, 600)
           << "safe_hybrid_time is not present in request, using response to get safe_hybrid_time";
       cdc_sdk_safe_time = HybridTime::FromPB(resp->safe_hybrid_time());
     }
