@@ -39,7 +39,8 @@ public class TestPgFastpathIntentdbSeeks extends BasePgSQLTestWithRpcMetric {
 
   @Test
   public void testFastpathIntentdbSeeks() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     try (Connection extraConnection = getConnectionBuilder().connect();
          Statement stmt = connection.createStatement();
          Statement extraStmt = extraConnection.createStatement()) {

@@ -364,7 +364,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testAttributes() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     // NOTE: The INHERIT attribute is tested separately in testMembershipInheritance.
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
@@ -2710,7 +2711,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
   @Test
   public void testRevokeLoginMidSession() throws Exception {
     // (DB-12741) Skip this test if running with connection manager.
-    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR,
+        isTestRunningWithConnectionManager());
 
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
@@ -2929,7 +2931,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
     // requires that the role GUC variable is not changed even after revoking
     // membership from a role group in order to succeed, which would not be the
     // case when Connection Manager is enabled.
-    assumeFalse(BasePgSQLTest.GUC_REPLAY_AFFECTS_CONN_STATE, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.GUC_REPLAY_AFFECTS_CONN_STATE,
+        isTestRunningWithConnectionManager());
 
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
@@ -3227,6 +3230,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testLongPasswords() throws Exception {
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
 

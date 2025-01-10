@@ -292,7 +292,8 @@ public class TestYbAsh extends BasePgSQLTest {
    */
   @Test
   public void testYsqlPids() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     setAshConfigAndRestartCluster(100, ASH_SAMPLE_SIZE);
 
     try (Statement statement = connection.createStatement()) {

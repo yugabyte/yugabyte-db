@@ -173,7 +173,7 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
 
   @Test
   public void testMemUsageFuncsWithMultipleBackends() throws Exception {
-    Assume.assumeFalse(BasePgSQLTest.SAME_PHYSICAL_CONN_AFFECTING_DIFF_LOGICAL_CONNS_MEM,
+    skipYsqlConnMgr(BasePgSQLTest.SAME_PHYSICAL_CONN_AFFECTING_DIFF_LOGICAL_CONNS_MEM,
          isTestRunningWithConnectionManager());
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Connection connection2 = getConnectionBuilder().withTServer(0).connect();
@@ -256,7 +256,7 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
 
   @Test
   public void testMemUsageOfQueryFromPgStatActivity() throws Exception {
-    Assume.assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
+    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
         isTestRunningWithConnectionManager());
 
     // Skip test if the current yb instance is a sanitized build.

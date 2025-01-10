@@ -278,6 +278,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return null;
   }
 
+  protected void skipYsqlConnMgr(String reason, boolean isYsqlConnMgr) {
+    if (isYsqlConnMgr) {
+      LOG.info("Switching to postgres port:" + reason);
+      ConnectionEndpoint.DEFAULT = ConnectionEndpoint.POSTGRES;
+    }
+  }
+
   /**
    * @return flags shared between tablet server and initdb
    */

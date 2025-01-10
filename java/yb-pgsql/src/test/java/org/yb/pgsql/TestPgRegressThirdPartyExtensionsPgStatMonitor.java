@@ -28,7 +28,8 @@ public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgRegres
 
   @Test
   public void schedule() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/pg_stat_monitor"),

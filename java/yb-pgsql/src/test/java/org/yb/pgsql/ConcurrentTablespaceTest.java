@@ -191,7 +191,8 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
 
   @Test
   public void testAlterTableSetTablespace() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     connections = setupConnections();
     List<Thread> threads =
         setupConcurrentDdlDmlThreads("ALTER TABLE concurrent_test_tbl SET TABLESPACE %s");

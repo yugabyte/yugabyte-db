@@ -29,6 +29,8 @@ public class TestPgRegressInsertOnConflict extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     runPgRegressTest("yb_insert_on_conflict_schedule");
   }
 

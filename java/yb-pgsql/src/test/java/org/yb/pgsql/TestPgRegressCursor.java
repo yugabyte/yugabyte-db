@@ -125,7 +125,8 @@ public class TestPgRegressCursor extends BasePgRegressTest {
 
   @Test
   public void testPgRegressCursor() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     runPgRegressTest("yb_cursor_schedule");
 
     // Test CURSOR in JDBC.

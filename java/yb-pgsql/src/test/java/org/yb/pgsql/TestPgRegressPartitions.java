@@ -45,7 +45,8 @@ public class TestPgRegressPartitions extends BasePgRegressTest {
 
   @Test
   public void yb_partitions_tests() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     runPgRegressTest("yb_partitions_schedule");
   }
 }

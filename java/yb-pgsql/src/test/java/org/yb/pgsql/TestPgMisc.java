@@ -191,7 +191,8 @@ public class TestPgMisc extends BasePgSQLTest {
    */
   @Test
   public void testPgHintPlanExtendedQuery() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement()) {
       statement.executeUpdate("CREATE TABLE test_table(r1 int, r2 int," +
                               "PRIMARY KEY(r1 asc, r2 asc))");

@@ -40,7 +40,8 @@ public class TestPgRegressResetAnalyze extends BasePgRegressTest {
 
   @Test
   public void testPgRegressResetAnalyze() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     runPgRegressTest("yb_reset_analyze_schedule");
   }
 }

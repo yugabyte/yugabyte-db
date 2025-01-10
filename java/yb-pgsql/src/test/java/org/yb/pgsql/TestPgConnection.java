@@ -114,7 +114,7 @@ public class TestPgConnection extends BasePgSQLTest {
 
   @Test
   public void testConnectionKills() throws Exception {
-    Assume.assumeFalse(BasePgSQLTest.LESSER_PHYSICAL_CONNS,
+    skipYsqlConnMgr(BasePgSQLTest.LESSER_PHYSICAL_CONNS,
       isTestRunningWithConnectionManager());
 
     final int NUM_CONNECTIONS = getRemainingAvailableConnections();
@@ -154,7 +154,7 @@ public class TestPgConnection extends BasePgSQLTest {
 
   @Test
   public void testConnectionKillsAndRestarts() throws Exception {
-    Assume.assumeFalse(BasePgSQLTest.LESSER_PHYSICAL_CONNS,
+    skipYsqlConnMgr(BasePgSQLTest.LESSER_PHYSICAL_CONNS,
       isTestRunningWithConnectionManager());
 
     final int NUM_CONNECTIONS = getRemainingAvailableConnections();

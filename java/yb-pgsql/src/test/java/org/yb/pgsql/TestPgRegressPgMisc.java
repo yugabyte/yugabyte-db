@@ -30,7 +30,8 @@ public class TestPgRegressPgMisc extends BasePgRegressTest {
 
   @Test
   public void testPgRegressPgMisc() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     runPgRegressTest("yb_pg_misc_serial_schedule");
   }
 }

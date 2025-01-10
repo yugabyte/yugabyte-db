@@ -350,7 +350,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testInsertValues() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     // (DB-12699) Catalog read requests decrease in any warmup mode when
     // connection manager is enabled, but not to the expected value of 0.
     // Allow the test to run without warmed up connections for now.

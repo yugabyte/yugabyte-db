@@ -39,7 +39,8 @@ public class TestYsqlMetrics extends BasePgSQLTest {
 
   @Test
   public void testMetrics() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     Statement statement = connection.createStatement();
 
     // DDL is non-txn.
@@ -216,8 +217,6 @@ public class TestYsqlMetrics extends BasePgSQLTest {
   @Test
   public void testMetricRows() throws Exception {
     try (Statement stmt = connection.createStatement()) {
-      assumeFalse(CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN,
-          isTestRunningWithConnectionManager());
 
       verifyStatementMetricRows(
         stmt,"CREATE TABLE test (k INT PRIMARY KEY, v INT)",

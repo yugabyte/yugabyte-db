@@ -135,7 +135,8 @@ public class TestYsqlPartitionedBackup extends BasePgSQLTest {
 
   @Test
   public void testPartitionedTableWithParentPrimaryKey() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     try (Statement stmt = connection.createStatement()) {
       createPartitionedTable(stmt, "htest", YSQLPartitionType.HASH, "k1, k2");
       createPartition(stmt, "htest", YSQLPartitionType.HASH, 1);
@@ -307,7 +308,8 @@ public class TestYsqlPartitionedBackup extends BasePgSQLTest {
 
   @Test
   public void testPartitionedTableWithParentSecIndex() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     try (Statement stmt = connection.createStatement()) {
       createPartitionedTable(stmt, "htest", YSQLPartitionType.HASH);
       stmt.execute("CREATE INDEX ON htest(k1, k2) INCLUDE (k3, v1)");
@@ -344,7 +346,8 @@ public class TestYsqlPartitionedBackup extends BasePgSQLTest {
 
   @Test
   public void testPartitionedTableWithChildSecIndex() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     try (Statement stmt = connection.createStatement()) {
       // Create a partitioned table. Create one child with index and one child
       // without an index.

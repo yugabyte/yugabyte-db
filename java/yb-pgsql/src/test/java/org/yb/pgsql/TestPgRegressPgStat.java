@@ -31,7 +31,8 @@ public class TestPgRegressPgStat extends BasePgRegressTest {
 
   @Test
   public void testPgStat() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     runPgRegressTest("yb_pg_stat_schedule");
   }
 }

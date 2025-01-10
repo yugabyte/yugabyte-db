@@ -30,7 +30,8 @@ public class TestPgRegressThirdPartyExtensionsHll extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR,
+        isTestRunningWithConnectionManager());
     File regress_schedule = new File(
       TestUtils.getBuildRootDir(),
       "postgres_build/third-party-extensions/postgresql-hll");
