@@ -1,9 +1,9 @@
 ---
-title: Configure the OpenShift cloud provider
+title: Configure the OpenShift provider configuration
 headerTitle: Create Kubernetes provider configuration
 linkTitle: Kubernetes
 description: Configure the OpenShift provider configuration
-headContent: For deploying universes on OpenShift
+headContent: For deploying universes on Kubernetes
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/openshift
 menu:
