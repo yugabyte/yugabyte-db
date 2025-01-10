@@ -62,23 +62,23 @@ You need your license file to install YugabyteDB Anywhere. Contact {{% support-p
 
 ### Python
 
-Python v3.8 to v3.11 must be pre-installed.
+Python v3.10 to v3.12 must be pre-installed.
 
 Both python and python3 must symbolically link to Python 3. One way to achieve this is to use alternatives. For example:
 
 ```sh
-sudo yum install @python38 -y
+sudo yum install @python310 -y
 sudo alternatives --config python
-# choose Python 3.8 from list
+# choose Python 3.10 from list
 
 sudo alternatives --config python3
-# choose Python 3.8 from list
+# choose Python 3.10 from list
 
 python -V
-# output: Python 3.8.16
+# output: Python 3.10.2
 
 python3 -V
-# output: Python 3.8.16
+# output: Python 3.10.2
 ```
 
 #### Permissions
