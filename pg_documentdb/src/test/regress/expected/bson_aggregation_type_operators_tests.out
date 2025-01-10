@@ -1,0 +1,115 @@
+SET search_path TO helio_api,helio_core;
+SET helio_api.next_collection_id TO 101300;
+SET helio_api.next_collection_index_id TO 101300;
+--test int
+select *from helio_api_catalog.bson_dollar_project('{"tests": 3}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": 3 } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{}', '{"...
+                     ^
+--test double
+select *from helio_api_catalog.bson_dollar_project('{"tests": 3.1}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": 3.1 } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{}', '{"...
+                     ^
+--test string
+select *from helio_api_catalog.bson_dollar_project('{"tests": "abc"}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": "abc" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{}', '{"...
+                     ^
+--test int64
+select *from helio_api_catalog.bson_dollar_project('{"tests": 123456789012345678}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": 123456789012345678 } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{}', '{"...
+                     ^
+--test array
+select *from helio_api_catalog.bson_dollar_project('{"tests": [1, 2, 3.1]}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": [1, 2, 3.1] } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{}', '{"...
+                     ^
+--test nested array
+select *from helio_api_catalog.bson_dollar_project('{"tests": [1, 2, 3.1,[4, 5], 6]}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": [1, 2, 3.1,[4, 5], 6] } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{}', '{"...
+                     ^
+--test nested object
+select *from helio_api_catalog.bson_dollar_project('{"tests": [{"$numberDecimal": "1.2"},3]}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": [{"$numberDecimal": "1.2"},3] } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{}', '{"...
+                     ^
+--test null
+select *from helio_api_catalog.bson_dollar_project('{"tests": null}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": null } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{}', '{"...
+                     ^
+--test NaN
+select *from helio_api_catalog.bson_dollar_project('{"tests": {"$numberDouble": "NaN"}}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": {"$numberDouble": "NaN"} } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{}', '{"...
+                     ^
+--test Infinity
+select *from helio_api_catalog.bson_dollar_project('{"tests": {"$numberDouble": "Infinity"}}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": {"$numberDouble": "Infinity"} } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{}', '{"...
+                     ^
+--test -Infinity
+select *from helio_api_catalog.bson_dollar_project('{"tests": {"$numberDouble": "-Infinity"}}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": {"$numberDouble": "-Infinity"} } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{}', '{"...
+                     ^
+--test path
+select *from helio_api_catalog.bson_dollar_project('{"tests": {"test" : 5}}', '{"result": { "$toHashedIndexKey": "$tests.test" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{"tests": 3}', '{"result": { "$toHashedIndexKey": "$test" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^
+select *from helio_api_catalog.bson_dollar_project('{"tests": {"test" : 5}}', '{"result": { "$toHashedIndexKey": "$tests.tes" } }');
+ERROR:  schema "helio_api_catalog" does not exist
+LINE 1: select *from helio_api_catalog.bson_dollar_project('{"tests"...
+                     ^

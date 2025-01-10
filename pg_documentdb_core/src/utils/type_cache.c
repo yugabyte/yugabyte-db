@@ -45,10 +45,10 @@ typedef struct OidTypeCacheData
 	Oid BsonQueryTypeId;
 
 	/* OID of the CoreSchemaNameV2.bsonsequence type */
-	Oid HelioCoreBsonSequenceTypeId;
+	Oid DocumentsCoreBsonSequenceTypeId;
 
 	/* OID of the CoreSchemaNameV2.bson type */
-	Oid HelioCoreBsonTypeId;
+	Oid DocumentsCoreBsonTypeId;
 } OidTypeCacheData;
 
 static OidTypeCacheData TypeCache;
@@ -81,15 +81,15 @@ DocumentDBCoreBsonSequenceTypeId(void)
 {
 	InitializeOidCaches();
 
-	if (TypeCache.HelioCoreBsonSequenceTypeId == InvalidOid)
+	if (TypeCache.DocumentsCoreBsonSequenceTypeId == InvalidOid)
 	{
 		List *bsonTypeNameList = list_make2(makeString(CoreSchemaNameV2),
 											makeString("bsonsequence"));
 		TypeName *bsonTypeName = makeTypeNameFromNameList(bsonTypeNameList);
-		TypeCache.HelioCoreBsonSequenceTypeId = typenameTypeId(NULL, bsonTypeName);
+		TypeCache.DocumentsCoreBsonSequenceTypeId = typenameTypeId(NULL, bsonTypeName);
 	}
 
-	return TypeCache.HelioCoreBsonSequenceTypeId;
+	return TypeCache.DocumentsCoreBsonSequenceTypeId;
 }
 
 
@@ -101,15 +101,15 @@ DocumentDBCoreBsonTypeId(void)
 {
 	InitializeOidCaches();
 
-	if (TypeCache.HelioCoreBsonTypeId == InvalidOid)
+	if (TypeCache.DocumentsCoreBsonTypeId == InvalidOid)
 	{
 		List *bsonTypeNameList = list_make2(makeString(CoreSchemaNameV2),
 											makeString("bson"));
 		TypeName *bsonTypeName = makeTypeNameFromNameList(bsonTypeNameList);
-		TypeCache.HelioCoreBsonTypeId = typenameTypeId(NULL, bsonTypeName);
+		TypeCache.DocumentsCoreBsonTypeId = typenameTypeId(NULL, bsonTypeName);
 	}
 
-	return TypeCache.HelioCoreBsonTypeId;
+	return TypeCache.DocumentsCoreBsonTypeId;
 }
 
 

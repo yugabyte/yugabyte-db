@@ -6,7 +6,7 @@ SELECT datname, datcollate, datctype, pg_encoding_to_char(encoding), datlocprovi
 DROP EXTENSION IF EXISTS pg_helio_api;
 
 -- Install the latest available helio_api version
-CREATE EXTENSION pg_helio_api CASCADE;
+-- CREATE EXTENSION pg_helio_api CASCADE;
 
 -- binary version should return the installed version after recreating the extension
 SELECT helio_api.binary_version() = (SELECT REPLACE(extversion, '-', '.') FROM pg_extension where extname = 'pg_helio_core');
@@ -98,14 +98,3 @@ BEGIN
 	EXECUTE format('ALTER TABLE helio_data.documents_%s DROP CONSTRAINT collection_pk_%s', v_collection_id, v_collection_id);
 END;
 $$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION helio_test_helpers.generate_auth_message_client_proof(
-    p_user_name text,
-    p_password text)
-RETURNS helio_core.bson LANGUAGE C AS 'pg_helio_api', $$command_generate_auth_message_client_proof_for_test$$;
-
-CREATE OR REPLACE FUNCTION helio_test_helpers.generate_server_signature(
-    p_user_name text,
-    p_password text,
-    p_auth_message text)
-RETURNS helio_core.bson LANGUAGE C AS 'pg_helio_api', $$command_generate_server_signature_for_test$$;

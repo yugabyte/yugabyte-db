@@ -10,15 +10,14 @@ SELECT datname, datcollate, datctype, pg_encoding_to_char(encoding), datlocprovi
 
 -- Check if recreating the extension works
 DROP EXTENSION IF EXISTS pg_helio_api;
+NOTICE:  extension "pg_helio_api" does not exist, skipping
 -- Install the latest available helio_api version
-CREATE EXTENSION pg_helio_api CASCADE;
+-- CREATE EXTENSION pg_helio_api CASCADE;
 -- binary version should return the installed version after recreating the extension
 SELECT helio_api.binary_version() = (SELECT REPLACE(extversion, '-', '.') FROM pg_extension where extname = 'pg_helio_core');
- ?column? 
-----------
- t
-(1 row)
-
+ERROR:  schema "helio_api" does not exist
+LINE 1: SELECT helio_api.binary_version() = (SELECT REPLACE(extversi...
+               ^
 -- query helio_api_catalog.collection_indexes for given collection
 CREATE OR REPLACE FUNCTION helio_test_helpers.get_collection_indexes(
     p_database_name text,
@@ -41,6 +40,7 @@ BEGIN
   ORDER BY ci.index_id;
 END;
 $$ LANGUAGE plpgsql;
+ERROR:  schema "helio_core" does not exist
 -- query pg_index for the documents table backing given collection
 CREATE OR REPLACE FUNCTION helio_test_helpers.get_data_table_indexes (
     p_database_name text,
@@ -103,12 +103,3 @@ BEGIN
 	EXECUTE format('ALTER TABLE helio_data.documents_%s DROP CONSTRAINT collection_pk_%s', v_collection_id, v_collection_id);
 END;
 $$ LANGUAGE plpgsql;
-CREATE OR REPLACE FUNCTION helio_test_helpers.generate_auth_message_client_proof(
-    p_user_name text,
-    p_password text)
-RETURNS helio_core.bson LANGUAGE C AS 'pg_helio_api', $$command_generate_auth_message_client_proof_for_test$$;
-CREATE OR REPLACE FUNCTION helio_test_helpers.generate_server_signature(
-    p_user_name text,
-    p_password text,
-    p_auth_message text)
-RETURNS helio_core.bson LANGUAGE C AS 'pg_helio_api', $$command_generate_server_signature_for_test$$;

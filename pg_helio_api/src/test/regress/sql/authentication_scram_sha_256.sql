@@ -2,6 +2,16 @@ SET search_path TO helio_api_catalog;
 SET helio_api.next_collection_id TO 1800;
 SET helio_api.next_collection_index_id TO 1800;
 
+CREATE OR REPLACE FUNCTION generate_auth_message_client_proof(
+    p_user_name text,
+    p_password text)
+RETURNS helio_core.bson LANGUAGE C AS 'pg_helio_api', $$command_generate_auth_message_client_proof_for_test$$;
+
+CREATE OR REPLACE FUNCTION generate_server_signature(
+    p_user_name text,
+    p_password text,
+    p_auth_message text)
+RETURNS helio_core.bson LANGUAGE C AS 'pg_helio_api', $$command_generate_server_signature_for_test$$;
 
 -- TEST SCRAM SHA-256 authentication support functions from extension
 --   Test file to test the functions:
@@ -43,7 +53,7 @@ BEGIN
         RETURN 'SALT request result mismatch';
     END IF;
 
-    SELECT helio_test_helpers.generate_auth_message_client_proof(p_user_name, p_password) into cp_n_authmsg;
+    SELECT generate_auth_message_client_proof(p_user_name, p_password) into cp_n_authmsg;
 
     SELECT substring(cp_n_authmsg similar '%"AuthMessage" : "#"_+#"", "ClientProof"%' escape '#') into auth_message;
     SELECT substring(cp_n_authmsg similar '%"AuthMessage" : "_+", "ClientProof" : "#"_+#""%' escape '#') into client_proof;
@@ -64,7 +74,7 @@ BEGIN
         --     ServerSignature = HMAC(ServerKey, AuthMessage)
         --   This ServerSignature has to be compared against serv_sign (which is received from extension).
         --       If matched, then authentication is success.
-        SELECT helio_test_helpers.generate_server_signature(p_user_name, p_password, auth_message) into serv_sign_gen;
+        SELECT generate_server_signature(p_user_name, p_password, auth_message) into serv_sign_gen;
         SELECT substring(serv_sign_gen similar '%"ServerSignature" : "#"_+#""%' escape '#') into serv_sign_gen;
               
         IF serv_sign <> serv_sign_gen THEN

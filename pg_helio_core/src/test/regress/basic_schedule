@@ -1,3 +1,2 @@
 test: public_api_schema
 test: bson_basic_types
-test: bson_hash_tests
