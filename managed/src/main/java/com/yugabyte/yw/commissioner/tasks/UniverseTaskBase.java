@@ -5951,7 +5951,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                               && pitrConfig
                                   .getUniverse()
                                   .getUniverseUUID()
-                                  .equals(xClusterConfig.getSourceUniverseUUID()))
+                                  .equals(xClusterConfig.getSourceUniverseUUID())
+                              && pitrConfig.getXClusterConfigs().size() <= 1)
                           || (deleteTargetPitrConfigs
                               && pitrConfig
                                   .getUniverse()
