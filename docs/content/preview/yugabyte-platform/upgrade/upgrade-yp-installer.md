@@ -42,12 +42,6 @@ If you are running YBA on a [deprecated OS](../../../reference/configuration/ope
 
 {{< /note >}}
 
-{{< note title="Upgrading YBA on systems that have older versions of Python" >}}
-
-YBA v2024.1 and later requires Python v3.10-3.12. If you are running YBA on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YBA to v2024.1 or later.
-
-{{< /note >}}
-
 ## Upgrade using YBA Installer
 
 To upgrade using YBA Installer, first download the version of YBA Installer corresponding to the version of YBA you want to upgrade to.
