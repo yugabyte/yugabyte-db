@@ -662,6 +662,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             if (nodeName.contains("master")) {
               nodeDetail.isTserver = false;
               nodeDetail.isMaster = true;
+              nodeDetail.dedicatedTo = ServerType.MASTER;
               nodeDetail.cloudInfo.private_ip =
                   KubernetesUtil.formatPodAddress(
                       podAddressTemplate,
@@ -672,6 +673,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             } else {
               nodeDetail.isMaster = false;
               nodeDetail.isTserver = true;
+              nodeDetail.dedicatedTo = ServerType.TSERVER;
               nodeDetail.cloudInfo.private_ip =
                   KubernetesUtil.formatPodAddress(
                       podAddressTemplate,
