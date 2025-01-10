@@ -329,6 +329,8 @@ class ClusterAdminClient {
 
   Status RollbackYsqlMajorCatalogVersion();
 
+  Status GetYsqlMajorCatalogUpgradeState();
+
   // Set WAL retention time in secs for a table name.
   Status SetWalRetentionSecs(
     const client::YBTableName& table_name, const uint32_t wal_ret_secs);
@@ -613,10 +615,10 @@ class ClusterAdminClient {
   // default of 1 is used. This function does not validate correctness; that is done in
   // CatalogManagerUtil::IsPlacementInfoValid.
   Status FillPlacementInfo(
-      master::PlacementInfoPB* placement_info_pb, const std::string& placement_str);
+      PlacementInfoPB* placement_info_pb, const std::string& placement_str);
 
   Result<int> GetReadReplicaConfigFromPlacementUuid(
-      master::ReplicationInfoPB* replication_info, const std::string& placement_uuid);
+      ReplicationInfoPB* replication_info, const std::string& placement_uuid);
 
   Result<master::GetMasterClusterConfigResponsePB> GetMasterClusterConfig();
 

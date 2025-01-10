@@ -158,8 +158,8 @@ class VectorLSMInsertRegistry {
 
   using MutableChunk = typename VectorLSM<Vector, DistanceResult>::MutableChunk;
 
-  explicit VectorLSMInsertRegistry(rpc::ThreadPool& thread_pool)
-      : thread_pool_(thread_pool) {}
+  VectorLSMInsertRegistry(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
+      : log_prefix_(log_prefix), thread_pool_(thread_pool) {}
 
   void Shutdown() {
     for (;;) {
@@ -169,7 +169,7 @@ class VectorLSMInsertRegistry {
           break;
         }
       }
-      YB_LOG_EVERY_N_SECS(INFO, 1) << "Waiting for vector insertion tasks to finish";
+      YB_LOG_EVERY_N_SECS(INFO, 1) << LogPrefix() << "Waiting for vector insertion tasks to finish";
       std::this_thread::sleep_for(100ms);
     }
   }
@@ -236,6 +236,11 @@ class VectorLSMInsertRegistry {
   }
 
  private:
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+  const std::string log_prefix_;
   rpc::ThreadPool& thread_pool_;
   std::shared_mutex mutex_;
   std::condition_variable_any allocated_tasks_cond_;
@@ -347,8 +352,8 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
     }
     auto now = CoarseMonoClock::now();
     if (now > last_warning_time + report_interval) {
-      LOG(WARNING) << "Long wait to save chunks: " << MonoDelta(now - start_time)
-                   << ", chunks left: " << chunks_left;
+      LOG_WITH_PREFIX(WARNING) << "Long wait to save chunks: " << MonoDelta(now - start_time)
+                               << ", chunks left: " << chunks_left;
       last_warning_time = now;
       report_interval = std::min<MonoDelta>(report_interval * 2, 30s);
     }
@@ -371,7 +376,7 @@ inline void VectorLSM<Vector, DistanceResult>::CheckFailure(const Status& status
     existing_status = failed_status_;
   }
   YB_LOG_EVERY_N_SECS(WARNING, 1)
-      << "Vector LSM already in failed state: " << existing_status
+      << LogPrefix() << "Vector LSM already in failed state: " << existing_status
       << ", while trying to set new failed state: " << status;
 }
 
@@ -380,7 +385,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   std::lock_guard lock(mutex_);
 
   options_ = std::move(options);
-  insert_registry_ = std::make_unique<InsertRegistry>(*options_.thread_pool);
+  insert_registry_ = std::make_unique<InsertRegistry>(options_.log_prefix, *options_.thread_pool);
 
   RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
   auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env_, options_.storage_dir));
@@ -429,6 +434,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
       immutable_chunks_.begin(), immutable_chunks_.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->order_no < rhs->order_no;
   });
+  VLOG_WITH_PREFIX(1) << "Loaded " << immutable_chunks_.size() << " chunks";
 
   return Status::OK();
 }
@@ -603,9 +609,12 @@ auto VectorLSM<Vector, DistanceResult>::Search(
   }
 
   auto intermediate_results = insert_registry_->Search(query_vector, options);
+  VLOG_WITH_PREFIX_AND_FUNC(4)
+      << "Results from registry: " << AsString(intermediate_results);
 
   for (const auto& index : indexes) {
     auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options));
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Chunk results: " << AsString(chunk_results);
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
 
@@ -711,10 +720,10 @@ void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk
       chunk->flush_promise->set_value(status);
       chunk->flush_promise = nullptr;
     }
-    LOG(DFATAL) << "Save chunk failed: " << status;
+    LOG_WITH_PREFIX(DFATAL) << "Save chunk failed: " << status;
     std::lock_guard lock(mutex_);
     auto remove_status = RemoveUpdateQueueEntry(chunk->order_no);
-    LOG_IF(DFATAL, !remove_status.ok()) << remove_status;
+    LOG_IF_WITH_PREFIX(DFATAL, !remove_status.ok()) << remove_status;
     if (failed_status_.ok()) {
       failed_status_ = status;
     }

@@ -16,6 +16,7 @@
 #include "yb/cdc/xrepl_types.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/util/hash_util.h"
 
 namespace yb::xcluster {
 
@@ -44,21 +45,12 @@ struct ProducerTabletInfo {
   TabletId tablet_id;
   TableId table_id;
 
-  bool operator==(const ProducerTabletInfo& other) const {
-    return replication_group_id == other.replication_group_id && stream_id == other.stream_id &&
-           tablet_id == other.tablet_id && table_id == other.table_id;
-  }
+  bool operator==(const ProducerTabletInfo& other) const = default;
+
+  YB_STRUCT_DEFINE_HASH(ProducerTabletInfo, replication_group_id, stream_id, tablet_id, table_id);
 
   std::string ToString() const;
-
-  struct Hash {
-    std::size_t operator()(const ProducerTabletInfo& p) const noexcept;
-  };
 };
-
-inline size_t hash_value(const ProducerTabletInfo& p) noexcept {
-  return ProducerTabletInfo::Hash()(p);
-}
 
 struct ConsumerTabletInfo {
   std::string tablet_id;

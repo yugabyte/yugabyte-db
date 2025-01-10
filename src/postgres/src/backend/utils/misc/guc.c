@@ -647,6 +647,12 @@ const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
   {NULL, 0, false}
 };
 
+const struct config_enum_entry yb_sampling_algorithm_options[] = {
+	{"full_table_scan", YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN, false},
+	{"block_based_sampling", YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING, false},
+	{NULL, 0, false}
+};
+
 /*
  * Options for enum values stored in other modules
  */
@@ -3095,6 +3101,19 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_allow_block_based_sampling_algorithm", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Autoflag to allow "
+						 "YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING. Not to "
+						 "be touched by users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_block_based_sampling_algorithm,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -4728,11 +4747,11 @@ static struct config_int ConfigureNamesInt[] =
 		/* TODO(jason): once it becomes stable, this can be PGC_USERSET. */
 		{"yb_insert_on_conflict_read_batch_size", PGC_SUSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Maximum batch size for arbiter index reads during INSERT ON CONFLICT."),
-			gettext_noop("A value of 1 disables this feature."),
+			gettext_noop("A value of 0 disables this feature."),
 			0
 		},
 		&yb_insert_on_conflict_read_batch_size,
-		1, 1, INT_MAX,
+		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -6650,6 +6669,21 @@ static struct config_enum ConfigureNamesEnum[] =
 		YB_STRICT_READ_AFTER_COMMIT_VISIBILITY,
 		yb_read_after_commit_visibility_options,
 		yb_check_no_txn, NULL, NULL
+	},
+
+	{
+		{"yb_sampling_algorithm", PGC_USERSET, QUERY_TUNING_OTHER,
+		 gettext_noop("Which sampling algorithm to use for YSQL. full_table_scan - scan the"
+					  " whole table and pick random rows, block_based_sampling - sample the"
+					  " table for a set of blocks, then scan selected blocks to form a final"
+					  " rows sample."),
+		 NULL,
+		 0
+		},
+		&yb_sampling_algorithm,
+		YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING,
+		yb_sampling_algorithm_options,
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */

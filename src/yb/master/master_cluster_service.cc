@@ -74,7 +74,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     bool is_ysql_replication_info_required =
         FLAGS_enable_ysql_tablespaces_for_placement &&
         (req->has_tablespace_id() || req->has_replication_info());
-    std::unique_ptr<master::ReplicationInfoPB> replication_info;
+    std::unique_ptr<ReplicationInfoPB> replication_info;
     if (is_ysql_replication_info_required) {
       if (req->has_tablespace_id()) {
         LOG(INFO) << "Retrieve placement info from tablespace ID";
@@ -101,12 +101,12 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
           is_ysql_replication_info_required = false;
         } else {
           replication_info =
-              std::make_unique<master::ReplicationInfoPB>(*tablespace_replication_pb);
+              std::make_unique<ReplicationInfoPB>(*tablespace_replication_pb);
         }
       } else if (req->has_replication_info()) {
         LOG(INFO) << "Retrieve placement info from user request";
         replication_info =
-            std::make_unique<master::ReplicationInfoPB>(req->replication_info());
+            std::make_unique<ReplicationInfoPB>(req->replication_info());
       }
     }
 

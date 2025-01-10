@@ -95,6 +95,10 @@ class YsqlManager : public YsqlManagerIf {
       RollbackYsqlMajorCatalogVersionResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
+  Status GetYsqlMajorCatalogUpgradeState(
+      const GetYsqlMajorCatalogUpgradeStateRequestPB* req,
+      GetYsqlMajorCatalogUpgradeStateResponsePB* resp, rpc::RpcContext* rpc);
+
   Status CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch);
 
   Status ValidateWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;

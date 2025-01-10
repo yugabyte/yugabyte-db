@@ -17,8 +17,7 @@
 
 #include <algorithm>
 
-#include <boost/functional/hash.hpp>
-
+#include "yb/util/hash_util.h"
 #include "yb/util/stol_utils.h"
 
 namespace yb {
@@ -70,12 +69,7 @@ std::ostream& operator<<(std::ostream& out, const OpId& op_id) {
 }
 
 size_t hash_value(const OpId& op_id) noexcept {
-  size_t result = 0;
-
-  boost::hash_combine(result, op_id.term);
-  boost::hash_combine(result, op_id.index);
-
-  return result;
+  return YB_STRUCT_HASH_VALUE(op_id, term, index);
 }
 
 } // namespace yb

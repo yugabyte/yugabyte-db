@@ -68,11 +68,10 @@ YsqlCatalogConfig::LockForRead() const {
   return {std::move(l), pb};
 }
 
-std::pair<CowWriteLock<PersistentSysConfigInfo>, SysYSQLCatalogConfigEntryPB&>
-YsqlCatalogConfig::LockForWrite() {
-  CHECK_NOTNULL(config_.get());
-  auto l = config_->LockForWrite();
-  auto& pb = *l.mutable_data()->pb.mutable_ysql_catalog_config();
+std::pair<YsqlCatalogConfig::Updater, SysYSQLCatalogConfigEntryPB&> YsqlCatalogConfig::LockForWrite(
+    const LeaderEpoch& epoch) {
+  auto l = YsqlCatalogConfig::Updater(*this, epoch);
+  auto& pb = l.pb();
   return {std::move(l), pb};
 }
 
@@ -82,15 +81,12 @@ uint64 YsqlCatalogConfig::GetVersion() const {
 }
 
 Result<uint64> YsqlCatalogConfig::IncrementVersion(const LeaderEpoch& epoch) {
-  SharedLock m_lock(mutex_);
-  auto [l, pb] = LockForWrite();
+  auto [l, pb] = LockForWrite(epoch);
 
   uint64_t new_version = pb.version() + 1;
   pb.set_version(new_version);
 
-  // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, config_));
-  l.Commit();
+  RETURN_NOT_OK(l.UpsertAndCommit());
 
   if (FLAGS_log_ysql_catalog_versions) {
     LOG_WITH_FUNC(WARNING) << "set catalog version: " << new_version
@@ -118,8 +114,7 @@ Status YsqlCatalogConfig::SetInitDbDone(const Status& initdb_status, const Leade
     LOG(ERROR) << "Global initdb failed: " << initdb_status;
   }
 
-  SharedLock m_lock(mutex_);
-  auto [l, pb] = LockForWrite();
+  auto [l, pb] = LockForWrite(epoch);
 
   pb.set_initdb_done(true);
   if (initdb_status.ok()) {
@@ -128,8 +123,7 @@ Status YsqlCatalogConfig::SetInitDbDone(const Status& initdb_status, const Leade
     pb.set_initdb_error(initdb_status.ToString());
   }
 
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, config_));
-  l.Commit();
+  RETURN_NOT_OK(l.UpsertAndCommit());
   return Status::OK();
 }
 
@@ -141,14 +135,9 @@ bool YsqlCatalogConfig::IsTransactionalSysCatalogEnabled() const {
 Status YsqlCatalogConfig::SetTransactionalSysCatalogEnabled(const LeaderEpoch& epoch) {
   LOG(INFO) << "Marking YSQL system catalog as transactional in YSQL catalog config";
 
-  SharedLock m_lock(mutex_);
-  auto [l, pb] = LockForWrite();
-
+  auto [l, pb] = LockForWrite(epoch);
   pb.set_transactional_sys_catalog_enabled(true);
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, config_));
-  l.Commit();
-
-  return Status::OK();
+  return l.UpsertAndCommit();
 }
 
 YsqlMajorCatalogUpgradeInfoPB::State YsqlCatalogConfig::GetMajorCatalogUpgradeState() const {
@@ -170,15 +159,34 @@ Status YsqlCatalogConfig::GetMajorCatalogUpgradePreviousError() const {
   return status;
 }
 
-Status YsqlCatalogConfig::Update(
-    const LeaderEpoch& epoch, std::function<Status(SysYSQLCatalogConfigEntryPB&)> update_function) {
-  SharedLock m_lock(mutex_);
-  auto [l, pb] = LockForWrite();
+YsqlCatalogConfig::Updater::Updater(
+    YsqlCatalogConfig& ysql_catalog_config, const LeaderEpoch& epoch)
+    : ysql_catalog_config_(ysql_catalog_config), epoch_(epoch) {
+  SharedLock m_lock(ysql_catalog_config_.mutex_);
+  CHECK_NOTNULL(ysql_catalog_config_.config_.get());
+  cow_lock_ = ysql_catalog_config_.config_->LockForWrite();
+}
 
-  RETURN_NOT_OK(update_function(pb));
+YsqlCatalogConfig::Updater::Updater(YsqlCatalogConfig::Updater&& rhs) noexcept
+    : ysql_catalog_config_(rhs.ysql_catalog_config_),
+      cow_lock_(std::move(rhs.cow_lock_)),
+      epoch_(rhs.epoch_) {}
 
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, config_));
-  l.Commit();
+SysYSQLCatalogConfigEntryPB& YsqlCatalogConfig::Updater::pb() {
+  CHECK(cow_lock_.locked());
+  return *cow_lock_.mutable_data()->pb.mutable_ysql_catalog_config();
+}
+
+Status YsqlCatalogConfig::Updater::UpsertAndCommit() {
+  RSTATUS_DCHECK(
+      cow_lock_.locked(), InternalError, "Invalid attempt to YsqlCatalogConfig without a lock");
+
+  SharedLock m_lock(ysql_catalog_config_.mutex_);
+  // Although we have released and reacquired the mutex_, the epoch ensures that config_ pointer
+  // remains unchanged.
+  RETURN_NOT_OK(ysql_catalog_config_.sys_catalog_.Upsert(epoch_, ysql_catalog_config_.config_));
+  cow_lock_.Commit();
+
   return Status::OK();
 }
 

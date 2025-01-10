@@ -1744,7 +1744,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
       }
       // Make sure the table's tablets can be deleted.
       RETURN_NOT_OK_PREPEND(
-          CheckIfForbiddenToDeleteTabletOf(table),
+          CheckIfForbiddenToDeleteTabletOf(*table),
           Format("Cannot repartition table $0", table->id()));
 
       // Create and mark new tablets for creation.
@@ -1756,10 +1756,10 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
       for (const auto& [source_tablet_id, partition_pb] : table_data->old_tablets) {
         TabletInfoPtr tablet;
         if (is_clone) {
-          tablet = CreateTabletInfo(table.get(), partition_pb, SysTabletsEntryPB::CREATING);
+          tablet = CreateTabletInfo(table, partition_pb, SysTabletsEntryPB::CREATING);
           tablet->mutable_metadata()->mutable_dirty()->pb.set_created_by_clone(true);
         } else {
-          tablet = CreateTabletInfo(table.get(), partition_pb, SysTabletsEntryPB::PREPARING);
+          tablet = CreateTabletInfo(table, partition_pb, SysTabletsEntryPB::PREPARING);
         }
         tablet->mutable_metadata()->mutable_dirty()->pb.set_colocated(table->colocated());
         new_tablets.push_back(tablet);
@@ -1788,7 +1788,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
     ScopedInfoCommitter<TabletInfo> unlocker_new(&new_tablets);
 
     // Mark old tablets for deletion.
-    old_tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
+    old_tablets = VERIFY_RESULT(table->GetTabletsIncludeInactive());
     // Sort so that locking can be done in a deterministic order.
     std::sort(old_tablets.begin(), old_tablets.end(), [](const auto& lhs, const auto& rhs) {
       return lhs->tablet_id() < rhs->tablet_id();
@@ -2559,7 +2559,7 @@ AsyncTabletSnapshotOpPtr CatalogManager::CreateAsyncTabletSnapshotOp(
 }
 
 void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& task) {
-  WARN_NOT_OK(ScheduleTask(task), "Failed to send create snapshot request");
+  WARN_NOT_OK(ScheduleTask(task), Format("Failed to send snapshot task: $0", *task));
 }
 
 Result<std::unique_ptr<rocksdb::DB>> CatalogManager::RestoreSnapshotToTmpRocksDb(

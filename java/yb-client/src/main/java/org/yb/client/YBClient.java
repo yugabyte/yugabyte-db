@@ -56,6 +56,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
 import org.yb.CommonNet;
+import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
@@ -65,7 +66,6 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
@@ -2501,6 +2501,37 @@ public class YBClient implements AutoCloseable {
 
   public DeleteSnapshotResponse deleteSnapshot(UUID snapshotUUID) throws Exception {
     Deferred<DeleteSnapshotResponse> d = asyncClient.deleteSnapshot(snapshotUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public CloneNamespaceResponse cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String targetKeyspaceName,
+      long cloneTimeInMillis)
+      throws Exception {
+    Deferred<CloneNamespaceResponse> d =
+        asyncClient.cloneNamespace(
+            databaseType, sourceKeyspaceName, targetKeyspaceName, cloneTimeInMillis);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public CloneNamespaceResponse cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String keyspaceId,
+      String targetKeyspaceName,
+      long cloneTimeInMillis)
+      throws Exception {
+    Deferred<CloneNamespaceResponse> d =
+        asyncClient.cloneNamespace(
+            databaseType, sourceKeyspaceName, keyspaceId, targetKeyspaceName, cloneTimeInMillis);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public ListClonesResponse listClones(String keyspaceId, Integer cloneSeqNo)
+      throws Exception {
+    Deferred<ListClonesResponse> d = asyncClient.listClones(keyspaceId, cloneSeqNo);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

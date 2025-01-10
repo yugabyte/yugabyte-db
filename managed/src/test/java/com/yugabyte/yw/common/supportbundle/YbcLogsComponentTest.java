@@ -30,9 +30,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -113,10 +114,13 @@ public class YbcLogsComponentTest extends FakeDBApplication {
     when(mockNodeUniverseManager.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);
     // Generate a fake shell response containing the entire list of file paths
     // Mocks the server response
-    List<Path> fakeLogFilePathList =
-        fakeLogsList.stream().map(Paths::get).collect(Collectors.toList());
-    when(mockNodeUniverseManager.getNodeFilePaths(any(), any(), any(), eq(1), eq("f")))
-        .thenReturn(fakeLogFilePathList);
+    Map<String, Long> fakeLogPathSizeMap = new HashMap<>();
+    for (String path : fakeLogsList) {
+      fakeLogPathSizeMap.put(path, 10L);
+    }
+
+    when(mockNodeUniverseManager.getNodeFilePathAndSizes(any(), any(), any(), eq(1), eq("f")))
+        .thenReturn(fakeLogPathSizeMap);
 
     when(mockUniverseInfoHandler.downloadNodeFile(any(), any(), any(), any(), any(), any()))
         .thenAnswer(

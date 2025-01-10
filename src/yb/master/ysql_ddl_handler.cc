@@ -438,9 +438,9 @@ Status CatalogManager::HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_da
   const auto& ddl_state = mutable_pb.ysql_ddl_txn_verifier_state(0);
   if (ddl_state.contains_create_table_op()) {
     // This table was created in this aborted transaction. Drop the xCluster streams and the table.
-    RETURN_NOT_OK(DropXClusterStreamsOfTables({txn_data.table->id()}));
+    RETURN_NOT_OK(YsqlDdlTxnDropTableHelper(txn_data, false /* success */));
 
-    return YsqlDdlTxnDropTableHelper(txn_data, false /* success */);
+    return DropXClusterStreamsOfTables({txn_data.table->id()});
   }
   if (ddl_state.contains_alter_table_op()) {
     std::vector<DdlLogEntry> ddl_log_entries;

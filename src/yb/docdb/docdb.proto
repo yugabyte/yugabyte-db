@@ -83,6 +83,18 @@ message KeyValueWriteBatchPB {
 
   // Advisory locks.
   repeated LockPairPB lock_pairs = 13;
+
+  // Used to prevent conflicts between session-level and transaction-level advisory locks
+  // within the same session.
+  // - For session-level advisory lock requests: background_transaction_id points to
+  //   the in-progress DocDB transaction, if any.
+  // - For transaction-level advisory lock requests: background_transaction_id points to
+  //   the session-level transaction, if exists.
+  optional bytes background_transaction_id = 14;
+
+  // Only relevant when the write op was launched for a session advisory lock request. Used by the
+  // wait-queue to resume deadlocked requests.
+  optional uint64 pg_session_req_version = 15;
 }
 
 message PerDbFilterPB {

@@ -81,3 +81,9 @@ uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
 
 int yb_read_after_commit_visibility = 0;
+
+bool yb_allow_block_based_sampling_algorithm = true;
+
+// TODO(#24089): Once code duplication between yb_guc and ybc_util is removed, we should be able
+// to use YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING instead of 1 and do it in one place.
+int32_t yb_sampling_algorithm = 1 /* YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING */;

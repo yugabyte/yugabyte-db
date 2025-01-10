@@ -404,14 +404,21 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
     return STATUS(IllegalState, "Failed listing tables");
   }
 
+  if (!verify_schema_name) {
+    // There are could be multiple tables with the same name.
+    // So reverse tables to find the latest one.
+    // Since we are dealing with postgres tables, their id reflects postgres table ids, that
+    // are assigned in increasing order.
+    std::reverse(resp.mutable_tables()->begin(), resp.mutable_tables()->end());
+  }
+
   // Now need to find the table and return it.
   for (const auto& table : resp.tables()) {
     // If !verify_table_name, just return the first table.
     if (!verify_table_name ||
         (table.name() == table_name && table.namespace_().name() == namespace_name)) {
       // In case of a match, further check for match in schema_name.
-      if (!verify_schema_name || (!table.has_pgschema_name() && schema_name.empty()) ||
-          (table.has_pgschema_name() && table.pgschema_name() == schema_name)) {
+      if (!verify_schema_name || (table.pgschema_name() == schema_name)) {
         YBTableName yb_table;
         yb_table.set_table_id(table.id());
         yb_table.set_table_name(table_name);
@@ -574,31 +581,39 @@ Status XClusterYsqlTestBase::ValidateRows(
 
 Status XClusterYsqlTestBase::VerifyWrittenRecords(
     std::shared_ptr<client::YBTable> producer_table,
-    std::shared_ptr<client::YBTable> consumer_table,
-    bool verify_column_count_match) {
+    std::shared_ptr<client::YBTable> consumer_table) {
   if (!producer_table) {
     producer_table = producer_table_;
   }
   if (!consumer_table) {
     consumer_table = consumer_table_;
   }
-  return VerifyWrittenRecords(producer_table->name(), consumer_table->name(),
-      verify_column_count_match);
+  return VerifyWrittenRecords(producer_table->name(), consumer_table->name());
+}
+
+Status XClusterYsqlTestBase::VerifyWrittenRecords(ExpectNoRecords expect_no_records) {
+    return VerifyWrittenRecords(
+        producer_table_->name(), consumer_table_->name(), expect_no_records);
 }
 
 Status XClusterYsqlTestBase::VerifyWrittenRecords(
     const YBTableName& producer_table_name, const YBTableName& consumer_table_name,
-    bool verify_column_count_match) {
-  int prod_row_count, cons_row_count, prod_col_count, cons_col_count = 0;
+    ExpectNoRecords expect_no_records) {
+  int prod_row_count, cons_row_count = 0, prod_col_count = 0, cons_col_count = 0;
   const Status s = LoggedWaitFor(
       [this, producer_table_name, consumer_table_name, &prod_row_count, &cons_row_count,
-          &prod_col_count, &cons_col_count]()-> Result<bool> {
+          &prod_col_count, &cons_col_count, expect_no_records]()-> Result<bool> {
         auto producer_results =
             VERIFY_RESULT(ScanToStrings(producer_table_name, &producer_cluster_));
+        prod_row_count = PQntuples(producer_results.get());
+        LOG_WITH_FUNC(INFO) << "prod_row_count: " << prod_row_count;
+        if (expect_no_records ? (prod_row_count != 0) : (prod_row_count == 0)) {
+          return false;
+        }
         auto consumer_results =
             VERIFY_RESULT(ScanToStrings(consumer_table_name, &consumer_cluster_));
-        prod_row_count = PQntuples(producer_results.get());
         cons_row_count = PQntuples(consumer_results.get());
+        LOG_WITH_FUNC(INFO) << "cons_row_count: " << cons_row_count;
         if (prod_row_count != cons_row_count) {
           return false;
         }
@@ -876,7 +891,7 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
   ASSERT_OK(consumer_cluster()->FlushTablets());
 
   ASSERT_OK(InsertRowsInProducer(301, 350));
-  ASSERT_OK(VerifyWrittenRecords(nullptr, nullptr, /*verify_column_count_match=*/false));
+  ASSERT_OK(VerifyWrittenRecords(nullptr, nullptr));
 }
 
 Status XClusterYsqlTestBase::SetUpWithParams(

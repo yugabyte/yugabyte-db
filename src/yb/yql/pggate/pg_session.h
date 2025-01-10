@@ -300,12 +300,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode);
   Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
 
-  void SetForceAllowCatalogModifications(bool allowed);
-
-  bool AreCatalogModificationsForceAllowed() const { return force_allow_catalog_modifications_; }
-
-  bool IsMajorPgVersionUpgrade() const { return is_major_pg_version_upgrade_; }
-
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
@@ -379,8 +373,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   const bool is_major_pg_version_upgrade_;
 
   const WaitEventWatcher& wait_event_watcher_;
-
-  bool force_allow_catalog_modifications_ = false;
 };
 
 }  // namespace yb::pggate

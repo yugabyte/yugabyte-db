@@ -141,7 +141,7 @@ Result<bool> IsSafeTimeReady(
     return true;
   }
 
-  const auto safe_time_map = VERIFY_RESULT(xcluster_manager.GetXClusterNamespaceToSafeTimeMap());
+  const auto safe_time_map = xcluster_manager.GetXClusterNamespaceToSafeTimeMap();
   for (const auto& namespace_info : universe_pb.db_scoped_info().namespace_infos()) {
     const auto& namespace_id = namespace_info.consumer_namespace_id();
     auto* it = FindOrNull(safe_time_map, namespace_id);
@@ -772,9 +772,10 @@ Status DeleteUniverseReplication(
     xcluster_manager->RemoveTableConsumerStream(table.second, universe.ReplicationGroupId());
   }
 
+  l.Commit();
+
   catalog_manager.RemoveUniverseReplicationFromMap(universe.ReplicationGroupId());
 
-  l.Commit();
   LOG(INFO) << "Processed delete universe replication of " << universe.ToString();
 
   return Status::OK();

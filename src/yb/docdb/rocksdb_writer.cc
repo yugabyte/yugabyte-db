@@ -134,7 +134,7 @@ void PutApplyState(
   handler->Put(key_parts, value_parts);
 }
 
-void HandleExternalRecord(
+void HandleRegularRecord(
     const yb::docdb::LWKeyValuePairPB& kv_pair, HybridTime hybrid_time,
     DocHybridTimeBuffer* doc_ht_buffer, rocksdb::DirectWriteHandler* handler,
     IntraTxnWriteId* write_id) {
@@ -198,7 +198,7 @@ Status NonTransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       continue;
     }
 
-    HandleExternalRecord(kv_pair, hybrid_time_, &doc_ht_buffer, handler, &write_id);
+    HandleRegularRecord(kv_pair, hybrid_time_, &doc_ht_buffer, handler, &write_id);
   }
 
   return Status::OK();
@@ -1148,7 +1148,7 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler* handler) 
   for (const auto& write_pair : put_batch_.write_pairs()) {
     if (VERIFY_RESULT(AddEntryToWriteBatch(
             write_pair, &apply_external_transactions, handler, &write_id))) {
-      HandleExternalRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
+      HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
 
       RETURN_NOT_OK(UpdateSchemaVersion(write_pair.key(), write_pair.value()));
     }

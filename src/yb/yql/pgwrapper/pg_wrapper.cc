@@ -271,6 +271,9 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_commands, kLocalPersiste
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replica_identity, kLocalPersisted, false, true,
     "Enable replica identity command for Alter Table query");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_block_based_sampling_algorithm,
+    kLocalVolatile, false, true, "Allow YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING");
+
 DEFINE_RUNTIME_PG_FLAG(
     string, yb_default_replica_identity, "CHANGE",
     "The default replica identity to be assigned to user defined tables at the time of creation. "
@@ -306,6 +309,12 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
     "Enable nop alter role statement optimization.");
+
+DEFINE_RUNTIME_PG_FLAG(string, yb_sampling_algorithm,
+    "block_based_sampling",
+    "Which sampling algorithm to use for YSQL. full_table_scan - scan the whole table and pick "
+    "random rows, block_based_sampling - sample the table for a set of blocks, then scan selected "
+    "blocks to form a final rows sample.");
 
 DEFINE_validator(ysql_yb_xcluster_consistency_level, FLAG_IN_SET_VALIDATOR("database", "tablet"));
 
@@ -1104,6 +1113,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
   CHECK_NE(conf_.tserver_shm_fd, -1);
   proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
+  proc->SetEnv("FLAGS_log_dir", FLAGS_log_dir);
 #ifdef OS_MACOSX
   // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
   if (getenv("LC_ALL") == nullptr) {

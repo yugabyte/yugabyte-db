@@ -35,9 +35,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -107,9 +108,6 @@ public class NodeAgentComponentTest extends FakeDBApplication {
             nodeAgentLogDir + "/node-agent.log",
             nodeAgentLogDir + "/node_agent-2023-08-07T22-50-15.473.log.gz");
 
-    List<Path> fakeLogFilePathList =
-        fakeLogsList.stream().map(Paths::get).collect(Collectors.toList());
-
     // Mock all the invocations with fake data
     when(mockSupportBundleUtil.unGzip(any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
@@ -118,8 +116,13 @@ public class NodeAgentComponentTest extends FakeDBApplication {
         .batchWiseDownload(
             any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
 
-    when(mockNodeUniverseManager.getNodeFilePaths(any(), any(), any(), eq(1), eq("f")))
-        .thenReturn(fakeLogFilePathList);
+    Map<String, Long> fakeLogPathSizeMap = new HashMap<>();
+    for (String path : fakeLogsList) {
+      fakeLogPathSizeMap.put(path, 10L);
+    }
+
+    when(mockNodeUniverseManager.getNodeFilePathAndSizes(any(), any(), any(), eq(1), eq("f")))
+        .thenReturn(fakeLogPathSizeMap);
     // Generate a fake shell response containing the output of the "check file exists" script
     // Mocks the server response as "file existing"
     when(mockNodeUniverseManager.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);

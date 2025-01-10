@@ -27,6 +27,8 @@
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
+#include "yb/rpc/messenger.h"
+
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/atomic.h"
@@ -66,82 +68,48 @@ XClusterSafeTimeService::XClusterSafeTimeService(
     Master* master, CatalogManager* catalog_manager, MetricRegistry* metric_registry)
     : master_(master),
       catalog_manager_(catalog_manager),
-      shutdown_(false),
-      shutdown_cond_(&shutdown_cond_lock_),
-      task_enqueued_(false),
-      safe_time_table_ready_(false),
-      cluster_config_version_(kInvalidClusterConfigVersion),
-      metric_registry_(metric_registry) {}
+      poller_("XClusterSafeTimeService: ", [this] {
+        WARN_NOT_OK(
+          master_->messenger()->ThreadPool().Submit(
+              poll_strand_->wrap([this] { ProcessTaskPeriodically(); })),
+          "Failed to submit periodic task");
+      }),
+      metric_registry_(metric_registry) {
+  poller_.Pause();
+  if (master_) {
+    poll_strand_.emplace(master->messenger()->io_service());
+    poller_.Start(
+        master->messenger()->scheduler(),
+        GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs) * 1s);
+  }
+}
 
-XClusterSafeTimeService::~XClusterSafeTimeService() { Shutdown(); }
-
-Status XClusterSafeTimeService::Init() {
-  auto thread_pool_builder = ThreadPoolBuilder("XClusterSafeTimeServiceTasks");
-  thread_pool_builder.set_max_threads(1);
-
-  RETURN_NOT_OK(thread_pool_builder.Build(&thread_pool_));
-  thread_pool_token_ = thread_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
-
-  return OK();
+XClusterSafeTimeService::~XClusterSafeTimeService() {
+  Shutdown();
 }
 
 void XClusterSafeTimeService::Shutdown() {
-  shutdown_ = true;
-  YB_PROFILE(shutdown_cond_.Broadcast());
-
-  if (thread_pool_token_) {
-    thread_pool_token_->Shutdown();
-  }
-
-  if (thread_pool_) {
-    thread_pool_->Shutdown();
-  }
+  poller_.Shutdown();
 }
 
 void XClusterSafeTimeService::ScheduleTaskIfNeeded() {
-  if (shutdown_) {
-    return;
-  }
-
-  std::lock_guard lock(task_enqueue_lock_);
-  if (task_enqueued_) {
-    return;
-  }
-
-  // It is ok to scheduled a new task even when we have a running task. The thread pool token uses
-  // serial execution and the task will sleep before returning. So it is always guaranteed that we
-  // only run one task and that it will wait the required amount before running again.
-  task_enqueued_ = true;
-  Status s = thread_pool_token_->SubmitFunc(
-      std::bind(&XClusterSafeTimeService::ProcessTaskPeriodically, this));
-  if (!s.IsOk()) {
-    task_enqueued_ = false;
-    LOG(ERROR) << "Failed to schedule XClusterSafeTime Task :" << s;
-  }
+  poll_strand_->dispatch([this] {
+    poller_.Resume();
+  });
 }
 
 void XClusterSafeTimeService::ProcessTaskPeriodically() {
-  {
-    std::lock_guard lock(task_enqueue_lock_);
-    task_enqueued_ = false;
-  }
-
-  if (shutdown_) {
-    return;
-  }
-
-  auto wait_time = GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs);
-  if (wait_time <= 0) {
-    // Can only happen in tests
-    VLOG_WITH_FUNC(1) << "Going into idle mode due to xcluster_safe_time_update_interval_secs flag";
-    EnterIdleMode("xcluster_safe_time_update_interval_secs flag");
-    return;
-  }
-
   auto leader_term_result = GetLeaderTermFromCatalogManager();
   if (!leader_term_result.ok()) {
-    VLOG_WITH_FUNC(1) << "Going into idle mode due to master leader change";
-    EnterIdleMode("master leader change");
+    auto leader_status = catalog_manager_->CheckIsLeaderAndReady();
+    if (!leader_status.ok()) {
+      LOG_WITH_FUNC(INFO) << "Going into idle mode due to master leader change: " << leader_status;
+      poller_.Pause();
+    } else {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 60, 1)
+          << "Skip xCluster safe time computation since this is not a healthy master leader: "
+          << leader_term_result.status();
+    }
     return;
   }
   int64_t leader_term = leader_term_result.get();
@@ -157,24 +125,16 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
 
   if (!further_computation_needed) {
     VLOG_WITH_FUNC(1) << "Going into idle mode due to lack of work";
-    EnterIdleMode("no more work left");
+    poller_.Pause();
     return;
   }
-
-  // Delay before before running the task again.
-  {
-    MutexLock lock(shutdown_cond_lock_);
-    shutdown_cond_.TimedWait(wait_time * 1s);
-  }
-
-  ScheduleTaskIfNeeded();
 }
 
 Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
     const LeaderEpoch& epoch, GetXClusterSafeTimeResponsePB* resp) {
   // Recompute safe times again before fetching maps.
   RETURN_NOT_OK(ComputeSafeTime(epoch.leader_term));
-  const auto& current_safe_time_map = VERIFY_RESULT(GetXClusterNamespaceToSafeTimeMap());
+  const auto& current_safe_time_map = GetXClusterNamespaceToSafeTimeMap();
   XClusterNamespaceToSafeTimeMap max_safe_time_map;
   {
     std::lock_guard lock(mutex_);
@@ -230,7 +190,6 @@ Result<HybridTime> XClusterSafeTimeService::GetXClusterSafeTimeForNamespace(
     const XClusterSafeTimeFilter& filter) {
   SharedLock lock(mutex_);
   SCHECK(safe_time_table_ready_, IllegalState, "Safe time table is not ready yet.");
-  SCHECK_EQ(leader_term_, leader_term, IllegalState, "Received unexpected leader term");
 
   const XClusterNamespaceToSafeTimeMap& safe_time_map =
       VERIFY_RESULT(GetFilteredXClusterSafeTimeMap(filter));
@@ -245,7 +204,7 @@ Result<std::unordered_map<NamespaceId, uint64_t>>
 XClusterSafeTimeService::GetEstimatedDataLossMicroSec(const LeaderEpoch& epoch) {
   // Recompute safe times again before fetching maps.
   RETURN_NOT_OK(ComputeSafeTime(epoch.leader_term));
-  const auto& current_safe_time_map = VERIFY_RESULT(GetXClusterNamespaceToSafeTimeMap());
+  auto current_safe_time_map = GetXClusterNamespaceToSafeTimeMap();
   XClusterNamespaceToSafeTimeMap max_safe_time_map;
   {
     std::lock_guard lock(mutex_);
@@ -462,7 +421,7 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
     }
   }
 
-  const auto previous_safe_time_map = VERIFY_RESULT(GetXClusterNamespaceToSafeTimeMap());
+  const auto previous_safe_time_map = GetXClusterNamespaceToSafeTimeMap();
   MakeAtLeastPrevious(previous_safe_time_map, namespace_safe_time_map);
 
   // Update any namespace safe times where the filter removed all tables.
@@ -478,7 +437,6 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
   // and setting the new config. Its important to make sure that the config we persist is accurate
   // as only that protects the safe time from going backwards.
   RETURN_NOT_OK(SetXClusterSafeTime(leader_term, namespace_safe_time_map));
-  leader_term_ = leader_term;
 
   if (update_metrics) {
     // Update the metrics using the newly computed maps.
@@ -643,8 +601,7 @@ Result<bool> XClusterSafeTimeService::CreateTableRequired() {
   return !producer_tablet_namespace_map_.empty();
 }
 
-Result<XClusterNamespaceToSafeTimeMap>
-XClusterSafeTimeService::GetXClusterNamespaceToSafeTimeMap() {
+XClusterNamespaceToSafeTimeMap XClusterSafeTimeService::GetXClusterNamespaceToSafeTimeMap() {
   return master_->xcluster_manager()->GetXClusterNamespaceToSafeTimeMap();
 }
 

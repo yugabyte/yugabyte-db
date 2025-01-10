@@ -91,6 +91,8 @@ template<IndexableVectorType Vector,
          ValidDistanceResultType DistanceResult>
 struct VectorLSMOptions {
   using Types = VectorLSMTypes<Vector, DistanceResult>;
+
+  std::string log_prefix;
   std::string storage_dir;
   typename Types::VectorIndexFactory vector_index_factory;
   size_t points_per_chunk;
@@ -153,6 +155,10 @@ class VectorLSM {
  private:
   friend class VectorLSMInsertTask<Vector, DistanceResult>;
   friend struct MutableChunk;
+
+  const std::string& LogPrefix() const {
+    return options_.log_prefix;
+  }
 
   // Saves the current mutable chunk to disk and creates a new one.
   Status RollChunk(size_t min_points) REQUIRES(mutex_);

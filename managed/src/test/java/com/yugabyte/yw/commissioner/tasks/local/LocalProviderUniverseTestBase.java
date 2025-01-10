@@ -80,8 +80,10 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import com.yugabyte.yw.scheduler.JobScheduler;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -119,6 +121,8 @@ import org.junit.Rule;
 import org.junit.rules.TestWatcher;
 import org.junit.rules.Timeout;
 import org.junit.runner.Description;
+import org.yb.CommonNet.PlacementInfoPB;
+import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
@@ -906,14 +910,14 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       CatalogEntityInfo.SysClusterConfigEntryPB config = masterClusterConfig.getConfig();
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       UniverseDefinitionTaskParams.Cluster primaryCluster = universeDetails.getPrimaryCluster();
-      CatalogEntityInfo.ReplicationInfoPB replicationInfo = config.getReplicationInfo();
-      CatalogEntityInfo.PlacementInfoPB liveReplicas = replicationInfo.getLiveReplicas();
+      ReplicationInfoPB replicationInfo = config.getReplicationInfo();
+      PlacementInfoPB liveReplicas = replicationInfo.getLiveReplicas();
       verifyCluster(universe, primaryCluster, liveReplicas);
       verifyMasterAddresses(universe);
       if (!universeDetails.getReadOnlyClusters().isEmpty()) {
         UniverseDefinitionTaskParams.Cluster asyncCluster =
             universeDetails.getReadOnlyClusters().get(0);
-        CatalogEntityInfo.PlacementInfoPB readReplicas = replicationInfo.getReadReplicas(0);
+        PlacementInfoPB readReplicas = replicationInfo.getReadReplicas(0);
         verifyCluster(universe, asyncCluster, readReplicas);
       }
       if (waitForClusterToStabilize) {
@@ -937,9 +941,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   protected void verifyCluster(
-      Universe universe,
-      UniverseDefinitionTaskParams.Cluster cluster,
-      CatalogEntityInfo.PlacementInfoPB replicas) {
+      Universe universe, UniverseDefinitionTaskParams.Cluster cluster, PlacementInfoPB replicas) {
     assertEquals(cluster.uuid.toString(), replicas.getPlacementUuid().toStringUtf8());
     assertEquals(cluster.userIntent.replicationFactor, replicas.getNumReplicas());
     Map<UUID, Integer> nodeCount = localNodeManager.getNodeCount(cluster.uuid);
@@ -995,6 +997,29 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       result.put(flag.get("name").asText(), flag.get("value").asText());
     }
     return result;
+  }
+
+  public Map<String, String> getDiskFlags(
+      NodeDetails nodeDetails, Universe universe, UniverseTaskBase.ServerType serverType) {
+    Map<String, String> results = new HashMap<>();
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getCluster(nodeDetails.placementUuid).userIntent;
+    String gflagsFile =
+        localNodeManager.getNodeGFlagsFile(
+            userIntent, serverType, localNodeManager.getNodeInfo(nodeDetails));
+    try (FileReader fr = new FileReader(gflagsFile);
+        BufferedReader br = new BufferedReader(fr)) {
+      String line;
+      while ((line = br.readLine()) != null) {
+        String[] split = line.split("=");
+        String key = split[0].substring(2);
+        String val = split.length == 1 ? "" : split[1];
+        results.put(key, val);
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+    return results;
   }
 
   protected void restartUniverse(Universe universe, boolean rolling) throws InterruptedException {
@@ -1089,7 +1114,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   protected TaskInfo waitForTask(UUID taskUUID, Universe... universes) throws InterruptedException {
     try {
-      return CommissionerBaseTest.waitForTask(taskUUID);
+      return waitForTask(taskUUID);
     } catch (Exception e) {
       dumpToLog(universes);
       throw new RuntimeException(e);
@@ -1194,7 +1219,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
           && !lastTaskUuid.equals(details.placementModificationTaskUuid)) {
         // A new task has already started, wait for it to complete.
         TaskInfo taskInfo = TaskInfo.getOrBadRequest(details.placementModificationTaskUuid);
-        return CommissionerBaseTest.waitForTask(taskInfo.getUuid());
+        return waitForTask(taskInfo.getUuid());
       }
       CustomerTask customerTask = CustomerTask.getLastTaskByTargetUuid(universeUuid);
       if (!lastTaskUuid.equals(customerTask.getTaskUUID())) {

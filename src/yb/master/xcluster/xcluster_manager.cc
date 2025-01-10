@@ -284,7 +284,7 @@ Status XClusterManager::PauseResumeXClusterProducerStreams(
   return xcluster_config_->PauseResumeXClusterProducerStreams(epoch, streams_to_change, paused);
 }
 
-Result<XClusterNamespaceToSafeTimeMap> XClusterManager::GetXClusterNamespaceToSafeTimeMap() const {
+XClusterNamespaceToSafeTimeMap XClusterManager::GetXClusterNamespaceToSafeTimeMap() const {
   return XClusterTargetManager::GetXClusterNamespaceToSafeTimeMap();
 }
 

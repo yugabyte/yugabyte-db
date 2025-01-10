@@ -19,9 +19,11 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_defaults.h"
-
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
+
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -112,7 +114,7 @@ void GeoTransactionsTestBase::CreateTransactionTable(int region) {
   auto current_version = GetCurrentVersion();
 
   std::string name = strings::Substitute("transactions_region$0", region);
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   auto replicas = replication_info.mutable_live_replicas();
   replicas->set_num_replicas(1);
   auto pb = replicas->add_placement_blocks();
@@ -151,7 +153,7 @@ void GeoTransactionsTestBase::CreateMultiRegionTransactionTable() {
   auto current_version = GetCurrentVersion();
 
   std::string name = strings::Substitute("transactions_multiregion");
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   auto replicas = replication_info.mutable_live_replicas();
   replicas->set_num_replicas(3);
   auto pb = replicas->add_placement_blocks();
@@ -312,16 +314,30 @@ Status GeoTransactionsTestBase::StartShutdownTabletServers(
   return Status::OK();
 }
 
-void GeoTransactionsTestBase::ValidateAllTabletLeaderinZone(std::vector<TabletId> tablet_uuids,
+void GeoTransactionsTestBase::ValidateAllTabletLeaderInZone(std::vector<TabletId> tablet_uuids,
                                                             int region) {
-  std::string region_str = yb::Format("rack$0", region);
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  for (const auto& tablet_id : tablet_uuids) {
-    auto table_info = ASSERT_RESULT(catalog_manager.GetTabletInfo(tablet_id));
-    auto leader = ASSERT_RESULT(table_info->GetLeader());
-    auto server_reg_pb = leader->GetRegistration();
-    ASSERT_EQ(server_reg_pb.cloud_info().placement_region(), region_str);
+  ASSERT_TRUE(AllTabletLeaderInZone(std::move(tablet_uuids), region));
+}
+
+bool GeoTransactionsTestBase::AllTabletLeaderInZone(
+    std::vector<TabletId> tablet_uuids, int region) {
+  std::string region_str = Format("rack$0", region);
+  std::sort(tablet_uuids.begin(), tablet_uuids.end());
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  for (const auto& peer : peers) {
+    if (!std::binary_search(tablet_uuids.begin(), tablet_uuids.end(), peer->tablet_id())) {
+      continue;
+    }
+    auto ts = cluster_->find_tablet_server(peer->permanent_uuid());
+    ServerRegistrationPB reg;
+    CHECK_OK(ts->server()->GetRegistration(&reg));
+    if (reg.cloud_info().placement_region() != region_str) {
+      LOG(INFO) << Format(
+          "T $0 P $1: $2 in wrong zone", peer->tablet_id(), peer->permanent_uuid(), reg);
+      return false;
+    }
   }
+  return true;
 }
 
 Result<uint32_t> GeoTransactionsTestBase::GetTablespaceOidForRegion(int region) const {

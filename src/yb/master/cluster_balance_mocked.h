@@ -41,7 +41,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
 
   const TabletInfoMap& GetTabletMap() const override { return tablet_map_; }
 
-  TableIndex::TablesRange GetTables() const override {
+  TableIndex::PrimaryTablesRange GetTables() const override {
     return tables_.GetPrimaryTables();
   }
 

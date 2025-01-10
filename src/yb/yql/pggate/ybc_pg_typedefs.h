@@ -627,6 +627,7 @@ typedef struct PgReplicationSlotDescriptor {
   YBCPgReplicaIdentityDescriptor *replica_identities;
   int replica_identities_count;
   uint64_t last_pub_refresh_time;
+  const char *yb_lsn_type;
 } YBCReplicationSlotDescriptor;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
@@ -719,6 +720,7 @@ typedef struct PgYCQLStatementStats {
   double max_time;
   double mean_time;
   double stddev_time;
+  const char* keyspace;
 } YCQLStatementStats;
 
 // Struct to store ASH samples in the circular buffer.
@@ -804,6 +806,7 @@ typedef struct PgTabletsDescriptor {
   size_t partition_key_start_len;
   const char* partition_key_end;
   size_t partition_key_end_len;
+  const char* tablet_data_state;
 } YBCPgTabletsDescriptor;
 
 typedef struct MetricsInfo {

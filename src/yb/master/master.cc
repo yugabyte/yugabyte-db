@@ -157,7 +157,7 @@ Master::Master(const MasterOptions& opts)
       metric_entity_cluster_(
           METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(), "yb.cluster")),
       sys_catalog_(new SysCatalogTable(this, metric_registry_.get())),
-      ts_manager_(new TSManager(*sys_catalog_)),
+      ts_manager_(new TSManager(*sys_catalog_, *clock())),
       catalog_manager_(new CatalogManager(this, sys_catalog_.get())),
       auto_flags_manager_(
           new MasterAutoFlagsManager(clock(), fs_manager_.get(), catalog_manager_impl())),

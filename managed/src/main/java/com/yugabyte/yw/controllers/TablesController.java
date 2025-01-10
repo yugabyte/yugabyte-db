@@ -34,6 +34,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -197,12 +198,12 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      notes = "YbaApi Internal. Get a list of all tables in the specified universe",
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "getAllTables",
-      value = "List all tables",
+      value = "Get a list of all tables in the specified universe",
       response = TableInfoForm.TableInfoResp.class,
       responseContainer = "List")
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.8.0.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.25.1.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -228,12 +229,12 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      notes = "YbaApi Internal. Get a list of all namespaces in the specified universe.",
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "getAllNamespaces",
-      value = "List all namespaces",
+      value = "Get a list of all namespaces in the specified universe.",
       response = TableInfoForm.NamespaceInfoResp.class,
       responseContainer = "List")
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.25.1.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -256,11 +257,11 @@ public class TablesController extends AuthenticatedController {
    * @return json-serialized description of the table
    */
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Describe a table",
       nickname = "describeTable",
       response = TableDefinitionTaskParams.class)
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.25.1.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -669,12 +670,12 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      notes = "YbaApi Internal. Get a list of all tablespaces of a given universe.",
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "getAllTableSpaces",
-      value = "List all tablespaces",
+      value = "Get a list of all tablespaces of a given universe.",
       response = TableSpaceInfo.class,
       responseContainer = "List")
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.14.0.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.25.1.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

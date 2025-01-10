@@ -58,7 +58,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   MUST_USE_RESULT bool UpdateStatus(
       const TabletId& status_tablet, TransactionStatus transaction_status,
       HybridTime time_of_status, HybridTime coordinator_safe_time, SubtxnSet aborted_subtxn_set,
-      const Status& expected_deadlock_status);
+      const Status& expected_deadlock_status, PgSessionRequestVersion pg_session_req_version);
 
   void UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode);
 
@@ -185,7 +185,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
                      TransactionStatus transaction_status,
                      const SubtxnSet& aborted_subtxn_set,
                      const std::vector<StatusRequest>& status_waiters,
-                     const Status& expected_deadlock_status);
+                     const Status& expected_deadlock_status,
+                     PgSessionRequestVersion pg_session_req_version);
 
   static Result<TransactionStatusResult> MakeAbortResult(
       const Status& status,
@@ -208,6 +209,9 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // Status containing the deadlock info if the transaction was aborted due to a deadlock.
   // Defaults to Status::OK() in all other cases.
   Status last_known_deadlock_status_ = Status::OK();
+  // Only relevant for docdb transactions of type PgClientSessionKind::kPgSession. The field is
+  // used by the the wait-queue to resume deadlocked session advisory lock requests.
+  PgSessionRequestVersion last_known_pg_session_req_version_ = 0;
   std::vector<StatusRequest> status_waiters_;
   rpc::Rpcs::Handle get_status_handle_;
   rpc::Rpcs::Handle abort_handle_;

@@ -70,6 +70,7 @@ You can manage the following resources using ybm:
 | [cluster network](managed-cli-network/) | allow-list assign, allow-list unassign,</br>endpoint create, endpoint delete , endpoint describe,</br>endpoint list, endpoint update |
 | [cluster read-replica](managed-cli-read-replica/) | create, delete, list, update |
 | [cluster db-audit-logging](managed-cli-db-audit-logging/) | enable, disable, describe, update |
+| [cluster db-query-logging](managed-cli-db-query-logging/) | enable, disable, describe, update |
 | [integration](managed-cli-integration/) | create, delete, list |
 | [metrics-exporter](managed-cli-metrics-exporter/) [deprecated] | assign, create, delete, describe, list, pause, unassign, update |
 | [network-allow-list](managed-cli-network-allow-list/) | create, delete, list |

@@ -157,10 +157,12 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     return column_id_;
   }
 
-  Status Open(const std::string& data_root_dir,
+  Status Open(const std::string& log_prefix,
+              const std::string& data_root_dir,
               rpc::ThreadPool& thread_pool,
               const PgVectorIdxOptionsPB& idx_options) {
     typename LSM::Options lsm_options = {
+      .log_prefix = log_prefix,
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
           idx_options.idx_type(), idx_options.dimensions()))),
@@ -230,6 +232,10 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     return lsm_.CreateCheckpoint(GetStorageCheckpointDir(out, DirName()));
   }
 
+  const std::string& ToString() const override {
+    return lsm_.options().log_prefix;
+  }
+
  private:
   Status StoreBaseTableKeys(
       const vector_index::BaseTableKeysBatch& batch,
@@ -280,6 +286,7 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
 } // namespace
 
 Result<VectorIndexPtr> CreateVectorIndex(
+    const std::string& log_prefix,
     const std::string& data_root_dir,
     rpc::ThreadPool& thread_pool,
     Slice indexed_table_key_prefix,
@@ -288,7 +295,7 @@ Result<VectorIndexPtr> CreateVectorIndex(
   auto& options = index_info.vector_idx_options();
   auto result = std::make_shared<VectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), doc_db);
-  RETURN_NOT_OK(result->Open(data_root_dir, thread_pool, options));
+  RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool, options));
   return result;
 }
 

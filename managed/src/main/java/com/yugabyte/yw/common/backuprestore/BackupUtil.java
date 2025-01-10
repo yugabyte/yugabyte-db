@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.models.Backup;
@@ -901,5 +902,18 @@ public class BackupUtil {
       return baseBackupOpt.get().getBackupInfo().isPointInTimeRestoreEnabled();
     }
     return false;
+  }
+
+  public static void checkApiEnabled(TableType tableType, UserIntent userIntent)
+      throws PlatformServiceException {
+    if (tableType != null) {
+      if (tableType.equals(TableType.YQL_TABLE_TYPE) && !userIntent.enableYCQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot perform operation on YCQL tables when API is disabled");
+      } else if (tableType.equals(TableType.PGSQL_TABLE_TYPE) && !userIntent.enableYSQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot perform operation on YSQL tables when API is disabled");
+      }
+    }
   }
 }

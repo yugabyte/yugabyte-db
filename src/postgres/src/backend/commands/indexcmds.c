@@ -1591,7 +1591,7 @@ DefineIndex(Oid relationId,
 
 	if (IsYugaByteEnabled() &&
 		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
-		YBCForceAllowCatalogModifications(true);
+		YBCDdlEnableForceCatalogModification();
 
 	indexRelationId =
 		index_create(rel, indexRelationName, indexRelationId, parentIndexId,

@@ -128,14 +128,19 @@ bool YBTable::colocated() const {
   return info_->colocated;
 }
 
-const boost::optional<master::ReplicationInfoPB>& YBTable::replication_info() const {
+const boost::optional<ReplicationInfoPB>& YBTable::replication_info() const {
   return info_->replication_info;
 }
 
 std::string YBTable::ToString() const {
-  return Format(
-      "$0 $1 IndexInfo: $2 IndexMap $3", (IsIndex() ? "Index Table" : "Normal Table"), id(),
-      yb::ToString(index_info()), yb::ToString(index_map()));
+  std::string result = Format("$0 $1", (IsIndex() ? "Index" : "Table"), name());
+  if (info_->index_info) {
+    result += " index info: " + AsString(*info_->index_info);
+  }
+  if (!info_->index_map.empty()) {
+    result += " index map: " + AsString(info_->index_map);
+  }
+  return result;
 }
 
 const dockv::PartitionSchema& YBTable::partition_schema() const {

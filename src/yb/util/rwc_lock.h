@@ -136,7 +136,13 @@ class RWCLock {
   // locking thread holds this mutex, which prevents any new
   // threads from obtaining the lock in any mode.
 
+  // Thread sanitizer does not understand timed_mutex and cannot catch related issues.
+  // So use std::mutex with it.
+#if defined(THREAD_SANITIZER)
+  mutable std::mutex write_mutex_;
+#else
   mutable std::timed_mutex write_mutex_;
+#endif
 
 #ifndef NDEBUG
   CoarseTimePoint write_start_;

@@ -46,6 +46,8 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/util/atomic.h"
 
 DEFINE_NON_RUNTIME_bool(master_register_ts_check_desired_host_port, true,
@@ -63,6 +65,10 @@ DEFINE_RUNTIME_AUTO_bool(persist_tserver_registry, kLocalPersisted, false, true,
     "Whether to persist the map of registered tservers in the universe to the sys catalog. Also "
     "controls whether to reload the map of registered tservers from the sys catalog when reloading "
     "the sys catalog.");
+
+DEFINE_test_flag(bool, enable_ysql_operation_lease, false,
+    "Enables the client operation lease. The client operation lease must be held by a tserver to "
+    "host pg sessions. It is refreshed by the master leader.");
 
 namespace yb::master {
 namespace {
@@ -90,18 +96,20 @@ std::function<bool(const ServerRegistrationPB&)> GetHostPortCheckerFunction(
 class TSDescriptorLoader : public Visitor<PersistentTServerInfo> {
  public:
   explicit TSDescriptorLoader(
-      const CloudInfoPB& local_cloud_info, rpc::ProxyCache* proxy_cache) noexcept
-      : local_cloud_info_(local_cloud_info), proxy_cache_(proxy_cache) {}
+      const CloudInfoPB& local_cloud_info, rpc::ProxyCache* proxy_cache,
+      HybridTime load_time) noexcept
+      : local_cloud_info_(local_cloud_info), proxy_cache_(proxy_cache), load_time_(load_time) {}
 
-  std::unordered_map<std::string, TSDescriptorPtr>&& TakeMap();
+  TSDescriptorMap&& TakeMap();
 
  protected:
   Status Visit(const std::string& id, const SysTabletServerEntryPB& metadata) override;
 
  private:
-  std::unordered_map<std::string, TSDescriptorPtr> map_;
+  TSDescriptorMap map_;
   const CloudInfoPB& local_cloud_info_;
   rpc::ProxyCache* proxy_cache_;
+  HybridTime load_time_;
 };
 
 template <typename... Items>
@@ -109,7 +117,8 @@ Status UpsertIfRequired(const LeaderEpoch& epoch, SysCatalogTable& sys_catalog, 
 
 }  // namespace
 
-TSManager::TSManager(SysCatalogTable& sys_catalog) noexcept : sys_catalog_(sys_catalog) {}
+TSManager::TSManager(SysCatalogTable& sys_catalog, server::Clock& clock) noexcept
+    : sys_catalog_(sys_catalog), clock_(clock) {}
 
 Result<TSDescriptorPtr> TSManager::LookupTS(const NodeInstancePB& instance) const {
   SharedLock<decltype(map_lock_)> l(map_lock_);
@@ -158,63 +167,57 @@ std::optional<TSDescriptorPtr> TSManager::LookupTSInternalUnlocked(
   return *found_ptr;
 }
 
-Result<std::pair<std::vector<TSDescriptorPtr>, std::vector<TSDescriptor::WriteLock>>>
-TSManager::FindHostPortCollisions(
-    const NodeInstancePB& instance, const TSRegistrationPB& registration,
-    const CloudInfoPB& local_cloud_info) const {
-  auto hostport_checker = GetHostPortCheckerFunction(registration, local_cloud_info);
-  std::vector<TSDescriptorPtr> descs;
-  std::vector<TSDescriptor::WriteLock> locks;
-  for (const auto& [_, ts_desc] : servers_by_id_) {
-    if (ts_desc->permanent_uuid() == instance.permanent_uuid()) {
-      continue;
-    }
-    // Acquire write locks because we may have to mutate later.
-    auto l = ts_desc->LockForWrite();
-    if (!hostport_checker(l->pb.registration())) {
-      continue;
-    }
-    if (l->pb.instance_seqno() >= instance.instance_seqno()) {
-      return STATUS_FORMAT(
-          AlreadyPresent, "Cannot register TS $0 $1, host port collision with existing TS $2",
-          instance.ShortDebugString(), registration.common().ShortDebugString(),
-          l->pb.ShortDebugString());
-    }
-    l.mutable_data()->pb.set_state(SysTabletServerEntryPB::REPLACED);
-    descs.push_back(ts_desc);
-    locks.push_back(std::move(l));
-  }
-  return std::make_pair(std::move(descs), std::move(locks));
-}
-
 Result<TSManager::RegistrationMutationData> TSManager::ComputeRegistrationMutationData(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
     CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache,
     RegisteredThroughHeartbeat registered_through_heartbeat) {
   TSManager::RegistrationMutationData reg_data;
   {
+    auto hostport_checker = GetHostPortCheckerFunction(registration, local_cloud_info);
     SharedLock<decltype(map_lock_)> map_l(map_lock_);
     const std::string& uuid = instance.permanent_uuid();
-    // Find any already registered tservers that have conflicting addresses with the registering
-    // tserver.
-    std::tie(reg_data.replaced_descs, reg_data.replaced_desc_locks) =
-        VERIFY_RESULT(FindHostPortCollisions(instance, registration, local_cloud_info));
-    auto it = servers_by_id_.find(uuid);
-    if (it == servers_by_id_.end()) {
-      // We have no entry for this uuid. Create a new TSDescriptor and make a note to add it
-      // to the registry.
-      std::tie(reg_data.desc, reg_data.registered_desc_lock) =
-          VERIFY_RESULT(TSDescriptor::CreateNew(
-              instance, registration, std::move(local_cloud_info), proxy_cache,
-              registered_through_heartbeat));
-      reg_data.insert_into_map = true;
-    } else {
-      // This tserver has registered before. We just need to update its registration metadata.
-      reg_data.registered_desc_lock = VERIFY_RESULT(it->second->UpdateRegistration(
-          instance, registration, registered_through_heartbeat));
-      reg_data.desc = it->second;
+
+    for (auto it = servers_by_id_.begin();; ++it) {
+      auto ts_desc = it != servers_by_id_.end() ? it->second : nullptr;
+      if (!reg_data.desc && (!ts_desc || ts_desc->permanent_uuid() >= uuid)) {
+        if (ts_desc && uuid == ts_desc->permanent_uuid()) {
+          // This tserver has registered before. We just need to update its registration metadata.
+          reg_data.registered_desc_lock = VERIFY_RESULT(ts_desc->UpdateRegistration(
+              instance, registration, registered_through_heartbeat));
+          reg_data.desc = ts_desc;
+          continue;
+        } else {
+          // We have no entry for this uuid. Create a new TSDescriptor and make a note to add it
+          // to the registry.
+          std::tie(reg_data.desc, reg_data.registered_desc_lock) =
+              VERIFY_RESULT(TSDescriptor::CreateNew(
+                  instance, registration, std::move(local_cloud_info), proxy_cache,
+                  registered_through_heartbeat));
+          reg_data.insert_into_map = true;
+        }
+      }
+
+      if (!ts_desc) {
+        break;
+      }
+
+      // Acquire write locks because we may have to mutate later.
+      auto l = ts_desc->LockForWrite();
+      if (!hostport_checker(l->pb.registration())) {
+        continue;
+      }
+      if (l->pb.instance_seqno() >= instance.instance_seqno()) {
+        return STATUS_FORMAT(
+            AlreadyPresent, "Cannot register TS $0 $1, host port collision with existing TS $2",
+            instance.ShortDebugString(), registration.common().ShortDebugString(),
+            l->pb.ShortDebugString());
+      }
+      l.mutable_data()->pb.set_state(SysTabletServerEntryPB::REPLACED);
+      reg_data.replaced_descs.push_back(ts_desc);
+      reg_data.replaced_desc_locks.push_back(std::move(l));
     }
   }
+
   return reg_data;
 }
 
@@ -228,17 +231,19 @@ Status TSManager::RegisterFromRaftConfig(
   return Status::OK();
 }
 
-Result<TSDescriptorPtr> TSManager::LookupAndUpdateTSFromHeartbeat(
+Result<HeartbeatResult>
+TSManager::LookupAndUpdateTSFromHeartbeat(
     const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch) const {
   auto desc = VERIFY_RESULT(LookupTS(heartbeat_request.common().ts_instance()));
   auto lock = desc->LockForWrite();
-  RETURN_NOT_OK(desc->UpdateTSMetadataFromHeartbeat(heartbeat_request, lock));
+  auto lease_delta = VERIFY_RESULT(
+      desc->UpdateFromHeartbeat(heartbeat_request, lock, clock_.Now()));
   RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, desc));
   lock.Commit();
-  return desc;
+  return HeartbeatResult(std::move(desc), std::move(lease_delta));
 }
 
-Result<TSDescriptorPtr> TSManager::RegisterFromHeartbeat(
+Result<HeartbeatResult> TSManager::RegisterFromHeartbeat(
     const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch,
     CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache) {
   return RegisterInternal(
@@ -246,12 +251,12 @@ Result<TSDescriptorPtr> TSManager::RegisterFromHeartbeat(
       std::cref(heartbeat_request), std::move(local_cloud_info), epoch, proxy_cache);
 }
 
-Result<TSDescriptorPtr> TSManager::RegisterInternal(
+Result<HeartbeatResult> TSManager::RegisterInternal(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
     std::optional<std::reference_wrapper<const TSHeartbeatRequestPB>> request,
     CloudInfoPB&& local_cloud_info, const LeaderEpoch& epoch, rpc::ProxyCache* proxy_cache) {
   TSCountCallback callback;
-  TSDescriptorPtr result;
+  HeartbeatResult result;
   auto registered_through_heartbeat = RegisteredThroughHeartbeat(request.has_value());
   {
     MutexLock l(registration_lock_);
@@ -259,11 +264,11 @@ Result<TSDescriptorPtr> TSManager::RegisterInternal(
         instance, registration, std::move(local_cloud_info), proxy_cache,
         registered_through_heartbeat));
     if (request.has_value()) {
-      RETURN_NOT_OK(reg_data.desc->UpdateTSMetadataFromHeartbeat(
-          *request, reg_data.registered_desc_lock));
+      result.lease_update = VERIFY_RESULT(reg_data.desc->UpdateFromHeartbeat(
+          *request, reg_data.registered_desc_lock, clock_.Now()));
     }
-    std::tie(result, callback) =
-      VERIFY_RESULT(DoRegistrationMutation(instance, registration, std::move(reg_data), epoch));
+    std::tie(result.desc, callback) =
+        VERIFY_RESULT(DoRegistrationMutation(instance, registration, std::move(reg_data), epoch));
   }
   if (callback) {
     callback();
@@ -353,6 +358,12 @@ void TSManager::GetAllReportedDescriptors(TSDescriptorVector* descs) const {
                    -> bool { return ts->IsLive() && ts->has_tablet_report(); }, descs);
 }
 
+TSDescriptorVector TSManager::GetAllDescriptorsWithALiveLease() const {
+  TSDescriptorVector descs;
+  GetDescriptors([](const auto& ts) -> bool { return ts->HasLiveClientOperationLease(); }, &descs);
+  return descs;
+}
+
 bool TSManager::IsTsInCluster(const TSDescriptorPtr& ts, const std::string& cluster_uuid) {
   return ts->placement_uuid() == cluster_uuid;
 }
@@ -395,6 +406,11 @@ void TSManager::SetTSCountCallback(int min_count, TSCountCallback callback) {
   ts_count_callback_min_count_ = min_count;
 }
 
+void TSManager::SetLeaseExpiredCallback(LeaseExpiredCallback callback) {
+  std::lock_guard l(registration_lock_);
+  lease_expired_callback_ = std::move(callback);
+}
+
 size_t TSManager::NumDescriptors() const {
   SharedLock<decltype(map_lock_)> l(map_lock_);
   return NumDescriptorsUnlocked();
@@ -408,27 +424,41 @@ size_t TSManager::NumLiveDescriptors() const {
 }
 
 Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
-  SharedLock<decltype(map_lock_)> l(map_lock_);
-  auto current_time = MonoTime::Now();
-  auto unresponsive_timeout_millis = GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms);
-  std::vector<TSDescriptor*> updated_descs;
-  std::vector<TSDescriptor::WriteLock> cow_locks;
-  for (const auto& [id, desc] : servers_by_id_) {
-    auto last_heartbeat_time = desc->LastHeartbeatTime();
-    if (last_heartbeat_time && current_time.GetDeltaSince(last_heartbeat_time).ToMilliseconds() <
-                                   unresponsive_timeout_millis) {
-      continue;
+  std::unordered_map<std::string, uint64_t> uuid_to_expired_lease_epoch;
+  {
+    SharedLock<decltype(map_lock_)> l(map_lock_);
+    auto mono_time = MonoTime::Now();
+    auto hybrid_time = clock_.Now();
+    std::vector<TSDescriptor*> updated_descs;
+    std::vector<TSDescriptor::WriteLock> cow_locks;
+    for (const auto& [id, desc] : servers_by_id_) {
+      auto [maybe_lock, expired_lease] = desc->MaybeUpdateLiveness(mono_time, hybrid_time);
+      if (expired_lease) {
+        uuid_to_expired_lease_epoch[id] = *expired_lease;
+      }
+      if (maybe_lock) {
+        updated_descs.push_back(desc.get());
+        cow_locks.push_back(std::move(maybe_lock).value());
+      }
     }
-    auto l = desc->LockForWrite();
-    if (l->pb.state() == SysTabletServerEntryPB::LIVE) {
-      l.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
-      updated_descs.push_back(desc.get());
-      cow_locks.push_back(std::move(l));
+    RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, updated_descs));
+    for (auto& l : cow_locks) {
+      l.Commit();
     }
   }
-  RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, updated_descs));
-  for (auto& l : cow_locks) {
-    l.Commit();
+  if (uuid_to_expired_lease_epoch.empty()) {
+    return Status::OK();
+  }
+  LeaseExpiredCallback local_lease_expired_callback;
+  {
+    std::lock_guard l(registration_lock_);
+    local_lease_expired_callback = lease_expired_callback_;
+  }
+  for (const auto& [uuid, lease_epoch] : uuid_to_expired_lease_epoch) {
+    // TODO(zdrudi): we should pass the lease_epoch here instead of hardcoding 0.
+    // Also need to handle failures.
+    (void)lease_epoch;
+    local_lease_expired_callback(uuid, 0, epoch);
   }
   return Status::OK();
 }
@@ -438,7 +468,7 @@ Status TSManager::RunLoader(
   if (!GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
     return Status::OK();
   }
-  auto loader = std::make_unique<TSDescriptorLoader>(cloud_info, proxy_cache);
+  auto loader = std::make_unique<TSDescriptorLoader>(cloud_info, proxy_cache, clock_.Now());
   RETURN_NOT_OK(sys_catalog_.Visit(loader.get()));
   MutexLock l_reg(registration_lock_);
   std::lock_guard l_map(map_lock_);
@@ -481,7 +511,8 @@ Status TSManager::RemoveTabletServer(
     }
     // Verify tserver is not hosting any tablets.
     for (const auto& table : tables) {
-      for (const auto& tablet : VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue))) {
+      for (const auto& tablet : VERIFY_RESULT(
+               table->GetTabletsIncludeInactive())) {
         auto replicas_map = tablet->GetReplicaLocations();
         if (replicas_map->contains(desc->id())) {
           return STATUS_FORMAT(
@@ -507,6 +538,12 @@ Status TSManager::RemoveTabletServer(
   }
   return Status::OK();
 }
+
+HeartbeatResult::HeartbeatResult() : desc(nullptr), lease_update(std::nullopt) { }
+
+HeartbeatResult::HeartbeatResult(
+    TSDescriptorPtr&& desc_param, std::optional<ClientOperationLeaseUpdate>&& lease_update_param)
+    : desc(std::move(desc_param)), lease_update(std::move(lease_update_param)) {}
 
 namespace {
 
@@ -571,7 +608,7 @@ std::function<bool(const ServerRegistrationPB&)> GetHostPortCheckerFunction(
   }
 }
 
-std::unordered_map<std::string, TSDescriptorPtr>&& TSDescriptorLoader::TakeMap() {
+TSDescriptorMap&& TSDescriptorLoader::TakeMap() {
   return std::move(map_);
 }
 
@@ -584,8 +621,8 @@ Status TSDescriptorLoader::Visit(const std::string& id, const SysTabletServerEnt
   //   2. if the tserver is unresponsive, this field doesn't matter.
   DCHECK(metadata.persisted())
       << "All TS descriptors written to the sys catalog should have their persisted bit set.";
-  auto desc =
-      TSDescriptor::LoadFromEntry(id, metadata, CloudInfoPB(local_cloud_info_), proxy_cache_);
+  auto desc = TSDescriptor::LoadFromEntry(
+      id, metadata, CloudInfoPB(local_cloud_info_), proxy_cache_, load_time_);
   auto [it, inserted] = map_.insert({id, std::move(desc)});
   if (!inserted) {
     return STATUS(

@@ -35,28 +35,34 @@
 #include <string>
 
 #include "yb/cdc/xcluster_types.h"
+
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_consensus_util.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/schema.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/xcluster/master_xcluster_util.h"
-#include "yb/master/xcluster_rpc_tasks.h"
+#include "yb/consensus/opid_util.h"
+
+#include "yb/dockv/partition.h"
+
+#include "yb/gutil/map-util.h"
+
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/xcluster_rpc_tasks.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 
-#include "yb/gutil/map-util.h"
 #include "yb/util/atomic.h"
-#include "yb/util/flags/auto_flags.h"
 #include "yb/util/format.h"
+#include "yb/util/oid_generator.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
+#include "yb/util/flags/auto_flags.h"
 
 using std::string;
 
@@ -70,8 +76,22 @@ DEFINE_RUNTIME_AUTO_bool(
     "Whether to use the new schema for colocated tables based on the parent_table_id field.");
 TAG_FLAG(use_parent_table_id_field, advanced);
 
-namespace yb {
-namespace master {
+namespace yb::master {
+
+namespace {
+
+Result<TabletInfoPtr> PromoteTabletPointer(const std::weak_ptr<TabletInfo>& tablet) {
+  if (auto p = tablet.lock()) {
+    return p;
+  } else {
+    return STATUS(
+        IllegalState,
+        "Tablet objects backing this table have been freed. This table object is possibly stale, "
+        "from a previous load of the sys catalog.");
+  }
+}
+
+} // namespace
 
 // ================================================================================================
 // TabletReplica
@@ -183,18 +203,14 @@ class TabletInfo::LeaderChangeReporter {
   Result<TSDescriptorPtr> old_leader_;
 };
 
-TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id)
+TabletInfo::TabletInfo(const TableInfoPtr& table, TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
       table_(table),
       last_update_time_(MonoTime::Now()),
-      last_time_with_valid_leader_(MonoTime::Now()),
-      reported_schema_version_({}) {
-  // Have to pre-initialize to an empty map, in case of access before the first setter is called.
-  replica_locations_ = std::make_shared<TabletReplicaMap>();
+      last_time_with_valid_leader_(last_update_time_) {
 }
 
-TabletInfo::~TabletInfo() {
-}
+TabletInfo::~TabletInfo() = default;
 
 void TabletInfo::SetReplicaLocations(
     std::shared_ptr<TabletReplicaMap> replica_locations) {
@@ -608,8 +624,6 @@ Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatu
 
 void TableInfo::AddStatusTabletViaSplitPartition(
     TabletInfoPtr old_tablet, const dockv::Partition& partition, const TabletInfoPtr& new_tablet) {
-  std::lock_guard l(lock_);
-
   const auto& new_dirty = new_tablet->metadata().dirty();
   if (new_dirty.is_deleted()) {
     return;
@@ -620,6 +634,7 @@ void TableInfo::AddStatusTabletViaSplitPartition(
   partition.ToPB(old_partition);
   old_lock.Commit();
 
+  std::lock_guard l(lock_);
   tablets_.emplace(new_tablet->id(), new_tablet);
 
   if (!new_dirty.is_hidden()) {
@@ -911,19 +926,29 @@ bool TableInfo::HasPartitions(const std::vector<PartitionKey> other) const {
   return true;
 }
 
-Result<TabletInfos> TableInfo::GetTablets(IncludeInactive include_inactive) const {
+Result<TabletInfos> TableInfo::GetTabletsIncludeInactive() const {
   TabletInfos result;
   SharedLock<decltype(lock_)> l(lock_);
-  if (include_inactive) {
-    result.reserve(tablets_.size());
-    for (const auto& [_, tablet_weak_ptr] : tablets_) {
-      result.push_back(VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr)));
-    }
-  } else {
+  result.reserve(tablets_.size());
+  for (const auto& [_, tablet_weak_ptr] : tablets_) {
+    result.push_back(VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr)));
+  }
+  return result;
+}
+
+Result<TabletInfos> TableInfo::GetTablets(GetTabletsMode mode) const {
+  TabletInfos result;
+  {
+    SharedLock<decltype(lock_)> l(lock_);
     result.reserve(partitions_.size());
     for (const auto& [_, tablet_weak_ptr] : partitions_) {
       result.push_back(VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr)));
     }
+  }
+  if (mode == GetTabletsMode::kOrderByTabletId) {
+    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) {
+      return lhs->id() < rhs->id();
+    });
   }
   return result;
 }
@@ -1128,17 +1153,6 @@ std::vector<TransactionId> TableInfo::EraseDdlTxnsWaitingForSchemaVersion(int sc
   ddl_txns_waiting_for_schema_version_.erase(
       ddl_txns_waiting_for_schema_version_.begin(), upper_bound_iter);
   return txns;
-}
-
-Result<TabletInfoPtr> TableInfo::PromoteTabletPointer(const std::weak_ptr<TabletInfo>& tablet) {
-  if (auto p = tablet.lock()) {
-    return p;
-  } else {
-    return STATUS(
-        IllegalState,
-        "Tablet objects backing this table have been freed. This table object is possibly stale, "
-        "from a previous load of the sys catalog.");
-  }
 }
 
 bool TableInfo::IsUserCreated() const {
@@ -1405,6 +1419,9 @@ std::string CDCStreamInfo::ToString() const {
     return Format(
         "$0 [namespace=$1] {metadata=$2} ", id(), l->pb.namespace_id(), l->pb.ShortDebugString());
   }
+  if (l->pb.table_id().empty()) {
+    return Format("$0 {metadata=$2} ", id(), l->pb.ShortDebugString());
+  }
   return Format("$0 [table=$1] {metadata=$2} ", id(), l->pb.table_id(0), l->pb.ShortDebugString());
 }
 
@@ -1608,5 +1625,49 @@ bool SnapshotInfo::IsDeleteInProgress() const {
   return LockForRead()->is_deleting();
 }
 
-}  // namespace master
-}  // namespace yb
+TabletInfoPtr MakeTabletInfo(
+    const TableInfoPtr& table,
+    const TabletId& tablet_id) {
+  auto tablet = std::make_shared<TabletInfo>(
+      table, tablet_id.empty() ? GenerateObjectId() : tablet_id);
+
+  VLOG_WITH_FUNC(2)
+      << "Table: " << table->ToString() << ", tablet: " << tablet->ToString();
+
+  tablet->mutable_metadata()->StartMutation();
+
+  return tablet;
+}
+
+void SetupTabletInfo(
+    TabletInfo& tablet,
+    const TableInfo& table,
+    const PartitionPB& partition,
+    SysTabletsEntryPB::State state) {
+  auto& metadata = tablet.mutable_metadata()->mutable_dirty()->pb;
+  metadata.set_state(state);
+  metadata.mutable_partition()->CopyFrom(partition);
+  metadata.set_table_id(table.id());
+  if (FLAGS_use_parent_table_id_field && !table.is_system()) {
+    tablet.SetTableIds({table.id()});
+    metadata.set_hosted_tables_mapped_by_parent_id(true);
+  } else {
+    // This is important: we are setting the first table id in the table_ids list
+    // to be the id of the original table that creates the tablet.
+    metadata.add_table_ids(table.id());
+  }
+
+  auto& cstate = *metadata.mutable_committed_consensus_state();
+  cstate.set_current_term(consensus::kMinimumTerm);
+  cstate.mutable_config()->set_opid_index(consensus::kInvalidOpIdIndex);
+}
+
+TabletInfoPtr CreateTabletInfo(
+    const TableInfoPtr& table, const PartitionPB& partition, SysTabletsEntryPB::State state,
+    const TabletId& tablet_id) {
+  auto tablet = MakeTabletInfo(table, tablet_id);
+  SetupTabletInfo(*tablet, *table, partition, state);
+  return tablet;
+}
+
+}  // namespace yb::master

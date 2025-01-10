@@ -60,7 +60,7 @@ permutation s1_begin_rr s1_xact_lock_bigint s2_begin_rr s2_try_xact_lock_bigint 
 permutation s1_begin_rr s1_xact_lock_shared s2_begin_rr s2_try_xact_lock s2_commit s2_begin_rr s2_try_xact_lock_shared s2_commit s1_commit
 permutation s1_begin_rr s1_xact_lock_bigint_shared s2_begin_rr s2_try_xact_lock_bigint s2_commit s2_begin_rr s2_try_xact_lock_bigint_shared s2_commit s1_commit
 
-# Session level locks are not supported
+# Session level locks
 permutation s1_lock
 permutation s1_lock_shared
 permutation s1_lock_bigint
@@ -74,6 +74,8 @@ permutation s1_unlock_shared
 permutation s1_unlock_bigint
 permutation s1_unlock_bigint_shared
 permutation s1_unlock_all
+
+permutation s1_unlock s1_lock s1_unlock_shared s1_lock_shared s1_unlock_shared s1_unlock
 
 # Rolling back a transaction or a savepoint should release any advisory locks in that scope
 permutation s1_begin_rr s1_xact_lock s2_begin_rr s2_xact_lock s1_rollback s2_commit

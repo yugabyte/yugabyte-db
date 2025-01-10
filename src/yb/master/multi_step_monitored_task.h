@@ -98,7 +98,7 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
 
   void Complete();
 
-  std::string LogPrefix() { return Format("$0: ", description()); }
+  std::string LogPrefix() const;
 
   void ScheduleNextStep(std::function<Status()> next_step, std::string step_description)
       EXCLUDES(schedule_task_mutex_);

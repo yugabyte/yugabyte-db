@@ -18,6 +18,7 @@
 #include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
+#include "yb/util/hash_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
@@ -35,10 +36,7 @@ namespace {
 
 struct TableSchemaNamePairHash {
   std::size_t operator()(const XClusterOutboundReplicationGroup::TableSchemaNamePair& elem) const {
-    std::size_t hash = 0;
-    boost::hash_combine(hash, elem.first);
-    boost::hash_combine(hash, elem.second);
-    return hash;
+    return YB_STRUCT_HASH_VALUE(elem, first, second);
   }
 };
 

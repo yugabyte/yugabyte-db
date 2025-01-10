@@ -1846,7 +1846,9 @@ void CDCServiceImpl::GetChanges(
     }
   }
 
-  VLOG(1) << "T " << req->tablet_id() << " sending GetChanges response " << AsString(*resp);
+  VLOG_WITH_FUNC(1)
+      << "T " << req->tablet_id() << ", record: " << AsString(record) << " sending response: "
+      << AsString(*resp);
   if (record.GetSourceType() == CDCSDK && FLAGS_enable_cdcsdk_lag_collection) {
     LogGetChangesLagForCDCSDK(stream_id, *resp);
   }
@@ -1907,7 +1909,7 @@ void CDCServiceImpl::GetChanges(
     } else if (req->safe_hybrid_time() != -1) {
       cdc_sdk_safe_time = HybridTime::FromPB(req->safe_hybrid_time());
     } else {
-      YB_LOG_EVERY_N(WARNING, 10000)
+      YB_LOG_EVERY_N_SECS(WARNING, 600)
           << "safe_hybrid_time is not present in request, using response to get safe_hybrid_time";
       cdc_sdk_safe_time = HybridTime::FromPB(resp->safe_hybrid_time());
     }
@@ -2086,7 +2088,7 @@ void CDCServiceImpl::ProcessMetricsForEmptyChildrenTablets(
 
       // Need to work our way up the hierarchy until we find a tablet with a valid value.
       auto parent_tablet = child_tablet_meta.parent_tablet_info;
-      std::unordered_set<TabletStreamInfo, TabletStreamInfo::Hash> tablet_hierarchy;
+      std::unordered_set<TabletStreamInfo> tablet_hierarchy;
       tablet_hierarchy.insert(child_tablet);
 
       while (!parent_tablet.tablet_id.empty()) {
@@ -2135,7 +2137,7 @@ void CDCServiceImpl::ProcessMetricsForEmptyChildrenTablets(
 void CDCServiceImpl::UpdateMetrics() {
   auto tablet_checkpoints = impl_->TabletCheckpointsCopy();
   TabletInfoToLastReplicationTimeMap cdc_state_tablets_to_last_replication_time;
-  std::unordered_set<TabletStreamInfo, TabletStreamInfo::Hash> expired_entries;
+  std::unordered_set<TabletStreamInfo> expired_entries;
   EmptyChildrenTabletMap empty_children_tablets;
 
   Status iteration_status;

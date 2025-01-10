@@ -7,13 +7,17 @@ import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -76,5 +80,25 @@ class TabletMetaComponent implements SupportBundleComponent {
       NodeDetails node)
       throws Exception {
     this.downloadComponent(supportBundleTaskParams, customer, universe, bundlePath, node);
+  }
+
+  public Map<String, Long> getFilesListWithSizes(
+      Customer customer,
+      SupportBundleFormData bundleData,
+      Universe universe,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
+
+    String mountPath =
+        supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
+    String nodeHomeDir = mountPath + "/yb-data";
+    Map<String, Long> res = new HashMap<>();
+    for (String path : sourceNodeFiles) {
+      String fullPath = Paths.get(nodeHomeDir, path).toString();
+      res.putAll(nodeUniverseManager.getNodeFilePathAndSizes(node, universe, fullPath, 1, "f"));
+    }
+    return res;
   }
 }

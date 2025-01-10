@@ -6,20 +6,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.controllers.handlers.SupportBundleHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.SupportBundleFormData;
+import com.yugabyte.yw.forms.SupportBundleSizeEstimateResponse;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -61,8 +59,7 @@ public class SupportBundleController extends AuthenticatedController {
 
   @Inject Commissioner commissioner;
   @Inject SupportBundleUtil supportBundleUtil;
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
-  @Inject private RuntimeConfGetter confGetter;
+  @Inject SupportBundleHandler sbHandler;
   @Inject Config config;
 
   @ApiOperation(
@@ -99,68 +96,10 @@ public class SupportBundleController extends AuthenticatedController {
       log.info(
           "Trying to create support bundle while universe {} is "
               + "in a locked/paused state or has backup running.",
-          universe.getUniverseUUID());
+          universe.getName());
     }
 
-    // Support bundle for onprem and k8s universes was originally behind a runtime flag.
-    // Now both are enabled by default.
-    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
-    Boolean k8sEnabled = confGetter.getGlobalConf(GlobalConfKeys.supportBundleK8sEnabled);
-    Boolean onpremEnabled = confGetter.getGlobalConf(GlobalConfKeys.supportBundleOnPremEnabled);
-    Boolean allowCoresCollection =
-        confGetter.getGlobalConf(GlobalConfKeys.supportBundleAllowCoresCollection);
-    if (CloudType.onprem.equals(cloudType) && !onpremEnabled) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Creating support bundle for on-prem universes is not enabled. "
-              + "Please set onprem_enabled=true to create support bundle");
-    }
-    if (CloudType.kubernetes.equals(cloudType) && !k8sEnabled) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Creating support bundle for k8s universes is not enabled. "
-              + "Please set k8s_enabled=true to create support bundle");
-    }
-
-    if (cloudType != CloudType.kubernetes
-        && bundleData.components.contains(ComponentType.K8sInfo)) {
-      bundleData.components.remove(ComponentType.K8sInfo);
-      log.warn(
-          "Component 'K8sInfo' is only applicable for kubernetes universes, not cloud type = "
-              + cloudType.toString()
-              + ". Continuing without it.");
-    }
-
-    if (bundleData.components.contains(ComponentType.CoreFiles) && !allowCoresCollection) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Core file collection is disabled globally. Either remove core files component from"
-              + " bundle creation, or enable runtime config"
-              + " 'yb.support_bundle.allow_cores_collection'.");
-    }
-
-    if (bundleData.components.contains(ComponentType.PrometheusMetrics)
-        && ((bundleData.promDumpStartDate == null) ^ (bundleData.promDumpEndDate == null))) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Either define both 'promDumpStartDate' and 'promDumpEndDate', or neither (Will default"
-              + " to 'yb.support_bundle.default_prom_dump_range' in this case)");
-    }
-
-    if (bundleData.startDate != null
-        && bundleData.endDate != null
-        && !supportBundleUtil.checkDatesValid(bundleData.startDate, bundleData.endDate)) {
-      throw new PlatformServiceException(BAD_REQUEST, "'startDate' should be before the 'endDate'");
-    }
-
-    if (bundleData.components.contains(ComponentType.PrometheusMetrics)
-        && bundleData.promDumpStartDate != null
-        && bundleData.promDumpEndDate != null
-        && !supportBundleUtil.checkDatesValid(
-            bundleData.promDumpStartDate, bundleData.promDumpEndDate)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "'promDumpStartDate' should be before the 'promDumpEndDate'");
-    }
+    sbHandler.bundleDataVaidation(bundleData, universe);
 
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
     SupportBundleTaskParams taskParams =
@@ -319,5 +258,36 @@ public class SupportBundleController extends AuthenticatedController {
   public Result getComponents(UUID customerUUID) {
     EnumSet<ComponentType> components = EnumSet.allOf(ComponentType.class);
     return PlatformResults.withData(components);
+  }
+
+  @ApiOperation(
+      value = "Estimate support bundle size for specific universe",
+      nickname = "estimateSupportBundleSize",
+      response = SupportBundleSizeEstimateResponse.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "supportBundle",
+          value = "support bundle info",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.SupportBundleFormData",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT)),
+  })
+  public Result estimateSize(UUID customerUUID, UUID universeUUID, Http.Request request)
+      throws Exception {
+    JsonNode requestBody = request.body().asJson();
+    SupportBundleFormData bundleData =
+        formFactory.getFormDataOrBadRequest(requestBody, SupportBundleFormData.class);
+
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    sbHandler.bundleDataVaidation(bundleData, universe);
+
+    return PlatformResults.withData(sbHandler.estimateBundleSize(customer, bundleData, universe));
   }
 }

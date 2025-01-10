@@ -344,6 +344,10 @@ export const XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/stable/yugabyte-platform/back-up-restore-universes/disaster-recovery/disaster-recovery-tables/';
 export const XCLUSTER_REPLICATION_DDL_STEPS_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/xcluster-replication/xcluster-replication-ddl/#order-of-operations';
+export const XCLUSTER_DR_SCHEMA_CHANGE_MODES_DOCUMENTATION_URL =
+  'https://docs.yugabyte.com/stable/yugabyte-platform/back-up-restore-universes/disaster-recovery/#semi-automatic-mode';
+export const XCLUSTER_REPLICATION_SCHEMA_CHANGE_MODES_DOCUMENTATION_URL =
+  'https://docs.yugabyte.com/stable/deploy/multi-dc/async-replication/async-replication-transactional/#setup';
 
 export const I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS = 'clusterDetail.xCluster.config.tableStatus';
 export const I18N_KEY_PREFIX_XCLUSTER_TERMS = 'clusterDetail.xCluster.terms';

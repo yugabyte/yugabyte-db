@@ -1794,7 +1794,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
       *output << "Unable to decode partition schema: " << EscapeForHtmlToString(s.ToString());
       return;
     }
-    Result<TabletInfos> tablets_result = table->GetTablets(IncludeInactive::kTrue);
+    Result<TabletInfos> tablets_result = table->GetTabletsIncludeInactive();
     if (!tablets_result) {
       *output << "Unable to fetch tablets for table: " << EscapeForHtmlToString(s.ToString());
       return;
@@ -2097,7 +2097,7 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
       jw.EndObject();
       return;
     }
-    auto tablets_result = table->GetTablets(IncludeInactive::kTrue);
+    auto tablets_result = table->GetTabletsIncludeInactive();
     if (!tablets_result) {
       jw.String("error");
       jw.String("Unable to fetch tablets: " + s.ToString());
@@ -2208,7 +2208,7 @@ Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetNonSystemTablets() {
     if (table->is_system()) {
       continue;
     }
-    TabletInfos ts = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
+    TabletInfos ts = VERIFY_RESULT(table->GetTabletsIncludeInactive());
     nonsystem_tablets.insert(
         nonsystem_tablets.end(), std::make_move_iterator(ts.begin()),
         std::make_move_iterator(ts.end()));
@@ -3403,7 +3403,7 @@ Status MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       continue;
     }
 
-    TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
+    TabletInfos tablets = VERIFY_RESULT(table->GetTabletsIncludeInactive());
     bool is_user_table = table->IsUserCreated();
     for (const auto& tablet : tablets) {
       if (tablet->LockForRead()->is_deleted()) {
@@ -3460,7 +3460,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
       continue;
     }
 
-    TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
+    TabletInfos tablets = VERIFY_RESULT(table->GetTabletsIncludeInactive());
 
     for (const auto& tablet : tablets) {
       if (tablet->LockForRead()->is_deleted()) {

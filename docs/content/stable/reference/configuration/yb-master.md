@@ -945,6 +945,12 @@ By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. 
 
 Default: `false`
 
+##### --enable_tablet_split_of_replication_slot_streamed_tables
+
+Toggle automatic tablet splitting for tables under replication slot.
+
+Default: `false`
+
 ## Metric export flags
 
 YB-Master metrics are available in Prometheus format at `http://localhost:7000/prometheus-metrics`.
@@ -1039,12 +1045,12 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ##### --allowed_preview_flags_csv
 
-This is a comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 
 {{<warning>}}
-Inclusion in this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You'll still need to configure the flag separately after adding it to this list.
+Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
 {{</warning>}}
 
 ##### --ysql_index_backfill_rpc_timeout_ms

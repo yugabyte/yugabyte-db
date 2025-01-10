@@ -38,7 +38,10 @@ var describeUniverseCmd = &cobra.Command{
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 		universeListRequest := authAPI.ListUniverses()
-		universeName, _ := cmd.Flags().GetString("name")
+		universeName, err := cmd.Flags().GetString("name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 		universeListRequest = universeListRequest.Name(universeName)
 
 		r, response, err := universeListRequest.Execute()

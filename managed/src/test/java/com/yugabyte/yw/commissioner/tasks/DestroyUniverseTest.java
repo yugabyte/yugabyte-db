@@ -394,13 +394,13 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isDeleteAssociatedCerts = true;
     UUID destroyTaskUuid = commissioner.submit(TaskType.DestroyUniverse, taskParams);
     try {
+      // Resume the create universe task.
+      MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
+      commissioner.resumeTask(createTaskUuid);
       // Wait for the destroy task to start running.
       waitForTaskRunning(destroyTaskUuid);
     } catch (InterruptedException e) {
       fail();
-    } finally {
-      MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
-      commissioner.resumeTask(createTaskUuid);
     }
     try {
       waitForTask(createTaskUuid);

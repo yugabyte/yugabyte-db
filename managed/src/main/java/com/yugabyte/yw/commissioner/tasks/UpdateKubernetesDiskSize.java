@@ -86,6 +86,14 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
                 universe.getUniverseDetails().communicationPorts.masterRpcPort,
                 taskParams().useNewHelmNamingStyle);
         UserIntent newIntent = taskParams().getPrimaryCluster().userIntent;
+        UserIntent curIntent =
+            universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
+        // Update disk size if there is a change
+        boolean tserverDiskSizeChanged =
+            !curIntent.deviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
+        boolean masterDiskSizeChanged =
+            !(curIntent.masterDeviceInfo == null)
+                && !curIntent.masterDeviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
         // run the disk resize tasks for each AZ in the Cluster
         createResizeDiskTask(
             universe.getName(),
@@ -96,6 +104,8 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
             taskParams().useNewHelmNamingStyle,
             universe.isYbcEnabled(),
             universe.getUniverseDetails().getYbcSoftwareVersion(),
+            tserverDiskSizeChanged,
+            masterDiskSizeChanged,
             usePreviousGflagsChecksum);
 
         // persist the changes to the universe

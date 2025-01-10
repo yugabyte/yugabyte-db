@@ -15,6 +15,7 @@
 
 #include <shared_mutex>
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/util/cow_object.h"
 
@@ -25,7 +26,6 @@ class IsOperationDoneResult;
 namespace master {
 
 class IsInitDbDoneResponsePB;
-struct LeaderEpoch;
 struct PersistentSysConfigInfo;
 
 class YsqlCatalogConfig {
@@ -55,20 +55,38 @@ class YsqlCatalogConfig {
   YsqlMajorCatalogUpgradeInfoPB::State GetMajorCatalogUpgradeState() const EXCLUDES(mutex_);
   Status GetMajorCatalogUpgradePreviousError() const EXCLUDES(mutex_);
 
-  Status Update(
-      const LeaderEpoch& epoch, std::function<Status(SysYSQLCatalogConfigEntryPB&)> update_function)
+  class Updater {
+   public:
+    ~Updater() = default;
+
+    Updater(Updater&& rhs) noexcept;
+
+    SysYSQLCatalogConfigEntryPB& pb();
+    Status UpsertAndCommit();
+
+   private:
+    friend class YsqlCatalogConfig;
+    Updater(YsqlCatalogConfig& ysql_catalog_config, const LeaderEpoch& epoch);
+
+    YsqlCatalogConfig& ysql_catalog_config_;
+    CowWriteLock<PersistentSysConfigInfo> cow_lock_;
+    const LeaderEpoch epoch_;
+
+    DISALLOW_COPY_AND_ASSIGN(Updater);
+  };
+
+  std::pair<Updater, SysYSQLCatalogConfigEntryPB&> LockForWrite(const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
 
  private:
   std::pair<CowReadLock<PersistentSysConfigInfo>, const SysYSQLCatalogConfigEntryPB&> LockForRead()
       const EXCLUDES(mutex_);
 
-  std::pair<CowWriteLock<PersistentSysConfigInfo>, SysYSQLCatalogConfigEntryPB&> LockForWrite()
-      REQUIRES_SHARED(mutex_);
-
   SysCatalogTable& sys_catalog_;
   mutable std::shared_mutex mutex_;
   scoped_refptr<SysConfigInfo> config_ GUARDED_BY(mutex_);
+
+  DISALLOW_COPY_AND_ASSIGN(YsqlCatalogConfig);
 };
 
 }  // namespace master

@@ -1472,8 +1472,9 @@ pg_replication_slots| SELECT l.slot_name,
     l.safe_wal_size,
     l.two_phase,
     l.yb_stream_id,
-    l.yb_restart_commit_ht
-   FROM (pg_get_replication_slots() l(slot_name, plugin, slot_type, datoid, temporary, active, active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn, wal_status, safe_wal_size, two_phase, yb_stream_id, yb_restart_commit_ht)
+    l.yb_restart_commit_ht,
+    l.yb_lsn_type
+   FROM (pg_get_replication_slots() l(slot_name, plugin, slot_type, datoid, temporary, active, active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn, wal_status, safe_wal_size, two_phase, yb_stream_id, yb_restart_commit_ht, yb_lsn_type)
      LEFT JOIN pg_database d ON ((l.datoid = d.oid)));
 pg_roles| SELECT pg_authid.rolname,
     pg_authid.rolsuper,
@@ -2665,8 +2666,9 @@ yb_local_tablets| SELECT yb_local_tablets.tablet_id,
     yb_local_tablets.ysql_schema_name,
     yb_local_tablets.table_name,
     yb_local_tablets.partition_key_start,
-    yb_local_tablets.partition_key_end
-   FROM yb_local_tablets() yb_local_tablets(tablet_id, table_id, table_type, namespace_name, ysql_schema_name, table_name, partition_key_start, partition_key_end);
+    yb_local_tablets.partition_key_end,
+    yb_local_tablets.state
+   FROM yb_local_tablets() yb_local_tablets(tablet_id, table_id, table_type, namespace_name, ysql_schema_name, table_name, partition_key_start, partition_key_end, state);
 yb_query_diagnostics_status| SELECT yb_get_query_diagnostics_status.status,
     yb_get_query_diagnostics_status.description,
     yb_get_query_diagnostics_status.query_id,

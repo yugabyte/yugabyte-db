@@ -67,6 +67,14 @@ message TransactionStatePB {
   // coordinator can reply with the current txn reuse version for the transaction, and the
   // receiver can drop all requests/locks corresponding to older versions.
   optional uint64 txn_reuse_version = 13;
+
+  // Field 14 is used for session level transactions alone (when session advisory locks
+  // feature is enabled).
+  // The current pg session request version is propagated on transaction heartbeats. If the
+  // coordinator has a higher version than the one received in the request, it errors with the
+  // status holding the active pg session request version, post which YBTransaction updates
+  // its state.
+  optional uint64 pg_session_req_version = 14;
 }
 
 message TruncatePB {

@@ -1736,4 +1736,31 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             validatePgssData(pgssPath, queryId, 1);
         }
     }
+
+    @Test
+    public void testExplainDistWithoutExplainAnalyze() throws Exception {
+        QueryDiagnosticsParams params = new QueryDiagnosticsParams(
+            2, /* diagnosticsInterval */
+            100, /* explainSampleRate */
+            false, /* explainAnalyze */
+            true, /* explainDist */
+            false, /* explainDebug */
+            0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            String queryId = generateUniqueQueryId();
+            String query = String.format(
+                "SELECT yb_query_diagnostics(%s, %d, %d, %b, %b, %b, %d)",
+                queryId,
+                params.diagnosticsInterval,
+                params.explainSampleRate,
+                params.explainAnalyze,
+                params.explainDist,
+                params.explainDebug,
+                params.bindVarQueryMinDuration);
+
+            runInvalidQuery(statement, query,
+                    "explain_dist cannot be true without explain_analyze");
+        }
+    }
 }

@@ -81,16 +81,8 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
   @Override
   public void run() {
-    Universe universe = null;
+    Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
     try {
-
-      // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
-      // to prevent other updates from happening.
-      if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1);
-      } else {
-        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
-      }
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
           params().getKubernetesResourceDetails(),

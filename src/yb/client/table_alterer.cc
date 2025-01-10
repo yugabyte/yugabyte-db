@@ -71,8 +71,8 @@ YBTableAlterer* YBTableAlterer::SetTableProperties(const TableProperties& table_
   return this;
 }
 
-YBTableAlterer* YBTableAlterer::replication_info(const master::ReplicationInfoPB& ri) {
-  replication_info_ = std::make_unique<master::ReplicationInfoPB>(ri);
+YBTableAlterer* YBTableAlterer::replication_info(const ReplicationInfoPB& ri) {
+  replication_info_ = std::make_unique<ReplicationInfoPB>(ri);
   return this;
 }
 

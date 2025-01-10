@@ -12,7 +12,6 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -27,7 +26,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -35,12 +33,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
@@ -730,16 +728,16 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   /**
-   * Gets a list of all the absolute file paths at a given remote directory
+   * Gets a map of all the absolute file paths to sizes at a given remote directory
    *
    * @param node
    * @param universe
    * @param remoteDirPath
    * @param maxDepth
    * @param fileType
-   * @return list of strings of all the absolute file paths
+   * @return map of absolute file paths to file sizes
    */
-  public List<Path> getNodeFilePaths(
+  public Map<String, Long> getNodeFilePathAndSizes(
       NodeDetails node, Universe universe, String remoteDirPath, int maxDepth, String fileType) {
     String localTempFilePath =
         getLocalTmpDir() + "/" + UUID.randomUUID().toString() + "-source-files-unfiltered.txt";
@@ -750,7 +748,7 @@ public class NodeUniverseManager extends DevopsBase {
             + "-source-files-unfiltered.txt";
 
     List<String> findCommandParams = new ArrayList<>();
-    findCommandParams.add("find_paths_in_dir");
+    findCommandParams.add("get_paths_and_sizes");
     findCommandParams.add(remoteDirPath);
     findCommandParams.add(String.valueOf(maxDepth));
     findCommandParams.add(fileType);
@@ -768,18 +766,27 @@ public class NodeUniverseManager extends DevopsBase {
 
     // Populate the text file into array.
     List<String> nodeFilePathStrings = Arrays.asList();
+    // LinkedHashMap to maintain insertion order.
+    // Files are ordered most recent to least.
+    Map<String, Long> nodeFilePathSizeMap = new LinkedHashMap<>();
     try {
       nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
+      for (String outputLine : nodeFilePathStrings) {
+        String[] outputLineSplit = outputLine.split("\\s+", 2);
+        if (!StringUtils.isBlank(outputLine) && outputLineSplit.length == 2) {
+          nodeFilePathSizeMap.put(outputLineSplit[1], Long.valueOf(outputLineSplit[0]));
+        }
+      }
     } catch (IOException e) {
       log.error("Error occurred", e);
     } finally {
       FileUtils.deleteQuietly(new File(localTempFilePath));
     }
-    return nodeFilePathStrings.stream().map(Paths::get).collect(Collectors.toList());
+    return nodeFilePathSizeMap;
   }
 
   /**
-   * Returns a list of file sizes (in bytes) and their names present in a remote directory on the
+   * Returns a map of file names to their sizes (in bytes) present in a remote directory on the
    * node. This function creates a temp file with these sizes and names and copies the temp file
    * from remote to local. Then reads and processes this info from the local temp file. This is done
    * so that this operation is scalable for large number of files present on the node.
@@ -787,9 +794,9 @@ public class NodeUniverseManager extends DevopsBase {
    * @param node
    * @param universe
    * @param remoteDirPath
-   * @return the list of pairs (size, name)
+   * @return a map of filenames to filesizes
    */
-  public List<Pair<Long, String>> getNodeFilePathsAndSize(
+  public Map<String, Long> getNodeFilePathsAndSizeWithinDates(
       NodeDetails node, Universe universe, String remoteDirPath, Date startDate, Date endDate) {
     String randomUUIDStr = UUID.randomUUID().toString();
     String localTempFilePath =
@@ -799,7 +806,7 @@ public class NodeUniverseManager extends DevopsBase {
 
     SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
     List<String> findCommandParams = new ArrayList<>();
-    findCommandParams.add("get_paths_and_sizes");
+    findCommandParams.add("get_paths_and_sizes_within_dates");
     findCommandParams.add(remoteDirPath);
     findCommandParams.add(remoteTempFilePath);
     findCommandParams.add(formatter.format(startDate));
@@ -817,15 +824,16 @@ public class NodeUniverseManager extends DevopsBase {
 
     // Populate the text file into array.
     List<String> nodeFilePathStrings = Arrays.asList();
-    List<Pair<Long, String>> nodeFileSizePathStrings = new ArrayList<>();
+    // LinkedHashMap to maintain insertion order.
+    // Files are ordered most recent to least.
+    Map<String, Long> nodeFilePathSizeMap = new LinkedHashMap<>();
     try {
       nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
       log.debug("List of files found on the node '{}': '{}'", node.nodeName, nodeFilePathStrings);
       for (String outputLine : nodeFilePathStrings) {
         String[] outputLineSplit = outputLine.split("\\s+", 2);
         if (!StringUtils.isBlank(outputLine) && outputLineSplit.length == 2) {
-          nodeFileSizePathStrings.add(
-              new Pair<>(Long.valueOf(outputLineSplit[0]), outputLineSplit[1]));
+          nodeFilePathSizeMap.put(outputLineSplit[1], Long.valueOf(outputLineSplit[0]));
         }
       }
     } catch (IOException e) {
@@ -833,7 +841,7 @@ public class NodeUniverseManager extends DevopsBase {
     } finally {
       FileUtils.deleteQuietly(new File(localTempFilePath));
     }
-    return nodeFileSizePathStrings;
+    return nodeFilePathSizeMap;
   }
 
   public enum UniverseNodeAction {

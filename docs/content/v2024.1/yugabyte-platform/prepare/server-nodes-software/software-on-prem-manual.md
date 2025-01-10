@@ -1,12 +1,12 @@
 ---
 title: YugabyteDB Anywhere on-premises node provisioning
-headerTitle: Provision on-premises nodes
-linkTitle: Provision nodes
+headerTitle: Legacy provisioning
+linkTitle: Legacy provisioning
 description: Software requirements for on-premises provider nodes.
 headContent: How to meet the software prerequisites for database nodes
 menu:
   v2024.1_yugabyte-platform:
-    identifier: software-on-prem-3-manual
+    identifier: software-on-prem-4-manual
     parent: software-on-prem
     weight: 10
 type: docs
@@ -29,7 +29,7 @@ type: docs
   <li>
     <a href="../software-on-prem-assist/" class="nav-link">
       <i class="fa-regular fa-scroll"></i>
-      Assisted manual
+      Assisted
     </a>
   </li>
 
@@ -45,7 +45,7 @@ In this mode, you manually install each prerequisite software component. Use thi
 
 Your responsibility now (to meet prerequisites) is to provide a VM with the following pre-installed:
 
-- [Supported Linux OS](../#linux-os) with an SSH-enabled, root-privileged user. YBA uses this user to automatically perform additional Linux configuration, such as creating the `yugabyte` user, updating the file descriptor settings via ulimits, and so on.
+- [Supported Linux OS](../#linux-os) with an SSH-enabled, root-privileged user. YugabyteDB Anywhere (YBA) uses this user to automatically perform additional Linux configuration, such as creating the `yugabyte` user, updating the file descriptor settings via ulimits, and so on.
 - [Additional software](../#additional-software)
 - [Additional software for airgapped](../#additional-software-for-airgapped-deployment)
 

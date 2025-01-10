@@ -314,7 +314,8 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocateStatement(
                                  DCHECK_NOTNULL(ql_env)->CurrentKeyspace(), query,
                                  stmts_list.end(), stmts_mem_tracker_))
                .first->second;
-    std::shared_ptr<StmtCounters> stmt_counters = std::make_shared<StmtCounters>(query);
+    std::shared_ptr<StmtCounters> stmt_counters = std::make_shared<StmtCounters>(
+        query, ql_env->CurrentKeyspace());
     stmt->SetCounters(stmt_counters);
     InsertLruStatementUnlocked(stmt, &stmts_list);
   } else {
@@ -596,6 +597,7 @@ Status CQLServiceImpl::YCQLStatementStats(const tserver::PgYCQLStatementStatsReq
     const StmtCountersMap stmt_counters = this->GetStatementCountersForMetrics(is_prepare);
     for (auto &stmt : stmt_counters) {
       auto &stmt_pb = *resp->add_statements();
+      stmt_pb.set_keyspace(stmt.second.keyspace);
       stmt_pb.set_queryid(ql::CQLMessage::QueryIdAsUint64(stmt.first));
       stmt_pb.set_query(stmt.second.query);
       stmt_pb.set_is_prepared(is_prepare == IsPrepare::kTrue);

@@ -234,6 +234,16 @@ typedef enum {
 /* GUC for the enum above. */
 extern int yb_read_after_commit_visibility;
 
+extern bool yb_allow_block_based_sampling_algorithm;
+
+// Should be in sync with YsqlSamplingAlgorithm protobuf.
+typedef enum {
+  YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN = 0,
+  YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING = 1,
+} YBSamplingAlgorithmEnum;
+
+extern int32_t yb_sampling_algorithm;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
 bool YBCStatusIsNotFound(YBCStatus s);

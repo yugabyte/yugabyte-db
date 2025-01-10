@@ -144,6 +144,10 @@ class ConflictResolverContext {
 
   virtual bool IsSingleShardTransaction() const = 0;
 
+  virtual boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const {
+    return boost::none;
+  }
+
   std::string LogPrefix() const {
     return ToString() + ": ";
   }
@@ -689,7 +693,8 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
-        serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
+        serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_,
+        context_->PgSessionRequestVersion(), deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
@@ -710,7 +715,8 @@ class WaitOnConflictResolver : public ConflictResolver {
     RETURN_NOT_OK(wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
-        context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
+        context_->GetTxnStartUs(), request_start_us_, request_id_,
+        context_->PgSessionRequestVersion(), deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2)));
     MaybeSetWaitStartTime();
@@ -1122,6 +1128,10 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   Status InitTxnMetadata(ConflictResolver* resolver) override {
     metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
+    if (write_batch_.has_background_transaction_id()) {
+      background_transaction_id_ =
+          VERIFY_RESULT(FullyDecodeTransactionId(write_batch_.background_transaction_id()));
+    }
     return Status::OK();
   }
 
@@ -1246,7 +1256,8 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   }
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
-    return other == *transaction_id_;
+    return other == *transaction_id_ ||
+           (background_transaction_id_ && other == *background_transaction_id_);
   }
 
   TransactionId transaction_id() const override {
@@ -1264,6 +1275,13 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     return false;
   }
 
+  boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const override {
+    if (write_batch_.has_pg_session_req_version() && write_batch_.pg_session_req_version()) {
+      return write_batch_.pg_session_req_version();
+    }
+    return boost::none;
+  }
+
   std::string ToString() const override {
     return yb::ToString(transaction_id_);
   }
@@ -1276,6 +1294,14 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   // Id of transaction when is writing intents, for which we are resolving conflicts.
   Result<TransactionId> transaction_id_;
+
+  // This ensures no conflicts occur between session-level and transaction-level advisory
+  // locks within the same session.
+  // - For session-level advisory lock requests: the below points to
+  //   the in-progress DocDB transaction, if any.
+  // - For transaction-level advisory lock requests: the below points to
+  //   the session-level transaction, if exists.
+  boost::optional<TransactionId> background_transaction_id_ = boost::none;
 
   TransactionMetadata metadata_;
 

@@ -41,6 +41,28 @@ if ! [[ "$1" == src/postgres/contrib/ltree/* ||
     | grep -vE 'while\((0|1)\)' \
     | sed 's/^/error:bad_spacing_after_if_else_for_while:/'
 fi
+# fn(arg1 /* bad */,
+#    arg2 /* bad */);
+# fn(arg1,	/* good */
+#    arg2);	/* good */
+# fn(arg1 /* acceptable */ ,
+#    arg2 /* acceptable */ );
+# TODO(jason): make this an error after running pgindent in the future.
+if ! [[ "$1" == src/postgres/src/interfaces/ecpg/preproc/output.c ]]; then
+  grep -nE '\s\*/' "$1" \
+    | grep -vE '\s\*/([\"[:space:]]|$)' \
+    | sed 's/^/warning:bad_spacing_after_comment:/'
+fi
+# fn(/* bad */ arg1,
+#    arg2);
+if ! [[ "$1" == src/postgres/src/include/snowball/libstemmer/header.h ||
+        "$1" == src/postgres/src/interfaces/ecpg/preproc/output.c ||
+        "$1" == src/postgres/src/interfaces/ecpg/preproc/preproc.c ||
+        "$1" == src/postgres/src/interfaces/ecpg/test/* ]]; then
+  grep -nE '/\*\s' "$1" \
+    | grep -vE '([\"[:space:]]|^\S+)/\*\s' \
+    | sed 's/^/error:bad_spacing_before_comment:/'
+fi
 
 # Comments
 grep -nE '//\s' "$1" \

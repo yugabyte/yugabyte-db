@@ -166,7 +166,7 @@ class YBTableCreator {
   // If not provided, defaults to true.
   YBTableCreator& wait(bool wait);
 
-  YBTableCreator& replication_info(const master::ReplicationInfoPB& ri);
+  YBTableCreator& replication_info(const ReplicationInfoPB& ri);
 
   // Creates the table.
   //
@@ -208,7 +208,7 @@ class YBTableCreator {
 
   int num_replicas_ = 0;
 
-  std::unique_ptr<master::ReplicationInfoPB> replication_info_;
+  std::unique_ptr<ReplicationInfoPB> replication_info_;
 
   // When creating index, proxy server construct index_info_, and master server will write it to
   // the data-table being indexed.

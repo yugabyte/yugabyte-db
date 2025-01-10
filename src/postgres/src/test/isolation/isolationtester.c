@@ -212,6 +212,8 @@ main(int argc, char **argv)
 			exit(1);
 		}
 
+		PQclear(res); /* YB: Clear res to avoid asan memory leak failure */
+
 		/* Save each connection's backend PID for subsequent use. */
 		conns[i].backend_pid = PQbackendPID(conns[i].conn);
 		conns[i].backend_pid_str = psprintf("%d", conns[i].backend_pid);

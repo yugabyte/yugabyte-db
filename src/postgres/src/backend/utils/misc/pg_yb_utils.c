@@ -958,8 +958,7 @@ IpAddressToBytes(YBCPgAshConfig *ash_config)
 }
 
 void
-YBInitPostgresBackend(const char *program_name, const char *db_name,
-					  const char *user_name, uint64_t *session_id)
+YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 {
 	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
@@ -1895,7 +1894,6 @@ YBResetDdlState()
 	}
 	ddl_transaction_state = (struct DdlTransactionState){0};
 	YBResetEnableSpecialDDLMode();
-	YBCForceAllowCatalogModifications(false);
 	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
 	HandleYBStatus(status);
 }
@@ -1927,7 +1925,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 
 		if (yb_force_catalog_update_on_next_ddl)
 		{
-			YBCForceAllowCatalogModifications(true);
+			YBCDdlEnableForceCatalogModification();
 			yb_force_catalog_update_on_next_ddl = false;
 			if (YbIsClientYsqlConnMgr())
 				YbSendParameterStatusForConnectionManager("yb_force_catalog_update_on_next_ddl",
@@ -2005,7 +2003,6 @@ YBDecrementDdlNestingLevel()
 
 		ddl_transaction_state = (DdlTransactionState) {};
 
-		YBCForceAllowCatalogModifications(false);
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(MyDatabaseId,
 												   is_silent_altering));
 
@@ -3968,7 +3965,13 @@ yb_local_tablets(PG_FUNCTION_ARGS)
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
 	int			i;
-#define YB_TABLET_INFO_COLS 8
+	static int  ncols = 0;
+
+#define YB_TABLET_INFO_COLS_V1 8
+#define YB_TABLET_INFO_COLS_V2 9
+
+	if (ncols < YB_TABLET_INFO_COLS_V2)
+		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_LOCAL_TABLETS);
 
 	/* only superuser and yb_db_admin can query this function */
 	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
@@ -4012,8 +4015,8 @@ yb_local_tablets(PG_FUNCTION_ARGS)
 	for (i = 0; i < num_tablets; ++i)
 	{
 		YBCPgTabletsDescriptor *tablet = (YBCPgTabletsDescriptor *)tablets + i;
-		Datum		values[YB_TABLET_INFO_COLS];
-		bool		nulls[YB_TABLET_INFO_COLS];
+		Datum		values[ncols];
+		bool		nulls[ncols];
 		bytea	   *partition_key_start;
 		bytea	   *partition_key_end;
 
@@ -4045,10 +4048,14 @@ yb_local_tablets(PG_FUNCTION_ARGS)
 		else
 			nulls[7] = true;
 
+		if (ncols >= YB_TABLET_INFO_COLS_V2)
+			values[8] = CStringGetTextDatum(tablet->tablet_data_state);
+
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
 
-#undef YB_TABLET_INFO_COLS
+#undef YB_TABLET_INFO_COLS_V1
+#undef YB_TABLET_INFO_COLS_V2
 
 	/* clean up and return the tuplestore */
 	tuplestore_donestoring(tupstore);

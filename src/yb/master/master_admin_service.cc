@@ -118,6 +118,7 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
       (IsYsqlMajorCatalogUpgradeDone)
       (FinalizeYsqlMajorCatalogUpgrade)
       (RollbackYsqlMajorCatalogVersion)
+      (GetYsqlMajorCatalogUpgradeState)
   )
 };
 

@@ -237,7 +237,18 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       }
       if (defaultUserIntent.deviceInfo.storageClass != null) {
         tserverDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
-        masterDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
+      }
+
+      // For master
+      if (defaultUserIntent.masterDeviceInfo.numVolumes != null) {
+        masterDiskSpecs.put("count", defaultUserIntent.masterDeviceInfo.numVolumes);
+      }
+      if (defaultUserIntent.masterDeviceInfo.volumeSize != null) {
+        masterDiskSpecs.put(
+            "size", String.format("%dGi", defaultUserIntent.masterDeviceInfo.volumeSize));
+      }
+      if (defaultUserIntent.masterDeviceInfo.storageClass != null) {
+        masterDiskSpecs.put("storageClass", defaultUserIntent.masterDeviceInfo.storageClass);
       }
       storageOverrides.put("tserver", tserverDiskSpecs);
       storageOverrides.put("master", masterDiskSpecs);

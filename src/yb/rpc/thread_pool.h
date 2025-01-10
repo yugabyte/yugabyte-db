@@ -56,7 +56,7 @@ class ThreadPoolTask {
 template <typename T>
 concept ThreadPoolTaskOrSubclass = requires (T* t) {
   std::is_base_of_v<ThreadPoolTask, T>;
-};  // NOLINT
+};
 
 template <class F, ThreadPoolTaskOrSubclass Base>
 class FunctorThreadPoolTask : public Base {

@@ -2077,7 +2077,7 @@ Status ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
 }
 
 Status ClusterAdminClient::FillPlacementInfo(
-    master::PlacementInfoPB* placement_info_pb, const string& placement_str) {
+    PlacementInfoPB* placement_info_pb, const string& placement_str) {
   placement_info_pb->clear_placement_blocks();
 
   std::vector<std::string> placement_info_splits = strings::Split(
@@ -2134,7 +2134,7 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
     return STATUS(InvalidCommand, "Placement cannot be modified for the global transactions table");
   }
 
-  master::PlacementInfoPB live_replicas;
+  PlacementInfoPB live_replicas;
   live_replicas.set_num_replicas(replication_factor);
   RETURN_NOT_OK(FillPlacementInfo(&live_replicas, placement_info));
 
@@ -2159,7 +2159,7 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
   master::SysClusterConfigEntryPB* sys_cluster_config_entry =
       resp_cluster_config.mutable_cluster_config();
-  master::PlacementInfoPB* live_replicas =
+  PlacementInfoPB* live_replicas =
       sys_cluster_config_entry->mutable_replication_info()->mutable_live_replicas();
   live_replicas->set_num_replicas(replication_factor);
   RETURN_NOT_OK(FillPlacementInfo(live_replicas, placement_info));
@@ -2401,6 +2401,47 @@ Status ClusterAdminClient::RollbackYsqlMajorCatalogVersion() {
     std::cout << "Rollback successful\n";
   }
   return Status::OK();
+}
+
+Status ClusterAdminClient::GetYsqlMajorCatalogUpgradeState() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::GetYsqlMajorCatalogUpgradeStateRequestPB req;
+  master::GetYsqlMajorCatalogUpgradeStateResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy_->GetYsqlMajorCatalogUpgradeState(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  switch (resp.state()) {
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_UNINITIALIZED:
+      // Bad enum, fail the call.
+      break;
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_DONE:
+      std::cout << "YSQL major catalog upgrade already completed, or is not required.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING:
+      std::cout << "YSQL major catalog upgrade for YSQL major upgrade has not yet started.\n"
+                   "Run `ysql_major_version_catalog_upgrade` to start the catalog upgrade\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK:
+      std::cout << "YSQL major catalog upgrade failed.\n"
+                   "Roll back the catalog upgrade using `rollback_ysql_major_version_upgrade`. "
+                   "After that you can either retry the catalog upgrade or roll back yb-masters to "
+                   "the older version.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_IN_PROGRESS:
+      std::cout << "YSQL major catalog upgrade is in progress.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK:
+      std::cout << "YSQL major catalog awaiting finalization or rollback.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_ROLLBACK_IN_PROGRESS:
+      std::cout << "YSQL major catalog rollback is in progress.\n";
+      return Status::OK();
+  }
+
+  return STATUS_FORMAT(IllegalState, "Unknown ysql major upgrade state: $0", resp.state());
 }
 
 Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add,

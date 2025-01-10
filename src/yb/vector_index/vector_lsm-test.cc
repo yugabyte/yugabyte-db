@@ -241,6 +241,7 @@ Status VectorLSMTest::OpenVectorLSM(
   test_dir = JoinPathSegments(test_dir, "vector_lsm_test_" + Uuid::Generate().ToString());
 
   FloatVectorLSM::Options options = {
+    .log_prefix = "Test: ",
     .storage_dir = JoinPathSegments(test_dir, "vector_lsm"),
     .vector_index_factory = [factory = GetVectorIndexFactory(GetParam()), dimensions]() {
         HNSWOptions hnsw_options = {

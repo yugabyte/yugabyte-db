@@ -2938,7 +2938,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UUID universeUuid,
       UniverseDefinitionTaskParams parentTaskParams,
       Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceExistsCheck");
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("InstanceExistsCheck", SubTaskGroupType.PreflightChecks);
     for (NodeDetails node : nodes) {
       if (node.placementUuid == null) {
         String errMsg = String.format("Node %s does not have placement.", node.nodeName);
@@ -3192,12 +3193,29 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean enableConnectionPooling,
       boolean enableYCQL,
       boolean enableYCQLAuth) {
+    return createUpdateDBApiDetailsTask(
+        enableYSQL,
+        enableYSQLAuth,
+        enableConnectionPooling,
+        new HashMap<>(),
+        enableYCQL,
+        enableYCQLAuth);
+  }
+
+  protected SubTaskGroup createUpdateDBApiDetailsTask(
+      boolean enableYSQL,
+      boolean enableYSQLAuth,
+      boolean enableConnectionPooling,
+      Map<String, String> connectionPoolingGflags,
+      boolean enableYCQL,
+      boolean enableYCQLAuth) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterAPIDetails");
     UpdateClusterAPIDetails.Params params = new UpdateClusterAPIDetails.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.enableYCQL = enableYCQL;
     params.enableYCQLAuth = enableYCQLAuth;
     params.enableConnectionPooling = enableConnectionPooling;
+    params.connectionPoolingGflags = connectionPoolingGflags;
     params.enableYSQL = enableYSQL;
     params.enableYSQLAuth = enableYSQLAuth;
     UpdateClusterAPIDetails task = createTask(UpdateClusterAPIDetails.class);
@@ -3537,7 +3555,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       String subTaskGroupName,
       UserTaskDetails.SubTaskGroupType subTaskGroupType,
       boolean ignoreErrors) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup(subTaskGroupName, ignoreErrors);
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(subTaskGroupName, subTaskGroupType, ignoreErrors);
     vals.forEach(
         value -> {
           subTaskGroup.addSubTask(taskInitializer.apply(value));

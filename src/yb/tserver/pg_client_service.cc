@@ -293,7 +293,8 @@ class DeferredConstructible {
 
 using TransactionBuilder = std::function<
     client::YBTransactionPtr(
-        TxnAssignment* dest, IsDDL, client::ForceGlobalTransaction, CoarseTimePoint)>;
+        TxnAssignment* dest, IsDDL, client::ForceGlobalTransaction, CoarseTimePoint,
+        client::ForceCreateTransaction)>;
 
 class SessionInfo {
  public:
@@ -1209,6 +1210,7 @@ class PgClientServiceImpl::Impl {
           IllegalState, "Received invalid stream_id: $0 from ListCDCSDKStreams", stream.stream_id);
 
       auto replication_slot = resp->mutable_replication_slots()->Add();
+      replication_slot->set_yb_lsn_type(stream.replication_slot_lsn_type);
       stream.ToPB(replication_slot);
       auto is_stream_active =
           current_time - stream_to_latest_active_time[*stream_id] <=
@@ -1394,8 +1396,8 @@ class PgClientServiceImpl::Impl {
   Status ValidatePlacement(
       const PgValidatePlacementRequestPB& req, PgValidatePlacementResponsePB* resp,
       rpc::RpcContext* context) {
-    master::ReplicationInfoPB replication_info;
-    master::PlacementInfoPB* live_replicas = replication_info.mutable_live_replicas();
+    ReplicationInfoPB replication_info;
+    PlacementInfoPB* live_replicas = replication_info.mutable_live_replicas();
 
     for (const auto& block : req.placement_infos()) {
       auto pb = live_replicas->add_placement_blocks();
@@ -2045,9 +2047,9 @@ class PgClientServiceImpl::Impl {
 
   [[nodiscard]] client::YBTransactionPtr BuildTransaction(
       TxnAssignment* dest, IsDDL is_ddl, client::ForceGlobalTransaction force_global,
-      CoarseTimePoint deadline) {
+      CoarseTimePoint deadline, client::ForceCreateTransaction force_create_txn) {
     auto watcher = std::make_shared<client::YBTransactionPtr>(
-        transaction_pool_provider_().Take(force_global, deadline));
+        transaction_pool_provider_().Take(force_global, deadline, force_create_txn));
     dest->Assign(watcher, is_ddl);
     auto* txn = &**watcher;
     return {std::move(watcher), txn};

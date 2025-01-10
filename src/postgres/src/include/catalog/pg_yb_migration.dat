@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V63__25381__yb_get_current_hybrid_time_lsn.sql
-{ major => '63', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V65__24108__yb_lsn_type_in_pg_replication_slots.sql
+{ major => '65', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

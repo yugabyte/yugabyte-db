@@ -448,8 +448,9 @@ public class NodeAgentEnabler {
                 e.getMessage());
           }
         }
-        if (customerNodeAgentInstallers.get(customer.getUuid()) == installer) {
+        if (installer != null && customerNodeAgentInstallers.get(customer.getUuid()) == installer) {
           // Same reference means no new installer was created.
+          log.info("Removing the completed installer for universe {}", installer.getUniverseUuid());
           customerNodeAgentInstallers.remove(customer.getUuid());
         }
       }
@@ -679,7 +680,7 @@ public class NodeAgentEnabler {
     // Process universe nodes to install node agents. If some nodes are added during this operation,
     // the migration will not happen and the next cycle of this call covers the new nodes. If some
     // nodes are deleted, migration will not happen due to installation failure and next cycle takes
-    // care.
+    // care. This method gets blocked till the installation is complete.
     private boolean processNodes(Universe universe, Function<NodeDetails, Boolean> callback) {
       if (!shouldInstallNodeAgents(universe, false /* Ignore universe lock */)) {
         log.trace(
@@ -742,34 +743,32 @@ public class NodeAgentEnabler {
           });
 
       try {
-        if (latch.await(1, TimeUnit.MINUTES)) {
-          boolean allSucceeded =
-              futures.entrySet().stream()
-                  .allMatch(
-                      entry -> {
-                        try {
-                          return entry.getValue().get(5, TimeUnit.SECONDS);
-                        } catch (Exception e) {
-                          log.error(
-                              "Error in getting the execution result for IP {} in universe {} - {}",
-                              entry.getKey(),
-                              getUniverseUuid(),
-                              e.getMessage());
-                        }
-                        return false;
-                      });
-          // Clear on normal exit.
-          futures.clear();
-          if (allSucceeded) {
-            try {
-              return nodeAgentInstaller.migrate(getCustomerUuid(), getUniverseUuid());
-            } catch (Exception e) {
-              log.error(
-                  "Error in migrating to node agent for universe {} - {}",
-                  getUniverseUuid(),
-                  e.getMessage());
-            }
-            return false;
+        latch.await();
+        boolean allSucceeded =
+            futures.entrySet().stream()
+                .allMatch(
+                    entry -> {
+                      try {
+                        return entry.getValue().get(5, TimeUnit.SECONDS);
+                      } catch (Exception e) {
+                        log.error(
+                            "Error in getting the execution result for IP {} in universe {} - {}",
+                            entry.getKey(),
+                            getUniverseUuid(),
+                            e.getMessage());
+                      }
+                      return false;
+                    });
+        // Clear on normal exit.
+        futures.clear();
+        if (allSucceeded) {
+          try {
+            return nodeAgentInstaller.migrate(getCustomerUuid(), getUniverseUuid());
+          } catch (Exception e) {
+            log.error(
+                "Error in migrating to node agent for universe {} - {}",
+                getUniverseUuid(),
+                e.getMessage());
           }
         }
       } catch (InterruptedException e) {

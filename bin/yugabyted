@@ -3804,7 +3804,7 @@ class ControlScript(object):
                             key, value = item.split('=')
                             tserver_pg_parity_flag_values_dict[key] = value
 
-                    # Parse the PG_PARITY_FLAGS_DICT values into a dictionary
+                    # Parse the PG_PARITY_FLAGS_DICT values into dictionary
                     pg_parity_flag_values_dict = {}
                     for item in pg_parity_flag_values.split(','):
                         if '=' in item:
@@ -3866,24 +3866,6 @@ class ControlScript(object):
                 else:
                     # Handle simple flags
                     yb_tserver_cmd.append("--{}".format(tserver_flag))
-
-            hba_conf_updated = False
-            for i, flag in enumerate(yb_tserver_cmd):
-                if flag.startswith("--ysql_hba_conf_csv="):
-                    pattern = re.compile(r'--ysql_hba_conf_csv=(["\']?)(.*)\1$')
-                    match = pattern.match(flag)
-                    # Extract the original ysql_hba_conf
-                    quote_char = match.group(1)  # This will be '' if there are no quotes
-                    original_hba_conf = match.group(2)
-                    # Append 'local all yugabyte trust' to the original_hba_conf
-                    updated_hba_conf = original_hba_conf + ',local all yugabyte trust'
-
-                    yb_tserver_cmd[i] = f'--ysql_hba_conf_csv={quote_char}' +\
-                                f'{updated_hba_conf}{quote_char}'
-                    hba_conf_updated = True
-
-            if not hba_conf_updated:
-                yb_tserver_cmd.extend(["--ysql_hba_conf_csv=local all yugabyte trust",])
 
         if self.configs.saved_data.get("ysql_enable_auth"):
             yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
@@ -4899,7 +4881,7 @@ class ControlScript(object):
         status_details = []
         status_display_info = {}
 
-        # Case Scenario: When each AZ/region has only 1 node. (Most happy path)
+        # Case Scenario: When each AZ/region has only 1 node. (Happiest path)
         if len(placement_location_map) == replication_factor:
             final_status = ""
             ft_status = ""

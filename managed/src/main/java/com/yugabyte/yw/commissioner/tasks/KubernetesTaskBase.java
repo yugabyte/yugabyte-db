@@ -1077,7 +1077,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       enableYbc,
                       ybcSoftwareVersion,
                       false,
-                      null),
+                      null,
+                      true /* useNewMasterDiskSize */,
+                      true /* useNewTserverDiskSize */),
               commandType.getSubTaskGroupName(),
               UserTaskDetails.SubTaskGroupType.Provisioning,
               false);
@@ -2020,7 +2022,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             enableYbc,
             ybcSoftwareVersion,
             usePreviousGflagsChecksum,
-            previousGflagsChecksumMap));
+            previousGflagsChecksumMap,
+            true /* useNewMasterDiskSize */,
+            true /* useNewTserverDiskSize */));
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
   }
@@ -2062,7 +2066,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         enableYbc,
         ybcSoftwareVersion,
         false /* usePreviousGflagsChecksum */,
-        null /* previousGflagsChecksumMap */);
+        null /* previousGflagsChecksumMap */,
+        true, /* useNewMasterDiskSize */
+        true /* useNewTserverDiskSize */);
   }
 
   public KubernetesCommandExecutor getSingleKubernetesExecutorTaskForServerTypeTask(
@@ -2084,7 +2090,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean enableYbc,
       String ybcSoftwareVersion,
       boolean usePreviousGflagsChecksum,
-      Map<ServerType, String> previousGflagsChecksumMap) {
+      Map<ServerType, String> previousGflagsChecksumMap,
+      boolean useNewMasterDiskSize,
+      boolean useNewTserverDiskSize) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -2147,6 +2155,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     params.usePreviousGflagsChecksum = usePreviousGflagsChecksum;
     params.previousGflagsChecksumMap = previousGflagsChecksumMap;
+    params.useNewMasterDiskSize = useNewMasterDiskSize;
+    params.useNewTserverDiskSize = useNewTserverDiskSize;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;

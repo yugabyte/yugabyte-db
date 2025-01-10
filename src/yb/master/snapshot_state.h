@@ -27,9 +27,6 @@
 
 #include "yb/util/async_task_util.h"
 
-DECLARE_int64(max_concurrent_snapshot_rpcs);
-DECLARE_int64(max_concurrent_snapshot_rpcs_per_tserver);
-
 namespace yb {
 namespace master {
 
@@ -39,6 +36,7 @@ struct TabletSnapshotOperation {
   TxnSnapshotId snapshot_id;
   SysSnapshotEntryPB::State state;
   HybridTime snapshot_hybrid_time;
+  int64_t serial_no;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(tablet_id, snapshot_id, state, snapshot_hybrid_time);
@@ -128,6 +126,8 @@ class SnapshotState : public StateWithTablets {
   bool ShouldUpdate(const SnapshotState& other) const;
   void DeleteAborted(const Status& status);
   bool HasExpired(HybridTime now) const;
+
+  size_t ResetRunning() override;
 
  private:
   std::optional<SysSnapshotEntryPB::State> GetTerminalStateForStatus(const Status& status) override;

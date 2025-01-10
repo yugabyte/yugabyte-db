@@ -709,8 +709,7 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
     return Status::OK();
   }
 
-  std::unordered_map<xcluster::ProducerTabletInfo, HybridTime, xcluster::ProducerTabletInfo::Hash>
-      safe_time_map;
+  std::unordered_map<xcluster::ProducerTabletInfo, HybridTime> safe_time_map;
   {
     SharedLock read_lock(pollers_map_mutex_);
     for (auto& [producer_info, poller] : pollers_map_) {

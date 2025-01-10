@@ -150,9 +150,7 @@ class YBTableName {
 
   bool is_redis_table() const;
 
-  std::string ToString() const {
-    return has_namespace() ? (namespace_name_ + '.' + table_name_) : table_name_;
-  }
+  std::string ToString(bool include_id = true) const;
 
   void set_namespace_id(const std::string& namespace_id);
   void set_namespace_name(const std::string& namespace_name);

@@ -47,6 +47,8 @@ extern bool YBCIsEnvVarTrueWithDefault(const char *env_var_name,
  */
 extern bool YBIsEnabledInPostgresEnvVar();
 
+extern bool YBIsLocalInitdbEnvVar();
+
 /**
  * Returns true to allow running PostgreSQL server and initdb as any user. This
  * is needed by some Docker/Kubernetes environments.

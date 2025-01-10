@@ -65,6 +65,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
@@ -266,9 +267,7 @@ public class TaskExecutor {
     this.taskOwner = Util.getHostname();
     this.skipSubTaskAbortableCheck = true;
     shutdownHookHandler.addShutdownHook(
-        TaskExecutor.this,
-        (taskExecutor) -> taskExecutor.shutdown(Duration.ofMinutes(2)),
-        100 /* weight */);
+        this, taskExecutor -> taskExecutor.shutdown(Duration.ofMinutes(2)), 100 /* weight */);
     this.taskTypeMap = taskTypeMap;
     this.inverseTaskTypeMap = inverseTaskTypeMap;
   }
@@ -471,7 +470,7 @@ public class TaskExecutor {
    * @return SubTaskGroup
    */
   public SubTaskGroup createSubTaskGroup(String name) {
-    return createSubTaskGroup(name, SubTaskGroupType.Invalid, false);
+    return createSubTaskGroup(name, SubTaskGroupType.Configuring, false);
   }
 
   /**
@@ -494,7 +493,8 @@ public class TaskExecutor {
    */
   public SubTaskGroup createSubTaskGroup(
       String name, ExecutorService executorService, boolean ignoreErrors) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup(name, SubTaskGroupType.Invalid, ignoreErrors);
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(name, SubTaskGroupType.Configuring, ignoreErrors);
     subTaskGroup.setSubTaskExecutor(executorService);
     return subTaskGroup;
   }
@@ -588,7 +588,7 @@ public class TaskExecutor {
     private int position;
     // Optional executor service for the subtasks.
     private ExecutorService executorService;
-    private SubTaskGroupType subTaskGroupType = SubTaskGroupType.Invalid;
+    private SubTaskGroupType subTaskGroupType = SubTaskGroupType.Configuring;
 
     // It is instantiated internally.
     private SubTaskGroup(String name, SubTaskGroupType subTaskGroupType, boolean ignoreErrors) {
@@ -633,6 +633,10 @@ public class TaskExecutor {
 
     public String getName() {
       return name;
+    }
+
+    public SubTaskGroupType getSubTaskGroupType() {
+      return subTaskGroupType;
     }
 
     /** Returns the optional ExecutorService for the subtasks in this group. */
@@ -999,6 +1003,10 @@ public class TaskExecutor {
       return taskInfo.getUuid();
     }
 
+    public TaskType getTaskType() {
+      return taskInfo.getTaskType();
+    }
+
     // This is invoked from tasks to save the updated task details generally in transaction with
     // other DB updates.
     public synchronized void setTaskParams(JsonNode taskParams) {
@@ -1009,7 +1017,7 @@ public class TaskExecutor {
 
     protected abstract Map<String, String> getTaskMetricLabels();
 
-    protected abstract Instant getAbortTime();
+    protected abstract boolean isAbortTimeReached(@Nullable Duration graceTime);
 
     protected abstract TaskExecutionListener getTaskExecutionListener();
 
@@ -1023,32 +1031,12 @@ public class TaskExecutor {
      */
     protected abstract Throwable handleAfterRun(ITask task, Throwable t);
 
-    /**
-     * Checks if the future abort time is reached with the additional graceTime if it is provided.
-     */
-    protected boolean isAbortTimeReached(@Nullable Duration graceTime) {
-      Instant abortTime = getAbortTime();
-      if (abortTime == null) {
-        return false;
-      }
-      long graceMillis = 0L;
-      Instant actualAbortTime = abortTime;
-      if (graceTime != null && (graceMillis = graceTime.toMillis()) > 0) {
-        actualAbortTime = actualAbortTime.plus(graceMillis, ChronoUnit.MILLIS);
-      }
-      return Instant.now().isAfter(actualAbortTime);
-    }
-
     Duration getTimeLimit() {
       return timeLimit;
     }
 
     void updateScheduledTime() {
       taskScheduledTime = Instant.now();
-    }
-
-    TaskType getTaskType() {
-      return taskInfo.getTaskType();
     }
 
     synchronized void setPosition(int position) {
@@ -1157,7 +1145,7 @@ public class TaskExecutor {
     private final AtomicReference<TaskExecutionListener> taskExecutionListenerRef =
         new AtomicReference<>();
     // Time when the abort is set.
-    private volatile Instant abortTime;
+    private final AtomicReference<Supplier<Instant>> abortTimeSupplierRef = new AtomicReference<>();
 
     RunnableTask(ITask task, TaskInfo taskInfo) {
       super(task, taskInfo);
@@ -1230,13 +1218,37 @@ public class TaskExecutor {
           getTaskInfo().getTaskType().name());
     }
 
-    @Override
-    protected Instant getAbortTime() {
+    private Instant getAbortTime() {
+      Supplier<Instant> supplier = abortTimeSupplierRef.get();
+      if (supplier == null) {
+        return null;
+      }
+      Instant abortTime = supplier.get();
+      if (abortTime == null) {
+        throw new IllegalStateException("Abort time must be set by the supplier");
+      }
       return abortTime;
     }
 
     private void setAbortTime(Instant abortTime) {
-      this.abortTime = abortTime;
+      abortTimeSupplierRef.set(() -> checkNotNull(abortTime, "Abort time must be set"));
+    }
+
+    /**
+     * Checks if the future abort time is reached with the additional graceTime if it is provided.
+     */
+    @Override
+    protected boolean isAbortTimeReached(@Nullable Duration graceTime) {
+      Instant abortTime = getAbortTime();
+      if (abortTime == null) {
+        return false;
+      }
+      long graceMillis = 0L;
+      Instant actualAbortTime = abortTime;
+      if (graceTime != null && (graceMillis = graceTime.toMillis()) > 0) {
+        actualAbortTime = actualAbortTime.plus(graceMillis, ChronoUnit.MILLIS);
+      }
+      return Instant.now().isAfter(actualAbortTime);
     }
 
     @Override
@@ -1247,6 +1259,31 @@ public class TaskExecutor {
     @Override
     protected UUID getUserTaskUUID() {
       return getTaskUUID();
+    }
+
+    // Fix the SubTaskGroupType by replacing the default 'Configuring' with the last non-default
+    // type if possible. Similar logic is done on serving the API response for task details.
+    private void fixSubTaskGroupType() {
+      SubTaskGroupType lastNonDefaultGroupType = SubTaskGroupType.Configuring;
+      for (SubTaskGroup subTaskGroup : subTaskGroups) {
+        if (subTaskGroup.getSubTaskCount() == 0) {
+          continue;
+        }
+        if (subTaskGroup.getSubTaskGroupType() == SubTaskGroupType.Configuring) {
+          log.warn(
+              "SubTaskGroupType is set to default '{}' for {}",
+              SubTaskGroupType.Configuring,
+              subTaskGroup.getName());
+        } else {
+          // Update it to the non default SubTaskGroupType.
+          lastNonDefaultGroupType = subTaskGroup.getSubTaskGroupType();
+        }
+        if (lastNonDefaultGroupType != subTaskGroup.getSubTaskGroupType()) {
+          // Current SubTaskGroupType is the default type which needs to be overridden.
+          log.info("Using the last SubTaskGroupType {}", lastNonDefaultGroupType);
+          subTaskGroup.setSubTaskGroupType(lastNonDefaultGroupType);
+        }
+      }
     }
 
     /**
@@ -1284,11 +1321,9 @@ public class TaskExecutor {
     public void runSubTasks(boolean abortOnFailure) {
       Throwable anyThrowable = null;
       try {
+        fixSubTaskGroupType();
         for (SubTaskGroup subTaskGroup : subTaskGroups) {
           if (subTaskGroup.getSubTaskCount() == 0) {
-            // TODO Some groups are added without any subtasks in a task like
-            // CreateKubernetesUniverse.
-            // It needs to be fixed first before this can prevent empty groups from getting added.
             continue;
           }
           ExecutorService executorService = subTaskGroup.getSubTaskExecutorService();
@@ -1367,13 +1402,20 @@ public class TaskExecutor {
     }
 
     // Restricted access to package level for internal use.
+    // Sets a supplier for abort time on request.
+    void setAbortTimeSupplier(Supplier<Instant> abortTimeSupplier) {
+      abortTimeSupplierRef.compareAndSet(null, abortTimeSupplier);
+    }
+
+    // Restricted access to package level for internal use.
     void abort(@Nullable Duration delay) {
       Instant abortTime = Instant.now();
       if (delay != null && delay.toMillis() > 0) {
         abortTime = abortTime.plus(delay.toMillis(), ChronoUnit.MILLIS);
       }
+      Instant currentAbortTime = getAbortTime();
       // Signal abort to the task.
-      if (getAbortTime() == null || getAbortTime().isAfter(abortTime)) {
+      if (currentAbortTime == null || currentAbortTime.isAfter(abortTime)) {
         log.info("Aborting task {} in {} secs", getTaskUUID(), abortTime);
         setAbortTime(abortTime);
       }
@@ -1460,8 +1502,8 @@ public class TaskExecutor {
     }
 
     @Override
-    protected synchronized Instant getAbortTime() {
-      return parentRunnableTask == null ? null : parentRunnableTask.getAbortTime();
+    protected synchronized boolean isAbortTimeReached(@Nullable Duration graceTime) {
+      return parentRunnableTask == null ? false : parentRunnableTask.isAbortTimeReached(graceTime);
     }
 
     @Override

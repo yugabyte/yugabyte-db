@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 
 namespace yb::rpc {
@@ -40,8 +41,8 @@ class AcquireObjectLocksGlobalResponsePB;
 class ReleaseObjectLocksGlobalRequestPB;
 class ReleaseObjectLocksGlobalResponsePB;
 
-struct LeaderEpoch;
 class ObjectLockInfo;
+struct ExpiredLeaseInfo;
 
 class ObjectLockInfoManager {
  public:
@@ -65,7 +66,8 @@ class ObjectLockInfoManager {
   // Releases any object locks that may have been taken by the specified tservers's previous
   // incarnations.
   void ReleaseOldObjectLocks(
-      const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait = false);
+      const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait = false,
+      std::optional<LeaderEpoch> leader_epoch = std::nullopt);
 
  private:
   template <class Req, class Resp>

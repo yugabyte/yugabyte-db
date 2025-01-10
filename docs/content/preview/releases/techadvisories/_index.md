@@ -19,6 +19,12 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 25193>}}
+|CDC unable to stream UPDATE/DELETE operations
+| [CDC](/preview/develop/change-data-capture/)
+| {{<release "2.20, 2024.1, 2024.2">}}
+| {{<nobreak "10 January 2025">}}
+|
 | {{<ta 24992>}}
 |Partial Streaming Stall After Tablet Split
 | [YugabyteDB gRPC (Debezium) Connector](/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)

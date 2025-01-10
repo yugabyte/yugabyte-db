@@ -1500,6 +1500,12 @@ class TransactionParticipant::Impl
     return shared_from_this();
   }
 
+  void ForceRefreshWaitersForBlocker(const TransactionId& txn_id) {
+    if (wait_queue_) {
+      wait_queue_->ForceRefreshWaitersForBlocker(txn_id);
+    }
+  }
+
  private:
   class AbortCheckTimeTag;
   class StartTimeTag;
@@ -2009,7 +2015,7 @@ class TransactionParticipant::Impl
       VLOG_WITH_PREFIX(3) << "Transaction status update: " << AsString(info);
       if ((**it).UpdateStatus(
           info.status_tablet, info.status, info.status_ht, info.coordinator_safe_time,
-          info.aborted_subtxn_set, info.expected_deadlock_status)) {
+          info.aborted_subtxn_set, info.expected_deadlock_status, info.pg_session_req_version)) {
         NotifyAbortedTransactionIncrement(info.transaction_id);
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier,
@@ -2771,6 +2777,10 @@ void TransactionParticipant::SetRetryableRequestsFlushedOpId(const OpId& flushed
 
 Status TransactionParticipant::ProcessRecentlyAppliedTransactions() {
   return impl_->ProcessRecentlyAppliedTransactions();
+}
+
+void TransactionParticipant::ForceRefreshWaitersForBlocker(const TransactionId& txn_id) {
+  return impl_->ForceRefreshWaitersForBlocker(txn_id);
 }
 
 }  // namespace tablet
