@@ -777,6 +777,10 @@ class PgApiImpl {
 
   void RestoreSessionState(const YBCPgSessionState& session_data);
 
+  void RollbackSubTransactionScopedSessionState();
+  void RollbackTransactionScopedSessionState();
+  Status CommitTransactionScopedSessionState();
+
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.
 
@@ -831,7 +835,6 @@ class PgApiImpl {
   void ForceAllowCatalogModifications(bool allowed);
 
  private:
-  void ClearSessionState();
 
   class Interrupter;
 
