@@ -98,6 +98,29 @@ Possible privileges are
 
   - Grant all privileges at once.
 
+## Predefined roles
+
+YugabyteDB ships with built-in roles that grant access to frequently required administrative functions and data. Database administrators (and anyone with the CREATEROLE privilege) can assign these predefined roles to users or other roles, thereby giving them the necessary permissions to perform specific tasks and access certain information.
+
+Some of the predefined roles as follows.
+
+Role  | Access | Info
+----- | -------| ----
+pg_read_all_data | Grants read-only access to all tables, views, and sequences in all schemas of a database | Ideal for users or applications needing to query data without modifying it.
+pg_write_all_data | Grants write access to all tables in a database, including privileges for INSERT, UPDATE, DELETE, and TRUNCATE | Suitable for applications or users that need to modify data but not manage schema objects.
+pg_read_all_settings | Allows users to view all database configuration settings. Useful for monitoring and diagnostics without granting administrative privileges.
+pg_read_all_stats | Grants access to view all statistical information in system catalogs, such as pg_stat_* views | Useful for performance monitoring and query analysis.
+pg_stat_scan_tables | Grants permission to execute pg_stat_reset() on individual tables, resetting their statistics | Helpful for users managing table-specific performance metrics.
+pg_monitor | Combines privileges from pg_read_all_settings and pg_read_all_stats | Allows access to monitor the database while restricting modification or administrative tasks.
+pg_signal_backend | Enables sending signals to backend processes, such as using pg_terminate_backend() or pg_cancel_backend() | Useful for terminating queries or sessions.
+pg_database_owner | Grants privileges that apply to the owner of the database |Used for tasks specific to database management without granting superuser access.
+
+To provide read access to all objects in a database to user `alice`, an administrartor would need to run,
+
+```sql
+GRANT pg_read_all_data TO alice;
+```
+
 ### `GRANT` on roles
 
 This variant of `GRANT` is used to grant membership in a role to one or more other roles.

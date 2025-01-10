@@ -127,7 +127,7 @@ Specify one or more columns of the table and must be surrounded by parentheses.
 
 ### NULLS NOT DISTINCT
 
-When creating an unique index, by default, null values are not considered equal, allowing multiple nulls in the column. The `NULLS NOT DISTINCT` option modifies this and causes the index to treat nulls as equal.
+When creating an unique index, by default, null values are not considered equal, allowing multiple nulls in the column. The `NULLS NOT DISTINCT` option modifies this and causes the index to treat nulls as equal. With this option, you can enforce that only one NULL value is permitted, aligning with use cases where NULL should represent an absence of value rather than a unique entity.
 
 ### SPLIT INTO
 

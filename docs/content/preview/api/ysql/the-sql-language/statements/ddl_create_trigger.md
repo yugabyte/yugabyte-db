@@ -28,6 +28,10 @@ Use the `CREATE TRIGGER` statement to create a trigger.
 - the `WHEN` condition can be used to specify whether the trigger should be fired. For low-level triggers it can reference the old and/or new values of the row's columns.
 - multiple triggers can be defined for the same event. In that case, they will be fired in alphabetical order by name.
 
+### OR replace
+
+The `OR REPLACE` option allows you to replace an existing trigger with a new one without first having to drop the old trigger. By automatically replacing the existing trigger, this option reduces the risk of inconsistencies and errors that might arise from accidentally forgetting to drop a trigger before creating a new one.
+
 ## Examples
 
 - Set up a table with triggers for tracking modification time and user (role).

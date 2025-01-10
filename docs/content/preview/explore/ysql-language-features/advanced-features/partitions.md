@@ -172,9 +172,10 @@ Note:
 - You cannot mix temporary and permanent relations in the same partition hierarchy.
 - If you have a default partition in the partitioning hierarchy, you can add new partitions only if there is no data in the default partition that matches the partition constraint of the new partition.
 
-{{<tip>}}
-Starting with {{<release "2.25">}} foreign key references on a partitioned table are supported.
-{{</tip>}}
+## Foreign key references
+
+Starting with {{<release "2.25">}} foreign key references on a partitioned table are supported. With this feature, you can now enforce referential integrity directly on partitioned tables, ensuring consistency across large-scale datasets that benefit from partitioning for performance and scalability.
+
 
 ## Partition pruning and constraint exclusion
 

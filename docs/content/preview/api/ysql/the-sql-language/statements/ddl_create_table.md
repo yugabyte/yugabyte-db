@@ -117,7 +117,7 @@ Note that the [INSERT](../dml_insert/) command can only accommodate one override
 
 ### Stored generated columns
 
-A stored generated column is computed when it is written (inserted or updated) and occupies storage as if it were a normal column. A generated column cannot be written to directly. In INSERT or UPDATE commands, a value cannot be specified for a generated column, but the keyword DEFAULT may be specified.
+A stored generated column is computed when it is written (inserted or updated) and occupies storage as if it were a normal column. A generated column cannot be written to directly. In INSERT or UPDATE commands, a value cannot be specified for a generated column, but the keyword DEFAULT may be specified. This feature is particularly useful for scenarios requiring precomputed values for indexing, sorting, or filtering, as it reduces computation overhead during queries.
 
 Several restrictions apply to the definition of generated columns and tables involving generated columns:
 

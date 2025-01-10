@@ -25,6 +25,18 @@ Use the `CREATE USER` statement to create a user. The `CREATE USER` statement is
 
 See [`CREATE ROLE`](../dcl_create_role) for more details.
 
+## Public schema privileges
+
+In releases prior to {{<release "2.25">}}, which were PostgreSQL 11 compatible, new database users were automatically granted CREATE and USAGE privileges on the public schema. This allowed them to create objects, such as tables and views, in the shared schema by default.
+
+Starting with release {{<release "2.25">}} (PostgreSQL 15 compatible), this default privilege is no longer provided. New users can no longer create objects in the public schema unless explicitly authorized. Administrators must now manually grant CREATE or other required privileges on the public schema to specific roles or users as needed. This provides a more secure default configuration and protection against attacks described in {{<cve "CVE-2018-1058">}}.
+
+Administrators can grant access to the public schema to specific users as:
+
+```sql
+GRANT CREATE ON SCHEMA public TO <username>;
+```
+
 ## Examples
 
 - Create a sample user with password.

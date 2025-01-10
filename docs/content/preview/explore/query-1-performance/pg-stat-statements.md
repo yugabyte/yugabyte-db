@@ -20,32 +20,38 @@ Databases can be resource-intensive, consuming a lot of memory CPU, IO, and netw
 
 The columns of the `pg_stat_statements` view are described in the following table.
 
-| Column            |       Type       | Description |
-| :----             | :---             | :---        |
-userid              | oid              | OID of user who executed the statement |
-dbid                | oid              | OID of database in which the statement was executed |
-queryid             | bigint           | Internal hash code, computed from the statement's parse tree |
-query               | text             | Text of a representative statement |
-calls               | bigint           | Number of times executed |
-total_time          | double precision | Total time spent in the statement, in milliseconds |
-min_time            | double precision | Minimum time spent in the statement, in milliseconds |
-max_time            | double precision | Maximum time spent in the statement, in milliseconds |
-mean_time           | double precision | Mean time spent in the statement, in milliseconds |
-stddev_time         | double precision | Population standard deviation of time spent in the statement, in milliseconds |
-rows                | bigint           | Total number of rows retrieved or affected by the statement |
-shared_blks_hit     | bigint           | Total number of shared block cache hits by the statement |
-shared_blks_read    | bigint           | Total number of shared blocks read by the statement |
-shared_blks_dirtied | bigint           | Total number of shared blocks dirtied by the statement |
-shared_blks_written | bigint           | Total number of shared blocks written by the statement |
-local_blks_hit      | bigint           | Total number of local block cache hits by the statement |
-local_blks_read     | bigint           | Total number of local blocks read by the statement |
-local_blks_dirtied  | bigint           | Total number of local blocks dirtied by the statement |
-local_blks_written  | bigint           | Total number of local blocks written by the statement |
-temp_blks_read      | bigint           | Total number of temp blocks read by the statement |
-temp_blks_written   | bigint           | Total number of temp blocks written by the statement |
-blk_read_time       | double precision | Total time the statement spent reading blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
-blk_write_time      | double precision | Total time the statement spent writing blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
-yb_latency_histogram | jsonb           | List of key value pairs where key is the latency range and value is the count of times a query was executed |
+|        Column        |       Type       |                                                  Description                                                   |
+| :------------------- | :--------------- | :------------------------------------------------------------------------------------------------------------- |
+| userid               | oid              | OID of user who executed the statement                                                                         |
+| dbid                 | oid              | OID of database in which the statement was executed                                                            |
+| queryid              | bigint           | Internal hash code, computed from the statement's parse tree                                                   |
+| query                | text             | Text of a representative statement                                                                             |
+| plans                | bigint           | Number of times the statement was planned                                                                      |
+| total_plan_time      | double precision | Total time spent planning the statement, in milliseconds                                                       |
+| min_plan_time        | double precision | Minimum time spent planning the statement, in milliseconds                                                     |
+| max_plan_time        | double precision | Maximum time spent planning the statement, in milliseconds                                                     |
+| mean_plan_time       | double precision | Mean time spent planning the statement, in milliseconds                                                        |
+| stddev_plan_time     | double precision | Population standard deviation of time spent planning the statement, in milliseconds                            |
+| calls                | bigint           | Number of times executed                                                                                       |
+| total_time           | double precision | Total time spent in the statement, in milliseconds                                                             |
+| min_time             | double precision | Minimum time spent in the statement, in milliseconds                                                           |
+| max_time             | double precision | Maximum time spent in the statement, in milliseconds                                                           |
+| mean_time            | double precision | Mean time spent in the statement, in milliseconds                                                              |
+| stddev_time          | double precision | Population standard deviation of time spent in the statement, in milliseconds                                  |
+| rows                 | bigint           | Total number of rows retrieved or affected by the statement                                                    |
+| shared_blks_hit      | bigint           | Total number of shared block cache hits by the statement                                                       |
+| shared_blks_read     | bigint           | Total number of shared blocks read by the statement                                                            |
+| shared_blks_dirtied  | bigint           | Total number of shared blocks dirtied by the statement                                                         |
+| shared_blks_written  | bigint           | Total number of shared blocks written by the statement                                                         |
+| local_blks_hit       | bigint           | Total number of local block cache hits by the statement                                                        |
+| local_blks_read      | bigint           | Total number of local blocks read by the statement                                                             |
+| local_blks_dirtied   | bigint           | Total number of local blocks dirtied by the statement                                                          |
+| local_blks_written   | bigint           | Total number of local blocks written by the statement                                                          |
+| temp_blks_read       | bigint           | Total number of temp blocks read by the statement                                                              |
+| temp_blks_written    | bigint           | Total number of temp blocks written by the statement                                                           |
+| blk_read_time        | double precision | Total time the statement spent reading blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
+| blk_write_time       | double precision | Total time the statement spent writing blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
+| yb_latency_histogram | jsonb            | List of key value pairs where key is the latency range and value is the count of times a query was executed    |
 
 ## Configuration parameters
 
@@ -53,8 +59,9 @@ You can configure the following parameters in `postgresql.conf`:
 
 | Column | Type | Default | Description |
 | :----- | :--- | :------ | :---------- |
-| `pg_stat_statements.max` | integer | 5000 | Maximum number of statements tracked by the module. |
-| `pg_stat_statements.track` | enum | top | Controls which statements the module tracks. Valid values are `top` (track statements issued directly by clients), `all` (track top-level and nested statements), and `none` (disable statement statistics collection). |
+| `pg_stat_statements.max` | integer | 5000 | Maximum number of statements tracked  |
+| `pg_stat_statements.track_planning` | boolean | Controls whether planning operations and duration are tracked |
+| `pg_stat_statements.track` | enum | top | Controls which statements are counted. Valid values are `top` (track statements issued directly by clients), `all` (track top-level and nested statements), and `none` (disable statement statistics collection). |
 | `pg_stat_statements.track_utility` | boolean | on | Controls whether the module tracks utility commands. |
 | `pg_stat_statements.save` | boolean | on | Specifies whether to save statement statistics across server shutdowns. |
 | `pg_stat_statements.yb_hdr_bucket_factor` | integer | 16 | Changes the number of latency range buckets. |
