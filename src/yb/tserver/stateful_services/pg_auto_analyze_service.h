@@ -38,33 +38,36 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
       ConnectToPostgresFunc connect_to_pg_func);
 
  private:
+  using NamespaceTablesMap = std::unordered_map<NamespaceId, std::vector<TableId>>;
+  using TableMutationsMap = std::unordered_map<TableId, int64_t>;
+
   void Activate() override;
   void Deactivate() override;
   virtual uint32 PeriodicTaskIntervalMs() const override;
   virtual Result<bool> RunPeriodicTask() override;
   Status FlushMutationsToServiceTable();
   Status TriggerAnalyze();
-  Result<std::unordered_map<TableId, int64_t>> ReadTableMutations();
-  Status GetTablePGSchemaAndName(
-    std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps);
+  Result<TableMutationsMap> ReadTableMutations();
+  Status GetTablePGSchemaAndName(const TableMutationsMap& table_id_to_mutations_maps);
   Status FetchUnknownReltuples(
-      std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps,
+      const TableMutationsMap& table_id_to_mutations_maps,
       std::unordered_set<NamespaceId>& deleted_databases);
-  Result<std::unordered_map<NamespaceId, std::vector<TableId>>> DetermineTablesForAnalyze(
-      std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps);
+  Result<NamespaceTablesMap> DetermineTablesForAnalyze(
+      const TableMutationsMap& table_id_to_mutations_maps);
   Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
       DoAnalyzeOnCandidateTables(
-          std::unordered_map<NamespaceId, std::vector<TableId>>&
-                namespace_id_to_analyze_target_tables,
+          const NamespaceTablesMap& namespace_id_to_analyze_target_tables,
           std::unordered_set<NamespaceId>& deleted_databases);
   Status UpdateTableMutationsAfterAnalyze(
-      std::vector<TableId>& tables,
-      std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps);
+      const std::vector<TableId>& tables,
+      const TableMutationsMap& table_id_to_mutations_maps);
   Status CleanUpDeletedTablesFromServiceTable(
-      std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps,
-      std::vector<TableId>& deleted_tables, std::unordered_set<NamespaceId>& deleted_databases);
+      const TableMutationsMap& table_id_to_mutations_maps,
+      const std::vector<TableId>& deleted_tables,
+      const std::unordered_set<NamespaceId>& deleted_databases);
   Result<pgwrapper::PGConn> EstablishDBConnection(
-      NamespaceId namespace_id, std::unordered_set<NamespaceId>& deleted_databases,
+      const NamespaceId& namespace_id,
+      std::unordered_set<NamespaceId>& deleted_databases,
       bool* is_deleted_or_renamed);
   std::string TableNamesForAnalyzeCmd(const std::vector<TableId>& table_ids);
 
@@ -90,6 +93,8 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   // Track if we need to refresh table_id_to_name_ and namespace_id_to_name_
   // in case of table and database rename.
   bool refresh_name_cache_;
+  // Each postgres database has its own pg_class table, so we use map instead of single value.
+  TableMutationsMap pg_class_id_mutations_;
 };
 
 }  // namespace stateful_service

@@ -187,7 +187,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Get aggregated mutations for each table across the whole transaction (exclude aborted
   // sub-transactions).
-  std::unordered_map<TableId, uint64_t> GetTableMutationCounts() const;
+  std::vector<std::pair<TableId, uint64_t>> GetTableMutationCounts() const;
 
   bool OldTransactionAborted() const;
 

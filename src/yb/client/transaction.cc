@@ -1089,20 +1089,21 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     subtxn_table_mutation_counter_map_[subtxn_id].insert({table_id, mutation_count});
   }
 
-  std::unordered_map<TableId, uint64_t> GetTableMutationCounts() const {
+  std::vector<std::pair<TableId, uint64_t>> GetTableMutationCounts() const {
     std::lock_guard lock(mutation_count_mutex_);
     auto& aborted_sub_txn_set = subtransaction_.get().aborted;
-    std::unordered_map<TableId, uint64_t> table_mutation_counts;
+    std::vector<std::pair<TableId, uint64_t>> result;
     for (const auto& [sub_txn_id, table_mutation_cnt_map] : subtxn_table_mutation_counter_map_) {
       if (aborted_sub_txn_set.Test(sub_txn_id)) {
         continue;
       }
 
+      result.reserve(result.size() + table_mutation_cnt_map.size());
       for (const auto& [table_id, mutation_count] : table_mutation_cnt_map) {
-        table_mutation_counts[table_id] += mutation_count;
+        result.emplace_back(table_id, mutation_count);
       }
     }
-    return table_mutation_counts;
+    return result;
   }
 
   void SetLogPrefixTag(const LogPrefixName& name, uint64_t id) {
@@ -2591,7 +2592,7 @@ void YBTransaction::IncreaseMutationCounts(
   return impl_->IncreaseMutationCounts(subtxn_id, table_id, mutation_count);
 }
 
-std::unordered_map<TableId, uint64_t> YBTransaction::GetTableMutationCounts() const {
+std::vector<std::pair<TableId, uint64_t>> YBTransaction::GetTableMutationCounts() const {
   return impl_->GetTableMutationCounts();
 }
 

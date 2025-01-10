@@ -385,6 +385,13 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
                 << MonoDelta(CoarseMonoClock::Now() - start);
       return PGConn(std::move(result), simple_query_protocol);
     }
+    if (status == CONNECTION_BAD) {
+      auto msg = GetPQErrorMessage(result.get());
+      if (msg.ends_with("\" does not exist") &&
+          msg.find("FATAL:  database \"") != std::string::npos) {
+        break;
+      }
+    }
   } while (waiter.Wait());
   const MonoDelta duration(CoarseMonoClock::now() - start);
   const auto msg = status == CONNECTION_BAD

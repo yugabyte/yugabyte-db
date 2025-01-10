@@ -1380,9 +1380,7 @@ Status PgClientSession::FinishTransaction(
       auto table_mutations = txn_value->GetTableMutationCounts();
       VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "
                           << AsString(table_mutations) << " for txn: " << txn_value->id();
-      for(const auto& [table_id, mutation_count] : table_mutations) {
-        pg_node_level_mutation_counter_->Increase(table_id, mutation_count);
-      }
+      pg_node_level_mutation_counter_->IncreaseBatch(table_mutations);
     }
   } else {
     VLOG_WITH_PREFIX_AND_FUNC(2)
