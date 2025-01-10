@@ -25,17 +25,6 @@ YugabyteDB implements a simple rules based optimizer (RBO) for YCQL. It operates
 
 YugabyteDB’s YSQL API uses a simple heuristics based optimizer to determine the most efficient execution plan for a query. It relies on basic statistics, like table sizes, and applies heuristics to estimate the cost of different plans. The cost model is based on PostgreSQL’s approach, using data such as row counts and index availability and assigns some heuristic costs to the number of result rows depending on the type of the scan. Although this works well for most queries, because this model was designed for single-node databases like PostgreSQL, it doesn’t account for YugabyteDB’s distributed architecture or take cluster topology into consideration during query planning.
 
-{{<tip>}}
-
-The default CBO is {{<tags/feature/tp>}} and disabled by default. To enable it, turn ON the [yb_enable_optimizer_statistics](../../../reference/configuration/yb-tserver/#yb-enable-optimizer-statistics) configuration parameter as follows:
-
-```sql
--- Enable for current session
-SET yb_enable_optimizer_statistics = TRUE;
-```
-
-{{</tip>}}
-
 ## Cost based optimizer - CBO (YSQL)
 
 To account for the distributed nature of the data, YugabyteDB has implemented a Cost based optimizer for YSQL that uses an advanced cost model that takes into consideration of accurate table statistics, the cost of network round trips, operations on lower level storage layer and the cluster toplogy. Let us see in detail how this works.
@@ -98,10 +87,6 @@ Some of the factors included in the cost estimation are discussed below.
 The CBO evaluates each candidate plan's estimated costs to determine the plan with the lowest cost, which is then selected for execution. This ensures the optimal use of system resources and improved query performance.
 
 After the optimal plan is determined, YugabyteDB generates a detailed execution plan with all the necessary steps, such as scanning tables, joining data, filtering rows, sorting, and computing expressions. This execution plan is then passed to the query executor component, which carries out the plan and returns the final query results.
-
-## Plan caching
-
-The execution plans are cached for prepared statements to avoid overheads associated with repeated parsing of statements.
 
 ## Learn more
 
