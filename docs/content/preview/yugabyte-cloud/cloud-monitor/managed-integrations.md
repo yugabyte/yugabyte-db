@@ -126,7 +126,7 @@ The [Prometheus](https://prometheus.io/docs/introduction/overview/) integration 
   - Deployed in a VPC on AWS or GCP.
   - [OTLP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled.
   {{< note title="Note" >}}
-The OTLP Receiver feature flag differs between Prometheus versions. Ensure you check the appropriate documentation for your Prometheus version.
+How you enable the OTLP Receiver feature flag differs between Prometheus versions. Be sure to check the appropriate documentation for your version of Prometheus.
   {{< /note >}}
   - Publicly-accessible endpoint URL that resolves to the private IP of the Prometheus instance.
 
