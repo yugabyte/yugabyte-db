@@ -105,7 +105,8 @@ var createUserCmd = &cobra.Command{
 					formatter.RedColor))
 		}
 
-		resourceRoleDefinition := rbacutil.BuildResourceRoleDefinition(roleResourceDefinitionString)
+		resourceRoleDefinition := rbacutil.BuildResourceRoleDefinition(
+			authAPI, roleResourceDefinitionString)
 
 		req := ybaclient.UserRegistrationData{
 			Email:                   email,
