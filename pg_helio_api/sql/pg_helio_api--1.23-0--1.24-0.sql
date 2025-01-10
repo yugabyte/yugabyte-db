@@ -19,4 +19,6 @@ SET search_path TO helio_api;
 #include "pg_documentdb/sql/udfs/schema_validation/schema_validation--0.24-0.sql"
 #include "pg_documentdb/sql/udfs/schema_mgmt/shard_collection--0.24-0.sql"
 #include "udfs/aggregation/bson_aggregation_redact--1.24-0.sql"
+#include "pg_documentdb/sql/udfs/aggregation/group_aggregates_support--0.24-0.sql"
+#include "pg_documentdb/sql/udfs/aggregation/group_aggregates--0.24-0.sql"
 RESET search_path;

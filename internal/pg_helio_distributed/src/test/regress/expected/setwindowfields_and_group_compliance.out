@@ -75,9 +75,9 @@ END $$;
 NOTICE:  [TEST PASSED] Operator $bottom is supported in both $group and $setWindowFields
 NOTICE:  [TEST PASSED] Operator $bottomN is supported in both $group and $setWindowFields
 NOTICE:  [TEST PASSED] Operator $maxN is supported in both $group and $setWindowFields
-NOTICE:  [TEST PASSED] Operator $median is not supported in both $group and $setWindowFields
+NOTICE:  [TEST FAILED] Operator $median is not supported in $setWindowFields
 NOTICE:  [TEST PASSED] Operator $minN is supported in both $group and $setWindowFields
-NOTICE:  [TEST PASSED] Operator $percentile is not supported in both $group and $setWindowFields
+NOTICE:  [TEST FAILED] Operator $percentile is not supported in $setWindowFields
 NOTICE:  [TEST PASSED] Operator $stdDevSamp is supported in both $group and $setWindowFields
 NOTICE:  [TEST PASSED] Operator $stdDevPop is supported in both $group and $setWindowFields
 NOTICE:  [TEST PASSED] Operator $top is supported in both $group and $setWindowFields

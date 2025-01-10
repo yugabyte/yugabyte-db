@@ -350,6 +350,8 @@ Oid ApiIndexStatsAggregationFunctionOid(void);
 Oid BsonCurrentOpAggregationFunctionId(void);
 Oid BsonMaxNAggregateFunctionOid(void);
 Oid BsonMinNAggregateFunctionOid(void);
+Oid BsonMedianAggregateFunctionOid(void);
+Oid BsonPercentileAggregateFunctionOid(void);
 
 /* Window functions*/
 Oid BsonLinearFillFunctionOid(void);

@@ -108,8 +108,8 @@ CREATE SCHEMA documentdb_data;
 #include "udfs/aggregation/window_aggregate_support--0.22-0.sql"
 #include "udfs/aggregation/window_aggregates--0.22-0.sql"
 
-#include "udfs/aggregation/group_aggregates_support--0.22-0.sql"
-#include "udfs/aggregation/group_aggregates--0.22-0.sql"
+#include "udfs/aggregation/group_aggregates_support--0.24-0.sql"
+#include "udfs/aggregation/group_aggregates--0.24-0.sql"
 
 #include "udfs/aggregation/bson_unwind_functions--0.10-0.sql"
 #include "udfs/aggregation/bson_lookup_functions--0.23-0.sql"

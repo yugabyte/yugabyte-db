@@ -109,6 +109,9 @@ void ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument,
 									   bson_value_t *input,
 									   bson_value_t *elementsToFetch,
 									   bson_value_t *sortSpec, const char *opName);
+void ParseInputDocumentForMedianAndPercentile(const bson_value_t *inputDocument,
+											  bson_value_t *input, bson_value_t *p,
+											  bson_value_t *method, bool isMedianOp);
 void ValidateElementForNGroupAccumulators(bson_value_t *elementsToFetch, const
 										  char *opName);
 void ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,

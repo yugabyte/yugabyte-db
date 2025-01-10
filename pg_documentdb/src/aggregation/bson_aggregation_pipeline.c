@@ -79,6 +79,9 @@ extern bool EnableCollation;
 extern bool EnableFastPathPointLookupPlanner;
 extern bool DefaultInlineWriteOperations;
 
+/* GUC to config tdigest compression */
+extern int TdigestCompressionAccuracy;
+
 /*
  * The mutation function that modifies a given query with a pipeline stage's value.
  */
@@ -1267,8 +1270,13 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 		}
 		else if (StringViewEqualsCString(&keyView, "let"))
 		{
-			EnsureTopLevelFieldType("let", &aggregationIterator, BSON_TYPE_DOCUMENT);
-			let = *value;
+			bool hasValue = EnsureTopLevelFieldTypeNullOkUndefinedOK("let",
+																	 &aggregationIterator,
+																	 BSON_TYPE_DOCUMENT);
+			if (hasValue)
+			{
+				let = *value;
+			}
 		}
 		else if (StringViewEqualsCString(&keyView, "collectionUUID"))
 		{
@@ -2384,6 +2392,94 @@ ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument, bson_value_
 							opName),
 						errdetail_log(
 							"'sortBy' field in %s is not an object", opName)));
+	}
+}
+
+
+/**
+ * Parses the input document for $median and $percentile accumulator operator, extracts input, p and methods.
+ * @param inputDocument: input document for the operator
+ * @param input:  this is a pointer which after parsing will hold input expression
+ * @param p:  this is a pointer which after parsing will hold the p, i.e. the percentile array value
+ * @param method: this is a pointer which after parsing will hold method
+ * @param isMedianOp: this contains the name of the operator for error msg formatting purposes. This value is supposed to be $firstN/$lastN.
+ */
+void
+ParseInputDocumentForMedianAndPercentile(const bson_value_t *inputDocument,
+										 bson_value_t *input,
+										 bson_value_t *p, bson_value_t *method,
+										 bool isMedianOp)
+{
+	const char *opName = isMedianOp ? "$median" : "$percentile";
+	if (inputDocument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		int errorcode = isMedianOp ? ERRCODE_DOCUMENTDB_LOCATION7436100 :
+						ERRCODE_DOCUMENTDB_LOCATION7429703;
+		ereport(ERROR, (errcode(errorcode),
+						errmsg("specification must be an object; found %s type: %s",
+							   opName, BsonTypeName(inputDocument->value_type)),
+						errdetail_log(
+							"%s specification must be an object", opName)));
+	}
+	bson_iter_t docIter;
+	BsonValueInitIterator(inputDocument, &docIter);
+
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			*input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "method") == 0)
+		{
+			*method = *bson_iter_value(&docIter);
+		}
+		/* only evaluate p for $percentile */
+		else if (!isMedianOp && strcmp(key, "p") == 0)
+		{
+			*p = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD), errmsg(
+								"BSON field '$%s.%s' is an unknown field.", opName, key),
+							errdetail_log("%s found an unknown argument", opName)));
+		}
+	}
+
+	/* check required fields are present */
+	char *keyName;
+	if (((input->value_type == BSON_TYPE_EOD) && (keyName = "input")) ||
+		(!isMedianOp && (p->value_type == BSON_TYPE_EOD) && (keyName = "p")) ||
+		((method->value_type == BSON_TYPE_EOD) && (keyName = "method")))
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40414), errmsg(
+							"BSON field '$%s.%s' is missing but is a required field",
+							opName, keyName)));
+	}
+
+	/* validate method: can only be 'approximate' for now */
+	if (method->value_type != BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH), errmsg(
+							"BSON field '$%s.method' is the wrong type %s, expected type 'string'",
+							opName, BsonTypeName(method->value_type)),
+						errdetail_log(
+							"BSON field '$%s.method' expects type 'string'", opName)));
+	}
+	if (strcmp(method->value.v_utf8.str, "approximate") != 0)
+	{
+		/* Same error message for both $median and $percentile */
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
+							"Currently only 'approximate' can be used as percentile 'method'")));
+	}
+
+	/* set p for $median to 0.5 */
+	if (isMedianOp)
+	{
+		p->value_type = BSON_TYPE_DOUBLE;
+		p->value.v_double = 0.5;
 	}
 }
 
@@ -4932,6 +5028,92 @@ AddMaxMinNGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 
 
 /*
+ * Function used to support percentile/median accumulator.
+ */
+inline static List *
+AddPercentileMedianGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
+									List *repathArgs, Const *accumulatorText,
+									ParseState *parseState, char *identifiers,
+									Expr *documentExpr, StringView *accumulatorName,
+									Expr *variableSpec, bool isMedianOp)
+{
+	bson_value_t input = { 0 };
+	bson_value_t p = { 0 };
+	bson_value_t method = { 0 };
+
+	ParseInputDocumentForMedianAndPercentile(accumulatorValue, &input, &p, &method,
+											 isMedianOp);
+
+	/* construct expression to get input and p */
+	List *inputFuncArgs;
+	List *pFuncArgs;
+	Oid bsonExpressionGetFunction;
+
+	Expr *inputConstValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(&input));
+	Const *accuracyConstValue = makeConst(INT4OID, -1, InvalidOid, sizeof(int32_t),
+										  Int32GetDatum(TdigestCompressionAccuracy),
+										  false, true);
+	Expr *pConstValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(&p));
+	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
+								 true);
+	if (variableSpec != NULL)
+	{
+		bsonExpressionGetFunction = BsonExpressionGetWithLetFunctionOid();
+		inputFuncArgs = list_make4(documentExpr, inputConstValue, trueConst,
+								   variableSpec);
+		pFuncArgs = list_make4(documentExpr, pConstValue, trueConst, variableSpec);
+	}
+	else
+	{
+		bsonExpressionGetFunction = BsonExpressionGetFunctionOid();
+		inputFuncArgs = list_make3(documentExpr, inputConstValue, trueConst);
+		pFuncArgs = list_make3(documentExpr, pConstValue, trueConst);
+	}
+
+	FuncExpr *inputAccumFunc = makeFuncExpr(bsonExpressionGetFunction, BsonTypeId(),
+											inputFuncArgs, InvalidOid,
+											InvalidOid, COERCE_EXPLICIT_CALL);
+	FuncExpr *pAccumFunc = makeFuncExpr(bsonExpressionGetFunction, BsonTypeId(),
+										pFuncArgs, InvalidOid,
+										InvalidOid, COERCE_EXPLICIT_CALL);
+
+	if (EnableLetSupport && BsonTypeId() != DocumentDBCoreBsonTypeId() &&
+		IsClusterVersionAtleast(DocDB_V0, 24, 0))
+	{
+		inputAccumFunc = makeFuncExpr(
+			DocumentDBCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(
+				inputAccumFunc),
+			InvalidOid,
+			InvalidOid, COERCE_EXPLICIT_CALL);
+		pAccumFunc = makeFuncExpr(
+			DocumentDBCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(pAccumFunc),
+			InvalidOid,
+			InvalidOid, COERCE_EXPLICIT_CALL);
+	}
+
+	Oid aggregateFunctionOid = isMedianOp ? BsonMedianAggregateFunctionOid() :
+							   BsonPercentileAggregateFunctionOid();
+	Aggref *aggref = CreateMultiArgAggregate(aggregateFunctionOid, list_make3(
+												 (Expr *) inputAccumFunc,
+												 accuracyConstValue, (Expr *) pAccumFunc),
+											 list_make3_oid(
+												 BsonTypeId(),
+												 accuracyConstValue->consttype,
+												 BsonTypeId()), parseState);
+
+	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) accumulatorText,
+														parseState, identifiers, query,
+														TEXTOID, NULL));
+
+	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) aggref, parseState,
+														identifiers, query, BsonTypeId(),
+														NULL));
+
+	return repathArgs;
+}
+
+
+/*
  * Handles the $group stage.
  * Creates a subquery.
  * Then creates a grouping specified by the _id expression.
@@ -5496,6 +5678,40 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 													&sortSpec,
 													&accumulatorName,
 													context->variableSpec);
+		}
+		else if (StringViewEqualsCString(&accumulatorName, "$median"))
+		{
+			if (!(IsClusterVersionAtleast(DocDB_V0, 24, 0)))
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+								errmsg("Accumulator $median is not supported yet")));
+			}
+			repathArgs = AddPercentileMedianGroupAccumulator(query,
+															 &accumulatorElement.bsonValue,
+															 repathArgs,
+															 accumulatorText, parseState,
+															 identifiers,
+															 origEntry->expr,
+															 &accumulatorName,
+															 context->variableSpec, true);
+		}
+		else if (StringViewEqualsCString(&accumulatorName, "$percentile"))
+		{
+			if (!(IsClusterVersionAtleast(DocDB_V0, 24, 0)))
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+								errmsg(
+									"Accumulator $percentile is not supported yet")));
+			}
+			repathArgs = AddPercentileMedianGroupAccumulator(query,
+															 &accumulatorElement.bsonValue,
+															 repathArgs,
+															 accumulatorText, parseState,
+															 identifiers,
+															 origEntry->expr,
+															 &accumulatorName,
+															 context->variableSpec,
+															 false);
 		}
 		else
 		{

@@ -71,6 +71,9 @@ int ScramDefaultSaltLen = SCRAM_DEFAULT_SALT_LEN;
 #define MAX_USER_LIMIT 10
 int MaxUserLimit = MAX_USER_LIMIT;
 
+#define DEFAULT_TDIGEST_COMPRESSION_ACCURACY 1500
+int TdigestCompressionAccuracy = DEFAULT_TDIGEST_COMPRESSION_ACCURACY;
+
 #define DEFAULT_DOCUMENTDB_PG_READ_ONLY_FOR_DISK_FULL false
 bool DocumentDBPGReadOnlyForDiskFull = DEFAULT_DOCUMENTDB_PG_READ_ONLY_FOR_DISK_FULL;
 
@@ -263,4 +266,13 @@ InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
 		PGC_SUSET,
 		0,
 		NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.tdigestCompressionAccuracy", newGucPrefix),
+		gettext_noop("Accuracy parameter of the t-digest compression."),
+		gettext_noop(
+			"The number of maximum centroid to use in the t-digest. Range from 10 to 10000. The higher the number, the more accurate will be, but higher memory usage."),
+		&TdigestCompressionAccuracy,
+		DEFAULT_TDIGEST_COMPRESSION_ACCURACY, 10, 10000,
+		PGC_USERSET, 0, NULL, NULL, NULL);
 }

@@ -799,6 +799,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the BSONSTDDEVSAMP aggregate function */
 	Oid ApiCatalogBsonStdDevSampAggregateFunctionOid;
 
+	/* OID of the BSONMEDIAN aggregate function */
+	Oid ApiCatalogBsonMedianAggregateFunctionOid;
+
+	/* OID of the BSONPERCENTILE aggregate function */
+	Oid ApiCatalogBsonPercentileAggregateFunctionOid;
+
 	/* OID of the pg_catalog.any_value aggregate */
 	Oid PostgresAnyValueFunctionOid;
 
@@ -4033,6 +4039,24 @@ BsonStdDevSampAggregateFunctionOid(void)
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonStdDevSampAggregateFunctionOid,
 		DocumentDBApiInternalSchemaName, "bsonstddevsamp");
+}
+
+
+Oid
+BsonMedianAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonMedianAggregateFunctionOid,
+		DocumentDBApiInternalSchemaName, "bsonmedian");
+}
+
+
+Oid
+BsonPercentileAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonPercentileAggregateFunctionOid,
+		DocumentDBApiInternalSchemaName, "bsonpercentile");
 }
 
 
