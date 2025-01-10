@@ -91,6 +91,7 @@ class UsearchVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
  public:
   using IteratorPair = std::pair<VectorId, Vector>;
   using member_citerator_t = typename unum::usearch::index_dense_gt<VectorId>::member_citerator_t;
+
   UsearchVectorIterator(
       size_t dimensions, member_citerator_t it, const index_dense_gt<VectorId>* index)
       : dimensions_(dimensions), it_(it), index_(index) {}
@@ -117,7 +118,7 @@ class UsearchVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
  private:      // Reference to the Usearch index
   size_t dimensions_;              // Dimensionality of the vectors
   member_citerator_t it_; // Iterator over the internal Usearch entities
-  const index_dense_gt<VectorId> * index_;
+  const index_dense_gt<VectorId>* index_;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -173,6 +174,7 @@ class UsearchIndex :
 
   Status DoSaveToFile(const std::string& path) {
     // TODO(vector_index) Reload via memory mapped file
+    VLOG_WITH_FUNC(2) << path << ", size: " << index_.size();
     if (!index_.save(output_file_t(path.c_str()))) {
       return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
     }
@@ -184,6 +186,7 @@ class UsearchIndex :
     if (result) {
       search_semaphore_.emplace(max_concurrent_reads);
       index_ = std::move(result.index);
+      VLOG_WITH_FUNC(2) << path << ": " << index_.size();
       return Status::OK();
     }
     return STATUS_FORMAT(IOError, "Failed to load index from file: $0", path);
