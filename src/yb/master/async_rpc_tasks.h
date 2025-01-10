@@ -413,6 +413,7 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTaskWithTable {
                      ThreadPool *callback_pool,
                      const std::string& permanent_uuid,
                      const TabletInfoPtr& tablet,
+                     const TabletInfo::ReadLock& tablet_lock,
                      const std::vector<SnapshotScheduleId>& snapshot_schedules,
                      LeaderEpoch epoch,
                      CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers);

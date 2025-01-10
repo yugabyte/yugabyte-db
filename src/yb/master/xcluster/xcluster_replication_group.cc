@@ -772,9 +772,10 @@ Status DeleteUniverseReplication(
     xcluster_manager->RemoveTableConsumerStream(table.second, universe.ReplicationGroupId());
   }
 
+  l.Commit();
+
   catalog_manager.RemoveUniverseReplicationFromMap(universe.ReplicationGroupId());
 
-  l.Commit();
   LOG(INFO) << "Processed delete universe replication of " << universe.ToString();
 
   return Status::OK();

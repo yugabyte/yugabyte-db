@@ -395,7 +395,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::RollbackMajorVersionCatalogImpl(const L
   for (const auto& ns_info : namespaces) {
     LOG(INFO) << "Deleting ysql major catalog tables for namespace " << ns_info->name();
     RETURN_NOT_OK(catalog_manager_.DeleteYsqlDBTables(
-        ns_info,
+        ns_info->id(),
         /*is_for_ysql_major_rollback=*/true, epoch));
   }
 

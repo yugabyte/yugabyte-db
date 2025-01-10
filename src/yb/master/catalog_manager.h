@@ -347,7 +347,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status CreatePgAutoAnalyzeService(const LeaderEpoch& epoch);
 
-  Status CreatePgCronService(const LeaderEpoch& epoch);
+  Status CreatePgCronService(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
   // Get the information about an in-progress create operation.
   Status IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
@@ -672,7 +672,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Delete all tables in YSQL database.
   Status DeleteYsqlDBTables(
-      const scoped_refptr<NamespaceInfo>& database, const bool is_for_ysql_major_rollback,
+      const NamespaceId& database_id, const bool is_for_ysql_major_rollback,
       const LeaderEpoch& epoch);
 
   // List all the current namespaces.
@@ -1480,7 +1480,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const std::string& record_type_option_value, const std::string& id_type_option_value);
 
   Status RollbackFailedCreateCDCSDKStream(
-      const xrepl::StreamId& stream_id, CDCSDKStreamCreationState& cdcsdk_stream_creation_state);
+      CDCSDKStreamCreationState cdcsdk_stream_creation_state, const CDCStreamInfoPtr& stream);
 
   // Process the newly created tables that are relevant to existing CDCSDK streams.
   Status ProcessNewTablesForCDCSDKStreams(
@@ -1608,7 +1608,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
   Status DropXReplStreams(
-      const std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State delete_state);
+      std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State delete_state);
 
   std::optional<UniverseUuid> GetUniverseUuidIfExists() const;
 
@@ -1774,7 +1774,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                              IndexInfoPB* index_info,
                              TabletInfos* tablets,
                              CreateTableResponsePB* resp,
-                             scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
+                             TableInfoPtr* table,
+                             TableInfoWithWriteLock* indexed_table) REQUIRES(mutex_);
 
   Result<TabletInfos> CreateTabletsFromTable(
       const std::vector<dockv::Partition>& partitions,
@@ -1804,15 +1805,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                            const NamespaceId& namespace_id,
                                            const NamespaceName& namespace_name,
                                            bool colocated,
-                                           IndexInfoPB* index_info) REQUIRES(mutex_);
-
-  // Helper for creating the initial TabletInfo state.
-  // Leaves the tablet "write locked" with the new info in the
-  // "dirty" state field.
-  TabletInfoPtr CreateTabletInfo(TableInfo* table,
-                                 const PartitionPB& partition,
-                                 SysTabletsEntryPB::State state = SysTabletsEntryPB::PREPARING)
-                                 REQUIRES_SHARED(mutex_);
+                                           IndexInfoPB* index_info,
+                                           TableInfoWithWriteLock* indexed_table) REQUIRES(mutex_);
 
   // Remove the specified entries from the protobuf field table_ids of a TabletInfo.
   Status RemoveTableIdsFromTabletInfo(
@@ -1820,16 +1814,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const LeaderEpoch& epoch);
 
   // Add index info to the indexed table.
-  Status AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
-                             TableInfo::WriteLock* l_ptr,
+  Status AddIndexInfoToTable(TableInfoWithWriteLock& indexed_table,
                              const IndexInfoPB& index_info,
                              const LeaderEpoch& epoch,
                              CreateTableResponsePB* resp);
 
   struct DeletingTableData {
-    TableInfoPtr table_info;
-    TableInfo::WriteLock write_lock = TableInfo::WriteLock();
+    explicit DeletingTableData(const TableInfoPtr& info) : table_info_with_write_lock(info) {}
 
+    TableInfoWithWriteLock table_info_with_write_lock;
     bool remove_from_name_map = false;
     TabletDeleteRetainerInfo delete_retainer = TabletDeleteRetainerInfo::AlwaysDelete();
 
@@ -1841,7 +1834,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
       const LeaderEpoch& epoch,
       DeleteTableResponsePB* resp,
-      std::map<TableId, DeletingTableData>* data_map_ptr);
+      std::map<TableId, DeletingTableData>* data_map_ptr,
+      const NamespaceInfoPtr& ns_info);
 
   // Delete index info from the indexed table.
   Status DeleteIndexInfoFromTable(
@@ -1987,7 +1981,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       std::vector<DeletingTableData>* tables,
       DeleteTableResponsePB* resp,
       rpc::RpcContext* rpc,
-      std::map<TableId, DeletingTableData>* data_map_ptr);
+      std::map<TableId, DeletingTableData>* data_map_ptr,
+      const NamespaceInfoPtr& ns_info);
 
   // Request tablet servers to delete all replicas of the tablet.
   void DeleteTabletReplicas(
@@ -1998,12 +1993,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // 1) Delete single tablet from table.
   // 2) Delete the whole table.
   // This is used for pre-checks in both `DeleteTablet` and `DeleteOrHideTabletsAndSendRequests`.
-  Status CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<TableInfo>& table);
+  Status CheckIfForbiddenToDeleteTabletOf(const TableInfo& table);
 
   // Marks each of the tablets in the given table as deleted and triggers requests to the tablet
   // servers to delete them. The table parameter is expected to be given "write locked".
   Status DeleteOrHideTabletsOfTable(
-      const TableInfoPtr& table_info, const TabletDeleteRetainerInfo& delete_retainer,
+      const TableInfo& table_info, const TabletDeleteRetainerInfo& delete_retainer,
       const LeaderEpoch& epoch);
 
   // Marks each of the given tablets as deleted and triggers requests to the tablet
@@ -2991,7 +2986,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       GUARDED_BY(should_send_universe_key_registry_mutex_);
 
   // CDC Stream map: xrepl::StreamId -> CDCStreamInfo.
-  typedef std::unordered_map<xrepl::StreamId, CDCStreamInfoPtr> CDCStreamInfoMap;
+  using CDCStreamInfoMap = std::map<xrepl::StreamId, CDCStreamInfoPtr>;
   CDCStreamInfoMap cdc_stream_map_ GUARDED_BY(mutex_);
   bool xrepl_maps_loaded_ GUARDED_BY(mutex_) = false;
 

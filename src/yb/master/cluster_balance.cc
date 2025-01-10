@@ -1706,11 +1706,7 @@ Result<TabletInfos> ClusterLoadBalancer::GetTabletsForTable(const TableId& table
         table_uuid);
   }
 
-  return table_info->GetTablets(IncludeInactive::kTrue);
-}
-
-TableIndex::TablesRange ClusterLoadBalancer::GetTables() const {
-  return catalog_manager_->tables_->GetPrimaryTables();
+  return table_info->GetTabletsIncludeInactive();
 }
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {

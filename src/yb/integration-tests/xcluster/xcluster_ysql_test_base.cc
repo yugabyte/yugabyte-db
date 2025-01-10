@@ -404,14 +404,21 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
     return STATUS(IllegalState, "Failed listing tables");
   }
 
+  if (!verify_schema_name) {
+    // There are could be multiple tables with the same name.
+    // So reverse tables to find the latest one.
+    // Since we are dealing with postgres tables, their id reflects postgres table ids, that
+    // are assigned in increasing order.
+    std::reverse(resp.mutable_tables()->begin(), resp.mutable_tables()->end());
+  }
+
   // Now need to find the table and return it.
   for (const auto& table : resp.tables()) {
     // If !verify_table_name, just return the first table.
     if (!verify_table_name ||
         (table.name() == table_name && table.namespace_().name() == namespace_name)) {
       // In case of a match, further check for match in schema_name.
-      if (!verify_schema_name || (!table.has_pgschema_name() && schema_name.empty()) ||
-          (table.has_pgschema_name() && table.pgschema_name() == schema_name)) {
+      if (!verify_schema_name || (table.pgschema_name() == schema_name)) {
         YBTableName yb_table;
         yb_table.set_table_id(table.id());
         yb_table.set_table_name(table_name);

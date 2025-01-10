@@ -38,8 +38,8 @@ class YQLPartitionsVTable : public YQLVirtualTable {
 
   // Filter only tablets that have relevant system.partitions changes from a list of tablets that
   // have heartbeated in and are being processed.
-  Result<std::vector<TabletInfoPtr>> FilterRelevantTablets(
-      const std::vector<TabletInfoPtr>& mutated_tablets) const;
+  static std::vector<TabletInfoPtr> FilterRelevantTablets(
+      const std::vector<TabletInfoPtr>& mutated_tablets);
 
   // Process a filtered list of tablets and add them to the system.partitions vtable.
   Status ProcessMutatedTablets(

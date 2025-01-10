@@ -41,22 +41,30 @@ class TableIndex {
   using Tables = boost::multi_index_container<
     TableInfoPtr,
     boost::multi_index::indexed_by<
-      boost::multi_index::hashed_unique<
+      boost::multi_index::ordered_unique<
         boost::multi_index::const_mem_fun<TableInfo, const TableId&, &TableInfo::id>>,
       boost::multi_index::hashed_non_unique<
         boost::multi_index::tag<ColocatedUserTableTag>,
         boost::multi_index::const_mem_fun<TableInfo, bool, &TableInfo::IsColocatedUserTable>>>>;
 
-  using TablesRange = boost::iterator_range<Tables::nth_index<1>::type::iterator>;
+  using TablesRange = boost::iterator_range<Tables::iterator>;
+  using PrimaryTablesRange = boost::iterator_range<
+      Tables::index<ColocatedUserTableTag>::type::iterator>;
 
   TableIndex() = default;
   ~TableIndex() = default;
-  scoped_refptr<TableInfo> FindTableOrNull(const TableId& id) const;
+  TableInfoPtr FindTableOrNull(const TableId& id) const;
 
-  TablesRange GetAllTables() const;
-  TablesRange GetPrimaryTables() const;
+  TablesRange GetAllTables() const {
+    return TablesRange(tables_);
+  }
 
-  void AddOrReplace(const scoped_refptr<TableInfo>& table);
+  PrimaryTablesRange GetPrimaryTables() const {
+    return boost::make_iterator_range(
+        tables_.get<ColocatedUserTableTag>().equal_range(false /* is_colocated_user_table */));
+  }
+
+  void AddOrReplace(const TableInfoPtr& table);
 
   void Clear();
 

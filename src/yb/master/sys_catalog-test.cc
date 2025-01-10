@@ -172,7 +172,6 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
   // This leaves all three in StartMutation.
   TabletInfoPtr tablet1(CreateUncommittedTablet(table.get(), "123", "a", "b"));
   TabletInfoPtr tablet2(CreateUncommittedTablet(table.get(), "456", "b", "c"));
-  TabletInfoPtr tablet3(CreateUncommittedTablet(table.get(), "789", "c", "d"));
 
   unique_ptr<TestTabletLoader> loader(new TestTabletLoader());
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
@@ -214,11 +213,11 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
   }
 
   // Add tablet3 and Update tablet1 and tablet2
+  TabletInfoPtr tablet3;
   {
     std::vector<TabletInfo *> to_add;
     std::vector<TabletInfo *> to_update;
 
-    to_add.push_back(tablet3.get());
     to_update.push_back(tablet1.get());
     to_update.push_back(tablet2.get());
 
@@ -226,6 +225,9 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     l1.mutable_data()->pb.set_state(SysTabletsEntryPB::REPLACED);
     auto l2 = tablet2->LockForWrite();
     l2.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+
+    tablet3 = CreateUncommittedTablet(table.get(), "789", "c", "d");
+    to_add.push_back(tablet3.get());
 
     loader->Reset();
     ASSERT_OK(sys_catalog_->Upsert(epoch, to_add, to_update));

@@ -1066,9 +1066,7 @@ Status XClusterTargetManager::SetupUniverseReplication(
     data.target_namespace_ids.push_back(ns_info->id());
   }
 
-  data.source_table_ids.insert(
-      data.source_table_ids.begin(), req->producer_table_ids().begin(),
-      req->producer_table_ids().end());
+  data.source_table_ids.assign(req->producer_table_ids().begin(), req->producer_table_ids().end());
 
   return SetupUniverseReplication(std::move(data), epoch);
 }

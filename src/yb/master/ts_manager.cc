@@ -100,13 +100,13 @@ class TSDescriptorLoader : public Visitor<PersistentTServerInfo> {
       HybridTime load_time) noexcept
       : local_cloud_info_(local_cloud_info), proxy_cache_(proxy_cache), load_time_(load_time) {}
 
-  std::unordered_map<std::string, TSDescriptorPtr>&& TakeMap();
+  TSDescriptorMap&& TakeMap();
 
  protected:
   Status Visit(const std::string& id, const SysTabletServerEntryPB& metadata) override;
 
  private:
-  std::unordered_map<std::string, TSDescriptorPtr> map_;
+  TSDescriptorMap map_;
   const CloudInfoPB& local_cloud_info_;
   rpc::ProxyCache* proxy_cache_;
   HybridTime load_time_;
@@ -167,63 +167,57 @@ std::optional<TSDescriptorPtr> TSManager::LookupTSInternalUnlocked(
   return *found_ptr;
 }
 
-Result<std::pair<std::vector<TSDescriptorPtr>, std::vector<TSDescriptor::WriteLock>>>
-TSManager::FindHostPortCollisions(
-    const NodeInstancePB& instance, const TSRegistrationPB& registration,
-    const CloudInfoPB& local_cloud_info) const {
-  auto hostport_checker = GetHostPortCheckerFunction(registration, local_cloud_info);
-  std::vector<TSDescriptorPtr> descs;
-  std::vector<TSDescriptor::WriteLock> locks;
-  for (const auto& [_, ts_desc] : servers_by_id_) {
-    if (ts_desc->permanent_uuid() == instance.permanent_uuid()) {
-      continue;
-    }
-    // Acquire write locks because we may have to mutate later.
-    auto l = ts_desc->LockForWrite();
-    if (!hostport_checker(l->pb.registration())) {
-      continue;
-    }
-    if (l->pb.instance_seqno() >= instance.instance_seqno()) {
-      return STATUS_FORMAT(
-          AlreadyPresent, "Cannot register TS $0 $1, host port collision with existing TS $2",
-          instance.ShortDebugString(), registration.common().ShortDebugString(),
-          l->pb.ShortDebugString());
-    }
-    l.mutable_data()->pb.set_state(SysTabletServerEntryPB::REPLACED);
-    descs.push_back(ts_desc);
-    locks.push_back(std::move(l));
-  }
-  return std::make_pair(std::move(descs), std::move(locks));
-}
-
 Result<TSManager::RegistrationMutationData> TSManager::ComputeRegistrationMutationData(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
     CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache,
     RegisteredThroughHeartbeat registered_through_heartbeat) {
   TSManager::RegistrationMutationData reg_data;
   {
+    auto hostport_checker = GetHostPortCheckerFunction(registration, local_cloud_info);
     SharedLock<decltype(map_lock_)> map_l(map_lock_);
     const std::string& uuid = instance.permanent_uuid();
-    // Find any already registered tservers that have conflicting addresses with the registering
-    // tserver.
-    std::tie(reg_data.replaced_descs, reg_data.replaced_desc_locks) =
-        VERIFY_RESULT(FindHostPortCollisions(instance, registration, local_cloud_info));
-    auto it = servers_by_id_.find(uuid);
-    if (it == servers_by_id_.end()) {
-      // We have no entry for this uuid. Create a new TSDescriptor and make a note to add it
-      // to the registry.
-      std::tie(reg_data.desc, reg_data.registered_desc_lock) =
-          VERIFY_RESULT(TSDescriptor::CreateNew(
-              instance, registration, std::move(local_cloud_info), proxy_cache,
-              registered_through_heartbeat));
-      reg_data.insert_into_map = true;
-    } else {
-      // This tserver has registered before. We just need to update its registration metadata.
-      reg_data.registered_desc_lock = VERIFY_RESULT(it->second->UpdateRegistration(
-          instance, registration, registered_through_heartbeat));
-      reg_data.desc = it->second;
+
+    for (auto it = servers_by_id_.begin();; ++it) {
+      auto ts_desc = it != servers_by_id_.end() ? it->second : nullptr;
+      if (!reg_data.desc && (!ts_desc || ts_desc->permanent_uuid() >= uuid)) {
+        if (ts_desc && uuid == ts_desc->permanent_uuid()) {
+          // This tserver has registered before. We just need to update its registration metadata.
+          reg_data.registered_desc_lock = VERIFY_RESULT(ts_desc->UpdateRegistration(
+              instance, registration, registered_through_heartbeat));
+          reg_data.desc = ts_desc;
+          continue;
+        } else {
+          // We have no entry for this uuid. Create a new TSDescriptor and make a note to add it
+          // to the registry.
+          std::tie(reg_data.desc, reg_data.registered_desc_lock) =
+              VERIFY_RESULT(TSDescriptor::CreateNew(
+                  instance, registration, std::move(local_cloud_info), proxy_cache,
+                  registered_through_heartbeat));
+          reg_data.insert_into_map = true;
+        }
+      }
+
+      if (!ts_desc) {
+        break;
+      }
+
+      // Acquire write locks because we may have to mutate later.
+      auto l = ts_desc->LockForWrite();
+      if (!hostport_checker(l->pb.registration())) {
+        continue;
+      }
+      if (l->pb.instance_seqno() >= instance.instance_seqno()) {
+        return STATUS_FORMAT(
+            AlreadyPresent, "Cannot register TS $0 $1, host port collision with existing TS $2",
+            instance.ShortDebugString(), registration.common().ShortDebugString(),
+            l->pb.ShortDebugString());
+      }
+      l.mutable_data()->pb.set_state(SysTabletServerEntryPB::REPLACED);
+      reg_data.replaced_descs.push_back(ts_desc);
+      reg_data.replaced_desc_locks.push_back(std::move(l));
     }
   }
+
   return reg_data;
 }
 
@@ -517,7 +511,8 @@ Status TSManager::RemoveTabletServer(
     }
     // Verify tserver is not hosting any tablets.
     for (const auto& table : tables) {
-      for (const auto& tablet : VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue))) {
+      for (const auto& tablet : VERIFY_RESULT(
+               table->GetTabletsIncludeInactive())) {
         auto replicas_map = tablet->GetReplicaLocations();
         if (replicas_map->contains(desc->id())) {
           return STATUS_FORMAT(
@@ -613,7 +608,7 @@ std::function<bool(const ServerRegistrationPB&)> GetHostPortCheckerFunction(
   }
 }
 
-std::unordered_map<std::string, TSDescriptorPtr>&& TSDescriptorLoader::TakeMap() {
+TSDescriptorMap&& TSDescriptorLoader::TakeMap() {
   return std::move(map_);
 }
 
