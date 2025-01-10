@@ -389,7 +389,7 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "sum by (universe_uuid, node_name) ((ybp_health_check_node_master_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) * ignoring (saved_name) (ybp_health_check_node_master_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
-        == bool 1)) + sum by (universe_uuid, node_name) ((ybp_health_check_node_tserver_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
+        == bool 1)) > 0 or sum by (universe_uuid, node_name) ((ybp_health_check_node_tserver_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) * ignoring (saved_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         == bool 1)) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
@@ -570,7 +570,7 @@ templates:
     labels:
       affected_node_names: >-
         {{ range $index, $element := query "sum by (universe_uuid, node_name) (ybp_health_check_node_master_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
-        < bool 1) + sum by (universe_uuid, node_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
+        < bool 1) > 0 or sum by (universe_uuid, node_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
