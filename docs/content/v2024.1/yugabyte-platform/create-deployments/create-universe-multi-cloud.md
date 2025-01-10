@@ -23,7 +23,7 @@ To create a multi-cloud universe, you would need to do the following:
 * [Set up node instance virtual machines](#set-up-instance-vms) in each cloud (AWS, GCP, and Azure)
 * [Set up VPC peering](#set-up-vpc-peering) through a VPN tunnel across these 3 clouds
 * [Install YugabyteDB Anywhere](#install-yugabytedb-anywhere) on one of the nodes
-* [Configure the on-premises provider configuration](#configure-the-on-premises-cloud-provider)
+* [Configure the on-premises provider configuration](#configure-the-on-premises-provider-configuration)
 * [Create a universe](#create-a-universe) using the provider
 * [Run the TPC-C benchmark](#run-the-tpc-c-benchmark)
 
