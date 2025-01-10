@@ -593,7 +593,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected boolean isTestRunningWithConnectionManager() {
+  protected static boolean isTestRunningWithConnectionManager() {
     return ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR;
   }
 
@@ -690,6 +690,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   protected static int getPgBackendPid(Connection connection) {
+    if (isTestRunningWithConnectionManager()) {
+      // getBackendPID(), a JDBC api, caches the pid of the backend process at
+      // the time of creating a connection. With connection manager it do not
+      // return a valid pid as no dedicated backend process is attached to
+      // connection. Therefore execute sql query to find out.
+      assertTrue(warmupMode == ConnectionManagerWarmupMode.NONE);
+      try (Statement stmt = connection.createStatement()) {
+        ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid()");
+        assertTrue(rs.next());
+        return rs.getInt(1);
+      }
+      catch (Exception e) {
+        LOG.error("Got Exception while fetching pid with connection manager",
+                  e);
+        fail();
+        return -1;
+      }
+    }
     return toPgConnection(connection).getBackendPID();
   }
 
