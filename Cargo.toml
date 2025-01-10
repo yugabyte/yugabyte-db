@@ -23,11 +23,12 @@ pg_test = []
 arrow = {version = "53", default-features = false}
 arrow-cast = {version = "53", default-features = false}
 arrow-schema = {version = "53", default-features = false}
-aws-config = { version = "1", default-features = false, features = ["rustls"]}
+aws-config = { version = "1", default-features = false, features = ["rustls","rt-tokio"] }
 aws-credential-types = {version = "1", default-features = false}
-aws-sdk-sts = "1"
+azure_storage = {version = "0.21", default-features = false}
 futures = "0.3"
-object_store = {version = "0.11", default-features = false, features = ["aws"]}
+home = "0.5"
+object_store = {version = "0.11", default-features = false, features = ["aws", "azure"]}
 once_cell = "1"
 parquet = {version = "53", default-features = false, features = [
     "arrow",
@@ -39,6 +40,7 @@ parquet = {version = "53", default-features = false, features = [
     "object_store",
 ]}
 pgrx = "=0.12.9"
+rust-ini = "0.21"
 tokio = {version = "1", default-features = false, features = ["rt", "time", "macros"]}
 url = "2"
 

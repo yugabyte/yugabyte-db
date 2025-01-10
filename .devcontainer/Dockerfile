@@ -12,6 +12,11 @@ RUN apt-get update && apt-get -y install build-essential libreadline-dev zlib1g-
                                          curl lsb-release ca-certificates gnupg sudo git \
                                          nano net-tools awscli
 
+# install azure-cli
+RUN curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | tee /etc/apt/keyrings/microsoft.gpg > /dev/null
+RUN echo "deb [arch=`dpkg --print-architecture` signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ `lsb_release -cs` main" | tee /etc/apt/sources.list.d/azure-cli.list
+RUN apt-get update && apt-get install -y azure-cli
+
 # install Postgres
 RUN sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 RUN wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -

@@ -15,10 +15,11 @@ use crate::{
         schema_parser::{
             parquet_schema_string_from_attributes, parse_arrow_schema_from_attributes,
         },
-        uri_utils::{parquet_writer_from_uri, PG_BACKEND_TOKIO_RUNTIME},
+        uri_utils::parquet_writer_from_uri,
     },
     pgrx_utils::{collect_attributes_for, CollectAttributesFor},
     type_compat::{geometry::reset_postgis_context, map::reset_map_context},
+    PG_BACKEND_TOKIO_RUNTIME,
 };
 
 use super::pg_to_arrow::{

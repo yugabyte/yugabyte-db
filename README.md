@@ -156,7 +156,13 @@ SELECT uri, encode(key, 'escape') as key, encode(value, 'escape') as value FROM 
 ```
 
 ## Object Store Support
-`pg_parquet` supports reading and writing Parquet files from/to `S3` object store. Only the uris with `s3://` scheme is supported. 
+`pg_parquet` supports reading and writing Parquet files from/to `S3` and `Azure Blob Storage` object stores.
+
+> [!NOTE]
+> To be able to write into a object store location, you need to grant `parquet_object_store_write` role to your current postgres user.
+> Similarly, to read from an object store location, you need to grant `parquet_object_store_read` role to your current postgres user.
+
+#### S3 Storage
 
 The simplest way to configure object storage is by creating the standard `~/.aws/credentials` and `~/.aws/config` files:
 
@@ -182,10 +188,56 @@ Alternatively, you can use the following environment variables when starting pos
 - `AWS_PROFILE`: the name of the profile from the credentials and config file (default profile name is `default`) **(only via environment variables)**
 - `AWS_ALLOW_HTTP`: allows http endpoints **(only via environment variables)**
 
+Config source priority order is shown below:
+1. Environment variables,
+2. Config file.
 
-> [!NOTE]
-> To be able to write into a object store location, you need to grant `parquet_object_store_write` role to your current postgres user.
-> Similarly, to read from an object store location, you need to grant `parquet_object_store_read` role to your current postgres user.
+Supported S3 uri formats are shown below:
+- s3:// \<bucket\> / \<path\>
+- https:// \<bucket\>.s3.amazonaws.com / \<path\>
+- https:// s3.amazonaws.com / \<bucket\> / \<path\>
+
+Supported authorization methods' priority order is shown below:
+1. Temporary session tokens by assuming roles,
+2. Long term credentials.
+
+#### Azure Blob Storage
+
+The simplest way to configure object storage is by creating the standard [`~/.azure/config`](https://learn.microsoft.com/en-us/cli/azure/azure-cli-configuration?view=azure-cli-latest) file:
+
+```bash
+$ cat ~/.azure/config
+[storage]
+account = devstoreaccount1
+key = Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+```
+
+Alternatively, you can use the following environment variables when starting postgres to configure the Azure Blob Storage client:
+- `AZURE_STORAGE_ACCOUNT`: the storage account name of the Azure Blob
+- `AZURE_STORAGE_KEY`: the storage key of the Azure Blob
+- `AZURE_STORAGE_CONNECTION_STRING`: the connection string for the Azure Blob (overrides any other config)
+- `AZURE_STORAGE_SAS_TOKEN`: the storage SAS token for the Azure Blob
+- `AZURE_TENANT_ID`: the tenant id for client secret auth **(only via environment variables)**
+- `AZURE_CLIENT_ID`: the client id for client secret auth **(only via environment variables)**
+- `AZURE_CLIENT_SECRET`: the client secret for client secret auth **(only via environment variables)**
+- `AZURE_STORAGE_ENDPOINT`: the endpoint **(only via environment variables)**
+- `AZURE_CONFIG_FILE`: an alternative location for the config file **(only via environment variables)**
+- `AZURE_ALLOW_HTTP`: allows http endpoints **(only via environment variables)**
+
+Config source priority order is shown below:
+1. Connection string (read from environment variable or config file),
+2. Environment variables,
+3. Config file.
+
+Supported Azure Blob Storage uri formats are shown below:
+- az:// \<container\> / \<path\>
+- azure:// \<container\> / \<path\>
+- https:// \<account\>.blob.core.windows.net / \<container\>
+
+Supported authorization methods' priority order is shown below:
+1. Bearer token via client secret,
+2. Sas token,
+3. Storage key.
 
 ## Copy Options
 `pg_parquet` supports the following options in the `COPY TO` command:

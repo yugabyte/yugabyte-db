@@ -1,8 +1,12 @@
+use std::sync::LazyLock;
+
 use parquet_copy_hook::hook::{init_parquet_copy_hook, ENABLE_PARQUET_COPY_HOOK};
 use parquet_copy_hook::pg_compat::MarkGUCPrefixReserved;
 use pgrx::{prelude::*, GucContext, GucFlags, GucRegistry};
+use tokio::runtime::Runtime;
 
 mod arrow_parquet;
+mod object_store;
 mod parquet_copy_hook;
 mod parquet_udfs;
 #[cfg(any(test, feature = "pg_test"))]
@@ -19,6 +23,15 @@ pub use crate::parquet_copy_hook::copy_to_dest_receiver::create_copy_to_parquet_
 pgrx::pg_module_magic!();
 
 extension_sql_file!("../sql/bootstrap.sql", name = "role_setup", bootstrap);
+
+// PG_BACKEND_TOKIO_RUNTIME creates a tokio runtime that uses the current thread
+// to run the tokio reactor. This uses the same thread that is running the Postgres backend.
+pub(crate) static PG_BACKEND_TOKIO_RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap_or_else(|e| panic!("failed to create tokio runtime: {}", e))
+});
 
 #[pg_guard]
 pub extern "C" fn _PG_init() {

@@ -25,6 +25,7 @@ use crate::{
     },
     pgrx_utils::{collect_attributes_for, CollectAttributesFor},
     type_compat::{geometry::reset_postgis_context, map::reset_map_context},
+    PG_BACKEND_TOKIO_RUNTIME,
 };
 
 use super::{
@@ -33,7 +34,7 @@ use super::{
     schema_parser::{
         ensure_file_schema_match_tupledesc_schema, parse_arrow_schema_from_attributes,
     },
-    uri_utils::{parquet_reader_from_uri, PG_BACKEND_TOKIO_RUNTIME},
+    uri_utils::parquet_reader_from_uri,
 };
 
 pub(crate) struct ParquetReaderContext {

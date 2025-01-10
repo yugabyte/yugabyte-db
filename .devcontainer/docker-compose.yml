@@ -3,20 +3,23 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sleep infinity
+    entrypoint: "./entrypoint.sh"
     network_mode: host
     volumes:
       - ..:/workspace
       - ${USERPROFILE}${HOME}/.ssh:/home/rust/.ssh:ro
       - ${USERPROFILE}${HOME}/.ssh/known_hosts:/home/rust/.ssh/known_hosts:rw
       - ${USERPROFILE}${HOME}/.gitconfig:/home/rust/.gitconfig:ro
-      - ${USERPROFILE}${HOME}/.aws:/home/rust/.aws:ro
+      - ${USERPROFILE}${HOME}/.aws:/home/rust/.aws:rw
+      - ${USERPROFILE}${HOME}/.azure:/home/rust/.azure:rw
+      - ./entrypoint.sh:/entrypoint.sh
     env_file:
       - .env
     cap_add:
       - SYS_PTRACE
     depends_on:
       - minio
+      - azurite
 
   minio:
     image: minio/minio
@@ -31,4 +34,16 @@ services:
       timeout: 2s
       retries: 3
     volumes:
-      - ./minio-entrypoint.sh:/entrypoint.sh
+        - ./minio-entrypoint.sh:/entrypoint.sh
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    env_file:
+      - .env
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "10000"]
+      interval: 6s
+      timeout: 2s
+      retries: 3
