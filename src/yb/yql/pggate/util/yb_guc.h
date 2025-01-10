@@ -135,6 +135,11 @@ extern bool yb_enable_replica_identity;
 extern bool yb_allow_replication_slot_lsn_types;
 
 /*
+ * GUC variable that specifies default replica identity for tables at the time of creation.
+ */
+extern char* yb_default_replica_identity;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -146,8 +151,16 @@ extern bool yb_allow_replication_slot_lsn_types;
  */
 extern int yb_xcluster_consistency_level;
 
+/*
+ * Allows user to query a databases as of the point in time.
+ * yb_read_time can be expressed in the following 2 ways -
+ *  - UNIX timestamp in microsecond (default unit)
+ *  - as a uint64 representation of HybridTime with unit "ht"
+ * Zero value means reading data as of current time.
+ */
 extern uint64_t yb_read_time;
 extern bool yb_is_read_time_ht;
+
 /*
  * Allows for customizing the number of rows to be prefetched.
  */
@@ -176,6 +189,13 @@ extern int yb_locks_txn_locks_per_tablet;
 extern int yb_walsender_poll_sleep_duration_nonempty_ms;
 
 /*
+ * GUC flag:  Time in milliseconds for which Walsender waits before fetching the next batch of
+ * changes from the CDC service in case the last received response was empty. The response can be
+ * empty in case there are no DMLs happening in the system.
+ */
+extern int yb_walsender_poll_sleep_duration_empty_ms;
+
+/*
  * GUC flag: Specifies the maximum number of changes kept in memory per transaction in reorder
  * buffer, which is used in streaming changes via logical replication. After that changes are
  * spooled to disk.
@@ -183,15 +203,40 @@ extern int yb_walsender_poll_sleep_duration_nonempty_ms;
 extern int yb_reorderbuffer_max_changes_in_memory;
 
 /*
- * GUC flag:  Time in milliseconds for which Walsender waits before fetching the next batch of
- * changes from the CDC service in case the last received response was empty. The response can be
- * empty in case there are no DMLs happening in the system.
+ * Allows for customizing the maximum size of a batch of explicit row lock operations.
  */
-extern int yb_walsender_poll_sleep_duration_empty_ms;
+extern int yb_explicit_row_locking_batch_size;
 
+/*
+ * Ease transition to YSQL by reducing read restart errors for new apps.
+ *
+ * This option doesn't affect SERIALIZABLE isolation level since
+ * SERIALIZABLE can't face read restart errors anyway.
+ *
+ * See the help text for yb_read_after_commit_visibility GUC for more
+ * information.
+ *
+ * XXX: This GUC is meant as a workaround only by relaxing the
+ * read-after-commit-visibility guarantee. Ideally,
+ * (a) Users should fix their apps to handle read restart errors, or
+ * (b) TODO(#22317): YB should use very accurate clocks to avoid read restart
+ *     errors altogether.
+ */
+typedef enum {
+  YB_STRICT_READ_AFTER_COMMIT_VISIBILITY = 0,
+  YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY = 1,
+} YBReadAfterCommitVisibilityEnum;
+
+/* GUC for the enum above. */
 extern int yb_read_after_commit_visibility;
 
 extern bool yb_allow_block_based_sampling_algorithm;
+
+// Should be in sync with YsqlSamplingAlgorithm protobuf.
+typedef enum {
+  YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN = 0,
+  YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING = 1,
+} YBSamplingAlgorithmEnum;
 
 extern int32_t yb_sampling_algorithm;
 
