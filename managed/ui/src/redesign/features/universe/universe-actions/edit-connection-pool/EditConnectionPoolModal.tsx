@@ -151,7 +151,7 @@ export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
       tooltip: (
         <Trans
           i18nKey={'universeForm.advancedConfig.dbRPCPortTooltip'}
-          values={{ port: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort }}
+          values={{ port: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort }}
         />
       )
     },
