@@ -148,6 +148,10 @@ This metadata includes the following:
 - Users metadata
 - Instance_type metadata (sizing info, cores)
 - Customer_task table metadata
+- Audit logs
+- High availability metadata
+- xCluster metadata
+- Tasks metadata
 
 An example of the YBA metadata directory structure is as follows:
 
@@ -205,6 +209,10 @@ When the Core Files option is selected, you can specify the following additional
 
 You can disable core collection globally by setting the [global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.support_bundle.allow_cores_collection` to false. You must be a Super Admin to set global runtime configuration flags.
 
+#### Manifest file
+
+The `manifest.json` file, which contains the parameters that were used to create the support bundle.
+
 #### YB-Controller logs
 
 YBC logs generated in `/controller/logs` folder in the YugabyteDB nodes (if YB-Controller is enabled).
@@ -235,6 +243,22 @@ Note that YBA will only collect files if you have sufficient permissions to requ
   - Secrets.txt (Includes only secret names and not the actual value)
   - Statefulsets.yaml
   - Persistentvolumeclaims.yaml
+
+#### Prometheus metrics
+
+The Prometheus metrics for the selected universe. You can customize the timeframe and the metrics to collect.
+
+You can include the following metrics with the support bundle:
+
+- Master Export - YB-Master metrics.
+- Node Export - System-level metrics for various hardware and OS parameters, such as CPU, memory, disk, and network usage, collected by Prometheus Node Exporter.
+- Platform - YugabyteDB Anywhere metrics.
+- Prometheus - metrics for Prometheus.
+- TServer Export - YB-TServer metrics; these are scraped from the TServer processes, and mostly cover the storage layer.
+- YSQL Export - YSQL query layer metrics.
+- YCQL Export - YCQL query layer metrics.
+
+The Prometheus metrics are stored in JSON files in the `support_bundle/YBA/promdump` directory.
 
 </details>
 
@@ -407,6 +431,33 @@ YBA verifies that the universe is in a healthy state before starting operations.
 1. Fix the root cause of certain tablets having no leaders. You may need to contact {{% support-platform %}}.
 1. If the situation is temporary, you can raise the timeout for this check using the [global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.checks.leaderless_tablets.timeout`.
 1. If the universe is in an unhealthy state and you are comfortable with the risk, turn off the check using the global runtime configuration flag `yb.checks.leaderless_tablets.enabled`.
+
+</details>
+
+<details>
+  <summary><b>Universe consistency check</b></summary>
+  <br>
+
+**Symptom (An approximate sample error message)**
+
+```text
+No rows updated performing consistency check, stale universe metadata.
+```
+
+**Details**
+
+YBA verifies that the configuration of deployed YB-Masters and YB-TServers matches the YBA metadata (`universe_details_json`). In general, any discrepancy may indicate that some operations were performed on the YB-Masters/YB-TServers without YBA's knowledge and may need to be reconciled with the YBA metadata. This could happen due to:
+
+- [High availability](../../administer-yugabyte-platform/high-availability/) (HA) was broken; in this case you would have two independent deployments of YBA, one of which could be stale because it was a standby and the last time it was restored was when it was promoted.
+- Restoring a stale backup to a standby in HA.
+- Manually restoring a stale backup using YBA Installer.
+- During manual migration to a new host using YBA Installer.
+
+**Possible action/workaround**
+
+1. If you have a HA setup, check that you are running the task from the correct YBA.
+1. Fix the root cause of the inconsistency. You may need to contact {{% support-platform %}}.
+1. If the inconsistency was verified to be harmless, you can turn off the check using the [global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.universe.consistency_check_enabled`. Exercise caution before proceeding with such an inconsistency as it can have serious consequences.
 
 </details>
 
