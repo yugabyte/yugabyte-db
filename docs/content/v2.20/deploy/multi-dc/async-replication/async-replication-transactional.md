@@ -38,6 +38,8 @@ xCluster safe time is the transactionally consistent time across all tables in a
 - Supports only Active-Standby setups with transactional atomicity and global ordering.
 - Transactional consistency is currently not supported for YCQL, only for YSQL.
 
+For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
+
 ## Best practices
 
 - Keep CPU use below 65%.
