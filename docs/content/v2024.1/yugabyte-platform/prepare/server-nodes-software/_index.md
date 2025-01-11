@@ -40,9 +40,9 @@ YugabyteDB Anywhere requires the following additional software to be pre-install
 
 #### Python
 
-Python 3.5-3.8 must be installed on the nodes.
+Python 3.8 must be installed on the nodes.
 
-Install the python selinux package corresponding to your version of python. You can use pip to do this. Ensure the version of pip matches the version of Python.
+Install the Python selinux package corresponding to your version of Python. You can use pip to do this. Ensure the version of pip matches the version of Python.
 
 For example, you can install Python as follows:
 
