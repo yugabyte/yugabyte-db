@@ -36,8 +36,11 @@ YbRaiseAdvisoryLocksNotSupported(void)
 	if (!yb_silence_advisory_locks_not_supported_error)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("advisory locks are not yet implemented"),
-				 errhint("If the app doesn't need strict functionality, this error can be silenced "
+				 errmsg("advisory locks feature is currently in preview"),
+				 errhint("To enable this preview feature, set the GFlag "
+						 "ysql_yb_enable_advisory_locks to true and add it to the list of "
+						 "allowed preview flags i.e. GFlag allowed_preview_flags_csv. "
+						 "If the app doesn't need strict functionality, this error can be silenced "
 						 "by using the GFlag yb_silence_advisory_locks_not_supported_error. "
 						 "See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.")));
 }
