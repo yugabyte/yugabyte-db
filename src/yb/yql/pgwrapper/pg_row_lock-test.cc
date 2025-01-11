@@ -214,7 +214,8 @@ TEST_F(PgRowLockTest, AdvisoryLocksNotSupported) {
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   auto value = conn.Fetch(query);
   ASSERT_NOK(value);
-  ASSERT_TRUE(value.status().message().Contains("ERROR:  advisory locks are not yet implemented"));
+  ASSERT_TRUE(value.status().message().Contains(
+      "ERROR:  advisory locks feature is currently in preview"));
   ASSERT_OK(conn.RollbackTransaction());
 
   ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = true"));

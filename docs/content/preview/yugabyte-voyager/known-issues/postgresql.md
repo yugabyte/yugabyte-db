@@ -1258,8 +1258,8 @@ yugabyte=# SELECT pg_advisory_lock(100), COUNT(*) FROM cars;
 ```
 
 ```output
-ERROR:  advisory locks are not yet implemented
-HINT:  If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details
+ERROR:  advisory locks feature is currently in preview
+HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_locks to true and add it to the list of allowed preview flags i.e. GFlag allowed_preview_flags_csv. If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details
 ```
 
 **Workaround**: Implement a custom locking mechanism in the application to coordinate actions without relying on database-level advisory locks.
