@@ -167,8 +167,8 @@ var setGflagsUniverseCmd = &cobra.Command{
 				if !isClusterInRequestBodyWIthValidUUID {
 					logrus.Fatal(
 						formatter.Colorize(
-							"Cluster "+ gflags.ClusterUUID + " (" + gflags.ClusterType+
-							")" +" not found in universe\n",
+							"Cluster "+gflags.ClusterUUID+" ("+gflags.ClusterType+
+								")"+" not found in universe\n",
 							formatter.RedColor,
 						))
 				}

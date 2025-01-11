@@ -60,6 +60,7 @@ func CheckRBACEnablementOnYBA(
 
 // BuildResourceRoleDefinition - Build resource role definition
 func BuildResourceRoleDefinition(
+	authAPI *ybaAuthClient.AuthAPIClient,
 	roleResourceDefinitionStrings []string) []ybaclient.RoleResourceDefinition {
 	if len(roleResourceDefinitionStrings) == 0 {
 		return nil
@@ -112,12 +113,6 @@ func BuildResourceRoleDefinition(
 					formatter.RedColor))
 		}
 
-		if _, ok := roleBinding["resource-type"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize(
-					"Resource type not specified in role resource definition description.\n",
-					formatter.RedColor))
-		}
 		allowAll, err := strconv.ParseBool(roleBinding["allow-all"])
 		if err != nil {
 			errMessage := err.Error() +
@@ -135,6 +130,37 @@ func BuildResourceRoleDefinition(
 			allowAll = true
 		}
 
+		role, response, err := authAPI.GetRole(roleBinding["role-uuid"]).Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"RBAC: Role Binding",
+				"Add - Get Role",
+			)
+			logrus.Fatalln(
+				formatter.Colorize(
+					errMessage.Error()+"\n",
+					formatter.RedColor))
+		}
+
+		systemRole := false
+		if role.GetRoleType() == util.SystemRoleType {
+			systemRole = true
+			if len(resourceUUIDs) > 0 {
+				logrus.Fatalln(
+					formatter.Colorize(
+						"System role cannot have resource uuids\n",
+						formatter.RedColor))
+			}
+			if len(roleBinding["resource-type"]) > 0 {
+				logrus.Fatalln(
+					formatter.Colorize(
+						"System role cannot have resource type\n",
+						formatter.RedColor))
+			}
+		}
+
 		resourceDefinition := ybaclient.ResourceDefinition{
 			AllowAll:        util.GetBoolPointer(allowAll),
 			ResourceType:    util.GetStringPointer(roleBinding["resource-type"]),
@@ -144,11 +170,15 @@ func BuildResourceRoleDefinition(
 		for i, value := range res {
 			if strings.Compare(value.GetRoleUUID(), roleBinding["role-uuid"]) == 0 {
 				exists = true
-				valueResourceGroup := value.GetResourceGroup()
-				valueResourceDefinitionSet := valueResourceGroup.GetResourceDefinitionSet()
-				valueResourceDefinitionSet = append(valueResourceDefinitionSet, resourceDefinition)
-				valueResourceGroup.SetResourceDefinitionSet(valueResourceDefinitionSet)
-				value.SetResourceGroup(valueResourceGroup)
+				if !systemRole {
+					valueResourceGroup := value.GetResourceGroup()
+					valueResourceDefinitionSet := valueResourceGroup.GetResourceDefinitionSet()
+					valueResourceDefinitionSet = append(valueResourceDefinitionSet, resourceDefinition)
+					valueResourceGroup.SetResourceDefinitionSet(valueResourceDefinitionSet)
+					value.SetResourceGroup(valueResourceGroup)
+				} else {
+					value.ResourceGroup = nil
+				}
 				res[i] = value
 				break
 			}
@@ -158,8 +188,12 @@ func BuildResourceRoleDefinition(
 				ResourceDefinitionSet: []ybaclient.ResourceDefinition{resourceDefinition},
 			}
 			roleResourceDefinition := ybaclient.RoleResourceDefinition{
-				RoleUUID:      roleBinding["role-uuid"],
-				ResourceGroup: &resourceGroup,
+				RoleUUID: roleBinding["role-uuid"],
+			}
+			if !systemRole {
+				roleResourceDefinition.SetResourceGroup(resourceGroup)
+			} else {
+				roleResourceDefinition.ResourceGroup = nil
 			}
 			res = append(res, roleResourceDefinition)
 		}

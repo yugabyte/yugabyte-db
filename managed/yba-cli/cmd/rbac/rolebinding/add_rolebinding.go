@@ -102,7 +102,8 @@ var addRoleBindingCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		resourceRoleDefinition := rbacutil.BuildResourceRoleDefinition(roleResourceDefinitionString)
+		resourceRoleDefinition := rbacutil.BuildResourceRoleDefinition(
+			authAPI, roleResourceDefinitionString)
 
 		roleResourceDefintionList = append(roleResourceDefintionList, resourceRoleDefinition...)
 
