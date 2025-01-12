@@ -199,11 +199,12 @@ Whenever possible, use [prepared statements](../../api/ysql/the-sql-language/sta
 For more details, see [Prepared statements in PL/pgSQL](https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3).
 {{</lead>}}
 
-{{<warning title="Caution">}}
+{{<warning title="Avoid explicit PREPARE or EXECUTE">}}
 
-When using server-side pooling, avoid explicit `PREPARE`/`EXECUTE` calls and use protocol-level prepared statements instead. Explicit prepare/execute calls can make connections sticky, preventing you from utilizing the benefits of the connection manager or server-side pooling.
+When using server-side pooling, avoid explicit PREPARE and EXECUTE calls and use protocol-level prepared statements instead. Explicit prepare/execute calls can make connections sticky, which prevents you from realizing the benefits of using YSQL Connection Manager and server-side pooling.
 
-For example, with the NPGSQL driver, add the following to your connection string:
+For example, with the Npgsql driver, add the following to your connection string:
+
 `Max Auto Prepare=100;Auto Prepare Min Usages=5;`.
 
 Note: YSQL Connection Manager  is currently in Technical Preview {{<tags/feature/tp>}}.
