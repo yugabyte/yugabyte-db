@@ -1,7 +1,9 @@
 ---
-title: PostgreSQL 15 Features
+title: PostgreSQL 15 features
+headerTitle: PostgreSQL 15 features
 linkTitle: PG15 features
 description: Use PostgreSQL 15 features in your applications
+headContent: Use PostgreSQL 15 features in your applications
 menu:
   preview:
     identifier: yb-postgresql-15
@@ -12,7 +14,13 @@ rightNav:
   hideH3: true
 ---
 
-YugabyteDB has been a compatible with [PostgreSQL-11](https://www.yugabyte.com/tech/postgres-compatibility/) for a long time. With {{<release "2.25">}}, YugabyteDB brings in many of the PG-15 features into the world of distributed datases. Some of the significant features and improvements are listed below.
+The YugabyteDB [YSQL API](../../api/ysql/) reuses a fork of the PostgreSQL [query layer](../../architecture/query-layer/). This [architecture](../../architecture/) allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
+
+YSQL was initially based on PostgreSQL 11.2. With {{<release "2.25">}}, YugabyteDB adds support for PostgreSQL 15, with significant new features and improvements.
+
+{{<lead link="https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/">}}
+Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/).
+{{</lead>}}
 
 ## Major features
 
@@ -25,7 +33,7 @@ YugabyteDB has been a compatible with [PostgreSQL-11](https://www.yugabyte.com/t
 | Define columns whose values are automatically calculated and stored based on expressions involving other columns
 |
 
-|[Before row triggers on partitioned tables](../../api/ysql/the-sql-language/statements/ddl_create_trigger#partitioned-tables)
+|[Before&nbsp;row&nbsp;triggers&nbsp;on partitioned tables](../../api/ysql/the-sql-language/statements/ddl_create_trigger#partitioned-tables)
 | Enforce custom business logic, perform validation, or even modify row data before it is written to the appropriate partition
 |
 
@@ -41,7 +49,7 @@ YugabyteDB has been a compatible with [PostgreSQL-11](https://www.yugabyte.com/t
 | By providing `gen_random_uuid` natively, the need for external libraries or custom implementations for UUID generation is eliminated.
 |
 
-| [Foreign Keys on Partitioned Tables](../../explore/ysql-language-features/advanced-features/partitions/#foreign-key-references)
+| [Foreign keys on partitioned tables](../../explore/ysql-language-features/advanced-features/partitions/#foreign-key-references)
 | Enforce referential integrity directly on partitioned tables, ensuring consistency across large-scale datasets that benefit from partitioning for performance and scalability.
 |
 
