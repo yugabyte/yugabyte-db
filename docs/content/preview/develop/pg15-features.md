@@ -12,9 +12,9 @@ menu:
 type: docs
 ---
 
-The YugabyteDB [YSQL API](../../api/ysql/) reuses a fork of the PostgreSQL [query layer](../../architecture/query-layer/). This [architecture](../../architecture/) allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
+The YugabyteDB [YSQL API](../../api/ysql/) reuses a fork of the PostgreSQL [query layer](../../architecture/query-layer/). This architecture allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
 
-YSQL was initially based on PostgreSQL 11.2. With {{<release "2.25">}}, YugabyteDB adds support for PostgreSQL 15, with significant new features and improvements.
+Initially based on PostgreSQL 11.2, YSQL has been continuously enhanced with features, improvements, and security fixes pulled from PostgreSQL 12+, in addition to our own improvements. With {{<release "2.25">}}, YugabyteDB now adds support for PostgreSQL 15, which brings many new features and improvements.
 
 {{<lead link="https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/">}}
 Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/).
@@ -116,7 +116,7 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 | [Stricter public schema](../../api/ysql/the-sql-language/statements/dcl_create_user/#public-schema-privileges)
 | CREATE Privilege for PUBLIC Role has been revoked ensuring tighter control over object creation, reducing the risk of accidental or malicious interference in shared schemas.|
 
-| [Simplified privilege management](../../api/ysql/the-sql-language/statements/dcl_grant/#predefined-roles)
+| [Simplified&nbsp;privilege management](../../api/ysql/the-sql-language/statements/dcl_grant/#predefined-roles)
 | New roles have been added to streamline permission assignments by grouping commonly needed privileges for read and write operations. |
 
 {{%/table%}}
