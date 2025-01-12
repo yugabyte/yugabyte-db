@@ -10,8 +10,6 @@ menu:
     parent: develop
     weight: 700
 type: docs
-rightNav:
-  hideH3: true
 ---
 
 The YugabyteDB [YSQL API](../../api/ysql/) reuses a fork of the PostgreSQL [query layer](../../architecture/query-layer/). This [architecture](../../architecture/) allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
@@ -22,7 +20,9 @@ YSQL was initially based on PostgreSQL 11.2. With {{<release "2.25">}}, Yugabyte
 Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/).
 {{</lead>}}
 
-## Major features
+## What's new
+
+### Major features
 
 {{%table%}}
 
@@ -30,19 +30,19 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 | --------| ----------- |
 
 | [Stored Generated Columns](../../api/ysql/the-sql-language/statements/ddl_create_table#stored-generated-columns)
-| Define columns whose values are automatically calculated and stored based on expressions involving other columns
+| Define columns whose values are automatically calculated and stored based on expressions involving other columns.
 |
 
 |[Before&nbsp;row&nbsp;triggers&nbsp;on partitioned tables](../../api/ysql/the-sql-language/statements/ddl_create_trigger#partitioned-tables)
-| Enforce custom business logic, perform validation, or even modify row data before it is written to the appropriate partition
+| Enforce custom business logic, perform validation, or even modify row data before it is written to the appropriate partition.
 |
 
 | [Non distinct NULLs in a Unique index](../../api/ysql/the-sql-language/statements/ddl_create_index#nulls-not-distinct)
-| Enforce that only one NULL value is permitted instead of allowing multiple NULL entries in a unique index
+| Enforce that only one NULL value is permitted instead of allowing multiple NULL entries in a unique index.
 |
 
 | [COPY FROM with WHERE clause](../../api/ysql/the-sql-language/statements/cmd_copy#where)
-| Selectively filter rows while importing data into a table and eliminate preprocessing data files
+| Selectively filter rows while importing data into a table and eliminate preprocessing data files.
 |
 
 | [UUID generation](../../api/ysql/exprs/func_gen_random_uuid/)
@@ -54,20 +54,20 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 |
 
 | [Multi-range and Range Aggregates](../../api/ysql/datatypes/type_range/#multirange)
-| Simplifies handling complex range-based data by grouping multiple discrete ranges together while maintaining their distinctness
+| Simplifies handling complex range-based data by grouping multiple discrete ranges together while maintaining their distinctness.
 |
 
 | [Pipeline mode](https://www.postgresql.org/docs/14/libpq-pipeline-mode.html)
-| Enables a client to send multiple queries to the server without waiting for each query's response before sending the next one. This reduces the round-trip time between client and server and significantly boosts the performance when many queries in quick succession
+| Enables a client to send multiple queries to the server without waiting for each query's response before sending the next one. This reduces the round-trip time between client and server and significantly boosts the performance when many queries in quick succession.
 |
 
 | [Replace triggers](../../api/ysql/the-sql-language/statements/ddl_create_trigger#or-replace)
-| Replace an existing trigger with a new one without first having to drop the old trigger and create a new one
+| Replace an existing trigger with a new one without first having to drop the old trigger and create a new one.
 |
 
 {{%/table%}}
 
-## Query Execution Optimizations
+### Query execution optimizations
 
 {{%table%}}
 
@@ -75,17 +75,17 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 | --------| ----------- |
 
 | [Incremental Sort](../../architecture/query-layer/#optimizations)
-| On a sorted resultset, additional sorting in done on the remaining keys |
+| On a sorted result set, additional sorting in done on the remaining keys. |
 
 | [Memoization](../../architecture/query-layer/#optimizations)
-| Store results in memory when the inner side of a nested-loop join is small |
+| Store results in memory when the inner side of a nested-loop join is small. |
 
-| [Disk-based Hash Aggregation](../../architecture/query-layer/#optimizations)
-| Opt for disk-based aggregation when hash table grows beyond `work_mem` |
+| [Disk-based hash aggregation](../../architecture/query-layer/#optimizations)
+| Opt for disk-based aggregation when hash table grows beyond `work_mem`. |
 
 {{%/table%}}
 
-## Observability
+### Observability
 
 {{%table%}}
 
@@ -93,20 +93,20 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 | --------| ----------- |
 
 | [Query ID](../../architecture/query-layer/#query-id)
-| Unique query ID to track a query across pg_stat_activity, EXPLAIN VERBOSE, and pg_stat_statement |
+| Unique query ID to track a query across pg_stat_activity, EXPLAIN VERBOSE, and pg_stat_statement. |
 
 | [Stats on planning times](../../explore/query-1-performance/pg-stat-statements/)
-| `pg_stat_statements` can now track the planning time of statements |
+| `pg_stat_statements` can now track the planning time of statements. |
 
 | [Granular stats reset](../../explore/query-1-performance/pg-stat-statements/#reset-statistics)
-| Resetting statistics via `pg_stat_statements_reset` is now granular at user, database, and query levels |
+| Resetting statistics via `pg_stat_statements_reset` is now granular at user, database, and query levels. |
 
 | [Sampled logging](../../explore/observability/logging/#log-management)
-| Log a fraction of the statements rather than all statements |
+| Log a fraction of the statements rather than all statements. |
 
 {{%/table%}}
 
-## Security
+### Security
 
 {{%table%}}
 
@@ -117,13 +117,13 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 | CREATE Privilege for PUBLIC Role has been revoked ensuring tighter control over object creation, reducing the risk of accidental or malicious interference in shared schemas.|
 
 | [Simplified privilege management](../../api/ysql/the-sql-language/statements/dcl_grant/#predefined-roles)
-| New roles have been added to streamline permission assignments by grouping commonly needed privileges for read and write operations|
+| New roles have been added to streamline permission assignments by grouping commonly needed privileges for read and write operations. |
 
 {{%/table%}}
 
-## Features coming soon
+### Coming soon
 
-The following PG15 features are not yet implemneted but will be released in the future.
+The following PG15 features are not yet implemented but are planned for the future.
 
 {{%table%}}
 
@@ -131,15 +131,15 @@ The following PG15 features are not yet implemneted but will be released in the 
 | --------| ----------- |
 
 | [Extended statistics](https://www.postgresql.org/docs/15/planner-stats.html#PLANNER-STATS-EXTENDED)
-| Gather additional statistics using the [CREATE STATISTICS](https://www.postgresql.org/docs/15/sql-createstatistics.html) command|
+| Gather additional statistics using the [CREATE STATISTICS](https://www.postgresql.org/docs/15/sql-createstatistics.html) command. |
 
 | [Merge command](https://www.postgresql.org/docs/current/sql-merge.html)
-| INSERT, UPDATE or DELETE in one statement |
+| INSERT, UPDATE or DELETE in one statement. |
 
 | [Scram authentication as default](https://www.postgresql.org/docs/15/auth-password.html)
-| Scram authentication is [supported](../../secure/authentication/password-authentication/#scram-sha-256) in YugabyteDB but still has md5 as default authentication method |
+| Scram authentication is [supported](../../secure/authentication/password-authentication/#scram-sha-256) in YugabyteDB but still has md5 as default authentication method. |
 
 | [Nondeterministic Collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC)
-| Consider strings to be equal even if they consist of different bytes, eg : case-insensitive, or accent-insensitive comparisons |
+| Consider strings to be equal even if they consist of different bytes, for example, case-insensitive, or accent-insensitive comparisons. |
 
 {{%/table%}}
