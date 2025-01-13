@@ -41,5 +41,6 @@ yba universe [flags]
 * [yba universe restart](yba_universe_restart.md)	 - Restart a YugabyteDB Anywhere Universe
 * [yba universe run-sample-apps](yba_universe_run-sample-apps.md)	 - Get sample apps command for a YugabyteDB Anywhere universe
 * [yba universe security](yba_universe_security.md)	 - Manage security settings for a universe
+* [yba universe table](yba_universe_table.md)	 - Manage YugabyteDB Anywhere universe tables
 * [yba universe upgrade](yba_universe_upgrade.md)	 - Upgrade a YugabyteDB Anywhere universe
 
