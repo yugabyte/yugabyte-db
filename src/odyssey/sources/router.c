@@ -999,6 +999,15 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	client->server = NULL;
 	server->client = NULL;
 	/*
+	 * When the server detaches after completing a transaction,
+	 * some queries are issued during the reset phase, which causes the
+	 * unnamed prepared statement plan cache to be dropped.
+     * As a result, it is necessary to remove the saved state
+	 * on Connection Manager.
+	 */
+	memset(&server->yb_unnamed_prep_stmt_client_id, 0,
+	       sizeof(server->yb_unnamed_prep_stmt_client_id));
+	/*
 	 * Drop the server connection if:
 	 * 	a. Server gets OFFLINE.
 	 * 	b. Client connection had used a query which required the connection to be STICKY.

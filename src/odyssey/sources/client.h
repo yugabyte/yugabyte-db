@@ -91,6 +91,12 @@ struct od_client {
 	 * after successful authentication via auth backend.
 	 */
 	int64_t logical_client_version;
+
+	/*
+	 * This stores the last unnamed prepared statement, otherwise NULL.
+	 */
+	char* yb_unnamed_prep_stmt;
+	int yb_unnamed_prep_stmt_size;
 };
 
 static const size_t OD_CLIENT_DEFAULT_HASHMAP_SZ = 420;
@@ -150,6 +156,8 @@ static inline void od_client_init(od_client_t *client)
 	client->yb_is_authenticating = false;
 	client->yb_external_client = NULL;
 	client->logical_client_version = 0;
+	client->yb_unnamed_prep_stmt = NULL;
+	client->yb_unnamed_prep_stmt_size = 0;
 }
 
 static inline od_client_t *od_client_allocate(void)
