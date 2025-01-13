@@ -213,7 +213,8 @@ class PgClientSession {
   Result<SetupSessionResult> SetupSession(
       const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit);
 
-  Status BeginPgSessionLevelTxnIfNecessary(CoarseTimePoint deadline);
+  Result<const PgClientSession::SessionData&> BeginPgSessionLevelTxnIfNecessary(
+      CoarseTimePoint deadline);
 
   Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
