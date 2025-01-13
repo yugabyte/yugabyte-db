@@ -2188,6 +2188,22 @@ void CDCServiceImpl::UpdateMetrics() {
       if (entry.active_time.has_value() &&
           CheckTabletExpiredOrNotOfInterest(tablet_info, *entry.active_time)) {
         expired_entries.insert(tablet_info);
+
+        if (!tablet_checkpoints.contains(tablet_info)) {
+          // For an unpolled tablet, there will be no entry in the tablet_checkpoints map.
+          // We need to add an entry to the map to ensure that when we iterate further down
+          // over the tablet_checkpoints to reset the metric entities, we do not miss the
+          // expired or not of interest tablets that were unpolled.
+          tablet_checkpoints.emplace(TabletCheckpointInfo{
+              .producer_tablet_info = tablet_info,
+              .cdc_state_checkpoint =
+                  TabletCheckpoint{.op_id = {}, .last_update_time = {}, .last_active_time = {}},
+              .sent_checkpoint =
+                  TabletCheckpoint{.op_id = {}, .last_update_time = {}, .last_active_time = {}},
+              .mem_tracker = nullptr,
+          });
+        }
+
         continue;
       }
       auto tablet_metric_result = GetCDCSDKTabletMetrics(
