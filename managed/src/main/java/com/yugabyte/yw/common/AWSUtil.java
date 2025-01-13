@@ -633,7 +633,7 @@ public class AWSUtil implements CloudUtil {
       // Delete the old backups
       client.deleteObjects(deleteRequest);
       log.info(
-          "Deleted {} old backups from s3://{}/{}",
+          "Deleted {} old backup(s) from s3://{}/{}",
           backupsToDelete.size(),
           cLInfo.bucket,
           backupDir);
