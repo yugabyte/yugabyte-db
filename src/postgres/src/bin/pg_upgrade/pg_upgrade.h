@@ -268,6 +268,7 @@ typedef struct
 	const char *tablespace_suffix;	/* directory specification */
 
 	char	   *yb_hostaddr;	/* host address for Yugabyte node */
+	char	   *yb_user;		/* username for the cluster */
 } ClusterInfo;
 
 

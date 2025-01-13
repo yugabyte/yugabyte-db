@@ -95,6 +95,7 @@ class PgWrapper : public ProcessWrapper {
   Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
 
   struct PgUpgradeParams {
+    std::string ysql_user_name;
     std::string data_dir;
     std::string old_version_pg_address;
     std::string old_version_socket_dir;
