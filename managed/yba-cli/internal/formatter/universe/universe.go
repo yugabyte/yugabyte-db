@@ -150,7 +150,7 @@ func (c *Context) Name() string {
 
 // PricePerDay fetches the universe instance price per day
 func (c *Context) PricePerDay() string {
-	return fmt.Sprintf("%f", c.u.GetPricePerHour()*24)
+	return fmt.Sprintf("%0.2f", c.u.GetPricePerHour()*24)
 }
 
 // CPUArchitecture fetches CPU architecture of the universe
