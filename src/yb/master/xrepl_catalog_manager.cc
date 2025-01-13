@@ -2691,8 +2691,39 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
       "No entry found in tablets_to_keep_per_stream map for the stream");
 
     if (!tablets->contains(entry.tablet_id)) {
-      // Tablet is no longer part of this stream so delete it.
-      keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+      // Either this tablet belongs to a dropped table or a dynamic table. If the corresponding
+      // table of the tablet (all the tables in case of a colocated tablet) belongs to the dropped
+      // table list computed previously, then the cdc_state entry will be deleted. If the tablet
+      // itself is not found, we can safely delete the cdc_state entry.
+      auto tablet_info_result = GetTabletInfo(entry.tablet_id);
+      if (!tablet_info_result.ok()) {
+        keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+        continue;
+      }
+
+      auto table_ids = (*tablet_info_result)->GetTableIds();
+      DCHECK_GT(table_ids.size(), 0);
+      bool all_tables_on_tablet_dropped = true;
+      for (const auto& table_id : table_ids) {
+        if (drop_stream_table_list[entry.stream_id].contains(table_id)) {
+          continue;
+        }
+        // In a race scenario between cleanup of non eligible tables from CDC stream & same table
+        // being dropped, removal of cdc state entries for this non eligible table is done via drop
+        // table metadata cleanup flow.
+        auto table_info = GetTableInfo(table_id);
+        if (table_info &&
+            !IsTableEligibleForCDCSDKStream(table_info, table_info->LockForRead(), false)) {
+          continue;
+        }
+        all_tables_on_tablet_dropped = false;
+        break;
+      }
+
+      // Skip deleting the cdc state table entry if atleast one table is still present.
+      if (all_tables_on_tablet_dropped) {
+        keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+      }
     }
   }
 
