@@ -1427,7 +1427,7 @@ ERROR: cannot subscript type jsonb because it is not an array
 An example query / DDL on the source database is as follows:
 
 ```sql
-SELECT ('{"a": {"b": {"c": 1}}}'::jsonb)['a']['b']['c'];
+SELECT ('{"a": {"b": {"c": "some text"}}}'::jsonb)['a']['b']['c'];
 
 CREATE TABLE test_jsonb_chk (
     id int,

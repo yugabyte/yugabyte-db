@@ -552,10 +552,10 @@ Perform the following steps to prepare your source-replica database:
     --upgraded to ybvoyager_import_data_batches_metainfo_v3 post v1.6
     CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_batches_metainfo_v3 (
                migration_uuid VARCHAR2(36),
-               data_file_name VARCHAR2(1000),
+               data_file_name VARCHAR2(4000),
                batch_number NUMBER(10),
-               schema_name VARCHAR2(1000),
-               table_name VARCHAR2(1000),
+               schema_name VARCHAR2(4000),
+               table_name VARCHAR2(4000),
                rows_imported NUMBER(19),
                PRIMARY KEY (migration_uuid, data_file_name, batch_number, schema_name, table_name)
     );
@@ -572,7 +572,7 @@ Perform the following steps to prepare your source-replica database:
 
     CREATE TABLE ybvoyager_metadata.ybvoyager_imported_event_count_by_table (
             migration_uuid VARCHAR2(36),
-            table_name VARCHAR2(1000),
+            table_name VARCHAR2(4000),
             channel_no INT,
             total_events NUMBER(19),
             num_inserts NUMBER(19),
