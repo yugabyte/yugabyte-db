@@ -107,10 +107,8 @@ check_and_dump_old_cluster(bool live_check)
 		check_for_prepared_transactions(&old_cluster);
 	check_for_composite_data_type_usage(&old_cluster);
 	check_for_reg_data_type_usage(&old_cluster);
-#ifdef YB_TODO
-	/* Enable this check when contrib directory is enabled in build_postgres.py */
+
 	check_for_isn_and_int8_passing_mismatch(&old_cluster);
-#endif
 
 	/*
 	 * PG 14 changed the function signature of encoding conversion functions.
