@@ -23,14 +23,6 @@ import org.yb.YBTestRunner;
  */
 @RunWith(value = YBTestRunner.class)
 public class TestPgRegressPublication extends BasePgRegressTest {
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    if (isTestRunningWithConnectionManager()) {
-      flagMap.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
-    }
-    return flagMap;
-  }
 
   @Override
   public int getTestMethodTimeoutSec() {

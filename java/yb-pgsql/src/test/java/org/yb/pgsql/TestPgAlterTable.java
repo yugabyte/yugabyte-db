@@ -36,14 +36,6 @@ import java.util.Set;
 public class TestPgAlterTable extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgAlterTable.class);
 
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    if (isTestRunningWithConnectionManager())
-      flagMap.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
-    return flagMap;
-  }
-
   @Test
   public void testAddColumnIfNotExists() throws Exception {
     testAddColumnIfNotExistsInternal(true);
