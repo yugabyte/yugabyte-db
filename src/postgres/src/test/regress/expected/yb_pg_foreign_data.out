@@ -786,6 +786,9 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs
 DROP FOREIGN TABLE ft_part1; DROP FOREIGN TABLE ft_part2; -- YB workaround for above
 CREATE UNIQUE INDEX ON lt1 (a);
 ALTER TABLE lt1 ADD PRIMARY KEY (a);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 CREATE FOREIGN TABLE ft_part1
   PARTITION OF lt1 FOR VALUES FROM (0) TO (1000) SERVER s0;     -- ERROR
 ERROR:  cannot create foreign partition of partitioned table "lt1"
@@ -820,6 +823,12 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs
 DROP FOREIGN TABLE ft_part_1_1; DROP FOREIGN TABLE ft_part_1_2; -- YB workaround for above
 CREATE UNIQUE INDEX ON lt1 (a);
 ALTER TABLE lt1 ADD PRIMARY KEY (a);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 CREATE FOREIGN TABLE ft_part_1_1
   PARTITION OF lt1_part1 FOR VALUES FROM (0) TO (100) SERVER s0;
 ERROR:  cannot create foreign partition of partitioned table "lt1_part1"

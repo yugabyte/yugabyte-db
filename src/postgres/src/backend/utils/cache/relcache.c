@@ -1507,7 +1507,8 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 			RelationInitIndexAccessInfo(relation);
 		}
 		else if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind) ||
-				 relation->rd_rel->relkind == RELKIND_SEQUENCE)
+				 relation->rd_rel->relkind == RELKIND_SEQUENCE ||
+				 relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 			RelationInitTableAccessMethod(relation);
 		else
 			Assert(relation->rd_rel->relam == InvalidOid);
@@ -3168,7 +3169,10 @@ retry:
 		relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 		RelationInitIndexAccessInfo(relation);
 	else if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind) ||
-			 relation->rd_rel->relkind == RELKIND_SEQUENCE)
+			 relation->rd_rel->relkind == RELKIND_SEQUENCE ||
+			 (IsYugaByteEnabled() &&
+			  relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE
+			  && relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP))
 		RelationInitTableAccessMethod(relation);
 	else
 		Assert(relation->rd_rel->relam == InvalidOid);
@@ -5854,10 +5858,12 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 		 * Currently, this function is only used during reindex/truncate in YB.
 		 */
 		Assert(relation->rd_rel->relkind == RELKIND_INDEX ||
-			   relation->rd_rel->relkind == RELKIND_RELATION);
+			   relation->rd_rel->relkind == RELKIND_RELATION ||
+			   relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX);
 
-		if (relation->rd_rel->relkind == RELKIND_INDEX &&
-			!relation->rd_index->indisprimary)
+		if ((relation->rd_rel->relkind == RELKIND_INDEX ||
+			 relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
+			 !relation->rd_index->indisprimary)
 			/*
 			 * Note: caller is responsible for dropping the old DocDB table
 			 * associated with the index, if required.

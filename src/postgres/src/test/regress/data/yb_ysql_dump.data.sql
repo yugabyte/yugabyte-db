@@ -369,7 +369,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16589'::pg_catalog.
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16592'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('0'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16592'::pg_catalog.oid);
 
 CREATE TABLE public.part_uniq_const (
     v1 integer NOT NULL,
@@ -2103,7 +2103,7 @@ ALTER TABLE ONLY public.p2
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16609'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('0'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16609'::pg_catalog.oid);
 
 ALTER TABLE ONLY public.part_uniq_const
     ADD CONSTRAINT part_uniq_const_unique UNIQUE  (v1, v2);

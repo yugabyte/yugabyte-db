@@ -1774,7 +1774,7 @@ TEST_F(PgDdlAtomicityTest, TestPartitionedTableSchemaVerification) {
       "report_ysql_ddl_txn_status_to_master", "false"));
   // Create a parent partitioned table.
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE test_parent (key INT PRIMARY KEY, value TEXT, num real, serialcol SERIAL) "
+      "CREATE TABLE test_parent (key INT, value TEXT, num real, serialcol SERIAL) "
       "PARTITION BY LIST(key)"));
   // Create a child partition.
   ASSERT_OK(conn.ExecuteFormat(
@@ -1783,22 +1783,23 @@ TEST_F(PgDdlAtomicityTest, TestPartitionedTableSchemaVerification) {
   // Perform an unsuccessful alter table operation.
   ASSERT_OK(conn.TestFailDdl("ALTER TABLE test_parent DROP COLUMN value"));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
-  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=true"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_next_ddl=true"));
   // Perform an unsuccessful alter table rewrite operation.
-  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col1 SERIAL"));
+  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE test_parent ADD PRIMARY KEY (key)"));
 
-  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 1);
-  // Verify that the failed alter table rewrite operation created an orphaned child table.
+  // Verify that the failed alter table rewrite operation created orphaned tables.
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 2);
   ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_child")).size(), 2);
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
-  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=false"));
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-      return VERIFY_RESULT(client->ListTables("test_child")).size() == 1;
+      return VERIFY_RESULT(client->ListTables("test_child")).size() == 1 &&
+        VERIFY_RESULT(client->ListTables("test_parent")).size() == 1;
   }, MonoDelta::FromSeconds(60), "Wait for orphaned child table to be cleaned up."));
 
   // Perform a successful alter table operation.
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col1 int"));
-  // Perform a successful alter table rewrite operation.
+  // Perform successful alter table rewrite operations.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD PRIMARY KEY (key)"));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col2 SERIAL"));
 
   // Perform a successful drop table operation.
