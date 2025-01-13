@@ -38,6 +38,7 @@ chrony_servers = "{{ ynp_config['ynp'].chrony_servers | join(', ') }}"
 [CreateYugabyteUser]
 yb_user_id = {{ ynp_config['ynp'].yb_user_id }}
 yb_user_password =
+mount_points = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 
 [ConfigureSystemd]
 user_name = yugabyte

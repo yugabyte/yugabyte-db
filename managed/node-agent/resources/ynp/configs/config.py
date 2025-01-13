@@ -85,4 +85,5 @@ def parse_config(ynp_config):
 
 
 def validate_config(config):
+    # Validate the config file provided by the user.
     return

@@ -87,48 +87,6 @@ else
     add_result "kernel.core_pattern" "FAIL" "kernel.core_pattern is set to $kernel_core_pattern_value (expected: {{ kernel_core_pattern }})"
 fi
 
-threshold=49 #Gigabytes
-# Convert the space-separated string to an array in bash
-mount_points="{{ mount_points | default('') | trim }}"
-IFS=' ' read -ra mount_points_array <<< "$mount_points"
-# Verify each mount point
-for mount_point in "${mount_points_array[@]}"; do
-    if [ -d "$mount_point" ]; then
-        if su - {{ yb_user }} -c "test -w \"$mount_point\""; then
-            result="PASS"
-            message="Directory $mount_point exists and is writable by {{ yb_user }}."
-            echo "[PASS] $message"
-        else
-            result="FAIL"
-            message="Directory $mount_point exists but is not {{ yb_user }} writable."
-            echo "[FAIL] $message"
-            any_fail=1
-        fi
-    else
-        result="FAIL"
-        message="Directory $mount_point does not exist."
-        echo "[FAIL] $message"
-        any_fail=1
-    fi
-    add_result "$mount_point Check" "$result" "$message"
-
-    if [ -d "$mount_point" ]; then
-        # Get the available disk space in gigabytes.
-        free_space_gb=$(df -BG --output=avail "$mount_point" | tail -n 1 | tr -d 'G ')
-        if [ "$free_space_gb" -gt "$threshold" ]; then
-            result="PASS"
-            message="Sufficient disk space available: ${free_space_gb}G"
-            echo "[PASS] $message"
-        else
-            result="FAIL"
-            message="Insufficient disk space: ${free_space_gb}G available, ${threshold}G required"
-            echo "[FAIL] $message"
-            any_fail=1
-        fi
-        add_result "$mount_point Free space check" "$result" "$message"
-    fi
-done
-
 platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
 if [[ "$platform_id" == "platform:el8" ]]; then
     # Check if selinux module can be imported
