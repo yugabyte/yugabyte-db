@@ -196,8 +196,7 @@ Status QLRocksDBStorage::GetIterator(
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op);
 
-  if (!(request.has_lower_bound() || request.has_upper_bound()) &&
-      range_components.size() == schema.num_range_key_columns() &&
+  if (range_components.size() == schema.num_range_key_columns() &&
       hashed_components.size() == schema.num_hash_key_columns()) {
     // Construct the scan spec basing on the RANGE condition as all range columns are specified.
     RETURN_NOT_OK(doc_iter->Init(

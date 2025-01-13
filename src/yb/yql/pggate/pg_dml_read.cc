@@ -89,33 +89,6 @@ inline void ApplyBound(
   FATAL_INVALID_ENUM_VALUE(SortingType, sorting_type);
 }
 
-// Helper class to generalize logic of ybctid's generation for regular and reverse iterators.
-class InOperatorYbctidsGenerator {
- public:
-  using Ybctids = std::vector<Slice>;
-
-  InOperatorYbctidsGenerator(ThreadSafeArena* arena, dockv::DocKey* doc_key,
-                             size_t value_placeholder_idx, Ybctids* ybctids)
-      : arena_(*arena),
-        doc_key_(*doc_key),
-        value_placeholder_(doc_key_.range_group()[value_placeholder_idx]),
-        ybctids_(*ybctids) {}
-
-  template <class It>
-  void Generate(It it, const It& end) const {
-    for (; it != end; ++it) {
-      value_placeholder_ = *it;
-      ybctids_.push_back(arena_.DupSlice(doc_key_.Encode().AsSlice()));
-    }
-  }
-
- private:
-  ThreadSafeArena& arena_;
-  dockv::DocKey& doc_key_;
-  dockv::KeyEntryValue& value_placeholder_;
-  Ybctids& ybctids_;
-};
-
 using LWQLValuePBContainer = boost::container::small_vector<LWQLValuePB*, 16>;
 
 Result<dockv::KeyEntryValue> GetKeyValue(
@@ -140,18 +113,67 @@ class SimpleYbctidProvider : public YbctidProvider {
  public:
   explicit SimpleYbctidProvider(std::reference_wrapper<const std::vector<Slice>> ybctids)
       : ybctids_(&ybctids.get()) {}
-
  private:
   Result<std::optional<YbctidBatch>> Fetch() override {
-    if (!ybctids_) {
+    if (fetched_) {
       return std::nullopt;
     }
-    YbctidBatch result{*ybctids_, /* keep_order= */ true};
-    ybctids_ = nullptr;
-    return result;
+    fetched_ = true;
+    return YbctidBatch{*ybctids_, /* keep_order= */ true};
+  }
+
+  void Reset() override {
+    fetched_ = false;
   }
 
   const std::vector<Slice>* ybctids_;
+  bool fetched_ = false;
+};
+
+class HoldingYbctidProvider : public YbctidProvider {
+ public:
+  explicit HoldingYbctidProvider(ThreadSafeArena* arena) : arena_(*arena) {}
+  void reserve(size_t capacity) { ybctids_.reserve(capacity); }
+  void append(const Slice& ybctid) { ybctids_.push_back(arena_.DupSlice(ybctid)); }
+ private:
+  Result<std::optional<YbctidBatch>> Fetch() override {
+    if (fetched_) {
+      return std::nullopt;
+    }
+    fetched_ = true;
+    return YbctidBatch{ybctids_, /* keep_order= */ true};
+  }
+
+  void Reset() override {
+    fetched_ = false;
+  }
+
+  ThreadSafeArena& arena_;
+  std::vector<Slice> ybctids_;
+  bool fetched_ = false;
+};
+
+// Helper class to generalize logic of ybctid's generation for regular and reverse iterators.
+class InOperatorYbctidsGenerator {
+ public:
+  InOperatorYbctidsGenerator(dockv::DocKey* doc_key, size_t value_placeholder_idx,
+                             HoldingYbctidProvider* ybctid_holder)
+      : doc_key_(*doc_key),
+        value_placeholder_(doc_key_.range_group()[value_placeholder_idx]),
+        ybctids_(*ybctid_holder) {}
+
+  template <class It>
+  void Generate(It it, const It& end) const {
+    for (; it != end; ++it) {
+      value_placeholder_ = *it;
+      ybctids_.append(doc_key_.Encode().AsSlice());
+    }
+  }
+
+ private:
+  dockv::DocKey& doc_key_;
+  dockv::KeyEntryValue& value_placeholder_;
+  HoldingYbctidProvider& ybctids_;
 };
 
 } // namespace
@@ -363,9 +385,9 @@ bool PgDmlRead::IsConcreteRowRead() const {
                                   read_req_->range_column_values().size())));
 }
 
-Status PgDmlRead::InitDocOp(const YbcPgExecParameters* params, bool is_concrete_row_read) {
+Status PgDmlRead::InitDocOp(const YbcPgExecParameters* params) {
   std::optional<YbcPgExecParameters> alternative_params;
-  if (!is_concrete_row_read && GetRowMarkType(params) == RowMarkType::ROW_MARK_KEYSHARE) {
+  if (!IsConcreteRowRead() && GetRowMarkType(params) == RowMarkType::ROW_MARK_KEYSHARE) {
     // ROW_MARK_KEYSHARE creates a weak read intent on DocDB side. As a result it is only
     // applicable when the read operation reads a concrete row (by using ybctid or by specifying
     // all primary key columns). In case some columns of the primary key are not specified,
@@ -404,19 +426,17 @@ Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
 
   SetColumnRefs();
 
-  if (doc_op_ && !ybctid_provider() && IsAllPrimaryKeysBound() &&
-      !(read_req_->has_lower_bound() || read_req_->has_upper_bound())) {
-    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(doc_op_init_params));
+  if (doc_op_ && !ybctid_provider() && IsAllPrimaryKeysBound()) {
+    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids());
   } else {
     RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
-    if (doc_op_) {
-      RETURN_NOT_OK(InitDocOp(doc_op_init_params));
-    }
   }
 
   if (!doc_op_) {
     return Status::OK();
   }
+
+  RETURN_NOT_OK(InitDocOp(doc_op_init_params));
 
   const auto has_ybctid = VERIFY_RESULT(ProcessProvidedYbctids());
 
@@ -713,21 +733,20 @@ Status PgDmlRead::AddRowLowerBound(
   return Status::OK();
 }
 
-Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const YbcPgExecParameters* params) {
-  const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
+Status PgDmlRead::SubstitutePrimaryBindsWithYbctids() {
+  SetYbctidProvider(VERIFY_RESULT(BuildYbctidsFromPrimaryBinds()));
   for (auto& col : bind_.columns()) {
     col.UnbindValue();
   }
   read_req_->mutable_partition_column_values()->clear();
   read_req_->mutable_range_column_values()->clear();
-  RETURN_NOT_OK(InitDocOp(params, /* is_concrete_row_read = */ true));
-  return UpdateRequestWithYbctids(ybctids, KeepOrder(read_req_->has_is_forward_scan()));
+  return Status::OK();
 }
 
 // Function builds vector of ybctids from primary key binds.
 // Required precondition that not more than one range key component has the IN operator and all
 // other key components are set must be checked by caller code.
-Result<std::vector<Slice>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
+Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   auto num_hash_key_columns = bind_->num_hash_key_columns();
   LWQLValuePBContainer hashed_values(num_hash_key_columns);
   dockv::KeyEntryValues hashed_components;
@@ -750,7 +769,7 @@ Result<std::vector<Slice>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   };
 
   std::optional<InOperatorInfo> in_operator_info;
-  std::vector<Slice> ybctids;
+  HoldingYbctidProvider ybctid_holder(&arena());
   for (auto i = num_hash_key_columns; i < bind_->num_key_columns(); ++i) {
     auto& col = bind_.ColumnForIndex(i);
     auto& expr = *col.bind_pb();
@@ -767,9 +786,9 @@ Result<std::vector<Slice>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
     // Form ybctid for each argument in the IN operator.
     const auto& column = in_operator_info->column;
     const auto provider = column.BuildSubExprKeyColumnValueProvider();
-    ybctids.reserve(provider.size());
-    InOperatorYbctidsGenerator generator(&arena(), &doc_key, in_operator_info->placeholder_idx,
-                                         &ybctids);
+    ybctid_holder.reserve(provider.size());
+    InOperatorYbctidsGenerator generator(
+        &doc_key, in_operator_info->placeholder_idx, &ybctid_holder);
     // In some cases scan are sensitive to key values order. On DocDB side IN operator processes
     // based on column sort order and scan direction. It is necessary to preserve same order for
     // the constructed ybctids.
@@ -781,9 +800,9 @@ Result<std::vector<Slice>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
       generator.Generate(begin, end);
     }
   } else {
-    ybctids.push_back(arena().DupSlice(doc_key.Encode().AsSlice()));
+    ybctid_holder.append(doc_key.Encode().AsSlice());
   }
-  return ybctids;
+  return std::make_unique<HoldingYbctidProvider>(ybctid_holder);
 }
 
 // Returns true in case not more than one range key component has the IN operator
@@ -826,6 +845,9 @@ Status PgDmlRead::BindRange(
   // Clean up operations remaining from the previous range's scan
   if (doc_op_) {
     RETURN_NOT_OK(down_cast<PgDocReadOp*>(doc_op_.get())->ResetPgsqlOps());
+  }
+  if (auto* provider = ybctid_provider(); provider) {
+    provider->Reset();
   }
   if (auto* secondary_index = SecondaryIndex(); secondary_index) {
     secondary_index->RequireReExecution();

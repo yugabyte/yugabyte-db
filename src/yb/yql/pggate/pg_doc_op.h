@@ -308,13 +308,11 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   };
 
   // This operation is requested internally within PgGate, and that request does not go through
-  // all the steps as other operation from Postgres thru PgDocOp. This is used to create requests
-  // for the following select.
-  //   SELECT ... FROM <table> WHERE ybctid IN (SELECT base_ybctids from INDEX)
-  // After ybctids are queried from INDEX, PgGate will call "PopulateByYbctidOps" to create
-  // operators to fetch rows whose rowids equal queried ybctids.
+  // all the steps as other operation from Postgres thru PgDocOp.
+  // Ybctids from the generator may be skipped if they conflict with other conditions placed on the
+  // request. Function returns true result if it ended up with any requests to execute.
   // Response will have same order of ybctids as request in case of using KeepOrder::kTrue.
-  Status PopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder = KeepOrder::kFalse);
+  Result<bool> PopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder = KeepOrder::kFalse);
 
   bool has_out_param_backfill_spec() {
     return !out_param_backfill_spec_.empty();

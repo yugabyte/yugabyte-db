@@ -261,9 +261,9 @@ Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
     exec_params_mutator(exec_params);
     RETURN_NOT_OK(doc_op.ExecuteInit(&exec_params));
     // Populate doc_op with ybctids which belong to current table.
-    RETURN_NOT_OK(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
+    RSTATUS_DCHECK(VERIFY_RESULT(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
       return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
-    }), static_cast<size_t>(end - it)}));
+    }), static_cast<size_t>(end - it)})), IllegalState, "Failed to create requests, can't fetch");
     RETURN_NOT_OK(doc_op.Execute());
   }
 
