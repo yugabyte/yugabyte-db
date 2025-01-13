@@ -42,17 +42,9 @@ public class TestYbAsh extends BasePgSQLTest {
   private static final int ASH_SAMPLE_SIZE = 500;
   private static final String ASH_VIEW = "yb_active_session_history";
 
-  private Map<String, String> getTServerFlagMapWithPreviewFlags() throws Exception {
-    Map<String, String> flagMap = super.getTServerFlags();
-    if (isTestRunningWithConnectionManager()) {
-     flagMap.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
-    }
-    return flagMap;
-  }
-
   private void setAshConfigAndRestartCluster(
       int sampling_interval, int sample_size, int circular_buffer_size) throws Exception {
-    Map<String, String> flagMap = getTServerFlagMapWithPreviewFlags();
+    Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_yb_enable_ash", "true");
     flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(sampling_interval));
     flagMap.put("ysql_yb_ash_sample_size", String.valueOf(sample_size));
@@ -64,7 +56,7 @@ public class TestYbAsh extends BasePgSQLTest {
   }
 
   private void resetAshConfigAndRestartCluster() throws Exception {
-    Map<String, String> flagMap = getTServerFlagMapWithPreviewFlags();
+    Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_yb_enable_ash", "false");
     restartClusterWithFlags(Collections.emptyMap(), flagMap);
   }
