@@ -15,7 +15,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ## v1.8.9 - January 14, 2025
 
-### New Features
+### New features
 
 - Implemented a new algorithm to determine migration complexity that accounts for all potential issues, including unsupported query constructs, PL/pgSQL objects, and incompatible data types.
 - Introduced explanations of migration complexity in the PostgreSQL assessment report, summarizing high-impact issues and illustrating how the overall complexity level is determined.
@@ -37,7 +37,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
   - The deterministic attribute in CREATE COLLATION
   - MERGE statements.
 
-### Bug Fixes
+### Bug fixes
 
 - Fixed an issue where import data failed for tables whose datafile paths exceeded 250 characters. The fix is backward compatible, allowing migrations started using older Voyager versions to continue seamlessly.
 - Fixed an issue where logic for detecting unsupported PostgreSQL versions was giving false positives.
