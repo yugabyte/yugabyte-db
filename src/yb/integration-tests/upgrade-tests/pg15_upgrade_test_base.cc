@@ -41,7 +41,27 @@ void Pg15UpgradeTestBase::SetUp() {
       "RESET yb_non_ddl_txn_for_sys_tables_allowed"}));
 }
 
+Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility() {
+  const auto tserver = cluster_->tablet_server(0);
+  const auto data_path = JoinPathSegments(tserver->GetDataDirs().front(), "../../pg_data");
+
+  const std::vector<std::string> args = {
+    GetPgToolPath("pg_upgrade"),
+    "--old-datadir", data_path,
+    "--old-host", tserver->bind_host(),
+    "--old-port", AsString(tserver->pgsql_rpc_port()),
+    "--username", "yugabyte",
+    "--check"
+  };
+
+  LOG(INFO) << "Running " << AsString(args);
+
+  return Subprocess::Call(args);
+}
+
 Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {
+  RETURN_NOT_OK(ValidateUpgradeCompatibility());
+
   LOG(INFO) << "Upgrading cluster to mixed mode";
 
   static const MonoDelta no_delay_between_nodes = 0s;

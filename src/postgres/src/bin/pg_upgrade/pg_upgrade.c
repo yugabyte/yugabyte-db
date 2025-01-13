@@ -159,7 +159,11 @@ main(int argc, char **argv)
 	if (!is_yugabyte_enabled())
 		start_postmaster(&new_cluster, true);
 
-	check_new_cluster();
+	/*
+	 * YB: If this is run as a preflight check, the new cluster is not yet started.
+	 */
+	if (!is_yugabyte_enabled() || !user_opts.check)
+		check_new_cluster();
 
 	report_clusters_compatible();
 
