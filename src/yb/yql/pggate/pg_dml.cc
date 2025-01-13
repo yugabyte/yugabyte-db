@@ -25,7 +25,6 @@
 
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_select_index.h"
-#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -41,6 +40,8 @@ class IndexYbctidProvider : public YbctidProvider {
   Result<std::optional<YbctidBatch>> Fetch() override {
     return index_.FetchYbctidBatch();
   }
+
+  void Reset() override {}
 
   PgSelectIndex& index_;
 };
@@ -314,13 +315,11 @@ Result<bool> PgDml::ProcessProvidedYbctids() {
   }
 
   // Update request with the new batch of ybctids to fetch the next batch of rows.
-  RETURN_NOT_OK(UpdateRequestWithYbctids(data->ybctids, KeepOrder(data->keep_order)));
-
-  AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
-  return true;
+  return UpdateRequestWithYbctids(data->ybctids, KeepOrder(data->keep_order));
 }
 
-Status PgDml::UpdateRequestWithYbctids(const std::vector<Slice>& ybctids, KeepOrder keep_order) {
+Result<bool> PgDml::UpdateRequestWithYbctids(
+    const std::vector<Slice>& ybctids, KeepOrder keep_order) {
   auto i = ybctids.begin();
   return doc_op_->PopulateByYbctidOps({make_lw_function([&i, end = ybctids.end()] {
     return i != end ? *i++ : Slice();

@@ -520,10 +520,14 @@ Status PgDocOp::CreateRequests() {
   return CompleteRequests();
 }
 
-Status PgDocOp::PopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) {
+Result<bool> PgDocOp::PopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) {
   RETURN_NOT_OK(DoPopulateByYbctidOps(generator, keep_order));
   request_population_completed_ = true;
-  return CompleteRequests();
+  if (active_op_count_ > 0) {
+    RETURN_NOT_OK(CompleteRequests());
+    return true;
+  }
+  return false;
 }
 
 Status PgDocOp::CompleteRequests() {
@@ -677,6 +681,25 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
     // Assign ybctids to operators.
     auto& read_op = GetReadOp(partition);
     auto& read_req = read_op.read_request();
+
+    // Check bounds, if set.
+    // We also ensure that the bounds are valid ybctids. Hash partitioned relations use hash codes
+    // as partitioning keys, they are not comparable to ybctids. Other partitioning types use keys
+    // comparable with ybctids.
+    if (read_req.has_lower_bound()) {
+      const auto& lower_bound = read_req.lower_bound();
+      if (!dockv::PartitionSchema::IsValidHashPartitionKeyBound(lower_bound.key().ToBuffer()) &&
+          (lower_bound.is_inclusive() ? ybctid < lower_bound.key() : ybctid <= lower_bound.key())) {
+        continue;
+      }
+    }
+    if (read_req.has_upper_bound()) {
+      const auto& upper_bound = read_req.upper_bound();
+      if (!dockv::PartitionSchema::IsValidHashPartitionKeyBound(upper_bound.key().ToBuffer()) &&
+          (upper_bound.is_inclusive() ? ybctid > upper_bound.key() : ybctid >= upper_bound.key())) {
+        continue;
+      }
+    }
 
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep

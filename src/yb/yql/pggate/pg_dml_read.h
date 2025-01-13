@@ -156,16 +156,13 @@ class PgDmlRead : public PgDml {
   [[nodiscard]] bool IsConcreteRowRead() const;
   Status ProcessEmptyPrimaryBinds();
   [[nodiscard]] bool IsAllPrimaryKeysBound() const;
-  Result<std::vector<Slice>> BuildYbctidsFromPrimaryBinds();
+  Result<std::unique_ptr<YbctidProvider>> BuildYbctidsFromPrimaryBinds();
 
-  Status SubstitutePrimaryBindsWithYbctids(const YbcPgExecParameters* params);
+  Status SubstitutePrimaryBindsWithYbctids();
   Result<dockv::DocKey> EncodeRowKeyForBound(
       YbcPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound);
 
-  Status InitDocOp(const YbcPgExecParameters* params, bool is_concrete_row_read);
-  Status InitDocOp(const YbcPgExecParameters* params) {
-    return InitDocOp(params, IsConcreteRowRead());
-  }
+  Status InitDocOp(const YbcPgExecParameters* params);
 
   // Holds original doc_op_ object after call of the UpgradeDocOp method.
   // Required to prevent structures related to request from being freed.

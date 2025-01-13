@@ -38,6 +38,7 @@ class YbctidProvider {
  public:
   virtual ~YbctidProvider() = default;
   virtual Result<std::optional<YbctidBatch>> Fetch() = 0;
+  virtual void Reset() = 0;
 };
 
 class PgDml : public PgStatement {
@@ -140,7 +141,7 @@ class PgDml : public PgStatement {
   // Transfer columns information from target_.columns() to the request's col_refs list field.
   void ColRefsToPB();
 
-  Status UpdateRequestWithYbctids(
+  Result<bool> UpdateRequestWithYbctids(
       const std::vector<Slice>& ybctids, KeepOrder keep_order = KeepOrder::kFalse);
 
   template<class Request>
