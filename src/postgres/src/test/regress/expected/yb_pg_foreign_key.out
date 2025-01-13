@@ -1958,6 +1958,9 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 CREATE TABLE fk3 PARTITION OF fk FOR VALUES FROM (3500) TO (5000);
 -- these should fail: referenced value not present
 INSERT into fk VALUES (1);
@@ -2120,6 +2123,9 @@ CREATE TABLE pk32 (b int, a int NOT NULL);
 ALTER TABLE pk32 DROP COLUMN b;
 ALTER TABLE pk3 ATTACH PARTITION pk32 FOR VALUES IN (32);
 ALTER TABLE pk ATTACH PARTITION pk3 FOR VALUES IN (31, 32);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.

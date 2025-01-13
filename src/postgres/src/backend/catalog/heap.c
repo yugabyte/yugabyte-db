@@ -343,7 +343,13 @@ heap_create(const char *relname,
 		reltablespace = InvalidOid;
 
 	/* Don't create storage for relkinds without physical storage. */
-	if (!RELKIND_HAS_STORAGE(relkind))
+	/*
+	 * YB: create storage (relfilenode) for parent partition tables
+	 * (see GH#6525).
+	 */
+	if (!(IsYugaByteEnabled() && RELKIND_HAS_PARTITIONS(relkind) &&
+		  relpersistence != RELPERSISTENCE_TEMP)
+		&& !RELKIND_HAS_STORAGE(relkind))
 		create_storage = false;
 	else if (shared_relation)
 		/*

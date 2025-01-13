@@ -1147,7 +1147,9 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("specifying a table access method is not supported on a partitioned table")));
 	}
-	else if (RELKIND_HAS_TABLE_AM(relkind))
+	else if ((IsYugaByteEnabled() && RELKIND_HAS_PARTITIONS(relkind)
+			  && stmt->relation->relpersistence != RELPERSISTENCE_TEMP) ||
+			  RELKIND_HAS_TABLE_AM(relkind))
 		accessMethod = default_table_access_method;
 
 	/* look up the access method, verify it is for a table */
@@ -5921,8 +5923,11 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		 * Foreign tables have no storage, nor do partitioned tables and indexes.
 		 * YB: We do not need to rewrite tables during upgrade because we
 		 * link the DocDB table with the data on master.
+		 * We also want to allow rewrites on partitioned tables to avoid
+		 * schema inconsistencies during backup/restore (see GH#24458).
 		 */
-		if (!RELKIND_HAS_STORAGE(tab->relkind) ||
+		if ((!RELKIND_HAS_STORAGE(tab->relkind) &&
+			 (!IsYBRelationById(tab->relid) || tab->relkind != RELKIND_PARTITIONED_TABLE)) ||
 			(IsYBRelationById(tab->relid) && IsBinaryUpgrade))
 			continue;
 		/*
