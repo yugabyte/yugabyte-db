@@ -1420,7 +1420,7 @@ $$ LANGUAGE plpgsql;
 ERROR: cannot subscript type jsonb because it is not an array
 ```
 
-**Workaround**: You can use the Arrow ( -> / ->> ) operators to access JSONB fields.
+**Workaround**: You can use the Arrow ( `-> / ->>` ) operators to access JSONB fields.
 
 **Example**
 
