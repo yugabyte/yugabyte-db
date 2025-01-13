@@ -532,12 +532,16 @@ You can use several flags to fine-tune YugabyteDB's CDC behavior. These flags ar
 
 ## Retaining data for longer durations
 
-To increase retention of data for CDC, change the two flags, `cdc_intent_retention_ms` and `cdc_wal_retention_time_secs` as required.
+The following flags are responsible for retention of data required by CDC:
+- `cdc_wal_retention_time_secs` (default value: 28800s)
+- `cdc_intent_retention_ms` (default value: 28800000ms)
+
+Starting from 2024.2.1, the data retention configuration for Change Data Capture (CDC) has been updated. The default retention period is now set to 8 hours, with support for maximum retention up to 24 hours. Prior to 2024.2.1, the default retention for CDC is 4 hours.
 
 {{< warning title="Important" >}}
+When using before image modes ALL, FULL_ROW_NEW_IMAGE or MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES, CDC preserves previous row values for UPDATE and DELETE operations. This is accomplished by retaining history for each row in the database through a suspension of the compaction process. Compaction process is halted by setting retention barriers to prevent cleanup of history for those rows that are yet to be streamed to the CDC client. These retention barriers are dynamically managed and advanced only after the CDC events are streamed and explicitly acknowledged by the client, thus allowing compaction of streamed rows. 
 
-Longer values of `cdc_intent_retention_ms`, coupled with longer CDC lags (periods of downtime where the client is not requesting changes) can result in increased memory footprint in the YB-TServer and affect read performance.
-
+The [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) flag governs the maximum retention period, defaulting to 8 hours. Users should be aware that any interruption in CDC consumption for extended periods with the above-mentioned before image modes may lead to potential read performance degradation. This happens because compaction activities are halted in the database with these before image modes, leading to inefficient key lookups as reads must traverse multiple SST files, which degrades read performance.
 {{< /warning >}}
 
 ## Content-based routing

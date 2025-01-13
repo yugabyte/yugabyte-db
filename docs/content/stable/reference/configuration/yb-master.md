@@ -939,7 +939,7 @@ Default: `0` (Use the same default number of tablets as for regular tables.)
 
 WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
 
-Default: `14400` (4 hours)
+Default: `28800` (8 hours)
 
 ##### --enable_tablet_split_of_cdcsdk_streamed_tables
 
