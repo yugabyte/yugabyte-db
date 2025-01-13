@@ -33,6 +33,7 @@
 DECLARE_string(tmp_dir);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_string(rpc_bind_addresses);
+DECLARE_bool(ysql_enable_auth);
 
 DEFINE_RUNTIME_uint32(ysql_upgrade_postgres_port, 5434,
   "Port used to start the postgres process for ysql upgrade");
@@ -40,6 +41,13 @@ DEFINE_RUNTIME_uint32(ysql_upgrade_postgres_port, 5434,
 DEFINE_test_flag(
     string, fail_ysql_catalog_upgrade_state_transition_from, "",
     "When set fail the transition to the provided state");
+
+DEFINE_RUNTIME_string(ysql_major_upgrade_user, "yugabyte_upgrade",
+    "The ysql user to use for ysql major upgrade operations when both:"
+    " authentication is enabled, "
+    " no yb-tserver process running on the yb-master nodes. "
+    "This user should have superuser privileges and the password must be placed in the `.pgpass` "
+    "file on all yb-master nodes.");
 
 using yb::pgwrapper::PgWrapper;
 
@@ -356,6 +364,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   RETURN_NOT_OK(pg_supervisor.Start());
 
   PgWrapper::PgUpgradeParams pg_upgrade_params;
+  pg_upgrade_params.ysql_user_name = "yugabyte";
   pg_upgrade_params.data_dir = pg_conf.data_dir;
   pg_upgrade_params.new_version_socket_dir =
       PgDeriveSocketDir(HostPort(pg_conf.listen_addresses, pg_conf.pg_port));
@@ -370,7 +379,16 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   if (local_ts) {
     pg_upgrade_params.old_version_socket_dir = PgDeriveSocketDir(closest_ts_hp);
   } else {
+    // Remote tserver.
     pg_upgrade_params.old_version_pg_address = closest_ts_hp.host();
+
+    if (FLAGS_ysql_enable_auth || pg_conf.enable_tls) {
+      pg_upgrade_params.ysql_user_name = FLAGS_ysql_major_upgrade_user;
+      LOG(INFO) << "Running ysql major upgrade on a authentication enabled universe which does not "
+                   "have a yb-tserver on the same node as the yb-master. Upgrade will be performed "
+                   "using yb-tserver hosted on "
+                << closest_ts_hp << " by user " << pg_upgrade_params.ysql_user_name;
+    }
   }
   pg_upgrade_params.old_version_pg_port = closest_ts_hp.port();
 

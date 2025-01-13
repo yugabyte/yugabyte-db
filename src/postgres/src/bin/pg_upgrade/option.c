@@ -76,13 +76,23 @@ parseCommandLine(int argc, char *argv[])
 	old_cluster.port = getenv("PGPORTOLD") ? atoi(getenv("PGPORTOLD")) : DEF_PGUPORT;
 	new_cluster.port = getenv("PGPORTNEW") ? atoi(getenv("PGPORTNEW")) : DEF_PGUPORT;
 
-	os_user_effective_id = get_user_info(&os_info.user);
-	/* we override just the database user name;  we got the OS id above */
-	if (getenv("PGUSER"))
+	if (is_yugabyte_enabled())
 	{
-		pg_free(os_info.user);
-		/* must save value, getenv()'s pointer is not stable */
-		os_info.user = pg_strdup(getenv("PGUSER"));
+		/* In YB we allow root users to run pg_upgrade.
+		   User name is a required parameter so we can skip the env checks.
+		 */
+		os_user_effective_id = -1;
+	}
+	else
+	{
+		os_user_effective_id = get_user_info(&os_info.user);
+		/* we override just the database user name;  we got the OS id above */
+		if (getenv("PGUSER"))
+		{
+			pg_free(os_info.user);
+			/* must save value, getenv()'s pointer is not stable */
+			os_info.user = pg_strdup(getenv("PGUSER"));
+		}
 	}
 
 	if (argc > 1)
@@ -219,6 +229,13 @@ parseCommandLine(int argc, char *argv[])
 
 	if (optind < argc)
 		pg_fatal("too many command-line arguments (first is \"%s\")\n", argv[optind]);
+
+	if (is_yugabyte_enabled())
+	{
+		old_cluster.yb_user = os_info.user;
+		/* In YB, the new cluster is always connected via the yugabyte user */
+		new_cluster.yb_user = "yugabyte";
+	}
 
 	if (log_opts.verbose)
 		pg_log(PG_REPORT, "Running in verbose mode\n");

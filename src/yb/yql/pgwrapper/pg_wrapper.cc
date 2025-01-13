@@ -899,14 +899,14 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
     }
   }
 
-  std::string stdout, stderr;
-  auto status = initdb_subprocess.Call(&stdout, &stderr);
-  LOG(INFO) << "initdb stdout: " << stdout;
-  if (!stderr.empty()) {
-    LOG(WARNING) << "initdb stderr: " << stderr;
-  }
-  if (!status.ok()) {
-    return status.CloneAndAppend(stderr);
+  int status = 0;
+  RETURN_NOT_OK(initdb_subprocess.Start());
+  RETURN_NOT_OK(initdb_subprocess.Wait(&status));
+  if (status != 0) {
+    SCHECK(
+        WIFEXITED(status), InternalError, Format("$0 did not exit normally", initdb_program_path));
+    return STATUS_FORMAT(
+        RuntimeError, "$0 failed with exit code $1", initdb_program_path, WEXITSTATUS(status));
   }
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
@@ -923,7 +923,7 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   std::vector<std::string> args{
       program_path,
       "--new-datadir", param.data_dir,
-      "--username", "yugabyte",
+      "--username", param.ysql_user_name,
       "--new-socketdir", param.new_version_socket_dir,
       "--new-port", ToString(param.new_version_pg_port),
       "--old-port", ToString(param.old_version_pg_port)};
@@ -939,14 +939,10 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
   Subprocess subprocess(program_path, args);
 
-  std::string stdout, stderr;
-  auto status = Subprocess::Call(args, &stdout, &stderr);
-  LOG(INFO) << "pg_upgrade stdout: " << stdout;
-  if (!stderr.empty()) {
-    LOG(WARNING) << "pg_upgrade stderr: " << stderr;
-  }
+  auto status = Subprocess::Call(args);
   if (!status.ok()) {
-    return status.CloneAndAppend(stderr);
+    return status.CloneAndAppend(
+        "pg_upgrade failed. Check the standard output and standard error for more details.");
   }
 
   LOG(INFO) << "pg_upgrade completed successfully";

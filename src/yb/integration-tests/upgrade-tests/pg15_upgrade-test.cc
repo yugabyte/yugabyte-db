@@ -18,6 +18,7 @@
 
 using namespace std::chrono_literals;
 
+DECLARE_string(ysql_major_upgrade_user);
 namespace yb {
 
 class Pg15UpgradeTest : public Pg15UpgradeTestBase {
@@ -1043,15 +1044,45 @@ TEST_F(Pg15UpgradeTest, NoTserverOnMasterNode) {
   ASSERT_OK(FinalizeUpgrade());
 }
 
-// Make sure upgrade fails in auth enabled universes if there is no tserver on the master node.
+// If there is no tserver on the master node make sure the upgrade fails unless the yugabyte_upgrade
+// user is created.
 TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
   static const MonoDelta no_delay_between_nodes = 0s;
+
+// Disabled the rollback step on debug builds and MacOS because it times out.
+#if !defined(__APPLE__) && defined(NDEBUG)
+  ASSERT_OK(RestartAllMastersInCurrentVersion(no_delay_between_nodes));
+
+  {
+    auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
+
+    ASSERT_NOK_STR_CONTAINS(PerformYsqlMajorCatalogUpgrade(), "Failed to run pg_upgrade");
+    ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+    ASSERT_OK(master_tserver->Restart());
+  }
+#endif
+
+  // Rollback and create the upgrade user.
+  ASSERT_OK(RestartAllMastersInOldVersion(no_delay_between_nodes));
+
+  const auto password = "yugabyte";
+  // Set the password in the environment variable, which will propagate it to all child processes
+  // started after this point.
+  setenv("PGPASSWORD", password, /*overwrite=*/true);
+
+  ASSERT_OK(ExecuteStatement(Format(
+      "CREATE USER $0 WITH SUPERUSER PASSWORD '$1'", FLAGS_ysql_major_upgrade_user, password)));
+
   ASSERT_OK(RestartAllMastersInCurrentVersion(no_delay_between_nodes));
 
   auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
 
-  ASSERT_NOK_STR_CONTAINS(PerformYsqlMajorCatalogUpgrade(), "Failed to run pg_upgrade");
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
   ASSERT_OK(master_tserver->Restart());
+  ASSERT_OK(WaitForClusterToStabilize());
+
+  ASSERT_OK(RestartAllTServersInCurrentVersion(no_delay_between_nodes));
+  ASSERT_OK(FinalizeUpgrade());
 }
 
 TEST_F(Pg15UpgradeTestWithAuth, UpgradeAuthEnabledUniverse) {
