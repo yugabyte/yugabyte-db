@@ -870,7 +870,7 @@ public class GCPUtil implements CloudUtil {
       }
 
       log.info(
-          "Deleted {} old backups from gs://{}/{}",
+          "Deleted {} old backup(s) from gs://{}/{}",
           backupsToDelete.size(),
           cLInfo.bucket,
           backupDir);
