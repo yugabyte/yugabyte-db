@@ -13,6 +13,35 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.9 - January 14, 2025
+
+### New features
+
+- Implemented a new algorithm to determine migration complexity that accounts for all potential issues, including unsupported query constructs, PL/pgSQL objects, and incompatible data types.
+- Introduced explanations of migration complexity in the PostgreSQL assessment report, summarizing high-impact issues and illustrating how the overall complexity level is determined.
+
+### Enhancements
+
+- Enhanced Assessment and Schema Analysis Reports to detect unsupported PostgreSQL features from PG 12 up to PG 17, including:
+  - Regexp functions (regexp_count, regexp_instr, regexp_like)
+  - Security Invoker Views
+  - JSON constructor and JSON Query functions
+  - IS_JSON predicate clauses (IS_JSON, IS JSON SCALAR, IS JSON OBJECT, IS JSON ARRAY)
+  - Aggregate functions, such as anyvalue, range_agg, range_intersect_agg
+  - COPY command syntax, such as COPY FROM ... WHERE and COPY ... ON_ERROR
+  - Multirange datatypes, like int4multirange, int8multirange, datemultirange, and so on
+  - FETCH FIRST … WITH TIES subclause in SELECT statement
+  - Foreign Key referencing a partitioned table
+  - JSONB subscripting in DML, DDL, or PL/PGSQL
+  - UNIQUE NULLS NOT DISTINCT in CREATE/ALTER TABLE statement
+  - The deterministic attribute in CREATE COLLATION
+  - MERGE statements.
+
+### Bug fixes
+
+- Fixed an issue where import data failed for tables whose datafile paths exceeded 250 characters. The fix is backward compatible, allowing migrations started using older Voyager versions to continue seamlessly.
+- Fixed an issue where logic for detecting unsupported PostgreSQL versions was giving false positives.
+
 ## v1.8.8 - December 24, 2024
 
 ### Enhancements
