@@ -53,7 +53,7 @@ Use this method if you don't have internet connectivity. This downloads the same
 Extract the package and go to the `scripts` directory.
 
 ```sh
-tar -xvzf node-agent.tar.gz && cd {{<yb-version version="v2.20" format="build">}}/scripts/
+tar -xvzf node-agent.tar.gz && cd {{<yb-version version="stable" format="build">}}/scripts/
 ```
 
 #### Direct download
