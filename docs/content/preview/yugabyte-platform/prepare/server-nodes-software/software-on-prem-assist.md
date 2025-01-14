@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB Anywhere on-premises node provisioning
-headerTitle: Provision on-premises nodes
-linkTitle: Provision nodes
+headerTitle: Legacy provisioning
+linkTitle: Legacy provisioning
 description: Software requirements for on-premises provider nodes.
 headContent: How to meet the software prerequisites for database nodes
 menu:
@@ -11,6 +11,8 @@ menu:
     weight: 10
 type: docs
 ---
+
+Legacy provisioning of on-premises nodes is deprecated. Provision your nodes using the [node agent script](../software-on-prem/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>

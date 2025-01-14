@@ -1,9 +1,9 @@
 ---
 title: Manually provision on-premises nodes using a script
-headerTitle: Assisted manual provisioning
+headerTitle: Legacy assisted manual provisioning
 linkTitle: Legacy assisted manual
 description: Provision the on-premises nodes using a script.
-headContent: Provision on-premises nodes using the script
+headContent: Manually provision on-premises nodes using a script
 menu:
   stable_yugabyte-platform:
     identifier: on-premises-script
@@ -26,15 +26,9 @@ You can manually provision each node using the pre-provisioning Python script, a
 
 1. Log in to the YugabyteDB Anywhere virtual machine via SSH.
 
-1. If you installed YugabyteDB Anywhere using Replicated, access the Docker `yugaware` container, as follows:
-
-    ```sh
-    sudo docker exec -it yugaware bash
-    ```
-
 1. In YugabyteDB Anywhere, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the on-premises provider configuration you created, and choose **Instances**.
 
-    ![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
+    ![Legacy On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
 
 1. Copy and paste the Python script command under **Instances**.
 
