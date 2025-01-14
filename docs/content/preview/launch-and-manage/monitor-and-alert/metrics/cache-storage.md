@@ -2,7 +2,7 @@
 title: Cache and storage subsystem metrics
 headerTitle: Cache and storage subsystems
 linkTitle: Cache and storage metrics
-headcontent: Monitor RocksDB storage subsystem metrics
+headcontent: Monitor metrics for the RocksDB storage subsystem and other caches
 description: Learn about YugabyteDB's cache and storage subsystem metrics, and how to select and use the metrics.
 menu:
   preview:
@@ -11,6 +11,8 @@ menu:
     weight: 120
 type: docs
 ---
+
+# RocksDB storage subsystem metrics
 
 ## Storage layer IOPS
 
@@ -106,3 +108,13 @@ The Write Ahead Log (or WAL) is used to write and persist updates to disk on eac
 | `log_reader_bytes_read` | bytes | counter | Number of bytes read from WAL after the tablet start. |
 
 These metrics are available per tablet and can be aggregated across the entire cluster using appropriate aggregations.
+
+# YSQL cache metrics
+
+## Catalog cache misses
+
+During YSQL query processing, system catalog (pg_catalog) tables that live on the yb-master may need to be consulted. This can make initial queries or queries after a DDL change slow until the corresponding cache is warmed up. The following table describes metrics for the specific pg_catalog tables which were not found in the cache and required a yb-master lookup. Such tables can then be preloaded by using [a tserver gflag](../../../reference/configuration/yb-tserver/#ysql-catalog-preload-additional-table-list).
+
+| Metric | Unit | Type | Description |
+| :------ | :--- | :--- | :---------- |
+| `handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheTableMisses_count` | misses | counter | Count of catalog cache misses for this pg_catalog table or an associated index  |
