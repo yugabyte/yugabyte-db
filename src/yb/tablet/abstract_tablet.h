@@ -19,7 +19,6 @@
 #include "yb/common/transaction.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb_statistics.h"
 
 #include "yb/tablet/tablet_fwd.h"
 

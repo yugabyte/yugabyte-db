@@ -21,7 +21,6 @@
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/util/monotime.h"

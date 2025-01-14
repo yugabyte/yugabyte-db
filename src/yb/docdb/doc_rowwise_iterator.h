@@ -26,7 +26,6 @@
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_rowwise_iterator_base.h"
-#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"

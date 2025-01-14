@@ -25,6 +25,7 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/dockv/primitive_value_util.h"
+#include "yb/docdb/docdb_statistics.h"
 
 #include "yb/qlexpr/ql_expr_util.h"
 

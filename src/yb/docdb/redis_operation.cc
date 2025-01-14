@@ -28,6 +28,7 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/redis_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/flags.h"
@@ -557,6 +558,9 @@ void RedisWriteOperation::InitializeIterator(const DocOperationApplyData& data) 
 }
 
 Status RedisWriteOperation::Apply(const DocOperationApplyData& data) {
+  auto se = ScopeExit([this] {
+    iterator_.reset();
+  });
   switch (request_.request_case()) {
     case RedisWriteRequestPB::kSetRequest:
       return ApplySet(data);

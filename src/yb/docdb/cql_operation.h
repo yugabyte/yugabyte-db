@@ -19,7 +19,6 @@
 #include "yb/docdb/doc_expr.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 
 #include "yb/util/operation_counter.h"
