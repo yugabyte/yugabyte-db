@@ -217,7 +217,7 @@ static void partkey_datum_from_expr(PartitionPruneContext *context,
 static PartitionPruneStep *gen_prune_steps_from_func_exprs(GeneratePruningStepsContext *context,
 														   List *exprs);
 static PruneStepResult *perform_pruning_func_step(PartitionPruneContext *context,
-												  PartitionPruneStepFuncOp *step);
+												  YbPartitionPruneStepFuncOp *step);
 static bool perform_func_expr_pruning(PartitionPruneContext *context,
 									  int partIndex,
 									  List *funcExprs);
@@ -881,10 +881,10 @@ get_matching_partitions(PartitionPruneContext *context, List *pruning_steps)
 												 results);
 				break;
 
-			case T_PartitionPruneStepFuncOp:
+			case T_YbPartitionPruneStepFuncOp:
 				results[step->step_id] =
 					perform_pruning_func_step(context,
-											  (PartitionPruneStepFuncOp *) step);
+											  (YbPartitionPruneStepFuncOp *) step);
 				break;
 
 			default:
@@ -1368,8 +1368,8 @@ static PartitionPruneStep *
 gen_prune_steps_from_func_exprs(GeneratePruningStepsContext *context,
 								List *exprs)
 {
-	PartitionPruneStepFuncOp *step =
-		makeNode(PartitionPruneStepFuncOp);
+	YbPartitionPruneStepFuncOp *step =
+		makeNode(YbPartitionPruneStepFuncOp);
 
 	step->step.step_id = context->next_step_id++;
 	step->exprs = exprs;
@@ -3556,7 +3556,7 @@ perform_pruning_base_step(PartitionPruneContext *context,
  */
 static PruneStepResult *
 perform_pruning_func_step(PartitionPruneContext *context,
-						  PartitionPruneStepFuncOp *fstep)
+						  YbPartitionPruneStepFuncOp *fstep)
 {
 	PruneStepResult *result =
 		(PruneStepResult *) palloc0(sizeof(PruneStepResult));

@@ -247,9 +247,9 @@ typedef struct PgStat_TableXactStatus
 #ifdef YB_TODO
 #define QUERY_TEXT_SIZE 		256
 #define QUERY_TERMINATION_SIZE	256
-typedef struct PgStat_MsgQueryTermination
+typedef struct YbPgStat_MsgQueryTermination
 {
-	PgStat_MsgHdr m_hdr;
+	YbPgStat_MsgHdr m_hdr;
 
 	Oid m_st_userid;
 	Oid m_databaseoid;
@@ -258,11 +258,11 @@ typedef struct PgStat_MsgQueryTermination
 	TimestampTz activity_end_timestamp;
 	char query_string[QUERY_TEXT_SIZE];
 	char termination_reason[QUERY_TERMINATION_SIZE];
-} PgStat_MsgQueryTermination;
-typedef union PgStat_Msg
+} YbPgStat_MsgQueryTermination;
+typedef union YbPgStat_Msg
 {
-	PgStat_MsgQueryTermination msg_querytermination;
-} PgStat_Msg;
+	YbPgStat_MsgQueryTermination msg_querytermination;
+} YbPgStat_Msg;
 
 typedef struct PgStat_YBStatQueryEntry
 {

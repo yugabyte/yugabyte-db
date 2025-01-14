@@ -180,7 +180,7 @@ typedef struct catclist
 	CatCTup    *members[FLEXIBLE_ARRAY_MEMBER]; /* members */
 } CatCList;
 
-typedef struct yb_catclist_iterator
+typedef struct
 {
 	CatCList *list;
 	int index;

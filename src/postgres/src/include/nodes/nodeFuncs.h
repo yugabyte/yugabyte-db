@@ -32,8 +32,6 @@
 /* callback function for check_functions_in_node */
 typedef bool (*check_function_callback) (Oid func_id, void *context);
 
-typedef bool (*pull_varattnos_walker_ptr)(void*, void*, AttrNumber);
-
 extern Oid	exprType(const Node *expr);
 extern int32 exprTypmod(const Node *expr);
 extern bool exprIsLengthCoercion(const Node *expr, int32 *coercedTypmod);

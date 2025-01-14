@@ -2289,10 +2289,10 @@ expression_tree_walker(Node *node,
 		case T_PartitionPruneStepCombine:
 			/* no expression subnodes */
 			break;
-		case T_PartitionPruneStepFuncOp:
+		case T_YbPartitionPruneStepFuncOp:
 			{
-				PartitionPruneStepFuncOp *fstep =
-					(PartitionPruneStepFuncOp *) node;
+				YbPartitionPruneStepFuncOp *fstep =
+					(YbPartitionPruneStepFuncOp *) node;
 				if (walker((Node *) fstep->exprs, context))
 					return true;
 			}
@@ -3244,13 +3244,13 @@ expression_tree_mutator(Node *node,
 		case T_PartitionPruneStepCombine:
 			/* no expression sub-nodes */
 			return (Node *) copyObject(node);
-		case T_PartitionPruneStepFuncOp:
+		case T_YbPartitionPruneStepFuncOp:
 			{
-				PartitionPruneStepFuncOp *fstep =
-					(PartitionPruneStepFuncOp *) node;
-				PartitionPruneStepFuncOp *newnode;
+				YbPartitionPruneStepFuncOp *fstep =
+					(YbPartitionPruneStepFuncOp *) node;
+				YbPartitionPruneStepFuncOp *newnode;
 
-				FLATCOPY(newnode, fstep, PartitionPruneStepFuncOp);
+				FLATCOPY(newnode, fstep, YbPartitionPruneStepFuncOp);
 				MUTATE(newnode->exprs,fstep->exprs, List *);
 				return (Node *) newnode;
 			}

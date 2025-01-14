@@ -1091,7 +1091,7 @@ DefineIndex(Oid relationId,
 				spec->roletype = ROLESPEC_CSTRING;
 				spec->rolename = pstrdup("postgres");
 
-				CreateTableGroupStmt *tablegroup_stmt = makeNode(CreateTableGroupStmt);
+				YbCreateTableGroupStmt *tablegroup_stmt = makeNode(YbCreateTableGroupStmt);
 				tablegroup_stmt->tablegroupname = tablegroup_name;
 				tablegroup_stmt->tablespacename = tablespace_name;
 				tablegroup_stmt->implicit = true;

@@ -490,7 +490,7 @@ analyze_requires_snapshot(RawStmt *parseTree)
 			result = true;
 			break;
 
-		case T_BackfillIndexStmt:
+		case T_YbBackfillIndexStmt:
 			result = false;
 			break;
 

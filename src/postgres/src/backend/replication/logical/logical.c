@@ -789,7 +789,7 @@ YBValidateLsnType(char *lsn_type)
 		elog(ERROR, "lsn type can only be SEQUENCE or HYBRID_TIME");
 }
 
-CRSLsnType
+YbCRSLsnType
 YBParseLsnType(char *lsn_type)
 {
 	if (strcmp(lsn_type, LSN_TYPE_SEQUENCE) == 0)

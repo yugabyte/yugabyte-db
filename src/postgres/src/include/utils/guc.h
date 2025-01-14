@@ -190,8 +190,8 @@ typedef void (*GucEnumAssignHook) (int newval, void *extra);
 
 typedef const char *(*GucShowHook) (void);
 
-typedef bool (*GucOidCheckHook) (Oid *newval, void **extra, GucSource source);
-typedef void (*GucOidAssignHook) (Oid newval, void *extra);
+typedef bool (*YbGucOidCheckHook) (Oid *newval, void **extra, GucSource source);
+typedef void (*YbGucOidAssignHook) (Oid newval, void *extra);
 
 /*
  * Miscellaneous
@@ -348,8 +348,8 @@ extern void DefineCustomOidVariable(const char *name,
 									Oid maxValue,
 									GucContext context,
 									int flags,
-									GucOidCheckHook check_hook,
-									GucOidAssignHook assign_hook,
+									YbGucOidCheckHook check_hook,
+									YbGucOidAssignHook assign_hook,
 									GucShowHook show_hook);
 
 extern void DefineCustomRealVariable(const char *name,

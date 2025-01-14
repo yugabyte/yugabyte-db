@@ -30,13 +30,13 @@
 PG_MODULE_MAGIC;
 
 /* Extension variables. */
-typedef enum ClusterReplicationRole
+typedef enum YbClusterReplicationRole
 {
 	REPLICATION_ROLE_DISABLED,
 	REPLICATION_ROLE_SOURCE,
 	REPLICATION_ROLE_TARGET,
 	REPLICATION_ROLE_BIDIRECTIONAL,
-} ClusterReplicationRole;
+} YbClusterReplicationRole;
 
 static const struct config_enum_entry replication_roles[] = {
 	{"DISABLED", REPLICATION_ROLE_DISABLED, false},

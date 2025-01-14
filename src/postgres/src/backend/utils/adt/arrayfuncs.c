@@ -1017,7 +1017,7 @@ Datum
 array_out(PG_FUNCTION_ARGS)
 {
 	AnyArrayType *v = PG_GETARG_ANY_ARRAY_P(0);
-	DatumDecodeOptions *decode_options = NULL;
+	YbDatumDecodeOptions *decode_options = NULL;
 	Oid			element_type = AARR_ELEMTYPE(v);
 	int			typlen;
 	bool		typbyval;
@@ -1050,7 +1050,7 @@ array_out(PG_FUNCTION_ARGS)
 
 	if (PG_NARGS() == 2)
 	{
-		decode_options = (DatumDecodeOptions *) PG_GETARG_POINTER(1);
+		decode_options = (YbDatumDecodeOptions *) PG_GETARG_POINTER(1);
 		typlen = decode_options->elem_len;
 		typbyval = decode_options->elem_by_val;
 		typalign = decode_options->elem_align;
@@ -1147,7 +1147,7 @@ array_out(PG_FUNCTION_ARGS)
 			{
 				if (decode_options->option == 't')
 				{
-					DatumDecodeOptions tz_datum_decodeOptions;
+					YbDatumDecodeOptions tz_datum_decodeOptions;
 					tz_datum_decodeOptions.timezone = decode_options->timezone;
 					tz_datum_decodeOptions.from_YB = decode_options->from_YB;
 					values[i] = DatumGetCString(FunctionCall2(decode_options->elem_finfo, itemvalue,
@@ -1156,7 +1156,7 @@ array_out(PG_FUNCTION_ARGS)
 				else if (decode_options->option == 'r' &&
 						decode_options->range_datum_decode_options != NULL)
 				{
-					DatumDecodeOptions* range_decodeOptions = decode_options->range_datum_decode_options;
+					YbDatumDecodeOptions* range_decodeOptions = decode_options->range_datum_decode_options;
 					values[i] = DatumGetCString(FunctionCall2(decode_options->elem_finfo, itemvalue,
 								PointerGetDatum(range_decodeOptions)));
 				}

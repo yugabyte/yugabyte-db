@@ -445,7 +445,7 @@ YBTransformPartitionSplitPoints(YbcPgStatement yb_stmt,
 /* Utility function to handle split points */
 static void
 CreateTableHandleSplitOptions(YbcPgStatement handle, TupleDesc desc,
-							  OptSplit *split_options, Constraint *primary_key,
+							  YbOptSplit *split_options, Constraint *primary_key,
 							  const bool colocated, const bool is_tablegroup,
 							  YbcPgYbrowidMode ybrowid_mode)
 {
@@ -760,7 +760,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			spec->roletype = ROLESPEC_CSTRING;
 			spec->rolename = pstrdup("postgres");
 
-			CreateTableGroupStmt *tablegroup_stmt = makeNode(CreateTableGroupStmt);
+			YbCreateTableGroupStmt *tablegroup_stmt = makeNode(YbCreateTableGroupStmt);
 			tablegroup_stmt->tablegroupname = tablegroup_name;
 			tablegroup_stmt->tablespacename = tablespace_name;
 			tablegroup_stmt->implicit = true;
@@ -789,7 +789,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		recordDependencyOn(&myself, &tablegroup, DEPENDENCY_NORMAL);
 	}
 
-	OptSplit *split_options = stmt->split_options;
+	YbOptSplit *split_options = stmt->split_options;
 	bool is_sys_catalog_table = YbIsSysCatalogTabletRelationByIds(relationId,
 																  namespaceId,
 																  schema_name);
@@ -1043,7 +1043,7 @@ YbUnsafeTruncate(Relation rel)
 static void
 CreateIndexHandleSplitOptions(YbcPgStatement handle,
 							  TupleDesc desc,
-							  OptSplit *split_options,
+							  YbOptSplit *split_options,
 							  int16 * coloptions,
 							  int numIndexKeyAttrs)
 {
@@ -1141,7 +1141,7 @@ YBCCreateIndex(const char *indexName,
 			   Datum reloptions,
 			   Oid indexId,
 			   Relation rel,
-			   OptSplit *split_options,
+			   YbOptSplit *split_options,
 			   const bool skip_index_backfill,
 			   bool is_colocated,
 			   Oid tablegroupId,
@@ -1859,7 +1859,7 @@ YBCDropIndex(Relation index)
 }
 
 void
-YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
+YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 {
 	IndexInfo  *indexInfo;
 	ListCell   *cell;
@@ -1944,7 +1944,7 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 	end_tup_output(tstate);
 }
 
-TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt) {
+TupleDesc YbBackfillIndexResultDesc(YbBackfillIndexStmt *stmt) {
 	TupleDesc	tupdesc;
 	Oid			result_type = TEXTOID;
 
@@ -2015,7 +2015,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 						 const char *plugin_name,
 						 CRSSnapshotAction snapshot_action,
 						 uint64_t *consistent_snapshot_time,
-						 CRSLsnType lsn_type)
+						 YbCRSLsnType lsn_type)
 {
 	YbcPgStatement handle;
 

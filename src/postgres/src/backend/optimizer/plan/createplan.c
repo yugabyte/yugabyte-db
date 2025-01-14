@@ -232,7 +232,7 @@ static YbBitmapIndexScan *make_yb_bitmap_indexscan(Index scanrelid, Oid indexid,
 					  List *indexqual,
 					  List *indexqualorig,
 					  List *indextlist,
-					  PushdownExprs yb_idx_pushdown,
+					  YbPushdownExprs yb_idx_pushdown,
 					  YbPlanInfo yb_plan_info);
 static BitmapHeapScan *make_bitmap_heapscan(List *qptlist,
 											List *qpqual,
@@ -243,10 +243,10 @@ static YbBitmapTableScan *make_yb_bitmap_tablescan(List *qptlist,
 					 List *qpqual,
 					 Plan *lefttree,
 					 Index scanrelid,
-					 PushdownExprs rel_pushdown,
-					 PushdownExprs recheck_pushdown,
+					 YbPushdownExprs rel_pushdown,
+					 YbPushdownExprs recheck_pushdown,
 					 List *recheck_local_quals,
-					 PushdownExprs fallback_pushdown,
+					 YbPushdownExprs fallback_pushdown,
 					 List *fallback_local_quals,
 					 YbPlanInfo yb_plan_info);
 static TidScan *make_tidscan(List *qptlist, List *qpqual, Index scanrelid,
@@ -4731,7 +4731,7 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 							 NULL /* idx_remote_quals */,
 							 NULL /* idx_colrefs */);
 
-	PushdownExprs rel_pushdown = {rel_remote_quals, rel_colrefs};
+	YbPushdownExprs rel_pushdown = {rel_remote_quals, rel_colrefs};
 
 	/*
 	 * When dealing with special operators, we will at this point have
@@ -4763,7 +4763,7 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 			recheck_local_quals = lappend(recheck_local_quals, clause);
 	}
 
-	PushdownExprs recheck_pushdown = {recheck_remote_quals, recheck_colrefs};
+	YbPushdownExprs recheck_pushdown = {recheck_remote_quals, recheck_colrefs};
 
 	/*
 	 * Get all pushable expressions, including those that were already pushed
@@ -4780,7 +4780,7 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 							 NULL /* idx_remote_quals */,
 							 NULL /* idx_colrefs */);
 
-	PushdownExprs fallback_pushdown = {fallback_remote_quals, fallback_colrefs};
+	YbPushdownExprs fallback_pushdown = {fallback_remote_quals, fallback_colrefs};
 
 	/* Finally ready to build the plan node */
 	scan_plan = make_yb_bitmap_tablescan(tlist,
@@ -7449,7 +7449,7 @@ make_yb_bitmap_indexscan(Index scanrelid,
 					  List *indexqual,
 					  List *indexqualorig,
 					  List *indextlist,
-					  PushdownExprs yb_idx_pushdown,
+					  YbPushdownExprs yb_idx_pushdown,
 					  YbPlanInfo yb_plan_info)
 {
 	YbBitmapIndexScan *node = makeNode(YbBitmapIndexScan);
@@ -7495,10 +7495,10 @@ make_yb_bitmap_tablescan(List *qptlist,
 						 List *qpqual,
 						 Plan *lefttree,
 						 Index scanrelid,
-						 PushdownExprs rel_pushdown,
-						 PushdownExprs recheck_pushdown,
+						 YbPushdownExprs rel_pushdown,
+						 YbPushdownExprs recheck_pushdown,
 						 List *recheck_local_quals,
-						 PushdownExprs fallback_pushdown,
+						 YbPushdownExprs fallback_pushdown,
 						 List *fallback_local_quals,
 						 YbPlanInfo yb_plan_info)
 {

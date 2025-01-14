@@ -55,14 +55,6 @@
 
 #include "pg_yb_utils.h"
 
-typedef struct
-{
-	int			nargs;			/* number of arguments */
-	Oid		   *types;			/* types of arguments */
-	Datum	   *values;			/* evaluated argument values */
-	char	   *nulls;			/* null markers (' '/'n' style) */
-} PreparedParamsData;
-
 /*
  * All plpgsql function executions within a single transaction share the same
  * executor EState for evaluating "simple" expressions.  Each function call

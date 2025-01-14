@@ -362,7 +362,7 @@ typedef struct _tableInfo
 	struct _triggerInfo *triggers;	/* array of TriggerInfo structs */
 } TableInfo;
 
-typedef struct _tablegroupInfo
+typedef struct _ybTablegroupInfo
 {
 	/*
 	 * These fields are collected for every tablegroup in the database.
@@ -372,7 +372,7 @@ typedef struct _tablegroupInfo
 	const char *rolname;
 	char	   *grptablespace;
 	char	   *grpoptions;		/* options specified by WITH (...) */
-} TablegroupInfo;
+} YbTablegroupInfo;
 
 typedef struct _tableAttachInfo
 {
@@ -701,7 +701,7 @@ extern OprInfo *findOprByOid(Oid oid);
 extern CollInfo *findCollationByOid(Oid oid);
 extern NamespaceInfo *findNamespaceByOid(Oid oid);
 extern ExtensionInfo *findExtensionByOid(Oid oid);
-extern TablegroupInfo *findTablegroupByOid(Oid oid);
+extern YbTablegroupInfo *findTablegroupByOid(Oid oid);
 extern PublicationInfo *findPublicationByOid(Oid oid);
 
 extern void recordExtensionMembership(CatalogId catId, ExtensionInfo *ext);
@@ -762,6 +762,6 @@ extern void getPublicationTables(Archive *fout, TableInfo tblinfo[],
 								 int numTables);
 extern void getSubscriptions(Archive *fout);
 
-extern TablegroupInfo *getTablegroups(Archive *fout, int *numTablegroups);
+extern YbTablegroupInfo *getTablegroups(Archive *fout, int *numTablegroups);
 
 #endif							/* PG_DUMP_H */

@@ -169,7 +169,6 @@ AutoVacuumShmemStruct
 AutoVacuumWorkItem
 AutoVacuumWorkItemType
 AuxProcType
-BackfillIndexStmt
 BF_ctx
 BF_key
 BF_word
@@ -504,7 +503,6 @@ CreateStmt
 CreateStmtContext
 CreateSubscriptionStmt
 CreateTableAsStmt
-CreateTableGroupStmt
 CreateTableSpaceStmt
 CreateTransformStmt
 CreateTrigStmt
@@ -826,9 +824,9 @@ FormData_pg_ts_parser
 FormData_pg_ts_template
 FormData_pg_type
 FormData_pg_user_mapping
-FormData_pg_yb_tablegroup
 FormData_pg_yb_profile
 FormData_pg_yb_role_profile
+FormData_pg_yb_tablegroup
 Form_pg_aggregate
 Form_pg_am
 Form_pg_amop
@@ -888,9 +886,9 @@ Form_pg_ts_parser
 Form_pg_ts_template
 Form_pg_type
 Form_pg_user_mapping
-Form_pg_yb_tablegroup
 Form_pg_yb_profile
 Form_pg_yb_role_profile
+Form_pg_yb_tablegroup
 FormatNode
 FreeBlockNumberArray
 FreeListData
@@ -1035,8 +1033,6 @@ GucEnumAssignHook
 GucEnumCheckHook
 GucIntAssignHook
 GucIntCheckHook
-GucOidAssignHook
-GucOidCheckHook
 GucRealAssignHook
 GucRealCheckHook
 GucShowHook
@@ -2356,7 +2352,6 @@ RoleSpec
 RoleSpecType
 RoleStmtType
 RollupData
-RowBounds
 RowCompareExpr
 RowCompareType
 RowExpr
@@ -3067,7 +3062,12 @@ XmlTableBuilderData
 YYLTYPE
 YYSTYPE
 YY_BUFFER_STATE
+YbBackfillIndexStmt
 YbCreateProfileStmt
+YbCreateTableGroupStmt
+YbGucOidAssignHook
+YbGucOidCheckHook
+YbRowBounds
 ZSTD_CCtx
 ZSTD_DCtx
 ZSTD_inBuffer

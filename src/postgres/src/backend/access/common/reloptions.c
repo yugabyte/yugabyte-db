@@ -420,7 +420,7 @@ static relopt_int intRelOpts[] =
 	{{NULL}}
 };
 
-static relopt_oid oidRelOpts[] =
+static yb_relopt_oid oidRelOpts[] =
 {
 	{
 		{
@@ -893,7 +893,7 @@ allocate_reloption(bits32 kinds, int type, const char *name, const char *desc,
 			size = sizeof(relopt_int);
 			break;
 		case RELOPT_TYPE_OID:
-			size = sizeof(relopt_oid);
+			size = sizeof(yb_relopt_oid);
 			break;
 		case RELOPT_TYPE_REAL:
 			size = sizeof(relopt_real);
@@ -1787,7 +1787,7 @@ parse_one_reloption(relopt_value *option, char *text_str, int text_len,
 			break;
 		case RELOPT_TYPE_OID:
 			{
-				relopt_oid *optoid = (relopt_oid *) option->gen;
+				yb_relopt_oid *optoid = (yb_relopt_oid *) option->gen;
 
 				parsed = parse_oid(value, &option->values.oid_val, NULL);
 				if (validate && !parsed)
@@ -1963,7 +1963,7 @@ fillRelOptions(void *rdopts, Size basesize,
 					case RELOPT_TYPE_OID:
 						*(Oid *) itempos = options[i].isset ?
 							options[i].values.oid_val :
-							((relopt_oid *) options[i].gen)->default_val;
+							((yb_relopt_oid *) options[i].gen)->default_val;
 						break;
 					case RELOPT_TYPE_REAL:
 						*(double *) itempos = options[i].isset ?

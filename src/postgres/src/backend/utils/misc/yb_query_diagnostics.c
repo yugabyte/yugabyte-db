@@ -73,19 +73,19 @@ const char *schema_details_separator = "========================================
 /* Constants used for yb_query_diagnostics_status view */
 #define YB_QUERY_DIAGNOSTICS_STATUS_COLS 8
 
-typedef struct BundleInfo
+typedef struct YbBundleInfo
 {
 	YbQueryDiagnosticsMetadata metadata; /* stores bundle's metadata */
 	int			status; /* 0 - Success; 1 - In Progress; 2 - ERROR */
 	char		description[YB_QD_DESCRIPTION_LEN]; /* stores error description */
-} BundleInfo;
+} YbBundleInfo;
 
 typedef struct YbQueryDiagnosticsBundles
 {
 	int			index;			/* index to insert new buffer entry */
 	int			max_entries;	/* maximum # of entries in the buffer */
 	LWLock		lock;			/* protects circular buffer from search/modification */
-	BundleInfo	bundles[FLEXIBLE_ARRAY_MEMBER]; /* circular buffer to store info about bundles */
+	YbBundleInfo	bundles[FLEXIBLE_ARRAY_MEMBER]; /* circular buffer to store info about bundles */
 } YbQueryDiagnosticsBundles;
 
 /* GUC variables */
@@ -104,7 +104,7 @@ static volatile sig_atomic_t got_sighup = false;
 
 YbGetNormalizedQueryFuncPtr yb_get_normalized_query = NULL;
 TimestampTz *yb_pgss_last_reset_time;
-PgssFillInConstantLengths yb_qd_fill_in_constant_lengths = NULL;
+YbPgssFillInConstantLengths yb_qd_fill_in_constant_lengths = NULL;
 
 static HTAB *bundles_in_progress = NULL;
 static LWLock *bundles_in_progress_lock; /* protects bundles_in_progress hash table */
@@ -186,7 +186,7 @@ YbQueryDiagnosticsBundlesShmemSize(void)
 	Size		size;
 
 	size = offsetof(YbQueryDiagnosticsBundles, bundles);
-	size = add_size(size, mul_size(CircularBufferMaxEntries(), sizeof(BundleInfo)));
+	size = add_size(size, mul_size(CircularBufferMaxEntries(), sizeof(YbBundleInfo)));
 
 	return size;
 }
@@ -255,7 +255,7 @@ YbQueryDiagnosticsShmemInit(void)
 		bundles_completed->index = 0;
 		bundles_completed->max_entries = CircularBufferMaxEntries();
 
-		MemSet(bundles_completed->bundles, 0, sizeof(BundleInfo) * bundles_completed->max_entries);
+		MemSet(bundles_completed->bundles, 0, sizeof(YbBundleInfo) * bundles_completed->max_entries);
 
 		LWLockInitialize(&bundles_completed->lock,
 						 LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER);
@@ -268,7 +268,7 @@ YbQueryDiagnosticsShmemInit(void)
 static inline int
 CircularBufferMaxEntries(void)
 {
-	return yb_query_diagnostics_circular_buffer_size * 1024 / sizeof(BundleInfo);
+	return yb_query_diagnostics_circular_buffer_size * 1024 / sizeof(YbBundleInfo);
 }
 
 /*
@@ -279,7 +279,7 @@ static void
 InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata, int status,
 					  const char *description)
 {
-	BundleInfo *sample;
+	YbBundleInfo *sample;
 
 	LWLockAcquire(&bundles_completed->lock, LW_EXCLUSIVE);
 
@@ -474,7 +474,7 @@ ProcessCompletedBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 
 	for (int i = 0; i < bundles_completed->max_entries; ++i)
 	{
-		BundleInfo *sample= &bundles_completed->bundles[i];
+		YbBundleInfo *sample= &bundles_completed->bundles[i];
 
 		if (sample->metadata.params.query_id != 0)
 			OutputBundle(sample->metadata, sample->description,

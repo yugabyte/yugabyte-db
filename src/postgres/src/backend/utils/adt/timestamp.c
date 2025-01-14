@@ -772,7 +772,7 @@ Datum
 timestamptz_out(PG_FUNCTION_ARGS)
 {
 	TimestampTz dt = PG_GETARG_TIMESTAMPTZ(0);
-	DatumDecodeOptions *decode_options = NULL;
+	YbDatumDecodeOptions *decode_options = NULL;
 	char	   *result;
 	int			tz;
 	struct pg_tm tt,
@@ -783,7 +783,7 @@ timestamptz_out(PG_FUNCTION_ARGS)
 
 	if (PG_NARGS() == 2)
 	{
-		decode_options = (DatumDecodeOptions *)PG_GETARG_POINTER(1);
+		decode_options = (YbDatumDecodeOptions *)PG_GETARG_POINTER(1);
 	}
 
 	if (TIMESTAMP_NOT_FINITE(dt))

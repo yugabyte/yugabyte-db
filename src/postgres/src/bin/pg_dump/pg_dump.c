@@ -258,7 +258,7 @@ static void dumpTrigger(Archive *fout, const TriggerInfo *tginfo);
 static void dumpEventTrigger(Archive *fout, const EventTriggerInfo *evtinfo);
 static void dumpTable(Archive *fout, const TableInfo *tbinfo);
 static void dumpTableSchema(Archive *fout, const TableInfo *tbinfo);
-static void dumpTablegroup(Archive *fout, const TablegroupInfo *tginfo);
+static void dumpTablegroup(Archive *fout, const YbTablegroupInfo *tginfo);
 static void dumpTableAttach(Archive *fout, const TableAttachInfo *tbinfo);
 static void dumpAttrDef(Archive *fout, const AttrDefInfo *adinfo);
 static void dumpSequence(Archive *fout, const TableInfo *tbinfo);
@@ -6766,18 +6766,18 @@ getTables(Archive *fout, int *numTables)
 /*
  * getTablegroups:
  *	  read all user-defined tablegroups in the system catalogs and return
- *	  them in the TablegroupInfo* structure
+ *	  them in the YbTablegroupInfo* structure
  *
  *	numTablegroups is set to the number of tablegroups read in
  */
-TablegroupInfo *
+YbTablegroupInfo *
 getTablegroups(Archive *fout, int *numTablegroups)
 {
 	PGresult   *res;
 	int			ntups;
 	int			i;
 	PQExpBuffer query;
-	TablegroupInfo *tbinfo;
+	YbTablegroupInfo *tbinfo;
 	int			i_grpname;
 	int			i_oid;
 	int			i_tableoid;
@@ -6814,7 +6814,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 	ntups = PQntuples(res);
 	*numTablegroups = ntups;
 
-	tbinfo = (TablegroupInfo *) pg_malloc(ntups * sizeof(TablegroupInfo));
+	tbinfo = (YbTablegroupInfo *) pg_malloc(ntups * sizeof(YbTablegroupInfo));
 
 	i_grpname = PQfnumber(res, "grpname");
 	i_oid = PQfnumber(res, "oid");
@@ -10197,7 +10197,7 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			dumpTableAttach(fout, (const TableAttachInfo *) dobj);
 			break;
 		case DO_TABLEGROUP:
-			dumpTablegroup(fout, (const TablegroupInfo *) dobj);
+			dumpTablegroup(fout, (const YbTablegroupInfo *) dobj);
 			break;
 		case DO_ATTRDEF:
 			dumpAttrDef(fout, (const AttrDefInfo *) dobj);
@@ -15491,7 +15491,7 @@ createDummyViewAsClause(Archive *fout, const TableInfo *tbinfo)
  *    write the declaration of one user-defined tablegroup
  */
 static void
-dumpTablegroup(Archive *fout, const TablegroupInfo *tginfo)
+dumpTablegroup(Archive *fout, const YbTablegroupInfo *tginfo)
 {
 	DumpOptions *dopt = fout->dopt;
 
@@ -16040,7 +16040,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				(dopt->include_yb_metadata || dopt->binary_upgrade) &&
 				OidIsValid(yb_properties->tablegroup_oid))
 			{
-				TablegroupInfo *tablegroup = findTablegroupByOid(yb_properties->tablegroup_oid);
+				YbTablegroupInfo *tablegroup = findTablegroupByOid(yb_properties->tablegroup_oid);
 				if (tablegroup == NULL)
 					pg_fatal("could not find tablegroup definition with OID %u",
 							 yb_properties->tablegroup_oid);

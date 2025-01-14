@@ -504,19 +504,19 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 *
 	 * Reasoning:
 	 *
-	 * - FDW API does not provide an easy way to pass in a PushdownExprs
+	 * - FDW API does not provide an easy way to pass in a YbPushdownExprs
 	 *   structure.  It allows passing in custom data using fdw_private, but it
 	 *   expects a List type.  It technically can accept any type, but said
 	 *   type should support node functions like copyObject() and
-	 *   nodeToString(): PushdownExprs is not a node, so it doesn't support
+	 *   nodeToString(): YbPushdownExprs is not a node, so it doesn't support
 	 *   them.  An alternative solution (though still not meeting the previous
-	 *   criteria) is to rework PushdownExprs to be a list of structs rather
+	 *   criteria) is to rework YbPushdownExprs to be a list of structs rather
 	 *   than a struct of lists, but this removes the ability to pass in the
 	 *   entire quals list to YbExprInstantiateParams.  It can still be
 	 *   iterated through and called on each qual, but that is more
 	 *   inconvenient.
 	 * - quals are already stored in fdw_recheck_quals, so putting them in
-	 *   fdw_private in the form of PushdownExprs would be duplicate info.  Not
+	 *   fdw_private in the form of YbPushdownExprs would be duplicate info.  Not
 	 *   only that, but it would need to be updated after setup.
 	 *
 	 *   - exec_simple_query
@@ -534,17 +534,17 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 *         - ybcIterateForeignScan (this function)
 	 *
 	 *   If it were desired to solely rely on fdw_private holding
-	 *   PushdownExprs, whatever modifications that happened to
+	 *   YbPushdownExprs, whatever modifications that happened to
 	 *   fdw_recheck_quals would have to be updated onto fdw_private's copy of
 	 *   quals before calling YbInstantiatePushdownParams.
 	 * - Plan is to remove YB FDW code in favor of YbSeqScan, so it is not
 	 *   worth the effort of making a good long-term solution here.
 	 */
-	PushdownExprs orig_pushdown = {
+	YbPushdownExprs orig_pushdown = {
 		.quals = foreignScan->fdw_recheck_quals,
 		.colrefs = foreignScan->fdw_private,
 	};
-	PushdownExprs *pushdown = YbInstantiatePushdownParams(&orig_pushdown,
+	YbPushdownExprs *pushdown = YbInstantiatePushdownParams(&orig_pushdown,
 														  estate);
 
 	/* Execute the select statement one time.

@@ -1169,7 +1169,7 @@ TEST_F(PgCatalogVersionTest, ResetIsGlobalDdlState) {
   }
 
   // The following ALTER TABLE is a not a global impact DDL statement, if
-  // we had not reset is_global_ddl state in DdlTransactionState because of
+  // we had not reset is_global_ddl state in YbDdlTransactionState because of
   // the above injected error, this ALTER TABLE would be incorrectly treated
   // as a global impact DDL statement and caused catalog versions of all
   // the databases to increase.

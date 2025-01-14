@@ -49,7 +49,7 @@ typedef struct AttInMetadata
 
 /* This struct holds the info required to decode the values corresponding to various data types
  * using the pg out functions*/
-typedef struct DatumDecodeOptions
+typedef struct YbDatumDecodeOptions
 {
   /* if the info is needed for decoding array types */
   bool         is_array;
@@ -82,8 +82,8 @@ typedef struct DatumDecodeOptions
   const char*  timezone;
 
   /* Used in case of range arrays to get pass the info needed to decode range data types*/
-  struct DatumDecodeOptions* range_datum_decode_options;
-} DatumDecodeOptions;
+  struct YbDatumDecodeOptions* range_datum_decode_options;
+} YbDatumDecodeOptions;
 
 /*-------------------------------------------------------------------------
  *		Support struct to ease writing Set Returning Functions (SRFs)

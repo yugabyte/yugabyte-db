@@ -550,10 +550,10 @@ FlushTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		entry = ScanTupleHashTable(bnlstate->hashtable, &bnlstate->hashiter);
 	while (entry != NULL)
 	{
-		NLBucketInfo *binfo = entry->additional;
+		YbNLBucketInfo *binfo = entry->additional;
 		while (binfo->current != NULL)
 		{
-			BucketTupleInfo *btinfo = lfirst(binfo->current);
+			YbBucketTupleInfo *btinfo = lfirst(binfo->current);
 			binfo->current = lnext(binfo->tuples, binfo->current);
 
 			while (btinfo != NULL && !(btinfo->matched))
@@ -595,15 +595,15 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		return false;
 	}
 
-	NLBucketInfo *binfo = (NLBucketInfo*) data->additional;
+	YbNLBucketInfo *binfo = (YbNLBucketInfo*) data->additional;
 	while (binfo->current != NULL)
 	{
-		BucketTupleInfo *curr_btinfo = lfirst(binfo->current);
+		YbBucketTupleInfo *curr_btinfo = lfirst(binfo->current);
 		/* Change the bucket's state for the next invocation of this method */
 		binfo->current = lnext(binfo->tuples, binfo->current);
 
 		/* We found a bucket with more matching tuples to be outputted. */
-		BucketTupleInfo *btinfo = (BucketTupleInfo *) curr_btinfo;
+		YbBucketTupleInfo *btinfo = (YbBucketTupleInfo *) curr_btinfo;
 
 		/*
 		 * This has already been matched so no need to look at this again in a
@@ -676,10 +676,10 @@ AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
 	if (isnew)
 	{
 		/* We must create a new bucket. */
-		orig_data->additional = palloc0(sizeof(NLBucketInfo));
+		orig_data->additional = palloc0(sizeof(YbNLBucketInfo));
 		tuple = orig_data->firstTuple;
 	}
-	NLBucketInfo *binfo = (NLBucketInfo *) orig_data->additional;
+	YbNLBucketInfo *binfo = (YbNLBucketInfo *) orig_data->additional;
 	List *tl = binfo->tuples;
 	if (!isnew)
 	{
@@ -687,7 +687,7 @@ AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
 		tuple = ExecCopySlotMinimalTuple(slot);
 	}
 
-	BucketTupleInfo *tupinfo = palloc0(sizeof(BucketTupleInfo));
+	YbBucketTupleInfo *tupinfo = palloc0(sizeof(YbBucketTupleInfo));
 	tupinfo->tuple = tuple;
 	tupinfo->matched = false;
 

@@ -54,7 +54,7 @@ static bool needs_publication_table_list_refresh = false;
 /* The time at which the list of tables in the publication needs to be provided to the VWAL. */
 static uint64_t publication_refresh_time = 0;
 
-typedef struct UnackedTransactionInfo {
+typedef struct YbUnackedTransactionInfo {
 	TransactionId xid;
 	XLogRecPtr begin_lsn;
 	XLogRecPtr commit_lsn;

@@ -42,7 +42,7 @@
 
 #define DEFAULT_TABLEGROUP_NAME	"default"
 
-extern Oid	CreateTableGroup(CreateTableGroupStmt *stmt);
+extern Oid	CreateTableGroup(YbCreateTableGroupStmt *stmt);
 
 extern Oid	get_tablegroup_oid(const char *tablegroupname, bool missing_ok);
 extern char *get_tablegroup_name(Oid grp_oid);

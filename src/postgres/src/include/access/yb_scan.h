@@ -70,7 +70,7 @@ typedef enum
 	FETCH_STATUS_IDLE,
 	FETCH_STATUS_WORKING,
 	FETCH_STATUS_DONE
-} FetchStatus;
+} YbFetchStatus;
 
 /*
  * The parallel scan state structure
@@ -115,7 +115,7 @@ typedef struct YBParallelPartitionKeysData
 	Oid			table_relfilenode_oid; /* relfilenode_oid of the target
 										  relation */
 	bool		is_forward;		/* scan direction */
-	FetchStatus fetch_status;	/* if fetch is in progress or completed */
+	YbFetchStatus fetch_status;	/* if fetch is in progress or completed */
 	int			low_offset;		/* offset of the lowest key in the buffer */
 	int			high_offset;	/* offset of the highest key in the buffer */
 	int			key_count;		/* number of keys in the buffer */
@@ -288,10 +288,10 @@ extern void YbAppendPrimaryColumnRef(YbcPgStatement dml, YbcPgExpr colref);
 extern void YbAppendPrimaryColumnRefs(YbcPgStatement dml, List *colrefs);
 
 extern void YbApplyPrimaryPushdown(YbcPgStatement dml,
-								   const PushdownExprs *pushdown);
+								   const YbPushdownExprs *pushdown);
 
 extern void YbApplySecondaryIndexPushdown(YbcPgStatement dml,
-										  const PushdownExprs *pushdown);
+										  const YbPushdownExprs *pushdown);
 
 /*
  * The ybc_idx API is used to process the following SELECT.
@@ -304,8 +304,8 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   int nkeys,
 							   ScanKey key,
 							   Scan *pg_scan_plan,
-							   PushdownExprs *rel_pushdown,
-							   PushdownExprs *idx_pushdown,
+							   YbPushdownExprs *rel_pushdown,
+							   YbPushdownExprs *idx_pushdown,
 							   List *aggrefs,
 							   int distinct_prefixlen,
 							   YbcPgExecParameters *exec_params,

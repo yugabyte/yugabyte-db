@@ -188,14 +188,14 @@ Expr *YbExprInstantiateParams(Expr* expr, EState *estate)
  *	  Replace the Param nodes of the expression trees with Const nodes carrying
  *	  current parameter values before pushing the expression down to DocDB.
  */
-PushdownExprs *
-YbInstantiatePushdownParams(PushdownExprs *pushdown, EState *estate)
+YbPushdownExprs *
+YbInstantiatePushdownParams(YbPushdownExprs *pushdown, EState *estate)
 {
-	PushdownExprs *result;
+	YbPushdownExprs *result;
 	if (pushdown->quals == NIL)
 		return NULL;
 	/* Make new instance for the scan state. */
-	result = (PushdownExprs *) palloc(sizeof(PushdownExprs));
+	result = (YbPushdownExprs *) palloc(sizeof(YbPushdownExprs));
 	/* Store mutated list of expressions. */
 	result->quals = (List *)
 		YbExprInstantiateParams((Expr *) pushdown->quals, estate);

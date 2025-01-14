@@ -77,7 +77,7 @@ extern void YBCCreateIndex(const char *indexName,
 						   Datum reloptions,
 						   Oid indexId,
 						   Relation rel,
-						   OptSplit *split_options,
+						   YbOptSplit *split_options,
 						   const bool skip_index_backfill,
 						   bool is_colocated,
 						   Oid tablegroupId,
@@ -107,9 +107,9 @@ extern void YBCRename(RenameStmt* stmt, Oid relationId);
 
 extern void YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId);
 
-extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
+extern void YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest);
 
-extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
+extern TupleDesc YbBackfillIndexResultDesc(YbBackfillIndexStmt *stmt);
 
 extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel,
 								   AttrMap *newToOldAttmap);
@@ -125,7 +125,7 @@ extern void YBCCreateReplicationSlot(const char *slot_name,
 									 const char *plugin_name,
 									 CRSSnapshotAction snapshot_action,
 									 uint64_t *consistent_snapshot_time,
-									 CRSLsnType lsn_type);
+									 YbCRSLsnType lsn_type);
 
 extern void
 YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,

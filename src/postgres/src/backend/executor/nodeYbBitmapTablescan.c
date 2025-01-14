@@ -246,7 +246,7 @@ static TableScanDesc
 CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 {
 	YbScanDesc		ybScan;
-	PushdownExprs  *yb_pushdown;
+	YbPushdownExprs  *yb_pushdown;
 	TableScanDesc tsdesc;
 
 	/* Make a copy so it can be modified */
@@ -292,7 +292,7 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 
 	if (scanstate->recheck_required && !scanstate->work_mem_exceeded)
 	{
-		PushdownExprs *recheck_pushdown = YbInstantiatePushdownParams(&plan.recheck_pushdown,
+		YbPushdownExprs *recheck_pushdown = YbInstantiatePushdownParams(&plan.recheck_pushdown,
 																	  scanstate->ss.ps.state);
 		if (recheck_pushdown)
 		{

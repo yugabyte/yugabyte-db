@@ -31,7 +31,7 @@ typedef enum
 {
 	CRS_SEQUENCE,
 	CRS_HYBRID_TIME
-} CRSLsnType;
+} YbCRSLsnType;
 
 /* global state */
 extern PGDLLIMPORT bool am_walsender;

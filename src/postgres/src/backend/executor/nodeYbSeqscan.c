@@ -95,7 +95,7 @@ YbSeqNext(YbSeqScanState *node)
 		}
 
 		YbSeqScan *plan = (YbSeqScan *) node->ss.ps.plan;
-		PushdownExprs *yb_pushdown =
+		YbPushdownExprs *yb_pushdown =
 			YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
 		YbScanDesc ybScan = ybcBeginScan(node->ss.ss_currentRelation,
 										 NULL /* index */,

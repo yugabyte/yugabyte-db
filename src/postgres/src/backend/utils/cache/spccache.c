@@ -45,12 +45,12 @@ static HTAB *TableSpaceCacheHash = NULL;
 typedef struct
 {
 	Oid			oid;			/* lookup key - must be first */
-	union Opts_t
+	union
 	{
 		TableSpaceOpts *pg_opts;
 		YBTableSpaceOpts *yb_opts;
 	} opts; 					/* options, or NULL if none */
-	GeolocationDistance ts_distance;
+	YbGeolocationDistance ts_distance;
 } TableSpaceCacheEntry;
 
 /*
@@ -195,10 +195,10 @@ get_tablespace(Oid spcid)
 /*
  * get_tablespace_distance
  *
- *		Returns a GeolocationDistance indicating how far away a given
+ *		Returns a YbGeolocationDistance indicating how far away a given
  *		tablespace is from the current node.
  */
-GeolocationDistance get_tablespace_distance(Oid spcid)
+YbGeolocationDistance get_tablespace_distance(Oid spcid)
 {
 	Assert(IsYugaByteEnabled());
 	if (spcid == InvalidOid)
@@ -250,7 +250,7 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 	static char *zoneKey = "zone";
 	static char *leaderPrefKey = "leader_preference";
 
-	GeolocationDistance farthest = ZONE_LOCAL;
+	YbGeolocationDistance farthest = ZONE_LOCAL;
 	bool leader_pref_exists = false;
 
 	for (size_t i = 0; i < length; i++)
@@ -266,7 +266,7 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 		if (!preferred && leader_pref_exists)
 			continue;
 
-		GeolocationDistance current_dist;
+		YbGeolocationDistance current_dist;
 		const char *tsp_cloud;
 		const char *tsp_region;
 		const char *tsp_zone;
@@ -333,7 +333,7 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
  *
  *		Costs per-tuple access on a given tablespace. Currently we score a
  *		placement option in a tablespace by assigning a cost based on its
- *		distance that is denoted by a GeolocationDistance. The computed cost
+ *		distance that is denoted by a YbGeolocationDistance. The computed cost
  *		is stored in yb_tsp_cost. Returns false iff geolocation costing is
  *		disabled or a NULL pointer was passed in for yb_tsp_cost.
  */
@@ -351,7 +351,7 @@ bool get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost)
 		return false;
 	}
 
-	GeolocationDistance distance = get_tablespace_distance(spcid);
+	YbGeolocationDistance distance = get_tablespace_distance(spcid);
 	double cost;
 	switch (distance)
 	{
