@@ -196,8 +196,7 @@ BlockBasedFilterBlockReader::BlockBasedFilterBlockReader(
   num_ = (n - 5 - last_word) / 4;
 }
 
-bool BlockBasedFilterBlockReader::KeyMayMatch(const Slice& key,
-                                              uint64_t block_offset) {
+bool BlockBasedFilterBlockReader::KeyMayMatch(Slice key, uint64_t block_offset) {
   assert(block_offset != kNotValid);
   if (!whole_key_filtering_) {
     return true;
@@ -214,8 +213,7 @@ bool BlockBasedFilterBlockReader::PrefixMayMatch(const Slice& prefix,
   return MayMatch(prefix, block_offset);
 }
 
-bool BlockBasedFilterBlockReader::MayMatch(const Slice& entry,
-                                           uint64_t block_offset) {
+bool BlockBasedFilterBlockReader::MayMatch(Slice entry, uint64_t block_offset) {
   uint64_t index = block_offset >> base_lg_;
   if (index < num_) {
     uint32_t start = DecodeFixed32(offset_ + index * 4);

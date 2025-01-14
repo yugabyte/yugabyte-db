@@ -176,7 +176,7 @@ inline bool IsKeyOrderedBefore(Slice key, Slice other_key) {
   }
 }
 
-rocksdb::Statistics* GetIntentsDBStatistics(const DocDBStatistics* statistics) {
+rocksdb::Statistics* GetIntentsDBStatistics(DocDBStatistics* statistics) {
   return statistics ? statistics->IntentsDBStatistics() : nullptr;
 }
 

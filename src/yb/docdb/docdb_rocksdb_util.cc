@@ -27,6 +27,7 @@
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_filter_policy.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/read_operation_data.h"
@@ -284,7 +285,7 @@ rocksdb::ReadOptions PrepareReadOptions(
   return read_opts;
 }
 
-rocksdb::Statistics* GetRegularDBStatistics(const DocDBStatistics* statistics) {
+rocksdb::Statistics* GetRegularDBStatistics(DocDBStatistics* statistics) {
   return statistics ? statistics->RegularDBStatistics() : nullptr;
 }
 

@@ -41,6 +41,7 @@
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_pgapi.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_storage_interface.h"
 #include "yb/docdb/vector_index.h"

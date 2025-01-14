@@ -89,21 +89,17 @@ class DataBlockAwareIndexInternalIteratorImpl : public DataBlockAwareIndexIntern
 
 } // namespace
 
-Status BinarySearchIndexReader::Create(
+Result<std::unique_ptr<BinarySearchIndexReader>> BinarySearchIndexReader::Create(
     RandomAccessFileReader* file, const Footer& footer,
     const BlockHandle& index_handle, Env* env,
     const ComparatorPtr& comparator,
-    std::unique_ptr<IndexReader>* index_reader,
     const std::shared_ptr<yb::MemTracker>& mem_tracker) {
   std::unique_ptr<Block> index_block;
-  auto s = block_based_table::ReadBlockFromFile(
-      file, footer, ReadOptions::kDefault, index_handle, &index_block, env, mem_tracker);
+  RETURN_NOT_OK(block_based_table::ReadBlockFromFile(
+      file, footer, ReadOptions::kDefault, index_handle, &index_block, env, mem_tracker));
 
-  if (s.ok()) {
-    index_reader->reset(new BinarySearchIndexReader(comparator, std::move(index_block)));
-  }
-
-  return s;
+  return std::unique_ptr<BinarySearchIndexReader>(
+      new BinarySearchIndexReader(comparator, std::move(index_block)));
 }
 
 Result<std::string> BinarySearchIndexReader::GetMiddleKey() const {
@@ -120,14 +116,14 @@ DataBlockAwareIndexInternalIterator* BinarySearchIndexReader::NewDataBlockAwareI
 }
 
 
-Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
-                       const Footer& footer, RandomAccessFileReader* file,
-                       Env* env, const ComparatorPtr& comparator,
-                       const BlockHandle& index_handle,
-                       InternalIterator* meta_index_iter,
-                       std::unique_ptr<IndexReader>* index_reader,
-                       bool hash_index_allow_collision,
-                       const std::shared_ptr<yb::MemTracker>& mem_tracker) {
+Result<std::unique_ptr<IndexReader>> HashIndexReader::Create(
+    const SliceTransform* hash_key_extractor,
+    const Footer& footer, RandomAccessFileReader* file,
+    Env* env, const ComparatorPtr& comparator,
+    const BlockHandle& index_handle,
+    InternalIterator* meta_index_iter,
+    bool hash_index_allow_collision,
+    const std::shared_ptr<yb::MemTracker>& mem_tracker) {
   std::unique_ptr<Block> index_block;
   auto s = block_based_table::ReadBlockFromFile(file, footer, ReadOptions::kDefault, index_handle,
                              &index_block, env, mem_tracker);
@@ -139,8 +135,8 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
   // Note, failure to create prefix hash index does not need to be a hard error. We can still fall
   // back to the original binary search index.
   // So, Create will succeed regardless, from this point on.
-  HashIndexReader* new_index_reader;
-  index_reader->reset(new_index_reader = new HashIndexReader(comparator, std::move(index_block)));
+  std::unique_ptr<HashIndexReader> index_reader(
+      new HashIndexReader(comparator, std::move(index_block)));
 
   // Get prefixes block
   BlockHandle prefixes_handle;
@@ -148,7 +144,7 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                     &prefixes_handle);
   if (!s.ok()) {
     LOG(ERROR) << "Failed to find hash index prefixes block: " << s;
-    return Status::OK();
+    return index_reader;
   }
 
   // Get index metadata block
@@ -157,7 +153,7 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                     &prefixes_meta_handle);
   if (!s.ok()) {
     LOG(ERROR) << "Failed to find hash index prefixes metadata block: " << s;
-    return Status::OK();
+    return index_reader;
   }
 
   // Read contents for the blocks
@@ -173,7 +169,7 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                         true /* do decompression */);
   if (!s.ok()) {
     LOG(ERROR) << "Failed to read hash index prefixes metadata block: " << s;
-    return Status::OK();
+    return index_reader;
   }
 
   if (!hash_index_allow_collision) {
@@ -184,8 +180,8 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                              prefixes_meta_contents.data,
                              &hash_index);
     if (s.ok()) {
-      new_index_reader->index_block_->SetBlockHashIndex(hash_index);
-      new_index_reader->OwnPrefixesContents(std::move(prefixes_contents));
+      index_reader->index_block_->SetBlockHashIndex(hash_index);
+      index_reader->OwnPrefixesContents(std::move(prefixes_contents));
     } else {
       LOG(ERROR) << "Failed to create block hash index: " << s;
     }
@@ -196,13 +192,13 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                                  prefixes_meta_contents.data,
                                  &prefix_index);
     if (s.ok()) {
-      new_index_reader->index_block_->SetBlockPrefixIndex(prefix_index);
+      index_reader->index_block_->SetBlockPrefixIndex(prefix_index);
     } else {
       LOG(ERROR) << "Failed to create block prefix index: " << s;
     }
   }
 
-  return Status::OK();
+  return index_reader;
 }
 
 Result<std::string> HashIndexReader::GetMiddleKey() const {
