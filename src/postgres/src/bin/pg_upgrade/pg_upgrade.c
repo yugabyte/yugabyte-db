@@ -361,10 +361,12 @@ setup(char *argv0, bool *live_check)
 	 * make sure the user has a clean environment, otherwise, we may confuse
 	 * libpq when we connect to one (or both) of the servers.
 	 */
-#ifdef YB_TODO
-	/* Investigate/implement this check */
-	check_pghost_envvar();
-#endif
+	if (!is_yugabyte_enabled())
+		/*
+		 * YB: New cluster creation is controlled by Yugabyte, but the IP
+		 * addresses don't match the expected values of this check.
+		 */
+		check_pghost_envvar();
 
 	/*
 	 * In case the user hasn't specified the directory for the new binaries
