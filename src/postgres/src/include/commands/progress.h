@@ -140,10 +140,10 @@
 #define PROGRESS_COPY_TUPLES_EXCLUDED 3
 #define PROGRESS_COPY_COMMAND 4
 #define PROGRESS_COPY_TYPE 5
-/* See progress_type below */
+/* See YbProgressType below */
 #define PROGRESS_COPY_STATUS 6
 
-enum progress_type
+enum YbProgressType
 {
 	CP_IN_PROG,
 	CP_ERROR,

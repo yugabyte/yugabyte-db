@@ -56,11 +56,11 @@
  * The number of elements in the map is equal to the number of columns that may
  * be potentially modified by the update query.
  */
-typedef size_t *AttrToColIdxMap;
+typedef size_t *YbAttrToColIdxMap;
 
 static void YbUpdateComputeIndexColumnReferences(const Relation rel,
 												 const Bitmapset *maybe_modified_cols,
-												 const AttrToColIdxMap map,
+												 const YbAttrToColIdxMap map,
 												 YbUpdateAffectedEntities *affected_entities,
 												 YbSkippableEntities *skip_entities,
 												 int *nentities);
@@ -68,7 +68,7 @@ static void YbUpdateComputeIndexColumnReferences(const Relation rel,
 static void YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
 													  const List *fkeylist,
 													  const Bitmapset *maybe_modified_cols,
-													  const AttrToColIdxMap map,
+													  const YbAttrToColIdxMap map,
 													  YbUpdateAffectedEntities *affected_entities,
 													  YbSkippableEntities *skip_entities,
 													  bool is_referencing_rel,
@@ -451,7 +451,7 @@ YbClearSkippableEntities(YbSkippableEntities *skip_entities)
 	skip_entities->referenced_fkey_list = NIL;
 }
 
-static AttrToColIdxMap
+static YbAttrToColIdxMap
 YbInitAttrToIdxMap(const Relation rel, const Bitmapset *maybe_modified_cols,
 				   size_t maxcols)
 {
@@ -461,7 +461,7 @@ YbInitAttrToIdxMap(const Relation rel, const Bitmapset *maybe_modified_cols,
 	 * 1-indexed and are offset by 'YBFirstLowInvalidAttributeNumber' or
 	 * 'FirstLowInvalidHeapAttributeNumber' in the bitmapset.
 	 */
-	AttrToColIdxMap attr_to_idx_map = palloc0(maxcols * (sizeof(size_t)));
+	YbAttrToColIdxMap attr_to_idx_map = palloc0(maxcols * (sizeof(size_t)));
 	size_t idx = 0;
 	int bms_idx = -1;
 
@@ -495,7 +495,7 @@ YbInitUpdateEntity(YbUpdateAffectedEntities *affected_entities, size_t idx,
 static void
 YbAddColumnReference(const Relation rel,
 					 YbUpdateAffectedEntities *affected_entities,
-					 AttrToColIdxMap map, int bms_idx, size_t ref_entity_idx)
+					 YbAttrToColIdxMap map, int bms_idx, size_t ref_entity_idx)
 {
 	size_t idx = map[YBBmsIndexToAttnum(rel, bms_idx)];
 	struct YbUpdateColInfo *col_info = &affected_entities->col_info_list[idx];
@@ -515,7 +515,7 @@ YbAddColumnReference(const Relation rel,
 static void
 YbConsiderColumnAndEntityForUpdate(const Relation rel,
 								   YbUpdateAffectedEntities *affected_entities,
-								   AttrToColIdxMap map, AttrNumber colattr,
+								   YbAttrToColIdxMap map, AttrNumber colattr,
 								   Oid oid, YbSkippableEntityType etype,
 								   int *nentities)
 {
@@ -732,7 +732,7 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 		YbInitUpdateAffectedEntities(rel, nfields, maxentities);
 
 	TupleDesc desc = RelationGetDescr(rel);
-	AttrToColIdxMap map =
+	YbAttrToColIdxMap map =
 		YbInitAttrToIdxMap(rel, maybe_modified_cols, desc->natts + 1);
 
 	int nentities = 0;
@@ -811,7 +811,7 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 static void
 YbUpdateComputeIndexColumnReferences(const Relation rel,
 									 const Bitmapset *maybe_modified_cols,
-									 const AttrToColIdxMap map,
+									 const YbAttrToColIdxMap map,
 									 YbUpdateAffectedEntities *affected_entities,
 									 YbSkippableEntities *skip_entities,
 									 int *nentities)
@@ -918,7 +918,7 @@ static void
 YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
 										  const List *fkeylist,
 										  const Bitmapset *maybe_modified_cols,
-										  const AttrToColIdxMap map,
+										  const YbAttrToColIdxMap map,
 										  YbUpdateAffectedEntities *affected_entities,
 										  YbSkippableEntities *skip_entities,
 										  bool is_referencing_rel,

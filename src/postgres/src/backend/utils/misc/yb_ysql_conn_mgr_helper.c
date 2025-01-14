@@ -72,7 +72,7 @@ bool yb_is_auth_backend = false;
 bool yb_is_client_ysqlconnmgr = false;
 bool yb_is_parallel_worker = false;
 
-enum SESSION_PARAMETER_UPDATE_RST
+enum YbSessionParameterUpdateRst
 {
 	SHMEM_RESIZE_NEEDED,
 	ERROR_WHILE_STORING_SESSION_PARAMETER,
@@ -119,7 +119,7 @@ detach_shmem(int shmem_id, void *shmem_ptr)
 	return 0;
 }
 
-struct ysql_conn_mgr_shmem_header
+struct YbYsqlConnMgrShmemHeader
 {
 	/*
 	 * Length of the array used to store the session parameter in the shared
@@ -136,7 +136,7 @@ struct ysql_conn_mgr_shmem_header
 	char rolename[SHMEM_MAX_STRING_LEN];
 };
 
-struct shmem_session_parameter
+struct YbShmemSessionParameter
 {
 	char name[SHMEM_MAX_STRING_LEN];
 	char value[SHMEM_MAX_STRING_LEN];
@@ -145,31 +145,31 @@ struct shmem_session_parameter
 /*
  * List (linked list) of changed session parameters for the current transaction.
  */
-struct changed_session_parameters_list
+struct YbChangedSessionParametersList
 {
 	/*
 	 * TODO (janand) GH #18301 Use the index of the GUC list instead of string,
 	 * to enhance the performance.
 	 */
 	char session_parameter_name[SHMEM_MAX_STRING_LEN];
-	struct changed_session_parameters_list *next;
+	struct YbChangedSessionParametersList *next;
 };
 
-struct changed_session_parameters_list *yb_changed_session_parameters = NULL;
+struct YbChangedSessionParametersList *yb_changed_session_parameters = NULL;
 
 int yb_logical_client_shmem_key = -1;
 
 int
 get_shmem_size(const int array_len)
 {
-	return sizeof(struct ysql_conn_mgr_shmem_header) +
-		   sizeof(struct shmem_session_parameter) * array_len;
+	return sizeof(struct YbYsqlConnMgrShmemHeader) +
+		   sizeof(struct YbShmemSessionParameter) * array_len;
 }
 
 void
 YbCleanChangedSessionParameters()
 {
-	struct changed_session_parameters_list *temp_list;
+	struct YbChangedSessionParametersList *temp_list;
 	while (yb_changed_session_parameters != NULL)
 	{
 		temp_list = yb_changed_session_parameters->next;
@@ -203,7 +203,7 @@ YbAddToChangedSessionParametersList(const char *session_parameter_name)
 		return;
 	}
 
-	struct changed_session_parameters_list *temp_list;
+	struct YbChangedSessionParametersList *temp_list;
 
 	/* Check whether the session parameter is already present in the list */
 	for (temp_list = yb_changed_session_parameters; temp_list != NULL;
@@ -214,8 +214,8 @@ YbAddToChangedSessionParametersList(const char *session_parameter_name)
 			return;
 	}
 
-	temp_list = (struct changed_session_parameters_list *)
-		malloc(sizeof(struct changed_session_parameters_list));
+	temp_list = (struct YbChangedSessionParametersList *)
+		malloc(sizeof(struct YbChangedSessionParametersList));
 	strncpy(temp_list->session_parameter_name, session_parameter_name,
 			SHMEM_MAX_STRING_LEN);
 	temp_list->next = yb_changed_session_parameters;
@@ -230,7 +230,7 @@ change_array_len_in_shmem(const key_t shmem_id, const uint32_t new_array_size)
 	if (attach_shmem(shmem_id, &shmem_ptr) < 0)
 		return -1;
 
-	memcpy(shmem_ptr + offsetof(struct ysql_conn_mgr_shmem_header,
+	memcpy(shmem_ptr + offsetof(struct YbYsqlConnMgrShmemHeader,
 								session_parameter_array_len),
 		   &new_array_size, sizeof(new_array_size));
 
@@ -293,12 +293,12 @@ check_resize_needed(const int shmem_id)
 	if (attach_shmem(shmem_id, &shmem_ptr) == -1)
 		return -1;
 
-	struct ysql_conn_mgr_shmem_header shmem_header;
-	memcpy(&shmem_header, shmem_ptr, sizeof(struct ysql_conn_mgr_shmem_header));
+	struct YbYsqlConnMgrShmemHeader shmem_header;
+	memcpy(&shmem_header, shmem_ptr, sizeof(struct YbYsqlConnMgrShmemHeader));
 
-	struct shmem_session_parameter *shmem_parameter_list =
-		(struct shmem_session_parameter
-			 *) (shmem_ptr + sizeof(struct ysql_conn_mgr_shmem_header));
+	struct YbShmemSessionParameter *shmem_parameter_list =
+		(struct YbShmemSessionParameter
+			 *) (shmem_ptr + sizeof(struct YbYsqlConnMgrShmemHeader));
 
 	/* Find the used up length in the array  */
 	for (int i = 0; (strncmp(shmem_parameter_list[i].name, "",
@@ -307,7 +307,7 @@ check_resize_needed(const int shmem_id)
 		 i++, length_shmem++);
 
 	/* Find the max number of elements needed in the array   */
-	for (struct changed_session_parameters_list *temp_list =
+	for (struct YbChangedSessionParametersList *temp_list =
 			 yb_changed_session_parameters;
 		 temp_list != NULL; temp_list = temp_list->next, length_updates++);
 
@@ -346,7 +346,7 @@ resize_shmem_if_needed(const key_t shmem_id)
 }
 
 static int
-update_session_parameter_value(struct shmem_session_parameter *shmem_parameter_list,
+update_session_parameter_value(struct YbShmemSessionParameter *shmem_parameter_list,
 							   const char *session_parameter_name,
 							   const uint32_t max_array_len,
 							   uint32_t *shmem_itr)
@@ -388,7 +388,7 @@ update_session_parameter_value(struct shmem_session_parameter *shmem_parameter_l
 }
 
 static int
-add_session_parameter(struct shmem_session_parameter *shmem_parameter_list,
+add_session_parameter(struct YbShmemSessionParameter *shmem_parameter_list,
 					  const char *session_parameter_name,
 					  const uint32_t shmem_itr)
 {
@@ -411,10 +411,10 @@ add_session_parameter(struct shmem_session_parameter *shmem_parameter_list,
 }
 
 static void
-update_session_parameters(struct shmem_session_parameter *shmem_parameter_list,
+update_session_parameters(struct YbShmemSessionParameter *shmem_parameter_list,
 						  const uint32_t max_shmem_array_size)
 {
-	for (struct changed_session_parameters_list *temp_list =
+	for (struct YbChangedSessionParametersList *temp_list =
 			 yb_changed_session_parameters;
 		 temp_list != NULL; temp_list = temp_list->next)
 	{
@@ -496,12 +496,12 @@ YbUpdateSharedMemory()
 	if (attach_shmem(shmem_id, &shmem_ptr) < 0)
 		return;
 
-	struct ysql_conn_mgr_shmem_header shmem_header;
+	struct YbYsqlConnMgrShmemHeader shmem_header;
 	memcpy(&shmem_header, shmem_ptr, sizeof(shmem_header));
 
-	update_session_parameters((struct shmem_session_parameter *)
+	update_session_parameters((struct YbShmemSessionParameter *)
 							  (shmem_ptr +
-							   sizeof(struct ysql_conn_mgr_shmem_header)),
+							   sizeof(struct YbYsqlConnMgrShmemHeader)),
 							  shmem_header.session_parameter_array_len);
 
 	detach_shmem(shmem_id, shmem_ptr);
@@ -537,14 +537,14 @@ yb_shmem_get(const Oid user, const char *user_name, bool is_superuser,
 		return -1;
 
 	memcpy(shmem_ptr,
-		   &(struct ysql_conn_mgr_shmem_header){.session_parameter_array_len =
+		   &(struct YbYsqlConnMgrShmemHeader){.session_parameter_array_len =
 													DEFAULT_SHMEM_ARR_LEN,
 												.database = database,
 												.user = user,
 												.is_superuser = is_superuser},
-		   sizeof(struct ysql_conn_mgr_shmem_header));
+		   sizeof(struct YbYsqlConnMgrShmemHeader));
 
-	strncpy(((struct ysql_conn_mgr_shmem_header *) shmem_ptr)->rolename,
+	strncpy(((struct YbYsqlConnMgrShmemHeader *) shmem_ptr)->rolename,
 			user_name, SHMEM_MAX_STRING_LEN);
 
 	if (detach_shmem(shmem_id, shmem_ptr) == -1)
@@ -563,13 +563,13 @@ SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 	if (attach_shmem(yb_logical_client_shmem_key, &shared_memory_ptr) < 0)
 		return;
 
-	struct ysql_conn_mgr_shmem_header shmem_header;
+	struct YbYsqlConnMgrShmemHeader shmem_header;
 	memcpy(&shmem_header, shared_memory_ptr,
-		   sizeof(struct ysql_conn_mgr_shmem_header));
+		   sizeof(struct YbYsqlConnMgrShmemHeader));
 
-	struct shmem_session_parameter *shmem_parameter_list =
-		(struct shmem_session_parameter*)
-				(shared_memory_ptr + sizeof(struct ysql_conn_mgr_shmem_header));
+	struct YbShmemSessionParameter *shmem_parameter_list =
+		(struct YbShmemSessionParameter*)
+				(shared_memory_ptr + sizeof(struct YbYsqlConnMgrShmemHeader));
 
 	/*
 	 * Due to "pool per user, db combination" setting the user context

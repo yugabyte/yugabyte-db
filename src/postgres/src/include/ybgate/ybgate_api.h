@@ -77,7 +77,7 @@ YbgStatus YbgInit();
 // Types
 //-----------------------------------------------------------------------------
 
-struct PgAttributeRow
+struct YbPgAttributeRow
 {
 	uint32_t attrelid;
 	char	 attname[64];
@@ -102,7 +102,7 @@ struct PgAttributeRow
 };
 
 #ifndef __cplusplus
-typedef struct PgAttributeRow PgAttributeRow;
+typedef struct YbPgAttributeRow YbPgAttributeRow;
 #endif
 
 struct YbgTypeDesc {

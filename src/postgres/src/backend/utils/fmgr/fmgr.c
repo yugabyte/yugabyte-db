@@ -74,13 +74,13 @@ extern void int2send_direct(StringInfo buf, Datum value);
 extern void int4send_direct(StringInfo buf, Datum value);
 extern void int8send_direct(StringInfo buf, Datum value);
 
-typedef void (*SendDirectFn)(StringInfo, Datum);
+typedef void (*YbSendDirectFn)(StringInfo, Datum);
 
 /*
  * Initialize direct send function with specified oid with specified func.
  */
 static void
-fmgr_init_direct_send_func(Oid oid, SendDirectFn func)
+fmgr_init_direct_send_func(Oid oid, YbSendDirectFn func)
 {
 	fmgr_builtins[fmgr_builtin_oid_index[oid]].alt_func = func;
 }

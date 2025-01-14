@@ -1798,28 +1798,28 @@ YBIsInitDbAlreadyDone()
 /*---------------------------------------------------------------------------*/
 
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
-typedef struct CatalogModificationAspects
+typedef struct YbCatalogModificationAspects
 {
 	uint64_t applied;
 	uint64_t pending;
 
-} CatalogModificationAspects;
+} YbCatalogModificationAspects;
 
-typedef struct DdlTransactionState
+typedef struct YbDdlTransactionState
 {
 	int nesting_level;
 	MemoryContext mem_context;
-	CatalogModificationAspects catalog_modification_aspects;
+	YbCatalogModificationAspects catalog_modification_aspects;
 	bool is_global_ddl;
 	NodeTag original_node_tag;
 	const char *original_ddl_command_tag;
 	Oid database_oid;
-} DdlTransactionState;
+} YbDdlTransactionState;
 
-static DdlTransactionState ddl_transaction_state = {0};
+static YbDdlTransactionState ddl_transaction_state = {0};
 
 static void
-MergeCatalogModificationAspects(CatalogModificationAspects *aspects,
+MergeCatalogModificationAspects(YbCatalogModificationAspects *aspects,
 								bool apply)
 {
 	if (apply)
@@ -1893,7 +1893,7 @@ YBResetDdlState()
 		 */
 		status = YbMemCtxReset(ddl_transaction_state.mem_context);
 	}
-	ddl_transaction_state = (struct DdlTransactionState){0};
+	ddl_transaction_state = (struct YbDdlTransactionState){0};
 	YBResetEnableSpecialDDLMode();
 	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
 	HandleYBStatus(status);
@@ -2003,7 +2003,7 @@ YBDecrementDdlNestingLevel()
 		}
 
 		Oid database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
-		ddl_transaction_state = (DdlTransactionState) {};
+		ddl_transaction_state = (YbDdlTransactionState) {};
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(MyDatabaseId,
 												   is_silent_altering));
@@ -2185,7 +2185,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 		 * All T_Create... tags from nodes.h:
 		 */
 
-		case T_CreateTableGroupStmt:
+		case T_YbCreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreatedbStmt:
 		case T_DefineStmt: /* CREATE OPERATOR/AGGREGATE/COLLATION/etc */
@@ -3970,7 +3970,7 @@ yb_is_local_table(PG_FUNCTION_ARGS)
 	{
 			PG_RETURN_BOOL(true);
 	}
-	GeolocationDistance distance = get_tablespace_distance(tablespaceId);
+	YbGeolocationDistance distance = get_tablespace_distance(tablespaceId);
 	PG_RETURN_BOOL(distance == REGION_LOCAL || distance == ZONE_LOCAL);
 }
 
@@ -4243,10 +4243,10 @@ yb_detail_sort_comparator(const void *a, const void *b)
 typedef struct {
 	char **lines;
 	int length;
-} DetailSorter;
+} YbDetailSorter;
 
 void
-detail_sorter_from_list(DetailSorter *v, List *litems, int capacity)
+detail_sorter_from_list(YbDetailSorter *v, List *litems, int capacity)
 {
 	v->lines = (char **)palloc(sizeof(char *) * capacity);
 	v->length = 0;
@@ -4260,7 +4260,7 @@ detail_sorter_from_list(DetailSorter *v, List *litems, int capacity)
 	}
 }
 
-char **detail_sorter_lines_sorted(DetailSorter *v)
+char **detail_sorter_lines_sorted(YbDetailSorter *v)
 {
 	qsort(v->lines, v->length,
 		sizeof (const char *), yb_detail_sort_comparator);
@@ -4268,7 +4268,7 @@ char **detail_sorter_lines_sorted(DetailSorter *v)
 }
 
 void
-detail_sorter_free(DetailSorter *v)
+detail_sorter_free(YbDetailSorter *v)
 {
 	pfree(v->lines);
 }
@@ -4304,7 +4304,7 @@ char *YBDetailSorted(char *input)
 		token = strtok(NULL, delimiter);
 	}
 
-	DetailSorter sorter;
+	YbDetailSorter sorter;
 	detail_sorter_from_list(&sorter, line_store, line_count);
 
 	if (line_count == 0)
@@ -5295,13 +5295,13 @@ YbSetIsBatchedExecution(bool value)
 	yb_is_batched_execution = value;
 }
 
-OptSplit *
+YbOptSplit *
 YbGetSplitOptions(Relation rel)
 {
 	if (rel->yb_table_properties->is_colocated)
 		return NULL;
 
-	OptSplit *split_options = makeNode(OptSplit);
+	YbOptSplit *split_options = makeNode(YbOptSplit);
 	/*
 	 * The split type is NUM_TABLETS when the relation has hash key columns
 	 * OR if the relation's range key is currently being dropped. Otherwise,

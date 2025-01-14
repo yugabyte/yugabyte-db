@@ -9,7 +9,7 @@
 
 #define MAX_INTERVAL_LEN 100
 
-typedef enum HistParseState
+typedef enum YbHistParseState
 {
 	NONE,
 	ARRAY_BEGIN,
@@ -18,19 +18,19 @@ typedef enum HistParseState
 	VALUE,
 	OBJECT_END,
 	ARRAY_END
-} HistParseState;
+} YbHistParseState;
 
-typedef struct HistPair
+typedef struct YbHistPair
 {
 	double end;
 	int64_t total;
-} HistPair;
+} YbHistPair;
 
-typedef struct HistInterval
+typedef struct YbHistInterval
 {
 	double start;
 	double end;
-} HistInterval;
+} YbHistInterval;
 
 static double extract_from_match(const char *str, regmatch_t *match, int match_num)
 {
@@ -44,7 +44,7 @@ static double extract_from_match(const char *str, regmatch_t *match, int match_n
 	return atof(num_str);
 }
 
-static HistInterval yb_extract_interval(regex_t *regex, const char *str, int len)
+static YbHistInterval yb_extract_interval(regex_t *regex, const char *str, int len)
 {
 	regmatch_t match[7];
 	double start;
@@ -66,7 +66,7 @@ static HistInterval yb_extract_interval(regex_t *regex, const char *str, int len
 	if (end <= start)
 		elog(ERROR, "Unexpected histogram interval where where start >= end");
 
-	return (struct HistInterval){start, end};
+	return (struct YbHistInterval){start, end};
 }
 
 Datum
@@ -78,12 +78,12 @@ yb_get_percentile(PG_FUNCTION_ARGS)
 	JsonbValue val;
 	JsonbIteratorToken token;
 
-	HistParseState h_state = NONE;
+	YbHistParseState h_state = NONE;
 	int64_t total_count = 0;
 	int total_entries = 0;
 	int allocated_entries = 100;
-	HistPair *entries = palloc(allocated_entries * sizeof(HistPair));
-	HistInterval interval;
+	YbHistPair *entries = palloc(allocated_entries * sizeof(YbHistPair));
+	YbHistInterval interval;
 	double last_interval_end = -INFINITY;
 	double ret = 0;
 
@@ -142,10 +142,10 @@ yb_get_percentile(PG_FUNCTION_ARGS)
 					{
 						allocated_entries *= 2;
 						entries = repalloc(entries,
-							allocated_entries * sizeof(HistPair));
+							allocated_entries * sizeof(YbHistPair));
 					}
 					entries[total_entries] =
-						(struct HistPair){last_interval_end, total_count};
+						(struct YbHistPair){last_interval_end, total_count};
 					total_entries++;
 				}
 				break;

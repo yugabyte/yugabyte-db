@@ -116,13 +116,13 @@ typedef struct relopt_real
 	double		max;
 } relopt_real;
 
-typedef struct relopt_oid
+typedef struct yb_relopt_oid
 {
 	relopt_gen	gen;
 	Oid			default_val;
 	Oid			min;
 	Oid			max;
-} relopt_oid;
+} yb_relopt_oid;
 
 /*
  * relopt_enum_elt_def -- One member of the array of acceptable values
@@ -180,7 +180,7 @@ typedef struct local_relopt
 		if (option.isset)										\
 			var = option.values.oid_val;						\
 		else													\
-			var = ((relopt_oid *) option.gen)->default_val;		\
+			var = ((yb_relopt_oid *) option.gen)->default_val;		\
 		(wasset) != NULL ? *(wasset) = option.isset : (dummyret)NULL; \
 	} while (0)
 

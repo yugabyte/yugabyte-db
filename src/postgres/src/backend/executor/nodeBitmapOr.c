@@ -116,7 +116,7 @@ MultiExecBitmapOr(BitmapOrState *node)
 	PlanState **bitmapplans;
 	int			nplans;
 	int			i;
-	TupleBitmap result = {NULL};
+	YbTupleBitmap result = {NULL};
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
@@ -134,7 +134,7 @@ MultiExecBitmapOr(BitmapOrState *node)
 	for (i = 0; i < nplans; i++)
 	{
 		PlanState  *subnode = bitmapplans[i];
-		TupleBitmap subresult = {NULL};
+		YbTupleBitmap subresult = {NULL};
 
 		/*
 		 * We can special-case BitmapIndexScan children to avoid an explicit

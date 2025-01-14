@@ -1163,8 +1163,8 @@ _outPartitionPruneStepOp(StringInfo str, const PartitionPruneStepOp *node)
 }
 
 static void
-_outPartitionPruneStepFuncOp(StringInfo str,
-							   const PartitionPruneStepFuncOp *node)
+_outYbPartitionPruneStepFuncOp(StringInfo str,
+							   const YbPartitionPruneStepFuncOp *node)
 {
 	WRITE_NODE_TYPE("PARTITIONPRUNESTEPFUNCOP");
 

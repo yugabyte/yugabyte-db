@@ -2896,7 +2896,7 @@ YbAppendPrimaryColumnRefs(YbcPgStatement dml, List *colrefs)
 }
 
 static void
-YbApplyPushdownImpl(YbcPgStatement dml, const PushdownExprs *pushdown,
+YbApplyPushdownImpl(YbcPgStatement dml, const YbPushdownExprs *pushdown,
 					bool is_for_secondary_index)
 {
 	if (!pushdown)
@@ -2914,13 +2914,13 @@ YbApplyPushdownImpl(YbcPgStatement dml, const PushdownExprs *pushdown,
 }
 
 void
-YbApplyPrimaryPushdown(YbcPgStatement dml, const PushdownExprs *pushdown)
+YbApplyPrimaryPushdown(YbcPgStatement dml, const YbPushdownExprs *pushdown)
 {
 	YbApplyPushdownImpl(dml, pushdown, false /* is_for_secondary_index */);
 }
 
 void
-YbApplySecondaryIndexPushdown(YbcPgStatement dml, const PushdownExprs *pushdown)
+YbApplySecondaryIndexPushdown(YbcPgStatement dml, const YbPushdownExprs *pushdown)
 {
 	YbApplyPushdownImpl(dml, pushdown, true /* is_for_secondary_index */);
 }
@@ -2955,8 +2955,8 @@ ybcBeginScan(Relation relation,
 			 int nkeys,
 			 ScanKey keys,
 			 Scan *pg_scan_plan,
-			 PushdownExprs *rel_pushdown,
-			 PushdownExprs *idx_pushdown,
+			 YbPushdownExprs *rel_pushdown,
+			 YbPushdownExprs *idx_pushdown,
 			 List *aggrefs,
 			 int distinct_prefixlen,
 			 YbcPgExecParameters *exec_params,
@@ -4243,11 +4243,11 @@ yb_init_partition_key_data(void *data)
 	ppk->key_data_capacity = YB_PARTITION_KEY_DATA_CAPACITY;
 }
 
-typedef int keylen_t;
+typedef int yb_keylen_t;
 #define KEY_LEN(ppk, key_offset) \
 	(ppk)->key_data + (key_offset)
 #define KEY_DATA(ppk, key_offset) \
-	(ppk)->key_data + (key_offset) + sizeof(keylen_t)
+	(ppk)->key_data + (key_offset) + sizeof(yb_keylen_t)
 
 /*
  * yb_add_key_unsynchronized
@@ -4259,7 +4259,7 @@ typedef int keylen_t;
  */
 static bool
 yb_add_key_unsynchronized(YBParallelPartitionKeys ppk,
-						  const char *key, keylen_t key_len)
+						  const char *key, yb_keylen_t key_len)
 {
 	/* Only the first key is allowed to be empty */
 	Assert(key_len > 0 || ppk->key_count == 0);
@@ -4267,7 +4267,7 @@ yb_add_key_unsynchronized(YBParallelPartitionKeys ppk,
 	if (ppk->key_count == 0)
 	{
 		Assert(sizeof(key_len) + key_len <= ppk->key_data_capacity);
-		memcpy(KEY_LEN(ppk, 0), &key_len, sizeof(keylen_t));
+		memcpy(KEY_LEN(ppk, 0), &key_len, sizeof(yb_keylen_t));
 		/* Update counters, etc */
 		if (key_len > 0)
 		{
@@ -4285,14 +4285,14 @@ yb_add_key_unsynchronized(YBParallelPartitionKeys ppk,
 		 * Wrapped around buffer, the available space lays between the end of
 		 * the high key and the beginning of the low key.
 		 */
-		keylen_t high_key_len;
-		memcpy(&high_key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(keylen_t));
+		yb_keylen_t high_key_len;
+		memcpy(&high_key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(yb_keylen_t));
 		int free_offset = ppk->high_offset + sizeof(int) + high_key_len;
 		/* Check the room in the buffer */
 		Assert(free_offset <= ppk->low_offset);
-		if (ppk->low_offset - free_offset < sizeof(keylen_t) + key_len)
+		if (ppk->low_offset - free_offset < sizeof(yb_keylen_t) + key_len)
 			return false;
-		memcpy(KEY_LEN(ppk, free_offset), &key_len, sizeof(keylen_t));
+		memcpy(KEY_LEN(ppk, free_offset), &key_len, sizeof(yb_keylen_t));
 		memcpy(KEY_DATA(ppk, free_offset), key, key_len);
 		/* Update counters, etc */
 		++ppk->key_count;
@@ -4310,7 +4310,7 @@ yb_add_key_unsynchronized(YBParallelPartitionKeys ppk,
 		/* Check for the trailing space capacity */
 		if (ppk->key_data_capacity - free_offset >= sizeof(key_len) + key_len)
 		{
-			memcpy(KEY_LEN(ppk, free_offset), &key_len, sizeof(keylen_t));
+			memcpy(KEY_LEN(ppk, free_offset), &key_len, sizeof(yb_keylen_t));
 			memcpy(KEY_DATA(ppk, free_offset), key, key_len);
 			/* Update counters, etc */
 			++ppk->key_count;
@@ -4325,7 +4325,7 @@ yb_add_key_unsynchronized(YBParallelPartitionKeys ppk,
 		 */
 		else if (ppk->low_offset >= sizeof(key_len) + key_len)
 		{
-			memcpy(KEY_LEN(ppk, 0), &key_len, sizeof(keylen_t));
+			memcpy(KEY_LEN(ppk, 0), &key_len, sizeof(yb_keylen_t));
 			memcpy(KEY_DATA(ppk, 0), key, key_len);
 			/* Update counters, etc */
 			++ppk->key_count;
@@ -4350,11 +4350,11 @@ static void
 yb_remove_key_unsynchronized(YBParallelPartitionKeys ppk)
 {
 	Assert(ppk->key_count > 0);
-	keylen_t key_len;
+	yb_keylen_t key_len;
 	--ppk->key_count;
-	memcpy(&key_len, KEY_LEN(ppk, ppk->low_offset), sizeof(keylen_t));
+	memcpy(&key_len, KEY_LEN(ppk, ppk->low_offset), sizeof(yb_keylen_t));
 	/* Find offset of the next element */
-	int next = ppk->low_offset + sizeof(keylen_t) + key_len;
+	int next = ppk->low_offset + sizeof(yb_keylen_t) + key_len;
 	if (next == ppk->key_data_size)
 	{
 		/*
@@ -4377,8 +4377,8 @@ yb_remove_key_unsynchronized(YBParallelPartitionKeys ppk)
 		}
 		else
 		{
-			memcpy(&key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(keylen_t));
-			ppk->key_data_size = ppk->high_offset + sizeof(keylen_t) + key_len;
+			memcpy(&key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(yb_keylen_t));
+			ppk->key_data_size = ppk->high_offset + sizeof(yb_keylen_t) + key_len;
 		}
 	}
 	ppk->low_offset = next;
@@ -4397,16 +4397,16 @@ yb_remove_key_unsynchronized(YBParallelPartitionKeys ppk)
  * to fetch more and change the fetch state to WORKING. Hence the separate
  * field, a counter, to be able to report inefficient fetch.
  */
-typedef struct FetchKeysParam
+typedef struct YbFetchKeysParam
 {
 	int discarded;
 	YBParallelPartitionKeys ppk;
-} FetchKeysParam;
+} YbFetchKeysParam;
 
 static void
 ppk_buffer_fetch_callback(void *param, const char *key, size_t key_size)
 {
-	FetchKeysParam *fkp = (FetchKeysParam *) param;
+	YbFetchKeysParam *fkp = (YbFetchKeysParam *) param;
 	YBParallelPartitionKeys ppk = fkp->ppk;
 	/* Once discarded, discard all the keys, just count them */
 	if (fkp->discarded)
@@ -4473,14 +4473,14 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 	const char *latest_key;
 	size_t latest_key_size;
 	uint64_t max_num_ranges;
-	FetchKeysParam fkp = {0, ppk};
+	YbFetchKeysParam fkp = {0, ppk};
 
 	/* Estimate fetch parameter values */
 	SpinLockAcquire(&ppk->mutex);
 	/* Until fetch is done at least one key must remain in the buffer */
 	Assert(ppk->key_count > 0);
-	keylen_t key_len;
-	memcpy(&key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(keylen_t));
+	yb_keylen_t key_len;
+	memcpy(&key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(yb_keylen_t));
 	latest_key_size = key_len;
 	/* Empty key indicates the end of the keys, fetch shouldn't be possible. */
 	Assert(latest_key_size);
@@ -4496,7 +4496,7 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 	 */
 	double average_key_size = ppk->total_key_size / ppk->total_key_count;
 	/* Account for the key length stored in the buffer */
-	average_key_size += sizeof(keylen_t);
+	average_key_size += sizeof(yb_keylen_t);
 	max_num_ranges =
 		floor(ppk->key_data_capacity / average_key_size) - ppk->key_count;
 	if (max_num_ranges < 16)
@@ -4518,7 +4518,7 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 										ppk->is_forward ? NULL : latest_key /* upper_bound_key */,
 										ppk->is_forward ? 0 : latest_key_size /* upper_bound_key_size */,
 										max_num_ranges,  yb_parallel_range_size, ppk->is_forward,
-										(ppk->key_data_capacity / 3) - sizeof(keylen_t) /* max_key_length */,
+										(ppk->key_data_capacity / 3) - sizeof(yb_keylen_t) /* max_key_length */,
 										ppk_buffer_fetch_callback, &fkp));
 	SpinLockAcquire(&ppk->mutex);
 	/* Update fetch status */
@@ -4620,7 +4620,7 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 										NULL /* upper_bound_key */, 0 /* upper_bound_key_size */,
 										YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE,
 										yb_parallel_range_size, is_forward,
-										(ppk->key_data_capacity / 3) - sizeof(keylen_t),
+										(ppk->key_data_capacity / 3) - sizeof(yb_keylen_t),
 										ppk_buffer_initialize_callback, ppk));
 	/* Update fetch status, unless updated by the callback */
 	if (ppk->fetch_status == FETCH_STATUS_WORKING)
@@ -4647,8 +4647,8 @@ yb_copy_key_unsynchronized(YBParallelPartitionKeys ppk,
 						   const char **bound,
 						   size_t *bound_size)
 {
-	keylen_t key_len;
-	memcpy(&key_len, KEY_LEN(ppk, ppk->low_offset), sizeof(keylen_t));
+	yb_keylen_t key_len;
+	memcpy(&key_len, KEY_LEN(ppk, ppk->low_offset), sizeof(yb_keylen_t));
 	*bound_size = key_len;
 	if (key_len > 0)
 	{

@@ -600,7 +600,7 @@ char* DecodeTZDatum(char const* fn_name, uintptr_t datum, const char *timezone, 
 	Oid id = fmgr_internal_function(fn_name);
 	fmgr_info(id, finfo);
 
-	DatumDecodeOptions decodeOptions;
+	YbDatumDecodeOptions decodeOptions;
 	decodeOptions.timezone = timezone;
 	decodeOptions.from_YB = from_YB;
 	decodeOptions.range_datum_decode_options = NULL;
@@ -622,7 +622,7 @@ char* DecodeArrayDatum(char const* arr_fn_name, uintptr_t datum,
 	Oid elem_id = fmgr_internal_function(fn_name);
 	fmgr_info(elem_id, elem_finfo);
 
-	DatumDecodeOptions decodeOptions;
+	YbDatumDecodeOptions decodeOptions;
 	decodeOptions.is_array = true;
 	decodeOptions.elem_by_val = elem_by_val;
 	decodeOptions.from_YB = from_YB;
@@ -654,7 +654,7 @@ char* DecodeRangeDatum(char const* range_fn_name, uintptr_t datum,
 	Oid elem_id = fmgr_internal_function(elem_fn_name);
 	fmgr_info(elem_id, elem_finfo);
 
-	DatumDecodeOptions decodeOptions;
+	YbDatumDecodeOptions decodeOptions;
 	decodeOptions.is_array = false;
 	decodeOptions.elem_by_val = elem_by_val;
 	decodeOptions.from_YB = from_YB;
@@ -693,7 +693,7 @@ char* DecodeRangeArrayDatum(char const* arr_fn_name, uintptr_t datum,
 	Oid elem_id = fmgr_internal_function(elem_fn_name);
 	fmgr_info(elem_id, elem_finfo);
 
-	DatumDecodeOptions range_decodeOptions;
+	YbDatumDecodeOptions range_decodeOptions;
 	range_decodeOptions.is_array = false;
 	range_decodeOptions.elem_by_val = range_by_val;
 	range_decodeOptions.from_YB = from_YB;
@@ -705,7 +705,7 @@ char* DecodeRangeArrayDatum(char const* arr_fn_name, uintptr_t datum,
 	range_decodeOptions.timezone = timezone;
 	range_decodeOptions.range_datum_decode_options = NULL;
 
-	DatumDecodeOptions arr_decodeOptions;
+	YbDatumDecodeOptions arr_decodeOptions;
 	arr_decodeOptions.is_array = true;
 	arr_decodeOptions.elem_by_val = elem_by_val;
 	arr_decodeOptions.from_YB = from_YB;

@@ -172,8 +172,8 @@ typedef int (*YbGetNormalizedQueryFuncPtr)(Size query_offset, int pgss_query_len
 										   char *normalized_query);
 extern YbGetNormalizedQueryFuncPtr yb_get_normalized_query;
 
-typedef void (*PgssFillInConstantLengths)(JumbleState *jstate, const char *query, int query_loc);
-extern PgssFillInConstantLengths yb_qd_fill_in_constant_lengths;
+typedef void (*YbPgssFillInConstantLengths)(JumbleState *jstate, const char *query, int query_loc);
+extern YbPgssFillInConstantLengths yb_qd_fill_in_constant_lengths;
 
 extern void YbQueryDiagnosticsInstallHook(void);
 extern Size YbQueryDiagnosticsShmemSize(void);

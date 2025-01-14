@@ -507,16 +507,16 @@ typedef struct SeqScan
  * ----------------
  */
 
-typedef struct PushdownExprs
+typedef struct YbPushdownExprs
 {
 	List *quals;
 	List *colrefs;
-} PushdownExprs;
+} YbPushdownExprs;
 
 typedef struct YbSeqScan
 {
 	Scan		scan;
-	PushdownExprs yb_pushdown;
+	YbPushdownExprs yb_pushdown;
 	YbPlanInfo	yb_plan_info;
 } YbSeqScan;
 
@@ -579,8 +579,8 @@ typedef struct IndexScan
 	List	   *indexorderbyops;	/* OIDs of sort ops for ORDER BY exprs */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
-	PushdownExprs yb_idx_pushdown;
-	PushdownExprs yb_rel_pushdown;
+	YbPushdownExprs yb_idx_pushdown;
+	YbPushdownExprs yb_rel_pushdown;
 	YbPlanInfo	yb_plan_info;
 	int         yb_distinct_prefixlen; /* distinct index scan prefix */
 	YbLockMechanism	yb_lock_mechanism;	/* locks possible as part of the scan */
@@ -626,7 +626,7 @@ typedef struct IndexOnlyScan
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
-	PushdownExprs yb_pushdown;
+	YbPushdownExprs yb_pushdown;
 	/*
 	 * yb_indexqual_for_recheck is the modified version of indexqual.
 	 * It is used in tuple recheck step only.
@@ -688,7 +688,7 @@ typedef struct YbBitmapIndexScan
 	List	   *indexqual;		/* list of index quals (OpExprs) */
 	List	   *indexqualorig;	/* the same in original form */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
-	PushdownExprs yb_idx_pushdown;
+	YbPushdownExprs yb_idx_pushdown;
 	YbPlanInfo	yb_plan_info;
 } YbBitmapIndexScan;
 
@@ -719,12 +719,12 @@ typedef struct BitmapHeapScan
 typedef struct YbBitmapTableScan
 {
 	Scan		scan;
-	PushdownExprs rel_pushdown;		/* any pushable quals that aren't already
+	YbPushdownExprs rel_pushdown;		/* any pushable quals that aren't already
 									 * guaranteed by the Bitmap Index Scan
 									 * nodes. */
-	PushdownExprs recheck_pushdown;		/* pushable index quals */
+	YbPushdownExprs recheck_pushdown;		/* pushable index quals */
 	List		 *recheck_local_quals;	/* non-pushable index quals */
-	PushdownExprs fallback_pushdown;	/* all pushable quals */
+	YbPushdownExprs fallback_pushdown;	/* all pushable quals */
 	List		 *fallback_local_quals;	/* all non-pushable quals */
 	YbPlanInfo	  yb_plan_info;
 } YbBitmapTableScan;
@@ -1580,11 +1580,11 @@ typedef struct PartitionPruneStepCombine
 	List	   *source_stepids;
 } PartitionPruneStepCombine;
 
-typedef struct PartitionPruneStepFuncOp
+typedef struct YbPartitionPruneStepFuncOp
 {
 	PartitionPruneStep step;
 	List       *exprs;
-} PartitionPruneStepFuncOp;
+} YbPartitionPruneStepFuncOp;
 
 /*
  * Plan invalidation info

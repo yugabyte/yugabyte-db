@@ -55,7 +55,7 @@
 
 PG_MODULE_MAGIC;
 
-typedef enum statementType
+typedef enum YbStatementType
 {
   Select,
   Insert,
@@ -210,7 +210,7 @@ typedef enum statementType
   CatCacheTableMisses_49,
   CatCacheTableMisses_End = CatCacheTableMisses_49,
   kMaxStatementType
-} statementType;
+} YbStatementType;
 int num_entries = kMaxStatementType;
 YbcPgmEntry *ybpgm_table = NULL;
 
@@ -285,8 +285,8 @@ static void ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 								 ParamListInfo params,
 								 QueryEnvironment *queryEnv,
 								 DestReceiver *dest, QueryCompletion *qc);
-static void ybpgm_Store(statementType type, uint64_t time, uint64_t rows);
-static void ybpgm_StoreCount(statementType type, uint64_t time, uint64_t count);
+static void ybpgm_Store(YbStatementType type, uint64_t time, uint64_t rows);
+static void ybpgm_StoreCount(YbStatementType type, uint64_t time, uint64_t count);
 
 static void ws_sighup_handler(SIGNAL_ARGS);
 static void ws_sigterm_handler(SIGNAL_ARGS);
@@ -959,7 +959,7 @@ ybpgm_ExecutorFinish(QueryDesc *queryDesc)
 static void
 ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 {
-	statementType type;
+	YbStatementType type;
 
 	switch (queryDesc->operation)
 	{
@@ -1078,8 +1078,8 @@ ybpgm_memsize(void)
 /*
  * Get the statement type for a transactional statement.
  */
-static statementType ybpgm_getStatementType(TransactionStmt *stmt) {
-	statementType type = Other;
+static YbStatementType ybpgm_getStatementType(TransactionStmt *stmt) {
+	YbStatementType type = Other;
 	switch (stmt->kind)
 	{
 		case TRANS_STMT_BEGIN:
@@ -1122,7 +1122,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	{
 		instr_time start;
 		instr_time end;
-		statementType type;
+		YbStatementType type;
 
 		if (IsA(pstmt->utilityStmt, TransactionStmt))
 		{
@@ -1203,7 +1203,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 }
 
 static void
-ybpgm_Store(statementType type, uint64_t time, uint64_t rows) {
+ybpgm_Store(YbStatementType type, uint64_t time, uint64_t rows) {
 	struct YbcPgmEntry *entry = &ybpgm_table[type];
 	entry->total_time += time;
 	entry->calls += 1;
@@ -1211,7 +1211,7 @@ ybpgm_Store(statementType type, uint64_t time, uint64_t rows) {
 }
 
 static void
-ybpgm_StoreCount(statementType type, uint64_t time, uint64_t count) {
+ybpgm_StoreCount(YbStatementType type, uint64_t time, uint64_t count) {
 	struct YbcPgmEntry *entry = &ybpgm_table[type];
 	entry->total_time += time;
 	entry->calls += count;

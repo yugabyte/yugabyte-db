@@ -100,15 +100,15 @@ YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
-typedef enum GeolocationDistance {
+typedef enum YbGeolocationDistance {
 	ZONE_LOCAL,
 	REGION_LOCAL,
 	CLOUD_LOCAL,
 	INTER_CLOUD,
 	UNKNOWN_DISTANCE
-} GeolocationDistance;
+} YbGeolocationDistance;
 
-extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
+extern YbGeolocationDistance get_tablespace_distance (Oid tablespaceoid);
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
  * This relies on pgapi being non-NULL, so probably should not be used
@@ -1102,7 +1102,7 @@ void YbSetIsBatchedExecution(bool value);
 bool YbIsColumnPartOfKey(Relation rel, const char *column_name);
 
 /* Get a relation's split options. */
-OptSplit *YbGetSplitOptions(Relation rel);
+YbOptSplit *YbGetSplitOptions(Relation rel);
 
 #define HandleYBStatus(status) \
 	HandleYBStatusAtErrorLevel(status, ERROR)

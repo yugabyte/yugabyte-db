@@ -88,7 +88,7 @@ bool binary_upgrade_next_tablegroup_default = false;
  * Create a table group.
  */
 Oid
-CreateTableGroup(CreateTableGroupStmt *stmt)
+CreateTableGroup(YbCreateTableGroupStmt *stmt)
 {
 	Relation	rel;
 	Datum		values[Natts_pg_yb_tablegroup];

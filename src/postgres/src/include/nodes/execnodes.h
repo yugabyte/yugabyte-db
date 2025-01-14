@@ -2206,43 +2206,43 @@ typedef struct JoinState
  * Batch state of batched NL Join. These are explained in the comment for
  * ExecYbBatchedNestLoop in nodeYbBatchedNestLoop.c.
  */
-typedef enum NLBatchStatus
+typedef enum YbNLBatchStatus
 {
 	BNL_INIT,
 	BNL_NEWINNER,
 	BNL_MATCHING,
 	BNL_FLUSHING
-} NLBatchStatus;
+} YbNLBatchStatus;
 
 /* Struct to contain tuple and its matching info in a hash bucket*/
-typedef struct BucketTupleInfo
+typedef struct YbBucketTupleInfo
 {
 	MinimalTuple tuple;
 	bool matched;
-} BucketTupleInfo;
+} YbBucketTupleInfo;
 
 /* Buckets of MinimalTuples stored in the hash table. */
-typedef struct NLBucketInfo
+typedef struct YbNLBucketInfo
 {
 	ListCell *current; /* The current list element being iterated on. */
-	List *tuples;	   /* List of BucketTupleInfo in this bucket */
-} NLBucketInfo;
+	List *tuples;	   /* List of YbBucketTupleInfo in this bucket */
+} YbNLBucketInfo;
 
 struct YbBatchedNestLoopState;
 
-typedef bool (*FlushTupleFn_t)(struct YbBatchedNestLoopState *, ExprContext *);
+typedef bool (*YbFlushTupleFn_t)(struct YbBatchedNestLoopState *, ExprContext *);
 
-typedef bool (*GetNewOuterTupleFn_t)(struct YbBatchedNestLoopState *node,
+typedef bool (*YbGetNewOuterTupleFn_t)(struct YbBatchedNestLoopState *node,
 									 ExprContext *econtext);
-typedef void (*ResetBatchFn_t)(struct YbBatchedNestLoopState *node,
+typedef void (*YbResetBatchFn_t)(struct YbBatchedNestLoopState *node,
 							   ExprContext *econtext);
-typedef void (*RegisterOuterMatchFn_t)(struct YbBatchedNestLoopState *node,
+typedef void (*YbRegisterOuterMatchFn_t)(struct YbBatchedNestLoopState *node,
 									   ExprContext *econtext);
-typedef void (*AddTupleToOuterBatchFn_t)(struct YbBatchedNestLoopState *node,
+typedef void (*YbAddTupleToOuterBatchFn_t)(struct YbBatchedNestLoopState *node,
 										 TupleTableSlot *slot);
 
-typedef void (*FreeBatchFn_t)(struct YbBatchedNestLoopState *node);
-typedef void (*EndFn_t)(struct YbBatchedNestLoopState *node);
+typedef void (*YbFreeBatchFn_t)(struct YbBatchedNestLoopState *node);
+typedef void (*YbEndFn_t)(struct YbBatchedNestLoopState *node);
 
 /* ----------------
  *	 NestLoopState information
@@ -2259,7 +2259,7 @@ typedef struct NestLoopState
 	bool		nl_MatchedOuter;
 	TupleTableSlot *nl_NullInnerTupleSlot;
 	Tuplestorestate *batchedtuplestorestate;
-	NLBatchStatus nl_currentstatus;
+	YbNLBatchStatus nl_currentstatus;
 } NestLoopState;
 
 typedef struct YbBatchedNestLoopState
@@ -2268,7 +2268,7 @@ typedef struct YbBatchedNestLoopState
 	TupleTableSlot *nl_NullInnerTupleSlot;
 
 	bool bnl_outerdone;
-	NLBatchStatus bnl_currentstatus;
+	YbNLBatchStatus bnl_currentstatus;
 
 	bool is_first_batch_done;
 	int batch_size;
@@ -2286,13 +2286,13 @@ typedef struct YbBatchedNestLoopState
 	/* State for hashing batch strategy */
 
 	/*
-	 * This hash table stores instance of NLBucketInfo, each of which
+	 * This hash table stores instance of YbNLBucketInfo, each of which
 	 * stores lists of tuples with the same hash value.
 	 */
 	TupleHashTable hashtable;
 	bool hashiterinit;
 	TupleHashIterator hashiter;
-	BucketTupleInfo *current_ht_tuple;
+	YbBucketTupleInfo *current_ht_tuple;
 	TupleHashEntry current_hash_entry;
 	FmgrInfo *outerHashFunctions;
 	FmgrInfo *innerHashFunctions;
@@ -2301,13 +2301,13 @@ typedef struct YbBatchedNestLoopState
 	ExprState *ht_lookup_fn;
 
 	/* Function pointers to local join methods */
-	FlushTupleFn_t FlushTupleImpl;
-	GetNewOuterTupleFn_t GetNewOuterTupleImpl;
-	ResetBatchFn_t ResetBatchImpl;
-	RegisterOuterMatchFn_t RegisterOuterMatchImpl;
-	AddTupleToOuterBatchFn_t AddTupleToOuterBatchImpl;
-	FreeBatchFn_t FreeBatchImpl;
-	EndFn_t EndImpl;
+	YbFlushTupleFn_t FlushTupleImpl;
+	YbGetNewOuterTupleFn_t GetNewOuterTupleImpl;
+	YbResetBatchFn_t ResetBatchImpl;
+	YbRegisterOuterMatchFn_t RegisterOuterMatchImpl;
+	YbAddTupleToOuterBatchFn_t AddTupleToOuterBatchImpl;
+	YbFreeBatchFn_t FreeBatchImpl;
+	YbEndFn_t EndImpl;
 } YbBatchedNestLoopState;
 
 /* ----------------

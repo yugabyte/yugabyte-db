@@ -200,8 +200,8 @@ typedef struct IndexScanDescData
 	 *       have plan information in scan state structures.
 	 */
 	Scan *yb_scan_plan;
-	PushdownExprs *yb_rel_pushdown;
-	PushdownExprs *yb_idx_pushdown;
+	YbPushdownExprs *yb_rel_pushdown;
+	YbPushdownExprs *yb_idx_pushdown;
 	List *yb_aggrefs;				/* aggregate information for aggregate pushdown */
 	TupleTableSlot *yb_agg_slot;	/* scan slot used by aggregate pushdown */
 	int yb_distinct_prefixlen; /* prefix length, in columns, of a distinct index scan */

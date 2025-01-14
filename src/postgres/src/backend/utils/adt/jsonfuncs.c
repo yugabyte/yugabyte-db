@@ -141,7 +141,7 @@ typedef struct JHashState
 } JHashState;
 
 /* State for json_validate_object_keys */
-typedef struct ValidateOkeysState
+typedef struct YbValidateOkeysState
 {
 	JsonLexContext *lex;
 	/* The set of keys the json object should contain */
@@ -166,7 +166,7 @@ typedef struct ValidateOkeysState
 	/* The actual json being processed, convenience object
 	 * for printing descriptive error messages */
 	char	*json_text;
-} ValidateOkeysState;
+} YbValidateOkeysState;
 
 /* hashtable element */
 typedef struct JsonHashEntry
@@ -840,7 +840,7 @@ okeys_scalar(void *state, char *token, JsonTokenType tokentype)
 static void
 validate_okeys_object_field_start(void *state, char *fname, bool isnull)
 {
-	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+	YbValidateOkeysState *_state = (YbValidateOkeysState *) state;
 
 	/* only verifying keys for the top level object */
 	if (_state->lex->lex_level != 1)
@@ -875,7 +875,7 @@ validate_okeys_object_field_start(void *state, char *fname, bool isnull)
 static void
 validate_okeys_object_end(void *state)
 {
-	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+	YbValidateOkeysState *_state = (YbValidateOkeysState *) state;
 
 	/* Nothing to do for nested objects */
 	if (_state->lex->lex_level > 0)
@@ -897,7 +897,7 @@ validate_okeys_object_end(void *state)
 static void
 validate_okeys_array_start(void *state)
 {
-	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+	YbValidateOkeysState *_state = (YbValidateOkeysState *) state;
 
 	/* top level must be a json object */
 	if (_state->lex->lex_level == 0)
@@ -910,7 +910,7 @@ validate_okeys_array_start(void *state)
 static void
 validate_okeys_scalar(void *state, char *token, JsonTokenType tokentype)
 {
-	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+	YbValidateOkeysState *_state = (YbValidateOkeysState *) state;
 
 	/* top level must be a json object */
 	if (_state->lex->lex_level == 0)
@@ -5728,12 +5728,12 @@ int get_json_array_length(text *json)
 
 void validate_json_object_keys(text *json, char **required_keys, int num_required_keys, char **optional_keys, int num_optional_keys)
 {
-	ValidateOkeysState  *state;
+	YbValidateOkeysState  *state;
 	JsonLexContext *lex;
 	JsonSemAction *sem;
 
 	lex = makeJsonLexContext(json, true);
-	state = palloc0(sizeof(ValidateOkeysState));
+	state = palloc0(sizeof(YbValidateOkeysState));
 	sem = palloc0(sizeof(JsonSemAction));
 
 	state->lex = lex;

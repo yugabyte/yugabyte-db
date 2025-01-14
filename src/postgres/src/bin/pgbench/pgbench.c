@@ -501,7 +501,7 @@ YbcYsqlBenchMetricEntry *ysql_bench_metric_entry = NULL;
 /*
  * Struct to keep random state.
  */
-typedef struct RandomState
+typedef struct YbRandomState
 {
 	unsigned short xseed[3];
 
@@ -511,7 +511,7 @@ typedef struct RandomState
 	 * - Remove this attribute from the structure.
 	 */
 	unsigned short data[3];
-} RandomState;
+} YbRandomState;
 
 /*
  * Error status for errors during script execution.
@@ -561,16 +561,16 @@ typedef struct Variables
  * Data structure for repeating a transaction from the beginnning with the same
  * parameters.
  */
-typedef struct RetryState
+typedef struct YbRetryState
 {
-	RandomState random_state;	/* random seed */
+	YbRandomState random_state;	/* random seed */
 	Variables   variables;		/* client variables */
-} RetryState;
+} YbRetryState;
 
 /*
  * For the failures during script execution.
  */
-typedef enum FailureStatus
+typedef enum YbFailureStatus
 {
 	NO_FAILURE = 0,
 	ANOTHER_FAILURE,			/* other failures that are not listed by
@@ -578,14 +578,14 @@ typedef enum FailureStatus
 	SERIALIZATION_FAILURE,
 	DEADLOCK_FAILURE,
 	IN_FAILED_SQL_TRANSACTION
-} FailureStatus;
+} YbFailureStatus;
 
-typedef struct Failure
+typedef struct YbFailure
 {
-	FailureStatus status;		/* type of the failure */
+	YbFailureStatus status;		/* type of the failure */
 	int			command;		/* command number in script where the failure
 								 * occurred */
-} Failure;
+} YbFailure;
 
 /*
  * Connection state machine states.
@@ -714,7 +714,7 @@ typedef struct
 	 */
 #ifdef YB_TODO
 	/* Need to replace this with Postgres's implementation. */
-	RandomState random_state;	/* separate randomness for each client */
+	YbRandomState random_state;	/* separate randomness for each client */
 #endif
 	pg_prng_state cs_func_rs;
 
@@ -752,11 +752,11 @@ typedef struct
 	 * For processing errors and repeating transactions with serialization or
 	 * deadlock failures:
 	 */
-	Failure		first_failure;	/* status and command number of the first
+	YbFailure	first_failure;	/* status and command number of the first
 								 * failure in the current transaction execution;
 								 * status NO_FAILURE if there were no failures
 								 * or errors */
-	RetryState  retry_state;
+	YbRetryState retry_state;
 	uint32			retries;	/* how many times have we already retried the
 								 * current transaction? */
 } CState;
@@ -778,10 +778,10 @@ typedef struct
 	 */
 #ifdef YB_TODO
 	/* Need to replace this with Postgres's implementation. */
-	RandomState ts_choose_rs;	/* random state for selecting a script */
-	RandomState ts_throttle_rs; /* random state for transaction throttling */
-	RandomState ts_sample_rs;	/* random state for log sampling */
-	RandomState random_state; 	/* separate randomness for each thread */
+	YbRandomState ts_choose_rs;	/* random state for selecting a script */
+	YbRandomState ts_throttle_rs; /* random state for transaction throttling */
+	YbRandomState ts_sample_rs;	/* random state for log sampling */
+	YbRandomState random_state; 	/* separate randomness for each thread */
 #endif
 	pg_prng_state ts_choose_rs; /* random state for selecting a script */
 	pg_prng_state ts_throttle_rs;	/* random state for transaction throttling */
@@ -895,7 +895,7 @@ static ParsedScript sql_script[MAX_SCRIPTS];	/* SQL script files */
 static int	num_scripts;		/* number of scripts in sql_script[] */
 static int64 total_weight = 0;
 
-typedef enum DebugLevel
+typedef enum YbDebugLevel
 {
 	NO_DEBUG = 0,				/* no debugging output (except PGBENCH_DEBUG) */
 	DEBUG_FAILS,				/* print only failure messages, errors and
@@ -903,9 +903,9 @@ typedef enum DebugLevel
 	DEBUG_ALL,					/* print all debugging output (throttling,
 								 * executed/sent/received commands etc.) */
 	NUM_DEBUGLEVEL
-} DebugLevel;
+} YbDebugLevel;
 
-static DebugLevel debug_level = NO_DEBUG;	/* debug flag */
+static YbDebugLevel debug_level = NO_DEBUG;	/* debug flag */
 static const char *DEBUGLEVEL[] = {"no", "fails", "all"};
 
 static bool verbose_errors = false; /* print verbose messages of all errors */
@@ -956,7 +956,7 @@ static const BuiltinScript builtin_script[] =
 	}
 };
 
-typedef enum ErrorLevel
+typedef enum YbErrorLevel
 {
 	/*
 	 * To report throttling, executed/sent/received commands etc.
@@ -985,28 +985,28 @@ typedef enum ErrorLevel
 	 * To report the error messages of the main program and to exit immediately.
 	 */
 	ELEVEL_FATAL
-} ErrorLevel;
+} YbErrorLevel;
 
-typedef struct ErrorData
+typedef struct YbErrorData
 {
-	ErrorLevel	elevel;
+	YbErrorLevel elevel;
 	PQExpBufferData message;
-} ErrorData;
+} YbErrorData;
 
-typedef ErrorData *Error;
+typedef YbErrorData *YbError;
 
 #if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
-/* use the local ErrorData in ereport */
-#define LOCAL_ERROR_DATA()	ErrorData edata;
+/* use the local YbErrorData in ereport */
+#define LOCAL_ERROR_DATA()	YbErrorData edata;
 
 #define errstart(elevel)	errstartImpl(&edata, elevel)
 #define errmsg(...)			errmsgImpl(&edata, __VA_ARGS__)
 #define errfinish(...)		errfinishImpl(&edata, __VA_ARGS__)
 #else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
-/* use the global ErrorData in ereport... */
+/* use the global YbErrorData in ereport... */
 #define LOCAL_ERROR_DATA()
-static ErrorData edata;
-static Error error = &edata;
+static YbErrorData edata;
+static YbError error = &edata;
 
 /* ...and protect it with a mutex if necessary */
 #ifdef ENABLE_THREAD_SAFETY
@@ -1069,7 +1069,7 @@ static void setDoubleValue(PgBenchValue *pv, double dval);
 static bool evaluateExpr(CState *st, PgBenchExpr *expr,
 						 PgBenchValue *retval);
 static ConnectionStateEnum executeMetaCommand(CState *st, pg_time_usec_t *now,
-											  FailureStatus *failure_status);
+											  YbFailureStatus *failure_status);
 static void doLog(TState *thread, CState *st,
 				  StatsData *agg, bool skipped, double latency, double lag);
 static void processXactStats(TState *thread, CState *st, pg_time_usec_t *now,
@@ -1086,12 +1086,12 @@ static int	wait_on_socket_set(socket_set *sa, int64 usecs);
 static bool socket_has_input(socket_set *sa, int fd, int idx);
 
 #if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
-static bool errstartImpl(Error error, ErrorLevel elevel);
-static int  errmsgImpl(Error error,
+static bool errstartImpl(YbError error, YbErrorLevel elevel);
+static int  errmsgImpl(YbError error,
 					   const char *fmt,...) pg_attribute_printf(2, 3);
-static void errfinishImpl(Error error, int dummy,...);
+static void errfinishImpl(YbError error, int dummy,...);
 #else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
-static bool errstartImpl(ErrorLevel elevel);
+static bool errstartImpl(YbErrorLevel elevel);
 static int  errmsgImpl(const char *fmt,...) pg_attribute_printf(1, 2);
 static void errfinishImpl(int dummy,...);
 #endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
@@ -1340,7 +1340,7 @@ strtodouble(const char *str, bool errorOK, double *dv)
  */
 #ifdef YB_TODO
 static void
-initRandomState(RandomState *random_state)
+initRandomState(YbRandomState *random_state)
 {
 	random_state->data[0] = (unsigned short)
 		(pg_jrand48(base_random_sequence.data) & 0xFFFF);
@@ -1744,7 +1744,7 @@ initStats(StatsData *sd, pg_time_usec_t start)
 static void
 accumStats(StatsData *stats, bool skipped, double lat, double lag,
 		   EStatus estatus, int64 tries,
-		   FailureStatus first_error, int64 retries)
+		   YbFailureStatus first_error, int64 retries)
 {
 	/*
 	 * Record the number of retries regardless of whether the transaction was
@@ -3780,7 +3780,7 @@ preparedStatementName(char *buffer, int file, int state)
  */
 static void
 commandFailed(CState *st, const char *cmd, const char *message,
-			  ErrorLevel elevel)
+			  YbErrorLevel elevel)
 {
 	pg_log_error("client %d aborted in command %d (%s) of script %d; %s",
 				 st->id, st->command, cmd, st->use_file, message);
@@ -3996,7 +3996,7 @@ canRetryError(EStatus estatus)
 /*
  * Get the failure status from the error code.
  */
-static FailureStatus
+static YbFailureStatus
 getFailureStatus(char *sqlState)
 {
 	if (sqlState)
@@ -4023,7 +4023,7 @@ getFailureStatus(char *sqlState)
  */
 static bool
 readCommandResponse(CState *st, MetaCommand meta, char *varprefix,
-					FailureStatus *failure_status)
+					YbFailureStatus *failure_status)
 {
 #ifdef YB_TODO
 	/* Need to replace Yugabyte'code with Postgres's implementation. */
@@ -4284,7 +4284,7 @@ getTotalCnt(const CState *st)
  * Copy an array of random state.
  */
 static void
-copyRandomState(RandomState *destination, const RandomState *source)
+copyRandomState(YbRandomState *destination, const YbRandomState *source)
 {
 	memcpy(destination->data, source->data, sizeof(unsigned short) * 3);
 }
@@ -4346,7 +4346,7 @@ YbCopyVariables(Variables *destination_vars, const Variables *source_vars)
  * Returns true if this type of failure can be retried.
  */
 static bool
-canRetryFailure(FailureStatus failure_status)
+canRetryFailure(YbFailureStatus failure_status)
 {
 	return (failure_status == SERIALIZATION_FAILURE ||
 			failure_status == DEADLOCK_FAILURE);
@@ -4369,7 +4369,7 @@ canRetry(CState *st, pg_time_usec_t *now)
 static bool
 canRetry(CState *st, instr_time *now)
 {
-	FailureStatus failure_status = st->first_failure.status;
+	YbFailureStatus failure_status = st->first_failure.status;
 
 	Assert(failure_status != NO_FAILURE);
 
@@ -4632,7 +4632,7 @@ printVerboseErrorMessages(CState *st, pg_time_usec_t *now, bool is_retry)
 static void
 advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 {
-	FailureStatus failure_status = NO_FAILURE;
+	YbFailureStatus failure_status = NO_FAILURE;
 
 	/*
 	 * gettimeofday() isn't free, so we get the current timestamp lazily the
@@ -5505,7 +5505,7 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
  * take no time to execute.
  */
 static ConnectionStateEnum
-executeMetaCommand(CState *st, pg_time_usec_t *now, FailureStatus *failure_status)
+executeMetaCommand(CState *st, pg_time_usec_t *now, YbFailureStatus *failure_status)
 {
 #ifdef YB_TODO
 /* Need to replace Yugabyte's code with Postgres's implementation. */
@@ -9333,9 +9333,9 @@ socket_has_input(socket_set *sa, int fd, int idx)
  */
 static bool
 #if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
-errstartImpl(Error error, ErrorLevel elevel)
+errstartImpl(YbError error, YbErrorLevel elevel)
 #else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
-errstartImpl(ErrorLevel elevel)
+errstartImpl(YbErrorLevel elevel)
 #endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
 {
 	bool		start_error_reporting;
@@ -9394,7 +9394,7 @@ errstartImpl(ErrorLevel elevel)
  */
 static int
 #if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
-errmsgImpl(Error error, const char *fmt,...)
+errmsgImpl(YbError error, const char *fmt,...)
 #else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
 errmsgImpl(const char *fmt,...)
 #endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
@@ -9429,20 +9429,20 @@ errmsgImpl(const char *fmt,...)
  * Print the appropriate error report to stderr.
  *
  * If elevel is ELEVEL_FATAL or worse, control does not return to the caller.
- * See ErrorLevel enumeration for the error level definitions.
+ * See YbErrorLevel enumeration for the error level definitions.
  *
  * If the error message buffer is empty or broken, prints a corresponding error
  * message and exits the program.
  */
 static void
 #if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
-errfinishImpl(Error error, int dummy,...)
+errfinishImpl(YbError error, int dummy,...)
 #else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
 errfinishImpl(int dummy,...)
 #endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
 {
 	bool		error_during_reporting = false;
-	ErrorLevel  elevel;
+	YbErrorLevel  elevel;
 
 	Assert(error);
 	elevel = error->elevel;

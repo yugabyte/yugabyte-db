@@ -152,11 +152,11 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_REVOKE) \
 	X(CMDTAG_SECURITY_LABEL)
 
-typedef struct NewRelMapEntry
+typedef struct YbNewRelMapEntry
 {
 	Oid relfile_oid;
 	char *rel_name;
-} NewRelMapEntry;
+} YbNewRelMapEntry;
 
 Oid
 SPI_GetOid(HeapTuple spi_tuple, int column_id)
@@ -280,7 +280,7 @@ ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
 						errdetail("%s", kManualReplicationErrorMsg)));
 
 	// Add the new relation to the list of relations to replicate.
-	NewRelMapEntry *new_rel_entry = palloc(sizeof(struct NewRelMapEntry));
+	YbNewRelMapEntry *new_rel_entry = palloc(sizeof(struct YbNewRelMapEntry));
 	new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
 	new_rel_entry->rel_name = pstrdup(RelationGetRelationName(rel));
 
@@ -321,7 +321,7 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 		Oid rewritten_index_oid = SPI_GetOid(spi_tuple, 1);
 		Relation rewritten_index = RelationIdGetRelation(rewritten_index_oid);
 
-		NewRelMapEntry *rewritten_index_entry = palloc(sizeof(struct NewRelMapEntry));
+		YbNewRelMapEntry *rewritten_index_entry = palloc(sizeof(struct YbNewRelMapEntry));
 		rewritten_index_entry->relfile_oid = YbGetRelfileNodeId(rewritten_index);
 		rewritten_index_entry->rel_name = pstrdup(RelationGetRelationName(rewritten_index));
 		*new_rel_list = lappend(*new_rel_list, rewritten_index_entry);
@@ -438,7 +438,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		ListCell *l;
 		foreach (l, new_rel_list)
 		{
-			NewRelMapEntry *entry = (NewRelMapEntry *) lfirst(l);
+			YbNewRelMapEntry *entry = (YbNewRelMapEntry *) lfirst(l);
 
 			(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 			AddNumericJsonEntry(state, "relfile_oid", entry->relfile_oid);

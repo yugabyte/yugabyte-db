@@ -265,7 +265,7 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 					  char *yb_plugin_name,
 					  CRSSnapshotAction yb_snapshot_action,
 					  uint64_t *yb_consistent_snapshot_time,
-					  CRSLsnType lsn_type)
+					  YbCRSLsnType lsn_type)
 {
 	ReplicationSlot *slot = NULL;
 	int			i;

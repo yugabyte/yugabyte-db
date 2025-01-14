@@ -5271,14 +5271,14 @@ pull_paramids_walker(Node *node, Bitmapset **context)
 								  (void *) context);
 }
 
-typedef struct replace_varnos_context
+typedef struct
 {
 	Index oldvarno;
 	Index newvarno;
-} replace_varnos_context;
+} yb_replace_varnos_context;
 
 static Node *yb_copy_replace_varnos_mutator(Node *node,
-											replace_varnos_context *context)
+											yb_replace_varnos_context *context)
 {
 	if (node == NULL)
 		return NULL;
@@ -5301,7 +5301,7 @@ static Node *yb_copy_replace_varnos_mutator(Node *node,
 
 Expr *yb_copy_replace_varnos(Expr *expr, Index oldvarno, Index newvarno)
 {
-	replace_varnos_context ctx;
+	yb_replace_varnos_context ctx;
 	ctx.oldvarno = oldvarno;
 	ctx.newvarno = newvarno;
 	return (Expr *) yb_copy_replace_varnos_mutator((Node *) expr,

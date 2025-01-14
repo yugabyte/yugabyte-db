@@ -101,7 +101,7 @@ typedef struct
 	/* TODO(neil) For completeness, we should process "split_options" here to cache partitioning
 	 * information in Postgres relation objects. This is important for choosing query plan.
 	 *
-	 * OptSplit   *split_options;
+	 * YbOptSplit   *split_options;
 	 */
 
 	Oid			relOid;			/* OID of a relation, either from rel (for ALTER),

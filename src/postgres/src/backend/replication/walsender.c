@@ -1024,7 +1024,7 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 						   bool *reserve_wal,
 						   CRSSnapshotAction *snapshot_action,
 						   bool *two_phase,
-						   CRSLsnType *lsn_type)
+						   YbCRSLsnType *lsn_type)
 {
 	ListCell   *lc;
 	bool		snapshot_action_given = false;
@@ -1131,7 +1131,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	bool		reserve_wal = false;
 	bool		two_phase = false;
 	CRSSnapshotAction snapshot_action = CRS_EXPORT_SNAPSHOT;
-	CRSLsnType lsn_type = CRS_SEQUENCE;
+	YbCRSLsnType lsn_type = CRS_SEQUENCE;
 	DestReceiver *dest;
 	TupOutputState *tstate;
 	TupleDesc	tupdesc;

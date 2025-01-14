@@ -799,11 +799,11 @@ char *get_record_string_value(
     uint32_t type_id, uintptr_t datum) {
   const auto &att_pbs = composite_atts_map.at(type_id);
   size_t natts = att_pbs.size();
-  PgAttributeRow *attrs[natts];
+  YbPgAttributeRow *attrs[natts];
   for (size_t i = 0; i < natts; i++) {
     const auto &att_pb = att_pbs[i];
-    PgAttributeRow *pg_att =
-        reinterpret_cast<PgAttributeRow *>(malloc(sizeof(struct PgAttributeRow)));
+    YbPgAttributeRow *pg_att =
+        reinterpret_cast<YbPgAttributeRow *>(malloc(sizeof(struct YbPgAttributeRow)));
     *pg_att = {att_pb.attrelid(),           "",
                att_pb.atttypid(),           att_pb.attstattarget(),
                (int16_t)att_pb.attlen(),    (int16_t)att_pb.attnum(),
