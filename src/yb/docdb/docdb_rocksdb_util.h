@@ -17,7 +17,6 @@
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb_statistics.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"

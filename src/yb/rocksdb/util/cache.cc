@@ -605,29 +605,27 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
         e->query_id = kInMultiTouchId;
         single_touch_sub_cache_.DecrementUsage(e->charge);
         multi_touch_sub_cache_.IncrementUsage(e->charge);
-       if (metrics_) {
-         metrics_->multi_touch_cache_usage->IncrementBy(e->charge);
-         metrics_->single_touch_cache_usage->DecrementBy(e->charge);
-       }
+        if (metrics_) {
+          metrics_->multi_touch_cache_usage->IncrementBy(e->charge);
+          metrics_->single_touch_cache_usage->DecrementBy(e->charge);
+        }
       }
     }
     if (statistics != nullptr) {
       // overall cache hit
-      RecordTick(statistics, BLOCK_CACHE_HIT);
+      statistics->recordTick(BLOCK_CACHE_HIT);
       // total bytes read from cache
-      RecordTick(statistics, BLOCK_CACHE_BYTES_READ, e->charge);
+      statistics->recordTick(BLOCK_CACHE_BYTES_READ, e->charge);
       if (e->GetSubCacheType() == SubCacheType::SINGLE_TOUCH) {
-        RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_HIT);
-        RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ, e->charge);
+        statistics->recordTick(BLOCK_CACHE_SINGLE_TOUCH_HIT);
+        statistics->recordTick(BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ, e->charge);
       } else if (e->GetSubCacheType() == SubCacheType::MULTI_TOUCH) {
-        RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_HIT);
-        RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_BYTES_READ, e->charge);
+        statistics->recordTick(BLOCK_CACHE_MULTI_TOUCH_HIT);
+        statistics->recordTick(BLOCK_CACHE_MULTI_TOUCH_BYTES_READ, e->charge);
       }
     }
   } else {
-    if (statistics != nullptr) {
-      RecordTick(statistics, BLOCK_CACHE_MISS);
-    }
+    RecordTick(statistics, BLOCK_CACHE_MISS);
   }
 
   if (metrics_ != nullptr) {

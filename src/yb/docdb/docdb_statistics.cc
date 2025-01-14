@@ -379,34 +379,28 @@ size_t DumpRocksDBStatistics(
 
 } // namespace
 
-DocDBStatistics::DocDBStatistics():
-    regulardb_statistics_(std::make_unique<rocksdb::ScopedStatistics>()),
-    intentsdb_statistics_(std::make_unique<rocksdb::ScopedStatistics>()) {}
-
-DocDBStatistics::~DocDBStatistics() {}
-
-rocksdb::Statistics* DocDBStatistics::RegularDBStatistics() const {
-  return regulardb_statistics_.get();
+rocksdb::Statistics* DocDBStatistics::RegularDBStatistics() {
+  return &regulardb_statistics_;
 }
 
-rocksdb::Statistics* DocDBStatistics::IntentsDBStatistics() const {
-  return intentsdb_statistics_.get();
+rocksdb::Statistics* DocDBStatistics::IntentsDBStatistics() {
+  return &intentsdb_statistics_;
 }
 
 void DocDBStatistics::MergeAndClear(
     rocksdb::Statistics* regulardb_statistics,
     rocksdb::Statistics* intentsdb_statistics) {
-  regulardb_statistics_->MergeAndClear(regulardb_statistics);
-  intentsdb_statistics_->MergeAndClear(intentsdb_statistics);
+  regulardb_statistics_.MergeAndClear(regulardb_statistics);
+  intentsdb_statistics_.MergeAndClear(intentsdb_statistics);
 }
 
 size_t DocDBStatistics::Dump(std::stringstream* out) const {
   size_t dumped = 0;
   dumped += DumpRocksDBStatistics(
-      *regulardb_statistics_, std::span{kRegularDBTickers}, std::span{kRegularDBEventStats},
+      regulardb_statistics_, std::span{kRegularDBTickers}, std::span{kRegularDBEventStats},
       "" /* name_prefix */, out);
   dumped += DumpRocksDBStatistics(
-      *intentsdb_statistics_, std::span{kIntentsDBTickers}, std::span{kIntentsDBEventStats},
+      intentsdb_statistics_, std::span{kIntentsDBTickers}, std::span{kIntentsDBEventStats},
       "intentsdb_" /* name_prefix */, out);
   return dumped;
 }
@@ -414,11 +408,11 @@ size_t DocDBStatistics::Dump(std::stringstream* out) const {
 void DocDBStatistics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
   auto* metrics = response->mutable_metrics();
   CopyRocksDBStatisticsToPgsqlResponse(
-      *regulardb_statistics_, std::span{kRegularDBTickers}, std::span{kRegularDBEventStats},
+      regulardb_statistics_, std::span{kRegularDBTickers}, std::span{kRegularDBEventStats},
       metrics);
   if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_intentsdb_metrics)) {
     CopyRocksDBStatisticsToPgsqlResponse(
-        *intentsdb_statistics_, std::span{kIntentsDBTickers}, std::span{kIntentsDBEventStats},
+        intentsdb_statistics_, std::span{kIntentsDBTickers}, std::span{kIntentsDBEventStats},
         metrics);
   }
 }

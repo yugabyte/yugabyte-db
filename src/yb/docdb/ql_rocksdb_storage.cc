@@ -26,6 +26,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/docdb_statistics.h"
 
 #include "yb/rocksdb/util/statistics.h"
 
@@ -664,9 +665,11 @@ Result<YQLStorageIf::SampleBlocksData> QLRocksDBStorage::GetSampleBlocks(
     ScopedStats(const DocDB& doc_db_, int vlog_level_) : doc_db(doc_db_), vlog_level(vlog_level_) {}
 
     ~ScopedStats() {
-      std::stringstream ss;
-      docdb_stats.Dump(&ss);
-      VLOG(vlog_level) << "DocDB stats:\n" << ss.str();
+      if (VLOG_IS_ON(vlog_level)) {
+        std::stringstream ss;
+        docdb_stats.Dump(&ss);
+        VLOG(vlog_level) << "DocDB stats:\n" << ss.str();
+      }
       docdb_stats.MergeAndClear(
           doc_db.regular->GetOptions().statistics.get(),
           doc_db.intents->GetOptions().statistics.get());

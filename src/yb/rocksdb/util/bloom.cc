@@ -173,109 +173,82 @@ char* FullFilterBitsBuilder::ReserveSpace(const int num_entry,
 
 class FullFilterBitsReader : public FilterBitsReader {
  public:
-  explicit FullFilterBitsReader(const Slice& contents, Logger* logger)
-      : logger_(logger),
-        data_(const_cast<char*>(contents.cdata())),
-        data_len_(static_cast<uint32_t>(contents.size())),
-        num_probes_(0),
-        num_lines_(0) {
+  FullFilterBitsReader(Slice contents, Logger* logger)
+      : data_(contents.cdata()) {
     assert(data_);
-    GetFilterMeta(contents, &num_probes_, &num_lines_);
+    GetFilterMeta(contents);
     // Sanitize broken parameters
-    if (num_lines_ != 0 && data_len_ != num_lines_ * CACHE_LINE_SIZE +
-        FullFilterBitsBuilder::kMetaDataSize) {
+    if (num_lines_ != 0 &&
+        contents.size() != num_lines_ * CACHE_LINE_SIZE + FullFilterBitsBuilder::kMetaDataSize) {
       RLOG(InfoLogLevel::ERROR_LEVEL, logger, "Bloom filter data is broken, won't be used.");
       FAIL_IF_NOT_PRODUCTION();
-      num_lines_ = 0;
-      num_probes_ = 0;
+      failed_result_ = true;
     }
   }
 
-  ~FullFilterBitsReader() {}
+  // No Copy allowed
+  FullFilterBitsReader(const FullFilterBitsReader&) = delete;
+  void operator=(const FullFilterBitsReader&) = delete;
 
-  bool MayMatch(const Slice& entry) override {
-    if (data_len_ <= FullFilterBitsBuilder::kMetaDataSize) { // remain same with original filter
-      return false;
+  bool MayMatch(Slice entry) override {
+    if (PREDICT_FALSE(failed_result_.has_value())) {
+      return *failed_result_;
     }
-    // Other Error params, including a broken filter, regarded as match
-    if (num_probes_ == 0 || num_lines_ == 0) return true;
-    uint32_t hash = BloomHash(entry);
-    return HashMayMatch(hash, Slice(data_, data_len_),
-                        num_probes_, num_lines_);
+    return HashMayMatch(BloomHash(entry));
   }
 
  private:
-  Logger* logger_;
   // Filter meta data
-  char* data_;
-  uint32_t data_len_;
-  size_t num_probes_;
-  uint32_t num_lines_;
+  const char* data_;
+  std::optional<bool> failed_result_;
+  size_t num_probes_ = 0;
+  size_t num_lines_ = 0;
 
-  // Get num_probes, and num_lines from filter
+  // Init num_probes_, and num_lines_ from filter
   // If filter format broken, set both to 0.
-  void GetFilterMeta(const Slice& filter, size_t* num_probes,
-                             uint32_t* num_lines);
+  void GetFilterMeta(const Slice& filter);
 
-  // "filter" contains the data appended by a preceding call to
-  // CreateFilterFromHash() on this class.  This method must return true if
-  // the key was in the list of keys passed to CreateFilter().
+  // This method must return true if the key was in the list of keys passed to CreateFilter().
   // This method may return true or false if the key was not on the
   // list, but it should aim to return false with a high probability.
   //
   // hash: target to be checked
-  // filter: the whole filter, including meta data bytes
-  // num_probes: number of probes, read before hand
-  // num_lines: filter metadata, read before hand
-  // Before calling this function, need to ensure the input meta data
-  // is valid.
-  bool HashMayMatch(const uint32_t hash, const Slice& filter,
-      const size_t num_probes, const uint32_t num_lines);
-
-  // No Copy allowed
-  FullFilterBitsReader(const FullFilterBitsReader&);
-  void operator=(const FullFilterBitsReader&);
+  // Before calling this function, need to ensure the input meta data is valid.
+  bool HashMayMatch(const uint32_t hash);
 };
 
-void FullFilterBitsReader::GetFilterMeta(const Slice& filter,
-    size_t* num_probes, uint32_t* num_lines) {
+void FullFilterBitsReader::GetFilterMeta(const Slice& filter) {
   uint32_t len = static_cast<uint32_t>(filter.size());
   if (len <= FullFilterBitsBuilder::kMetaDataSize) {
     // filter is empty or broken
-    *num_probes = 0;
-    *num_lines = 0;
+    failed_result_ = false;
     return;
   }
 
-  *num_probes = filter.data()[len - FullFilterBitsBuilder::kMetaDataSize];
-  *num_lines = DecodeFixed32(filter.data() + len - 4);
+  num_probes_ = filter.data()[len - FullFilterBitsBuilder::kMetaDataSize];
+  num_lines_ = DecodeFixed32(filter.data() + len - 4);
+  if (num_lines_ == 0 || num_probes_ == 0) {
+    failed_result_ = true;
+  }
 }
 
-inline bool FullFilterBitsReader::HashMayMatch(const uint32_t hash, const Slice& filter,
-    const size_t num_probes, const uint32_t num_lines) {
-  uint32_t len = static_cast<uint32_t>(filter.size());
-  if (len <= FullFilterBitsBuilder::kMetaDataSize)
-    return false; // Remain the same with original filter.
-
+inline bool FullFilterBitsReader::HashMayMatch(const uint32_t hash) {
   // It is ensured the params are valid before calling it
-  assert(num_probes != 0);
-  assert(num_lines != 0 &&
-      (len - FullFilterBitsBuilder::kMetaDataSize) % num_lines == 0);
+  assert(num_probes_ != 0);
+  assert(num_lines_ != 0);
   // cache_line_size is calculated here based on filter metadata instead of using CACHE_LINE_SIZE.
   // The reason may be to support deserialization of filters which are already persisted in case we
   // change CACHE_LINE_SIZE or if machine architecture is changed.
-  uint32_t cache_line_size = (len - FullFilterBitsBuilder::kMetaDataSize) / num_lines;
-  const char* data = filter.cdata();
-
   uint32_t h = hash;
   const uint32_t delta = (h >> 17) | (h << 15);  // Rotate right 17 bits
-  uint32_t b = (h % num_lines) * (cache_line_size * 8);
+  constexpr uint32_t kCacheLineSizeBits = CACHE_LINE_SIZE * 8;
+  auto base = data_ + (h % num_lines_) * CACHE_LINE_SIZE;
 
-  for (uint32_t i = 0; i < num_probes; ++i) {
+  for (uint32_t i = 0; i < num_probes_; ++i) {
     // Since CACHE_LINE_SIZE is defined as 2^n, this line will be optimized
     //  to a simple and operation by compiler.
-    const uint32_t bitpos = b + (h % (cache_line_size * 8));
-    if (((data[bitpos / 8]) & (1 << (bitpos % 8))) == 0) {
+    const uint32_t bitpos = h % kCacheLineSizeBits;
+    if ((base[bitpos / 8] & (1 << (bitpos % 8))) == 0) {
       return false;
     }
 

@@ -424,9 +424,6 @@ void ScopedStatistics::setTickerCount(uint32_t ticker_type, uint64_t count) {
 void ScopedStatistics::recordTick(uint32_t ticker_type, uint64_t count) {
   DCHECK(ticker_type < tickers_.size());
   tickers_[ticker_type] += count;
-  if (ticker_type == CURRENT_VERSION_SST_FILES_SIZE) {
-    recordTick(OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE, count);
-  }
 }
 
 void ScopedStatistics::addHistogram(uint32_t histogram_type, const yb::AggregateStats& stats) {
@@ -448,6 +445,9 @@ void ScopedStatistics::measureTime(uint32_t histogram_type, uint64_t value) {
 
 void ScopedStatistics::MergeAndClear(Statistics* target) {
   CHECK_NOTNULL(target);
+  tickers_[OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE] +=
+      tickers_[CURRENT_VERSION_SST_FILES_SIZE];
+
   for (uint32_t i = 0; i < tickers_.size(); ++i) {
     if (tickers_[i] > 0) {
       target->recordTick(i, tickers_[i]);

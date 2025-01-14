@@ -96,6 +96,8 @@ class BloomFilterAwareFileFilter : public TableAwareReadFileFilter {
       TableReader* reader) const override;
 };
 
+class BinarySearchIndexReader;
+
 // A Table is a sorted map from strings to strings.  Tables are
 // immutable and persistent.  A Table may be safely accessed from
 // multiple threads without external synchronization.
@@ -293,8 +295,7 @@ class BlockBasedTable : public TableReader {
   // Optionally, user can pass a preloaded meta_index_iter for the index that
   // need to access extra meta blocks for index construction. This parameter
   // helps avoid re-reading meta index block if caller already created one.
-  Status CreateDataBlockIndexReader(
-      std::unique_ptr<IndexReader>* index_reader,
+  yb::Result<std::unique_ptr<IndexReader>> CreateDataBlockIndexReader(
       InternalIterator* preloaded_meta_index_iter = nullptr);
 
   // Converts an index entry (i.e. an encoded BlockHandle) into an iterator over the contents of
@@ -307,7 +308,8 @@ class BlockBasedTable : public TableReader {
       const ReadOptions& ro, CachableEntry<Block>* block, BlockType block_type,
       BlockIter* input_iter);
 
-  bool NonBlockBasedFilterKeyMayMatch(FilterBlockReader* filter, const Slice& filter_key) const;
+  bool NonBlockBasedFilterKeyMayMatch(
+      FilterBlockReader* filter, Slice filter_key, Statistics* statistics) const;
 
   Status ReadPropertiesBlock(InternalIterator* meta_iter);
 
@@ -322,7 +324,7 @@ class BlockBasedTable : public TableReader {
       size_t* filter_size = nullptr, Statistics* statistics = nullptr);
 
   // CreateFilterIndexReader from sst
-  Status CreateFilterIndexReader(std::unique_ptr<IndexReader>* filter_index_reader);
+  yb::Result<std::unique_ptr<BinarySearchIndexReader>> CreateFilterIndexReader();
 
   // Helper function to setup the cache key's prefix for block of file passed within a reader
   // instance. Used for both data and metadata files.
