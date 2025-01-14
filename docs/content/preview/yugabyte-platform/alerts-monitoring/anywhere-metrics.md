@@ -133,6 +133,7 @@ Resource metrics should be considered on a per-node basis.
 | --------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------------- |
 | Total YSQL Ops / sec  | The number of various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Total YSQL Ops / sec](/images/yp/metrics101.png) |
 | YSQL Op Latency (Avg) | The average time taken by various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![YSQL Op Latency (Avg)](/images/yp/metrics102.png) |
+| Catalog Cache Misses | | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Catalog Cache Misses](/images/yp/metrics114.png) 
 
 ### YCQL advanced
 
