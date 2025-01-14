@@ -113,7 +113,7 @@ These metrics are available per tablet and can be aggregated across the entire c
 
 ## Catalog cache misses
 
-During YSQL query processing, system catalog (pg_catalog) tables that live on the yb-master may need to be consulted. This can make initial queries or queries after a DDL change slow until the corresponding cache is warmed up. The following table describes metrics for the specific pg_catalog tables which were not found in the cache and required a yb-master lookup. Such tables can then be preloaded by using [a tserver gflag](../../../reference/configuration/yb-tserver/#ysql-catalog-preload-additional-table-list).
+During YSQL query processing, system catalog (pg_catalog) tables that live on the yb-master are cached locally on the YSQL backend. Misses on this cache can make initial queries or queries after a DDL change slow until the corresponding cache is warmed up. The following table describes metrics for the specific pg_catalog tables which were not found in the cache and required a yb-master lookup. Such tables can then be preloaded by using [a tserver gflag](../../../reference/configuration/yb-tserver/#ysql-catalog-preload-additional-table-list).
 
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
