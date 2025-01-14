@@ -117,11 +117,12 @@ YbgStatus YbgDeleteMemoryContext()
 // Types
 //-----------------------------------------------------------------------------
 
-YbgStatus YbgGetTypeTable(const YbcPgTypeEntity **type_table, int *count)
+YbgStatus
+YbgGetTypeTable(YbcPgTypeEntities *types_entities)
 {
 	PG_SETUP_ERROR_REPORTING();
 
-	YbGetTypeTable(type_table, count);
+	*types_entities = YbGetTypeTable();
 
 	PG_STATUS_OK();
 }

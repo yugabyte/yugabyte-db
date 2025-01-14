@@ -99,7 +99,7 @@ class PggateTest : public YBTest {
 //--------------------------------------------------------------------------------------------------
 // Test type table and other variables.
 //--------------------------------------------------------------------------------------------------
-void YBCTestGetTypeTable(const YbcPgTypeEntity **type_table, int *count);
+YbcPgTypeEntities YBCTestGetTypeTable();
 
 //--------------------------------------------------------------------------------------------------
 // Test API

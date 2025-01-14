@@ -144,9 +144,6 @@ Status PggateTest::Init(
   // Init PgGate API.
   CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
 
-  const YbcPgTypeEntity *type_table = nullptr;
-  int count = 0;
-  YBCTestGetTypeTable(&type_table, &count);
   YbcPgCallbacks callbacks;
   YbcPgAshConfig ash_config;
 
@@ -171,7 +168,7 @@ Status PggateTest::Init(
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shm_fd) = tserver_shared_object_.GetFd();
 
-  YBCInitPgGate(type_table, count, callbacks, nullptr, &ash_config);
+  YBCInitPgGate(YBCTestGetTypeTable(), &callbacks, nullptr /* session_id */, &ash_config);
 
   CHECK_YBC_STATUS(YBCPgInitSession(session_stats, false /* is_binary_upgrade */));
   if (should_create_db) {

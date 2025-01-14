@@ -55,7 +55,6 @@ set(PGGATE_SRCS
     pg_tabledesc.cc
     pg_tools.cc
     pg_txn_manager.cc
-    pg_type.cc
     pg_value.cc
     ybc_pggate.cc)
 

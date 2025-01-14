@@ -71,6 +71,7 @@
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_truncate_colocated.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pg_update.h"
@@ -109,9 +110,8 @@ Status AddColumn(
   return create_table.AddColumn(attr_name, attr_num, attr_type, is_hash, is_range, sorting_type);
 }
 
-Result<PgApiContext::MessengerHolder> BuildMessenger(
-    const std::string& client_name,
-    int32_t num_reactors,
+Result<PgApiImpl::MessengerHolder> BuildMessenger(
+    const std::string& client_name, int32_t num_reactors,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::shared_ptr<MemTracker>& parent_mem_tracker) {
   std::unique_ptr<rpc::SecureContext> secure_context;
@@ -120,9 +120,10 @@ Result<PgApiContext::MessengerHolder> BuildMessenger(
         FLAGS_certs_dir,
         rpc::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates)));
   }
-  auto messenger = VERIFY_RESULT(client::CreateClientMessenger(
-      client_name, num_reactors, metric_entity, parent_mem_tracker, secure_context.get()));
-  return PgApiContext::MessengerHolder{std::move(secure_context), std::move(messenger)};
+  return PgApiImpl::MessengerHolder{
+      std::move(secure_context),
+      VERIFY_RESULT(client::CreateClientMessenger(
+          client_name, num_reactors, metric_entity, parent_mem_tracker, secure_context.get()))};
 }
 
 tserver::TServerSharedObject BuildTServerSharedObject() {
@@ -393,6 +394,34 @@ Result<bool> RetrieveYbctidsFromIndex(
   return true;
 }
 
+Result<bool> RetrieveYbctidsImpl(
+    const PgTypeInfo& pg_types, PgDmlRead& dml_read, int natts, size_t max_mem_bytes,
+    std::vector<Slice>& ybctids) {
+  if (dml_read.IsPgSelectIndex()) {
+    return RetrieveYbctidsFromIndex(down_cast<PgSelectIndex&>(dml_read), ybctids, max_mem_bytes);
+  }
+  std::unique_ptr<uint64_t[]> values{new uint64_t[natts]};
+  std::unique_ptr<bool[]> nulls{new bool[natts]};
+  YbcPgSysColumns syscols;
+  size_t consumed_bytes = 0;
+  for(bool has_data = true;;) {
+    RETURN_NOT_OK(dml_read.Fetch(natts, values.get(), nulls.get(), &syscols, &has_data));
+    if (!has_data) {
+      break;
+    }
+    if (syscols.ybctid) {
+      auto s = YbctidAsSlice(pg_types, reinterpret_cast<uint64_t>(syscols.ybctid));
+      const auto sz = s.size();
+      if (consumed_bytes += sz > max_mem_bytes) {
+        return false;
+      }
+      s.relocate(new uint8_t[s.size()]);
+      ybctids.push_back(s);
+    }
+  }
+  return true;
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -407,34 +436,13 @@ size_t PgMemctxHasher::operator()(PgMemctx* value) const {
 
 //--------------------------------------------------------------------------------------------------
 
-PgApiContext::MessengerHolder::MessengerHolder(
-    std::unique_ptr<rpc::SecureContext> security_context_,
-    std::unique_ptr<rpc::Messenger> messenger_)
-    : security_context(std::move(security_context_)), messenger(std::move(messenger_)) {
-}
+PgApiImpl::MessengerHolder::MessengerHolder(
+    std::unique_ptr<rpc::SecureContext>&& security_context_,
+    std::unique_ptr<rpc::Messenger>&& messenger_)
+    : security_context(std::move(security_context_)), messenger(std::move(messenger_)) {}
 
-PgApiContext::MessengerHolder::MessengerHolder(MessengerHolder&& rhs)
-    : security_context(std::move(rhs.security_context)),
-      messenger(std::move(rhs.messenger)) {
-}
-
-PgApiContext::MessengerHolder::~MessengerHolder() {
-}
-
-PgApiContext::PgApiContext()
-    : metric_registry(new MetricRegistry()),
-      metric_entity(METRIC_ENTITY_server.Instantiate(metric_registry.get(), "yb.pggate")),
-      mem_tracker(MemTracker::CreateTracker("PostgreSQL")),
-      messenger_holder(CHECK_RESULT(BuildMessenger("pggate_ybclient",
-                                                   FLAGS_pggate_ybclient_reactor_threads,
-                                                   metric_entity,
-                                                   mem_tracker))),
-      proxy_cache(std::make_unique<rpc::ProxyCache>(messenger_holder.messenger.get())) {
-}
-
-PgApiContext::PgApiContext(PgApiContext&&) = default;
-
-PgApiContext::~PgApiContext() = default;
+PgApiImpl::MessengerHolder::MessengerHolder(MessengerHolder&&) = default;
+PgApiImpl::MessengerHolder::~MessengerHolder() = default;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -574,15 +582,16 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 //--------------------------------------------------------------------------------------------------
 
 PgApiImpl::PgApiImpl(
-    PgApiContext context, const YbcPgTypeEntity *YBCDataTypeArray, int count,
-    YbcPgCallbacks callbacks, std::optional<uint64_t> session_id,
-    const YbcPgAshConfig& ash_config)
-    : metric_registry_(std::move(context.metric_registry)),
-      metric_entity_(std::move(context.metric_entity)),
-      mem_tracker_(std::move(context.mem_tracker)),
-      messenger_holder_(std::move(context.messenger_holder)),
+    YbcPgTypeEntities type_entities, const YbcPgCallbacks& callbacks,
+    std::optional<uint64_t> session_id, const YbcPgAshConfig& ash_config)
+    : pg_types_(type_entities),
+      metric_registry_(new MetricRegistry()),
+      metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "yb.pggate")),
+      mem_tracker_(MemTracker::CreateTracker("PostgreSQL")),
+      messenger_holder_(CHECK_RESULT(BuildMessenger(
+          "pggate_ybclient", FLAGS_pggate_ybclient_reactor_threads, metric_entity_, mem_tracker_))),
       interrupter_(new Interrupter(messenger_holder_.messenger.get())),
-      proxy_cache_(std::move(context.proxy_cache)),
+      proxy_cache_(std::make_unique<rpc::ProxyCache>(messenger_holder_.messenger.get())),
       pg_callbacks_(callbacks),
       wait_event_watcher_(
           [starter = pg_callbacks_.PgstatReportWaitStart](
@@ -595,12 +604,6 @@ PgApiImpl::PgApiImpl(
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_)) {
   CHECK_OK(interrupter_->Start());
   CHECK_OK(clock_->Init());
-
-  // Setup type mapping.
-  for (int idx = 0; idx < count; idx++) {
-    const YbcPgTypeEntity *type_entity = &YBCDataTypeArray[idx];
-    type_map_[type_entity->type_oid] = type_entity;
-  }
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
@@ -617,14 +620,6 @@ PgApiImpl::~PgApiImpl() {
 
 void PgApiImpl::Interrupt() {
   interrupter_->Interrupt();
-}
-
-const YbcPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
-  const auto iter = type_map_.find(type_oid);
-  if (iter != type_map_.end()) {
-    return iter->second;
-  }
-  return nullptr;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1506,40 +1501,6 @@ Status PgApiImpl::SetHashBounds(PgStatement* handle, uint16_t low_bound, uint16_
   return Status::OK();
 }
 
-Slice PgApiImpl::GetYbctidAsSlice(uint64_t ybctid) {
-  char* value = NULL;
-  int64_t bytes = 0;
-  FindTypeEntity(kByteArrayOid)->datum_to_yb(ybctid, &value, &bytes);
-  return Slice(value, bytes);
-}
-
-Result<bool> PgApiImpl::RetrieveYbctidsImpl(
-    PgDmlRead& dml_read, int natts, size_t max_mem_bytes, std::vector<Slice>& ybctids) {
-  if (dml_read.IsPgSelectIndex()) {
-    return RetrieveYbctidsFromIndex(down_cast<PgSelectIndex&>(dml_read), ybctids, max_mem_bytes);
-  }
-  std::unique_ptr<uint64_t[]> values{new uint64_t[natts]};
-  std::unique_ptr<bool[]> nulls{new bool[natts]};
-  YbcPgSysColumns syscols;
-  size_t consumed_bytes = 0;
-  for(bool has_data = true;;) {
-    RETURN_NOT_OK(dml_read.Fetch(natts, values.get(), nulls.get(), &syscols, &has_data));
-    if (!has_data) {
-      break;
-    }
-    if (syscols.ybctid) {
-      auto s = GetYbctidAsSlice(reinterpret_cast<uint64_t>(syscols.ybctid));
-      const auto sz = s.size();
-      if (consumed_bytes += sz > max_mem_bytes) {
-        return false;
-      }
-      s.relocate(new uint8_t[s.size()]);
-      ybctids.push_back(s);
-    }
-  }
-  return true;
-}
-
 Result<bool> PgApiImpl::RetrieveYbctids(
     PgStatement* handle, const YbcPgExecParameters* exec_params, int natts, YbcSliceVector* ybctids,
     size_t* count) {
@@ -1547,7 +1508,7 @@ Result<bool> PgApiImpl::RetrieveYbctids(
   RETURN_NOT_OK(select.Exec(exec_params));
   const auto max_mem_bytes = exec_params->work_mem * 1024L;
   auto vec = std::make_unique<std::vector<Slice>>();
-  if (!VERIFY_RESULT(RetrieveYbctidsImpl(select, natts, max_mem_bytes, *vec))) {
+  if (!VERIFY_RESULT(RetrieveYbctidsImpl(pg_types(), select, natts, max_mem_bytes, *vec))) {
     // delete these allocated ybctids, we won't use them
     for (auto ybctid : *vec) {
       delete[] ybctid.cdata();
