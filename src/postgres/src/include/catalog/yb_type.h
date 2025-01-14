@@ -57,10 +57,7 @@ extern Oid YbGetPrimitiveTypeOid(Oid type_id, char typtype,
  */
 bool YbDataTypeIsValidForKey(Oid type_id);
 
-/*
- * Array of all type entities.
- */
-void YbGetTypeTable(const YbcPgTypeEntity **type_table, int *count);
+extern YbcPgTypeEntities YbGetTypeTable();
 
 /*
  * Callback functions

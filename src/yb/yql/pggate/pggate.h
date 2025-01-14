@@ -55,6 +55,7 @@
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_tools.h"
+#include "yb/yql/pggate/pg_type.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -92,45 +93,29 @@ struct PgMemctxHasher {
 };
 
 //--------------------------------------------------------------------------------------------------
-
-struct PgApiContext {
+// Implements support for CAPI.
+class PgApiImpl {
+ public:
   struct MessengerHolder {
     std::unique_ptr<rpc::SecureContext> security_context;
     std::unique_ptr<rpc::Messenger> messenger;
 
     MessengerHolder(
-        std::unique_ptr<rpc::SecureContext> security_context,
-        std::unique_ptr<rpc::Messenger> messenger);
-    MessengerHolder(MessengerHolder&&);
-
+        std::unique_ptr<rpc::SecureContext>&& security_context_,
+        std::unique_ptr<rpc::Messenger>&& messenger_);
+    MessengerHolder(MessengerHolder&& rhs);
     ~MessengerHolder();
   };
 
-  std::unique_ptr<MetricRegistry> metric_registry;
-  scoped_refptr<MetricEntity> metric_entity;
-  std::shared_ptr<MemTracker> mem_tracker;
-  MessengerHolder messenger_holder;
-  std::unique_ptr<rpc::ProxyCache> proxy_cache;
+  PgApiImpl(
+      YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
+      std::optional<uint64_t> session_id, const YbcPgAshConfig& ash_config);
 
-  PgApiContext();
-  PgApiContext(PgApiContext&&);
-  ~PgApiContext();
-};
-
-//--------------------------------------------------------------------------------------------------
-// Implements support for CAPI.
-class PgApiImpl {
- public:
-  PgApiImpl(PgApiContext context, const YbcPgTypeEntity *YBCDataTypeTable, int count,
-            YbcPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
-            const YbcPgAshConfig& ash_config);
   ~PgApiImpl();
 
   const YbcPgCallbacks* pg_callbacks() {
     return &pg_callbacks_;
   }
-
-  Slice GetYbctidAsSlice(uint64_t ybctid);
 
   // Interrupt aborts all pending RPCs immediately to unblock main thread.
   void Interrupt();
@@ -227,8 +212,7 @@ class PgApiImpl {
 
   void DeleteStatement(PgStatement *handle);
 
-  // Search for type_entity.
-  const YbcPgTypeEntity *FindTypeEntity(int type_oid);
+  const PgTypeInfo& pg_types() const { return pg_types_; }
 
   //------------------------------------------------------------------------------------------------
   // Determine whether the given database is colocated.
@@ -840,9 +824,6 @@ class PgApiImpl {
   Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
 
  private:
-  Result<bool> RetrieveYbctidsImpl(
-      PgDmlRead& dml_read, int natts, size_t max_mem_bytes, std::vector<Slice>& ybctids);
-
   class Interrupter;
 
   class TupleIdBuilder {
@@ -857,6 +838,8 @@ class PgApiImpl {
     size_t counter_ = 0;
   };
 
+  PgTypeInfo pg_types_;
+
   // Metrics.
   std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
@@ -864,7 +847,7 @@ class PgApiImpl {
   // Memory tracker.
   std::shared_ptr<MemTracker> mem_tracker_;
 
-  PgApiContext::MessengerHolder messenger_holder_;
+  MessengerHolder messenger_holder_;
   std::unique_ptr<Interrupter> interrupter_;
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
@@ -882,9 +865,6 @@ class PgApiImpl {
   tserver::TServerSharedObject tserver_shared_object_;
 
   scoped_refptr<PgTxnManager> pg_txn_manager_;
-
-  // Mapping table of YugaByte and PostgreSQL datatypes.
-  std::unordered_map<int, const YbcPgTypeEntity *> type_map_;
 
   scoped_refptr<PgSession> pg_session_;
   std::optional<PgSysTablePrefetcher> pg_sys_table_prefetcher_;

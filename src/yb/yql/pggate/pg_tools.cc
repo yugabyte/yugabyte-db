@@ -29,6 +29,7 @@
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_type.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -290,6 +291,13 @@ Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
   }
 
   return Status::OK();
+}
+
+Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid) {
+  char* value = nullptr;
+  int64_t bytes = 0;
+  pg_types.GetYbctid().datum_to_yb(ybctid, &value, &bytes);
+  return Slice(value, bytes);
 }
 
 } // namespace yb::pggate

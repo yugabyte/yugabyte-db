@@ -178,6 +178,11 @@ typedef struct {
   YbcPgDatumFromData yb_to_datum;
 } YbcPgTypeEntity;
 
+typedef struct {
+  const YbcPgTypeEntity *data;
+  uint32_t count;
+} YbcPgTypeEntities;
+
 // Kind of a datum.
 // In addition to datatype, a "datum" is also specified by "kind".
 // - Standard value.
@@ -197,13 +202,13 @@ typedef enum {
   kHighestPriority
 } YbcTxnPriorityRequirement;
 
-const YbcPgTypeEntity *YBCPgFindTypeEntity(int type_oid);
-
 // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
 static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
 
 // Postgres object identifier (OID) defined in Postgres' postgres_ext.h
 typedef unsigned int YbcPgOid;
+
+const YbcPgTypeEntity *YBCPgFindTypeEntity(YbcPgOid type_oid);
 
 // These OIDs are defined here to work around the build dependency problem.
 // In YBCheckDefinedOids(), we have assertions to ensure that they are in sync

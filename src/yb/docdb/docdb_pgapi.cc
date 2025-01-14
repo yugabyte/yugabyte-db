@@ -29,6 +29,7 @@
 
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_value.h"
+#include "yb/yql/pggate/pg_type.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -89,32 +90,17 @@ Status DocPgInit() {
 // In the future, please discuss with them when calling or using Posgres API.
 //-----------------------------------------------------------------------------
 
-class DocPgTypeAnalyzer {
- public:
-  const YbcPgTypeEntity* GetTypeEntity(int32_t type_oid) {
-    const auto iter = type_map_.find(type_oid);
-    if (iter != type_map_.end()) {
-      return iter->second;
-    }
-    LOG(INFO) << "Could not find type entity for oid " << type_oid;
-    return nullptr;
-  }
+pggate::PgTypeInfo MakePgTypeInfo() {
+    YbcPgTypeEntities table_types = {};
+    YbgGetTypeTable(&table_types);
+    return pggate::PgTypeInfo{table_types};
+}
+
+struct DocPgTypeAnalyzer {
+  const pggate::PgTypeInfo pg_types = MakePgTypeInfo();
 
  private:
-  DocPgTypeAnalyzer() {
-    // Setup type mapping.
-    const YbcPgTypeEntity *type_table;
-    int count;
-
-    YbgGetTypeTable(&type_table, &count);
-    for (int idx = 0; idx < count; idx++) {
-        const YbcPgTypeEntity *type_entity = &type_table[idx];
-        type_map_[type_entity->type_oid] = type_entity;
-    }
-  }
-
-  // Mapping table of YugaByte and PostgreSQL datatypes.
-  std::unordered_map<int, const YbcPgTypeEntity *> type_map_;
+  DocPgTypeAnalyzer() = default;
 
   friend class Singleton<DocPgTypeAnalyzer>;
   DISALLOW_COPY_AND_ASSIGN(DocPgTypeAnalyzer);
@@ -125,7 +111,9 @@ class DocPgTypeAnalyzer {
 //-----------------------------------------------------------------------------
 
 const YbcPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type) {
-    return Singleton<DocPgTypeAnalyzer>::get()->GetTypeEntity(pg_type.type_id);
+  const auto* type = Singleton<DocPgTypeAnalyzer>::get()->pg_types.Find(pg_type.type_id);
+  LOG_IF(INFO, !type) << "Could not find type entity for oid " << pg_type.type_id;
+  return type;
 }
 
 Status DocPgAddVarRef(size_t column_idx,

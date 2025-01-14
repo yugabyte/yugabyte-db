@@ -1495,9 +1495,12 @@ const YbcPgTypeEntity YBCGinNullTypeEntity =
 		(YbcPgDatumToData)YbDatumToGinNull,
 		(YbcPgDatumFromData)YbGinNullToDatum };
 
-void YbGetTypeTable(const YbcPgTypeEntity **type_table, int *count) {
-	*type_table = YbTypeEntityTable;
-	*count = sizeof(YbTypeEntityTable)/sizeof(YbcPgTypeEntity);
+YbcPgTypeEntities
+YbGetTypeTable()
+{
+	return (YbcPgTypeEntities){
+		.data = YbTypeEntityTable,
+		.count = lengthof(YbTypeEntityTable) };
 }
 
 int64_t

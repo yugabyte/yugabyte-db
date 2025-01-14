@@ -23,7 +23,7 @@ static const YbcPgTypeAttrs kYBCTestTypeAttrs = { 0 };
 
 YbcStatus YBCTestCreateTableAddColumn(YbcPgStatement handle, const char *attr_name, int attr_num,
                                       DataType yb_type, bool is_hash, bool is_range) {
-  int pg_type = 0;
+  auto pg_type = kInvalidOid;
   switch (yb_type) {
   case DataType::BOOL:
     pg_type = BOOLOID;

@@ -971,22 +971,21 @@ YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 	 */
 	if (YBIsEnabledInPostgresEnvVar())
 	{
-		const YbcPgTypeEntity *type_table;
-		int count;
-		YbGetTypeTable(&type_table, &count);
-		YbcPgCallbacks callbacks;
-		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
-		callbacks.GetDebugQueryString = &GetDebugQueryString;
-		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
-		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
-		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
-		callbacks.CheckUserMap = &check_usermap;
-		callbacks.PgstatReportWaitStart = &yb_pgstat_report_wait_start;
-		YbcPgAshConfig ash_config;
-		ash_config.metadata = &MyProc->yb_ash_metadata;
-		ash_config.yb_enable_ash = &yb_enable_ash;
+		const YbcPgCallbacks callbacks = {
+			.GetCurrentYbMemctx = &GetCurrentYbMemctx,
+			.GetDebugQueryString = &GetDebugQueryString,
+			.WriteExecOutParam = &YbWriteExecOutParam,
+			.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch,
+			.ConstructArrayDatum = &YbConstructArrayDatum,
+			.CheckUserMap = &check_usermap,
+			.PgstatReportWaitStart = &yb_pgstat_report_wait_start
+		};
+		YbcPgAshConfig ash_config = {
+			.metadata = &MyProc->yb_ash_metadata,
+			.yb_enable_ash = &yb_enable_ash
+		};
 		IpAddressToBytes(&ash_config);
-		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);
+		YBCInitPgGate(YbGetTypeTable(), &callbacks, session_id, &ash_config);
 		YBCInstallTxnDdlHook();
 
 		/*

@@ -68,6 +68,7 @@
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_value.h"
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
@@ -244,7 +245,7 @@ YbcStatus ProcessYbctid(const YbcPgYBTupleIdDescriptor& source, const Processor&
 }
 
 Slice YbctidAsSlice(uint64_t ybctid) {
-  return pgapi->GetYbctidAsSlice(ybctid);
+  return YbctidAsSlice(pgapi->pg_types(), ybctid);
 }
 
 inline std::optional<Bound> MakeBound(YbcPgBoundType type, uint16_t value) {
@@ -254,18 +255,29 @@ inline std::optional<Bound> MakeBound(YbcPgBoundType type, uint16_t value) {
   return Bound{.value = value, .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
 }
 
-Status InitPgGateImpl(const YbcPgTypeEntity* data_type_table,
-                      int count,
-                      const YbcPgCallbacks& pg_callbacks,
-                      uint64_t *session_id,
-                      const YbcPgAshConfig* ash_config) {
-  auto opt_session_id = session_id ? std::optional(*session_id) : std::nullopt;
-  return WithMaskedYsqlSignals(
-    [data_type_table, count, &pg_callbacks, opt_session_id, &ash_config] {
-    YBCInitPgGateEx(
-        data_type_table, count, pg_callbacks, nullptr /* context */, opt_session_id, ash_config);
-    return static_cast<Status>(Status::OK());
-  });
+void InitPgGateImpl(
+    YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
+    const YbcPgAshConfig& ash_config, std::optional<uint64_t> session_id) {
+  // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
+  // However, this is added to allow simulating and testing of some known bugs until we remove
+  // HybridClock usage.
+  server::SkewedClock::Register();
+  server::RegisterClockboundClockProvider();
+
+  InitThreading();
+
+  CHECK(!pgapi) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
+
+  YBCInitFlags();
+
+#ifndef NDEBUG
+  HybridTime::TEST_SetPrettyToString(true);
+#endif
+
+  pgapi_shutdown_done.exchange(false);
+  pgapi = new PgApiImpl(type_entities, pg_callbacks, session_id, ash_config);
+
+  VLOG(1) << "PgGate open";
 }
 
 Status PgInitSessionImpl(YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
@@ -454,11 +466,12 @@ std::string HumanReadableTableType(yb::TableType table_type) {
 }
 
 const YbcPgTypeEntity* GetTypeEntity(
-    int pg_type_oid, int attr_num, YbcPgOid table_oid, YbcTypeEntityProvider type_entity_provider) {
+    YbcPgOid pg_type_oid, int attr_num, YbcPgOid table_oid,
+    YbcTypeEntityProvider type_entity_provider) {
 
   // TODO(23239): Optimize the lookup of type entities for dynamic types.
   return pg_type_oid == kPgInvalidOid ? (*type_entity_provider)(attr_num, table_oid)
-                                      : pgapi->FindTypeEntity(pg_type_oid);
+                                      : pgapi->pg_types().Find(pg_type_oid);
 }
 
 Status YBCGetTableKeyRangesImpl(
@@ -513,42 +526,17 @@ inline YbcPgExplicitRowLockStatus MakePgExplicitRowLockStatus() {
 // C API.
 //--------------------------------------------------------------------------------------------------
 
-void YBCInitPgGateEx(const YbcPgTypeEntity *data_type_table, int count, YbcPgCallbacks pg_callbacks,
-                     PgApiContext* context, std::optional<uint64_t> session_id,
-                     const YbcPgAshConfig* ash_config) {
-  // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
-  // However, this is added to allow simulating and testing of some known bugs until we remove
-  // HybridClock usage.
-  server::SkewedClock::Register();
-  server::RegisterClockboundClockProvider();
-
-  InitThreading();
-
-  CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
-
-  YBCInitFlags();
-
-#ifndef NDEBUG
-  HybridTime::TEST_SetPrettyToString(true);
-#endif
-
-  pgapi_shutdown_done.exchange(false);
-  if (context) {
-    pgapi = new pggate::PgApiImpl(
-        std::move(*context), data_type_table, count, pg_callbacks, session_id, *ash_config);
-  } else {
-    pgapi = new pggate::PgApiImpl(
-        PgApiContext(), data_type_table, count, pg_callbacks, session_id, *ash_config);
-  }
-
-  VLOG(1) << "PgGate open";
-}
-
 extern "C" {
 
-void YBCInitPgGate(const YbcPgTypeEntity *data_type_table, int count, YbcPgCallbacks pg_callbacks,
-                   uint64_t *session_id, const YbcPgAshConfig* ash_config) {
-  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks, session_id, ash_config));
+void YBCInitPgGate(
+    YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks, uint64_t *session_id,
+    const YbcPgAshConfig *ash_config) {
+  CHECK_OK(WithMaskedYsqlSignals([&type_entities, pg_callbacks,  session_id, ash_config] {
+    InitPgGateImpl(
+        type_entities, *pg_callbacks, *ash_config,
+        session_id ? std::optional(*session_id) : std::nullopt);
+    return static_cast<Status>(Status::OK());
+  }));
 }
 
 void YBCDestroyPgGate() {
@@ -662,8 +650,8 @@ YbcStatus YBCPgInvalidateCache() {
   return ToYBCStatus(pgapi->InvalidateCache());
 }
 
-const YbcPgTypeEntity *YBCPgFindTypeEntity(int type_oid) {
-  return pgapi->FindTypeEntity(type_oid);
+const YbcPgTypeEntity *YBCPgFindTypeEntity(YbcPgOid type_oid) {
+  return pgapi->pg_types().Find(type_oid);
 }
 
 int64_t YBCGetPgggateCurrentAllocatedBytes() {
@@ -1452,8 +1440,8 @@ YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_coun
 
 YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor *source, uint64_t *ybctid) {
   return ProcessYbctid(*source, [ybctid](const auto&, const auto& yid) {
-    const auto* type_entity = pgapi->FindTypeEntity(kByteArrayOid);
-    *ybctid = type_entity->yb_to_datum(yid.cdata(), yid.size(), nullptr /* type_attrs */);
+    *ybctid = pgapi->pg_types().GetYbctid().yb_to_datum(
+        yid.cdata(), yid.size(), nullptr /* type_attrs */);
     return Status::OK();
   });
 }
@@ -2665,7 +2653,7 @@ YbcStatus YBCPgGetCDCConsistentChanges(
               &row_message_pb.old_tuple(static_cast<int>(col_idxs.second.first));
           DCHECK(table_oid != kPgInvalidOid);
           const auto* type_entity = GetTypeEntity(
-              static_cast<int>(old_datum_pb->column_type()), old_datum_pb->col_attr_num(),
+              narrow_cast<YbcPgOid>(old_datum_pb->column_type()), old_datum_pb->col_attr_num(),
               table_oid, type_entity_provider);
           auto s = PBToDatum(
               type_entity, type_attrs, old_datum_pb->pg_ql_value(), &before_op_datum,
@@ -2684,7 +2672,7 @@ YbcStatus YBCPgGetCDCConsistentChanges(
               &row_message_pb.new_tuple(static_cast<int>(col_idxs.second.second));
           DCHECK(table_oid != kPgInvalidOid);
           const auto* type_entity = GetTypeEntity(
-              static_cast<int>(new_datum_pb->column_type()), new_datum_pb->col_attr_num(),
+              narrow_cast<YbcPgOid>(new_datum_pb->column_type()), new_datum_pb->col_attr_num(),
               table_oid, type_entity_provider);
           auto s = PBToDatum(
               type_entity, type_attrs, new_datum_pb->pg_ql_value(), &after_op_datum,

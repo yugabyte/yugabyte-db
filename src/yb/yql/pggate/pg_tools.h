@@ -42,6 +42,7 @@
 namespace yb::pggate {
 
 class PgSession;
+class PgTypeInfo;
 
 RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params);
 
@@ -189,5 +190,7 @@ struct YbctidBatch {
   const std::vector<Slice>& ybctids;
   bool keep_order;
 };
+
+Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid);
 
 } // namespace yb::pggate

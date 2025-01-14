@@ -12,10 +12,12 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/pggate/test/pggate_test.h"
 
-namespace yb {
-namespace pggate {
+#include <initializer_list>
+
+namespace yb::pggate {
 
 /***************************************************************************************************
  * Conversion Functions.
@@ -121,10 +123,19 @@ Datum YBCTestFloat8ToDatum(const void *void_data, int64 bytes, const YbcPgTypeAt
   return YBCTestInt64ToDatum(void_data, 0, nullptr);
 }
 
+void YBCTestDatumToBinary(Datum datum, void *void_data, int64 *bytes) {
+  CHECK(false) << "Not implemented yet";
+}
+
+Datum YBCTestBinaryToDatum(const void *void_data, int64 bytes, const YbcPgTypeAttrs *type_attrs) {
+  CHECK(false) << "Not implemented yet";
+  return 0;
+}
+
 /***************************************************************************************************
  * Conversion Table
  **************************************************************************************************/
-static const YbcPgTypeEntity YBCTestTypeEntityTable[] = {
+constexpr std::initializer_list<YbcPgTypeEntity> kTypeEntityTable = {
   { BOOLOID, YB_YQL_DATA_TYPE_BOOL, true, 1, false,
     (YbcPgDatumToData)YBCTestDatumToBool,
     (YbcPgDatumFromData)YBCTestBoolToDatum },
@@ -156,12 +167,14 @@ static const YbcPgTypeEntity YBCTestTypeEntityTable[] = {
   { FLOAT8OID, YB_YQL_DATA_TYPE_DOUBLE, true, 8, false,
     (YbcPgDatumToData)YBCTestDatumToFloat8,
     (YbcPgDatumFromData)YBCTestFloat8ToDatum },
+
+	{ BYTEAOID, YB_YQL_DATA_TYPE_BINARY, true, -1, false,
+		(YbcPgDatumToData)YBCTestDatumToBinary,
+		(YbcPgDatumFromData)YBCTestBinaryToDatum }
 };
 
-void YBCTestGetTypeTable(const YbcPgTypeEntity **type_table, int *count) {
-  *type_table = YBCTestTypeEntityTable;
-  *count = sizeof(YBCTestTypeEntityTable)/sizeof(YbcPgTypeEntity);
+YbcPgTypeEntities YBCTestGetTypeTable() {
+  return YbcPgTypeEntities{.data = &*kTypeEntityTable.begin(), .count = kTypeEntityTable.size()};
 }
 
-} // namespace pggate
-} // namespace yb
+} // namespace yb::pggate
