@@ -78,7 +78,7 @@ The following instructions use user-level systemd to provide the necessary acces
 
 ## Verify the python version installed on the node
 
-Verify that Python 3.8 or later is installed on the node. v3.8 is recommended.
+Verify that Python 3.5-3.9 is installed on the node. v3.8 is recommended.
 
 In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one. For example:
 
@@ -88,7 +88,7 @@ sudo alternatives --display python3
 python3 -V
 ```
 
-Install the [selinux](https://pypi.org/project/selinux/) package corresponding to your version of python. For example, using [pip](https://pip.pypa.io/en/stable/installation/), you can install as follows:
+If you are using Python later than v3.6, install the [selinux](https://pypi.org/project/selinux/) package corresponding to your version of python. For example, using [pip](https://pip.pypa.io/en/stable/installation/), you can install as follows:
 
 ```sh
 python3 -m pip install selinux
