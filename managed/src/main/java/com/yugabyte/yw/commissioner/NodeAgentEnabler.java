@@ -93,10 +93,14 @@ public class NodeAgentEnabler {
 
   public void init() {
     checkState(!isEnabled(), "Node agent enabler is already enabled");
+    if (confGetter.getGlobalConf(GlobalConfKeys.disableNodeAgentOnProviderCreation)) {
+      log.info("Disabling node agent enabler because node agent is disabled on provider creation");
+      return;
+    }
     Duration scannerInterval =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnablerScanInterval);
     if (scannerInterval.isZero()) {
-      log.info("Node agent enabler is disabled because the scanner interval is to zero");
+      log.info("Disabling node agent enabler because the scanner interval is to zero");
       return;
     }
     enable();
