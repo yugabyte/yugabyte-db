@@ -99,7 +99,7 @@ public class AuditLogRegexGenerator {
   @Getter
   public enum LogPrefixTokens {
     // Standard Postgresql
-    APPLICATION_NAME("%a"),
+    APPLICATION_NAME("%a", ".+"),
     USER_NAME("%u"),
     DATABASE_NAME("%d"),
     REMOTE_HOST_PORT("%r"),
