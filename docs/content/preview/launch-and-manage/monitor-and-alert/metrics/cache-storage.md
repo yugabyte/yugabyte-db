@@ -63,8 +63,8 @@ RocksDB LSM-trees buffer incoming data in a memory buffer that, when full, is so
 | :------ | :--- | :--- | :---------- |
 | `rocksdb_current_version_sst_files_size` | bytes | counter | The aggregate size of all SST files. |
 | `rocksdb_current_version_num_sst_files` | files | counter | The number of SST files. |
-| `ts_active_data_size` |   bytes   |   gauge   | Amount of data in active data directories (excluding snapshots) across all non-hidden tablets. Hidden tablets (retained by a snapshot schedule) are excluded.|
-| `ts_data_size` |   bytes  |   gauge    | Amount of data in data directories (including snapshots) across all tablets. These metrics can be aggregated across the entire cluster using appropriate aggregations.|
+| `ts_active_data_size` |   bytes   |   gauge   | Amount of data in active data directories (excluding snapshots) across all non-hidden tablets. Hidden tablets (retained by a snapshot schedule) are excluded. The gives the size of the data in the cluster as if PITR is off and no snapshots are taken for the databases. |
+| `ts_data_size` |   bytes  |   gauge    | Amount of data in data directories (including snapshots) across all tablets. This gives the total size of the data directories including snapshots. To calculate the overhead of snapshots, subtract ts_active_data_size from ts_data_size. |
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.
 
