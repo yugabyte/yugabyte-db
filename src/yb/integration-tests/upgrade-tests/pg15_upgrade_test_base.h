@@ -35,7 +35,7 @@ class Pg15UpgradeTestBase : public UpgradeTestBase {
   static constexpr std::optional<size_t> kAnyTserver = std::nullopt;
 
   // Run pg_upgrade --check
-  Status ValidateUpgradeCompatibility();
+  virtual Status ValidateUpgradeCompatibility();
 
   // Restarts all masters in the current version, runs ysql major version upgrade, and restarts
   // tserver kMixedModeTserverPg15 in the current version. Other tservers are kept in the pg11

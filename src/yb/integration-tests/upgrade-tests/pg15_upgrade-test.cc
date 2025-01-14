@@ -534,7 +534,8 @@ TEST_F(Pg15UpgradeTest, DatabaseWithDisallowedConnections) {
   }
 
   // Should fail because we don't support upgrading databases that disallow connections.
-  ASSERT_NOK_STR_CONTAINS(UpgradeClusterToMixedMode(), "Failed to run pg_upgrade");
+  ASSERT_NOK_STR_CONTAINS(UpgradeClusterToMixedMode(),
+                          "pg_upgrade' terminated with non-zero exit status");
 }
 
 TEST_F(Pg15UpgradeTest, Template1) {
@@ -1026,6 +1027,11 @@ class Pg15UpgradeTestWithAuth : public Pg15UpgradeTest {
   void SetUpOptions(ExternalMiniClusterOptions& opts) override {
     opts.enable_ysql_auth = true;
     Pg15UpgradeTest::SetUpOptions(opts);
+  }
+
+  Status ValidateUpgradeCompatibility() override {
+    setenv("PGPASSWORD", "yugabyte", /*overwrite=*/true);
+    return Pg15UpgradeTest:: ValidateUpgradeCompatibility();
   }
 };
 
