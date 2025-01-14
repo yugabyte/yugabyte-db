@@ -397,7 +397,6 @@ SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection
 (1 row)
 
 -- this is normally not supported due to $or
-SET helio_api.enable_extended_index_filters TO true;
 SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{
@@ -415,14 +414,11 @@ SELECT helio_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-                                                                                                   create_indexes_non_concurrently                                                                                                    
----------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
-(1 row)
+ERROR:  Error in specification { "key" : { "z.$**" : 1 }, "name" : "my_idx_7", "partialFilterExpression" : { "$and" : [ { "$or" : [ { "a" : 1 } ] } ] } } :: caused by :: unsupported expression in partial index: $or
+    a $eq 1
 
 SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_7');
-                                                                                                      mongo_index_get_pg_def                                                                                                       
+ mongo_index_get_pg_def 
 ---------------------------------------------------------------------
- CREATE INDEX documents_rum_index_12011 ON helio_data.documents_12001 USING helio_rum (document bson_rum_single_path_ops (path=z, iswildcard='true', tl='2699')) WHERE (document #= '{ "a" : { "$numberInt" : "1" } }'::bsonquery)
-(1 row)
+(0 rows)
 

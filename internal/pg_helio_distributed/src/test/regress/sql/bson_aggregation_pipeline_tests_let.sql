@@ -13,25 +13,6 @@ SELECT helio_api.insert_one('db','aggregation_pipeline_let','{"_id":"3", "boolea
 SELECT shard_key_value, object_id, document FROM helio_api.collection('db', 'aggregation_pipeline_let') ORDER BY object_id;
 
 -- add newField
-
--- without let support guc
-set helio_api.enableLetSupport to off;
-set helio_api.enableLookupLetSupport to off;
-SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": 20 } }');
-SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$lt": [ "$_id", "$$varRef" ]} }, "let": { "varRef": 30 } }');
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$lt": [ "$_id", "$$varRef" ]} } } ], "let": { "varRef": "3" } }');
-
--- with ignore guc does not fail
-set helio_api.ignoreLetOnQuerySpec TO true;
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$lt": [ "$_id", "3" ]} } } ], "let": { "varRef": "3" } }');
-
-set helio_api.ignoreLetOnQuerySpec TO DEFAULT;
-
--- empty doc without guc works
-SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : 1 }, "filter": { "_id": { "$lt": 3 }}, "let": { } }');
-
-set helio_api.enableLetSupport to DEFAULT;
-set helio_api.enableLookupLetSupport to DEFAULT;
 -- with let enabled
 EXPLAIN (VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": 20 } }');
 

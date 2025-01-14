@@ -96,7 +96,7 @@ SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggre
 -- with $let
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [{"$group": {"_id": null,"percentileVal": {"$percentile": {"p": "$$ps", "input": "$dataVal","method": "approximate"}}}}], "let": {"ps": [0.95, 0.5]}}');
                                               document                                              
-----------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------
  { "_id" : null, "percentileVal" : [ { "$numberDouble" : "67.0" }, { "$numberDouble" : "36.0" } ] }
 (1 row)
 
@@ -144,7 +144,7 @@ SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggre
 -- with $let
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [{"$group": {"_id": null,"medianVal": {"$median": {"input": "$$val","method": "approximate"}}}}], "let": {"val": 5}}');
                           document                           
--------------------------------------------------------------
+---------------------------------------------------------------------
  { "_id" : null, "medianVal" : { "$numberDouble" : "5.0" } }
 (1 row)
 

@@ -32,10 +32,6 @@
 
 #include "aggregation/bson_densify.h"
 
-/* GUC to enable $densify aggregation stage */
-extern bool EnableDensifyStage;
-
-
 #define DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY 500000
 int32 PEC_InternalQueryMaxAllowedDensifyDocs = DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY;
 
@@ -473,7 +469,7 @@ HandleDensify(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_DENSIFY);
 
-	if (!EnableDensifyStage || !IsClusterVersionAtleast(DocDB_V0, 22, 0))
+	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg("$densify aggregation stage is not supported yet.")));

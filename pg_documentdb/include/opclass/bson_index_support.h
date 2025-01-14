@@ -91,8 +91,6 @@ typedef enum PlanParentType
 	PARENTTYPE_BITMAPHEAP
 }PlanParentType;
 
-extern bool EnableInQueryOptimization;
-
 List * ReplaceExtensionFunctionOperatorsInRestrictionPaths(List *restrictInfo,
 														   ReplaceExtensionFunctionContext
 														   *context);

@@ -48,9 +48,6 @@
 #include "aggregation/bson_aggregation_pipeline_private.h"
 
 const int MaximumLookupPipelineDepth = 20;
-
-extern bool EnableLookupLetSupport;
-
 extern bool EnableLookupIdJoinOptimizationOnCollation;
 
 /*
@@ -2414,46 +2411,14 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 
 			List *args;
 			Oid funcOid;
-			if (IsClusterVersionAtleast(DocDB_V0, 20, 0))
+			Expr *sourceVariableSpec = context->variableSpec;
+			if (sourceVariableSpec == NULL)
 			{
-				Expr *sourceVariableSpec = context->variableSpec;
-				if (sourceVariableSpec == NULL)
-				{
-					sourceVariableSpec = (Expr *) MakeBsonConst(PgbsonInitEmpty());
-				}
-
-				args = list_make3(leftOutput, letConstValue, sourceVariableSpec);
-				funcOid = BsonDollarLookupExpressionEvalMergeOid();
+				sourceVariableSpec = (Expr *) MakeBsonConst(PgbsonInitEmpty());
 			}
-			else
-			{
-				pgbson_writer letSpecWriter;
-				PgbsonWriterInit(&letSpecWriter);
-				PgbsonWriterAppendInt32(&letSpecWriter, "_id", 3, 0);
 
-				bson_iter_t letIter;
-				PgbsonInitIterator(lookupArgs->let, &letIter);
-				while (bson_iter_next(&letIter))
-				{
-					PgbsonWriterAppendValue(&letSpecWriter,
-											bson_iter_key(&letIter),
-											bson_iter_key_len(&letIter),
-											bson_iter_value(&letIter));
-				}
-
-				letConstValue->constvalue = PointerGetDatum(PgbsonWriterGetPgbson(
-																&letSpecWriter));
-				if (context->variableSpec != NULL)
-				{
-					args = list_make3(leftOutput, letConstValue, context->variableSpec);
-					funcOid = BsonDollarProjectWithLetFunctionOid();
-				}
-				else
-				{
-					args = list_make2(leftOutput, letConstValue);
-					funcOid = BsonDollarProjectFunctionOid();
-				}
-			}
+			args = list_make3(leftOutput, letConstValue, sourceVariableSpec);
+			funcOid = BsonDollarLookupExpressionEvalMergeOid();
 
 			Expr *letExpr = (Expr *) makeFuncExpr(funcOid, BsonTypeId(), args, InvalidOid,
 												  InvalidOid, COERCE_EXPLICIT_CALL);
@@ -3736,7 +3701,6 @@ HandleLookupCore(const bson_value_t *existingValue, Query *query,
 	lookupArgs.isLookupUnwind = isLookupUnwind;
 
 	/* Now build the base query for the lookup */
-	Assert(EnableLookupLetSupport);
 	return ProcessLookupCoreWithLet(query, context, &lookupArgs);
 }
 

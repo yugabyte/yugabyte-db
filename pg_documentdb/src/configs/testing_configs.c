@@ -52,6 +52,9 @@ bool ForceIndexTermTruncation = DEFAULT_FORCE_INDEX_TERM_TRUNCATION;
 #define DEFAULT_MAX_WORKER_CURSOR_SIZE BSON_MAX_ALLOWED_SIZE
 int32_t MaxWorkerCursorSize = DEFAULT_MAX_WORKER_CURSOR_SIZE;
 
+#define DEFAULT_ENABLE_NATIVE_COLOCATION true
+bool EnableNativeColocation = DEFAULT_ENABLE_NATIVE_COLOCATION;
+
 void
 InitializeTestConfigurations(const char *prefix, const char *newGucPrefix)
 {
@@ -164,4 +167,11 @@ InitializeTestConfigurations(const char *prefix, const char *newGucPrefix)
 		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableNativeColocation", prefix),
+		gettext_noop(
+			"Determines whether to turn on colocation of tables in a given mongo database (and disabled outside the database)"),
+		NULL, &EnableNativeColocation, DEFAULT_ENABLE_NATIVE_COLOCATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
 }

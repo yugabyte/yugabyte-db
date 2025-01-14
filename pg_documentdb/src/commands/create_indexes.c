@@ -221,7 +221,6 @@ static const MongoIndexSupport MongoIndexSupportedList[] =
 static const int NumberOfMongoIndexTypes = sizeof(MongoIndexSupportedList) /
 										   sizeof(MongoIndexSupport);
 
-extern bool EnableExtendedIndexFilters;
 extern bool ForceIndexTermTruncation;
 extern int IndexTruncationLimitOverride;
 extern int MaxWildcardIndexKeySize;
@@ -3205,12 +3204,9 @@ ParseIndexDefPartFilterDocument(const bson_iter_t *indexDefDocIter)
 
 	Expr *partialFilterExpr = make_ands_explicit(partialFilterQuals);
 
-	if (!EnableExtendedIndexFilters)
-	{
-		bool isTopLevel = true;
-		CheckPartFilterExprOperatorsWalker((Node *) partialFilterExpr,
-										   (void *) isTopLevel);
-	}
+	bool isTopLevel = true;
+	CheckPartFilterExprOperatorsWalker((Node *) partialFilterExpr,
+									   (void *) isTopLevel);
 
 	return partialFilterExpr;
 }

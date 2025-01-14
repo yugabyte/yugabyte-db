@@ -92,7 +92,6 @@ SELECT helio_api_internal.create_indexes_non_concurrently(
 );
 
 BEGIN;
-SET LOCAL helio_api.mongoEnableInQueryOptimization to ON;
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "in_opt_tests", "filter": { "accid":1, "vid": 1, "$or": [{"val": { "$eq": 1}}, {"val": { "$eq": 3}}] } }'); 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "in_opt_tests", "filter": {"$or": [{"val": { "$eq": 1}, "accid":{ "$eq": 1}, "vid": { "$eq": 1}}, {"val": { "$eq": 3}, "accid":{ "$eq": 1}, "vid": { "$eq": 1}}] } }'); 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "in_opt_tests", "filter": { "accid":1, "vid": 1, "val": { "$in": [1, 3]} } }');
@@ -121,7 +120,6 @@ END;
 SELECT helio_api.shard_collection('db','in_opt_tests', '{"accid":"hashed"}', false);
 
 BEGIN;
-SET LOCAL helio_api.mongoEnableInQueryOptimization to ON;
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "in_opt_tests", "filter": { "accid":1, "vid": 1, "$or": [{"val": { "$eq": 1}}, {"val": { "$eq": 3}}] } }'); 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "in_opt_tests", "filter": {"$or": [{"val": { "$eq": 1}, "accid":{ "$eq": 1}, "vid": { "$eq": 1}}, {"val": { "$eq": 3}, "accid":{ "$eq": 1}, "vid": { "$eq": 1}}] } }'); 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "in_opt_tests", "filter": { "accid":1, "vid": 1, "val": { "$in": [1, 3]} } }');

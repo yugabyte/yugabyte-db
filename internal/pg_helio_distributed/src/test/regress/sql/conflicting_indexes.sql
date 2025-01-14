@@ -35,7 +35,6 @@ SELECT helio_api_internal.create_indexes_non_concurrently('conflict_test', '{"cr
 SELECT helio_api_internal.create_indexes_non_concurrently('conflict_test', '{"createIndexes": "collection_1", "indexes": [{"key": {"$**": 1}, "name": "idx_4", "partialFilterExpression": {"b.d": 1, "b.c": 1, "a": 1}}]}', true);
 SELECT helio_api_internal.create_indexes_non_concurrently('conflict_test', '{"createIndexes": "collection_1", "indexes": [{"key": {"$**": 1}, "name": "idx_4", "partialFilterExpression": {"$and": [{"a": 1}, {"b": {"c": 1, "d": 2}}]}}]}', true);
 
-SET helio_api.enable_extended_index_filters TO true;
 -- none of below pairs are treated as same indexes
 
 SELECT helio_api_internal.create_indexes_non_concurrently('conflict_test', '{"createIndexes": "collection_1", "indexes": [{"key": {"$**": 1}, "name": "idx_8", "partialFilterExpression": {"$or": [{"b": {"$eq": 1}}, {"b": {"$gt": 1}}]}}]}', true);
@@ -46,8 +45,6 @@ SELECT helio_api_internal.create_indexes_non_concurrently('conflict_test', '{"cr
 
 SELECT helio_api_internal.create_indexes_non_concurrently('conflict_test', '{"createIndexes": "collection_1", "indexes": [{"key": {"$**": 1}, "name": "idx_10", "partialFilterExpression": {"b": {"$not": {"$in": [1,2,3]}}, "a": 1}}]}', true);
 SELECT helio_api_internal.create_indexes_non_concurrently('conflict_test', '{"createIndexes": "collection_1", "indexes": [{"key": {"$**": 1}, "name": "idx_10", "partialFilterExpression": {"b": {"$nin": [1,2,3]}, "a": 1}}]}', true);
-
-RESET helio_api.enable_extended_index_filters;
 
 SELECT helio_api_internal.create_indexes_non_concurrently('conflict_test', '{"createIndexes": "collection_1", "indexes": [{"key": {"c": 1, "d": 1}, "name": "idx_11", "unique": true, "sparse": true}]}', true);
 SELECT helio_api_internal.create_indexes_non_concurrently('conflict_test', '{"createIndexes": "collection_1", "indexes": [{"key": {"c": 1, "d": 1}, "name": "idx_11", "unique": false, "sparse": true}]}', true);

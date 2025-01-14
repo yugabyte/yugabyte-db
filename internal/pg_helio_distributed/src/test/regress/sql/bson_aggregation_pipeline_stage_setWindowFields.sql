@@ -425,11 +425,8 @@ SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": {"a": 1}, "output": {"addedSet": { "$addToSet": "$quantity", "window": {"documents": ["unbounded", -1]}}}}}]}');
 
-BEGIN;
-SET LOCAL helio_api.enableLetSupport to ON;
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": {"a": 1}, "output": {"addedSet": { "$addToSet": ["$$varRef1", "$$varRef2"], "window": {"documents": ["unbounded", "unbounded"]}}}}}], "let": {"varRef1": "Hello", "varRef2": "World"}}');
-ROLLBACK;
 
 ----------------------------
 -- Document window with sort

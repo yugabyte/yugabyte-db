@@ -6,7 +6,6 @@ SET search_path TO helio_core,helio_api,helio_api_catalog;
 
 -- supported "partialFilterExpression" operators --
 
-SET helio_api.enable_extended_index_filters TO false;
 SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{

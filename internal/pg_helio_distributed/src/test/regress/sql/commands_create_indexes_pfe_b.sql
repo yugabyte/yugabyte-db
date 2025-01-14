@@ -245,7 +245,6 @@ SELECT helio_api_internal.create_indexes_non_concurrently(
 SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_6');
 
 -- this is normally not supported due to $or
-SET helio_api.enable_extended_index_filters TO true;
 SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{

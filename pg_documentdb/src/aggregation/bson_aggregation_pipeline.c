@@ -71,8 +71,6 @@
 #include "collation/collation.h"
 #include "api_hooks.h"
 
-extern bool EnableLetSupport;
-extern bool IgnoreLetOnQuerySupport;
 extern bool EnableCursorsOnAggregationQueryRewrite;
 extern bool EnableLookupUnwindSupport;
 extern bool EnableCollation;
@@ -1327,16 +1325,8 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 
 	if (let.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&let))
 	{
-		if (EnableLetSupport && IsClusterVersionAtleast(DocDB_V0, 19, 0))
-		{
-			pgbson *parsedLet = ParseAndGetTopLevelVariableSpec(&let);
-			context.variableSpec = (Expr *) MakeBsonConst(parsedLet);
-		}
-		else if (!IgnoreLetOnQuerySupport)
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-							errmsg("let in find is not supported yet")));
-		}
+		pgbson *parsedLet = ParseAndGetTopLevelVariableSpec(&let);
+		context.variableSpec = (Expr *) MakeBsonConst(parsedLet);
 	}
 
 	List *aggregationStages = ExtractAggregationStages(&pipelineValue,
@@ -1607,16 +1597,8 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 
 	if (let.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&let))
 	{
-		if (EnableLetSupport && IsClusterVersionAtleast(DocDB_V0, 19, 0))
-		{
-			pgbson *parsedLet = ParseAndGetTopLevelVariableSpec(&let);
-			context.variableSpec = (Expr *) MakeBsonConst(parsedLet);
-		}
-		else if (!IgnoreLetOnQuerySupport)
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-							errmsg("let in aggregate is not supported yet")));
-		}
+		pgbson *parsedLet = ParseAndGetTopLevelVariableSpec(&let);
+		context.variableSpec = (Expr *) MakeBsonConst(parsedLet);
 	}
 
 	if (sort.value_type != BSON_TYPE_EOD)
@@ -3502,8 +3484,7 @@ HandleChangeStream(const bson_value_t *existingValue, Query *query,
 	ReportFeatureUsage(FEATURE_STAGE_CHANGE_STREAM);
 
 	/* Check if change stream feature is available enabled by GUC. */
-	if (!IsClusterVersionAtleast(DocDB_V0, 20, 0) ||
-		!IsChangeStreamFeatureAvailableAndCompatible())
+	if (!IsChangeStreamFeatureAvailableAndCompatible())
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 						errmsg(
@@ -4623,7 +4604,7 @@ AddSimpleGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 		functionId, BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
-	if (EnableLetSupport && BsonTypeId() != DocumentDBCoreBsonTypeId() &&
+	if (BsonTypeId() != DocumentDBCoreBsonTypeId() &&
 		IsClusterVersionAtleast(DocDB_V0, 24, 0))
 	{
 		accumFunc = makeFuncExpr(
@@ -4872,7 +4853,7 @@ AddSortedGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 
 	/* Cast documentExpr from helio_core.bson to bson to ensure type */
 	/* correctness for accumulators that require bson. */
-	if (EnableLetSupport && BsonTypeId() != DocumentDBCoreBsonTypeId())
+	if (BsonTypeId() != DocumentDBCoreBsonTypeId())
 	{
 		documentExpr = (Expr *) makeRelabelType(documentExpr, BsonTypeId(), -1,
 												InvalidOid,
@@ -5077,7 +5058,7 @@ AddPercentileMedianGroupAccumulator(Query *query, const bson_value_t *accumulato
 										pFuncArgs, InvalidOid,
 										InvalidOid, COERCE_EXPLICIT_CALL);
 
-	if (EnableLetSupport && BsonTypeId() != DocumentDBCoreBsonTypeId() &&
+	if (BsonTypeId() != DocumentDBCoreBsonTypeId() &&
 		IsClusterVersionAtleast(DocDB_V0, 24, 0))
 	{
 		inputAccumFunc = makeFuncExpr(
@@ -5196,7 +5177,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		bsonExpressionGetFunction, BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
-	if (EnableLetSupport && BsonTypeId() != DocumentDBCoreBsonTypeId() &&
+	if (BsonTypeId() != DocumentDBCoreBsonTypeId() &&
 		IsClusterVersionAtleast(DocDB_V0, 24, 0))
 	{
 		groupFunc = makeFuncExpr(
@@ -5538,14 +5519,6 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$stdDevSamp"))
 		{
-			if (!(IsClusterVersionAtleast(DocDB_V0, 20, 0)))
-			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-								errmsg("Accumulator $stdDevSamp is not implemented yet"),
-								errdetail_log(
-									"Accumulator $stdDevSamp is not implemented yet")));
-			}
-
 			if (accumulatorElement.bsonValue.value_type == BSON_TYPE_ARRAY)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40237), errmsg(
@@ -5566,15 +5539,6 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$stdDevPop"))
 		{
-			if (!(IsClusterVersionAtleast(DocDB_V0, 20, 0)))
-			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-								errmsg("Accumulator $stdDevPop is not implemented yet"),
-								errdetail_log(
-									"Accumulator $stdDevPop is not implemented yet")));
-			}
-
-
 			if (accumulatorElement.bsonValue.value_type == BSON_TYPE_ARRAY)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40237), errmsg(
