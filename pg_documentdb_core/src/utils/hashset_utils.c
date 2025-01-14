@@ -28,6 +28,11 @@ static uint32 BsonValueHashFunc(const void *obj, size_t objsize);
 static int BsonValueHashEntryCompareFunc(const void *obj1, const void *obj2, Size
 										 objsize);
 
+static uint32 PgbsonElementOrderedHashEntryFunc(const void *obj, size_t objsize);
+static int PgbsonElementOrderedHashCompareFunc(const void *obj1, const void *obj2, Size
+											   objsize);
+
+
 /*
  * Creates a hash table that stores pgbsonelement entries using
  * a hash and search based on the element path.
@@ -163,4 +168,66 @@ BsonValueHashEntryCompareFunc(const void *obj1, const void *obj2, Size objsize)
 	return CompareBsonValueAndType((const bson_value_t *) obj1,
 								   (const bson_value_t *) obj2,
 								   &isComparisonValidIgnore);
+}
+
+
+/*
+ * Creates a hash table that stores pgbsonelement entries using
+ * a hash and search based on the element path.
+ */
+HTAB *
+CreatePgbsonElementOrderedHashSet()
+{
+	HASHCTL hashInfo = CreateExtensionHashCTL(
+		sizeof(PgbsonElementHashEntryOrdered),
+		sizeof(PgbsonElementHashEntryOrdered),
+		PgbsonElementOrderedHashCompareFunc,
+		PgbsonElementOrderedHashEntryFunc
+		);
+	HTAB *bsonElementHashSet =
+		hash_create("Ordered Bson Element Hash Table", 32, &hashInfo,
+					DefaultExtensionHashFlags);
+
+	return bsonElementHashSet;
+}
+
+
+/*
+ * PgbsonElementOrderedHashEntryFunc is the (HASHCTL.hash) callback (based on
+ * string_hash()) used to hash a PgbsonElementHashEntryOrdered object based on key
+ * of the bson element that it holds.
+ */
+static uint32
+PgbsonElementOrderedHashEntryFunc(const void *obj, size_t objsize)
+{
+	const PgbsonElementHashEntryOrdered *hashEntry = obj;
+	return hash_bytes((const unsigned char *) hashEntry->element.path,
+					  (int) hashEntry->element.pathLength);
+}
+
+
+/*
+ * PgbsonElementOrderedHashCompareFunc is the (HASHCTL.match) callback (based
+ * on string_compare()) used to determine if keys of the bson elements hold
+ * by given two PgbsonElementHashEntryOrdered objects are the same.
+ *
+ * Returns 0 if those two bson element keys are same, +ve Int if first is greater otherwise -ve Int.
+ */
+static int
+PgbsonElementOrderedHashCompareFunc(const void *obj1, const void *obj2, Size objsize)
+{
+	const PgbsonElementHashEntryOrdered *hashEntry1 = obj1;
+	const PgbsonElementHashEntryOrdered *hashEntry2 = obj2;
+
+	int minPathLength = Min(hashEntry1->element.pathLength,
+							hashEntry2->element.pathLength);
+	int result = strncmp(hashEntry1->element.path, hashEntry2->element.path,
+						 minPathLength);
+
+	if (result == 0)
+	{
+		return hashEntry1->element.pathLength - hashEntry2->element.pathLength;
+	}
+
+	return result;
 }

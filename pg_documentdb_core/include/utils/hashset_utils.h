@@ -22,6 +22,17 @@ typedef struct
 	pgbsonelement element;
 } PgbsonElementHashEntry;
 
+/*
+ * Struct used to store key, value pair in PG hash table.
+ */
+typedef struct PgbsonElementHashEntryOrdered
+{
+	/* pgbsonelement to store key and value in the hash map */
+	pgbsonelement element;
+
+	/* To maintain insertion order, we store the address of the next hash entry here. We need to update the tail every time we insert a new element. */
+	struct PgbsonElementHashEntryOrdered *next;
+} PgbsonElementHashEntryOrdered;
 
 /*
  * Defines the flags to be used in standard HTAB creations in the DocumentDB scenario.
@@ -57,5 +68,10 @@ CreateExtensionHashCTL(Size keySize, Size entrySize,
 HTAB * CreatePgbsonElementHashSet(void);
 HTAB * CreateStringViewHashSet(void);
 HTAB * CreateBsonValueHashSet(void);
+HTAB * CreatePgbsonElementOrderedHashSet(void);
 
+bool InsertInToPgbsonElementOrderedHash(HTAB *hashTable,
+										PgbsonElementHashEntryOrdered *hashEntry,
+										PgbsonElementHashEntryOrdered *head,
+										PgbsonElementHashEntryOrdered *tail);
 #endif

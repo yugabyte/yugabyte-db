@@ -16,6 +16,7 @@
 #include "aggregation/bson_tree.h"
 #include "aggregation/bson_tree_write.h"
 #include "utils/documentdb_errors.h"
+#include "utils/hashset_utils.h"
 
 /* Struct that represents the parsed arguments to a $getField expression. */
 typedef struct DollarGetFieldArguments
@@ -61,8 +62,11 @@ typedef enum
 /* --------------------------------------------------------- */
 static void AppendDocumentForMergeObjects(const bson_value_t *currentValue, bool
 										  isConstant,
-										  BsonIntermediatePathNode *tree);
-static void WriteMergeObjectsResult(BsonIntermediatePathNode *tree, bson_value_t *result);
+										  HTAB *hashTable,
+										  PgbsonElementHashEntryOrdered **head,
+										  PgbsonElementHashEntryOrdered **tail);
+static void WriteMergeObjectsResult(PgbsonElementHashEntryOrdered *head,
+									bson_value_t *result);
 static void HandlePreParsedDollarSetFieldOrUnsetFieldCore(pgbson *doc, void *arguments,
 														  ExpressionResult *
 														  expressionResult, bool
@@ -141,17 +145,20 @@ ParseDollarMergeObjects(const bson_value_t *argument, AggregationExpressionData 
 
 	if (allArgumentsConstant)
 	{
-		BsonIntermediatePathNode *tree = MakeRootNode();
 		ListCell *cell;
-
+		HTAB *hashTable = CreatePgbsonElementOrderedHashSet();
+		PgbsonElementHashEntryOrdered *head = NULL;
+		PgbsonElementHashEntryOrdered *tail = NULL;
 		foreach(cell, argumentsList)
 		{
 			AggregationExpressionData *currentValue = lfirst(cell);
-			AppendDocumentForMergeObjects(&currentValue->value, true, tree);
+			AppendDocumentForMergeObjects(&currentValue->value, true, hashTable, &head,
+										  &tail);
 		}
 
-		WriteMergeObjectsResult(tree, &data->value);
+		WriteMergeObjectsResult(head, &data->value);
 		data->kind = AggregationExpressionKind_Constant;
+		hash_destroy(hashTable);
 		list_free_deep(argumentsList);
 	}
 	else
@@ -169,11 +176,15 @@ void
 HandlePreParsedDollarMergeObjects(pgbson *doc, void *arguments,
 								  ExpressionResult *expressionResult)
 {
-	BsonIntermediatePathNode *tree = MakeRootNode();
 	List *argumentsList = (List *) arguments;
 
 	bool isNullOnEmpty = false;
 	ListCell *cell = NULL;
+
+	HTAB *hashTable = CreatePgbsonElementOrderedHashSet();
+	PgbsonElementHashEntryOrdered *head = NULL;
+	PgbsonElementHashEntryOrdered *tail = NULL;
+
 	foreach(cell, argumentsList)
 	{
 		AggregationExpressionData *currentData = lfirst(cell);
@@ -182,7 +193,7 @@ HandlePreParsedDollarMergeObjects(pgbson *doc, void *arguments,
 		EvaluateAggregationExpressionData(currentData, doc, &childResult, isNullOnEmpty);
 
 		AppendDocumentForMergeObjects(&childResult.value, IsAggregationExpressionConstant(
-										  currentData), tree);
+										  currentData), hashTable, &head, &tail);
 		ExpressionResultReset(&childResult);
 	}
 
@@ -190,7 +201,8 @@ HandlePreParsedDollarMergeObjects(pgbson *doc, void *arguments,
 	pgbson_writer baseWriter;
 	PgbsonWriterInit(&baseWriter);
 
-	WriteMergeObjectsResult(tree, &result);
+	WriteMergeObjectsResult(head, &result);
+	hash_destroy(hashTable);
 	ExpressionResultSetValue(expressionResult, &result);
 }
 
@@ -838,7 +850,9 @@ ProcessResultForDollarSetFieldOrUnsetField(bson_value_t field, bson_value_t inpu
 
 static void
 AppendDocumentForMergeObjects(const bson_value_t *currentValue, bool isConstant,
-							  BsonIntermediatePathNode *tree)
+							  HTAB *hashTable,
+							  PgbsonElementHashEntryOrdered **head,
+							  PgbsonElementHashEntryOrdered **tail)
 {
 	/* if the value is null or undefined it is a noop
 	 * so we don't need to do anything for it. */
@@ -862,28 +876,45 @@ AppendDocumentForMergeObjects(const bson_value_t *currentValue, bool isConstant,
 								 currentValue->value.v_doc.data,
 								 currentValue->value.v_doc.data_len);
 
-		/* Expressions are already evaluated (this will change once we move this to the new framework. )*/
-		bool treatLeafDataAsConstant = true;
-		ParseAggregationExpressionContext ignoreContext = { 0 };
-
+		/*
+		 * $mergeObjects processes an array of documents, iterating over the top-level fields of each document and adding them to the hash table.
+		 * For example, given a document {a: {b: {c: 1}}}, the hash table will store the top-level field 'a' with its value.
+		 *
+		 *  Mongo $mergeObject merge Objects on top level only and does not merge nested objects.
+		 *  e.g. {a: {b: 1}} and {a: {c: 2}} will result in {a: {c: 2}}.
+		 */
 		while (bson_iter_next(&docIter))
 		{
-			StringView pathView = bson_iter_key_string_view(&docIter);
+			pgbsonelement element = {
+				.path = bson_iter_key(&docIter),
+				.pathLength = bson_iter_key_len(&docIter),
+				.bsonValue = *bson_iter_value(&docIter)
+			};
 
-			const bson_value_t *docValue = bson_iter_value(&docIter);
-			bool nodeCreated = false;
-			const BsonLeafPathNode *treeNode = TraverseDottedPathAndGetOrAddLeafFieldNode(
-				&pathView, docValue,
-				tree, BsonDefaultCreateLeafNode,
-				treatLeafDataAsConstant, &nodeCreated, &ignoreContext);
+			PgbsonElementHashEntryOrdered hashEntry = {
+				.element = element,
+				.next = NULL,
+			};
 
-			/* if the node already exists we need to update the value
-			 * as $mergeObjects has the behavior that the last path spec
-			 * found if duplicates wins */
-			if (!nodeCreated)
+			bool found = false;
+			PgbsonElementHashEntryOrdered *currNode = hash_search(hashTable,
+																  &hashEntry,
+																  HASH_ENTER, &found);
+
+			if (*head == NULL)
 			{
-				ResetNodeWithField(treeNode, NULL, docValue, BsonDefaultCreateLeafNode,
-								   treatLeafDataAsConstant, &ignoreContext);
+				*head = currNode;
+				*tail = currNode;
+			}
+			else if (found)
+			{
+				/* Replace the existing value with the value from the source document */
+				currNode->element.bsonValue = element.bsonValue;
+			}
+			else
+			{
+				(*tail)->next = currNode;
+				*tail = currNode;
 			}
 		}
 	}
@@ -894,7 +925,7 @@ AppendDocumentForMergeObjects(const bson_value_t *currentValue, bool isConstant,
  * Helper to write the result of a $mergeObjects expression.
  */
 static void
-WriteMergeObjectsResult(BsonIntermediatePathNode *tree, bson_value_t *result)
+WriteMergeObjectsResult(PgbsonElementHashEntryOrdered *head, bson_value_t *result)
 {
 	pgbson_writer baseWriter;
 	PgbsonWriterInit(&baseWriter);
@@ -905,12 +936,14 @@ WriteMergeObjectsResult(BsonIntermediatePathNode *tree, bson_value_t *result)
 	pgbson_writer childWriter;
 	PgbsonElementWriterStartDocument(&elementWriter, &childWriter);
 
-	pgbson *doc = PgbsonInitEmpty();
-	if (tree->childData.numChildren > 0)
+	while (head != NULL)
 	{
-		TraverseTreeAndWrite(tree, &childWriter, doc);
+		PgbsonElementHashEntryOrdered *temp = head;
+		PgbsonWriterAppendValue(&childWriter, temp->element.path,
+								temp->element.pathLength,
+								&temp->element.bsonValue);
+		head = head->next;
 	}
-
 	PgbsonElementWriterEndDocument(&elementWriter, &childWriter);
 
 	const bson_value_t bsonValue = PgbsonElementWriterGetValue(&elementWriter);
@@ -919,8 +952,6 @@ WriteMergeObjectsResult(BsonIntermediatePathNode *tree, bson_value_t *result)
 	pgbsonelement element;
 	PgbsonToSinglePgbsonElement(pgbson, &element);
 	*result = element.bsonValue;
-
-	FreeTree(tree);
 }
 
 
