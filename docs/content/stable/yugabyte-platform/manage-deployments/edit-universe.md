@@ -54,9 +54,9 @@ To change the number of nodes of universes created with an on-premises cloud pro
 
 ### Edit connection pooling
 
-{{<tags/feature/tp>}}If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).
+{{<tags/feature/ea>}}If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).
 
-While in Tech Preview, the feature is not available by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+While in Early Access, the feature is not available by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
 To enable or disable connection pooling on a universe:
 

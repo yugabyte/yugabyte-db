@@ -5,7 +5,7 @@ linkTitle: Built-in connection pooling
 description: Built-in server-side connection pooler for YSQL
 headcontent: Built-in server-side connection pooler for YSQL
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   stable:
     name: Built-in connection pooling
@@ -27,7 +27,7 @@ To provide the advantages of connection pooling, but without the limitations, Yu
 ![Connection manager](/images/explore/ysql-connection-manager.png)
 
 {{< note title = "Note">}}
-YSQL Connection Manager is currently not supported for [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Aeon](../../../yugabyte-cloud/).
+YSQL Connection Manager is currently not supported for [YugabyteDB Aeon](../../../yugabyte-cloud/).
 {{< /note >}}
 
 ## Key features
@@ -69,7 +69,7 @@ To create a large number of client connections, ensure that "SHMMNI" (the maximu
 
 ### YugabyteDB Anywhere
 
-{{<tags/feature/tp>}}To use built-in connection pooling with universes deployed using YugabyteDB Anywhere, turn on the **Connection pooling** option when [creating](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration) or [modifying](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling) a universe. When managing universes using YugabyteDB Anywhere, do not set connection pooling options using flags.
+{{<tags/feature/ea>}}To use built-in connection pooling with universes deployed using YugabyteDB Anywhere, turn on the **Connection pooling** option when [creating](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration) or [modifying](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling) a universe. When managing universes using YugabyteDB Anywhere, do not set connection pooling options using flags.
 
 ## Configuration
 
