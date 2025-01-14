@@ -1258,6 +1258,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // If given, use it as an override.
         int internalYsqlServerRpcPort = DEFAULT_INTERNAL_YSQL_SERVER_RPC_PORT;
         tserverGFlags.put("enable_ysql_conn_mgr", "true");
+        tserverGFlags.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
         tserverGFlags.put("ysql_conn_mgr_port", String.valueOf(ysqlServerRpcPort));
         tserverGFlags.put(
             "pgsql_proxy_bind_address",
