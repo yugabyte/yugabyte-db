@@ -23,6 +23,9 @@ static void check_required_directory(char **dirpath,
 									 const char *envVarName, bool useCwd,
 									 const char *cmdLineOption, const char *description,
 									 bool missingOk);
+
+static void yb_check_sockdir(ClusterInfo *cluster);
+
 #define FIX_DEFAULT_READ_ONLY "-c default_transaction_read_only=false"
 
 
@@ -273,6 +276,9 @@ parseCommandLine(int argc, char *argv[])
 								"-D", _("new cluster data resides"), false);
 	check_required_directory(&user_opts.socketdir, "PGSOCKETDIR", true,
 							 "-s", _("sockets will be created"), false);
+
+	if (is_yugabyte_enabled() && !user_opts.check)
+		yb_check_sockdir(&new_cluster);
 
 #ifdef WIN32
 
@@ -540,4 +546,13 @@ get_sock_dir(ClusterInfo *cluster, bool live_check)
 #else							/* !HAVE_UNIX_SOCKETS || WIN32 */
 	cluster->sockdir = NULL;
 #endif
+}
+
+static void
+yb_check_sockdir(ClusterInfo *cluster)
+{
+	Assert(is_yugabyte_enabled());
+
+	if (!cluster->sockdir)
+		pg_fatal("socket directory must be specified\n");
 }
