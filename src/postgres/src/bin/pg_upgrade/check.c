@@ -206,7 +206,9 @@ check_new_cluster(void)
 	check_new_cluster_is_empty();
 	check_databases_are_compatible();
 
-	check_loadable_libraries();
+	if (!is_yugabyte_enabled())
+		/* YB: would fail with ERROR:  LOAD not supported yet. */
+		check_loadable_libraries();
 
 	switch (user_opts.transfer_mode)
 	{
