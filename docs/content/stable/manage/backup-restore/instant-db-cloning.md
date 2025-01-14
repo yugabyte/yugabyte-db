@@ -27,7 +27,7 @@ Cloning has two main use cases:
 
 ## Enable database cloning
 
-To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true. Because cloning is in {{<tags/feature/ea>}}, you must also add the `enable_db_clone` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
+To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true. Because cloning is in {{<tags/feature/ea>}} (YCQL keyspace cloning is {{<tags/feature/tp>}}), you must also add the `enable_db_clone` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
 
 For example, to set these flags when creating a cluster using yugabyted, use the `--master_flags` option of the [start](../../../reference/configuration/yugabyted/#start) command as follows:
 
@@ -80,7 +80,7 @@ CREATE DATABASE clone_db TEMPLATE original_db AS OF 1723146703674480;
 
 ### Clone a YCQL keyspace
 
-You can create a clone in YCQL using the yb-admin `clone_namespace` command as follows:
+YCQL keyspace cloning is {{<tags/feature/tp>}}. You can create a clone in YCQL using the yb-admin `clone_namespace` command as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS clone_namespace ycql.originaldb1 clonedb2 1715275616599020
