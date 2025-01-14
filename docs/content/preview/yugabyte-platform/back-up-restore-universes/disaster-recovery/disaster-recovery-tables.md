@@ -14,8 +14,23 @@ type: docs
 
 When DDL changes are made to databases in replication for xCluster disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes must be:
 
-- performed at the SQL level on both the DR primary and replica, and then
-- updated at the YugabyteDB Anywhere level in the DR configuration.
+- Performed at the SQL level on both the DR primary and replica.
+- In [Manual mode](../#manual-mode), also updated at the YugabyteDB Anywhere level in the DR configuration.
+
+{{<tabpane text=true >}}
+
+  {{% tab header="Semi-automatic mode" lang="semi-automatic-mode" %}}
+
+For each DDL statement:
+
+1. Execute the DDL on the DR primary, waiting for it to complete.
+1. Execute the DDL on the DR replica, waiting for it to complete.
+
+After both steps are complete, the YugabyteDB Anywhere UI should reflect any added/removed tables in the Tables listing for this DR configuration.
+
+  {{% /tab %}}
+
+  {{% tab header="Manual mode" lang="manual-mode" %}}
 
 You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
 
@@ -29,6 +44,10 @@ You should perform these actions in a specific order, depending on whether perfo
 | ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Replica | Execute on Primary | No changes needed |
 | ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Primary | Execute on Replica | [Reconcile configuration](#reconcile-configuration) |
 | ALTER TABLE<br>DROP CONSTRAINT<br>(unique constraints only) | Execute on Replica | Execute on Primary | [Reconcile configuration](#reconcile-configuration) |
+
+  {{% /tab %}}
+
+{{</tabpane >}}
 
 In addition, keep in mind the following:
 
@@ -131,7 +150,7 @@ CREATE TABLE order_changes (
   change_date date,
   type text,
   description text)
-  PARTITION BY RANGE (change_date);  
+  PARTITION BY RANGE (change_date);
 ```
 
 ```sql
