@@ -34,6 +34,8 @@ static void check_for_new_tablespace_dir(ClusterInfo *new_cluster);
 static void check_for_user_defined_encoding_conversions(ClusterInfo *cluster);
 static char *get_canonical_locale_name(int category, const char *locale);
 
+static void yb_check_pushdown_is_disabled(ClusterInfo *cluster);
+
 /*
  * fix_path_separator
  * For non-Windows, just return the argument.
@@ -175,6 +177,14 @@ check_and_dump_old_cluster(bool live_check)
 	/* Pre-PG 9.4 had a different 'line' data type internal format */
 	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
 		old_9_3_check_for_line_data_type_usage(&old_cluster);
+
+	/*
+	 * Yugabyte does not support expression pushdown during major upgrades.
+	 * Only check this when we are ready to actually upgrade the cluster,
+	 * because users may want to run this check long before the upgrade.
+	 */
+	if (is_yugabyte_enabled() && !user_opts.check)
+		yb_check_pushdown_is_disabled(&old_cluster);
 
 	/*
 	 * While not a check option, we do this now because this is the only time
@@ -1537,4 +1547,31 @@ get_canonical_locale_name(int category, const char *locale)
 	pg_free(save);
 
 	return res;
+}
+
+/*
+ *	yb_check_pushdown_is_disabled()
+ *
+ *	Check we are the install user, and that the new cluster
+ *	has no other users.
+ */
+static void
+yb_check_pushdown_is_disabled(ClusterInfo *cluster)
+{
+	PGresult   *res;
+	PGconn	   *conn = connectToServer(cluster, "template1");
+
+	prep_status("Checking expression pushdown is disabled");
+
+	res = executeQueryOrDie(conn, "SHOW yb_enable_expression_pushdown");
+
+	if (strncmp(PQgetvalue(res, 0, 0), "off", 3))
+		pg_fatal("Expression pushdown (ysql_yb_enable_expression_pushdown) must "
+				 "be disabled during ysql major upgrade. See GH issue #24730\n");
+
+	PQclear(res);
+
+	PQfinish(conn);
+
+	check_ok();
 }

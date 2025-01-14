@@ -1400,6 +1400,18 @@ TEST_F(Pg15UpgradeTest, YbGinIndex) {
   }
 }
 
+TEST_F(Pg15UpgradeTest, CheckPushdownIsDisabled) {
+  // Whether or not pushdown is enabled, pg_upgrade --check will not error.
+  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
+  ASSERT_OK(ValidateUpgradeCompatibility());
+
+  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "true"));
+  ASSERT_OK(ValidateUpgradeCompatibility());
+
+  // However, when we actually run the YSQL upgrade, pg_upgrade will error if pushdown is enabled.
+  ASSERT_NOK(UpgradeClusterToMixedMode());
+}
+
 TEST_F(Pg15UpgradeSequenceTest, Sequences) {
   ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0", kSequencePg11)));
 
