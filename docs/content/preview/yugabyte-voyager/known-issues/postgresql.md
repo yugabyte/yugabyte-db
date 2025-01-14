@@ -49,6 +49,10 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Advisory locks is not yet implemented](#advisory-locks-is-not-yet-implemented)
 - [System columns is not yet supported](#system-columns-is-not-yet-supported)
 - [XML functions is not yet supported](#xml-functions-is-not-yet-supported)
+- [Large Objects and its functions are currently not supported](#large-objects-and-its-functions-are-currently-not-supported)
+- [PostgreSQL 12 and later features](#postgresql-12-and-later-features)
+- [MERGE command](#merge-command)
+- [JSONB subscripting](#jsonb-subscripting)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -1292,3 +1296,154 @@ HINT:  You need to rebuild PostgreSQL using --with-libxml.
 **Workaround**: Convert XML data to JSON format for compatibility with YugabyteDB, or handle XML processing at the application layer before inserting data.
 
 ---
+
+### Large Objects and its functions are currently not supported
+
+
+**GitHub**: Issue [#25318](https://github.com/yugabyte/yugabyte-db/issues/25318)
+
+**Description**: If you have large objects (datatype `lo`) in the source schema and are using large object functions in queries, the migration will fail during import-schema, as large object is not supported in YugabyteDB.
+
+```sql
+SELECT lo_create('<OID>');
+```
+
+```output
+ERROR: Transaction for catalog table write operation 'pg_largeobject_metadata' not found
+```
+
+**Workaround**: No workaround is available.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE image (id int, raster lo); 
+
+CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
+    FOR EACH ROW EXECUTE FUNCTION lo_manage(raster);
+```
+
+### PostgreSQL 12 and later features
+
+**GitHub**: Issue [#25575](https://github.com/yugabyte/yugabyte-db/issues/25575)
+
+**Description**: If any of the following PostgreSQL features for version 12 and later are present in the source schema, the import schema step on the target YugabyteDB will fail as YugabyteDB is currently PG11 compatible.
+
+- Multirange [datatypes](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-BUILTIN).
+- UNIQUE NULLS NOT DISTINCT [clause](https://www.postgresql.org/about/featurematrix/detail/392/) in constraint and index.
+- Aggregate [functions](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `any_value`, `range_agg`, `range_intersect_agg`.
+- FETCH FIRST … WITH TIES in select [statement](https://www.postgresql.org/docs/13/sql-select.html#SQL-LIMIT).
+- Regex [functions](https://www.postgresql.org/about/featurematrix/detail/367/) - `regexp_count`, `regexp_instr`, `regexp_like`
+- JSON Constructor [functions](https://www.postgresql.org/about/featurematrix/detail/395/) - `JSON_ARRAY_AGG`, `JSON_ARRAY`,  `JSON_OBJECT`, `JSON_OBJECT_AGG`.
+- JSON query [functions](https://www.postgresql.org/docs/17/functions-json.html#FUNCTIONS-SQLJSON-TABLE) - `JSON_QUERY`, `JSON_VALUE`, `JSON_EXISTS`, `JSON_TABLE`.
+- IS JSON predicate [clause](https://www.postgresql.org/about/featurematrix/detail/396/).
+- Foreign key [references](https://www.postgresql.org/about/featurematrix/detail/319/) to partitioned table.
+- Security invoker [views](https://www.postgresql.org/about/featurematrix/detail/389/).
+- COPY FROM command with WHERE [clause](https://www.postgresql.org/about/featurematrix/detail/330/) and ON_ERROR [option](https://www.postgresql.org/about/featurematrix/detail/433/).
+- Deterministic [attribute](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC) in COLLATION objects.
+
+### MERGE command
+
+**GitHub**: Issue [#25574](https://github.com/yugabyte/yugabyte-db/issues/25574)
+
+**Description**: If you are using a Merge query to conditionally insert, update, or delete rows on a table on your source database, then this query will fail once you migrate your apps to YugabyteDB as it is a PostgreSQL 15 feature, and not supported yet.
+
+```output
+ERROR:  syntax error at or near "MERGE"
+```
+
+**Workaround**: Use the PL/pgSQL function to implement similar functionality on the database.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE customer_account (
+    customer_id INT PRIMARY KEY,
+    balance NUMERIC(10, 2) NOT NULL
+);
+
+INSERT INTO customer_account (customer_id, balance)
+VALUES
+    (1, 100.00),
+    (2, 200.00),
+    (3, 300.00);
+
+CREATE TABLE recent_transactions (
+    transaction_id SERIAL PRIMARY KEY,
+    customer_id INT NOT NULL,
+    transaction_value NUMERIC(10, 2) NOT NULL
+);
+INSERT INTO recent_transactions (customer_id, transaction_value)
+VALUES
+    (1, 50.00),
+    (3, -25.00),
+    (4, 150.00);
+
+MERGE INTO customer_account ca
+USING recent_transactions t
+ON t.customer_id = ca.customer_id
+WHEN MATCHED THEN
+  UPDATE SET balance = balance + transaction_value
+WHEN NOT MATCHED THEN
+  INSERT (customer_id, balance)
+  VALUES (t.customer_id, t.transaction_value);
+```
+
+Suggested schema change is to replace the MERGE command with a PL/pgSQL function similar to the following:
+
+```sql
+CREATE OR REPLACE FUNCTION merge_customer_account()
+RETURNS void AS $$
+BEGIN
+    -- Insert new rows or update existing rows in customer_account
+    INSERT INTO customer_account (customer_id, balance)
+    SELECT customer_id, transaction_value
+    FROM recent_transactions
+    ON CONFLICT (customer_id) 
+    DO UPDATE
+    SET balance = customer_account.balance + EXCLUDED.balance;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+### JSONB subscripting
+
+**GitHub**: Issue [#25575](https://github.com/yugabyte/yugabyte-db/issues/25575)
+
+**Description**: If you are using the JSONB subscripting in app queries and in the schema (constraints or default expression) on your source database, then the app query will fail once you migrate your apps to YugabyteDB, and import-schema will fail if any DDL has this feature, as it's a PostgreSQL 15 feature.
+
+```output
+ERROR: cannot subscript type jsonb because it is not an array
+```
+
+**Workaround**: You can use the Arrow ( `-> / ->>` ) operators to access JSONB fields.
+
+**Example**
+
+An example query / DDL on the source database is as follows:
+
+```sql
+SELECT ('{"a": {"b": {"c": "some text"}}}'::jsonb)['a']['b']['c'];
+
+CREATE TABLE test_jsonb_chk (
+    id int,
+    data1 jsonb,
+    CHECK (data1['key']<>'{}')
+);
+```
+
+Suggested change in query to get it working-
+
+```sql
+SELECT ((('{"a": {"b": {"c": "some text"}}}'::jsonb)->'a')->'b')->>'c';
+
+CREATE TABLE test_jsonb_chk (
+    id int,
+    data1 jsonb,
+    CHECK (data1->'key'<>'{}')
+);
+```
