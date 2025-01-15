@@ -831,6 +831,8 @@ YbcPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache();
 YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
     size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup);
 
+YbcPgThreadLocalRegexpMetadata* YBCPgGetThreadLocalRegexpMetadata();
+
 void YBCPgResetCatalogReadTime();
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle);

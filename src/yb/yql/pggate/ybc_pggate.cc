@@ -2200,6 +2200,10 @@ YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
   return PgInitThreadLocalRegexpCache(buffer_size, cleanup);
 }
 
+YbcPgThreadLocalRegexpMetadata* YBCPgGetThreadLocalRegexpMetadata() {
+  return PgGetThreadLocalRegexpMetadata();
+}
+
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer) {
   return PgSetThreadLocalJumpBuffer(new_buffer);
 }
