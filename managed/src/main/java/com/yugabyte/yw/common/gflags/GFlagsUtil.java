@@ -751,6 +751,9 @@ public class GFlagsUtil {
                 taskParam.overrideNodePorts
                     ? taskParam.communicationPorts.ysqlServerRpcPort
                     : node.ysqlServerRpcPort));
+        if (!taskParam.connectionPoolingGflags.isEmpty()) {
+          gflags.putAll(taskParam.connectionPoolingGflags);
+        }
       } else {
         gflags.put(
             PSQL_PROXY_BIND_ADDRESS,

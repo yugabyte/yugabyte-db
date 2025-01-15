@@ -80,8 +80,10 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import com.yugabyte.yw.scheduler.JobScheduler;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -995,6 +997,29 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       result.put(flag.get("name").asText(), flag.get("value").asText());
     }
     return result;
+  }
+
+  public Map<String, String> getDiskFlags(
+      NodeDetails nodeDetails, Universe universe, UniverseTaskBase.ServerType serverType) {
+    Map<String, String> results = new HashMap<>();
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getCluster(nodeDetails.placementUuid).userIntent;
+    String gflagsFile =
+        localNodeManager.getNodeGFlagsFile(
+            userIntent, serverType, localNodeManager.getNodeInfo(nodeDetails));
+    try (FileReader fr = new FileReader(gflagsFile);
+        BufferedReader br = new BufferedReader(fr)) {
+      String line;
+      while ((line = br.readLine()) != null) {
+        String[] split = line.split("=");
+        String key = split[0].substring(2);
+        String val = split.length == 1 ? "" : split[1];
+        results.put(key, val);
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+    return results;
   }
 
   protected void restartUniverse(Universe universe, boolean rolling) throws InterruptedException {
