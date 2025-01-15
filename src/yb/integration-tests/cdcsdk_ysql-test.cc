@@ -2734,7 +2734,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
 
-  auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // Create the table AFTER the stream has been created
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
