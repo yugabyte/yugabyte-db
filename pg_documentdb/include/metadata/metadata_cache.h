@@ -15,12 +15,14 @@
 
 extern PGDLLIMPORT char *ApiDataSchemaName;
 extern PGDLLIMPORT char *ApiAdminRole;
+extern PGDLLIMPORT char *ApiAdminRoleV2;
 extern PGDLLIMPORT char *ApiReadOnlyRole;
 extern PGDLLIMPORT char *ApiSchemaName;
 extern PGDLLIMPORT char *ApiSchemaNameV2;
 extern PGDLLIMPORT char *ApiInternalSchemaName;
 extern PGDLLIMPORT char *ApiInternalSchemaNameV2;
 extern PGDLLIMPORT char *ExtensionObjectPrefix;
+extern PGDLLIMPORT char *ExtensionObjectPrefixV2;
 extern PGDLLIMPORT char *CoreSchemaName;
 extern PGDLLIMPORT char *CoreSchemaNameV2;
 extern PGDLLIMPORT char *FullBsonTypeName;
@@ -39,6 +41,7 @@ void InitializeDocumentDBApiExtensionCache(void);
 void InvalidateCollectionsCache(void);
 bool IsDocumentDBApiExtensionActive(void);
 Oid DocumentDBApiExtensionOwner(void);
+char * GetExtensionApplicationName(void);
 
 /* functions and procedures */
 Oid ApiCollectionFunctionId(void);

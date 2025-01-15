@@ -16,6 +16,11 @@
 #include <utils/builtins.h>
 #include <storage/ipc.h>
 #include <storage/shmem.h>
+#include <utils/memutils.h>
+#include "utils/documentdb_errors.h"
+#include "api_hooks.h"
+
+extern char *ApiExtensionName;
 
 /*
  * Global value tracking the Current Version deployed across
@@ -27,9 +32,8 @@ int FirstMajorVersionOffset = 0;
 
 #define MaxVersionAllowed DocDB_V0
 
-char *VersionRefreshQuery =
-	"SELECT regexp_split_to_array(extversion, '[-\\.]')::int4[] FROM pg_extension WHERE extname = 'pg_helio_api'";
-
+static char *VersionRefreshQuery = NULL;
+static char * GetVersionRefreshQuery(void);
 
 /*
  * Initializes the version cache in shared memory.
@@ -175,10 +179,12 @@ RefreshCurrentVersion(void)
 	 */
 	int savedGUCLevel = NewGUCNestLevel();
 	SetGUCLocally("client_min_messages", "WARNING");
+
 	bool readOnly = true;
 	bool isNull = false;
 
-	char *versionString = ExtensionExecuteQueryOnLocalhostViaLibPQ(VersionRefreshQuery);
+	char *versionString = ExtensionExecuteQueryOnLocalhostViaLibPQ(
+		GetVersionRefreshQuery());
 
 	if (strcmp(versionString, "") == 0)
 	{
@@ -217,4 +223,32 @@ RefreshCurrentVersion(void)
 	pg_write_barrier();
 
 	return newVersion;
+}
+
+
+static char *
+GetVersionRefreshQuery()
+{
+	if (VersionRefreshQuery != NULL)
+	{
+		return VersionRefreshQuery;
+	}
+
+	char *versionQuery = TryGetExtendedVersionRefreshQuery();
+	if (versionQuery != NULL)
+	{
+		VersionRefreshQuery = versionQuery;
+	}
+	else
+	{
+		MemoryContext currContext = MemoryContextSwitchTo(TopMemoryContext);
+		StringInfo s = makeStringInfo();
+		appendStringInfo(s,
+						 "SELECT regexp_split_to_array(extversion, '[-\\.]')::int4[] FROM pg_extension WHERE extname = '%s'",
+						 ApiExtensionName);
+		VersionRefreshQuery = s->data;
+		MemoryContextSwitchTo(currContext);
+	}
+
+	return VersionRefreshQuery;
 }

@@ -414,8 +414,8 @@ WorkerGetBaseActivities()
 					 ApiDataSchemaName, ApiDataSchemaName);
 
 	appendStringInfo(queryInfo,
-					 " ) e2 ON true WHERE (NOT query LIKE '%%%s.current_op%%') AND (application_name = 'MongoGateway-Data' OR application_name LIKE '%%HelioDBInternal')",
-					 ApiSchemaName);
+					 " ) e2 ON true WHERE (NOT query LIKE '%%%s.current_op%%') AND (application_name = 'MongoGateway-Data' OR application_name LIKE '%%%s')",
+					 ApiSchemaName, GetExtensionApplicationName());
 
 	List *workerActivities = NIL;
 	SPIParseOpenOptions parseOptions =
@@ -904,10 +904,11 @@ WriteCommandAndGetQueryType(const char *query, SingleWorkerActivity *activity,
 		return commandName;
 	}
 
-	/* Also check for helio_api explicitly */
-	if (strcmp(ApiSchemaName, "helio_api") != 0)
+	/* Also check for ApiSchemaNameV2 explicitly */
+	if (strcmp(ApiSchemaName, ApiSchemaNameV2) != 0)
 	{
-		commandName = DetectApiSchemaCommand(query, "helio_api", activity, commandWriter);
+		commandName = DetectApiSchemaCommand(query, ApiSchemaNameV2, activity,
+											 commandWriter);
 		if (commandName != NULL)
 		{
 			return commandName;
@@ -921,7 +922,7 @@ WriteCommandAndGetQueryType(const char *query, SingleWorkerActivity *activity,
 		return commandName;
 	}
 
-	/* Also check for helio_api explicitly */
+	/* Also check for ApiSchemaNameV2 explicitly */
 	if (strcmp(ApiInternalSchemaName, DocumentDBApiInternalSchemaName) != 0)
 	{
 		commandName = DetectApiSchemaCommand(query, DocumentDBApiInternalSchemaName,

@@ -98,6 +98,8 @@ char *LocalhostConnectionString = DEFAULT_LOCALHOST_CONN_STR;
 #define DEFAULT_MAX_CUSTOM_COMMAND_TIMEOUT (3600 * 3 * 1000)
 int MaxCustomCommandTimeout = DEFAULT_MAX_CUSTOM_COMMAND_TIMEOUT;
 
+#define DEFAULT_BLOCKED_ROLE_PREFIX_LIST ""
+char *BlockedRolePrefixList = DEFAULT_BLOCKED_ROLE_PREFIX_LIST;
 
 void
 InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
@@ -274,5 +276,12 @@ InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
 			"The number of maximum centroid to use in the t-digest. Range from 10 to 10000. The higher the number, the more accurate will be, but higher memory usage."),
 		&TdigestCompressionAccuracy,
 		DEFAULT_TDIGEST_COMPRESSION_ACCURACY, 10, 10000,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomStringVariable(
+		psprintf("%s.blockedRolePrefixList", newGucPrefix),
+		gettext_noop("List of role prefixes that are blocked from being created/deleted. "
+					 "The list of role prefixes are comma separated."),
+		NULL, &BlockedRolePrefixList, DEFAULT_BLOCKED_ROLE_PREFIX_LIST,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

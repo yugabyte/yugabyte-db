@@ -22,11 +22,11 @@
 
 #define SCRAM_MAX_SALT_LEN 64
 
-enum Helio_Roles
+enum DocumentDB_Roles
 {
-	Helio_Role_Read_AnyDatabase = 0x1,
-	Helio_Role_ReadWrite_AnyDatabase = 0x2,
-	Helio_Role_Cluster_Admin = 0x4,
+	DocumentDB_Role_Read_AnyDatabase = 0x1,
+	DocumentDB_Role_ReadWrite_AnyDatabase = 0x2,
+	DocumentDB_Role_Cluster_Admin = 0x4,
 };
 
 
@@ -63,17 +63,21 @@ extern int ScramDefaultSaltLen;
 /* GUC that controls the max number of users allowed*/
 extern int MaxUserLimit;
 
+/* GUC that controls the blocked role prefix list*/
+extern char *BlockedRolePrefixList;
+
 PG_FUNCTION_INFO_V1(documentdb_extension_create_user);
 PG_FUNCTION_INFO_V1(documentdb_extension_drop_user);
 PG_FUNCTION_INFO_V1(documentdb_extension_update_user);
 PG_FUNCTION_INFO_V1(documentdb_extension_get_users);
 
 static CreateUserSpec * ParseCreateUserSpec(pgbson *createUserSpec);
-static char * ValidateAndObtainHelioRole(const bson_value_t *rolesDocument);
+static char * ValidateAndObtainUserRole(const bson_value_t *rolesDocument);
 static char * ParseDropUserSpec(pgbson *dropSpec);
 static UpdateUserSpec * ParseUpdateUserSpec(pgbson *updateSpec);
 static char * ParseGetUserSpec(pgbson *getSpec);
 static char * PrehashPassword(const char *password);
+static bool IsUserNameInvalid(const char *userName);
 
 /*
  * documentdb_extension_create_user implements the
@@ -100,8 +104,9 @@ documentdb_extension_create_user(PG_FUNCTION_ARGS)
 	/*Verify that we have not yet hit the limit of users allowed */
 	const char *cmdStr = FormatSqlQuery(
 		"SELECT COUNT(*) FROM pg_roles parent JOIN pg_auth_members am ON parent.oid = am.roleid JOIN pg_roles child " \
-		"ON am.member = child.oid WHERE child.rolcanlogin = true AND parent.rolname IN ('helio_admin_role', 'helio_readonly_role') " \
-		"AND child.rolname NOT IN ('helio_admin_role', 'helio_readonly_role');");
+		"ON am.member = child.oid WHERE child.rolcanlogin = true AND parent.rolname IN ('%s', '%s') " \
+		"AND child.rolname NOT IN ('%s', '%s');", ApiAdminRoleV2, ApiReadOnlyRole,
+		ApiAdminRoleV2, ApiReadOnlyRole);
 
 	bool readOnly = true;
 	bool isNull = false;
@@ -142,9 +147,9 @@ documentdb_extension_create_user(PG_FUNCTION_ARGS)
 	ExtensionExecuteQueryViaSPI(createUserInfo->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
-	if (strcmp(spec->pgRole, "helio_readonly_role") == 0)
+	if (strcmp(spec->pgRole, ApiReadOnlyRole) == 0)
 	{
-		/* This is needed to grant helio_readonly_role */
+		/* This is needed to grant ApiReadOnlyRole */
 		/* read access to all new and existing collections */
 		resetStringInfo(createUserInfo);
 		appendStringInfo(createUserInfo,
@@ -192,10 +197,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 									"createUser cannot be empty")));
 			}
 
-			if (strncmp(spec->createUser, "pgmong", 6) == 0 ||
-				strncmp(spec->createUser, "citus", 5) == 0 ||
-				strncmp(spec->createUser, "pg", 2) == 0 ||
-				strncmp(spec->createUser, "helio", 5) == 0)
+			if (IsUserNameInvalid(spec->createUser))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Invalid user name")));
@@ -229,7 +231,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 			}
 
 			/* Validate that it is of the right format */
-			spec->pgRole = ValidateAndObtainHelioRole(&spec->roles);
+			spec->pgRole = ValidateAndObtainUserRole(&spec->roles);
 			has_roles = true;
 		}
 		else if (!IsCommonSpecIgnoredField(key))
@@ -250,14 +252,14 @@ ParseCreateUserSpec(pgbson *createSpec)
 
 
 /*
- *  At the moment we only allow helio_admin_role and helio_readonly_role
- *  1. helio_admin_role corresponds to
+ *  At the moment we only allow ApiAdminRole and ApiReadOnlyRole
+ *  1. ApiAdminRole corresponds to
  *      roles: [
  *          { role: "clusterAdmin", db: "admin" },
  *          { role: "readWriteAnyDatabase", db: "admin" }
  *      ]
  *
- *  2. helio_readonly_role corresponds to
+ *  2. ApiReadOnlyRole corresponds to
  *      roles: [
  *          { role: "readAnyDatabase", db: "admin" }
  *      ]
@@ -265,7 +267,7 @@ ParseCreateUserSpec(pgbson *createSpec)
  *  Reject all other combinations.
  */
 static char *
-ValidateAndObtainHelioRole(const bson_value_t *rolesDocument)
+ValidateAndObtainUserRole(const bson_value_t *rolesDocument)
 {
 	bson_iter_t rolesIterator;
 	BsonValueInitIterator(rolesDocument, &rolesIterator);
@@ -286,18 +288,18 @@ ValidateAndObtainHelioRole(const bson_value_t *rolesDocument)
 				const char *role = bson_iter_utf8(&roleIterator, &strLength);
 				if (strcmp(role, "readAnyDatabase") == 0)
 				{
-					/*This would indicate the helio_readonly_role provided the db is "admin" */
-					userRoles |= Helio_Role_Read_AnyDatabase;
+					/*This would indicate the ApiReadOnlyRole provided the db is "admin" */
+					userRoles |= DocumentDB_Role_Read_AnyDatabase;
 				}
 				else if (strcmp(role, "readWriteAnyDatabase") == 0)
 				{
-					/*This would indicate the helio_admin_role provided the db is "admin" and there is another role "clusterAdmin" */
-					userRoles |= Helio_Role_ReadWrite_AnyDatabase;
+					/*This would indicate the ApiAdminRole provided the db is "admin" and there is another role "clusterAdmin" */
+					userRoles |= DocumentDB_Role_ReadWrite_AnyDatabase;
 				}
 				else if (strcmp(role, "clusterAdmin") == 0)
 				{
-					/*This would indicate the helio_admin_role provided the db is "admin" and there is another role "readWriteAnyDatabase" */
-					userRoles |= Helio_Role_Cluster_Admin;
+					/*This would indicate the ApiAdminRole provided the db is "admin" and there is another role "readWriteAnyDatabase" */
+					userRoles |= DocumentDB_Role_Cluster_Admin;
 				}
 				else
 				{
@@ -329,15 +331,15 @@ ValidateAndObtainHelioRole(const bson_value_t *rolesDocument)
 		}
 	}
 
-	if ((userRoles & Helio_Role_ReadWrite_AnyDatabase) != 0 &&
-		(userRoles & Helio_Role_Cluster_Admin) != 0)
+	if ((userRoles & DocumentDB_Role_ReadWrite_AnyDatabase) != 0 &&
+		(userRoles & DocumentDB_Role_Cluster_Admin) != 0)
 	{
-		return "helio_admin_role";
+		return ApiAdminRoleV2;
 	}
 
-	if ((userRoles & Helio_Role_Read_AnyDatabase) != 0)
+	if ((userRoles & DocumentDB_Role_Read_AnyDatabase) != 0)
 	{
-		return "helio_readonly_role";
+		return ApiReadOnlyRole;
 	}
 
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_ROLENOTFOUND),
@@ -414,10 +416,7 @@ ParseDropUserSpec(pgbson *dropSpec)
 									"dropUser cannot be empty")));
 			}
 
-			if (strncmp(dropUser, "pgmong", 6) == 0 ||
-				strncmp(dropUser, "citus", 5) == 0 ||
-				strncmp(dropUser, "pg", 2) == 0 ||
-				strncmp(dropUser, "helio", 5) == 0)
+			if (IsUserNameInvalid(dropUser))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 								errmsg("Invalid user name")));
@@ -449,7 +448,7 @@ ParseDropUserSpec(pgbson *dropSpec)
  * In MongoDB a user with userAdmin privileges or root privileges can change
  * other users passwords. In postgres a superuser can change any users password.
  * A user with CreateRole privileges can change pwds of roles they created. Given
- * that helio_admin has neither create role nor superuser privileges in our case
+ * that ApiAdminRole has neither create role nor superuser privileges in our case
  * a user can only change their own pwd and no one elses.
  */
 Datum
@@ -585,8 +584,9 @@ documentdb_extension_get_users(PG_FUNCTION_ARGS)
 	{
 		cmdStr = FormatSqlQuery(
 			"WITH r AS (SELECT child.rolname::text AS child_role, parent.rolname::text AS parent_role FROM pg_roles parent JOIN pg_auth_members am ON parent.oid = am.roleid JOIN " \
-			"pg_roles child ON am.member = child.oid WHERE child.rolcanlogin = true AND parent.rolname IN ('helio_admin_role', 'helio_readonly_role') AND child.rolname NOT IN " \
-			"('helio_admin_role', 'helio_readonly_role')) SELECT ARRAY_AGG(%s.row_get_bson(r)) FROM r;",
+			"pg_roles child ON am.member = child.oid WHERE child.rolcanlogin = true AND parent.rolname IN ('%s', '%s') AND child.rolname NOT IN " \
+			"('%s', '%s')) SELECT ARRAY_AGG(%s.row_get_bson(r)) FROM r;",
+			ApiAdminRoleV2, ApiReadOnlyRole, ApiAdminRoleV2, ApiReadOnlyRole,
 			CoreSchemaName);
 		bool readOnly = true;
 		bool isNull = false;
@@ -597,8 +597,9 @@ documentdb_extension_get_users(PG_FUNCTION_ARGS)
 	{
 		cmdStr = FormatSqlQuery(
 			"WITH r AS (SELECT child.rolname::text AS child_role, parent.rolname::text AS parent_role FROM pg_roles parent JOIN pg_auth_members am ON parent.oid = am.roleid JOIN " \
-			"pg_roles child ON am.member = child.oid WHERE child.rolcanlogin = true AND parent.rolname IN ('helio_admin_role', 'helio_readonly_role') AND child.rolname = $1) SELECT " \
-			"ARRAY_AGG(%s.row_get_bson(r)) FROM r;", CoreSchemaName);
+			"pg_roles child ON am.member = child.oid WHERE child.rolcanlogin = true AND parent.rolname IN ('%s', '%s') AND child.rolname = $1) SELECT " \
+			"ARRAY_AGG(%s.row_get_bson(r)) FROM r;", ApiAdminRoleV2, ApiReadOnlyRole,
+			CoreSchemaName);
 		int argCount = 1;
 		Oid argTypes[1];
 		Datum argValues[1];
@@ -673,7 +674,7 @@ documentdb_extension_get_users(PG_FUNCTION_ARGS)
 				if (BSON_ITER_HOLDS_UTF8(&getIter))
 				{
 					const char *parentRole = bson_iter_utf8(&getIter, NULL);
-					if (strcmp(parentRole, "helio_readonly_role") == 0)
+					if (strcmp(parentRole, ApiReadOnlyRole) == 0)
 					{
 						pgbson_array_writer roleArrayWriter;
 						PgbsonWriterStartArray(&userWriter, "roles", strlen("roles"),
@@ -891,4 +892,24 @@ PrehashPassword(const char *password)
 	}
 
 	return result;
+}
+
+
+static bool
+IsUserNameInvalid(const char *userName)
+{
+	/* Split the blocked role prefix list */
+	char *copyBlockList = pstrdup(BlockedRolePrefixList);
+	char *token = strtok(copyBlockList, ",");
+	while (token != NULL)
+	{
+		if (strncmp(userName, token, strlen(token)) == 0)
+		{
+			pfree(copyBlockList);
+			return true;
+		}
+		token = strtok(NULL, ",");
+	}
+	pfree(copyBlockList);
+	return false;
 }

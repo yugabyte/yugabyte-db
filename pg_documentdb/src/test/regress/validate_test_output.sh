@@ -37,20 +37,17 @@ for validationFile in $(ls $scriptDir/expected/*.out); do
         continue;
     fi;
 
-    # TODO: Remove this
-    continue;
-
     # Extract the actual collection ID (we'll use this to check for uniqueness).
-    collectionIdOutput=$(grep 'documentdb_api.next_collection_id' $sqlFilePath)
+    collectionIdOutput=$(grep 'documentdb.next_collection_id' $sqlFilePath)
 
     # Fail if not found.
     if [ "$collectionIdOutput" == "" ]; then
-        echo "Test file prefix Validation failed on '${sqlFile}': Please ensure test files set documentdb_api.next_collection_id";
+        echo "Test file prefix Validation failed on '${sqlFile}': Please ensure test files set documentdb.next_collection_id";
         exit 1;
     fi;
 
     # Get the actual collection ID.
-    collectionIdOutput=${collectionIdOutput/SET documentdb_api.next_collection_id TO/};
+    collectionIdOutput=${collectionIdOutput/SET documentdb.next_collection_id TO/};
     collectionIdOutput=${collectionIdOutput/[\s|;]/};
 
     # If it matches something seen before - fail.
@@ -74,13 +71,13 @@ for validationFile in $(ls $scriptDir/expected/*.out); do
     aggregateCollectionIdStr="$aggregateCollectionIdStr :$collectionIdOutput:"
 
     # See if the index id is also set.
-    collectionIndexIdOutput=$(grep 'documentdb_api.next_collection_index_id' $sqlFilePath)
+    collectionIndexIdOutput=$(grep 'documentdb.next_collection_index_id' $sqlFilePath)
     if [ "$collectionIndexIdOutput" == "" ]; then
-        echo "Test file '${sqlFile}' does not set next_collection_index_id: consider setting documentdb_api.next_collection_index_id";
+        echo "Test file '${sqlFile}' does not set next_collection_index_id: consider setting documentdb.next_collection_index_id";
         exit 1;
     fi;
 
-    collectionIndexIdOutput=${collectionIndexIdOutput/SET documentdb_api.next_collection_index_id TO/};
+    collectionIndexIdOutput=${collectionIndexIdOutput/SET documentdb.next_collection_index_id TO/};
     collectionIndexIdOutput=${collectionIndexIdOutput/[\s|;]/};
     if [ "$collectionIndexIdOutput" != "$collectionIdOutput" ]; then
         echo "CollectionId and CollectionIndexId used in '$sqlFile' must match. CollectionId: $collectionIdOutput, CollectionIndexId: $collectionIndexIdOutput";

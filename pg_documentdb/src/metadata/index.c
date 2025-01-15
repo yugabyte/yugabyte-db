@@ -35,6 +35,7 @@
 #include "utils/documentdb_errors.h"
 #include "metadata/metadata_guc.h"
 #include "utils/version_utils.h"
+#include "metadata/metadata_cache.h"
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -45,7 +46,6 @@ static pgbson * SerializeIndexSpec(const IndexSpec *spec, bool isGetIndexes,
 static IndexOptionsEquivalency IndexKeyDocumentEquivalent(pgbson *leftKey,
 														  pgbson *rightKey);
 static void DeleteCollectionIndexRecordCore(uint64 collectionId, int *indexId);
-
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -1322,7 +1322,7 @@ command_get_next_collection_index_id(PG_FUNCTION_ARGS)
 
 
 /*
- * AddRequestInIndexQueue inserts a record into ApiCatalogSchemaName.helio_index_queue
+ * AddRequestInIndexQueue inserts a record into ApiCatalogSchemaName.{ExtensionObjectPrefix}_index_queue
  * for given indexId using SPI.
  */
 void
@@ -1389,7 +1389,7 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	 *
 	 * SELECT index_cmd, index_id, index_cmd_status,
 	 *        COALESCE(attempt, 0) AS attempt, comment, update_time, user_oid
-	 * FROM ApiCatalogSchemaName.helio_index_queue iq
+	 * FROM ApiCatalogSchemaName.{ExtensionObjectPrefix}_index_queue iq
 	 * WHERE cmd_type = '%c'
 	 *       AND iq.collection_id = collectionId
 	 *       AND (index_cmd_status != IndexCmdStatus_Inprogress
@@ -1470,7 +1470,7 @@ GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds)
 	 *
 	 * SELECT array_agg(a.collection_id) FROM
 	 *  (SELECT collection_id
-	 *  FROM ApiCatalogSchemaName.helio_index_queue pq
+	 *  FROM ApiCatalogSchemaName.{ExtensionObjectPrefix}_index_queue pq
 	 *  WHERE cmd_type = $1 AND collection_id <> ANY($2)
 	 *  ORDER BY min(pq.index_cmd_status) LIMIT MaxNumActiveUsersIndexBuilds
 	 *  ) a;
@@ -1559,7 +1559,7 @@ GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds)
 
 /*
  * RemoveRequestFromIndexQueue deletes the record inserted for given index from
- * ApiCatalogSchemaName.helio_index_queue using SPI.
+ * ApiCatalogSchemaName.{ExtensionObjectPrefix}_index_queue using SPI.
  */
 void
 RemoveRequestFromIndexQueue(int indexId, char cmdType)
@@ -1597,8 +1597,9 @@ MarkIndexRequestStatus(int indexId, char cmdType, IndexCmdStatus status, pgbson 
 	Assert(cmdType == CREATE_INDEX_COMMAND_TYPE || cmdType == REINDEX_COMMAND_TYPE);
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
-					 "UPDATE %s SET index_cmd_status = $1, comment = helio_core.bson_from_bytea($2),"
-					 " update_time = $3, attempt = $4 ", GetIndexQueueName());
+					 "UPDATE %s SET index_cmd_status = $1, comment = %s.bson_from_bytea($2),"
+					 " update_time = $3, attempt = $4 ", GetIndexQueueName(),
+					 CoreSchemaNameV2);
 
 	if (opId != NULL)
 	{
@@ -1663,7 +1664,7 @@ MarkIndexRequestStatus(int indexId, char cmdType, IndexCmdStatus status, pgbson 
 
 
 /*
- * GetIndexBuildStatusFromIndexQueue gets the status of Create Index request from the ApiCatalogSchemaName.helio_index_queue
+ * GetIndexBuildStatusFromIndexQueue gets the status of Create Index request from the ApiCatalogSchemaName.{ExtensionObjectPrefix}_index_queue
  */
 IndexCmdStatus
 GetIndexBuildStatusFromIndexQueue(int indexId)
@@ -1778,7 +1779,7 @@ MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights, bool *isWi
 char *
 GetIndexQueueName(void)
 {
-	return "helio_api_catalog.helio_index_queue";
+	return psprintf("%s.%s_index_queue", ApiCatalogSchemaNameV2, ExtensionObjectPrefixV2);
 }
 
 

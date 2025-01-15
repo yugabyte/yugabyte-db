@@ -1,15 +1,15 @@
-SET search_path TO helio_api,helio_core,helio_api_catalog;
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
 
-SET helio_api.next_collection_id TO 3500;
-SET helio_api.next_collection_index_id TO 3500;
+SET documentdb.next_collection_id TO 3500;
+SET documentdb.next_collection_index_id TO 3500;
 
 
-SELECT helio_api.insert_one('db','aggregation_pipeline','{"_id":"1", "int": 10, "a" : { "b" : [ "x", 1, 2.0, true ] } }', NULL);
-SELECT helio_api.insert_one('db','aggregation_pipeline','{"_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
-SELECT helio_api.insert_one('db','aggregation_pipeline','{"_id":"3", "boolean": false, "a" : "no", "b": "yes", "c": true }', NULL);
+SELECT documentdb_api.insert_one('db','aggregation_pipeline','{"_id":"1", "int": 10, "a" : { "b" : [ "x", 1, 2.0, true ] } }', NULL);
+SELECT documentdb_api.insert_one('db','aggregation_pipeline','{"_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
+SELECT documentdb_api.insert_one('db','aggregation_pipeline','{"_id":"3", "boolean": false, "a" : "no", "b": "yes", "c": true }', NULL);
 
 -- fetch all rows
-SELECT document FROM helio_api.collection('db', 'aggregation_pipeline') ORDER BY bson_get_value(document, '_id');
+SELECT document FROM documentdb_api.collection('db', 'aggregation_pipeline') ORDER BY bson_get_value(document, '_id');
 
 -- add newField
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } } ], "cursor": {} }');
@@ -159,7 +159,7 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipelin
 SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": { "a.b": 1 }, "sort": { "$natural": -1 }}');
 
 -- FIND with $natural when target is view
-SELECT helio_api.create_collection_view('db', '{ "create": "targetView", "viewOn": "aggregation_pipeline", "pipeline": [ { "$project": { "_id": 1, "a" : 1 } } ] }');
+SELECT documentdb_api.create_collection_view('db', '{ "create": "targetView", "viewOn": "aggregation_pipeline", "pipeline": [ { "$project": { "_id": 1, "a" : 1 } } ] }');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "targetView", "projection": {}, "sort": { "$natural": 1 }}');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "targetView", "projection": {}, "sort": { "$natural": -1 }}');
 
@@ -190,15 +190,15 @@ SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipel
 
 SELECT document FROM bson_aggregation_count('db', '{ "count": "non_existent_coll" }');
 
-SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": { "_id": { "$gt": "1" } } }');
+SELECT document FROM documentdb_api.count_query('db', '{ "count": "aggregation_pipeline", "query": { "_id": { "$gt": "1" } } }');
 
-SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline" }');
+SELECT document FROM documentdb_api.count_query('db', '{ "count": "aggregation_pipeline" }');
 
-SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": null }');
+SELECT document FROM documentdb_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": null }');
 
-SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -3.14159 }');
+SELECT document FROM documentdb_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -3.14159 }');
 
-SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -9223372036854775808 }');
+SELECT document FROM documentdb_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -9223372036854775808 }');
 
 -- handling of skip as an aggregation stage; this is different from skip in a count query
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": {}}, { "$skip": 0 }], "cursor": {}}');
@@ -223,14 +223,14 @@ SELECT document FROM bson_aggregation_distinct('db', '{ "distinct": "aggregation
 
 SELECT document FROM bson_aggregation_distinct('db', '{ "distinct": "non_existent_coll", "key": "foo" }');
 
-SELECT document FROM helio_api.distinct_query('db', '{ "distinct": "aggregation_pipeline", "key": "_id" }');
+SELECT document FROM documentdb_api.distinct_query('db', '{ "distinct": "aggregation_pipeline", "key": "_id" }');
 
-SELECT document FROM helio_api.distinct_query('db', '{ "distinct": "non_existent_coll", "key": "foo" }');
+SELECT document FROM documentdb_api.distinct_query('db', '{ "distinct": "non_existent_coll", "key": "foo" }');
 
 -- Vector search with cosmosSearch
-SELECT helio_api.insert_one('db', 'aggregation_pipeline', '{ "_id": 6, "a": "some sentence", "v": [3.0, 5.0, 1.1 ] }');
-SELECT helio_api.insert_one('db', 'aggregation_pipeline', '{ "_id": 7, "a": "some other sentence", "v": [8.0, 5.0, 0.1 ] }');
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "COS", "dimensions": 3 } } ] }', true);
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline', '{ "_id": 6, "a": "some sentence", "v": [3.0, 5.0, 1.1 ] }');
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline', '{ "_id": 7, "a": "some other sentence", "v": [8.0, 5.0, 0.1 ] }');
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "COS", "dimensions": 3 } } ] }', true);
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
@@ -262,8 +262,8 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "nProbes": "5" }  } } ], "cursor": {} }');
 
 -- numLists > data size, pgvector will generate randomized centroids, using original vector data to query
-CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline", "index": "foo_1"}');
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 10000, "similarity": "COS", "dimensions": 3 } } ] }', true);
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline", "index": "foo_1"}');
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 10000, "similarity": "COS", "dimensions": 3 } } ] }', true);
 ANALYZE;
 BEGIN;
 SET LOCAL enable_seqscan = off;
@@ -275,7 +275,7 @@ SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 5.0, 1.1 ], "k": 2, "path": "v", "nProbes": 1 }  } } ], "cursor": {} }');
 COMMIT;
 
-SELECT helio_test_helpers.drop_primary_key('db','aggregation_pipeline');
+SELECT documentdb_test_helpers.drop_primary_key('db','aggregation_pipeline');
 
 BEGIN;
 set local enable_seqscan to off;
@@ -296,28 +296,28 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "unknowType": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
 
 -- non supported vector index type
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "idx_vector", "cosmosSearchOptions": { "kind": "vector-diskann", "similarity": "COS", "dimensions": 3 } } ] }');
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "idx_vector", "cosmosSearchOptions": { "kind": "vector-scann", "similarity": "COS", "dimensions": 3 } } ] }');
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "idx_vector", "cosmosSearchOptions": { "kind": "vector-diskann", "similarity": "COS", "dimensions": 3 } } ] }');
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "idx_vector", "cosmosSearchOptions": { "kind": "vector-scann", "similarity": "COS", "dimensions": 3 } } ] }');
 
 -- $lookup
 
-SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_orders','{ "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 5}', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 6, "item" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_orders',' { "_id" : 7, "item" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"] }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders','{ "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 5}', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 6, "item" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders',' { "_id" : 7, "item" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"] }', NULL);
 
-SELECT helio_api.insert_one('db','agg_pipeline_inventory',' { "_id" : 11, "sku" : "almonds", "description": "product 1", "instock" : 120 }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_inventory',' { "_id" : 12, "sku" : "almonds", "description": "product 1", "instock" : 240 }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 13, "sku" : "bread", "description": "product 2", "instock" : 80 }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 14, "sku" : "cashews", "description": "product 3", "instock" : 60 }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 15, "sku" : "pecans", "description": "product 4", "instock" : 70 }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 16, "sku" : null, "description": "product 4", "instock" : 70 }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 17, "sku" :  {"a": "x", "b" : 1, "c" : [1, 2, 3]}, "description": "complex object" }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 18, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
-SELECT helio_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 19, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory',' { "_id" : 11, "sku" : "almonds", "description": "product 1", "instock" : 120 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory',' { "_id" : 12, "sku" : "almonds", "description": "product 1", "instock" : 240 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 13, "sku" : "bread", "description": "product 2", "instock" : 80 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 14, "sku" : "cashews", "description": "product 3", "instock" : 60 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 15, "sku" : "pecans", "description": "product 4", "instock" : 70 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 16, "sku" : null, "description": "product 4", "instock" : 70 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 17, "sku" :  {"a": "x", "b" : 1, "c" : [1, 2, 3]}, "description": "complex object" }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 18, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory','{ "_id" : 19, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
 
 
 SELECT document FROM bson_aggregation_pipeline('db', 
@@ -354,7 +354,7 @@ SELECT document FROM bson_aggregation_pipeline('db',
 
 ROLLBACK;
 
-SELECT helio_api.shard_collection('db', 'agg_pipeline_orders', '{ "_id": "hashed" }', false);
+SELECT documentdb_api.shard_collection('db', 'agg_pipeline_orders', '{ "_id": "hashed" }', false);
 
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
@@ -383,7 +383,7 @@ SELECT document FROM bson_aggregation_pipeline('db',
 
 ROLLBACK;
 
-SELECT helio_api.shard_collection('db', 'agg_pipeline_inventory', '{ "_id": "hashed" }', false);
+SELECT documentdb_api.shard_collection('db', 'agg_pipeline_inventory', '{ "_id": "hashed" }', false);
 
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
@@ -411,11 +411,11 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate" : "aggregation_pipeline", "pipeline" : [ { "$match" : { "$or" : [ { "_id" : { "$lt" : 9999.0 }, "some_other_field" : { "$ne" : 3.0 } }, { "this_predicate_matches_nothing" : true } ] } }, { "$sort" : { "_id" : -1.0 } }, { "$limit" : 1.0 }, { "$project" : { "_id" : 1.0, "b" : { "$round" : "$a" } } } ], "cursor" : {  }, "lsid" : { "id" : { "$binary" : { "base64": "VJmzOaS5R46C4aFkQzrFaQ==", "subType" : "04" } } }, "$db" : "test" }');
 
 -- Vector search with empty vector field
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_empty_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "vectorIndex", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 5, "similarity": "COS", "dimensions": 3 } } ] }', true);
-SELECT helio_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 1, "a": "some sentence", "v": [1, 2, 3 ] }');
-SELECT helio_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 2, "a": "some other sentence", "v": [1, 2.0, 3 ] }');
-SELECT helio_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 3, "a": "some sentence" }');
-SELECT helio_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 4, "a": "some other sentence", "v": [3, 2, 1 ] }');
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_empty_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "vectorIndex", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 5, "similarity": "COS", "dimensions": 3 } } ] }', true);
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 1, "a": "some sentence", "v": [1, 2, 3 ] }');
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 2, "a": "some other sentence", "v": [1, 2.0, 3 ] }');
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 3, "a": "some sentence" }');
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 4, "a": "some other sentence", "v": [3, 2, 1 ] }');
 
 BEGIN;
 SET LOCAL enable_seqscan = off;
@@ -433,8 +433,8 @@ COMMIT;
 SELECT drop_collection('db','aggregation_pipeline_empty_vector');
 
 -- $addFields nested usage
-SELECT helio_api.insert_one('db','aggregation_pipeline','{ "_id": 100, "student": "Maya", "homework": [10, 5, 10], "quiz": [10, 8], "extraCredit": 0 }', NULL);
-SELECT helio_api.insert_one('db','aggregation_pipeline','{ "_id": 200, "student": "Ryan", "homework": [5, 6, 5], "quiz": [8, 8], "extraCredit": 8 }', NULL);
+SELECT documentdb_api.insert_one('db','aggregation_pipeline','{ "_id": 100, "student": "Maya", "homework": [10, 5, 10], "quiz": [10, 8], "extraCredit": 0 }', NULL);
+SELECT documentdb_api.insert_one('db','aggregation_pipeline','{ "_id": 200, "student": "Ryan", "homework": [5, 6, 5], "quiz": [8, 8], "extraCredit": 8 }', NULL);
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$match": { "extraCredit": { "$gte": 0 } } }, { "$addFields": { "totalHomework": { "$sum": "$homework" }, "totalQuiz": { "$sum": "$quiz" } }}, { "$addFields": { "totalScore": { "$add": [ "$totalHomework", "$totalQuiz", "$extraCredit" ]} }} ], "cursor": {} }');
 
@@ -445,7 +445,7 @@ DO $$
 DECLARE i int;
 BEGIN
 FOR i IN 1..100 LOOP
-PERFORM helio_api.insert_one('db', 'agg_pipeline_samplerate', FORMAT('{ "_id": %s }',i)::helio_core.bson);
+PERFORM documentdb_api.insert_one('db', 'agg_pipeline_samplerate', FORMAT('{ "_id": %s }',i)::documentdb_core.bson);
 END LOOP;
 END;
 $$;
@@ -459,7 +459,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeli
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeline_samplerate", "pipeline": [ { "$match": { "$sampleRate": 0.5 } }, { "$count": "numMatches" }, { "$addFields": { "gtZero": { "$gt": ["$numMatches", 0] } } }, {"$project": { "_id": 0, "gtZero": 1 } }], "cursor": {} }');
 
 /* test shard case */
-SELECT helio_api.shard_collection('db', 'agg_pipeline_samplerate', '{ "_id": "hashed" }', false);
+SELECT documentdb_api.shard_collection('db', 'agg_pipeline_samplerate', '{ "_id": "hashed" }', false);
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeline_samplerate", "pipeline": [ { "$match": { "$sampleRate": 1 } }, {"$count": "count"} ], "cursor": {} }');
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeline_samplerate", "pipeline": [ { "$match": { "$sampleRate": 1 } }, {"$count": "count"} ], "cursor": {} }');
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeline_samplerate", "pipeline": [ { "$match": { "$sampleRate": 0 } }, {"$count": "count"} ], "cursor": {} }');

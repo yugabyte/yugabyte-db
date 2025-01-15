@@ -182,4 +182,6 @@ struct Path * TryOptimizePathForBitmapAnd(struct PlannerInfo *root, struct
 										  RangeTblEntry *rte, struct
 										  BitmapHeapPath *heapPath);
 
+char * TryGetExtendedVersionRefreshQuery(void);
+
 #endif

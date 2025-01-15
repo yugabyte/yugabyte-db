@@ -29,7 +29,6 @@
 #include "distributed_hooks.h"
 
 extern bool UseLocalExecutionShardQueries;
-extern char *VersionRefreshQuery;
 extern char *ApiDistributedSchemaName;
 
 extern bool EnableMetadataReferenceTableSync;
@@ -397,8 +396,8 @@ GetDistributedApplicationNameCore(void)
 	 * Match the application name pattern for the citus run_command* internal backend
 	 * so these don't count in the quota for max_client_backends for citus.
 	 */
-	return psprintf("citus_run_command gpid=%lu HelioDBInternal",
-					DocumentDBCitusGlobalPid);
+	return psprintf("citus_run_command gpid=%lu %s",
+					DocumentDBCitusGlobalPid, GetExtensionApplicationName());
 }
 
 
@@ -477,6 +476,23 @@ EnsureMetadataTableReplicatedCore(const char *tableName)
 }
 
 
+static char *
+TryGetExtendedVersionRefreshQueryCore(void)
+{
+	/* Update the version check query to consider distributed versions */
+	MemoryContext currContext = MemoryContextSwitchTo(TopMemoryContext);
+	StringInfo s = makeStringInfo();
+	appendStringInfo(s,
+					 "SELECT regexp_split_to_array(TRIM(%s.bson_get_value_text(metadata, 'last_deploy_version'), '\"'), '[-\\.]')::int4[] FROM %s.%s_cluster_data",
+					 CoreSchemaName, ApiDistributedSchemaName, ExtensionObjectPrefix);
+	MemoryContextSwitchTo(currContext);
+
+	elog(LOG, "Version refresh query is %s", s->data);
+
+	return s->data;
+}
+
+
 /*
  * Register hook overrides for DocumentDB.
  */
@@ -499,13 +515,5 @@ InitializeDocumentDBDistributedHooks(void)
 	DefaultInlineWriteOperations = false;
 	UpdateColocationHooks();
 
-	/* Update the version check query to consider distributed versions */
-	MemoryContext currContext = MemoryContextSwitchTo(TopMemoryContext);
-	StringInfo s = makeStringInfo();
-	appendStringInfo(s,
-					 "SELECT regexp_split_to_array(TRIM(%s.bson_get_value_text(metadata, 'last_deploy_version'), '\"'), '[-\\.]')::int4[] FROM %s.%s_cluster_data",
-					 CoreSchemaName, ApiDistributedSchemaName, ExtensionObjectPrefix);
-	VersionRefreshQuery = s->data;
-	MemoryContextSwitchTo(currContext);
-	elog(LOG, "Version refresh query is %s", VersionRefreshQuery);
+	try_get_extended_version_refresh_query_hook = TryGetExtendedVersionRefreshQueryCore;
 }

@@ -141,8 +141,10 @@ command_shard_collection(PG_FUNCTION_ARGS)
 	{
 		StringInfo shardCollectionQuery = makeStringInfo();
 		appendStringInfo(shardCollectionQuery,
-						 "SELECT helio_api.shard_collection(%s::helio_core.bson)",
-						 quote_literal_cstr(PgbsonToHexadecimalString(shardArg)));
+						 "SELECT %s.shard_collection(%s::%s.bson)",
+						 ApiSchemaNameV2,
+						 quote_literal_cstr(PgbsonToHexadecimalString(shardArg)),
+						 CoreSchemaNameV2);
 		DistributedRunCommandResult result = RunCommandOnMetadataCoordinator(
 			shardCollectionQuery->data);
 
@@ -178,8 +180,10 @@ command_reshard_collection(PG_FUNCTION_ARGS)
 	{
 		StringInfo shardCollectionQuery = makeStringInfo();
 		appendStringInfo(shardCollectionQuery,
-						 "SELECT helio_api.reshard_collection(%s::helio_core.bson)",
-						 quote_literal_cstr(PgbsonToHexadecimalString(shardArg)));
+						 "SELECT %s.reshard_collection(%s::%s.bson)",
+						 ApiSchemaNameV2,
+						 quote_literal_cstr(PgbsonToHexadecimalString(shardArg)),
+						 CoreSchemaNameV2);
 		DistributedRunCommandResult result = RunCommandOnMetadataCoordinator(
 			shardCollectionQuery->data);
 
@@ -215,8 +219,10 @@ command_unshard_collection(PG_FUNCTION_ARGS)
 	{
 		StringInfo shardCollectionQuery = makeStringInfo();
 		appendStringInfo(shardCollectionQuery,
-						 "SELECT helio_api.unshard_collection(%s::helio_core.bson)",
-						 quote_literal_cstr(PgbsonToHexadecimalString(shardArg)));
+						 "SELECT %s.unshard_collection(%s::%s.bson)",
+						 ApiSchemaNameV2,
+						 quote_literal_cstr(PgbsonToHexadecimalString(shardArg)),
+						 CoreSchemaNameV2);
 		DistributedRunCommandResult result = RunCommandOnMetadataCoordinator(
 			shardCollectionQuery->data);
 

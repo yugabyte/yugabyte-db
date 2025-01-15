@@ -123,7 +123,7 @@ typedef struct IndexDetails
 } IndexDetails;
 
 /*
- * Index command status in ApiCatalogSchemaName.helio_index_queue
+ * Index command status in ApiCatalogSchemaName.{ExtensionObjectPrefix}_index_queue
  * Since GetRequestFromIndexQueue relies on order of index_cmd_status to avoid the starvation
  * the enum values are kept in such a way that GetRequestFromIndexQueue always picks request in order
  * IndexCmdStatus_Queued first then IndexCmdStatus_Failed (ascending order).

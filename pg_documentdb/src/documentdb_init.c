@@ -96,7 +96,8 @@ InstallDocumentDBApiPostgresHooks(void)
 
 /* Initialized the background worker */
 void
-InitializeDocumentDBBackgroundWorker(char *libraryName, char *gucPrefix)
+InitializeDocumentDBBackgroundWorker(char *libraryName, char *gucPrefix,
+									 char *extensionObjectPrefix)
 {
 	/* Initialize GUCs */
 	InitDocumentDBBackgroundWorkerGucs(gucPrefix);
@@ -118,8 +119,8 @@ InitializeDocumentDBBackgroundWorker(char *libraryName, char *gucPrefix)
 
 	sprintf(worker.bgw_library_name, "%s", libraryName);
 	sprintf(worker.bgw_function_name, "DocumentDBBackgroundWorkerMain");
-	snprintf(worker.bgw_name, BGW_MAXLEN, "helio bg worker leader");
-	snprintf(worker.bgw_type, BGW_MAXLEN, "helio_bg_worker_leader");
+	snprintf(worker.bgw_name, BGW_MAXLEN, "%s bg worker leader", extensionObjectPrefix);
+	snprintf(worker.bgw_type, BGW_MAXLEN, "%s_bg_worker_leader", extensionObjectPrefix);
 
 	RegisterBackgroundWorker(&worker);
 }

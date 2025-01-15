@@ -13,6 +13,7 @@
 void InitApiConfigurations(char *prefix, char *newGucPrefix);
 void InstallDocumentDBApiPostgresHooks(void);
 void UninstallDocumentDBApiPostgresHooks(void);
-void InitializeDocumentDBBackgroundWorker(char *libraryName, char *gucPrefix);
+void InitializeDocumentDBBackgroundWorker(char *libraryName, char *gucPrefix,
+										  char *extensionObjectPrefix);
 void InitializeSharedMemoryHooks(void);
 #endif

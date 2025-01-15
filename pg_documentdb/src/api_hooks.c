@@ -48,6 +48,9 @@ GetMultiAndBitmapIndexFunc_HookType get_multi_and_bitmap_func_hook = NULL;
 TryCustomParseAndValidateVectorQuerySpec_HookType
 	try_custom_parse_and_validate_vector_query_spec_hook = NULL;
 TryOptimizePathForBitmapAndHookType try_optimize_path_for_bitmap_and_hook = NULL;
+TryGetExtendedVersionRefreshQuery_HookType try_get_extended_version_refresh_query_hook =
+	NULL;
+
 
 /*
  * Single node scenario is always a metadata coordinator
@@ -394,6 +397,18 @@ TryOptimizePathForBitmapAnd(PlannerInfo *root, RelOptInfo *rel,
 	if (try_optimize_path_for_bitmap_and_hook != NULL)
 	{
 		return try_optimize_path_for_bitmap_and_hook(root, rel, rte, heapPath);
+	}
+
+	return NULL;
+}
+
+
+char *
+TryGetExtendedVersionRefreshQuery(void)
+{
+	if (try_get_extended_version_refresh_query_hook != NULL)
+	{
+		return try_get_extended_version_refresh_query_hook();
 	}
 
 	return NULL;

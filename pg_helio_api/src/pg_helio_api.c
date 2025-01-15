@@ -55,6 +55,7 @@ _PG_init(void)
 
 	ApiDataSchemaName = "helio_data";
 	ApiAdminRole = "helio_admin_role";
+	ApiAdminRoleV2 = "helio_admin_role";
 	ApiReadOnlyRole = "helio_readonly_role";
 	ApiSchemaName = "helio_api";
 	ApiSchemaNameV2 = "helio_api";
@@ -63,6 +64,7 @@ _PG_init(void)
 	ApiCatalogSchemaName = "helio_api_catalog";
 	ApiCatalogSchemaNameV2 = "helio_api_catalog";
 	ExtensionObjectPrefix = "helio";
+	ExtensionObjectPrefixV2 = "helio";
 	FullBsonTypeName = "helio_core.bson";
 	ApiExtensionName = "pg_helio_api";
 
@@ -80,7 +82,7 @@ _PG_init(void)
 	InitializeExtensionExternalConfigs("helio_api");
 	InitializeSharedMemoryHooks();
 	MarkGUCPrefixReserved("helio_api");
-	InitializeDocumentDBBackgroundWorker("pg_helio_api", "helio_api");
+	InitializeDocumentDBBackgroundWorker("pg_helio_api", "helio_api", "helio");
 
 	InstallDocumentDBApiPostgresHooks();
 	RegisterRumJoinScanNodes();

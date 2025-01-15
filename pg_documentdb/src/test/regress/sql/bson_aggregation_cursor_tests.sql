@@ -1,6 +1,6 @@
-SET search_path TO helio_api_catalog, helio_api, helio_core, public;
-SET helio_api.next_collection_id TO 3100;
-SET helio_api.next_collection_index_id TO 3100;
+SET search_path TO documentdb_api_catalog, documentdb_api, documentdb_core, public;
+SET documentdb.next_collection_id TO 3100;
+SET documentdb.next_collection_index_id TO 3100;
 
 CREATE SCHEMA aggregation_cursor_test;
 
@@ -9,7 +9,7 @@ DECLARE i int;
 BEGIN
 -- each doc is "a": 500KB, "c": 5 MB - ~5.5 MB & there's 10 of them
 FOR i IN 1..10 LOOP
-PERFORM helio_api.insert_one('db', 'get_aggregation_cursor_test', FORMAT('{ "_id": %s, "a": "%s", "c": [ %s "d" ] }',  i, repeat('Sample', 100000), repeat('"' || repeat('a', 1000) || '", ', 5000))::helio_core.bson);
+PERFORM documentdb_api.insert_one('db', 'get_aggregation_cursor_test', FORMAT('{ "_id": %s, "a": "%s", "c": [ %s "d" ] }',  i, repeat('Sample', 100000), repeat('"' || repeat('a', 1000) || '", ', 5000))::documentdb_core.bson);
 END LOOP;
 END;
 $$;
@@ -18,7 +18,7 @@ DO $$
 DECLARE i int;
 BEGIN
 FOR i IN 1..10 LOOP
-PERFORM helio_api.insert_one('db', 'get_aggregation_cursor_smalldoc_test', FORMAT('{ "_id": %s, "a": "%s", "c": [ %s "d" ] }',  i, repeat('Sample', 10), repeat('"' || repeat('a', 10) || '", ', 5))::helio_core.bson);
+PERFORM documentdb_api.insert_one('db', 'get_aggregation_cursor_smalldoc_test', FORMAT('{ "_id": %s, "a": "%s", "c": [ %s "d" ] }',  i, repeat('Sample', 10), repeat('"' || repeat('a', 10) || '", ', 5))::documentdb_core.bson);
 END LOOP;
 END;
 $$;
@@ -49,30 +49,30 @@ $$
     SELECT row_get_bson(r1) INTO getMoreSpec FROM r1;
 
     SELECT cursorPage, continuation, persistConnection INTO STRICT doc, cont, persistConn FROM
-                    helio_api.find_cursor_first_page(database => 'db', commandSpec => findSpec, cursorId => 4294967294);
-    SELECT helio_api_catalog.bson_dollar_project(doc,
+                    documentdb_api.find_cursor_first_page(database => 'db', commandSpec => findSpec, cursorId => 4294967294);
+    SELECT documentdb_api_catalog.bson_dollar_project(doc,
         ('{ "ok": 1, "cursor.id": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }, ' ||
-        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::helio_core.bson), length(doc::bytea)::int INTO STRICT doc, docSize;
+        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::documentdb_core.bson), length(doc::bytea)::int INTO STRICT doc, docSize;
 
     IF obfuscate_id THEN
-        SELECT helio_api_catalog.bson_dollar_add_fields(doc, '{ "ids.a": "1" }'::helio_core.bson) INTO STRICT doc;
+        SELECT documentdb_api_catalog.bson_dollar_add_fields(doc, '{ "ids.a": "1" }'::documentdb_core.bson) INTO STRICT doc;
     END IF;
     
-    SELECT helio_api_catalog.bson_dollar_project(cont, '{ "continuation.value": 0 }'::helio_core.bson) INTO STRICT contProcessed;
+    SELECT documentdb_api_catalog.bson_dollar_project(cont, '{ "continuation.value": 0 }'::documentdb_core.bson) INTO STRICT contProcessed;
     RETURN NEXT ROW(doc, docSize, contProcessed, persistConn)::aggregation_cursor_test.drain_result;
 
     FOR i IN 1..loopCount LOOP
-        SELECT cursorPage, continuation INTO STRICT doc, cont FROM helio_api.cursor_get_more(database => 'db', getMoreSpec => getMoreSpec, continuationSpec => cont);
+        SELECT cursorPage, continuation INTO STRICT doc, cont FROM documentdb_api.cursor_get_more(database => 'db', getMoreSpec => getMoreSpec, continuationSpec => cont);
 
-        SELECT helio_api_catalog.bson_dollar_project(doc,
+        SELECT documentdb_api_catalog.bson_dollar_project(doc,
         ('{ "ok": 1, "cursor.id": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }, ' ||
-        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::helio_core.bson), length(doc::bytea)::int INTO STRICT doc, docSize;
+        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::documentdb_core.bson), length(doc::bytea)::int INTO STRICT doc, docSize;
 
         IF obfuscate_id THEN
-            SELECT helio_api_catalog.bson_dollar_add_fields(doc, '{ "ids.a": "1" }'::helio_core.bson) INTO STRICT doc;
+            SELECT documentdb_api_catalog.bson_dollar_add_fields(doc, '{ "ids.a": "1" }'::documentdb_core.bson) INTO STRICT doc;
         END IF;
 
-        SELECT helio_api_catalog.bson_dollar_project(cont, '{ "continuation.value": 0 }'::helio_core.bson) INTO STRICT contProcessed;
+        SELECT documentdb_api_catalog.bson_dollar_project(cont, '{ "continuation.value": 0 }'::documentdb_core.bson) INTO STRICT contProcessed;
         RETURN NEXT ROW(doc, docSize, contProcessed, FALSE)::aggregation_cursor_test.drain_result;
     END LOOP;
 END;
@@ -104,30 +104,30 @@ $$
     SELECT row_get_bson(r1) INTO getMoreSpec FROM r1;
 
     SELECT cursorPage, continuation, persistConnection INTO STRICT doc, cont, persistConn FROM
-                    helio_api.aggregate_cursor_first_page(database => 'db', commandSpec => aggregateSpec, cursorId => 4294967294);
-    SELECT helio_api_catalog.bson_dollar_project(doc,
+                    documentdb_api.aggregate_cursor_first_page(database => 'db', commandSpec => aggregateSpec, cursorId => 4294967294);
+    SELECT documentdb_api_catalog.bson_dollar_project(doc,
         ('{ "ok": 1, "cursor.id": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }, ' ||
-        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::helio_core.bson), length(doc::bytea)::int INTO STRICT doc, docSize;
+        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::documentdb_core.bson), length(doc::bytea)::int INTO STRICT doc, docSize;
 
     IF obfuscate_id THEN
-        SELECT helio_api_catalog.bson_dollar_add_fields(doc, '{ "ids.a": "1" }'::helio_core.bson) INTO STRICT doc;
+        SELECT documentdb_api_catalog.bson_dollar_add_fields(doc, '{ "ids.a": "1" }'::documentdb_core.bson) INTO STRICT doc;
     END IF;
     
-    SELECT helio_api_catalog.bson_dollar_project(cont, '{ "continuation.value": 0 }'::helio_core.bson) INTO STRICT contProcessed;
+    SELECT documentdb_api_catalog.bson_dollar_project(cont, '{ "continuation.value": 0 }'::documentdb_core.bson) INTO STRICT contProcessed;
     RETURN NEXT ROW(doc, docSize, contProcessed, persistConn)::aggregation_cursor_test.drain_result;
 
     FOR i IN 1..loopCount LOOP
-        SELECT cursorPage, continuation INTO STRICT doc, cont FROM helio_api.cursor_get_more(database => 'db', getMoreSpec => getMoreSpec, continuationSpec => cont);
+        SELECT cursorPage, continuation INTO STRICT doc, cont FROM documentdb_api.cursor_get_more(database => 'db', getMoreSpec => getMoreSpec, continuationSpec => cont);
 
-        SELECT helio_api_catalog.bson_dollar_project(doc,
+        SELECT documentdb_api_catalog.bson_dollar_project(doc,
         ('{ "ok": 1, "cursor.id": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }, ' ||
-        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::helio_core.bson), length(doc::bytea)::int INTO STRICT doc, docSize;
+        ' "ids": { "$ifNull": [ "$cursor.firstBatch._id", "$cursor.nextBatch._id" ] } }')::documentdb_core.bson), length(doc::bytea)::int INTO STRICT doc, docSize;
 
         IF obfuscate_id THEN
-            SELECT helio_api_catalog.bson_dollar_add_fields(doc, '{ "ids.a": "1" }'::helio_core.bson) INTO STRICT doc;
+            SELECT documentdb_api_catalog.bson_dollar_add_fields(doc, '{ "ids.a": "1" }'::documentdb_core.bson) INTO STRICT doc;
         END IF;
 
-        SELECT helio_api_catalog.bson_dollar_project(cont, '{ "continuation.value": 0 }'::helio_core.bson) INTO STRICT contProcessed;
+        SELECT documentdb_api_catalog.bson_dollar_project(cont, '{ "continuation.value": 0 }'::documentdb_core.bson) INTO STRICT contProcessed;
         RETURN NEXT ROW(doc, docSize, contProcessed, FALSE)::aggregation_cursor_test.drain_result;
     END LOOP;
 END;
@@ -203,7 +203,7 @@ SELECT * FROM aggregation_cursor_test.drain_aggregation_query(loopCount => 5, pa
 ROLLBACK;
 
 -- with sharded
-SELECT helio_api.shard_collection('db', 'get_aggregation_cursor_test', '{ "_id": "hashed" }', false);
+SELECT documentdb_api.shard_collection('db', 'get_aggregation_cursor_test', '{ "_id": "hashed" }', false);
 SELECT * FROM aggregation_cursor_test.drain_find_query(loopCount => 6, pageSize => 100000);
 SELECT * FROM aggregation_cursor_test.drain_aggregation_query(loopCount => 6, pageSize => 100000);
 
@@ -246,16 +246,16 @@ SELECT * FROM aggregation_cursor_test.drain_aggregation_query(loopCount => 6, pa
 ROLLBACK;
 
 -- test for errors when returnKey is set to true
-SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "movies", "filter" : { "title" : "a" }, "limit" : 1, "singleBatch" : true, "batchSize" : 1, "returnKey" : true, "lsid" : { "id" : { "$binary" : { "base64": "apfUje6LTzKH9YfO3smIGA==", "subType" : "04" } } }, "$db" : "test" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "filter" : { "title" : "a" }, "limit" : 1, "singleBatch" : true, "batchSize" : 1, "returnKey" : true, "lsid" : { "id" : { "$binary" : { "base64": "apfUje6LTzKH9YfO3smIGA==", "subType" : "04" } } }, "$db" : "test" }');
 
 -- test for no errors when returnKey is set to false
-SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "movies", "filter" : { "title" : "a" }, "limit" : 1, "singleBatch" : true, "batchSize" : 1, "returnKey" : false, "lsid" : { "id" : { "$binary" : { "base64": "apfUje6LTzKH9YfO3smIGA==", "subType" : "04" } } }, "$db" : "test" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "filter" : { "title" : "a" }, "limit" : 1, "singleBatch" : true, "batchSize" : 1, "returnKey" : false, "lsid" : { "id" : { "$binary" : { "base64": "apfUje6LTzKH9YfO3smIGA==", "subType" : "04" } } }, "$db" : "test" }');
 
 -- test for errors when returnKey and showRecordId are set to true
-SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "movies", "filter" : { "title" : "a" }, "limit" : 1, "singleBatch" : true, "batchSize" : 1, "showRecordId": true, "returnKey" : true, "lsid" : { "id" : { "$binary" : { "base64": "apfUje6LTzKH9YfO3smIGA==", "subType" : "04" } } }, "$db" : "test" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "filter" : { "title" : "a" }, "limit" : 1, "singleBatch" : true, "batchSize" : 1, "showRecordId": true, "returnKey" : true, "lsid" : { "id" : { "$binary" : { "base64": "apfUje6LTzKH9YfO3smIGA==", "subType" : "04" } } }, "$db" : "test" }');
 
--- test for ntoreturn in find command with unset helio_api.version
-SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "movies",  "limit" : 1,  "batchSize" : 1, "ntoreturn":1 ,"$db" : "test" }');
-SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "movies", "ntoreturn":1 ,"$db" : "test" }');
-SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "movies", "ntoreturn":1 , "batchSize":1, "$db" : "test" }');
-SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "movies", "ntoreturn":1 , "limit":1, "$db" : "test" }');
+-- test for ntoreturn in find command with UNSET documentdb.version
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies",  "limit" : 1,  "batchSize" : 1, "ntoreturn":1 ,"$db" : "test" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "ntoreturn":1 ,"$db" : "test" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "ntoreturn":1 , "batchSize":1, "$db" : "test" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "ntoreturn":1 , "limit":1, "$db" : "test" }');

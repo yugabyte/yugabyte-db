@@ -857,9 +857,10 @@ CallDeleteWorker(MongoCollection *collection,
 	Oid argTypes[6] = { INT8OID, INT8OID, REGCLASSOID, BYTEAOID, BYTEAOID, TEXTOID };
 
 	const char *updateQuery = FormatSqlQuery(
-		"SELECT %s.delete_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM %s.documents_"
+		"SELECT %s.delete_worker($1, $2, $3, $4::%s.bson, $5::%s.bsonsequence, $6) FROM %s.documents_"
 		UINT64_FORMAT " WHERE shard_key_value = %ld",
-		DocumentDBApiInternalSchemaName, ApiDataSchemaName, collection->collectionId,
+		DocumentDBApiInternalSchemaName, CoreSchemaNameV2, CoreSchemaNameV2,
+		ApiDataSchemaName, collection->collectionId,
 		shardKeyHash);
 
 	argValues[0] = UInt64GetDatum(collection->collectionId);

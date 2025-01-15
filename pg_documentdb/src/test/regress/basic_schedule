@@ -1,5 +1,5 @@
 # Leave this running first since this validates global config database state.
-test: documents_test_helpers
+test: documentdb_test_helpers
 test: public_api_schema
 # Leave this running first since this validates global config database state.
 test: bson_aggregation_pipeline_config_database

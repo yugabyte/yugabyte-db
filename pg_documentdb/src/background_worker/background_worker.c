@@ -30,6 +30,7 @@
 #include "commands/connection_management.h"
 #include "metadata/metadata_cache.h"
 #include "api_hooks.h"
+#include "utils/documentdb_errors.h"
 
 #define ONE_SEC_IN_MS 1000L
 
@@ -48,7 +49,6 @@ PGDLLEXPORT void DocumentDBBackgroundWorkerMain(Datum);
 extern char *BackgroundWorkerDatabaseName;
 extern int LatchTimeOutSec;
 
-static const char *DocumentDBBackgroundWorkerLeaderName = "helio_bg_worker_leader";
 static bool BackgroundWorkerReloadConfig = false;
 
 /* Shared memory segment for BackgroundWorker */
@@ -62,6 +62,7 @@ static volatile sig_atomic_t got_sigterm = false;
 static void background_worker_sigterm(SIGNAL_ARGS);
 static void background_worker_sighup(SIGNAL_ARGS);
 
+static char ExtensionBackgroundWorkerLeaderName[50];
 
 /*
  * DocumentDB background worker entry point.
@@ -80,9 +81,23 @@ DocumentDBBackgroundWorkerMain(Datum main_arg)
 	BackgroundWorkerUnblockSignals();
 	BackgroundWorkerInitializeConnection(databaseName, NULL, 0);
 
+	if (strlen(ExtensionObjectPrefixV2) + strlen("_bg_worker_leader") + 1 >
+		sizeof(ExtensionBackgroundWorkerLeaderName))
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
+						errmsg(
+							"Unexpected - ExtensionObjectPrefix is too long for background worker leader name"),
+						errdetail_log(
+							"Unexpected - ExtensionObjectPrefix %s is too long for background worker leader name",
+							ExtensionObjectPrefixV2)));
+	}
+	snprintf(ExtensionBackgroundWorkerLeaderName,
+			 sizeof(ExtensionBackgroundWorkerLeaderName),
+			 "%s_bg_worker_leader", ExtensionObjectPrefixV2);
+
 	ereport(LOG, (errmsg("Starting %s with databaseName %s",
-						 DocumentDBBackgroundWorkerLeaderName, databaseName)));
-	pgstat_report_appname(DocumentDBBackgroundWorkerLeaderName);
+						 ExtensionBackgroundWorkerLeaderName, databaseName)));
+	pgstat_report_appname(ExtensionBackgroundWorkerLeaderName);
 
 	/* Own the latch once everything is ready */
 	BackgroundWorkerShmemInit();
@@ -110,7 +125,7 @@ DocumentDBBackgroundWorkerMain(Datum main_arg)
 		waitResult = 0;
 		if (BackgroundWorkerReloadConfig)
 		{
-			/* read the latest value of helio_bg_worker.disable_schedule_only_jobs */
+			/* read the latest value of {ExtensionObjectPrefix}_bg_worker.disable_schedule_only_jobs */
 			ProcessConfigFile(PGC_SIGHUP);
 			BackgroundWorkerReloadConfig = false;
 		}
@@ -139,7 +154,7 @@ DocumentDBBackgroundWorkerMain(Datum main_arg)
 
 	/* when sigterm comes, try cancel all currently open connections */
 	ereport(LOG, (errmsg("%s is shutting down.",
-						 DocumentDBBackgroundWorkerLeaderName)));
+						 ExtensionBackgroundWorkerLeaderName)));
 }
 
 
@@ -206,7 +221,7 @@ background_worker_sigterm(SIGNAL_ARGS)
 	got_sigterm = true;
 	ereport(LOG,
 			(errmsg("Terminating \"%s\" due to administrator command",
-					DocumentDBBackgroundWorkerLeaderName)));
+					ExtensionBackgroundWorkerLeaderName)));
 
 	if (BackgroundWorkerShmem != NULL)
 	{

@@ -643,7 +643,7 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 				if (isIndexPathCostZero)
 				{
 					/* Force the output path to also be cost 0
-					 * Since the base was cost 0 (see helio api's planner.c)
+					 * Since the base was cost 0 (see documentdb api's planner.c)
 					 */
 					inputPath->total_cost = 0;
 					inputPath->startup_cost = 0;
@@ -810,7 +810,7 @@ ValidateCursorCustomScanPlan(Plan *plan)
 		{
 			CustomScan *scan = castNode(CustomScan, plan);
 
-			/* Custom scans today are Citus and HelioApi - if it's not HelioApi - just check the subtree */
+			/* Custom scans today are Citus and DocumentDBApi - if it's not DocumentDBApi - just check the subtree */
 			if (scan->methods != &ExtensionScanMethods)
 			{
 				if (scan->scan.plan.lefttree != NULL)
@@ -916,7 +916,7 @@ ValidateCursorCustomScanPlan(Plan *plan)
 
 /*
  * When doing Explain Analyze, the parameter values aren't available in the worker.
- * To avoid this issue, we apply the same hack that is in the helio planner to
+ * To avoid this issue, we apply the same hack that is in the documentdb planner to
  * replace the param value with the replaced const, and use the bson_true_function
  * on the param to ensure it gets sent to the worker.
  * One of the tracking bugs: https://github.com/citusdata/citus/issues/5787

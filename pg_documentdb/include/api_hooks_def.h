@@ -189,4 +189,9 @@ extern TryOptimizePathForBitmapAndHookType try_optimize_path_for_bitmap_and_hook
 
 extern bool DefaultInlineWriteOperations;
 
+
+typedef char *(*TryGetExtendedVersionRefreshQuery_HookType)(void);
+extern TryGetExtendedVersionRefreshQuery_HookType
+	try_get_extended_version_refresh_query_hook;
+
 #endif

@@ -4851,7 +4851,7 @@ AddSortedGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 	Const *sortArrayConst = makeConst(GetBsonArrayTypeOid(), -1, InvalidOid, -1,
 									  PointerGetDatum(arrayValue), false, false);
 
-	/* Cast documentExpr from helio_core.bson to bson to ensure type */
+	/* Cast documentExpr from CoreSchemaName.bson to bson to ensure type */
 	/* correctness for accumulators that require bson. */
 	if (BsonTypeId() != DocumentDBCoreBsonTypeId())
 	{

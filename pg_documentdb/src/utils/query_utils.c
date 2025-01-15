@@ -24,6 +24,7 @@
 #include "commands/connection_management.h"
 #include "utils/query_utils.h"
 #include "api_hooks.h"
+#include "metadata/metadata_cache.h"
 
 extern char *LocalhostConnectionString;
 
@@ -812,7 +813,7 @@ GetLocalhostConnStr(const Oid userOid, bool useSerialExecution)
 
 	if (applicationName == NULL)
 	{
-		applicationName = "HelioDBInternal";
+		applicationName = GetExtensionApplicationName();
 	}
 
 	StringInfo localhostConnStr = makeStringInfo();

@@ -18,6 +18,7 @@ extern Datum documentdb_extension_create_user(PG_FUNCTION_ARGS);
 extern Datum documentdb_extension_drop_user(PG_FUNCTION_ARGS);
 extern Datum documentdb_extension_update_user(PG_FUNCTION_ARGS);
 extern Datum documentdb_extension_get_users(PG_FUNCTION_ARGS);
+extern void DocumentDBBackgroundWorkerMain(Datum);
 
 PG_FUNCTION_INFO_V1(helio_core_bson_to_bson);
 Datum
@@ -56,4 +57,12 @@ Datum
 helio_extension_get_users(PG_FUNCTION_ARGS)
 {
 	return documentdb_extension_get_users(fcinfo);
+}
+
+
+PGDLLEXPORT void HelioBackgroundWorkerMain(Datum);
+void
+HelioBackgroundWorkerMain(Datum main_arg)
+{
+	DocumentDBBackgroundWorkerMain(main_arg);
 }

@@ -57,7 +57,7 @@ typedef enum CacheValidityValue
 } CacheValidityValue;
 
 
-static void InvalidateHelioApiCache(Datum argument, Oid relationId);
+static void InvalidateDocumentDBApiCache(Datum argument, Oid relationId);
 static Oid GetBinaryOperatorId(Oid *operatorId, Oid leftTypeOid, char *operatorName,
 							   Oid rightTypeOid);
 static Oid GetCoreBinaryOperatorId(Oid *operatorId, Oid leftTypeOid, char *operatorName,
@@ -82,10 +82,11 @@ static Oid GetOperatorFunctionIdFiveArgs(Oid *operatorFuncId, char *schemaName,
 										 char *operatorName,
 										 Oid arg0TypeOid, Oid arg1TypeOid, Oid
 										 arg2TypeOid, Oid arg3TypeOid, Oid arg4TypeId);
-static Oid GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId,
-													char *operatorName,
-													Oid leftTypeOid, Oid rightTypeOid,
-													bool missingOk);
+static Oid GetDocumentDBInternalBinaryOperatorFunctionId(Oid *operatorFuncId,
+														 char *operatorName,
+														 Oid leftTypeOid, Oid
+														 rightTypeOid,
+														 bool missingOk);
 static Oid GetBinaryOperatorFunctionIdMissingOk(Oid *operatorFuncId, char *operatorName,
 												Oid leftTypeOid, Oid rightTypeOid,
 												const char *releaseName);
@@ -105,12 +106,16 @@ MemoryContext DocumentDBApiMetadataCacheContext = NULL;
 
 PGDLLEXPORT char *ApiDataSchemaName = "documentdb_data";
 PGDLLEXPORT char *ApiAdminRole = "documentdb_admin_role";
+PGDLLEXPORT char *ApiAdminRoleV2 = "documentdb_admin_role";
 PGDLLEXPORT char *ApiReadOnlyRole = "documentdb_readonly_role";
 PGDLLEXPORT char *ApiSchemaName = "documentdb_api";
 PGDLLEXPORT char *ApiSchemaNameV2 = "documentdb_api";
 PGDLLEXPORT char *ApiInternalSchemaName = "documentdb_api_internal";
 PGDLLEXPORT char *ApiInternalSchemaNameV2 = "documentdb_api_internal";
 PGDLLEXPORT char *ExtensionObjectPrefix = "documentdb";
+PGDLLEXPORT char *ExtensionObjectPrefixV2 = "documentdb";
+PGDLLEXPORT char *CoreSchemaName = "documentdb_core";
+PGDLLEXPORT char *CoreSchemaNameV2 = "documentdb_core";
 PGDLLEXPORT char *FullBsonTypeName = "documentdb_core.bson";
 PGDLLEXPORT char *ApiExtensionName = "documentdb";
 PGDLLEXPORT char *ApiCatalogSchemaName = "documentdb_api_catalog";
@@ -119,7 +124,7 @@ PGDLLEXPORT char *ApiGucPrefix = "documentdb";
 PGDLLEXPORT char *PostgisSchemaName = "public";
 
 /* Schema functions migrated from a public API to an internal API schema
- * (e.g. from helio_api -> helio_api_internal)
+ * (e.g. from documentdb_api -> documentdb_api_internal)
  * TODO: These should be transition and removed in subsequent releases.
  */
 PGDLLEXPORT char *ApiToApiInternalSchemaName = "documentdb_api_internal";
@@ -130,7 +135,7 @@ PGDLLEXPORT char *DocumentDBApiInternalSchemaName = "documentdb_api_internal";
 
 PGDLLEXPORT char *ApiCatalogToCoreSchemaName = "documentdb_core";
 
-typedef struct HelioApiOidCacheData
+typedef struct DocumentDBApiOidCacheData
 {
 	/* OID of the <bigint> OPERATOR(pg_catalog.=) <bigint> operator */
 	Oid BigintEqualOperatorId;
@@ -183,7 +188,7 @@ typedef struct HelioApiOidCacheData
 	/* OID of the current_op aggregation function */
 	Oid BsonCurrentOpAggregationFunctionId;
 
-	/* OID of the ApiSchema.list_indexes function */
+	/* OID of the ApiSchemaName.list_indexes function */
 	Oid IndexSpecAsBsonFunctionId;
 
 	/* OID of the TABLESAMPLE SYSTEM_ROWS(n) function */
@@ -195,16 +200,16 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_in_range_numeric function (in_range support function for btree to support RANGE in PARTITION clause) */
 	Oid BsonInRangeNumericFunctionId;
 
-	/* OID of ApiSchema.collection() UDF */
+	/* OID of ApiSchemaName.collection() UDF */
 	Oid CollectionFunctionId;
 
-	/* OID of the helio_api.collection() UDF */
-	Oid HelioApiCollectionFunctionId;
+	/* OID of the ApiSchemaName.collection() UDF */
+	Oid DocumentDBApiCollectionFunctionId;
 
-	/* OID of ApiSchema.create_indexes() UDF */
+	/* OID of ApiSchemaName.create_indexes() UDF */
 	Oid CreateIndexesProcedureId;
 
-	/* OID of ApiSchema.re_index() UDF */
+	/* OID of ApiSchemaName.re_index() UDF */
 	Oid ReindexProcedureId;
 
 	/* OID of ApiCatalogSchemaName.collections table */
@@ -220,10 +225,10 @@ typedef struct HelioApiOidCacheData
 	Oid MongoCatalogNamespaceId;
 
 	/* OID of the current extension */
-	Oid HelioApiExtensionId;
+	Oid DocumentDBApiExtensionId;
 
 	/* OID of the owner of the current extension */
-	Oid HelioApiExtensionOwner;
+	Oid DocumentDBApiExtensionOwner;
 
 	/* OID of the bson_orderby function */
 	Oid BsonOrderByFunctionId;
@@ -571,7 +576,7 @@ typedef struct HelioApiOidCacheData
 	/* OID of the rum_extract_tsvector function */
 	Oid RumExtractTsVectorFunctionId;
 
-	/* OID of the operator class for BSON Text operations with helio_rum */
+	/* OID of the operator class for BSON Text operations with {ExtensionObjectPrefix}_rum */
 	Oid BsonRumTextPathOperatorFamily;
 
 	/* OID of the operator class for BSON GIST geography */
@@ -580,7 +585,7 @@ typedef struct HelioApiOidCacheData
 	/* OID of the operator class for BSON GIST geometry */
 	Oid BsonGistGeometryOperatorFamily;
 
-	/* OID of the operator class for BSON Single Path operations with helio_rum */
+	/* OID of the operator class for BSON Single Path operations with {ExtensionObjectPrefix}_rum */
 	Oid BsonRumSinglePathOperatorFamily;
 
 	/* OID of the bson_text_meta_qual function ID */
@@ -841,13 +846,13 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_dollar_lookup_extract_filter_array function */
 	Oid ApiCatalogBsonLookupExtractFilterArrayOid;
 
-	/* OID of the helio_api_internal.bson_dollar_lookup_extract_filter_expression function */
-	Oid HelioInternalBsonLookupExtractFilterExpressionOid;
+	/* OID of the ApiInternalSchemaName.bson_dollar_lookup_extract_filter_expression function */
+	Oid DocumentDBInternalBsonLookupExtractFilterExpressionOid;
 
 	/* OID of the bson_const_fill window function */
 	Oid BsonConstFillFunctionOid;
 
-	/* OID of helio_api_internal.bson_dollar_lookup_join_filter function */
+	/* OID of ApiInternalSchemaName.bson_dollar_lookup_join_filter function */
 	Oid BsonDollarLookupJoinFilterFunctionOid;
 
 	/* OID of the bson_lookup_unwind function */
@@ -1018,23 +1023,23 @@ typedef struct HelioApiOidCacheData
 	/* Oid of the ApiDataSchemaName namespace */
 	Oid ApiDataNamespaceOid;
 
-	/* OID of the helio_api_internal.update_worker function */
+	/* OID of the ApiInternalSchemaName.update_worker function */
 	Oid UpdateWorkerFunctionOid;
 
-	/* OID of the helio_api_internal.insert_worker function */
+	/* OID of the ApiInternalSchemaName.insert_worker function */
 	Oid InsertWorkerFunctionOid;
 
-	/* OID of the helio_api_internal.delete_worker function */
+	/* OID of the ApiInternalSchemaName.delete_worker function */
 	Oid DeleteWorkerFunctionOid;
 
-	/* OID of helio_api_internal.helio_core_bson_to_bson*/
-	Oid HelioCoreBsonToBsonFunctionOId;
+	/* OID of ApiInternalSchemaName.{ExtensionObjectPrefix}_core_bson_to_bson*/
+	Oid DocumentDBCoreBsonToBsonFunctionOId;
 
 	/* Oid of array type for bson */
 	Oid BsonArrayTypeOid;
-} HelioApiOidCacheData;
+} DocumentDBApiOidCacheData;
 
-static HelioApiOidCacheData Cache;
+static DocumentDBApiOidCacheData Cache;
 
 /*
  * InitializeDocumentDBApiExtensionCache (re)initializes the cache.
@@ -1061,7 +1066,7 @@ InitializeDocumentDBApiExtensionCache(void)
 																  "DocumentDBApiMetadataCacheContext ",
 																  ALLOCSET_DEFAULT_SIZES);
 
-		CacheRegisterRelcacheCallback(InvalidateHelioApiCache, (Datum) 0);
+		CacheRegisterRelcacheCallback(InvalidateDocumentDBApiCache, (Datum) 0);
 	}
 
 	/* reset any previously allocated memory. Code below is sensitive to OOMs */
@@ -1075,9 +1080,9 @@ InitializeDocumentDBApiExtensionCache(void)
 	 * altered.
 	 */
 	bool missingOK = true;
-	Cache.HelioApiExtensionId = get_extension_oid(ApiExtensionName, missingOK);
-	if (Cache.HelioApiExtensionId == InvalidOid ||
-		(CurrentExtensionObject == Cache.HelioApiExtensionId && creating_extension))
+	Cache.DocumentDBApiExtensionId = get_extension_oid(ApiExtensionName, missingOK);
+	if (Cache.DocumentDBApiExtensionId == InvalidOid ||
+		(CurrentExtensionObject == Cache.DocumentDBApiExtensionId && creating_extension))
 	{
 		CacheValidity = CACHE_VALID_NO_EXTENSION;
 
@@ -1109,13 +1114,13 @@ InvalidateCollectionsCache()
 {
 	if (Cache.CollectionsTableId != InvalidOid)
 	{
-		InvalidateHelioApiCache((Datum) 0, Cache.CollectionsTableId);
+		InvalidateDocumentDBApiCache((Datum) 0, Cache.CollectionsTableId);
 	}
 }
 
 
 /*
- * InvalidateHelioApiCache is called when receiving invalidations from other
+ * InvalidateDocumentDBApiCache is called when receiving invalidations from other
  * backends.
  *
  * This can happen any time postgres code calls AcceptInvalidationMessages(), e.g
@@ -1123,7 +1128,7 @@ InvalidateCollectionsCache()
  * still be temporarily usable until new entries are added to the cache.
  */
 static void
-InvalidateHelioApiCache(Datum argument, Oid relationId)
+InvalidateDocumentDBApiCache(Datum argument, Oid relationId)
 {
 	if (relationId == InvalidOid || relationId == Cache.CollectionsTableId)
 	{
@@ -1179,7 +1184,8 @@ IsDocumentDBApiExtensionActive(void)
 	InitializeDocumentDBApiExtensionCache();
 
 	return CacheValidity == CACHE_VALID && !IsBinaryUpgrade &&
-		   !(creating_extension && CurrentExtensionObject == Cache.HelioApiExtensionId);
+		   !(creating_extension && CurrentExtensionObject ==
+			 Cache.DocumentDBApiExtensionId);
 }
 
 
@@ -1191,9 +1197,9 @@ DocumentDBApiExtensionOwner(void)
 {
 	InitializeDocumentDBApiExtensionCache();
 
-	if (Cache.HelioApiExtensionOwner != InvalidOid)
+	if (Cache.DocumentDBApiExtensionOwner != InvalidOid)
 	{
-		return Cache.HelioApiExtensionOwner;
+		return Cache.DocumentDBApiExtensionOwner;
 	}
 
 	bool useIndex = true;
@@ -1213,21 +1219,21 @@ DocumentDBApiExtensionOwner(void)
 	if (!HeapTupleIsValid(extensionTuple))
 	{
 		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-						errmsg("helio extension has not been loaded")));
+						errmsg("API extension has not been loaded")));
 	}
 
 	Form_pg_extension extensionForm = (Form_pg_extension) GETSTRUCT(extensionTuple);
-	Cache.HelioApiExtensionOwner = extensionForm->extowner;
+	Cache.DocumentDBApiExtensionOwner = extensionForm->extowner;
 
 	systable_endscan(scandesc);
 	table_close(relation, AccessShareLock);
 
-	return Cache.HelioApiExtensionOwner;
+	return Cache.DocumentDBApiExtensionOwner;
 }
 
 
 /*
- * ApiCollectionFunctionId returns the OID of the ApiSchema.collection()
+ * ApiCollectionFunctionId returns the OID of the ApiSchemaName.collection()
  * function.
  */
 Oid
@@ -1255,20 +1261,20 @@ DocumentDBApiCollectionFunctionId(void)
 {
 	InitializeDocumentDBApiExtensionCache();
 
-	if (Cache.HelioApiCollectionFunctionId == InvalidOid)
+	if (Cache.DocumentDBApiCollectionFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api"),
+		List *functionNameList = list_make2(makeString(ApiSchemaNameV2),
 											makeString("collection"));
 		Oid paramOids[2] = { TEXTOID, TEXTOID };
 
 		/* Allow this to be missing (for compat) */
 		bool missingOK = true;
 
-		Cache.HelioApiCollectionFunctionId =
+		Cache.DocumentDBApiCollectionFunctionId =
 			LookupFuncName(functionNameList, 2, paramOids, missingOK);
 	}
 
-	return Cache.HelioApiCollectionFunctionId;
+	return Cache.DocumentDBApiCollectionFunctionId;
 }
 
 
@@ -1675,9 +1681,11 @@ Oid
 BsonNotLessThanEqualFunctionId(void)
 {
 	bool missingOk = true;
-	return GetHelioInternalBinaryOperatorFunctionId(&Cache.BsonNotLessThanEqualFunctionId,
-													"bson_dollar_not_lte", BsonTypeId(),
-													BsonTypeId(), missingOk);
+	return GetDocumentDBInternalBinaryOperatorFunctionId(
+		&Cache.BsonNotLessThanEqualFunctionId,
+		"bson_dollar_not_lte",
+		BsonTypeId(),
+		BsonTypeId(), missingOk);
 }
 
 
@@ -1688,9 +1696,10 @@ Oid
 BsonNotLessThanFunctionId(void)
 {
 	bool missingOk = true;
-	return GetHelioInternalBinaryOperatorFunctionId(&Cache.BsonNotLessThanFunctionId,
-													"bson_dollar_not_lt", BsonTypeId(),
-													BsonTypeId(), missingOk);
+	return GetDocumentDBInternalBinaryOperatorFunctionId(&Cache.BsonNotLessThanFunctionId,
+														 "bson_dollar_not_lt",
+														 BsonTypeId(),
+														 BsonTypeId(), missingOk);
 }
 
 
@@ -1701,9 +1710,11 @@ Oid
 BsonNotGreaterThanFunctionId(void)
 {
 	bool missingOk = true;
-	return GetHelioInternalBinaryOperatorFunctionId(&Cache.BsonNotGreaterThanFunctionId,
-													"bson_dollar_not_gt", BsonTypeId(),
-													BsonTypeId(), missingOk);
+	return GetDocumentDBInternalBinaryOperatorFunctionId(
+		&Cache.BsonNotGreaterThanFunctionId,
+		"bson_dollar_not_gt",
+		BsonTypeId(),
+		BsonTypeId(), missingOk);
 }
 
 
@@ -1714,7 +1725,7 @@ Oid
 BsonNotGreaterThanEqualFunctionId(void)
 {
 	bool missingOk = true;
-	return GetHelioInternalBinaryOperatorFunctionId(
+	return GetDocumentDBInternalBinaryOperatorFunctionId(
 		&Cache.BsonNotGreaterThanEqualFunctionId,
 		"bson_dollar_not_gte", BsonTypeId(),
 		BsonTypeId(), missingOk);
@@ -1733,7 +1744,7 @@ BsonGeonearDistanceOperatorId(void)
 
 
 /*
- * Returns the OID of  helio_api_internal.@|><| geoNear distance range operator
+ * Returns the OID of  ApiInternalSchemaName.@|><| geoNear distance range operator
  */
 Oid
 BsonGeonearDistanceRangeOperatorId(void)
@@ -3084,7 +3095,7 @@ Oid
 BsonDollaMergeDocumentsFunctionOid(void)
 {
 	bool missingOk = false;
-	return GetHelioInternalBinaryOperatorFunctionId(
+	return GetDocumentDBInternalBinaryOperatorFunctionId(
 		&Cache.ApiInternalSchemaBsonDollarMergeDocumentsFunctionOid,
 		"bson_dollar_merge_documents",
 		BsonTypeId(),
@@ -3147,7 +3158,7 @@ BsonDollarLookupExpressionEvalMergeOid(void)
 
 
 /*
- * Returns the OID of the helio_core.bson_dollar_inverse_match function.
+ * Returns the OID of the bson_dollar_inverse_match function.
  */
 Oid
 BsonDollarInverseMatchFunctionId()
@@ -3164,11 +3175,11 @@ BsonDollarInverseMatchFunctionId()
 
 	if (result == InvalidOid)
 	{
-		/* we don't have the function in helio_api_internal yet, check helio_api_catalog */
+		/* we don't have the function in ApiInternalSchemaName yet, check ApiCatalogSchemaName */
 		missingOk = false;
 		result = GetSchemaFunctionIdWithNargs(
 			&Cache.ApiCatalogBsonDollarInverseMatchFunctionOid,
-			"helio_api_catalog",
+			ApiCatalogSchemaNameV2,
 			"bson_dollar_inverse_match", nargs, argTypes,
 			missingOk);
 	}
@@ -3278,7 +3289,7 @@ Oid
 BsonDollarMergeFailWhenNotMatchedFunctionOid(void)
 {
 	bool missingOk = false;
-	return GetHelioInternalBinaryOperatorFunctionId(
+	return GetDocumentDBInternalBinaryOperatorFunctionId(
 		&Cache.ApiInternalBsonDollarMergeFailWhenNotMathchedFunctionId,
 		"bson_dollar_merge_fail_when_not_matched",
 		BsonTypeId(),
@@ -3290,7 +3301,7 @@ Oid
 BsonDollarMergeExtractFilterFunctionOid(void)
 {
 	bool missingOk = false;
-	return GetHelioInternalBinaryOperatorFunctionId(
+	return GetDocumentDBInternalBinaryOperatorFunctionId(
 		&Cache.ApiInternalBsonDollarMergeExtractFilterFunctionId,
 		"bson_dollar_extract_merge_filter",
 		BsonTypeId(),
@@ -4110,7 +4121,7 @@ Oid
 BsonLookupExtractFilterArrayFunctionOid(void)
 {
 	bool missingOk = false;
-	return GetHelioInternalBinaryOperatorFunctionId(
+	return GetDocumentDBInternalBinaryOperatorFunctionId(
 		&Cache.ApiCatalogBsonLookupExtractFilterArrayOid,
 		"bson_dollar_lookup_extract_filter_array",
 		BsonTypeId(), BsonTypeId(), missingOk);
@@ -4121,8 +4132,8 @@ Oid
 DocumentDBApiInternalBsonLookupExtractFilterExpressionFunctionOid(void)
 {
 	bool missingOk = false;
-	return GetHelioInternalBinaryOperatorFunctionId(
-		&Cache.HelioInternalBsonLookupExtractFilterExpressionOid,
+	return GetDocumentDBInternalBinaryOperatorFunctionId(
+		&Cache.DocumentDBInternalBsonLookupExtractFilterExpressionOid,
 		"bson_dollar_lookup_extract_filter_expression",
 		BsonTypeId(), BsonTypeId(), missingOk);
 }
@@ -4586,9 +4597,11 @@ DocumentDBCoreBsonToBsonFunctionOId(void)
 	int nargs = 1;
 	Oid argTypes[1] = { DocumentDBCoreBsonTypeId() };
 
-	return GetSchemaFunctionIdWithNargs(&Cache.HelioCoreBsonToBsonFunctionOId,
-										"helio_api_internal",
-										"helio_core_bson_to_bson", nargs,
+	char *functionName = psprintf("%s_core_bson_to_bson", ExtensionObjectPrefixV2);
+
+	return GetSchemaFunctionIdWithNargs(&Cache.DocumentDBCoreBsonToBsonFunctionOId,
+										ApiInternalSchemaNameV2,
+										functionName, nargs,
 										argTypes, false);
 }
 
@@ -5521,7 +5534,7 @@ BsonLessThanOperatorId(void)
 
 
 /*
- * OID of the operator class for BSON Text operations with helio_rum
+ * OID of the operator class for BSON Text operations with {ExtensionObjectPrefix}_rum
  */
 Oid
 BsonRumTextPathOperatorFamily(void)
@@ -5590,7 +5603,7 @@ BsonGistGeometryOperatorFamily(void)
 
 
 /*
- * OID of the operator class for BSON Single Path operations with helio_rum
+ * OID of the operator class for BSON Single Path operations with {ExtensionObjectPrefix}_rum
  */
 Oid
 BsonRumSinglePathOperatorFamily(void)
@@ -5976,9 +5989,9 @@ GetOperatorFunctionIdFiveArgs(Oid *operatorFuncId, char *schemaName, char *opera
 
 
 static Oid
-GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
-										 Oid leftTypeOid, Oid rightTypeOid,
-										 bool missingOK)
+GetDocumentDBInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
+											  Oid leftTypeOid, Oid rightTypeOid,
+											  bool missingOK)
 {
 	InitializeDocumentDBApiExtensionCache();
 
@@ -6162,4 +6175,11 @@ GetBsonArrayTypeOid(void)
 	}
 
 	return Cache.BsonArrayTypeOid;
+}
+
+
+char *
+GetExtensionApplicationName(void)
+{
+	return psprintf("%s-Internal", ExtensionObjectPrefixV2);
 }
