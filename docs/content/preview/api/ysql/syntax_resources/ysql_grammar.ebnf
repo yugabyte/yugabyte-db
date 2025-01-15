@@ -272,8 +272,8 @@ alter_materialized_view_action =
     | 'SET' 'TABLESPACE' tablespace_name ) ;
 
 (* 'ALTER' 'PUBLICATION' *)
-alter_publication = 
-  'ALTER' 'PUBLICATION' publication_name 
+alter_publication =
+  'ALTER' 'PUBLICATION' publication_name
   [ alter_publication_action { ',' alter_publication_action } ] ;
 
 alter_publication_action =
@@ -648,17 +648,17 @@ create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
 unalterable_proc_attribute = 'LANGUAGE' lang_name | 'AS' subprogram_implementation ;
 
 (* 'CREATE' 'PUBLICATION' *)
-create_publication = 
-  'CREATE' 'PUBLICATION' publication_name 
+create_publication =
+  'CREATE' 'PUBLICATION' publication_name
   [ 'FOR' publication_for_option ] ;
 
-publication_for_option = 
+publication_for_option =
   'TABLE' table_name { ',' table_name } |
   'ALL' 'TABLES' ;
 
 (* 'CREATE_REPLICATION_SLOT' *)
-create_replication_slot = 
-  'CREATE_REPLICATION_SLOT' slot_name 'LOGICAL' output_plugin 
+create_replication_slot =
+  'CREATE_REPLICATION_SLOT' slot_name 'LOGICAL' output_plugin
   [ 'NOEXPORT_SNAPSHOT' | 'USE_SNAPSHOT' ] ;
 
 (* 'CREATE' 'RULE' *)
@@ -1049,10 +1049,10 @@ option = 'ANALYZE' [ boolean ]
            | 'COSTS' [ boolean ]
            | 'DEBUG' [boolean]
            | 'DIST' [boolean]
-           | 'FORMAT' ( 'TEXT' | 'XML' | 'JSON' | 'YAML' ) ;
+           | 'FORMAT' ( 'TEXT' | 'XML' | 'JSON' | 'YAML' )
            | 'SUMMARY' [ boolean ]
            | 'TIMING' [ boolean ]
-           | 'VERBOSE' [ boolean ]
+           | 'VERBOSE' [ boolean ] ;
 
 (* 'GRANT' *)
 grant = ( grant_table |
@@ -1297,11 +1297,11 @@ show_stmt = 'SHOW' ( run_time_parameter | 'ALL' ) ;
 show_transaction = 'SHOW' 'TRANSACTION' 'ISOLATION' 'LEVEL' ;
 
 (* 'START_REPLICATION' *)
-start_replication = 
-  'START_REPLICATION' 'SLOT' slot_name 'LOGICAL' log_sequence_number 
+start_replication =
+  'START_REPLICATION' 'SLOT' slot_name 'LOGICAL' log_sequence_number
     [ '(' start_replication_option { ',' start_replication_option } ')' ] ;
 
-start_replication_option = 
+start_replication_option =
   start_replication_option_name [ start_replication_option_value ] ;
 
 (* 'START' 'TRANSACTION' *)
