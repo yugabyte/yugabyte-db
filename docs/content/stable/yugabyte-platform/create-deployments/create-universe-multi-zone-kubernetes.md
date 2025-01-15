@@ -259,7 +259,7 @@ By default, each zone has its own YB-TServer service, and you can use this servi
 
 Note that this requires all the zone deployments to be in the same namespace.
 
-1. Set the following Kubernetes overrides to add the universe-name label on the YB-TServer pods. You can do this when you [create the universe](#configure-helm-overrides) or by [modifying the Kubernetes overrides](../../manage-deployments/edit-helm-overrides/) of an existing universe.
+1. Set the following Kubernetes overrides to add the universe-name label on the YB-TServer pods. You can do this when you [create the universe](#helm-overrides) or by [modifying the Kubernetes overrides](../../manage-deployments/edit-helm-overrides/) of an existing universe.
 
    ```yaml
    tserver:
@@ -309,9 +309,9 @@ For scenarios involving multi-namespaces or clusters, a distinct service is crea
 
 #### Enable the common load balancer
 
-By default, the load balancer service is created per zone. You can change this behavior by [configuring Helm overrides](#configure-helm-overrides) during universe creation, or by enabling a global runtime configuration option.
+By default, the load balancer service is created per zone. You can change this behavior by [configuring Helm overrides](#helm-overrides) during universe creation, or by enabling a global runtime configuration option.
 
-You can explicitly define the service scope with the values as "AZ" or "Namespaced" when you [configure Helm overrides](#configure-helm-overrides) as follows:
+You can explicitly define the service scope with the values as "AZ" or "Namespaced" when you configure Helm overrides as follows:
 
 ```yaml
 serviceEndpoints:
@@ -375,7 +375,7 @@ To create a universe with Namespaced scope services by default, do the following
 
 1. Set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true.
 
-1. When you [configure Helm overrides](#configure-helm-overrides), use serviceEndpoint overrides without explicitly defining scope, or define scope as "Namespaced":
+1. When you [configure Helm overrides](#helm-overrides), use serviceEndpoint overrides without explicitly defining scope, or define scope as "Namespaced":
 
     ```yaml
     serviceEndpoints:
