@@ -9,6 +9,8 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/perf_explain/
+rightnav:
+  hideH4: true
 type: docs
 ---
 
@@ -53,11 +55,15 @@ Display additional runtime statistics related to the distributed storage layer a
 
 ### DEBUG
 
-Display low-level runtime statistics related to the distributed storage layer (default: `FALSE`).
+Display low-level runtime metrics related to [Cache and storage subsystems](../../../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#cache-and-storage-subsystems) (default: `FALSE`).
 
 ### FORMAT
 
 Define the desired output format, choosing from TEXT, XML, JSON, or YAML. Non-text output retains the same information as the text format, but is more programmatically accessible (default: `TEXT`).
+
+### SUMMARY
+
+Display the overall timing and counters of the various execution nodes in the query execution plan (default: `TRUE`).
 
 ## Examples
 
@@ -67,48 +73,46 @@ Create a sample table.
 yugabyte=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
-Insert some rows.
+Add some data to the above table.
 
 ```sql
 yugabyte=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
-Check the execution plan for simple select (condition will get pushed down).
+#### Simple select
 
 ```sql
 yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 1;
 ```
 
-```output
+```yaml{.nocopy}
                                   QUERY PLAN
 ------------------------------------------------------------------------------
  Index Scan using sample_pkey on sample  (cost=0.00..15.25 rows=100 width=44)
    Index Cond: (k1 = 1)
-(2 rows)
 ```
 
-- Check the execution plan for select with complex condition (second condition requires filtering).
+#### Select with complex condition
 
 ```sql
 yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ```
 
-```output
+```yaml{.nocopy}
                                   QUERY PLAN
 ------------------------------------------------------------------------------
  Index Scan using sample_pkey on sample  (cost=0.00..17.75 rows=100 width=44)
    Index Cond: (k1 = 2)
    Filter: (floor(((k2)::numeric + 1.5)) = (v1)::numeric)
-(3 rows)
 ```
 
-Check execution with `ANALYZE` option.
+#### Check execution with `ANALYZE` option
 
 ```sql
 yugabyte=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ```
 
-```output
+```yaml{.nocopy}
                                                        QUERY PLAN
 ------------------------------------------------------------------------------------------------------------------------
  Index Scan using sample_pkey on sample  (cost=0.00..17.75 rows=100 width=44) (actual time=3.123..3.126 rows=1 loops=1)
@@ -117,10 +121,54 @@ yugabyte=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5)
  Planning Time: 0.149 ms
  Execution Time: 3.198 ms
  Peak Memory Usage: 8 kB
-(6 rows)
 ```
+
+#### Storage layer statistics
+
+To view the request statistics, you can run with with `DIST` option as follows:
+
+```sql
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT * FROM sample WHERE k1 = 1;
+```
+
+```yaml{.nocopy}
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Index Scan using sample_pkey on sample (actual time=3.999..4.013 rows=1 loops=1)
+   Index Cond: (k1 = 1)
+   Storage Table Read Requests: 1
+   Storage Table Read Execution Time: 3.291 ms
+   Storage Table Rows Scanned: 1
+```
+
+#### Internal rocksdb metrics
+
+To view the internal metrics, you can run with with `DEBUG` option as follows:
+
+```sql
+EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF) SELECT * FROM sample WHERE k1 = 1;
+```
+
+```yaml{.nocopy}
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Index Scan using sample_pkey on sample (actual time=1.358..1.365 rows=1 loops=1)
+   Index Cond: (k1 = 1)
+   Storage Table Read Requests: 1
+   Storage Table Read Execution Time: 0.963 ms
+   Storage Table Rows Scanned: 1
+   Metric rocksdb_number_db_seek: 1.000
+   Metric rocksdb_number_db_next: 1.000
+   Metric rocksdb_number_db_seek_found: 1.000
+   Metric rocksdb_iter_bytes_read: 54.000
+   Metric docdb_keys_found: 1.000
+   Metric ql_read_latency: sum: 216.000, count: 1.000
+```
+
+For details on these metrics, see [Cache and storage subsystems](../../../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#cache-and-storage-subsystems).
 
 ## See also
 
 - [INSERT](../dml_insert/)
 - [SELECT](../dml_select/)
+- [Analyze queries with EXPLAIN](../../../../../explore/query-1-performance/explain-analyze/)
