@@ -173,7 +173,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
     JsonNode haConfigJson = createHAConfig();
     String clusterKey = haConfigJson.get("cluster_key").asText();
     String uri = SYNC_ENDPOINT + new Date().getTime();
-    Result syncResult = doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
+    Result syncResult =
+        assertPlatformException(
+            () -> doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject()));
     assertBadRequest(syncResult, "No local instance configured");
   }
 
@@ -186,7 +188,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
     haConfigJson = getHAConfig();
     config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String uri = SYNC_ENDPOINT + config.getLastFailover().getTime();
-    Result syncResult = doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
+    Result syncResult =
+        assertPlatformException(
+            () -> doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject()));
     assertBadRequest(syncResult, "Cannot import instances for a leader");
   }
 
@@ -426,7 +430,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String clusterKey = createInstances(haConfigJson, leaderAddr);
     File fakeDump = createFakeDump();
     Result result =
-        sendBackupSyncRequest(clusterKey, leaderAddr, fakeDump, "http://different.sender");
+        assertPlatformException(
+            () ->
+                sendBackupSyncRequest(clusterKey, leaderAddr, fakeDump, "http://different.sender"));
     assertBadRequest(
         result, "Sender: http://different.sender does not match leader: http://leader.yw.com");
 
@@ -475,8 +481,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
     body.add(Json.toJson(i1));
     body.add(localInstance);
     String uri = SYNC_ENDPOINT + 0;
-    Result syncResult = doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
-    assertBadRequest(syncResult, "Cannot import instances from stale leader");
+    Result syncResult =
+        assertPlatformException(() -> doRequestWithHATokenAndBody("PUT", uri, clusterKey, body));
+    assertBadRequest(syncResult, "Cannot accept request from stale leader http://abcdef.com");
   }
 
   @Test
@@ -513,8 +520,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
     assertTrue(config.isLocalLeader());
     String uri = DEMOTE_ENDPOINT + staleFailover.getTime();
     JsonNode body = Json.newObject().put("leader_address", "http://1.2.3.4");
-    Result demoteResult = doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
-    assertBadRequest(demoteResult, "Rejecting demote request from stale leader");
+    Result demoteResult =
+        assertPlatformException(() -> doRequestWithHATokenAndBody("PUT", uri, clusterKey, body));
+    assertBadRequest(demoteResult, "Cannot accept request from stale leader http://1.2.3.4");
     haConfigJson = getHAConfig();
     config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     assertTrue(config.isLocalLeader());

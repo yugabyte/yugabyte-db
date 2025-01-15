@@ -51,6 +51,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PendingConsistencyCheck;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
@@ -358,7 +359,6 @@ public class CustomerTaskManager {
                 CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
                 handlePendingTask(customerTask, taskInfo);
               });
-
       for (Customer customer : Customer.getAll()) {
         // Change the DeleteInProgress backups state to QueuedForDeletion
         Backup.findAllBackupWithState(
@@ -460,6 +460,10 @@ public class CustomerTaskManager {
   }
 
   public void handleAutoRetryAbortedTasks() {
+    if (HighAvailabilityConfig.isFollower()) {
+      LOG.info("Skipping auto-retry of tasks because this YBA is a follower");
+      return;
+    }
     Duration timeWindow =
         confGetter.getGlobalConf(GlobalConfKeys.autoRetryTasksOnYbaRestartTimeWindow);
     if (timeWindow.isZero()) {
