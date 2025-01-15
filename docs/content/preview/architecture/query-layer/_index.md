@@ -21,8 +21,8 @@ The YugabyteDB Query Layer (YQL) is the primary layer that provides interfaces f
 
 Although YQL is designed with extensibility in mind, allowing for new APIs to be added, it currently supports two types of distributed SQL APIs: [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/).
 
-- [YSQL](../../api/ysql/) is a distributed SQL API that is built by reusing the PostgreSQL language layer code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL. The default port for YSQL is `5433`.
-- [YCQL](../../api/ycql/) is a semi-relational language that has its roots in Cassandra Query Language. It is a SQL-like language built specifically to be aware of the clustering of data across nodes. The default port for YCQL is `9042`.
+- [YSQL](../../api/ysql/) is a distributed SQL API that is built by reusing the PostgreSQL language layer code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL. The default port for YSQL is 5433.
+- [YCQL](../../api/ycql/) is a semi-relational language that has its roots in Cassandra Query Language. It is a SQL-like language built specifically to be aware of the clustering of data across nodes. The default port for YCQL is 9042.
 
 ## Query processing
 
@@ -40,7 +40,7 @@ The parser processes each query in several steps as follows:
 
 1. Builds a parse tree: If the query is written correctly, the parser builds a structured representation of the query, called a parse tree. This parse tree captures the different parts of the query and how they are related.
 
-1. Recognizes keywords and identifiers: To build the parse tree, the parser first identifies the different components of the query, such as keywords (like `SELECT`, `FROM`), table or column names, and other identifiers.
+1. Recognizes keywords and identifiers: To build the parse tree, the parser first identifies the different components of the query, such as keywords (like SELECT, FROM), table or column names, and other identifiers.
 
 1. Applies grammar rules: The parser then applies a set of predefined grammar rules to understand the structure and meaning of the query based on the identified components.
 
@@ -89,17 +89,17 @@ A child node may be a "Sort" node, which requests rows from its child, sorts the
 
 As the executor requests rows from each node, that node fetches or computes the rows from its children, applies any filtering or data transformations specified in the query plan, and returns the requested rows up to its parent node.
 
-This process continues recursively until the top node has received all the rows it needs to produce the final result. For a `SELECT` query, these final rows are sent to the client. For data modification queries like `INSERT`, `UPDATE`, or `DELETE`, the rows are used to make the requested changes in the database tables.
+This process continues recursively until the top node has received all the rows it needs to produce the final result. For a SELECT query, these final rows are sent to the client. For data modification queries like INSERT, UPDATE, or DELETE, the rows are used to make the requested changes in the database tables.
 
 The executor is designed to efficiently pull rows through the pipeline defined by the plan tree, processing rows in batches where possible for better performance.
 
 ### Optimizations
 
-- **Incremental Sort** : If an intermediate query result is known to be sorted by one or more leading keys of a required sort ordering, the additional sorting can be done considering only the remaining keys, if the rows are sorted in batches that have equal leading keys.
+- **Incremental sort**. If an intermediate query result is known to be sorted by one or more leading keys of a required sort ordering, the additional sorting can be done considering only the remaining keys, if the rows are sorted in batches that have equal leading keys.
 
-- **Memoize results** :  When only a small percentage of rows is checked on the inner side of a nested-loop join, the executor memoizes the results for improving performance.
+- **Memoize results**. When only a small percentage of rows is checked on the inner side of a nested-loop join, the executor memoizes the results for improving performance.
 
-- **Disk-based Hash Aggregation** : Hash-based operations are generally more sensitive to memory availability and are highly efficient as long as the hash table fits within the memory specified by the work_mem parameter. When the hash table grows beyond the `work_mem` limit, the planner transitions to a disk-based hash aggregation plan. This avoids overloading memory and ensures that large datasets can be handled efficiently.
+- **Disk-based hash aggregation**. Hash-based operations are generally more sensitive to memory availability and are highly efficient as long as the hash table fits within the memory specified by the work_mem parameter. When the hash table grows beyond the `work_mem` limit, the planner transitions to a disk-based hash aggregation plan. This avoids overloading memory and ensures that large datasets can be handled efficiently.
 
 ## Query ID
 

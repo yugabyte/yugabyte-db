@@ -29,7 +29,7 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 | Feature | Description |
 | --------| ----------- |
 
-| [Stored Generated Columns](../../api/ysql/the-sql-language/statements/ddl_create_table#stored-generated-columns)
+| [Stored generated columns](../../api/ysql/the-sql-language/statements/ddl_create_table#stored-generated-columns)
 | Define columns whose values are automatically calculated and stored based on expressions involving other columns.
 |
 
@@ -46,19 +46,19 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 |
 
 | [UUID generation](../../api/ysql/exprs/func_gen_random_uuid/)
-| By providing `gen_random_uuid` natively, the need for external libraries or custom implementations for UUID generation is eliminated.
+| Provide `gen_random_uuid` natively, eliminating the need for external libraries or custom implementations to generate UUIDs.
 |
 
 | [Foreign keys on partitioned tables](../../explore/ysql-language-features/advanced-features/partitions/#foreign-key-references)
 | Enforce referential integrity directly on partitioned tables, ensuring consistency across large-scale datasets that benefit from partitioning for performance and scalability.
 |
 
-| [Multi-range and Range Aggregates](../../api/ysql/datatypes/type_range/#multirange)
-| Simplifies handling complex range-based data by grouping multiple discrete ranges together while maintaining their distinctness.
+| [Multi-range and range aggregates](../../api/ysql/datatypes/type_range/#multirange)
+| Simplify handling complex range-based data by grouping multiple discrete ranges together while maintaining their distinctness.
 |
 
 | [Pipeline mode](https://www.postgresql.org/docs/14/libpq-pipeline-mode.html)
-| Enables a client to send multiple queries to the server without waiting for each query's response before sending the next one. This reduces the round-trip time between client and server and significantly boosts the performance when many queries in quick succession.
+| Enable a client to send multiple queries to the server without waiting for each query's response before sending the next one. This reduces the round-trip time between client and server and significantly boosts the performance when running many queries in quick succession.
 |
 
 | [Replace triggers](../../api/ysql/the-sql-language/statements/ddl_create_trigger#or-replace)
@@ -74,8 +74,8 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 | Feature | Description |
 | --------| ----------- |
 
-| [Incremental Sort](../../architecture/query-layer/#optimizations)
-| On a sorted result set, additional sorting in done on the remaining keys. |
+| [Incremental sort](../../architecture/query-layer/#optimizations)
+| On a sorted result set, perform additional sorting on the remaining keys. |
 
 | [Memoization](../../architecture/query-layer/#optimizations)
 | Store results in memory when the inner side of a nested-loop join is small. |
@@ -93,10 +93,10 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 | --------| ----------- |
 
 | [Query ID](../../architecture/query-layer/#query-id)
-| Unique query ID to track a query across pg_stat_activity, EXPLAIN VERBOSE, and pg_stat_statement. |
+| Unique query ID to track a query across pg_stat_activity, EXPLAIN VERBOSE, and pg_stat_statements. |
 
 | [Stats on planning times](../../explore/query-1-performance/pg-stat-statements/)
-| `pg_stat_statements` can now track the planning time of statements. |
+| pg_stat_statements can now track the planning time of statements. |
 
 | [Granular stats reset](../../explore/query-1-performance/pg-stat-statements/#reset-statistics)
 | Resetting statistics via `pg_stat_statements_reset` is now granular at user, database, and query levels. |
@@ -139,7 +139,7 @@ The following PG15 features are not yet implemented but are planned for the futu
 | [Scram authentication as default](https://www.postgresql.org/docs/15/auth-password.html)
 | Scram authentication is [supported](../../secure/authentication/password-authentication/#scram-sha-256) in YugabyteDB but still has md5 as default authentication method. |
 
-| [Nondeterministic Collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC)
+| [Nondeterministic collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC)
 | Consider strings to be equal even if they consist of different bytes, for example, case-insensitive, or accent-insensitive comparisons. |
 
 {{%/table%}}

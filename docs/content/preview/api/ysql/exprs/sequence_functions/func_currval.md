@@ -32,17 +32,17 @@ Specify the name of the sequence.
 yugabyte=# CREATE SEQUENCE s;
 ```
 
-```
+```output
 CREATE SEQUENCE
 ```
 
-Call `nextval()`.
+Call `nextval()`:
 
 ```plpgsql
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        1
@@ -53,7 +53,7 @@ yugabyte=# SELECT nextval('s');
 yugabyte=# SELECT currval('s');
 ```
 
-```
+```output
  currval
 ---------
        1
@@ -66,7 +66,7 @@ Call `currval()` before `nextval()` is called.
 yugabyte=# CREATE SEQUENCE s2;
 ```
 
-```
+```output
 CREATE SEQUENCE
 ```
 
@@ -74,7 +74,7 @@ CREATE SEQUENCE
 SELECT currval('s2');
 ```
 
-```
+```output
 ERROR:  currval of sequence "s2" is not yet defined in this session
 ```
 
@@ -82,6 +82,3 @@ ERROR:  currval of sequence "s2" is not yet defined in this session
 
 - [`CREATE SEQUENCE`](../../../the-sql-language/statements/ddl_create_sequence)
 - [`DROP SEQUENCE`](../../../the-sql-language/statements/ddl_drop_sequence/)
-- [`lastval()`](../func_lastval)
-- [`nextval()`](../func_nextval)
-- [`setval()`](../func_setval)

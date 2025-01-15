@@ -21,7 +21,7 @@ The [uuid-ossp](../../../../explore/ysql-language-features/pg-extensions/extensi
 
 ## Example
 
-You can generate an uuid and check its type using the `pg_typeof` function as below.
+You can generate a UUID and check its type using the `pg_typeof` function.
 
 ```sql
 select gen_random_uuid(), pg_typeof(gen_random_uuid());

@@ -265,7 +265,7 @@ The earlier recommendation to avoid the term "infinite" when describing a bound 
 
 A multirange is an ordered list of non-contiguous, non-empty, non-null ranges. YugabyteDB supports a multirange type for each of the range type supported. Namely. `int4multirange`, `int8multirange`, `nummultirange`, `tsmultirange`, `tstzmultirange`, `datemultirange`.
 
-For example, to construct a multirange that consists of 2 non-overlapping ranges, you can run,
+For example, to construct a multirange that consists of 2 non-overlapping ranges, run the following:
 
 ```plpgsql
 SELECT int4multirange(int4range(2, 6), int4range(9, 15));
@@ -289,7 +289,7 @@ SELECT int4multirange(int4range(2, 6), int4range(5, 15));
  {[2,15)}
 ```
 
-Range aggregation can also be performed using the `range_agg` function as :
+You can also aggregate ranges using the `range_agg` function as follows:
 
 ```sql
 SELECT range_agg(num) from (values (int4range(2, 6)), (int4range(5, 15))) as temprange(num);

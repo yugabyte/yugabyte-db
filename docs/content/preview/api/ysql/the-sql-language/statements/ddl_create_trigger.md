@@ -14,7 +14,7 @@ type: docs
 
 ## Synopsis
 
-Use the `CREATE TRIGGER` statement to create a trigger.
+Use the CREATE TRIGGER statement to create a trigger.
 
 ## Syntax
 
@@ -25,12 +25,12 @@ Use the `CREATE TRIGGER` statement to create a trigger.
 
 ## Semantics
 
-- the `WHEN` condition can be used to specify whether the trigger should be fired. For low-level triggers it can reference the old and/or new values of the row's columns.
+- the WHEN condition can be used to specify whether the trigger should be fired. For low-level triggers it can reference the old and/or new values of the row's columns.
 - multiple triggers can be defined for the same event. In that case, they will be fired in alphabetical order by name.
 
 ### OR replace
 
-The `OR REPLACE` option allows you to replace an existing trigger with a new one without first having to drop the old trigger. By automatically replacing the existing trigger, this option reduces the risk of inconsistencies and errors that might arise from accidentally forgetting to drop a trigger before creating a new one.
+The OR REPLACE option allows you to replace an existing trigger with a new one without first having to drop the old trigger. By automatically replacing the existing trigger, this option reduces the risk of inconsistencies and errors that might arise from accidentally forgetting to drop a trigger before creating a new one.
 
 ## Examples
 
@@ -62,7 +62,6 @@ The `OR REPLACE` option allows you to replace an existing trigger with a new one
 - Insert some rows.
     For each insert, the triggers should set the current role as `username` and the current timestamp as `moddate`.
 
-
     ```plpgsql
     SET ROLE yugabyte;
     INSERT INTO posts VALUES(1, 'desc1');
@@ -77,7 +76,7 @@ The `OR REPLACE` option allows you to replace an existing trigger with a new one
     SELECT * FROM posts ORDER BY id;
     ```
 
-    ```
+    ```output
      id | content | username |          moddate
     ----+---------+----------+----------------------------
       1 | desc1   | yugabyte | 2019-09-13 16:55:53.969907
@@ -125,7 +124,7 @@ In the case of an AFTER trigger, the WHEN condition is evaluated right after the
 
 ## See also
 
-- [`DROP TRIGGER`](../ddl_drop_trigger)
-- [`INSERT`](../dml_insert)
-- [`UPDATE`](../dml_update/)
-- [`DELETE`](../dml_delete/)
+- [DROP TRIGGER](../ddl_drop_trigger/)
+- [INSERT](../dml_insert/)
+- [UPDATE](../dml_update/)
+- [DELETE](../dml_delete/)

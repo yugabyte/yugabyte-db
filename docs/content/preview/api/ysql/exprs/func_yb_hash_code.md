@@ -8,8 +8,6 @@ menu:
     identifier: api-ysql-exprs-yb_hash_code
     parent: api-ysql-exprs
     weight: 10
-aliases:
-  - /preview/api/ysql/exprs/func_yb_hash_code
 type: docs
 ---
 

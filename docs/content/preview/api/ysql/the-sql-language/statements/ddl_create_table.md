@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `CREATE TABLE` statement to create a table in a database. It defines the table name, column names and types, primary key, and table properties.
+Use the CREATE TABLE statement to create a table in a database. It defines the table name, column names and types, primary key, and table properties.
 
 ## Syntax
 
@@ -34,7 +34,7 @@ Use the `CREATE TABLE` statement to create a table in a database. It defines the
 
 ## Semantics
 
-Create a table with *table_name*. If `qualified_name` already exists in the specified database, an error will be raised unless the `IF NOT EXISTS` clause is used.
+Create a table with *table_name*. If `qualified_name` already exists in the specified database, an error will be raised unless the IF NOT EXISTS clause is used.
 
 ### Primary key
 
@@ -55,53 +55,56 @@ If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used
 
 PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. However YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb)), so a table isn't viable without a primary key.
 
-Therefore, if you don't specify a primary key at table-creation time, YugabyteDB will use the internal `ybrowid` column as `PRIMARY KEY` and the table will be sharded on `ybrowid HASH`.
+Therefore, if you don't specify a primary key at table-creation time, YugabyteDB will use the internal `ybrowid` column as PRIMARY KEY and the table will be sharded on `ybrowid HASH`.
 
 {{</note>}}
 
 ### Foreign key
 
-`FOREIGN KEY` and `REFERENCES` specifies that the set of columns can only contain values that are present in the referenced column(s) of the referenced table. It is used to enforce referential integrity of data.
+FOREIGN KEY and REFERENCES specifies that the set of columns can only contain values that are present in the referenced column(s) of the referenced table. It is used to enforce referential integrity of data.
 
 ### Unique
 
-This enforces that the set of columns specified in the `UNIQUE` constraint are unique in the table, that is, no two rows can have the same values for the set of columns specified in the `UNIQUE` constraint.
+This enforces that the set of columns specified in the UNIQUE constraint are unique in the table, that is, no two rows can have the same values for the set of columns specified in the UNIQUE constraint.
 
 ### Check
 
-This is used to enforce that data in the specified table meets the requirements specified in the `CHECK` clause.
+This is used to enforce that data in the specified table meets the requirements specified in the CHECK clause.
 
 ### Default
 
-This clause is used to specify a default value for the column. If an `INSERT` statement does not specify a value for the column, then the default value is used. If no default is specified for a column, then the default is NULL.
+This clause is used to specify a default value for the column. If an INSERT statement does not specify a value for the column, then the default value is used. If no default is specified for a column, then the default is NULL.
+
 An identity column will automatically receive a new value produced by its linked sequence.
 
 ### Deferrable constraints
 
-Constraints can be deferred using the `DEFERRABLE` clause. Currently, only foreign key constraints
+Constraints can be deferred using the DEFERRABLE clause. Currently, only foreign key constraints
 can be deferred in YugabyteDB. A constraint that is not deferrable will be checked after every row
 in a statement. In the case of deferrable constraints, the checking of the constraint can be postponed
 until the end of the transaction.
 
-Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row in a statement.
+Constraints marked as INITIALLY IMMEDIATE will be checked after every row in a statement.
 
-Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the transaction.
+Constraints marked as INITIALLY DEFERRED will be checked at the end of the transaction.
 
 ### IDENTITY columns
 
 Create the column as an identity column.
 
-An implicit sequence will be created, attached to it, and new rows will automatically have values assigned from the sequence. IDENTITY columns are implicitly `NOT NULL`.
+An implicit sequence will be created, attached to it, and new rows will automatically have values assigned from the sequence. IDENTITY columns are implicitly NOT NULL.
 
-`ALWAYS` and `BY DEFAULT` will determine how user-provided values are handled in `INSERT` and `UPDATE` statements.
+ALWAYS and BY DEFAULT will determine how user-provided values are handled in INSERT and UPDATE statements.
 
-On an `INSERT` statement:
-- when `ALWAYS` is used, a user-provided value is only accepted if the `INSERT` statement uses `OVERRIDING SYSTEM VALUE`.
-- when `BY DEFAULT` is used, then the user-provided value takes precedence. See [INSERT statement](../dml_insert/) for reference. (In the `COPY` statement, user-supplied values are always used regardless of this setting.)
+On an INSERT statement:
 
-On an `UPDATE` statement:
-- when `ALWAYS` is used, a column update to a value other than `DEFAULT` will be rejected.
-- when `BY DEFAULT` is used, the column can be updated normally. (`OVERRIDING` clause cannot be used for the UPDATE statement)
+- when ALWAYS is used, a user-provided value is only accepted if the INSERT statement uses OVERRIDING SYSTEM VALUE.
+- when BY DEFAULT is used, then the user-provided value takes precedence. See [INSERT statement](../dml_insert/) for reference. (In the COPY statement, user-supplied values are always used regardless of this setting.)
+
+On an UPDATE statement:
+
+- when ALWAYS is used, a column update to a value other than DEFAULT will be rejected.
+- when BY DEFAULT is used, the column can be updated normally. (OVERRIDING clause cannot be used for the UPDATE statement)
 
 The `sequence_options` optional clause can be used to override the options of the generated sequence.
 
@@ -121,8 +124,7 @@ A stored generated column is computed when it is written (inserted or updated) a
 
 Several restrictions apply to the definition of generated columns and tables involving generated columns:
 
-The generation expression can only use immutable functions and cannot use subqueries or reference anything other than the current row in any way.
-
+- The generation expression can only use immutable functions and cannot use subqueries or reference anything other than the current row in any way.
 - A generation expression cannot reference another generated column.
 - A generation expression cannot reference a system column, except tableoid.
 - A generated column cannot have a column default or an identity definition.
@@ -142,19 +144,19 @@ Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tab
 
 ### SPLIT INTO
 
-For hash-sharded tables, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the table. The hash range is then evenly split across those tablets.
+For hash-sharded tables, you can use the SPLIT INTO clause to specify the number of tablets to be created for the table. The hash range is then evenly split across those tablets.
 
-Presplitting tablets, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
+Presplitting tablets, using SPLIT INTO, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 
-By default, YugabyteDB presplits a table in `ysql_num_shards_per_tserver * num_of_tserver` shards. The `SPLIT INTO` clause can be used to override that setting on a per-table basis.
+By default, YugabyteDB presplits a table in `ysql_num_shards_per_tserver * num_of_tserver` shards. The SPLIT INTO clause can be used to override that setting on a per-table basis.
 
 {{< /note >}}
 
 ### SPLIT AT VALUES
 
-For range-sharded tables, you can use the `SPLIT AT VALUES` clause to set split points to presplit range-sharded tables.
+For range-sharded tables, you can use the SPLIT AT VALUES clause to set split points to presplit range-sharded tables.
 
 **Example**
 
@@ -209,7 +211,7 @@ yugabyte=# CREATE TABLE sample(k1 int,
                                PRIMARY KEY (k1, k2));
 ```
 
-In this example, the first column `k1` will be `HASH`, while second column `k2` will be `ASC`.
+In this example, the first column `k1` will be HASH, while second column `k2` will be ASC.
 
 ```sql{.nocopy}
 yugabyte=# \d sample
@@ -295,7 +297,7 @@ ERROR:  insert or update on table "orders" violates foreign key constraint "orde
 DETAIL:  Key (pid)=(3) is not present in table "products".
 ```
 
-Deleting a product will cascade to all orders (as defined in the `CREATE TABLE` statement above).
+Deleting a product will cascade to all orders (as defined in the CREATE TABLE statement above).
 
 ```plpgsql
 yugabyte=# DELETE from products where id = 1;
@@ -318,7 +320,7 @@ yugabyte=# CREATE TABLE translations(message_id int UNIQUE,
 
 ### Create a table specifying the number of tablets
 
-To specify the number of tablets for a table, you can use the `CREATE TABLE` statement with the [`SPLIT INTO`](#split-into) clause.
+To specify the number of tablets for a table, you can use the CREATE TABLE statement with the [SPLIT INTO](#split-into) clause.
 
 ```plpgsql
 yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT INTO 10 TABLETS;
@@ -336,6 +338,6 @@ In this example, database `company` is colocated and all tables other than the `
 
 ## See also
 
-- [`ALTER TABLE`](../ddl_alter_table)
-- [`CREATE TABLE AS`](../ddl_create_table_as)
-- [`DROP TABLE`](../ddl_drop_table)
+- [ALTER TABLE](../ddl_alter_table)
+- [CREATE TABLE AS](../ddl_create_table_as)
+- [DROP TABLE](../ddl_drop_table)
