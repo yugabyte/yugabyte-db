@@ -58,7 +58,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
     flags.put("ysql_hba_conf", CUSTOM_PG_HBA_CONFIG);
     if(isTestRunningWithConnectionManager()) {
        flags.put("allowed_preview_flags_csv",
-                ",enable_ysql_conn_mgr,ysql_conn_mgr_version_matching,"
+                "ysql_conn_mgr_version_matching,"
                 + "ysql_conn_mgr_version_matching_connect_higher_version");
       flags.put("enable_ysql_conn_mgr", "true");
       flags.put("ysql_conn_mgr_version_matching", "true");

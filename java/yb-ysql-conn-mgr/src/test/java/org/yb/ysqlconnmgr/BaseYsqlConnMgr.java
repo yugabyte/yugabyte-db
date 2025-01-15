@@ -82,7 +82,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     Map<String, String> flagMap = super.getTServerFlags();
 
     flagMap.put("enable_ysql_conn_mgr", "true");
-    flagMap.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
     flagMap.put("ysql_conn_mgr_dowarmup", "false");
     if (warmup_random_mode) {
       flagMap.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "random");
@@ -139,18 +138,18 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         throws Exception {
     Map<String, String> tsFlagMap = new HashMap<>();
     tsFlagMap.put("allowed_preview_flags_csv",
-            ",enable_ysql_conn_mgr,ysql_conn_mgr_version_matching");
+            "ysql_conn_mgr_version_matching");
     tsFlagMap.put("enable_ysql_conn_mgr", "true");
     tsFlagMap.put("ysql_conn_mgr_version_matching", "true");
 
     if (higher_version_matching) {
         tsFlagMap.put("allowed_preview_flags_csv",
-                ",enable_ysql_conn_mgr,ysql_conn_mgr_version_matching,"
+                "ysql_conn_mgr_version_matching,"
                 + "ysql_conn_mgr_version_matching_connect_higher_version");
         tsFlagMap.put("ysql_conn_mgr_version_matching_connect_higher_version", "true");
     } else {
        tsFlagMap.put("allowed_preview_flags_csv",
-                ",enable_ysql_conn_mgr,ysql_conn_mgr_version_matching,"
+                "ysql_conn_mgr_version_matching,"
                 + "ysql_conn_mgr_version_matching_connect_higher_version");
         tsFlagMap.put("ysql_conn_mgr_version_matching_connect_higher_version", "false");
     }
