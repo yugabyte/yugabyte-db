@@ -15,6 +15,7 @@ DOCUMENTDB_DISTRIBUTED_INC_DIR = $(DOCUMENTDB_DISTRIBUTED_DIR)/include
 
 PG_CPPFLAGS = $(shell pkg-config --cflags libbson-static-1.0) -I$(libpq_srcdir) $(INTEL_DECIMAL_MATH_LIB) $(PCRE2_LIB) -Isrc -Iinclude -Ibuild/include/
 PG_LDFLAGS = $(shell pkg-config --static --libs --cflags libbson-static-1.0) $(shell pkg-config --static --libs --cflags intelmathlib) $(shell pkg-config --static --libs --cflags libpcre2-8) -L/usr/lib
+PG_LDFLAGS += -Wl,-rpath=$(shell $(PG_CONFIG) --pkglibdir)
 
 ifeq ($(USE_DOCUMENTDB_CORE),1)
 DOCUMENTDB_CORE_LIB = $(DOCUMENTDB_CORE_DIR)/pg_documentdb_core.so
