@@ -113,8 +113,8 @@ These metrics are available per tablet and can be aggregated across the entire c
 
 ## Catalog cache misses
 
-During YSQL query processing, system catalog (pg_catalog) tables that live on the yb-master are cached locally on each YSQL backend process. Misses on this cache can make initial queries or queries after a DDL change slow until the corresponding cache is warmed up. The following table describes metrics for the specific pg_catalog tables which were not found in the cache and required a yb-master lookup. Such tables can then be preloaded by using [a tserver gflag](../../../reference/configuration/yb-tserver/#ysql-catalog-preload-additional-table-list).
+During YSQL query processing, system catalog (pg_catalog) tables that live on the YB-Master are cached locally on each YSQL backend process. Misses on this cache can make initial queries or queries after a DDL change slow until the corresponding cache is warmed up. The following table describes metrics for the specific pg_catalog tables that were not found in the cache and required a YB-Master lookup. These tables can then be preloaded using the [ysql_catalog_preload_additional_table_list](../../../../reference/configuration/yb-tserver/#ysql-catalog-preload-additional-table-list) YB-TServer flag.
 
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheTableMisses_count` | misses | counter | Count of catalog cache misses for this pg_catalog table or an associated index  |
+| `handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheTableMisses_count` | misses | counter | Count of catalog cache misses for this pg_catalog table or an associated index.  |
