@@ -42,10 +42,9 @@
     } \
   } while (0)
 
-DEFINE_RUNTIME_uint32(
-    cdcsdk_max_consistent_records, 500,
-    "Controls the maximum number of records sent in GetConsistentChanges "
-    "response");
+DEFINE_RUNTIME_uint32(cdcsdk_max_consistent_records, 500,
+    "Controls the maximum number of records sent in GetConsistentChanges response. Only used when "
+    "cdc_vwal_use_byte_threshold_for_consistent_changes flag is set to false.");
 
 DEFINE_RUNTIME_uint64(
     cdcsdk_publication_list_refresh_interval_secs, 3600 /* 1 hour */,
@@ -71,6 +70,14 @@ DEFINE_test_flag(
 DEFINE_RUNTIME_bool(
     cdcsdk_enable_dynamic_table_support, true,
     "This flag can be used to switch the dynamic addition of tables ON or OFF.");
+
+DEFINE_RUNTIME_bool(cdc_use_byte_threshold_for_vwal_changes, true,
+    "This controls the size of GetConsistentChanges RPC response. If true, records will be limited "
+    "by cdc_stream_records_threshold_size_bytes flag. If false, records will be limited by "
+    "cdcsdk_max_consistent_records flag.");
+TAG_FLAG(cdc_use_byte_threshold_for_vwal_changes, advanced);
+
+DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 
 namespace yb {
 namespace cdc {
@@ -388,6 +395,14 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators() {
   return Status::OK();
 }
 
+bool CanAddMoreRecords(uint64_t records_byte_size, int record_count) {
+  if (FLAGS_cdc_use_byte_threshold_for_vwal_changes) {
+    return records_byte_size < FLAGS_cdc_stream_records_threshold_size_bytes;
+  }
+
+  return record_count < static_cast<int>(FLAGS_cdcsdk_max_consistent_records);
+}
+
 Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     GetConsistentChangesResponsePB* resp, HostPort hostport, CoarseTimePoint deadline) {
   auto start_time = GetCurrentTimeMicros();
@@ -427,9 +442,9 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   }
 
   GetConsistentChangesRespMetadata metadata;
-  auto max_records = static_cast<int>(FLAGS_cdcsdk_max_consistent_records);
-  while (resp->cdc_sdk_proto_records_size() < max_records && !sorted_records.empty() &&
-         empty_tablet_queues.size() == 0) {
+  uint64_t resp_records_size = 0;
+  while (CanAddMoreRecords(resp_records_size, resp->cdc_sdk_proto_records_size()) &&
+         !sorted_records.empty() && empty_tablet_queues.size() == 0) {
     auto tablet_record_info_pair = VERIFY_RESULT(
         GetNextRecordToBeShipped(&sorted_records, &empty_tablet_queues, hostport, deadline));
     const auto tablet_id = tablet_record_info_pair.first;
@@ -571,6 +586,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       }
 
       auto records = resp->add_cdc_sdk_proto_records();
+      resp_records_size += (*record).ByteSizeLong();
       records->CopyFrom(*record);
     }
   }
@@ -602,7 +618,8 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     oss.clear();
     oss << "Sending non-empty GetConsistentChanges response from total tablet queues: "
         << tablet_queues_.size() << " with total_records: " << resp->cdc_sdk_proto_records_size()
-        << ", total_txns: " << metadata.txn_ids.size() << ", min_txn_id: "
+        << ", resp size: " << resp_records_size << ", total_txns: " << metadata.txn_ids.size()
+        << ", min_txn_id: "
         << ((metadata.min_txn_id == std::numeric_limits<uint32_t>::max()) ? 0 : metadata.min_txn_id)
         << ", max_txn_id: " << metadata.max_txn_id << ", min_lsn: "
         << (metadata.min_lsn == std::numeric_limits<uint64_t>::max() ? 0 : metadata.min_lsn)
