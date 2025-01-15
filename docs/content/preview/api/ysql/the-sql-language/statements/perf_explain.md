@@ -125,7 +125,7 @@ yugabyte=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5)
 
 #### Storage layer statistics
 
-To view the request statistics, you can run with with `DIST` option as,
+To view the request statistics, you can run with with `DIST` option as follows:
 
 ```sql
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT * FROM sample WHERE k1 = 1;
@@ -143,7 +143,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT * FROM sample WHERE k1 = 
 
 #### Internal rocksdb metrics
 
-To view the internal metrics, you can run with with `DEBUG` option as,
+To view the internal metrics, you can run with with `DEBUG` option as follows:
 
 ```sql
 EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF) SELECT * FROM sample WHERE k1 = 1;
@@ -165,7 +165,7 @@ EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF) SELECT * FROM sample WHER
    Metric ql_read_latency: sum: 216.000, count: 1.000
 ```
 
-For details on the above metrics, see [Cache and storage subsystems](../../../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#cache-and-storage-subsystems).
+For details on these metrics, see [Cache and storage subsystems](../../../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#cache-and-storage-subsystems).
 
 ## See also
 
