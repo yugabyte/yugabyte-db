@@ -263,7 +263,7 @@ The earlier recommendation to avoid the term "infinite" when describing a bound 
 
 ## Multirange
 
-A multirange is an ordered list of non-contiguous, non-empty, non-null ranges. YugabyteDB supports a multirange type for each of the supported range type. Namely `int4multirange`, `int8multirange`, `nummultirange`, `tsmultirange`, `tstzmultirange`, and `datemultirange`.
+A multirange is an ordered list of non-contiguous, non-empty, non-null ranges. YugabyteDB supports a multirange type for each of the supported range types (namely `int4multirange`, `int8multirange`, `nummultirange`, `tsmultirange`, `tstzmultirange`, and `datemultirange`).
 
 For example, to construct a multirange that consists of two non-overlapping ranges, run the following:
 

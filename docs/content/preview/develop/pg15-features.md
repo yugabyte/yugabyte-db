@@ -144,9 +144,16 @@ The following PG15 features are not yet implemented but are planned for the futu
 
 {{%/table%}}
 
+### Features not yet implemented
+
+The following features supported in v2024.2 and earlier are not yet available in v2.25:
+
+- [View terminated queries with yb_terminated_queries](../../explore/observability/yb-pg-stat-get-queries/)
+- [PostgreSQL_FDW extension](../../explore/ysql-language-features/pg-extensions/extension-postgres-fdw/)
+
 ## Upgrading
 
-When upgrading from PoistgreSQL 11-compatible versions of YugabyteDB (prior to v2.25) to a PostgreSQL 15 compatible version, keep in mind there are changes in some behaviors between PostgreSQL 11 and PostgreSQL 15.
+When upgrading a YugabyteDB cluster from PostgreSQL 11-compatible versions (v2024.2 and earlier) to a PostgreSQL 15-compatible version (v2.25 and later), the following features have different behaviors due to changes in the underlying PostgreSQL implementation.
 
 ### ysqlsh flags
 
@@ -174,11 +181,4 @@ The `clientcert=1` option is no longer supported in `pg_hba.conf`. You need to u
 
 In versions of YugabyteDB prior to v2.25 (and versions of PostgreSQL prior to 15), whenever you create a database user, that user is granted CREATE and USAGE privileges on the public schema by default.
 
-Starting from YugabyteDB 2.25 (PostgreSQL 15), database users are no longer automatically granted PUBLIC creation permission on the public schema. The USAGE privilege is still present, as in previous versions. Database users with superuser privileges or who are database owners by default have the CREATE permission on the public schema. Any schema that is explicitly created is not impacted by this change, since they are already restricted with the default privileges.
-
-## Features no longer available in v2.25
-
-The following features supported in v2024.2 and earlier are no longer available in v2.25 and later:
-
-- [View terminated queries with yb_terminated_queries](../../explore/observability/yb-pg-stat-get-queries/)
-- [PostgreSQL_FDW extension](../../explore/ysql-language-features/pg-extensions/extension-postgres-fdw/)
+Starting from YugabyteDB 2.25 (PostgreSQL 15), database users are no longer automatically granted creation permission on the public schema. The USAGE privilege is still present, as in previous versions. Database users with superuser privileges or who are database owners by default have the CREATE permission on the public schema. Any schema that is explicitly created is not impacted by this change, as they are already restricted with the default privileges.
