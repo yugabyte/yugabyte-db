@@ -92,9 +92,6 @@ CREATE SCHEMA documentdb_data;
 
 #include "schema/index_operator_classes_negation--0.16-0.sql"
 #include "schema/index_operator_classes_range--0.23-0.sql"
-#include "schema/index_operator_classes_preconsistent--0.10-0.sql"
-#include "schema/index_operator_classes_preconsistent--0.12-0.sql"
-
 
 /*
  * Region: Aggregation operators.
