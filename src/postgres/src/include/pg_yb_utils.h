@@ -597,6 +597,7 @@ extern bool yb_enable_nop_alter_role_optimization;
  * Compatibility option to ignore FREEZE with COPY FROM.
  */
 extern bool yb_ignore_freeze_with_copy;
+extern bool yb_disable_catalog_version_check;
 
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.

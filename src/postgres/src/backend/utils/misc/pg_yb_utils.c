@@ -1623,6 +1623,8 @@ bool yb_enable_inplace_index_update = true;
 bool yb_enable_advisory_locks = false;
 bool yb_ignore_freeze_with_copy = true;
 bool yb_enable_docdb_vector_type = false;
+bool yb_disable_catalog_version_check = false;
+
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,
@@ -4968,8 +4970,17 @@ assign_yb_read_time(const char *newval, void *extra)
 	unsigned long long value_ull;
 	bool is_ht_unit;
 	parse_yb_read_time(newval, &value_ull, &is_ht_unit);
+	/*
+	 * Don't refresh the sys caches in case the read time value didn't change.
+	 */
+	bool needs_syscaches_refresh = (yb_read_time != value_ull);
 	yb_read_time = value_ull;
 	yb_is_read_time_ht = is_ht_unit;
+
+	/* Clear and reload system catalog caches, including all callbacks. */
+	if (needs_syscaches_refresh)
+		YbResetCatalogCacheVersion();
+
 	if (!am_walsender)
 	{
 		ereport(NOTICE,
@@ -5202,6 +5213,13 @@ YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture)
 void
 YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version)
 {
+	/* 
+	 * Skip setting catalog version which skips catalog version check at
+	 * tserver. Used in time-traveling queries as they might read old data
+	 * with old catalog version.
+	 */
+	if (yb_disable_catalog_version_check)
+		return;
 	HandleYBStatus(YBIsDBCatalogVersionMode()
 		? YBCPgSetDBCatalogCacheVersion(handle, MyDatabaseId, version)
 		: YBCPgSetCatalogCacheVersion(handle, version));

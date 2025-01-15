@@ -3069,6 +3069,21 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_disable_catalog_version_check", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Disable checking that read requests from "
+			"this pg backend have the latest catalog version."),
+			gettext_noop("User should set this variable with caution. It is "
+			"under active development and is not recommended for production "
+			"clusters. Currently, it is used by ysql_dump to read pg catalog "
+			"as of time."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_catalog_version_check,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("Enable advisory lock feature"),
 			NULL,
