@@ -239,14 +239,14 @@ DEFINE_validator(log_min_segments_to_retain, FLAG_GT_VALUE_VALIDATOR(0));
 DEFINE_validator(max_disk_throughput_mbps, FLAG_GT_VALUE_VALIDATOR(0));
 DEFINE_validator(reject_writes_min_disk_space_check_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
 
-DEFINE_RUNTIME_uint64(cdc_intent_retention_ms, 4 * 3600 * 1000,
+DEFINE_RUNTIME_uint64(cdc_intent_retention_ms, 8 * 3600 * 1000,
     "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
     "If we haven't received an updated checkpoint from CDC consumer within the interval "
     "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
     "consumer while determining which op IDs to delete from the intent.");
 TAG_FLAG(cdc_intent_retention_ms, advanced);
 
-DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 4 * 3600,
+DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 8 * 3600,
     "WAL retention time in seconds to be used for tables which have a xCluster, "
     "or CDCSDK outbound stream.");
 
