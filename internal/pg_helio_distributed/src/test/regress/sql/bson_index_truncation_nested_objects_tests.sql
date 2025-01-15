@@ -1,4 +1,4 @@
-SET search_path TO helio_api_catalog;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
 SET citus.next_shard_id TO 1040000;
 SET helio_api.next_collection_id TO 10400;
 SET helio_api.next_collection_index_id TO 10400;
@@ -197,11 +197,51 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
 SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$nin": [[1], [true]] } }';
 SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$ne": [{ "$numberDecimal" : "1234567891011" }] } }';
 
+-- term generation tests
+
+set helio_api.indexTermLimitOverride to 100;
+SET helio_api.enableIndexTermTruncationOnNestedObjects to on;
+
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 19, "ikey": [[[[[[[[[[1]]]]]]]]]] }');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 20, "ikey": [[[[[[[[[[true]]]]]]]]]] }');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 21, "ikey": [[[[[[[[[[{ "$numberDecimal" : "1234567891011" }]]]]]]]]]] }');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 22, "ikey": [[[[[[[[[[{ "$maxKey": 1 }]]]]]]]]]] }');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 23, "ikey": [[[[[[[[[[{ "$minKey": 1 }]]]]]]]]]] }');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 24, "ikey": [[[[[[[[[[{ "$numberDouble" : "1234567891011" }]]]]]]]]]] }');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 25, "ikey": [[[[[[[[[[ "abcdefghijklmopqrstuvwxyz" ]]]]]]]]]] }');
+
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 115) term, document-> '_id' as did from helio_data.documents_10402) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 120) term, document-> '_id' as did from helio_data.documents_10402) docs;
+
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 26, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": 1}}}}}}}}}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 27, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": true}}}}}}}}}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 28, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$maxKey": 1 }}}}}}}}}}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 29, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$minKey": 1 }}}}}}}}}}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 30, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$numberDouble" : "1234567891011" }}}}}}}}}}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 31, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$numberDecimal" : "1234567891011" }}}}}}}}}}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 32, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": "abcdefghijklmopqrstuvwxyz"}}}}}}}}}');
+
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 100) term, document-> '_id' as did from helio_data.documents_10403) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 105) term, document-> '_id' as did from helio_data.documents_10403) docs;
+
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 33, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": 1}]}]}]}]}]}]}]}]}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 34, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": true}]}]}]}]}]}]}]}]}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 35, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$numberDecimal" : "1234567891011" }}]}]}]}]}]}]}]}]}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 36, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$maxKey": 1 }}]}]}]}]}]}]}]}]}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 37, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$minKey": 1 }}]}]}]}]}]}]}]}]}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 38, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$numberDouble" : "1234567891011" }}]}]}]}]}]}]}]}]}');
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 39, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": "abcdefghijklmopqrstuvwxyz"}]}]}]}]}]}]}]}]}');
+
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 165) term, document-> '_id' as did from helio_data.documents_10404) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 170) term, document-> '_id' as did from helio_data.documents_10404) docs;
+
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', true, true, true, 165) term, document-> '_id' as did from helio_data.documents_10404) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', true, true, true, 170) term, document-> '_id' as did from helio_data.documents_10404) docs;
 
 -- specific tests
 
 SET helio_api.enableIndexTermTruncationOnNestedObjects to off;
-set helio_api.indexTermLimitOverride to 250;
+set helio_api.indexTermLimitOverride to 200;
 
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_tests_nested", "indexes": [ { "key": { "$**" : 1 }, "name": "wildcardIndex",  "enableLargeIndexKeys": true  } ] }', true);
@@ -209,207 +249,65 @@ SELECT helio_distributed_test_helpers.drop_primary_key('db', 'index_truncation_t
 
 
 -- 1. Failes without nested object truncation support
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested', '
-{
+SELECT helio_api.insert_one('db', 'index_truncation_tests_nested','{
     "_id" : 1,
     "data": {
-        "$binary": "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",
-        "$type": "00"
+        "$binary": {
+            "base64": "ewogICAgIl9pZCI6ICI2NzY5ZGI2NmExZGIyMDA4NTczOTdiNjAiLAogICAgImluZGV4IjogMCwKICAgICJndWlkIjogIjMzZjk1N2QwLWU0M2MtNDYyNi1iOGJjLTFkODE0ODE3MmZkNyIsCiAgICAiaXNBY3RpdmUiOiB0cnVlLAogICAgImJhbGFuY2UiOiAiJDMsOTMwLjI4IiwKICAgICJwaWN0dXJlIjogImh0dHA6Ly9wbGFjZWhvbGQuaXQvMzJ4MzIiLAogICAgImFnZSI6IDI3LAogICAgImV5ZUNvbG9yIjogImdyZWVuIiwKICAgICJuYW1lIjogIkxpbGEgVmFsZW56dWVsYSIsCiAgICAiZ2VuZGVyIjogImZlbWFsZSIsCiAgICAiY29tcGFueSI6ICJBUFBMSURFQyIsCiAgICAiZW1haWwiOiAibGlsYXZhbGVuenVlbGFAYXBwbGlkZWMuY29tIiwKICAgICJwaG9uZSI6ICIrMSAoODIyKSA1NDItMjQ1MCIsCiAgICAiYWRkcmVzcyI6ICI2NjcgT3hmb3JkIFdhbGssIENhc2h0b3duLCBBcmthbnNhcywgMjYyMyIsCiAgICAiYWJvdXQiOiAiSW4gYWxpcXVpcCBub24gZXN0IHNpdCBlc3QgTG9yZW0gcXVpIG9jY2FlY2F0IGZ1Z2lhdCBleC4gRG9sb3IgbGFib3JlIG1vbGxpdCBjb25zZXF1YXQgaXBzdW0uIFF1aXMgY29uc2VxdWF0IGRlc2VydW50IGVpdXNtb2QgcHJvaWRlbnQgZHVpcyBvY2NhZWNhdCBldSBlbGl0IG5vbiBhZCBleCBkZXNlcnVudCBwcm9pZGVudCBMb3JlbS4gSWQgbW9sbGl0IGNpbGx1bSBpcHN1bSB2b2x1cHRhdGUgYXV0ZSBsYWJvcmlzIGVzc2UgYW5pbS5cclxuIiwKICAgICJyZWdpc3RlcmVkIjogIjIwMjAtMDktMDRUMDM6MDA6MTggKzAzOjAwIiwKICAgICJsYXRpdHVkZSI6IDguMTI4MTI0LAogICAgImxvbmdpdHVkZSI6IC0zNy4zMjY4MDMsCiAgICAidGFncyI6IFsKICAgICAgImV0IiwKICAgICAgInN1bnQiLAogICAgICAibW9sbGl0IiwKICAgICAgImFuaW0iLAogICAgICAibW9sbGl0IiwKICAgICAgImRvIiwKICAgICAgIm5vbiIKICAgIF0sCiAgICAiZnJpZW5kcyI6IFsKICAgICAgewogICAgICAgICJpZCI6IDAsCiAgICAgICAgIm5hbWUiOiAiTGVuYSBIdWZmbWFuIgogICAgICB9LAogICAgICB7CiAgICAgICAgImlkIjogMSwKICAgICAgICAibmFtZSI6ICJWaWNreSBMdWNhcyIKICAgICAgfSwKICAgICAgewogICAgICAgICJpZCI6IDIsCiAgICAgICAgIm5hbWUiOiAiSm9zZXBoIEdhcmRuZXIiCiAgICAgIH0KICAgIF0sCiAgICAiZ3JlZXRpbmciOiAiSGVsbG8sIExpbGEgVmFsZW56dWVsYSEgWW91IGhhdmUgMTAgdW5yZWFkIG1lc3NhZ2VzLiIsCiAgICAiZmF2b3JpdGVGcnVpdCI6ICJiYW5hbmEiCiAgfQ==",
+            "subType": "01"
+        }
     },
-    "lastUpdated": {
-        "sourceSystemTimestamp": "2016-09-19T06:10:23.400Z"
+    "updatedAt": {
+        "$date": 101010
     },
-    "kafkaPartition": 5,
-    "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-    "kafkaTimestamp": {
-        "$date": 1693431086173
+    "estimatedTimeOfArrival": {
+        "$date": 101010
     },
-    "sourceIndividual": null,
-    "active": false,
-    "upsertTimestamp": {
-        "$date": 1720803035593
+    "isSomething": false,
+    "createdAt": {
+        "$date": 101010
     },
-    "kafkaOffset": 21,
-    "memberships": [
+    "itemData": [
         {
-            "sourceSystemAttributes": {
-                "cdb": {
-                    "referenceData": {
-                        "coverageTypeCode": null
-                    },
-                    "nonCs": {
-                        "legalEntityName": null
-                    }
-                }
+            "attribute": "1234",
+            "cb": 12431,
+            "dx": "test",
+            "el": {
+                "$code": "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0="
             },
-            "cancelReasonType": null,
-            "customerPurchaseIdentifier": "0714867GIW",
-            "enrolleeSourceId": "07148670016266119100001",
-            "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-            "membershipGroupData": null,
-            "legacyAttributes": {
-                "stateIssueCode": ""
-            },
-            "eligibilitySystemType": {
-                "code": "01"
-            },
-            "coverageStatus": {
-                "code": "A",
-                "description": null
-            },
-            "terminationDate": "2010-12-31",
-            "subscriberIndividualIdentifier": null,
-            "panelNumber": null,
-            "enrolleeMemberFacingIdentifier": null,
-            "claimSystemType": null,
-            "medicareAndRetirementMembershipProfiles": null,
-            "organizationIdentifier": null,
-            "subscriberMemberFacingIdentifier": null,
-            "customerAccountIdentifier": "0714867",
-            "segmentId": null,
-            "enrolleeSourceCode": "CS",
-            "plan": {
-                "planCode": ""
-            },
-            "areaGroup": null,
-            "packageBenefitPlanCode": null,
-            "product": {
-                "healthCoverageType": {
-                    "code": "G"
-                }
-            },
-            "active": true,
-            "applicationIdentifier": null,
-            "divisionCode": "",
-            "site": null,
-            "productCode": "",
-            "membershipIdentifier": "cdb:health:0714867:2009-01-01:G:IW",
-            "organization": {
-                "planVariationCode": "0013",
-                "reportingCode": "0013"
-            },
-            "hContractId": null,
-            "customerAccount": {
-                "lineOfBusiness": {
-                    "code": "E&I"
-                },
-                "policySuffixCode": null,
-                "planCoverageIdentifier": "cdb:CS:0714867:0013:0013:G",
-                "businessArrangement": {
-                    "code": "A"
-                },
-                "customerAccountIdentifier": "0714867",
-                "sharedArrangement": {
-                    "code": "00"
-                },
-                "obligor": {
-                    "code": "01"
-                },
-                "purchasePlanIdentifier": null
-            },
-            "memberMarketNumber": null,
-            "subscriberEnrolleeSourceId": null,
-            "effectiveDate": "2009-01-01"
+            "first": null,
+            "greaterThan": null,
+            "shortPath": "aas",
+            "i": null,
+            "largePathWithObject": {
+                "option1": null,
+                "option2": "small-string1",
+                "option3": null,
+                "option4": 123,
+                "onlyPathWithLargeString": "aassadasdasdsdasdasdsadsa-test-data-with-large-string",
+                "prior": 123123213213
+            }
         },
         {
-            "sourceSystemAttributes": {
-                "cdb": {
-                    "referenceData": {
-                        "coverageTypeCode": null
-                    },
-                    "nonCs": {
-                        "legalEntityName": null
-                    }
-                }
-            },
-            "cancelReasonType": null,
-            "customerPurchaseIdentifier": "0714867GIW",
-            "enrolleeSourceId": "07148670016266119100001",
-            "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-            "membershipGroupData": null,
-            "legacyAttributes": {
-                "stateIssueCode": ""
-            },
-            "eligibilitySystemType": {
-                "code": "01"
-            },
-            "coverageStatus": {
-                "code": "A",
-                "description": null
-            },
-            "terminationDate": "2013-12-31",
-            "subscriberIndividualIdentifier": null,
-            "panelNumber": null,
-            "enrolleeMemberFacingIdentifier": null,
-            "claimSystemType": null,
-            "medicareAndRetirementMembershipProfiles": null,
-            "organizationIdentifier": null,
-            "subscriberMemberFacingIdentifier": null,
-            "customerAccountIdentifier": "0714867",
-            "segmentId": null,
-            "enrolleeSourceCode": "CS",
-            "plan": {
-                "planCode": ""
-            },
-            "areaGroup": null,
-            "packageBenefitPlanCode": null,
-            "product": {
-                "healthCoverageType": {
-                    "code": "G"
-                }
-            },
-            "active": true,
-            "applicationIdentifier": null,
-            "divisionCode": "",
-            "site": null,
-            "productCode": "",
-            "membershipIdentifier": "cdb:health:0714867:2011-01-01:G:IW",
-            "organization": {
-                "planVariationCode": "0013",
-                "reportingCode": "0013"
-            },
-            "hContractId": null,
-            "customerAccount": {
-                "lineOfBusiness": {
-                    "code": "E&I"
-                },
-                "policySuffixCode": null,
-                "planCoverageIdentifier": "cdb:CS:0714867:0013:0013:G",
-                "businessArrangement": {
-                    "code": "A"
-                },
-                "customerAccountIdentifier": "0714867",
-                "sharedArrangement": {
-                    "code": "00"
-                },
-                "obligor": {
-                    "code": "01"
-                },
-                "purchasePlanIdentifier": null
-            },
-            "memberMarketNumber": null,
-            "subscriberEnrolleeSourceId": null,
-            "effectiveDate": "2011-01-01"
+            "attribute": "xpto",
+            "ccb": 34354,
+            "dx": 0,
+            "el": null,
+            "first": null,
+            "greaterThan": null,
+            "shortPath": null,
+            "i": null,
+            "largePathWithObject": {
+                "option1": null,
+                "option2": "small-string2",
+                "option3": null,
+                "option4": 122121,
+                "onlyPathWithLargeString": "aassadasdasdsdasdasdsadsa-test-data-with-large-string2",
+                "prior": 1111111111111111
+            }
         }
     ],
-    "sourceSystemCode": "CDB",
-    "rule": {
-        "and": [
-            {
-                "or": [
-                    {
-                        "permission": "api-source-system-read-all"
-                    },
-                    {
-                        "permission": "0"
-                    }
-                ]
-            },
-            {
-                "securitySourceSystemCode": "cdb"
-            }
-        ]
-    }
+    "employeeCode": "LBF"
 }');
 
 
@@ -420,732 +318,227 @@ SET helio_api.enableIndexTermTruncationOnNestedObjects to on;
 SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(
   '{
     "_id": 1, 
-    "memberships" : [
+    "itemData" : [
         {
-            "sourceSystemAttributes": {
-                "cdb": {
-                    "referenceData": {
-                        "coverageTypeCode": null
-                    },
-                    "nonCs": {
-                        "legalEntityName": null
-                    }
-                }
+            "attribute": "1234",
+            "cb": 12431,
+            "dx": "test",
+            "el": {
+                "$code": "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0="
             },
-            "cancelReasonType": null,
-            "customerPurchaseIdentifier": "0714867GIW",
-            "enrolleeSourceId": "07148670016266119100001",
-            "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-            "membershipGroupData": null,
-            "legacyAttributes": {
-                "stateIssueCode": ""
-            },
-            "eligibilitySystemType": {
-                "code": "01"
-            },
-            "coverageStatus": {
-                "code": "A",
-                "description": null
-            },
-            "terminationDate": "2010-12-31",
-            "subscriberIndividualIdentifier": null,
-            "panelNumber": null,
-            "enrolleeMemberFacingIdentifier": null,
-            "claimSystemType": null,
-            "medicareAndRetirementMembershipProfiles": null,
-            "organizationIdentifier": null,
-            "subscriberMemberFacingIdentifier": null,
-            "customerAccountIdentifier": "0714867",
-            "segmentId": null,
-            "enrolleeSourceCode": "CS",
-            "plan": {
-                "planCode": ""
-            },
-            "areaGroup": null,
-            "packageBenefitPlanCode": null,
-            "product": {
-                "healthCoverageType": {
-                    "code": "G"
-                }
-            },
-            "active": true,
-            "applicationIdentifier": null,
-            "divisionCode": "",
-            "site": null,
-            "productCode": "",
-            "membershipIdentifier": "cdb:health:0714867:2009-01-01:G:IW",
-            "organization": {
-                "planVariationCode": "0013",
-                "reportingCode": "0013"
-            },
-            "hContractId": null,
-            "customerAccount": {
-                "lineOfBusiness": {
-                    "code": "E&I"
-                },
-                "policySuffixCode": null,
-                "planCoverageIdentifier": "cdb:CS:0714867:0013:0013:G",
-                "businessArrangement": {
-                    "code": "A"
-                },
-                "customerAccountIdentifier": "0714867",
-                "sharedArrangement": {
-                    "code": "00"
-                },
-                "obligor": {
-                    "code": "01"
-                },
-                "purchasePlanIdentifier": null
-            },
-            "memberMarketNumber": null,
-            "subscriberEnrolleeSourceId": null,
-            "effectiveDate": "2009-01-01"
+            "first": null,
+            "greaterThan": null,
+            "shortPath": "aas",
+            "i": null,
+            "largePathWithObject": {
+                "option1": null,
+                "option2": "small-string1",
+                "option3": null,
+                "option4": 123,
+                "onlyPathWithLargeString": "aassadasdasdsdasdasdsadsa-test-data-with-large-string",
+                "prior": 123123213213
+            }
         },
         {
-            "sourceSystemAttributes": {
-                "cdb": {
-                    "referenceData": {
-                        "coverageTypeCode": null
-                    },
-                    "nonCs": {
-                        "legalEntityName": null
-                    }
-                }
-            },
-            "cancelReasonType": null,
-            "customerPurchaseIdentifier": "0714867GIW",
-            "enrolleeSourceId": "07148670016266119100001",
-            "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-            "membershipGroupData": null,
-            "legacyAttributes": {
-                "stateIssueCode": ""
-            },
-            "eligibilitySystemType": {
-                "code": "01"
-            },
-            "coverageStatus": {
-                "code": "A",
-                "description": null
-            },
-            "terminationDate": "2013-12-31",
-            "subscriberIndividualIdentifier": null,
-            "panelNumber": null,
-            "enrolleeMemberFacingIdentifier": null,
-            "claimSystemType": null,
-            "medicareAndRetirementMembershipProfiles": null,
-            "organizationIdentifier": null,
-            "subscriberMemberFacingIdentifier": null,
-            "customerAccountIdentifier": "0714867",
-            "segmentId": null,
-            "enrolleeSourceCode": "CS",
-            "plan": {
-                "planCode": ""
-            },
-            "areaGroup": null,
-            "packageBenefitPlanCode": null,
-            "product": {
-                "healthCoverageType": {
-                    "code": "G"
-                }
-            },
-            "active": true,
-            "applicationIdentifier": null,
-            "divisionCode": "",
-            "site": null,
-            "productCode": "",
-            "membershipIdentifier": "cdb:health:0714867:2011-01-01:G:IW",
-            "organization": {
-                "planVariationCode": "0013",
-                "reportingCode": "0013"
-            },
-            "hContractId": null,
-            "customerAccount": {
-                "lineOfBusiness": {
-                    "code": "E&I"
-                },
-                "policySuffixCode": null,
-                "planCoverageIdentifier": "cdb:CS:0714867:0013:0013:G",
-                "businessArrangement": {
-                    "code": "A"
-                },
-                "customerAccountIdentifier": "0714867",
-                "sharedArrangement": {
-                    "code": "00"
-                },
-                "obligor": {
-                    "code": "01"
-                },
-                "purchasePlanIdentifier": null
-            },
-            "memberMarketNumber": null,
-            "subscriberEnrolleeSourceId": null,
-            "effectiveDate": "2011-01-01"
+            "attribute": "xpto",
+            "ccb": 34354,
+            "dx": 0,
+            "el": null,
+            "first": null,
+            "greaterThan": null,
+            "shortPath": null,
+            "i": null,
+            "largePathWithObject": {
+                "option1": null,
+                "option2": "small-string2",
+                "option3": null,
+                "option4": 122121,
+                "onlyPathWithLargeString": "aassadasdasdsdasdasdsadsa-test-data-with-large-string2",
+                "prior": 1111111111111111
+            }
         }
     ]
   }'
-, 'memberships', true, true, true, 1000) term;
+, 'itemData', true, true, true, 1000) term;
 
 -- 2 b. Terms generated with nested object index term truncation support
 
 SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(
   '{
     "_id": 1, 
-    "memberships" : [
+    "itemData" : [
         {
-            "sourceSystemAttributes": {
-                "cdb": {
-                    "referenceData": {
-                        "coverageTypeCode": null
-                    },
-                    "nonCs": {
-                        "legalEntityName": null
-                    }
-                }
+            "attribute": "1234",
+            "cb": 12431,
+            "dx": "test",
+            "el": {
+                "$code": "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0="
             },
-            "cancelReasonType": null,
-            "customerPurchaseIdentifier": "0714867GIW",
-            "enrolleeSourceId": "07148670016266119100001",
-            "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-            "membershipGroupData": null,
-            "legacyAttributes": {
-                "stateIssueCode": ""
-            },
-            "eligibilitySystemType": {
-                "code": "01"
-            },
-            "coverageStatus": {
-                "code": "A",
-                "description": null
-            },
-            "terminationDate": "2010-12-31",
-            "subscriberIndividualIdentifier": null,
-            "panelNumber": null,
-            "enrolleeMemberFacingIdentifier": null,
-            "claimSystemType": null,
-            "medicareAndRetirementMembershipProfiles": null,
-            "organizationIdentifier": null,
-            "subscriberMemberFacingIdentifier": null,
-            "customerAccountIdentifier": "0714867",
-            "segmentId": null,
-            "enrolleeSourceCode": "CS",
-            "plan": {
-                "planCode": ""
-            },
-            "areaGroup": null,
-            "packageBenefitPlanCode": null,
-            "product": {
-                "healthCoverageType": {
-                    "code": "G"
-                }
-            },
-            "active": true,
-            "applicationIdentifier": null,
-            "divisionCode": "",
-            "site": null,
-            "productCode": "",
-            "membershipIdentifier": "cdb:health:0714867:2009-01-01:G:IW",
-            "organization": {
-                "planVariationCode": "0013",
-                "reportingCode": "0013"
-            },
-            "hContractId": null,
-            "customerAccount": {
-                "lineOfBusiness": {
-                    "code": "E&I"
-                },
-                "policySuffixCode": null,
-                "planCoverageIdentifier": "cdb:CS:0714867:0013:0013:G",
-                "businessArrangement": {
-                    "code": "A"
-                },
-                "customerAccountIdentifier": "0714867",
-                "sharedArrangement": {
-                    "code": "00"
-                },
-                "obligor": {
-                    "code": "01"
-                },
-                "purchasePlanIdentifier": null
-            },
-            "memberMarketNumber": null,
-            "subscriberEnrolleeSourceId": null,
-            "effectiveDate": "2009-01-01"
+            "first": null,
+            "greaterThan": null,
+            "shortPath": "aas",
+            "i": null,
+            "largePathWithObject": {
+                "option1": null,
+                "option2": "small-string1",
+                "option3": null,
+                "option4": 123,
+                "onlyPathWithLargeString": "aassadasdasdsdasdasdsadsa-test-data-with-large-string",
+                "prior": 123123213213
+            }
         },
         {
-            "sourceSystemAttributes": {
-                "cdb": {
-                    "referenceData": {
-                        "coverageTypeCode": null
-                    },
-                    "nonCs": {
-                        "legalEntityName": null
-                    }
-                }
-            },
-            "cancelReasonType": null,
-            "customerPurchaseIdentifier": "0714867GIW",
-            "enrolleeSourceId": "07148670016266119100001",
-            "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-            "membershipGroupData": null,
-            "legacyAttributes": {
-                "stateIssueCode": ""
-            },
-            "eligibilitySystemType": {
-                "code": "01"
-            },
-            "coverageStatus": {
-                "code": "A",
-                "description": null
-            },
-            "terminationDate": "2013-12-31",
-            "subscriberIndividualIdentifier": null,
-            "panelNumber": null,
-            "enrolleeMemberFacingIdentifier": null,
-            "claimSystemType": null,
-            "medicareAndRetirementMembershipProfiles": null,
-            "organizationIdentifier": null,
-            "subscriberMemberFacingIdentifier": null,
-            "customerAccountIdentifier": "0714867",
-            "segmentId": null,
-            "enrolleeSourceCode": "CS",
-            "plan": {
-                "planCode": ""
-            },
-            "areaGroup": null,
-            "packageBenefitPlanCode": null,
-            "product": {
-                "healthCoverageType": {
-                    "code": "G"
-                }
-            },
-            "active": true,
-            "applicationIdentifier": null,
-            "divisionCode": "",
-            "site": null,
-            "productCode": "",
-            "membershipIdentifier": "cdb:health:0714867:2011-01-01:G:IW",
-            "organization": {
-                "planVariationCode": "0013",
-                "reportingCode": "0013"
-            },
-            "hContractId": null,
-            "customerAccount": {
-                "lineOfBusiness": {
-                    "code": "E&I"
-                },
-                "policySuffixCode": null,
-                "planCoverageIdentifier": "cdb:CS:0714867:0013:0013:G",
-                "businessArrangement": {
-                    "code": "A"
-                },
-                "customerAccountIdentifier": "0714867",
-                "sharedArrangement": {
-                    "code": "00"
-                },
-                "obligor": {
-                    "code": "01"
-                },
-                "purchasePlanIdentifier": null
-            },
-            "memberMarketNumber": null,
-            "subscriberEnrolleeSourceId": null,
-            "effectiveDate": "2011-01-01"
+            "attribute": "xpto",
+            "ccb": 34354,
+            "dx": 0,
+            "el": null,
+            "first": null,
+            "greaterThan": null,
+            "shortPath": null,
+            "i": null,
+            "largePathWithObject": {
+                "option1": null,
+                "option2": "small-string2",
+                "option3": null,
+                "option4": 122121,
+                "onlyPathWithLargeString": "aassadasdasdsdasdasdsadsa-test-data-with-large-string2",
+                "prior": 1111111111111111
+            }
         }
     ]
   }'
-, 'memberships', true, true, true, 100) term;
+, 'itemData', true, true, true, 60) term;
 
 
 -- 3. Now insert the document with nested object index term truncation support
 
 SELECT helio_api.insert_one('db', 'index_truncation_tests_nested', '
 {
-    "_id": 1, 
+    "_id" : 1,
     "data": {
-        "$binary": "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",
-        "$type": "00"
+        "$binary": {
+            "base64": "ewogICAgIl9pZCI6ICI2NzY5ZGI2NmExZGIyMDA4NTczOTdiNjAiLAogICAgImluZGV4IjogMCwKICAgICJndWlkIjogIjMzZjk1N2QwLWU0M2MtNDYyNi1iOGJjLTFkODE0ODE3MmZkNyIsCiAgICAiaXNBY3RpdmUiOiB0cnVlLAogICAgImJhbGFuY2UiOiAiJDMsOTMwLjI4IiwKICAgICJwaWN0dXJlIjogImh0dHA6Ly9wbGFjZWhvbGQuaXQvMzJ4MzIiLAogICAgImFnZSI6IDI3LAogICAgImV5ZUNvbG9yIjogImdyZWVuIiwKICAgICJuYW1lIjogIkxpbGEgVmFsZW56dWVsYSIsCiAgICAiZ2VuZGVyIjogImZlbWFsZSIsCiAgICAiY29tcGFueSI6ICJBUFBMSURFQyIsCiAgICAiZW1haWwiOiAibGlsYXZhbGVuenVlbGFAYXBwbGlkZWMuY29tIiwKICAgICJwaG9uZSI6ICIrMSAoODIyKSA1NDItMjQ1MCIsCiAgICAiYWRkcmVzcyI6ICI2NjcgT3hmb3JkIFdhbGssIENhc2h0b3duLCBBcmthbnNhcywgMjYyMyIsCiAgICAiYWJvdXQiOiAiSW4gYWxpcXVpcCBub24gZXN0IHNpdCBlc3QgTG9yZW0gcXVpIG9jY2FlY2F0IGZ1Z2lhdCBleC4gRG9sb3IgbGFib3JlIG1vbGxpdCBjb25zZXF1YXQgaXBzdW0uIFF1aXMgY29uc2VxdWF0IGRlc2VydW50IGVpdXNtb2QgcHJvaWRlbnQgZHVpcyBvY2NhZWNhdCBldSBlbGl0IG5vbiBhZCBleCBkZXNlcnVudCBwcm9pZGVudCBMb3JlbS4gSWQgbW9sbGl0IGNpbGx1bSBpcHN1bSB2b2x1cHRhdGUgYXV0ZSBsYWJvcmlzIGVzc2UgYW5pbS5cclxuIiwKICAgICJyZWdpc3RlcmVkIjogIjIwMjAtMDktMDRUMDM6MDA6MTggKzAzOjAwIiwKICAgICJsYXRpdHVkZSI6IDguMTI4MTI0LAogICAgImxvbmdpdHVkZSI6IC0zNy4zMjY4MDMsCiAgICAidGFncyI6IFsKICAgICAgImV0IiwKICAgICAgInN1bnQiLAogICAgICAibW9sbGl0IiwKICAgICAgImFuaW0iLAogICAgICAibW9sbGl0IiwKICAgICAgImRvIiwKICAgICAgIm5vbiIKICAgIF0sCiAgICAiZnJpZW5kcyI6IFsKICAgICAgewogICAgICAgICJpZCI6IDAsCiAgICAgICAgIm5hbWUiOiAiTGVuYSBIdWZmbWFuIgogICAgICB9LAogICAgICB7CiAgICAgICAgImlkIjogMSwKICAgICAgICAibmFtZSI6ICJWaWNreSBMdWNhcyIKICAgICAgfSwKICAgICAgewogICAgICAgICJpZCI6IDIsCiAgICAgICAgIm5hbWUiOiAiSm9zZXBoIEdhcmRuZXIiCiAgICAgIH0KICAgIF0sCiAgICAiZ3JlZXRpbmciOiAiSGVsbG8sIExpbGEgVmFsZW56dWVsYSEgWW91IGhhdmUgMTAgdW5yZWFkIG1lc3NhZ2VzLiIsCiAgICAiZmF2b3JpdGVGcnVpdCI6ICJiYW5hbmEiCiAgfQ==",
+            "subType": "01"
+        }
     },
-    "lastUpdated": {
-        "sourceSystemTimestamp": "2016-09-19T06:10:23.400Z"
+    "updatedAt": {
+        "$date": 101010
     },
-    "kafkaPartition": 5,
-    "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-    "kafkaTimestamp": {
-        "$date": 1693431086173
+    "estimatedTimeOfArrival": {
+        "$date": 101010
     },
-    "sourceIndividual": null,
-    "active": false,
-    "upsertTimestamp": {
-        "$date": 1720803035593
+    "isSomething": false,
+    "createdAt": {
+        "$date": 101010
     },
-    "kafkaOffset": 21,
-    "memberships": [
+    "itemData": [
         {
-            "sourceSystemAttributes": {
-                "cdb": {
-                    "referenceData": {
-                        "coverageTypeCode": null
-                    },
-                    "nonCs": {
-                        "legalEntityName": null
-                    }
-                }
+            "attribute": "1234",
+            "cb": 12431,
+            "dx": "test",
+            "el": {
+                "$code": "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0="
             },
-            "cancelReasonType": null,
-            "customerPurchaseIdentifier": "0714867GIW",
-            "enrolleeSourceId": "07148670016266119100001",
-            "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-            "membershipGroupData": null,
-            "legacyAttributes": {
-                "stateIssueCode": ""
-            },
-            "eligibilitySystemType": {
-                "code": "01"
-            },
-            "coverageStatus": {
-                "code": "A",
-                "description": null
-            },
-            "terminationDate": "2010-12-31",
-            "subscriberIndividualIdentifier": null,
-            "panelNumber": null,
-            "enrolleeMemberFacingIdentifier": null,
-            "claimSystemType": null,
-            "medicareAndRetirementMembershipProfiles": null,
-            "organizationIdentifier": null,
-            "subscriberMemberFacingIdentifier": null,
-            "customerAccountIdentifier": "0714867",
-            "segmentId": null,
-            "enrolleeSourceCode": "CS",
-            "plan": {
-                "planCode": ""
-            },
-            "areaGroup": null,
-            "packageBenefitPlanCode": null,
-            "product": {
-                "healthCoverageType": {
-                    "code": "G"
-                }
-            },
-            "active": true,
-            "applicationIdentifier": null,
-            "divisionCode": "",
-            "site": null,
-            "productCode": "",
-            "membershipIdentifier": "cdb:health:0714867:2009-01-01:G:IW",
-            "organization": {
-                "planVariationCode": "0013",
-                "reportingCode": "0013"
-            },
-            "hContractId": null,
-            "customerAccount": {
-                "lineOfBusiness": {
-                    "code": "E&I"
-                },
-                "policySuffixCode": null,
-                "planCoverageIdentifier": "cdb:CS:0714867:0013:0013:G",
-                "businessArrangement": {
-                    "code": "A"
-                },
-                "customerAccountIdentifier": "0714867",
-                "sharedArrangement": {
-                    "code": "00"
-                },
-                "obligor": {
-                    "code": "01"
-                },
-                "purchasePlanIdentifier": null
-            },
-            "memberMarketNumber": null,
-            "subscriberEnrolleeSourceId": null,
-            "effectiveDate": "2009-01-01"
+            "first": null,
+            "greaterThan": null,
+            "shortPath": "aas",
+            "i": null,
+            "largePathWithObject": {
+                "option1": null,
+                "option2": "small-string1",
+                "option3": null,
+                "option4": 123,
+                "onlyPathWithLargeString": "aassadasdasdsdasdasdsadsa-test-data-with-large-string",
+                "prior": 123123213213
+            }
         },
         {
-            "sourceSystemAttributes": {
-                "cdb": {
-                    "referenceData": {
-                        "coverageTypeCode": null
-                    },
-                    "nonCs": {
-                        "legalEntityName": null
-                    }
-                }
-            },
-            "cancelReasonType": null,
-            "customerPurchaseIdentifier": "0714867GIW",
-            "enrolleeSourceId": "07148670016266119100001",
-            "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-            "membershipGroupData": null,
-            "legacyAttributes": {
-                "stateIssueCode": ""
-            },
-            "eligibilitySystemType": {
-                "code": "01"
-            },
-            "coverageStatus": {
-                "code": "A",
-                "description": null
-            },
-            "terminationDate": "2013-12-31",
-            "subscriberIndividualIdentifier": null,
-            "panelNumber": null,
-            "enrolleeMemberFacingIdentifier": null,
-            "claimSystemType": null,
-            "medicareAndRetirementMembershipProfiles": null,
-            "organizationIdentifier": null,
-            "subscriberMemberFacingIdentifier": null,
-            "customerAccountIdentifier": "0714867",
-            "segmentId": null,
-            "enrolleeSourceCode": "CS",
-            "plan": {
-                "planCode": ""
-            },
-            "areaGroup": null,
-            "packageBenefitPlanCode": null,
-            "product": {
-                "healthCoverageType": {
-                    "code": "G"
-                }
-            },
-            "active": true,
-            "applicationIdentifier": null,
-            "divisionCode": "",
-            "site": null,
-            "productCode": "",
-            "membershipIdentifier": "cdb:health:0714867:2011-01-01:G:IW",
-            "organization": {
-                "planVariationCode": "0013",
-                "reportingCode": "0013"
-            },
-            "hContractId": null,
-            "customerAccount": {
-                "lineOfBusiness": {
-                    "code": "E&I"
-                },
-                "policySuffixCode": null,
-                "planCoverageIdentifier": "cdb:CS:0714867:0013:0013:G",
-                "businessArrangement": {
-                    "code": "A"
-                },
-                "customerAccountIdentifier": "0714867",
-                "sharedArrangement": {
-                    "code": "00"
-                },
-                "obligor": {
-                    "code": "01"
-                },
-                "purchasePlanIdentifier": null
-            },
-            "memberMarketNumber": null,
-            "subscriberEnrolleeSourceId": null,
-            "effectiveDate": "2011-01-01"
+            "attribute": "xpto",
+            "ccb": 34354,
+            "dx": 0,
+            "el": null,
+            "first": null,
+            "greaterThan": null,
+            "shortPath": null,
+            "i": null,
+            "largePathWithObject": {
+                "option1": null,
+                "option2": "small-string2",
+                "option3": null,
+                "option4": 122121,
+                "onlyPathWithLargeString": "aassadasdasdsdasdasdsadsa-test-data-with-large-string2",
+                "prior": 1111111111111111
+            }
         }
     ],
-    "sourceSystemCode": "CDB",
-    "rule": {
-        "and": [
-            {
-                "or": [
-                    {
-                        "permission": "api-source-system-read-all"
-                    },
-                    {
-                        "permission": "0"
-                    }
-                ]
-            },
-            {
-                "securitySourceSystemCode": "cdb"
-            }
-        ]
-    }
+    "employeeCode": "LBF"
 }');
 
 
 -- 4. Now issue a find query
 
-SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships": { "$eq": 
+SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "itemData": { "$eq": 
 
-{
-            "sourceSystemAttributes": {
-                "cdb": {
-                    "referenceData": {
-                        "coverageTypeCode": null
-                    },
-                    "nonCs": {
-                        "legalEntityName": null
-                    }
-                }
-            },
-            "cancelReasonType": null,
-            "customerPurchaseIdentifier": "0714867GIW",
-            "enrolleeSourceId": "07148670016266119100001",
-            "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-            "membershipGroupData": null,
-            "legacyAttributes": {
-                "stateIssueCode": ""
-            },
-            "eligibilitySystemType": {
-                "code": "01"
-            },
-            "coverageStatus": {
-                "code": "A",
-                "description": null
-            },
-            "terminationDate": "2010-12-31",
-            "subscriberIndividualIdentifier": null,
-            "panelNumber": null,
-            "enrolleeMemberFacingIdentifier": null,
-            "claimSystemType": null,
-            "medicareAndRetirementMembershipProfiles": null,
-            "organizationIdentifier": null,
-            "subscriberMemberFacingIdentifier": null,
-            "customerAccountIdentifier": "0714867",
-            "segmentId": null,
-            "enrolleeSourceCode": "CS",
-            "plan": {
-                "planCode": ""
-            },
-            "areaGroup": null,
-            "packageBenefitPlanCode": null,
-            "product": {
-                "healthCoverageType": {
-                    "code": "G"
-                }
-            },
-            "active": true,
-            "applicationIdentifier": null,
-            "divisionCode": "",
-            "site": null,
-            "productCode": "",
-            "membershipIdentifier": "cdb:health:0714867:2009-01-01:G:IW",
-            "organization": {
-                "planVariationCode": "0013",
-                "reportingCode": "0013"
-            },
-            "hContractId": null,
-            "customerAccount": {
-                "lineOfBusiness": {
-                    "code": "E&I"
-                },
-                "policySuffixCode": null,
-                "planCoverageIdentifier": "cdb:CS:0714867:0013:0013:G",
-                "businessArrangement": {
-                    "code": "A"
-                },
-                "customerAccountIdentifier": "0714867",
-                "sharedArrangement": {
-                    "code": "00"
-                },
-                "obligor": {
-                    "code": "01"
-                },
-                "purchasePlanIdentifier": null
-            },
-            "memberMarketNumber": null,
-            "subscriberEnrolleeSourceId": null,
-            "effectiveDate": "2009-01-01"
-        } 
+    {
+        "attribute": "1234",
+        "cb": 12431,
+        "dx": "test",
+        "el": {
+            "$code": "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0="
+        },
+        "first": null,
+        "greaterThan": null,
+        "shortPath": "aas",
+        "i": null,
+        "largePathWithObject": {
+            "option1": null,
+            "option2": "small-string1",
+            "option3": null,
+            "option4": 123,
+            "onlyPathWithLargeString": "aassadasdasdsdasdasdsadsa-test-data-with-large-string",
+            "prior": 123123213213
+        }
+    }
 
 } }, "projection": { "_id": 1 }, "sort": { "_id": 1 }, "skip": 0, "limit": 5 }');
 
 -- 5. Index usage explain
 
-EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships": { "$eq": 
+EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "itemData": { "$eq": 
 
-{
-            "sourceSystemAttributes": {
-                "cdb": {
-                    "referenceData": {
-                        "coverageTypeCode": null
-                    },
-                    "nonCs": {
-                        "legalEntityName": null
-                    }
-                }
-            },
-            "cancelReasonType": null,
-            "customerPurchaseIdentifier": "0714867GIW",
-            "enrolleeSourceId": "07148670016266119100001",
-            "individualIdentifier": "cdb:4:150813964:CS:07148670016266119100001",
-            "membershipGroupData": null,
-            "legacyAttributes": {
-                "stateIssueCode": ""
-            },
-            "eligibilitySystemType": {
-                "code": "01"
-            },
-            "coverageStatus": {
-                "code": "A",
-                "description": null
-            },
-            "terminationDate": "2010-12-31",
-            "subscriberIndividualIdentifier": null,
-            "panelNumber": null,
-            "enrolleeMemberFacingIdentifier": null,
-            "claimSystemType": null,
-            "medicareAndRetirementMembershipProfiles": null,
-            "organizationIdentifier": null,
-            "subscriberMemberFacingIdentifier": null,
-            "customerAccountIdentifier": "0714867",
-            "segmentId": null,
-            "enrolleeSourceCode": "CS",
-            "plan": {
-                "planCode": ""
-            },
-            "areaGroup": null,
-            "packageBenefitPlanCode": null,
-            "product": {
-                "healthCoverageType": {
-                    "code": "G"
-                }
-            },
-            "active": true,
-            "applicationIdentifier": null,
-            "divisionCode": "",
-            "site": null,
-            "productCode": "",
-            "membershipIdentifier": "cdb:health:0714867:2009-01-01:G:IW",
-            "organization": {
-                "planVariationCode": "0013",
-                "reportingCode": "0013"
-            },
-            "hContractId": null,
-            "customerAccount": {
-                "lineOfBusiness": {
-                    "code": "E&I"
-                },
-                "policySuffixCode": null,
-                "planCoverageIdentifier": "cdb:CS:0714867:0013:0013:G",
-                "businessArrangement": {
-                    "code": "A"
-                },
-                "customerAccountIdentifier": "0714867",
-                "sharedArrangement": {
-                    "code": "00"
-                },
-                "obligor": {
-                    "code": "01"
-                },
-                "purchasePlanIdentifier": null
-            },
-            "memberMarketNumber": null,
-            "subscriberEnrolleeSourceId": null,
-            "effectiveDate": "2009-01-01"
-        } 
+    {
+        "attribute": "1234",
+        "cb": 12431,
+        "dx": "test",
+        "el": {
+            "$code": "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0="
+        },
+        "first": null,
+        "greaterThan": null,
+        "shortPath": "aas",
+        "i": null,
+        "largePathWithObject": {
+            "option1": null,
+            "option2": "small-string1",
+            "option3": null,
+            "option4": 123,
+            "onlyPathWithLargeString": "aassadasdasdsdasdasdsadsa-test-data-with-large-string",
+            "prior": 123123213213
+        }
+    }
 
 } }, "projection": { "_id": 1 }, "sort": { "_id": 1 }, "skip": 0, "limit": 5 }');
 
 
-SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships.organization.planVariationCode": { "$eq": 
+SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "itemData.largePathWithObject.option2": { "$eq": 
 
-"0013"
+"small-string1"
 
 } }, "projection": { "_id": 1 }, "sort": { "_id": 1 }, "skip": 0, "limit": 5 }');
 
-EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "memberships.organization.planVariationCode": { "$eq": 
+EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "itemData.largePathWithObject.option2": { "$eq": 
 
-"0013"
+"small-string1"
 
 } }, "projection": { "_id": 1 }, "sort": { "_id": 1 }, "skip": 0, "limit": 5 }');
 
