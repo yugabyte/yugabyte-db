@@ -15,6 +15,7 @@
 # the License.
 #
 # Simple linter for postgres code.
+set -u
 
 # Whitespace
 if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
@@ -153,7 +154,7 @@ if ! [[ "$1" == src/postgres/contrib/bloom/bloom.h ||
   #   #ifndef, etc.)
   # - Exclude comments
   grep -nA1 '($' "$1" \
-    | vi -es +'g/^\d\+-#/.-1,.d' +'%write! /dev/stdout' +'q' /dev/stdin \
+    | vi -ens +'g/^\d\+-#/.-1,.d' +'%write! /dev/stdout' +'q' /dev/stdin \
     | grep '($' \
     | grep -Ev '^[0-9]+:\s*\*\s' \
     | grep -Ev '__asm__\s__volatile__\(' \

@@ -1,4 +1,20 @@
 #!/usr/bin/env bash
+#
+# Copyright (c) YugabyteDB, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+#
+# Simple linter for src/yb/yql/***/ybc_*.h files.
 set -euo pipefail
 
 if ! which ctags >/dev/null || \
@@ -38,11 +54,12 @@ echo "$1" \
         fi
         # In case of #ifdef __cplusplus, a name is required after
         # enum/struct/union, and it should match the typedef name.
-        other_symbol=$(sed -E 's/^typedef (enum|struct|union) (\w+) \{$/\2/' \
+        other_symbol=$(sed -E 's/^typedef (enum|struct|union) ([_[:alnum:]]+) \{$/\2/' \
                          <<<"$first_line")
       elif grep -Eq "^typedef (enum|struct|union) \\w+ $symbol;" "$1"; then
         other_symbol=$(sed -n "$lineno"p "$1" \
-                         | sed -E 's/^typedef (enum|struct|union) (\w+) \w+;/\2/')
+                         | sed -E \
+                             's/^typedef (enum|struct|union) ([_[:alnum:]]+) [_[:alnum:]]+;/\2/')
       else
         # There is no other symbol involved.  Set this just to pass the below
         # check.
