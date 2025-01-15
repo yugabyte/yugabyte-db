@@ -116,7 +116,7 @@ Creating a row-level trigger on a partitioned table automatically results in an 
 
 ### BEFORE
 
-For a BEFORE trigger, the WHEN condition is evaluated immediately before the trigger function is executed, or would be executed if the condition evaluates to TRUE. This makes using the WHEN clause functionally similar to performing the same check at the start of the trigger function. The NEW row seen by the condition reflects any modifications made by earlier triggers in the same operation. However, it is important to note that WHEN conditions in BEFORE triggers cannot access system columns of the NEW row, such as ctid, because these columns have not yet been set.
+For a BEFORE trigger, the WHEN condition is evaluated immediately before the trigger function is executed, or would be executed if the condition evaluates to TRUE. This makes using the WHEN clause functionally similar to performing the same check at the start of the trigger function. The NEW row seen by the condition reflects any modifications made by earlier triggers in the same operation.
 
 ### AFTER
 
