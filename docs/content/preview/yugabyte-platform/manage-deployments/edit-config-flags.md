@@ -40,9 +40,21 @@ To customize flags of the read replica of a universe that has a read replica clu
 
 Depending on the flag, the universe may need to be restarted to apply the changes. You can apply changes as follows:
 
-- Immediately using a rolling restart.
+- Immediately using a rolling restart, or [rolling restart in batches](#rolling-restart-in-batches).
 - Immediately using a concurrent restart.
 - Immediately apply any changes that do not require a restart and wait until the next time the universe is restarted to apply the remaining changes.
+
+### Batched rolling restart
+
+{{<tags/feature/ea>}}During a rolling restart, YugabyteDB Anywhere can process multiple YB-TServer nodes in each availability zone simultaneously. YB-Master nodes are always updated one at a time.
+
+Batched rolling restart is {{<tags/feature/ea>}}. To enable the feature in YugabyteDB Anywhere, set the **Stop multiple nodes in az simultaneously during upgrade** Global runtime configuration option (config key `yb.task.upgrade.batch_roll_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
+
+Batched rolling restart requires a replication factor of 3 or more, and at least two nodes in an availability zone. If your universe supports a batched rolling restart, you can specify the maximum number of nodes to process as a batch.
+
+![Rolling restart in batches](/images/ee/rolling-restart-batch.png)
+
+The batch size is also applied to read replica nodes. Before running the operation, YugabyteDB Anywhere synchronizes with the database to verify that the batch operation is safe, and falls back to processing a single node at a time if verification fails.
 
 ### Add flags
 
