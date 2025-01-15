@@ -58,6 +58,15 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     return std::regex_replace(output, pattern, "\n<binary_upgrade_set_next>");
   }
 
+  Result<std::string> ReadEnumLabelInfo(
+      Cluster& cluster, const std::string& database_name = "yugabyte") {
+    auto conn = VERIFY_RESULT(cluster.ConnectToDB(database_name));
+    return VERIFY_RESULT(conn.FetchAllAsString(
+        "SELECT typname, enumlabel, pg_enum.oid, enumsortorder FROM pg_enum "
+        "JOIN pg_type ON pg_enum.enumtypid = pg_type.oid;",
+        ", ", "\n"));
+  }
+
   void ExecutePgFile(const std::string& file_path) {
     std::vector<std::string> args;
     args.push_back(GetPgToolPath("ysqlsh"));
@@ -81,8 +90,16 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     const auto sub_dir = "test_xcluster_ddl_replication_sql";
     const auto test_sql_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir, "sql");
 
-    // Setup xCluster.
     RETURN_NOT_OK(SetUpClusters());
+
+    // Perturb OIDs on consumer side to make sure we don't accidentally preserve OIDs.
+    auto conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB("yugabyte"));
+    RETURN_NOT_OK(
+        conn.Execute("CREATE TYPE gratuitous_enum AS ENUM ('red', 'orange', 'yellow', 'green', "
+                     "'blue', 'purple');"));
+    RETURN_NOT_OK(conn.Execute("DROP TYPE gratuitous_enum;"));
+
+    // Setup xCluster.
     RETURN_NOT_OK(CheckpointReplicationGroup());
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
 
@@ -104,6 +121,12 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
       auto producer_dump = VERIFY_RESULT(RunYSQLDump(producer_cluster_));
       auto consumer_dump = VERIFY_RESULT(RunYSQLDump(consumer_cluster_));
       SCHECK_EQ(producer_dump, consumer_dump, IllegalState, "Ysqldumps do not match");
+
+      auto producer_enum_label_info = VERIFY_RESULT(ReadEnumLabelInfo(producer_cluster_));
+      auto consumer_enum_label_info = VERIFY_RESULT(ReadEnumLabelInfo(consumer_cluster_));
+      SCHECK_EQ(
+          producer_enum_label_info, consumer_enum_label_info, IllegalState,
+          "enum label information does not match");
     }
 
     return Status::OK();
@@ -173,6 +196,10 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressTableRewrite) {
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropExtensions) {
   // Tests create and drops of the extensions supported by YB
   ASSERT_OK(TestPgRegress("pgonly_extensions_create.sql", "pgonly_extensions_drop.sql"));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, YB_DISABLE_TEST(PgRegressCreateDropEnum)) {
+  ASSERT_OK(TestPgRegress("create_enum.sql", "drop_enum.sql"));
 }
 
 }  // namespace yb

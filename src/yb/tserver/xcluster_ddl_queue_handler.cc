@@ -88,6 +88,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "ALTER TABLE",
     "ALTER INDEX",
     // Pass thru DDLs
+    "ALTER TYPE", // Pass-through for now
     "CREATE ACCESS METHOD",
     "CREATE AGGREGATE",
     "CREATE CAST",
@@ -112,6 +113,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "CREATE TEXT SEARCH PARSER",
     "CREATE TEXT SEARCH TEMPLATE",
     "CREATE TRIGGER",
+    "CREATE TYPE", // Pass-through for now
     "CREATE USER MAPPING",
     "CREATE VIEW",
     "COMMENT",
@@ -159,6 +161,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "DROP TEXT SEARCH PARSER",
     "DROP TEXT SEARCH TEMPLATE",
     "DROP TRIGGER",
+    "DROP TYPE", // Pass-through for now
     "DROP USER MAPPING",
     "DROP VIEW",
     "IMPORT FOREIGN SCHEMA",
