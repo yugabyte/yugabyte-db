@@ -143,3 +143,42 @@ The following PG15 features are not yet implemented but are planned for the futu
 | Consider strings to be equal even if they consist of different bytes, for example, case-insensitive, or accent-insensitive comparisons. |
 
 {{%/table%}}
+
+## Upgrading
+
+When upgrading from PoistgreSQL 11-compatible versions of YugabyteDB (prior to v2.25) to a PostgreSQL 15 compatible version, keep in mind there are changes in some behaviors between PostgreSQL 11 and PostgreSQL 15.
+
+### ysqlsh flags
+
+Due to the addition of the `--csv` option in psql (and hence ysqlsh), you can no longer use the `--c` (double-hyphen) flag in place of `--command`. Use either `-c` (single hyphen) or `--command` instead.
+
+### Syntax
+
+Queries written like the following now fail with a parsing error:
+
+```sql
+SELECT * FROM t WHERE migration_UUID=$1ORDER BY schema_name
+```
+
+To avoid this issue, add a space between $1 and ORDER, as follows:
+
+```sql
+SELECT * FROM t WHERE migration_UUID=$1 ORDER BY schema_name
+```
+
+### clientcert=1
+
+The `clientcert=1` option is no longer supported in `pg_hba.conf`. You need to use a string value. This change was made in PostgreSQL 12; refer to [Secure TCP/IP Connections with SSL](https://www.postgresql.org/docs/12/ssl-tcp.html) in the PostgreSQL documentation.
+
+### CREATE permission on public schema revoked for new users
+
+In versions of YugabyteDB prior to v2.25 (and versions of PostgreSQL prior to 15), whenever you create a database user, that user is granted CREATE and USAGE privileges on the public schema by default.
+
+Starting from YugabyteDB 2.25 (PostgreSQL 15), database users are no longer automatically granted PUBLIC creation permission on the public schema. The USAGE privilege is still present, as in previous versions. Database users with superuser privileges or who are database owners by default have the CREATE permission on the public schema. Any schema that is explicitly created is not impacted by this change, since they are already restricted with the default privileges.
+
+## Features no longer available in v2.25
+
+The following features supported in v2024.2 and earlier are no longer available in v2.25 and later:
+
+- [View terminated queries with yb_terminated_queries](../../explore/observability/yb-pg-stat-get-queries/)
+- [PostgreSQL_FDW extension](../../explore/ysql-language-features/pg-extensions/extension-postgres-fdw/)
