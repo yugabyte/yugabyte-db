@@ -404,4 +404,3 @@ The following features will be supported in upcoming releases:
 
 - Support for `ALTER TABLESPACE`.
 - Setting read replica placements using tablespaces.
-- Setting tablespaces for colocated tables and databases.
