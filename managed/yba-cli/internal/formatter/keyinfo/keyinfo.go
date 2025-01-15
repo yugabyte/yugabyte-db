@@ -121,7 +121,7 @@ func (c *Context) ConfDataType() string {
 
 // Tags fetches KeyInfo Tags
 func (c *Context) Tags() string {
-	tags := ""
+	tags := "-"
 	for i, v := range c.ki.GetTags() {
 		if i == 0 {
 			tags = v
