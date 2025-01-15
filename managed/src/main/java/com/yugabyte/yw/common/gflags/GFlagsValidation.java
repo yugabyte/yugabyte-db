@@ -52,7 +52,6 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import javax.inject.Singleton;
 import lombok.EqualsAndHashCode;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -305,16 +304,19 @@ public class GFlagsValidation {
 
     // If there are extra gflags not related to connection pooling for that DB version, throw an
     // error. Else validation is successful.
-    if (!allowedGflagsForCurrentVersion.containsAll(connectionPoolingGflags.keySet())) {
+    List<String> invalidConnectionPoolingGflags = new ArrayList<>();
+    for (String flag : connectionPoolingGflags.keySet()) {
+      if (!allowedGflagsForCurrentVersion.contains(flag) && !flag.startsWith("ysql_conn_mgr")) {
+        invalidConnectionPoolingGflags.add(flag);
+      }
+    }
+    if (!invalidConnectionPoolingGflags.isEmpty()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Cannot set gflag(s) '%s' as they are not related to Connection Pooling in version"
+              "Cannot set gflags '%s' as they are not related to Connection Pooling in version"
                   + " '%s'.",
-              CollectionUtils.subtract(
-                      connectionPoolingGflags.keySet(), allowedGflagsForCurrentVersion)
-                  .toString(),
-              ybdbVersion));
+              invalidConnectionPoolingGflags.toString(), ybdbVersion));
     }
     LOG.info(
         "Successfully validated that all the gflags '{}' are related to connection pooling for"
