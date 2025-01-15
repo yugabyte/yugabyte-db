@@ -41,8 +41,8 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 | Enforce that only one NULL value is permitted instead of allowing multiple NULL entries in a unique index.
 |
 
-| [COPY FROM with WHERE clause](../../api/ysql/the-sql-language/statements/cmd_copy#where)
-| Selectively filter rows while importing data into a table and eliminate preprocessing data files.
+| [Filter rows while importing data](../../api/ysql/the-sql-language/statements/cmd_copy#where)
+| Use COPY FROM with WHERE clause while importing data into a table and eliminate preprocessing data files.
 |
 
 | [UUID generation](../../api/ysql/exprs/func_gen_random_uuid/)
