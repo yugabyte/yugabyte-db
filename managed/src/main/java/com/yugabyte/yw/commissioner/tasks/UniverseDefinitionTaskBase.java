@@ -1286,32 +1286,38 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public SubTaskGroup createStartYbcTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
-      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.setUniverseUUID(taskParams().getUniverseUUID());
-      // Add the az uuid.
-      params.azUuid = node.azUuid;
-      // The service and the command we want to run.
-      params.process = "controller";
-      params.command = "start";
-      params.placementUuid = node.placementUuid;
-      // Set the InstanceType
-      params.instanceType = node.cloudInfo.instance_type;
-      params.useSystemd = userIntent.useSystemd;
-      // sshPortOverride, in case the passed imageBundle has a different port
-      // configured for the region.
-      params.sshPortOverride = node.sshPortOverride;
-      // Create the Ansible task to get the server info.
-      AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
-      task.initialize(params);
+      AnsibleClusterServerCtl task = createStartYbcTaskForNode(userIntent, node);
       // Add it to the task list.
       subTaskGroup.addSubTask(task);
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public AnsibleClusterServerCtl createStartYbcTaskForNode(
+      UserIntent userIntent, NodeDetails node) {
+    AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+    // Add the node name.
+    params.nodeName = node.nodeName;
+    // Add the universe uuid.
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    // Add the az uuid.
+    params.azUuid = node.azUuid;
+    // The service and the command we want to run.
+    params.process = "controller";
+    params.command = "start";
+    params.placementUuid = node.placementUuid;
+    // Set the InstanceType
+    params.instanceType = node.cloudInfo.instance_type;
+    params.useSystemd = userIntent.useSystemd;
+    // sshPortOverride, in case the passed imageBundle has a different port
+    // configured for the region.
+    params.sshPortOverride = node.sshPortOverride;
+    // Create the Ansible task to get the server info.
+    AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
+    task.initialize(params);
+    return task;
   }
 
   @Override

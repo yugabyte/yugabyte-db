@@ -2726,10 +2726,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       ServerType processType,
       String command,
       Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
+    return createServerControlTasks(getUserIntent(), nodes, processType, command, paramsCustomizer);
+  }
+
+  public SubTaskGroup createServerControlTasks(
+      UserIntent userIntent,
+      Collection<NodeDetails> nodes,
+      ServerType processType,
+      String command,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
-          getServerControlTask(node, processType, command, 0, paramsCustomizer));
+          getServerControlTask(userIntent, node, processType, command, 0, paramsCustomizer));
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -2746,8 +2755,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       String command,
       int sleepAfterCmdMillis,
       @Nullable Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
+    return getServerControlTask(
+        getUserIntent(), node, processType, command, sleepAfterCmdMillis, paramsCustomizer);
+  }
+
+  private AnsibleClusterServerCtl getServerControlTask(
+      UserIntent userIntent,
+      NodeDetails node,
+      ServerType processType,
+      String command,
+      int sleepAfterCmdMillis,
+      @Nullable Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-    UserIntent userIntent = getUserIntent();
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.
@@ -6129,7 +6148,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Copies the certificate from YBA to the associated nodes in the universe based on xclusterConfig
    * replicationGroupName.
    *
-   * @param nodes specific nodes we will copy the certicate to in the universe
+   * @param nodes specific nodes we will copy the certificate to in the universe
    * @param replicationGroupName name of the replication group for xcluster (certificate will be
    *     copied under this directory)
    * @param certificate the certificate file to copy
