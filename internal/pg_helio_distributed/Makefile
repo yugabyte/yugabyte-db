@@ -22,6 +22,7 @@ API_CATALOG_SCHEMA_NAME=helio_api_catalog
 API_CATALOG_SCHEMA_NAME_V2=helio_api_catalog
 CORE_SCHEMA_NAME=helio_core
 CORE_SCHEMA_NAME_V2=helio_core
+API_DISTRIBUTED_SCHEMA_NAME=helio_api_distributed
 API_DATA_SCHEMA_NAME=helio_data
 API_ADMIN_ROLE=helio_admin_role
 API_READONLY_ROLE=helio_readonly_role

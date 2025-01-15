@@ -25,6 +25,7 @@ API_CATALOG_SCHEMA_NAME=documentdb_api_catalog
 API_CATALOG_SCHEMA_NAME_V2=documentdb_api_catalog
 CORE_SCHEMA_NAME=documentdb_core
 CORE_SCHEMA_NAME_V2=documentdb_core
+API_DISTRIBUTED_SCHEMA_NAME=documentdb_api_distributed
 API_DATA_SCHEMA_NAME=documentdb_data
 API_ADMIN_ROLE=documentdb_admin_role
 API_READONLY_ROLE=documentdb_readonly_role
@@ -51,8 +52,6 @@ endif
 SHLIB_LINK = $(libpq)
 
 include $(OSS_SRC_DIR)/Makefile.global
-
-PG_CPPFLAGS += -I$(OSS_SRC_DIR)/pg_documentdb_core/include/ -I$(OSS_SRC_DIR)/pg_documentdb/include/
 
 clean-sql:
 	rm -rf .deps/ build/
@@ -89,3 +88,7 @@ $(generated_sql_files): build/%: %
 	@# `man cpp` for further information
 	cpp -undef -w $(SQL_DEFINES) -imacros $(OSS_COMMON_SQL_HEADER) -P -MMD -MP -MF$(SQL_DEPDIR)/$(*F).Po -MT$@ $< > $@
 
+
+include $(OSS_SRC_DIR)/Makefile.versions
+
+src/documentdb_extension_version.o : build/include/metadata/documentdb_extension_version.h

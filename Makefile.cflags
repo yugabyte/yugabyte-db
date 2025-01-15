@@ -103,6 +103,10 @@ ifneq ($(SKIP_API_SCHEMA),yes)
                                  -D__API_GUC_PREFIX__=$(API_GUC_PREFIX)
 endif
 
+ifdef API_DISTRIBUTED_SCHEMA_NAME
+    EXTENSION_SQL_ONLY_DEFINES += -D__API_DISTRIBUTED_SCHEMA__=$(API_DISTRIBUTED_SCHEMA_NAME)
+endif
+
 ifndef CORE_SCHEMA_NAME
     $(error CORE_SCHEMA_NAME is not set)
 endif

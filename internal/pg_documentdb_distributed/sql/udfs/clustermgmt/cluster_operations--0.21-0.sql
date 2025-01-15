@@ -1,5 +1,5 @@
 
-CREATE OR REPLACE FUNCTION helio_api_distributed.initialize_cluster()
+CREATE OR REPLACE FUNCTION __API_DISTRIBUTED_SCHEMA__.initialize_cluster()
 RETURNS void
  SET search_path TO __API_CATALOG_SCHEMA__, pg_catalog
  SET citus.enable_ddl_propagation TO on
@@ -15,7 +15,7 @@ LANGUAGE c
 AS 'MODULE_PATHNAME', $function$command_initialize_cluster$function$;
 
 
-CREATE OR REPLACE FUNCTION helio_api_distributed.complete_upgrade()
+CREATE OR REPLACE FUNCTION __API_DISTRIBUTED_SCHEMA__.complete_upgrade()
 RETURNS bool
     SET citus.enable_unsafe_triggers TO on
     SET citus.enable_ddl_propagation TO on
