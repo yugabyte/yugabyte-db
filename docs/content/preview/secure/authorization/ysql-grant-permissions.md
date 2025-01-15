@@ -258,8 +258,8 @@ You should see the following output.
 
 ## Grant predefined roles
 
-There are a few predefined roles with preset priveleges that are useful to provide commonly needed access to users.
+YugabyteDB ships with built-in roles that grant access to frequently required administrative functions and data.
 
 {{<lead link="../../../api/ysql/the-sql-language/statements/dcl_grant/#predefined-roles">}}
-For the list, see [Predefined roles](../../../api/ysql/the-sql-language/statements/dcl_grant/#predefined-roles)
+To learn more, see [Predefined roles](../../../api/ysql/the-sql-language/statements/dcl_grant/#predefined-roles)
 {{</lead>}}

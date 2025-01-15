@@ -174,8 +174,7 @@ Note:
 
 ## Foreign key references
 
-Starting with {{<release "2.25">}} foreign key references on a partitioned table are supported. With this feature, you can now enforce referential integrity directly on partitioned tables, ensuring consistency across large-scale datasets that benefit from partitioning for performance and scalability.
-
+Starting with {{<release "2.25">}}, foreign key references on a partitioned table are supported. With this feature, you can now enforce referential integrity directly on partitioned tables, ensuring consistency across large-scale datasets that benefit from partitioning for performance and scalability.
 
 ## Partition pruning and constraint exclusion
 
