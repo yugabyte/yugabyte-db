@@ -2414,8 +2414,6 @@ Status HandleGetChangesForSnapshotRequest(
     // Set the checkpoint and communicate to the follower.
     VLOG(1) << "The first snapshot term " << data.op_id.term << "index  " << data.op_id.index
             << "time " << data.log_ht.ToUint64();
-    // Update the CDCConsumerOpId.
-    VERIFY_RESULT(tablet_peer->GetConsensus())->UpdateCDCConsumerOpId(data.op_id);
 
     LOG(INFO) << "CDC snapshot initialization is started, by setting checkpoint as: " << data.op_id
               << ", for tablet_id: " << tablet_id << " stream_id: " << stream_id;
