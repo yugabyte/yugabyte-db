@@ -23,13 +23,24 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.io.File;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -151,6 +162,12 @@ public class CertsRotate extends UpgradeTaskBase {
             }
             // Update universe details with new cert values.
             createUniverseSetTlsParamsTask(getTaskSubGroupType());
+          }
+
+          if (taskParams().rootCARotationType == CertRotationType.RootCert) {
+            // Transfer the new cert to the target universes for the xCluster configs where this
+            // universe is the source.
+            createUpdateCertsOnXClusterUniversesTask(universe);
           }
 
           // Restart is scheduled to happen, so 'client cert dir' gflag will be added
@@ -344,5 +361,125 @@ public class CertsRotate extends UpgradeTaskBase {
         taskParams().getClientRootCA(),
         universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt,
         NodeManager.YUGABYTE_USER);
+  }
+
+  private void createUpdateCertsOnXClusterUniversesTask(Universe universe) {
+    if (Objects.isNull(taskParams().rootCA)) {
+      log.warn("No rootCA provided, but createUpdateCertsOnXClusterUniversesTask was called");
+      return;
+    }
+    CertificateInfo newCertificate = CertificateInfo.getOrBadRequest(taskParams().rootCA);
+    String newCertificatePath = newCertificate.getCertificate();
+    File newCertificateFile = new File(newCertificatePath);
+    if (!newCertificateFile.exists()) {
+      throw new IllegalStateException(
+          String.format(
+              "newCertificateFile file \"%s\" for universe \"%s\" does not exist",
+              newCertificateFile, universe.getUniverseUUID()));
+    }
+    log.debug(
+        "Will Transfer new universe root certificate {} to all xCluster universes",
+        newCertificatePath);
+
+    List<XClusterConfig> xClusterConfigsAsSource =
+        XClusterConfig.getBySourceUniverseUUID(universe.getUniverseUUID());
+
+    // Copy the source cert to the corresponding directory on the target universe.
+    Map<UUID, List<XClusterConfig>> targetUniverseUuidToXClusterConfigsMap =
+        xClusterConfigsAsSource.stream()
+            .collect(Collectors.groupingBy(XClusterConfig::getTargetUniverseUUID));
+
+    // We only gather the db-scoped configs where the task universe is the target universe.
+    List<XClusterConfig> xClusterConfigsAsTarget =
+        XClusterConfig.getByTargetUniverseUUID(universe.getUniverseUUID()).stream()
+            .filter(xClusterConfig -> xClusterConfig.getType().equals(ConfigType.Db))
+            .toList();
+
+    // Copy the target cert to the corresponding directory on the source universes.
+    Map<UUID, List<XClusterConfig>> sourceUniverseUuidToXClusterConfigsMap =
+        xClusterConfigsAsTarget.stream()
+            .collect(Collectors.groupingBy(XClusterConfig::getSourceUniverseUUID));
+
+    Map<UUID, List<XClusterConfig>> UniverseUuidToXClusterConfigsMap =
+        Stream.concat(
+                targetUniverseUuidToXClusterConfigsMap.entrySet().stream(),
+                sourceUniverseUuidToXClusterConfigsMap.entrySet().stream())
+            .collect(
+                Collectors.toMap(
+                    Entry::getKey,
+                    e -> new ArrayList<>(e.getValue()),
+                    (list1, list2) -> {
+                      list1.addAll(list2);
+                      return list1;
+                    }));
+
+    // Put all the universes in the locked list. The unlock operation is a no-op if the universe
+    // does not get locked by this task.
+    lockedXClusterUniversesUuidSet = UniverseUuidToXClusterConfigsMap.keySet();
+
+    UniverseUuidToXClusterConfigsMap.forEach(
+        (universeUuid, xClusterConfigs) -> {
+          UUID taskParamsUniverseUuid = taskParams().getUniverseUUID();
+          try {
+            if (!isCertReloadable(Universe.getOrBadRequest(universeUuid))) {
+              log.warn(
+                  "Cert reload is not available for universe; skipping cert "
+                      + "transfer; The user has to restart the replication manually for configs {}",
+                  xClusterConfigs);
+              return;
+            }
+
+            // Lock the other universe.
+            Universe otherUniverse =
+                lockUniverseIfExist(universeUuid, -1 /* expectedUniverseVersion */);
+            if (otherUniverse == null) {
+              log.info("Other universe is deleted; No further action is needed");
+              return;
+            }
+
+            taskParams().setUniverseUUID(otherUniverse.getUniverseUUID());
+
+            // Create the subtasks to transfer the new source universe root certificates to the
+            // target universe if required. It will overwrite the previous certs it they exist.
+            xClusterConfigs.forEach(
+                xClusterConfig ->
+                    createTransferXClusterCertsCopyTasks(
+                        otherUniverse.getNodes(),
+                        xClusterConfig.getReplicationGroupName(),
+                        newCertificateFile,
+                        otherUniverse));
+
+            List<NodeDetails> mastersList = otherUniverse.getMasters();
+            List<NodeDetails> tserversList = otherUniverse.getTServersInPrimaryCluster();
+            MastersAndTservers nodes = new MastersAndTservers(mastersList, tserversList);
+
+            // The following tasks will reload the certificates on the target universe.
+            CertReloadTaskCreator taskCreator =
+                new CertReloadTaskCreator(
+                    otherUniverse.getUniverseUUID(),
+                    getUserTaskUUID(),
+                    getRunnableTask(),
+                    getTaskExecutor(),
+                    mastersList);
+            createNonRestartUpgradeTaskFlow(taskCreator, nodes, DEFAULT_CONTEXT);
+
+            // We don't need to restart the ybc because the universe certificate itself has not
+            // changed.
+
+            log.debug(
+                "Subtasks created to transfer the new universe root certificate to "
+                    + "the other universes for these xCluster configs: {}",
+                xClusterConfigs);
+          } catch (Exception e) {
+            log.error(
+                "{} hit error while creating subtasks for transferring universe TLS "
+                    + "certificates : {}",
+                getName(),
+                e.getMessage());
+            throw new RuntimeException(e);
+          } finally {
+            taskParams().setUniverseUUID(taskParamsUniverseUuid);
+          }
+        });
   }
 }
