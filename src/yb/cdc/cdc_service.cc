@@ -1951,10 +1951,17 @@ void CDCServiceImpl::GetChanges(
           resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     }
 
-    RPC_STATUS_RETURN_ERROR(
-        DoUpdateCDCConsumerOpId(
-            tablet_peer, impl_->GetMinSentCheckpointForTablet(req->tablet_id()), req->tablet_id()),
-        resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    // TODO(#25632): Due to incorrect memory tracking in log cache, we accumulate a lot of untracked
+    // memory on tserver if log cache fills up. This can come up especially if CDC starts lagging.
+    // As a workaround, we don't retain log cache entries for CDCSDK streams. We should go back to
+    // previous mechanism once this bug is fixed.
+    if (record.GetSourceType() == CDCRequestSource::XCLUSTER) {
+      RPC_STATUS_RETURN_ERROR(
+          DoUpdateCDCConsumerOpId(
+              tablet_peer, impl_->GetMinSentCheckpointForTablet(req->tablet_id()),
+              req->tablet_id()),
+          resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    }
   }
   // Update relevant GetChanges metrics before handing off the Response.
   UpdateTabletMetrics(*resp, producer_tablet, tablet_peer, from_op_id, record, last_readable_index);
@@ -2583,11 +2590,6 @@ Status CDCServiceImpl::SetInitialCheckPoint(
   SetMinCDCSDKCheckpoint(checkpoint, &tablet_op_id.cdc_sdk_op_id);
   tablet_op_id.cdc_sdk_op_id_expiration =
       MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
-
-  // Update the minimum checkpoint op_id on LEADER for log cache eviction for all stream type.
-  RETURN_NOT_OK_SET_CODE(
-      DoUpdateCDCConsumerOpId(tablet_peer, tablet_op_id.cdc_op_id, tablet_id),
-      CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   // Update the minimum checkpoint op_id for LEADER for intent cleanup for CDCSDK Stream type.
   RETURN_NOT_OK_SET_CODE(
