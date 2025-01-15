@@ -2712,8 +2712,8 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
         // being dropped, removal of cdc state entries for this non eligible table is done via drop
         // table metadata cleanup flow.
         auto table_info = GetTableInfo(table_id);
-        if (table_info &&
-            !IsTableEligibleForCDCSDKStream(table_info, table_info->LockForRead(), false)) {
+        if (table_info && !IsTableEligibleForCDCSDKStream(
+                              table_info, table_info->LockForRead(), /* check_schema */ true)) {
           continue;
         }
         all_tables_on_tablet_dropped = false;
