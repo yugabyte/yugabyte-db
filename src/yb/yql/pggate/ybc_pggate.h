@@ -941,6 +941,8 @@ YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);
 
 void YBCForceAllowCatalogModifications(bool allowed);
 
+uint64_t YBCGetCurrentHybridTimeLsn();
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

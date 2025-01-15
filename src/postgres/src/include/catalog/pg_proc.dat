@@ -10554,4 +10554,10 @@
   proargmodes => '{o,o,o,o,o,o,o}',
   proargnames => '{db_oid,db_name,parent_db_oid,parent_db_name,state,as_of_time,failure_reason}',
   prosrc => 'yb_database_clones' },
+
+{ oid => '8078', descr => 'returns current hybrid time',
+  proname => 'yb_get_current_hybrid_time_lsn', proretset => 't', provolatile => 'v',
+  prorettype => 'int8', proargtypes => '', proallargtypes => '{int8}',
+  proargmodes => '{o}', proargnames => '{current_hybrid_time_lsn}',
+  prosrc => 'yb_get_current_hybrid_time_lsn'},
 ]

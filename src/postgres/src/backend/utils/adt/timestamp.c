@@ -36,6 +36,10 @@
 #include "utils/datetime.h"
 #include "utils/float.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
 /*
  * gcc's -ffast-math switch breaks routines that expect exact results from
  * expressions like timeval / SECS_PER_HOUR, where timeval is double.
@@ -1581,6 +1585,15 @@ Datum
 pg_conf_load_time(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_TIMESTAMPTZ(PgReloadTime);
+}
+
+/*
+ * Get the current operating system time value as hybrid time.
+ */
+Datum
+yb_get_current_hybrid_time_lsn(PG_FUNCTION_ARGS)
+{
+	return Int64GetDatum(YBCGetCurrentHybridTimeLsn());
 }
 
 /*
