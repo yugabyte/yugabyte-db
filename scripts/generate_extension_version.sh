@@ -40,7 +40,7 @@ BUILD_VER=" buildId:${BUILD_BUILDID:-"0"}"
 
 GIT_SHA=" sha:${GIT_SHA}"
 
-controlFile="$repoScriptDir/../$extensionDir/$extensionName.control"
+controlFile="$extensionName.control"
 
 versionStringOutput=$(sed -n "s/^default_version = '\(.*\)'$/\1/p" $controlFile)
 EXTENSION_VERSION_STR=${versionStringOutput/-/.}

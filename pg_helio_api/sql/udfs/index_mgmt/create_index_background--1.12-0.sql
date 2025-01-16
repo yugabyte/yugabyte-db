@@ -1,1 +1,0 @@
-DROP PROCEDURE IF EXISTS __API_SCHEMA_INTERNAL__.schedule_background_index_build_workers CASCADE;

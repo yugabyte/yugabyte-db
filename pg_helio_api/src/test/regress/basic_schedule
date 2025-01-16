@@ -1,2 +1,0 @@
-test: public_api_schema
-test: authentication_scram_sha_256

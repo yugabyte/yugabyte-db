@@ -1,5 +1,0 @@
-tmp/
-log/
-results/
-regression.diffs
-!expected/*.out
