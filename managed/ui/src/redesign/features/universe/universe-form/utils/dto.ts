@@ -62,7 +62,9 @@ export enum StorageType {
   StandardSSD_LRS = 'StandardSSD_LRS',
   Premium_LRS = 'Premium_LRS',
   PremiumV2_LRS = 'PremiumV2_LRS',
-  UltraSSD_LRS = 'UltraSSD_LRS'
+  UltraSSD_LRS = 'UltraSSD_LRS',
+  Hyperdisk_Balanced = 'Hyperdisk_Balanced',
+  Hyperdisk_Extreme = 'Hyperdisk_Extreme'
 }
 export interface DeviceInfo {
   volumeSize: number;

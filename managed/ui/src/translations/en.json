@@ -510,6 +510,7 @@
         "ebs": "EBS Type",
         "ephemeralStorage": "! Selected instance type is with ephemeral storage, If you will pause this universe your data will get lost.",
         "premiumv2Storage": "! Selected storage type is only available in select regions. Your creation will fail if you choose incorrect region.",
+        "hyperdiskStorage": "! Please refer to the official documentation for information about supported instance types. Your creation will fail if you choose incorrect instance type.",
         "instanceType": "Instance Type",
         "k8NumCores": "Number of Cores",
         "k8Memory": "Memory (Gib)",

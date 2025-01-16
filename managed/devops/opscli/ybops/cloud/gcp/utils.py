@@ -13,7 +13,6 @@ import socket
 import time
 import json
 
-
 from googleapiclient import discovery
 from googleapiclient.errors import HttpError
 import oauth2client
@@ -21,7 +20,6 @@ from six.moves import http_client
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.utils import request_retry_decorator
-
 
 RESOURCE_BASE_URL = "https://www.googleapis.com/compute/v1/projects/"
 REGIONS_RESOURCE_URL_FORMAT = RESOURCE_BASE_URL + "{}/regions/{}"
@@ -32,7 +30,6 @@ IMAGE_NAME_PREEMPTIBLE_SUFFIX = "-PREEMPTIBLE"
 OPERATION_WAIT_TIME = 5
 MAX_NUM_RETRY_COUNT = 120
 LIST_MAX_RESULTS = 500
-
 
 YB_NETWORK_NAME = "yb-gcp-network"
 YB_SUBNET_FORMAT = "yb-subnet-{}"
@@ -49,7 +46,8 @@ META_KEYS = [STARTUP_SCRIPT_META_KEY, SERVER_TYPE_META_KEY, SSH_KEYS_META_KEY]
 
 GCP_SCRATCH = "scratch"
 GCP_PERSISTENT = "persistent"
-
+GCP_HYPERDISK_BALANCED = "hyperdisk_balanced"
+GCP_HYPERDISK_EXTREME = "hyperdisk_extreme"
 
 # Code 429 does not have a name in httplib.
 TOO_MANY_REQUESTS = 429
@@ -272,7 +270,7 @@ class NetworkManager():
         if len(networks) > 0:
             raise YBOpsRuntimeError(
                 "Failed to create VPC as vpc with same name already exists: {}"
-                .format(YB_NETWORK_NAME))
+                    .format(YB_NETWORK_NAME))
         else:
             # Create the network if it didn't already exist.
             op = self.waiter.wait(self.create_network())
@@ -593,7 +591,7 @@ class GoogleCloudAdmin():
 
     def get_full_image_name(self, name, preemptible=False):
         return IMAGE_NAME_PREFIX + name.upper() + \
-            (IMAGE_NAME_PREEMPTIBLE_SUFFIX if preemptible else "")
+               (IMAGE_NAME_PREEMPTIBLE_SUFFIX if preemptible else "")
 
     def create_disk(self, zone, instance_tags, body):
         if instance_tags is not None:
@@ -696,28 +694,53 @@ class GoogleCloudAdmin():
         zone = args.zone
         instance_info = self.compute.instances().get(project=self.project, zone=zone,
                                                      instance=instance).execute()
-        body = {
-            "sizeGb": args.volume_size
-        }
         for disk in instance_info['disks']:
             # The source is the complete URL of the disk, with the last
             # component being the name.
             disk_name = self.get_disk_name(disk)
             # Bootdisk should be ignored.
-            # GCP does not allow disk resize to same volume size.
-            if disk['index'] != 0 and int(disk["diskSizeGb"]) != args.volume_size:
-                logging.info(
-                    "Instance %s's volume %s changed to %s",
-                    instance, disk_name, args.volume_size)
-                operation = self.compute.disks().resize(project=self.project,
-                                                        zone=zone,
-                                                        disk=disk_name,
-                                                        body=body).execute()
-                self.waiter.wait(operation, zone=zone)
-            elif disk['index'] != 0:
-                logging.info(
-                    "Instance %s's volume %s has not changed from %s",
-                    instance, disk["deviceName"], disk["diskSizeGb"])
+            if disk['index'] != 0:
+                disk_info = self.compute.disks().get(project=self.project,
+                                                     zone=zone,
+                                                     disk=disk_name).execute()
+                size_updated = int(disk["diskSizeGb"]) != args.volume_size
+                iops_updated = args.disk_iops is not None \
+                    and disk_info.get("provisionedIops") is not None \
+                    and args.disk_iops != int(disk_info["provisionedIops"])
+                throughput_updated = args.disk_throughput is not None \
+                    and disk_info.get("provisionedThroughput") is not None \
+                    and args.disk_throughput != int(disk_info["provisionedThroughput"])
+                # GCP does not allow disk resize to same volume size.
+                if size_updated or iops_updated or throughput_updated:
+                    update_mask_array = []
+                    logging.info(
+                        "Instance %s's volume %s changed to %s, iops %s, throughput %s",
+                        instance, disk_name, args.volume_size, args.disk_iops, args.disk_throughput)
+                    if size_updated:
+                        disk_info.update({
+                            "sizeGb": args.volume_size
+                        })
+                        update_mask_array.append("sizeGb")
+                    if iops_updated:
+                        disk_info.update({
+                            "provisionedIops": args.disk_iops
+                        })
+                        update_mask_array.append("provisionedIops")
+                    if throughput_updated:
+                        disk_info.update({
+                            "provisionedThroughput": args.disk_throughput
+                        })
+                        update_mask_array.append("provisionedThroughput")
+                    operation = self.compute.disks().update(project=self.project,
+                                                            zone=zone,
+                                                            disk=disk_name,
+                                                            updateMask=','.join(update_mask_array),
+                                                            body=disk_info).execute()
+                    self.waiter.wait(operation, zone=zone)
+                else:
+                    logging.info(
+                        "Instance %s's volume %s has not changed from %s",
+                        instance, disk["deviceName"], disk["diskSizeGb"])
 
     def change_instance_type(self, zone, instance_name, instance_type):
         new_machine_type = f"zones/{zone}/machineTypes/{instance_type}"
@@ -927,7 +950,7 @@ class GoogleCloudAdmin():
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
                         assign_static_public_ip=False, ssh_keys=None, boot_script=None,
                         auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None,
-                        gcp_instance_template=None):
+                        gcp_instance_template=None, disk_iops=None, disk_throughput=None):
         # Name of the project that target VPC network belongs to.
         shared_vpc_project = self.get_shared_vpc_project()
 
@@ -942,7 +965,7 @@ class GoogleCloudAdmin():
             # Default: 10GB
             min_disk_size = self.get_image_disk_size(machine_image)
             disk_size = min_disk_size if min_disk_size \
-                and int(min_disk_size) > int(boot_disk_size_gb) \
+                                         and int(min_disk_size) > int(boot_disk_size_gb) \
                 else boot_disk_size_gb
             boot_disk_init_params["diskSizeGb"] = disk_size
         # Create boot disk backed by a zonal persistent SSD
@@ -1029,6 +1052,7 @@ class GoogleCloudAdmin():
                 })
 
         initial_params = {}
+        disk_update_params = {}
         if volume_type == GCP_SCRATCH:
             initial_params.update({
                 "diskType": "zones/{}/diskTypes/local-ssd".format(zone)
@@ -1036,9 +1060,28 @@ class GoogleCloudAdmin():
             # Default size: 375GB
         elif volume_type == GCP_PERSISTENT:
             initial_params.update({
-                "diskType": "zones/{}/diskTypes/pd-ssd".format(zone),
+                "diskType": "zones/{}/diskTypes/pd-ssd".format(zone)
+            })
+        elif volume_type == GCP_HYPERDISK_BALANCED:
+            initial_params.update({
+                "diskType": "zones/{}/diskTypes/hyperdisk-balanced".format(zone)
+            })
+        elif volume_type == GCP_HYPERDISK_EXTREME:
+            initial_params.update({
+                "diskType": "zones/{}/diskTypes/hyperdisk-extreme".format(zone)
+            })
+        if volume_type != GCP_SCRATCH:
+            initial_params.update({
                 "sourceImage": None,
                 "diskSizeGb": volume_size
+            })
+        if disk_iops is not None:
+            initial_params.update({
+                "provisionedIops": disk_iops
+            })
+        if disk_throughput is not None:
+            initial_params.update({
+                "provisionedThroughput": disk_throughput
             })
         disk_config = {
             "autoDelete": True,

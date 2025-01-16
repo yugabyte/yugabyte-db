@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useUpdateEffect } from 'react-use';
-import { useWatch } from 'react-hook-form';
+import {useState} from 'react';
+import {useUpdateEffect} from 'react-use';
+import {useWatch} from 'react-hook-form';
 import {
   DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
@@ -15,8 +15,8 @@ import {
   RunTimeConfigEntry,
   StorageType
 } from '../../../utils/dto';
-import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
-import { RuntimeConfigKey } from '../../../../../../helpers/constants';
+import {isEphemeralAwsStorageInstance} from '../InstanceTypeField/InstanceTypeFieldHelper';
+import {RuntimeConfigKey} from '../../../../../../helpers/constants';
 
 export const IO1_DEFAULT_DISK_IOPS = 1000;
 export const IO1_MAX_DISK_IOPS = 64000;
@@ -41,6 +41,19 @@ export const PremiumV2_LRS_DISK_IOPS_MAX_PER_GB = 500;
 export const PremiumV2_LRS_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 export const PremiumV2_LRS_DISK_THROUGHPUT_CAP = 2500;
 
+export const HB_DEFAULT_DISK_IOPS = 3600;
+export const HB_DEFAULT_DISK_THROUGHPUT = 290;
+export const HB_MIN_DISK_IOPS = 2000;
+export const HB_DISK_IOPS_MAX_PER_GB = 500;
+export const HB_MAX_DISK_IOPS = 160000;
+export const HB_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
+export const HB_DISK_THROUGHPUT_CAP = 2400;
+
+export const HE_DEFAULT_DISK_IOPS = 25000;
+export const HE_MIN_DISK_IOPS = 2;
+export const HE_MAX_DISK_IOPS = 350000;
+export const HE_DISK_IOPS_MAX_PER_GB = 1000;
+
 export interface StorageTypeOption {
   value: StorageType;
   label: string;
@@ -60,7 +73,9 @@ export const AWS_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
 
 export const GCP_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
   { value: StorageType.Persistent, label: 'Persistent' },
-  { value: StorageType.Scratch, label: 'Local Scratch' }
+  { value: StorageType.Scratch, label: 'Local Scratch' },
+  { value: StorageType.Hyperdisk_Balanced, label: 'Hyperdisk Balanced' },
+  { value: StorageType.Hyperdisk_Extreme, label: 'Hyperdisk Extreme' }
 ];
 
 export const AZURE_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
@@ -76,6 +91,10 @@ export const getMinDiskIops = (storageType: StorageType, volumeSize: number) => 
       return Math.max(UltraSSD_MIN_DISK_IOPS, volumeSize);
     case StorageType.PremiumV2_LRS:
       return Math.max(PremiumV2_LRS_MIN_DISK_IOPS, volumeSize);
+    case StorageType.Hyperdisk_Balanced:
+      return HB_MIN_DISK_IOPS;
+    case StorageType.Hyperdisk_Extreme:
+      return HE_MIN_DISK_IOPS;
     default:
       return 0;
   }
@@ -89,6 +108,10 @@ export const getMaxDiskIops = (storageType: StorageType, volumeSize: number) => 
       return volumeSize * UltraSSD_DISK_IOPS_MAX_PER_GB;
     case StorageType.PremiumV2_LRS:
       return volumeSize * PremiumV2_LRS_DISK_IOPS_MAX_PER_GB;
+    case StorageType.Hyperdisk_Balanced:
+      return Math.min(HB_MAX_DISK_IOPS, HB_DISK_IOPS_MAX_PER_GB * volumeSize);
+    case StorageType.Hyperdisk_Extreme:
+      return Math.min(HE_MAX_DISK_IOPS, HE_DISK_IOPS_MAX_PER_GB * volumeSize);
     default:
       return GP3_MAX_IOPS;
   }
@@ -101,12 +124,17 @@ export const getStorageTypeOptions = (providerCode?: CloudType, providerRuntimeC
   const filteredAzureStorageTypes = showPremiumV2Option ? AZURE_STORAGE_TYPE_OPTIONS :  AZURE_STORAGE_TYPE_OPTIONS.filter((storageType) => {
     return storageType.value !== StorageType.PremiumV2_LRS;
   });
-
+  const showHyperdisksOption = providerRuntimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.HYPERDISKS_STORAGE_TYPE
+  )?.value === 'true';
+  const filteredGcpStorageTypes = showHyperdisksOption ? GCP_STORAGE_TYPE_OPTIONS :  GCP_STORAGE_TYPE_OPTIONS.filter((storageType) => {
+    return storageType.value !== StorageType.Hyperdisk_Balanced && storageType.value !== StorageType.Hyperdisk_Extreme;
+  });
   switch (providerCode) {
     case CloudType.aws:
       return AWS_STORAGE_TYPE_OPTIONS;
     case CloudType.gcp:
-      return GCP_STORAGE_TYPE_OPTIONS;
+      return filteredGcpStorageTypes;
     case CloudType.azu:
       return filteredAzureStorageTypes;
     default:
@@ -123,6 +151,10 @@ export const getIopsByStorageType = (storageType: StorageType) => {
     return UltraSSD_DEFAULT_DISK_IOPS;
   } else if (storageType === StorageType.PremiumV2_LRS) {
     return PremiumV2_LRS_DEFAULT_DISK_IOPS;
+  } else if (storageType === StorageType.Hyperdisk_Balanced) {
+    return HB_DEFAULT_DISK_IOPS;
+  } else if (storageType === StorageType.Hyperdisk_Extreme) {
+    return HE_DEFAULT_DISK_IOPS;
   }
   return null;
 };
@@ -134,6 +166,8 @@ export const getThroughputByStorageType = (storageType: StorageType) => {
     return UltraSSD_DEFAULT_DISK_THROUGHPUT;
   } else if (storageType === StorageType.PremiumV2_LRS) {
     return PremiumV2_LRS_DEFAULT_DISK_THROUGHPUT;
+  } else if (storageType === StorageType.Hyperdisk_Balanced) {
+    return HB_DEFAULT_DISK_THROUGHPUT;
   }
   return null;
 };
@@ -163,6 +197,12 @@ export const getThroughputByIops = (
     const maxThroughput = Math.min(
       diskIops / PremiumV2_LRS_IOPS_TO_MAX_DISK_THROUGHPUT,
       PremiumV2_LRS_DISK_THROUGHPUT_CAP
+    );
+    return Math.max(0, Math.min(maxThroughput, currentThroughput));
+  } else if (storageType === StorageType.Hyperdisk_Balanced) {
+    const maxThroughput = Math.min(
+        diskIops / HB_IOPS_TO_MAX_DISK_THROUGHPUT,
+        HB_DISK_THROUGHPUT_CAP
     );
     return Math.max(0, Math.min(maxThroughput, currentThroughput));
   }
