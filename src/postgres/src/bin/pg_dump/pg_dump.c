@@ -5074,8 +5074,11 @@ binary_upgrade_set_pg_class_oids(Archive *fout,
 		 * Not every relation has storage. Also, in a pre-v12 database,
 		 * partitioned tables have a relfilenode, which should not be
 		 * preserved when upgrading.
+		 * YB: In YB the parent partition has DocDB storage, so we preserve its
+		 * relfilenode when upgrading.
 		 */
-		if (OidIsValid(relfilenode) && relkind != RELKIND_PARTITIONED_TABLE)
+		if (OidIsValid(relfilenode) &&
+			(IsYugabyteEnabled || relkind != RELKIND_PARTITIONED_TABLE))
 			appendPQExpBuffer(upgrade_buffer,
 							  "SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('%u'::pg_catalog.oid);\n",
 							  relfilenode);
