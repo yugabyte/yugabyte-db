@@ -31,6 +31,23 @@ function GetPostgresPath()
   fi
 }
 
+function GetPostgresSourceRef()
+{
+  local pgVersion=$1
+  if [ "$pgVersion" == "16" ]; then
+    # This maps to REL_16_2:b78fa8547d02fc72ace679fb4d5289dccdbfc781
+    POSTGRESQL_REF="REL_16_2"
+  elif [ "$pgVersion" == "15" ]; then
+    # This maps to REL15_3:8382864eb5c9f9ebe962ac20b3392be5ae304d23
+    POSTGRESQL_REF="REL_15_3"
+  else
+    echo "Invalid PG Version specified $pgVersion";
+    exit 1;
+  fi
+
+  echo $POSTGRESQL_REF
+}
+
 function GetPGCTL()
 {
   local pgVersion=${PG_VERSION:-16}

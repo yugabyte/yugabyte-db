@@ -1,10 +1,27 @@
 #!/bin/bash
 
 # fail if trying to reference a variable that is not set.
-set -u / set -o nounset
+set -u
 
 # exit immediately if a command exits with a non-zero status
 set -e
+
+source="${BASH_SOURCE[0]}"
+while [[ -h $source ]]; do
+   scriptroot="$( cd -P "$( dirname "$source" )" && pwd )"
+   source="$(readlink "$source")"
+
+   # if $source was a relative symlink, we need to resolve it relative to the path where the
+   # symlink file was located
+   [[ $source != /* ]] && source="$scriptroot/$source"
+done
+scriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
+echo "scriptDir: $scriptDir"
+
+. $scriptDir/setup_versions.sh
+PCRE_LIB_VERSION=$(GetPcre2Version)
+
+PCRE_LIB_WITH_VERSION="pcre2-"$PCRE_LIB_VERSION
 
 pushd $INSTALL_DEPENDENCIES_ROOT
 
@@ -23,9 +40,6 @@ if [ -z ${PKG_CONFIG_INSTALL_PATH+x} ]; then
     # take the first path
     PKG_CONFIG_INSTALL_PATH=${PkgConfigInstallDirectories%%:*}
 fi
-
-PCRE_LIB_VERSION="10.40"
-PCRE_LIB_WITH_VERSION="pcre2-"$PCRE_LIB_VERSION
 
 # Create the folders and download PCRE2 lib
 rm -rf $PCRE_LIB_WITH_VERSION

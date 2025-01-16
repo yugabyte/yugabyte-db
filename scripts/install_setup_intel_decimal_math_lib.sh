@@ -1,10 +1,27 @@
 #!/bin/bash
 
 # fail if trying to reference a variable that is not set.
-set -u / set -o nounset
+set -u
 
 # exit immediately if a command exits with a non-zero status
 set -e
+
+source="${BASH_SOURCE[0]}"
+while [[ -h $source ]]; do
+   scriptroot="$( cd -P "$( dirname "$source" )" && pwd )"
+   source="$(readlink "$source")"
+
+   # if $source was a relative symlink, we need to resolve it relative to the path where the
+   # symlink file was located
+   [[ $source != /* ]] && source="$scriptroot/$source"
+done
+scriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
+echo "scriptDir: $scriptDir"
+
+. $scriptDir/setup_versions.sh
+MATH_LIB_VERSION=$(GetIntelDecimalMathLibVersion)
+
+MATH_LIB_WITH_VERSION="IntelRDFPMathLib"$MATH_LIB_VERSION
 
 pushd $INSTALL_DEPENDENCIES_ROOT
 
@@ -28,9 +45,6 @@ if [ -z ${PKG_CONFIG_INSTALL_PATH+x} ]; then
     echo "PKG_CONFIG_INSTALL_PATH must be specified"
     exit 1;
 fi
-
-MATH_LIB_VERSION="20U2"
-MATH_LIB_WITH_VERSION="IntelRDFPMathLib"$MATH_LIB_VERSION
 
 # Create the folders and download Intel RDF MathLib
 rm -rf $MATH_LIB_WITH_VERSION
