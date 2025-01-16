@@ -104,6 +104,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -538,6 +539,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public void reserveOnPremNodes(
       Cluster cluster, Set<NodeDetails> clusterNodes, boolean commitReservedNodes) {
     if (cluster.userIntent.providerType.equals(CloudType.onprem)) {
+      AtomicBoolean checkReserved = new AtomicBoolean(true);
       clusterNodes.stream()
           .filter(n -> cluster.uuid.equals(n.placementUuid))
           .filter(n -> n.state == NodeState.ToBeAdded || n.state == NodeState.Decommissioned)
@@ -552,7 +554,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                                 .computeIfAbsent(n.azUuid, k -> new HashSet<>())
                                 .add(n.nodeName));
                 Map<String, NodeInstance> nodeMap =
-                    NodeInstance.reserveNodes(cluster.uuid, onpremAzToNodes, instanceType);
+                    NodeInstance.reserveNodes(
+                        cluster.uuid, onpremAzToNodes, instanceType, checkReserved.get());
+                // To avoid subsequent fails if there are different instanceTypes and commit = false
+                checkReserved.set(false);
                 if (commitReservedNodes) {
                   NodeInstance.commitReservedNodes(cluster.uuid);
                 }
