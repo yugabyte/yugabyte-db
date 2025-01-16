@@ -103,15 +103,17 @@ The executor is designed to efficiently pull rows through the pipeline defined b
 
 ## Query ID
 
-In YSQL, to provide a consistent way to track and identify specific queries across different parts of the system such as logs, performance statistics, and EXPLAIN plans, a unique identifier is generated for each query processed. The query id is effectively a hash value based on the normalized form of the SQL query. This normalization process removes insignificant whitespace and converts literal values to placeholders, ensuring that semantically identical queries have the same ID.
+In YSQL, to provide a consistent way to track and identify specific queries across different parts of the system such as logs, performance statistics, and EXPLAIN plans, a unique identifier is generated for each query processed. The query ID is effectively a hash value based on the normalized form of the SQL query. This normalization process removes insignificant whitespace and converts literal values to placeholders, ensuring that semantically identical queries have the same ID. This provides the following benefits:
 
 - By providing a unique identifier for each query, it becomes much easier to analyze query performance and identify problematic queries.
 - Including query IDs in logs and performance statistics enables more detailed and accurate monitoring of database activity.
 - The EXPLAIN command, which shows the execution plan for a query, can also display the query ID. This helps to link the execution plan with the actual query execution statistics.
-- The pg_stat_statements extension can accurately track and report statistics even for queries with varying literal values (e.g., different WHERE clause parameters). This makes it much easier to identify performance bottlenecks caused by specific query patterns.
+- The pg_stat_statements extension (which is installed by default in YugabyteDB) can accurately track and report statistics even for queries with varying literal values (for example, different WHERE clause parameters). This makes it much easier to identify performance bottlenecks caused by specific query patterns.
 
-Although the generation of this unique query id is controlled by the `compute_query_id` setting, it is recommended to have `compute_query_id` enabled to fully utilize its benefits for monitoring and performance analysis. The `compute_query_id` setting can have the following values:
+Generation of this unique query ID is controlled using the `compute_query_id` setting, which can have the following values:
 
-- on: Always compute query IDs.
-- off: Never compute query IDs.
-- auto: Automatically compute query IDs when needed, such as when pg_stat_statements is enabled.
+- on - Always compute query IDs.
+- off - Never compute query IDs.
+- auto (the default) - Automatically compute query IDs when needed, such as when pg_stat_statements is enabled (pg_stat_statements is enabled by default).
+
+You should enable `compute_query_id` to fully realize its benefits for monitoring and performance analysis.

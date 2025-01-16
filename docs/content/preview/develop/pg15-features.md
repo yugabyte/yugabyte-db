@@ -138,7 +138,7 @@ The following PG15 features are not yet implemented but are planned for the futu
 | [Merge command](https://www.postgresql.org/docs/current/sql-merge.html)
 | INSERT, UPDATE or DELETE in one statement. |
 
-| [Scram authentication as default](https://www.postgresql.org/docs/15/auth-password.html)
+| [Scram authentication as default](../../secure/authentication/password-authentication#enable-scram-sha-256-authentication)
 | Scram authentication is [supported](../../secure/authentication/password-authentication/#scram-sha-256) in YugabyteDB but still has md5 as default authentication method. |
 
 | [Nondeterministic collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC)

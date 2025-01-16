@@ -130,6 +130,20 @@ Several restrictions apply to the definition of generated columns and tables inv
 - A generated column cannot have a column default or an identity definition.
 - A generated column cannot be part of a partition key.
 
+Further, for partitioned tables:
+
+- A generated column cannot be part of a partition key.
+- If a parent column is a generated column, a child column must also be a generated column using the same expression.
+- If a parent column is not a generated column, a child column may be defined to be a generated column or not.
+
+The following additional considerations apply to the use of generated columns:
+
+- Generated columns maintain access privileges separately from their underlying base columns. So, it is possible to arrange it so that a particular role can read from a generated column but not from the underlying base columns.
+
+- Generated columns are, conceptually, updated after BEFORE triggers have run. Therefore, changes made to base columns in a BEFORE trigger will be reflected in generated columns. But conversely, it is not allowed to access generated columns in BEFORE triggers.
+
+- Generated columns are skipped for logical replication and cannot be specified in a CREATE PUBLICATION column list.
+
 ### TEMPORARY or TEMP
 
 Using this qualifier will create a temporary table. Temporary tables are visible only in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).

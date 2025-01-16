@@ -30,7 +30,7 @@ Use the CREATE TRIGGER statement to create a trigger.
 
 ### OR replace
 
-The OR REPLACE option allows you to replace an existing trigger with a new one without first having to drop the old trigger. By automatically replacing the existing trigger, this option reduces the risk of inconsistencies and errors that might arise from accidentally forgetting to drop a trigger before creating a new one.
+The OR REPLACE option allows you to replace an existing trigger with a new one without first having to drop the old trigger. By automatically replacing the existing trigger, this option reduces the risk of errors that might arise from accidentally forgetting to drop a trigger before creating a new one.
 
 ## Examples
 
@@ -117,6 +117,8 @@ Creating a row-level trigger on a partitioned table automatically results in an 
 ### BEFORE
 
 For a BEFORE trigger, the WHEN condition is evaluated immediately before the trigger function is executed, or would be executed if the condition evaluates to TRUE. This makes using the WHEN clause functionally similar to performing the same check at the start of the trigger function. The NEW row seen by the condition reflects any modifications made by earlier triggers in the same operation.
+
+BEFORE ROW triggers on INSERT cannot change which partition is the final destination for a new row.
 
 ### AFTER
 
