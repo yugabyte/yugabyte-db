@@ -75,4 +75,11 @@ YBCPgThreadLocalRegexpCache* PgGetThreadLocalRegexpCache();
 YBCPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
     size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup);
 
+/*
+ * Regular Expression Metadata (from regc_pg_locale.c)
+ * These are used to cache the collation and locale information for regular
+ * expression processing.
+ */
+YBCPgThreadLocalRegexpMetadata* PgGetThreadLocalRegexpMetadata();
+
 } // namespace yb::pggate

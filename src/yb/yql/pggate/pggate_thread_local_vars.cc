@@ -50,6 +50,7 @@ thread_local void* pg_strtok_ptr = nullptr;
 thread_local void* jump_buffer = nullptr;
 thread_local void* err_status = nullptr;
 thread_local std::optional<CachedRegexpHolder> re_cache;
+thread_local YBCPgThreadLocalRegexpMetadata re_metadata;
 
 //-----------------------------------------------------------------------------
 // Memory context.
@@ -116,6 +117,10 @@ YBCPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
   DCHECK(!re_cache);
   re_cache.emplace(buffer_size, cleanup);
   return &re_cache->cache();
+}
+
+YBCPgThreadLocalRegexpMetadata* PgGetThreadLocalRegexpMetadata() {
+  return &re_metadata;
 }
 
 }  // namespace yb::pggate
