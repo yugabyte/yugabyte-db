@@ -1053,7 +1053,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       params.setEnableYbc(taskParams().isEnableYbc());
-      params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
       params.ybcGflags = userIntent.ybcFlags;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
@@ -1528,7 +1527,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       params.setEnableYbc(taskParams().isEnableYbc());
-      params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
       params.setYbcInstalled(taskParams().isYbcInstalled());
       params.ybcGflags = userIntent.ybcFlags;
       // Set the InstanceType
@@ -2932,6 +2930,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
     SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
+
+    // Use stable version for YBC
+    String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(
@@ -2939,7 +2940,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               ServerType.CONTROLLER,
               UpgradeTaskSubType.YbcInstall,
               softwareVersion,
-              taskParams().getYbcSoftwareVersion()));
+              stableYbcVersion));
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -3097,7 +3098,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UpgradeTaskSubType taskSubType,
       String softwareVersion) {
     return getAnsibleConfigureServerTask(
-        node, processType, taskSubType, softwareVersion, taskParams().getYbcSoftwareVersion());
+        node,
+        processType,
+        taskSubType,
+        softwareVersion,
+        confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion));
   }
 
   public AnsibleConfigureServers.Params getAnsibleConfigureServerParams(
@@ -3132,7 +3137,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.setUniverseUUID(taskParams().getUniverseUUID());
 
     params.setEnableYbc(taskParams().isEnableYbc());
-    params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
+    params.setYbcSoftwareVersion(confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion));
     params.installYbc = taskParams().installYbc;
     params.setYbcInstalled(taskParams().isYbcInstalled());
     params.ybcGflags = userIntent.ybcFlags;

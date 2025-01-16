@@ -951,17 +951,14 @@ public class NodeManager extends DevopsBase {
       }
       Pair<String, String> ybcPackageDetails =
           Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
+      String stableYbc = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
       ReleaseManager.ReleaseMetadata releaseMetadata =
           releaseManager.getYbcReleaseByVersion(
-              taskParam.getYbcSoftwareVersion(),
-              ybcPackageDetails.getFirst(),
-              ybcPackageDetails.getSecond());
+              stableYbc, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
 
       if (releaseMetadata == null) {
         throw new RuntimeException(
-            String.format(
-                "Ybc package metadata: %s cannot be empty with ybc enabled",
-                taskParam.getYbcSoftwareVersion()));
+            String.format("Ybc package metadata: %s cannot be empty with ybc enabled", stableYbc));
       }
 
       if (arch != null) {
