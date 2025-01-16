@@ -29,8 +29,8 @@ Voyager then generates a report that includes:
 - **Recommended data distribution:** Suggests effective sharding strategies for tables and indexes.
 - **Performance metrics:** Analyzes workload characteristics to recommend optimizations in YugabyteDB.
 - **Migration time estimate:** Provides an estimated time for data import into YugabyteDB based on experimental data.
-- **Unsupported query constructs:** Identifies SQL features and constructs not supported by YugabyteDB, such as advisory locks, system columns, and XML functions, and provides a list of queries containing these constructs.
-- **Unsupported PL/pgSQL objects:** Identifies SQL features and constructs that are not supported by YugabyteDB, such as advisory locks, system columns, and XML functions, within PL/pgSQL objects in the source schema. It reports the individual queries within these objects that are not supported, such as queries in the PL/pgSQL block for functions and procedures, or the select statements in views and materialized views that contain unsupported constructs.
+- **Unsupported query constructs:** Identifies SQL features and constructs not supported by YugabyteDB, such as system columns, and XML functions, and provides a list of queries containing these constructs.
+- **Unsupported PL/pgSQL objects:** Identifies SQL features and constructs that are not supported by YugabyteDB, such as system columns, and XML functions, within PL/pgSQL objects in the source schema. It reports the individual queries within these objects that are not supported, such as queries in the PL/pgSQL block for functions and procedures, or the select statements in views and materialized views that contain unsupported constructs.
 
 When running migration assessment, keep in mind the following:
 

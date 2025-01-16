@@ -46,7 +46,6 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [XID functions is not supported](#xid-functions-is-not-supported)
 - [REFERENCING clause for triggers](#referencing-clause-for-triggers)
 - [BEFORE ROW triggers on partitioned tables](#before-row-triggers-on-partitioned-tables)
-- [Advisory locks is not yet implemented](#advisory-locks-is-not-yet-implemented)
 - [System columns is not yet supported](#system-columns-is-not-yet-supported)
 - [XML functions is not yet supported](#xml-functions-is-not-yet-supported)
 - [Large Objects and its functions are currently not supported](#large-objects-and-its-functions-are-currently-not-supported)
@@ -1237,25 +1236,6 @@ FOR EACH ROW
 EXECUTE FUNCTION check_and_modify_val();
 
 ```
-
----
-
-### Advisory locks is not yet implemented
-
-**GitHub**: [Issue #3642](https://github.com/yugabyte/yugabyte-db/issues/3642)
-
-**Description**: YugabyteDB does not support PostgreSQL advisory locks (for example, pg_advisory_lock, pg_try_advisory_lock). Any attempt to use advisory locks will result in a "function-not-implemented" error as per the following example:
-
-```sql
-yugabyte=# SELECT pg_advisory_lock(100), COUNT(*) FROM cars;
-```
-
-```output
-ERROR:  advisory locks are not yet implemented
-HINT:  If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details
-```
-
-**Workaround**: Implement a custom locking mechanism in the application to coordinate actions without relying on database-level advisory locks.
 
 ---
 
