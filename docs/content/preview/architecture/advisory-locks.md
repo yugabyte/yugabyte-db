@@ -12,45 +12,41 @@ menu:
 type: docs
 ---
 
-Advisory locks feature is in {{<tags/feature/tp>}} as of v2.25.1.
+Advisory locks feature is in {{<tags/feature/tp>}} as of v2.25.1. Advisory locks feature in PostgreSQL allows applications to manage concurrent access to resources through a cooperative locking mechanism.
 
-Advisory locks feature in PostgreSQL allows applications to manage concurrent access to resources through a cooperative locking mechanism.
+##Overview
 
-The locks can be acquired on either 1 bigint key or 2 int keys:
+Just like in PostgreSQL, where in all sessions should be able to see the advisory locks acquired by any other session, in YugabyteDB, all the sessions should be able to see the advisory locks acquired by any session in the universe (regardless of the node the session is connected to). This is achieved by creating a system table pg_advisory_locks dedicated to host advisory locks. All advisory lock requests will be stored in that system table. Advisory locks YugabyteDB provide the same set of semantics as PostgreSQL. 
+ 
+Advisory locks feature can be turned on using the [Advisory locks flags](../../reference/configuration/yb-tserver/#advisory-locks-flags).
 
-Example: select pg_advisory_lock(10); select pg_advisory_lock(10, 10);
+### There are types of advisory locks
 
-There are two methodologies (that define the lifetime of the locks) to acquire an advisory lock in PostgreSQL:
-Session level: Once acquired at session level, the advisory lock is held until it is explicitly released or the session ends. Unlike standard lock requests, session-level advisory lock requests do not honor transaction semantics: a lock acquired during a transaction that is later rolled back will still be held following the rollback, and likewise an unlock is effective even if the calling transaction fails later. A lock can be acquired multiple times by its owning process; for each completed lock request there must be a corresponding unlock request before the lock is actually released. 
+**Session level**: Once acquired at session level, the advisory lock is held until it is explicitly released or the session ends. Unlike standard lock requests, session-level advisory lock requests do not honor transaction semantics: a lock acquired during a transaction that is later rolled back will still be held following the rollback, and likewise an unlock is effective even if the calling transaction fails later. A lock can be acquired multiple times by its owning process; for each completed lock request there must be a corresponding unlock request before the lock is actually released. 
 
 Example: select pg_advisory_lock(10);
 
-Transaction level:  Transaction-level lock requests, on the other hand, behave more like regular row level lock requests: they are automatically released at the end of the transaction, and there is no explicit unlock operation. This behavior is often more convenient than the session-level behavior for short-term usage of an advisory lock.
+**Transaction level**:  Transaction-level lock requests, on the other hand, behave more like regular row level lock requests: they are automatically released at the end of the transaction, and there is no explicit unlock operation. This behavior is often more convenient than the session-level behavior for short-term usage of an advisory lock.
 
 Example: select pg_advisory_xact_lock(10);
 
-There are two modes in which an application can acquire advisory locks - exclusive or shared:
+### There are two modes in which an application can acquire advisory locks - exclusive or shared
 
-Exclusive Lock: Only one session/transaction can hold the lock at a time. Other sessions/transactions can’t acquire the lock until the lock is released.
+**Exclusive Lock**: Only one session/transaction can hold the lock at a time. Other sessions/transactions can’t acquire the lock until the lock is released.
 
 Example: 
 select pg_advisory_lock(10); 
 select pg_advisory_xact_lock(10);
 
-Shared Lock: Multiple sessions/transactions can hold the lock simultaneously. However, no session/transaction can acquire an exclusive lock while shared locks are held.
+**Shared Lock**: Multiple sessions/transactions can hold the lock simultaneously. However, no session/transaction can acquire an exclusive lock while shared locks are held.
 
 Example: 
 select pg_advisory_lock_shared(10); 
 select pg_advisory_xact_lock_shared(10);
 
-There are two ways to acquire advisory locks: blocking or non-blocking way:
+### There are two ways to acquire advisory locks: blocking or non-blocking way:
 
-Blocking: With the blocking way, the process trying to acquire the lock will wait till the lock is acquired.
-Non-blocking: With non-blocking way, the process will immediately return with a boolean value stating if the lock is acquired or not.
+**Blocking**: With the blocking way, the process trying to acquire the lock will wait till the lock is acquired.
+**Non-blocking**: With non-blocking way, the process will immediately return with a boolean value stating if the lock is acquired or not.
 
 Example: select pg_try_advisory_lock(10);
-
-Just like in PostgreSQL, where in all sessions should be able to see the advisory locks acquired by any other session, in YugabyteDB, all the sessions should be able to see the advisory locks acquired by any session in the universe (regardless of the node the session is connected to). This is achieved by creating a system table pg_advisory_locks dedicated to host advisory locks. ll lock requests will be stored in that system table. The advisory locks in YugabyteDB provide the same set of semantics as PostgreSQL. 
- 
-Advisory locks feature can be turned on using the [Advisory locks flags](../../reference/configuration/yb-tserver/#advisory-locks-flags).
-
