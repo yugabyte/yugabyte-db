@@ -181,6 +181,6 @@ The `clientcert=1` option is no longer supported in `pg_hba.conf`. You need to u
 
 ### CREATE permission on public schema revoked for new users
 
-In versions of YugabyteDB prior to v2.25 (and versions of PostgreSQL prior to 15), whenever you create a database user, that user is granted CREATE and USAGE privileges on the public schema by default.
+In versions of YugabyteDB prior to v2.25 (and versions of PostgreSQL prior to 15), whenever you create a database user, that user is granted [CREATE](../../api/ysql/the-sql-language/statements/dcl_grant/#:~:text=the%20specified%20table.-,CREATE,-For%20databases%2C%20this) and [USAGE](../../api/ysql/the-sql-language/statements/dcl_grant/#:~:text=of%20the%20function.-,USAGE,-For%20schemas%2C%20this) privileges on the public schema by default.
 
 Starting from YugabyteDB 2.25 (PostgreSQL 15), database users are no longer automatically granted creation permission on the public schema. The USAGE privilege is still present, as in previous versions. Database users with superuser privileges or who are database owners by default have the CREATE permission on the public schema. Any schema that is explicitly created is not impacted by this change, as they are already restricted with the default privileges.
