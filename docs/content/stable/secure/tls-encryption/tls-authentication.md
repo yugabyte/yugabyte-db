@@ -30,12 +30,12 @@ The four default cases are shown in the following table.
 | TLS enabled | `hostssl all all all trust`</br>(require ssl, no password) | `hostssl all all all md5`</br>(require ssl and password) |
 
 {{< note title="Note" >}}
-Before version 2.5.2, when TLS was enabled the default was to use the more strict `cert` option when auth was disabled, and `md5 clientcert=1` (effectively md5 + cert) when auth was enabled.
+Before version 2.5.2, when TLS was enabled the default was to use the more strict `cert` option when auth was disabled, and `md5 clientcert=1` (md5 auth + cert verification) when auth was enabled.
 {{< /note >}}
 
 Additionally, `ysql_hba_conf_csv` can be used to manually configure a custom HBA configuration.
 
-For instance, to use TLS with both `md5` and `cert` authentication, you can set the `ysql_hba_conf_csv` flag as follows:
+For instance, to use TLS with both password authentication and client certificate verification, you can set the `ysql_hba_conf_csv` flag as follows:
 
 ```sh
 hostssl all all all md5 clientcert=1
@@ -180,7 +180,7 @@ Type "help" for help.
 
 ### TLS with password authentication and certificate verification
 
-This configuration requires the client to use client-to-server encryption, supplying a signed client certificate, while using a password to authenticate. Note that the server verifies that the client certificate is signed by a known CA but it does not use the CN (Common Name) of the client certificate to authenticate the user. It is not possible to configure the server to require authentication via both password and client certificate.
+This configuration requires the client to use client-to-server encryption, supplying a signed client certificate, while using a password to authenticate. Note that the server verifies that the client certificate is signed by the configured CA but it does not use the CN (Common Name) of the client certificate to authenticate the user. It is not possible to configure the server to require authentication via both password and client certificate.
 
 {{< note title="Note" >}}
 Before version 2.5.2, this was the default for TLS with authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
