@@ -54,6 +54,7 @@ class XClusterDDLQueueHandler {
     std::string command_tag;
     std::string schema = "";
     std::string user = "";
+    std::string json_for_oid_assignment;
 
     std::string ToString() const {
       return YB_STRUCT_TO_STRING(query, start_time, query_id, version, command_tag, schema, user);

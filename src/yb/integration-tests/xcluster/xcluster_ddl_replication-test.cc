@@ -260,6 +260,46 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name_new_user);
 }
 
+TEST_F(XClusterDDLReplicationTest, CreateTableWithEnum) {
+  ASSERT_OK(SetUpClusters());
+  {
+    // Perturb OIDs on consumer side to make sure we don't accidentally preserve OIDs.
+    auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(
+        conn.Execute("CREATE TYPE gratuitous_enum AS ENUM ('red', 'orange', 'yellow', 'green', "
+                     "'blue', 'purple');"));
+    ASSERT_OK(conn.Execute("DROP TYPE gratuitous_enum;"));
+  }
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  std::string expected;
+  {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("CREATE TYPE color AS ENUM ('red', 'blue', 'green');"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t (paint_color color, amount INT);"));
+    ASSERT_OK(
+        conn.Execute("INSERT INTO t (paint_color, amount) VALUES "
+                     "('red', 10), "
+                     "('blue', 20), "
+                     "('green', 30), "
+                     "('red', 15), "
+                     "('blue', 25);"));
+    // PGConn can't handle enum values so have Postgres convert them to TEXT names.
+    expected = ASSERT_RESULT(conn.FetchAllAsString("SELECT paint_color::TEXT, amount FROM t;"));
+    LOG(INFO) << "expected table contents are: " << expected;
+  }
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name}));
+  {
+    auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    auto actual = ASSERT_RESULT(conn.FetchAllAsString("SELECT paint_color::TEXT, amount FROM t;"));
+    ASSERT_EQ(expected, actual);
+  }
+
+}
+
 TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());

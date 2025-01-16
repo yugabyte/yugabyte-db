@@ -203,7 +203,7 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropExtensions) {
   ASSERT_OK(TestPgRegress("pgonly_extensions_create.sql", "pgonly_extensions_drop.sql"));
 }
 
-TEST_F(XClusterPgRegressDDLReplicationTest, YB_DISABLE_TEST(PgRegressCreateDropEnum)) {
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropEnum) {
   ASSERT_OK(TestPgRegress("create_enum.sql", "drop_enum.sql"));
 }
 

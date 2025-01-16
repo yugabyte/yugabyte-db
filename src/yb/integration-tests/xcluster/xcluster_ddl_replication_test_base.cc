@@ -209,7 +209,8 @@ Status XClusterDDLReplicationTestBase::PrintDDLQueue(Cluster& cluster) {
   std::stringstream ss;
   ss << "DDL Queue Table:" << std::endl;
   for (const auto& [start_time, query_id, raw_json_data] : rows) {
-    ss << start_time << "\t" << query_id << "\t" << raw_json_data.substr(0, kMaxJsonStrLen)
+    // Serialized JSON string has an extra character at the front.
+    ss << start_time << "\t" << query_id << "\t" << raw_json_data.substr(1, kMaxJsonStrLen)
        << std::endl;
   }
   LOG(INFO) << ss.str();
