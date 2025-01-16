@@ -135,16 +135,25 @@ func upgradeCmd() *cobra.Command {
 
 			// Take a backup of YBA as a safety measure
 			backupDir := filepath.Join(common.GetDataRoot(), "upgradeYbaBackup")
-			if err := common.MkdirAll(backupDir, common.DirMode); err == nil {
-				log.Info(fmt.Sprintf("Taking YBA backup to %s", backupDir))
-				if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(), true, true, false, true, false,
-					fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh", common.GetActiveSymlink(), state.Version),
-					common.GetActiveSymlink()+"/ybdb/postgres/bin/ysql_dump",
-					common.GetActiveSymlink()+"/pgsql/bin/pg_dump"); errB != nil {
-					if rollback {
-						rollbackUpgrade("", state)
+			if rollback {
+				if err := common.MkdirAll(backupDir, common.DirMode); err == nil {
+					log.Info(fmt.Sprintf("Taking YBA backup to %s", backupDir))
+					usePromProtocol := true
+					// PLAT-14522 introduced prometheus_protocol which isn't present in <2.20.7.0-b40 or <2024.1.3.0-b55
+					if (common.LessVersions(state.Version, "2.20.7.0-b40") ||
+							(common.LessVersions("2024.1.0.0-b0", state.Version) && common.LessVersions(state.Version, "2024.1.3.0-b55"))) {
+						usePromProtocol = false
 					}
-					log.Fatal("Failed taking backup of YBA")
+					if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(),
+						fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh", common.GetActiveSymlink(), state.Version),
+						common.GetActiveSymlink()+"/ybdb/postgres/bin/ysql_dump",
+						common.GetActiveSymlink()+"/pgsql/bin/pg_dump",
+						true, true, false, true, false, usePromProtocol); errB != nil {
+						if rollback {
+							rollbackUpgrade("", state)
+						}
+						log.Fatal("Failed taking backup of YBA")
+					}
 				}
 			}
 
