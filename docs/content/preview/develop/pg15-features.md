@@ -51,8 +51,8 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 | Provide `gen_random_uuid` natively, eliminating the need for external libraries or custom implementations to generate UUIDs.
 |
 
-| [Foreign keys on partitioned tables](../../explore/ysql-language-features/advanced-features/partitions/#foreign-key-references)
-| Enforce referential integrity directly on partitioned tables, ensuring consistency across large-scale datasets that benefit from partitioning for performance and scalability.
+| [Foreign key references for partitioned tables](../../explore/ysql-language-features/advanced-features/partitions/#foreign-key-references)
+| Define foreign keys that reference partitioned tables and use partitioned tables as parent tables in a foreign key relationship.
 |
 
 | [Multi-range and range aggregates](../../api/ysql/datatypes/type_range/#multirange)
