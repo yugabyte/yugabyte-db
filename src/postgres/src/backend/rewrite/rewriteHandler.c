@@ -46,7 +46,7 @@
 #include "utils/rel.h"
 
 /* YB includes. */
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 

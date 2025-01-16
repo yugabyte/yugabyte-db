@@ -1,5 +1,5 @@
 /*--------------------------------------------------------------------------------------------------
- * ybcFunction.c
+ * ybFunction.c
  *        Routines to construct a Postgres functions
  *
  * Copyright (c) YugaByte, Inc.
@@ -15,7 +15,7 @@
  * under the License.
  *
  * IDENTIFICATION
- *        src/backend/executor/ybcFunction.c
+ *        src/backend/executor/ybFunction.c
  *--------------------------------------------------------------------------------------------------
  */
 
@@ -26,7 +26,7 @@
 #include "utils/memutils.h"
 
 #include "catalog/yb_type.h"
-#include "executor/ybcFunction.h"
+#include "executor/ybFunction.h"
 #include "pg_yb_utils.h"
 
 YbFuncCallContext

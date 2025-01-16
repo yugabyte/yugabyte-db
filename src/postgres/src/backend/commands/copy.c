@@ -46,7 +46,7 @@
 #include "commands/progress.h"
 #include "commands/trigger.h"
 #include "executor/execPartition.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "port/pg_bswap.h"
 #include "pgstat.h"
 

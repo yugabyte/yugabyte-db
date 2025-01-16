@@ -88,7 +88,7 @@
 /*  YB includes. */
 #include "commands/defrem.h"
 #include "commands/progress.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "parser/parse_utilcmd.h"
 #include "pgstat.h"
 #include "pg_yb_utils.h"

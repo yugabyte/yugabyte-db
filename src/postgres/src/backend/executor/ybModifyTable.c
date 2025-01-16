@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybcModifyTable.c
+ * ybModifyTable.c
  *        YB routines to stmt_handle ModifyTable nodes.
  *
  * Copyright (c) YugaByte, Inc.
@@ -16,7 +16,7 @@
  * under the License.
  *
  * IDENTIFICATION
- *        src/backend/executor/ybcModifyTable.c
+ *        src/backend/executor/ybModifyTable.c
  *
  *--------------------------------------------------------------------------------------------------
  */
@@ -44,8 +44,8 @@
 #include "commands/dbcommands.h"
 #include "executor/executor.h"
 #include "executor/tuptable.h"
-#include "executor/ybcExpr.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybExpr.h"
+#include "executor/ybModifyTable.h"
 #include "miscadmin.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_attribute.h"
@@ -56,8 +56,8 @@
 #include "utils/inval.h"
 #include "utils/relcache.h"
 #include "executor/tuptable.h"
-#include "executor/ybcExpr.h"
-#include "optimizer/ybcplan.h"
+#include "executor/ybExpr.h"
+#include "optimizer/ybplan.h"
 #include "tcop/pquery.h"
 
 #include "utils/syscache.h"

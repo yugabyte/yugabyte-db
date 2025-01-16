@@ -23,7 +23,7 @@
 
 /* Yugabyte includes */
 #include "access/yb_sys_scan_base.h"
-#include "executor/ybcExpr.h"
+#include "executor/ybExpr.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 

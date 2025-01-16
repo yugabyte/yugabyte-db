@@ -1,5 +1,5 @@
 /*--------------------------------------------------------------------------------------------------
- * ybcExpr.c
+ * ybExpr.c
  *        Routines to construct YBC expression tree.
  *
  * Copyright (c) YugaByte, Inc.
@@ -15,7 +15,7 @@
  * under the License.
  *
  * IDENTIFICATION
- *        src/backend/executor/ybcExpr.c
+ *        src/backend/executor/ybExpr.c
  *--------------------------------------------------------------------------------------------------
  */
 
@@ -43,7 +43,7 @@
 #include "utils/builtins.h"
 
 #include "pg_yb_utils.h"
-#include "executor/ybcExpr.h"
+#include "executor/ybExpr.h"
 #include "catalog/yb_type.h"
 
 Node *yb_expr_instantiate_params_mutator(Node *node, EState *estate);

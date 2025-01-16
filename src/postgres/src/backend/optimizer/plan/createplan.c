@@ -53,7 +53,7 @@
 
 /* YB includes */
 #include "access/yb_scan.h"
-#include "optimizer/ybcplan.h"
+#include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -3721,7 +3721,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				 * We set a dummy tle in the result tlist since it needs to
 				 * contain values for all rel columns (see below).
 				 * However, we substitute the correct expression during
-				 * execution (in ybcModifyTable.c).
+				 * execution (in ybModifyTable.c).
 				 */
 				TargetEntry* tle = make_dummy_tle(attr_num, /* is_null = */ false);
 				*result_tlist = lappend(*result_tlist, tle);

@@ -17,6 +17,8 @@
 # Simple linter for postgres code.
 set -u
 
+. "${BASH_SOURCE%/*}/util.sh"
+
 # Whitespace
 if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
         "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ]]; then
@@ -190,3 +192,44 @@ grep -nE '[([:space:]]errdetail(_plural)?\("[-'"'"'a-z]+[:[:space:]]' "$1" \
   | sed 's/^/warning:likely_bad_lowercase_in_errdetail:/'
 grep -nE '[([:space:]]errhint(_plural)?\("[-'"'"'a-z]+[:[:space:]]' "$1" \
   | sed 's/^/warning:likely_bad_lowercase_in_errhint:/'
+
+# Naming
+if [[ "$1" =~ /[^/]+yb[^/]+\.[ch]$ &&
+      ! "$1" =~ /pg_yb[^/]+\.[ch]$ &&
+      "$1" != */pg_verifybackup.c ]]; then
+  echo "error:bad_yb_nonprefix_filename:1:$(head -1 "$1")"
+fi
+if [[ "$1" =~ /ybc[^/]+\.[ch]$ &&
+      "$1" != */ybctid.h ]]; then
+  echo "error:bad_ybc_prefix_filename:1:$(head -1 "$1")"
+fi
+if [[ "$1" =~ /[^/]*Yb[^/]+\.[ch]$ &&
+      ! "$1" =~ /nodeYb[^/]+\.[ch]$ ]]; then
+  echo "error:bad_Yb_filename:1:$(head -1 "$1")"
+fi
+check_ctags
+echo "$1" \
+  | ctags -n -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout \
+  | while read -r line; do
+      symbol=$(echo "$line" | cut -f1)
+      lineno=$(echo "$line" | cut -f3 | grep -Eo '^[0-9]+')
+
+      if [[ "$symbol" == YBC* ||
+            "$symbol" == Ybc* ||
+            "$symbol" == ybc* ]]; then
+        echo "error:bad_ybc_prefix:$lineno:$(sed -n "$lineno"p "$1")"
+      fi
+
+      # Ideally, we want to catch all YB-added types to make sure they have
+      # "yb", but it is not possible to determine which are YB-added or not.
+      # So as a best effort, at least we know YB files contain only YB code, so
+      # whatever types they produce should have "yb".
+      if [[ "$1" =~ /yb[^/]+\.[ch]$ ||
+            "$1" =~ /pg_yb[^/]+\.[ch]$ ||
+            "$1" =~ /nodeYb[^/]+\.[ch]$ ]] &&
+         [[ "$symbol" != *YB* &&
+            "$symbol" != *Yb* &&
+            "$symbol" != *yb* ]]; then
+        echo "error:missing_yb_prefix:$lineno:$(sed -n "$lineno"p "$1")"
+      fi
+    done

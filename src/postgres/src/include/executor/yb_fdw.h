@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybcbootstrap.h
- *	  prototypes for ybcbootstrap.c
+ * yb_fdw.h
+ *	  prototypes for yb_fdw.h
  *
  * Copyright (c) YugaByte, Inc.
  *
@@ -15,31 +15,13 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/include/bootstrap/ybcbootstrap.h
+ * src/include/executor/yb_fdw.h
  *
  *--------------------------------------------------------------------------------------------------
  */
 
 #pragma once
 
-#include "access/htup.h"
-#include "catalog/dependency.h"
-#include "catalog/objectaddress.h"
-#include "nodes/parsenodes.h"
-#include "storage/lock.h"
-#include "utils/relcache.h"
+#include "postgres.h"
 
-#include "yb/yql/pggate/ybc_pggate.h"
-
-/*  Database Functions -------------------------------------------------------------------------- */
-
-/*  Table Functions ----------------------------------------------------------------------------- */
-
-extern void YBCCreateSysCatalogTable(const char *table_name,
-									 Oid table_oid,
-									 TupleDesc tupDecs,
-									 bool is_shared_relation,
-									 IndexStmt *pkey_idx);
-extern Oid YBCExecSysCatalogInsert(Relation rel,
-								   TupleDesc tupleDesc,
-								   HeapTuple tuple);
+extern Datum yb_fdw_handler();

@@ -49,7 +49,7 @@
 #include "utils/varlena.h"
 
 /*  YB includes. */
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 
 /*

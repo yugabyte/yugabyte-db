@@ -86,7 +86,7 @@
 #include "utils/syscache.h"
 
 /*  YB includes. */
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"

@@ -74,7 +74,7 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
-#include "optimizer/ybcplan.h"
+#include "optimizer/ybplan.h"
 
 /* Yugabyte includes */
 #include "pg_yb_utils.h"

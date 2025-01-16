@@ -32,7 +32,7 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 
 /* Divide by two and round away from zero */

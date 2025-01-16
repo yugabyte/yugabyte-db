@@ -33,7 +33,7 @@
 #include "executor/executor.h"
 #include "executor/ybOptimizeModifyTable.h"
 #include "nodes/ybbitmatrix.h"
-#include "optimizer/ybcplan.h"
+#include "optimizer/ybplan.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"

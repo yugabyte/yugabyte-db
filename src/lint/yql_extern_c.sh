@@ -17,6 +17,8 @@
 # Simple linter for checking the filename of *.h files in src/yb/yql.
 set -euo pipefail
 
+. "${BASH_SOURCE%/*}/util.sh"
+
 if grep -q '^extern "C" {$' "$1"; then
   if [[ "$1" != */ybc_*.h ]]; then
     echo "error:missing_ybc_in_filename:1:$(head -1 "$1")"

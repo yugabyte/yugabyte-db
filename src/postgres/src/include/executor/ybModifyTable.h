@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybcModifyTable.h
- *	  prototypes for ybcModifyTable.c
+ * ybModifyTable.h
+ *	  prototypes for ybModifyTable.c
  *
  * Copyright (c) YugaByte, Inc.
  *
@@ -15,7 +15,7 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/include/executor/ybcModifyTable.h
+ * src/include/executor/ybModifyTable.h
  *
  *--------------------------------------------------------------------------------------------------
  */

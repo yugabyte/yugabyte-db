@@ -14,12 +14,19 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 #
-# Simple linter to make sure a file is uniquely sorted.
-set -u
+# Utilities for linters.
 
-. "${BASH_SOURCE%/*}/util.sh"
-
-lineno=$(diff "$1" <(LC_ALL=C sort -u "$1") | head -1 | grep -Eo '^[0-9]+')
-if [ -n "$lineno" ]; then
-  echo "error:file_not_unique_sorted:$lineno:$(sed -n "$lineno"p "$1")"
-fi
+check_ctags() {
+  if ! which ctags >/dev/null || \
+     ! grep -q "Exuberant Ctags" <<<"$(ctags --version)"; then
+    echo "Please install Exuberant Ctags" >/dev/stderr
+    if which dnf >/dev/null; then
+      echo "HINT: dnf install ctags" >/dev/stderr
+    elif which apt >/dev/null; then
+      echo "HINT: apt install exuberant-ctags" >/dev/stderr
+    elif which brew >/dev/null; then
+      echo "HINT: brew install ctags" >/dev/stderr
+    fi
+    return 1
+  fi
+}

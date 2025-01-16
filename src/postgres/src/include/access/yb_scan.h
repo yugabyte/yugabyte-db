@@ -37,7 +37,7 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
-#include "executor/ybcExpr.h"
+#include "executor/ybExpr.h"
 
 extern PGDLLIMPORT int yb_parallel_range_rows;
 

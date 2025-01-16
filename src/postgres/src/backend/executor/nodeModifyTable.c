@@ -84,9 +84,9 @@
 #include "access/yb_scan.h"
 #include "catalog/index.h"
 #include "catalog/pg_database.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "executor/ybOptimizeModifyTable.h"
-#include "optimizer/ybcplan.h"
+#include "optimizer/ybplan.h"
 #include "parser/parsetree.h"
 #include "utils/typcache.h"
 

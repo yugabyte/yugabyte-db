@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybcbootstrap.c
+ * yb_bootstrap.c
  *        YB commands for creating and altering table structures and settings
  *
  * Copyright (c) YugaByte, Inc.
@@ -16,7 +16,7 @@
  * under the License.
  *
  * IDENTIFICATION
- *        src/backend/commands/ybcbootstrap.c
+ *        src/backend/commands/yb_bootstrap.c
  *
  *------------------------------------------------------------------------------
  */
@@ -30,7 +30,7 @@
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "catalog/pg_database.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "catalog/yb_type.h"
 
 #include "catalog/catalog.h"
@@ -38,7 +38,7 @@
 #include "utils/relcache.h"
 #include "utils/rel.h"
 #include "executor/tuptable.h"
-#include "executor/ybcExpr.h"
+#include "executor/ybExpr.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"

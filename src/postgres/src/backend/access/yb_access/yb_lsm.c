@@ -28,8 +28,8 @@
 #include "access/yb_scan.h"
 #include "catalog/index.h"
 #include "catalog/pg_type.h"
-#include "commands/ybccmds.h"
-#include "executor/ybcModifyTable.h"
+#include "commands/yb_cmds.h"
+#include "executor/ybModifyTable.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "utils/rel.h"
@@ -49,7 +49,7 @@ typedef struct
 	 * backfill.
 	 */
 	const uint64_t *backfill_write_time;
-} YBCBuildState;
+} YbLsmBuildState;
 
 
 /*
@@ -230,7 +230,7 @@ static void
 ybcinbuildCallback(Relation index, Datum ybctid, Datum *values,
 				   bool *isnull, bool tupleIsAlive, void *state)
 {
-	YBCBuildState  *buildstate = (YBCBuildState *)state;
+	YbLsmBuildState  *buildstate = (YbLsmBuildState *)state;
 
 	if (!buildstate->isprimary)
 		YBCExecuteInsertIndex(index,
@@ -247,7 +247,7 @@ ybcinbuildCallback(Relation index, Datum ybctid, Datum *values,
 static IndexBuildResult *
 ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 {
-	YBCBuildState	buildstate;
+	YbLsmBuildState	buildstate;
 	double			heap_tuples = 0;
 
 	/* Do the heap scan */
@@ -283,7 +283,7 @@ ybcinbackfill(Relation heap,
 			  YbBackfillInfo *bfinfo,
 			  YbPgExecOutParam *bfresult)
 {
-	YBCBuildState	buildstate;
+	YbLsmBuildState	buildstate;
 	double			heap_tuples = 0;
 
 	/* Do the heap scan */

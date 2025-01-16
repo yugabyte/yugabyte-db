@@ -111,7 +111,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/yb_catalog_version.h"
 #include "commands/dbcommands.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "partitioning/partdesc.h"
 #include "utils/partcache.h"
 #include "pg_yb_utils.h"

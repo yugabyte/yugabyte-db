@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
- * ybcExpr.h
- *	  prototypes for ybcExpr.c
+ * ybExpr.h
+ *	  prototypes for ybExpr.c
  *
  * Copyright (c) YugaByte, Inc.
  *
@@ -14,7 +14,7 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/include/executor/ybcExpr.h
+ * src/include/executor/ybExpr.h
  *
  * NOTES:
  *   - For performance reasons, some expressions must be sent to YugaByte for execution.

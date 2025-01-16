@@ -39,7 +39,7 @@
 #include "pg_yb_utils.h"
 #include "access/yb_scan.h"
 #include "catalog/pg_proc.h"
-#include "executor/ybcExpr.h"
+#include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
 #include "utils/guc.h"

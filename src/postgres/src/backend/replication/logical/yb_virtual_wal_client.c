@@ -27,7 +27,7 @@
 
 #include "access/xact.h"
 #include "catalog/yb_type.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
 #include "replication/walsender_private.h"
@@ -89,7 +89,7 @@ static void InitVirtualWal(List *publication_names);
 
 static void PreProcessBeforeFetchingNextBatch();
 
-static void TrackUnackedTransaction(YBCPgVirtualWalRecord *record);
+static void TrackUnackedTransaction(YbVirtualWalRecord *record);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
@@ -261,11 +261,11 @@ GetDynamicTypeEntity(int attr_num, Oid relid)
 	return type_entity;
 }
 
-YBCPgVirtualWalRecord *
+YbVirtualWalRecord *
 YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 {
 	MemoryContext			caller_context;
-	YBCPgVirtualWalRecord	*record = NULL;
+	YbVirtualWalRecord	*record = NULL;
 	List					*tables;
 	Oid						*table_oids;
 
@@ -418,7 +418,7 @@ PreProcessBeforeFetchingNextBatch()
 }
 
 static void
-TrackUnackedTransaction(YBCPgVirtualWalRecord *record)
+TrackUnackedTransaction(YbVirtualWalRecord *record)
 {
 	MemoryContext			 caller_context;
 

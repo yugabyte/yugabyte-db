@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
- * ybcFunction.h
- *	  prototypes for ybcFunction.c
+ * ybFunction.h
+ *	  prototypes for ybFunction.c
  *
  * Copyright (c) YugaByte, Inc.
  *
@@ -14,7 +14,7 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/include/executor/ybcFunction.h
+ * src/include/executor/ybFunction.h
  *
  */
 

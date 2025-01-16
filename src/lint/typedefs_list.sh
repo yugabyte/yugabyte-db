@@ -19,7 +19,12 @@ set -u
 
 . "${BASH_SOURCE%/*}/util.sh"
 
-lineno=$(diff "$1" <(LC_ALL=C sort -u "$1") | head -1 | grep -Eo '^[0-9]+')
-if [ -n "$lineno" ]; then
-  echo "error:file_not_unique_sorted:$lineno:$(sed -n "$lineno"p "$1")"
+pattern='YB|Yb|yb'
+
+if [[ "$1" == */yb_typedefs.list ]]; then
+  grep -Env "$pattern" "$1" \
+    | sed 's/^/error:missing_yb_in_type_name:/'
+else
+  grep -En "$pattern" "$1" \
+    | sed 's/^/error:bad_yb_in_type_name:/'
 fi

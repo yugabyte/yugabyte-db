@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybccmds.c
+ * yb_cmds.c
  *        YB commands for creating and altering table structures and settings
  *
  * Copyright (c) YugaByte, Inc.
@@ -16,7 +16,7 @@
  * under the License.
  *
  * IDENTIFICATION
- *        src/backend/commands/ybccmds.c
+ *        src/backend/commands/yb_cmds.c
  *
  *------------------------------------------------------------------------------
  */
@@ -48,7 +48,7 @@
 #include "commands/tablegroup.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 
 #include "access/heapam.h"
 #include "access/htup_details.h"
@@ -60,7 +60,7 @@
 #include "utils/syscache.h"
 #include "executor/executor.h"
 #include "executor/tuptable.h"
-#include "executor/ybcExpr.h"
+#include "executor/ybExpr.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"

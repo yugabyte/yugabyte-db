@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybccmds.h
- *	  prototypes for ybccmds.c
+ * yb_cmds.h
+ *	  prototypes for yb_cmds.c
  *
  * Copyright (c) YugaByte, Inc.
  *
@@ -15,7 +15,7 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/include/commands/ybccmds.h
+ * src/include/commands/yb_cmds.h
  *
  *--------------------------------------------------------------------------------------------------
  */

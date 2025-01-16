@@ -54,7 +54,7 @@
 #include "utils/snapmgr.h"
 
 /* Yugabyte includes */
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"
 

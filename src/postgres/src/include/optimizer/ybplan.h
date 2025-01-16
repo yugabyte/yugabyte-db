@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybcplan.h
+ * ybplan.h
  *	  prototypes for ybcScan.c
  *
  * Copyright (c) YugaByte, Inc.
@@ -15,7 +15,7 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/include/executor/ybcplan.h
+ * src/include/executor/ybplan.h
  *
  *--------------------------------------------------------------------------------------------------
  */

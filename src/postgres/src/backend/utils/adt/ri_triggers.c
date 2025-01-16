@@ -56,7 +56,7 @@
 
 #include "catalog/catalog.h"
 #include "catalog/yb_type.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 

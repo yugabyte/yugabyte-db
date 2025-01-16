@@ -36,7 +36,7 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_namespace.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "utils/fmgroids.h"
 #include "pg_yb_utils.h"
 

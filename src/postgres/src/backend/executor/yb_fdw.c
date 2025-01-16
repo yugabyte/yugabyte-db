@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybc_fdw.c
+ * yb_fdw.c
  *		  Foreign-data wrapper for YugabyteDB.
  *
  * Copyright (c) YugaByte, Inc.
@@ -16,7 +16,7 @@
  * under the License.
  *
  * IDENTIFICATION
- *		  src/backend/executor/ybc_fdw.c
+ *		  src/backend/executor/yb_fdw.c
  *
  *--------------------------------------------------------------------------------------------------
  */
@@ -61,8 +61,8 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 #include "access/yb_scan.h"
-#include "executor/ybcExpr.h"
-#include "executor/ybc_fdw.h"
+#include "executor/ybExpr.h"
+#include "executor/yb_fdw.h"
 #include "optimizer/optimizer.h"
 #include "utils/resowner_private.h"
 
@@ -616,7 +616,7 @@ ybcEndForeignScan(ForeignScanState *node)
  * to YugaByte callback routines.
  */
 Datum
-ybc_fdw_handler()
+yb_fdw_handler()
 {
 	FdwRoutine *fdwroutine = makeNode(FdwRoutine);
 

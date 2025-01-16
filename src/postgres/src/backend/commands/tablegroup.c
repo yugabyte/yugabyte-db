@@ -61,7 +61,7 @@
 #include "commands/tablespace.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "common/file_perm.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"

@@ -119,7 +119,7 @@
 #include "access/heaptoast.h"
 #include "access/yb_scan.h"
 #include "commands/copy.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "tcop/pquery.h"
 #include "pg_yb_utils.h"
 #include "yb_ash.h"

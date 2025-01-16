@@ -85,7 +85,7 @@
 #include "executor/nodeAgg.h"
 #include "executor/nodeHash.h"
 #include "executor/nodeMemoize.h"
-#include "executor/ybcExpr.h"
+#include "executor/ybExpr.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -107,7 +107,7 @@
 
 /* YB includes. */
 #include "access/table.h"
-#include "optimizer/ybcplan.h"
+#include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 
 #define LOG2(x)  (log(x) / 0.693147180559945)

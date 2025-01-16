@@ -32,7 +32,7 @@
 extern void YBCInitVirtualWal(List *yb_publication_names);
 extern void YBCDestroyVirtualWal();
 
-extern YBCPgVirtualWalRecord *YBCReadRecord(XLogReaderState *state,
+extern YbVirtualWalRecord *YBCReadRecord(XLogReaderState *state,
 											List *publication_names,
 											char **errormsg);
 extern XLogRecPtr YBCGetFlushRecPtr(void);

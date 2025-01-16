@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybc_builtin.c
+ * yb_builtin.c
  *        Commands to call YugaByte builtin functions.
  *
  * Copyright (c) YugaByte, Inc.
@@ -16,7 +16,7 @@
  * under the License.
  *
  * IDENTIFICATION
- *        src/backend/commands/ybc_builtin.c
+ *        src/backend/commands/yb_builtin.c
  *
  *------------------------------------------------------------------------------
  */

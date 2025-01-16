@@ -26,7 +26,7 @@
 
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
-#include "executor/ybcFunction.h"
+#include "executor/ybFunction.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "utils/array.h"

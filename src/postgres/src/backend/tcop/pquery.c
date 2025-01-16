@@ -29,8 +29,8 @@
 #include "utils/snapmgr.h"
 
 #include "pg_yb_utils.h"
-#include "executor/ybcModifyTable.h"
-#include "optimizer/ybcplan.h"
+#include "executor/ybModifyTable.h"
+#include "optimizer/ybplan.h"
 
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,

@@ -17,11 +17,11 @@ OBJS = \
 	nodeYbBitmapIndexscan.o \
 	nodeYbBitmapTablescan.o \
 	nodeYbSeqscan.o \
+	ybExpr.o \
+	ybFunction.o \
+	ybModifyTable.o \
 	ybOptimizeModifyTable.o \
-	ybcExpr.o \
-	ybcFunction.o \
-	ybcModifyTable.o \
-	ybc_fdw.o \
+	yb_fdw.o \
 	\
 	execAmi.o \
 	execAsync.o \

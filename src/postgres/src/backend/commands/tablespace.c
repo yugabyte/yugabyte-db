@@ -74,7 +74,7 @@
 #include "commands/seclabel.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "common/file_perm.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"

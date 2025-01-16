@@ -44,7 +44,7 @@ static void
 YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record);
 
 static HeapTuple
-YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
+YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record,
 						 enum ReorderBufferChangeType change_type);
 static int
 YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name);
@@ -52,7 +52,7 @@ static void
 YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
 
 static void
-YBLogTupleDescIfRequested(const YBCPgVirtualWalRecord *yb_record,
+YBLogTupleDescIfRequested(const YbVirtualWalRecord *yb_record,
 						  TupleDesc tupdesc);
 
 /*
@@ -150,7 +150,7 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 static void
 YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-	const YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
+	const YbVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
 	ReorderBufferChange			*change = ReorderBufferGetChange(ctx->reorder);
 	HeapTuple					tuple;
 	ReorderBufferTupleBuf		*tuple_buf;
@@ -201,7 +201,7 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void
 YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-	const YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
+	const YbVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
 	ReorderBufferChange		*change = ReorderBufferGetChange(ctx->reorder);
 	Relation				relation;
 	TupleDesc				tupdesc;
@@ -371,7 +371,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void
 YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-	const YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
+	const YbVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
 	ReorderBufferChange			*change = ReorderBufferGetChange(ctx->reorder);
 	HeapTuple					tuple;
 	ReorderBufferTupleBuf		*tuple_buf;
@@ -411,7 +411,7 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void
 YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-	const YBCPgVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
+	const YbVirtualWalRecord	*yb_record = record->yb_virtual_wal_record;
 	XLogRecPtr					commit_lsn = yb_record->lsn;
 	XLogRecPtr					end_lsn = yb_record->lsn + 1;
 	XLogRecPtr					origin_lsn = yb_record->lsn;
@@ -455,7 +455,7 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 }
 
 static HeapTuple
-YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
+YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record,
 						 enum ReorderBufferChangeType change_type)
 {
 	Relation					relation;
@@ -605,7 +605,7 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 }
 
 static void
-YBLogTupleDescIfRequested(const YBCPgVirtualWalRecord *yb_record,
+YBLogTupleDescIfRequested(const YbVirtualWalRecord *yb_record,
 						  TupleDesc tupdesc)
 {
 	/* Log tuple descriptor for DEBUG2 onwards. */

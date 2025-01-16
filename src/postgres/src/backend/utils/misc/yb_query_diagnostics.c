@@ -88,7 +88,7 @@ typedef struct YbQueryDiagnosticsBundles
 	YbBundleInfo	bundles[FLEXIBLE_ARRAY_MEMBER]; /* circular buffer to store info about bundles */
 } YbQueryDiagnosticsBundles;
 
-typedef struct QueryConstantsMetadata
+typedef struct
 {
 	/*
 	 * Identifies the starting position of the query within the source text,
@@ -101,7 +101,7 @@ typedef struct QueryConstantsMetadata
 
 	/* Holds the locations of constants in the query */
 	LocationLen	locations[YB_QD_MAX_CONSTANTS];
-} QueryConstantsMetadata;
+} YbQueryConstantsMetadata;
 
 /* GUC variables */
 bool yb_enable_query_diagnostics;
@@ -123,7 +123,7 @@ TimestampTz *yb_pgss_last_reset_time;
 YbPgssFillInConstantLengths yb_qd_fill_in_constant_lengths = NULL;
 
 /* session variables */
-static QueryConstantsMetadata query_constants = {
+static YbQueryConstantsMetadata query_constants = {
 	.stmt_location = 0,
 	.count = 0,
 	.locations = {{0, 0}}

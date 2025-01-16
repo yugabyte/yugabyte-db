@@ -11,8 +11,6 @@ Form_pg_yb_tablegroup
 Form_yb_pg_catalog_version
 Form_yb_pg_logical_client_version
 PgStat_YBStatQueryEntry
-YBCBuildState
-YBCPgVirtualWalRecord
 YBExecuteMessageFunctorContext
 YBFunctor
 YBIndexPermissions
@@ -109,6 +107,7 @@ YbInsertOnConflictPhase
 YbInstrumentation
 YbLockMechanism
 YbLogicalClientVersionType
+YbLsmBuildState
 YbNLBatchStatus
 YbNLBucketInfo
 YbNewRelMapEntry
@@ -143,6 +142,7 @@ YbPrefetcherStarterFunctor
 YbPrefetcherStarterWithCache
 YbProgressType
 YbPushdownExprs
+YbQueryConstantsMetadata
 YbQueryDiagnosticsBundles
 YbQueryDiagnosticsEntry
 YbQueryDiagnosticsMetadata
@@ -200,6 +200,7 @@ YbUpdateColInfo
 YbUpdateEntity
 YbUpdateRelationCacheState
 YbValidateOkeysState
+YbVirtualWalRecord
 YbcAdvisoryLockId
 YbcAdvisoryLockMode
 YbcAshAcquireBufferLock

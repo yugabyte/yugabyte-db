@@ -73,7 +73,7 @@
 
 /* Yugabyte includes */
 #include "pg_yb_utils.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "access/yb_scan.h"
 #include "utils/builtins.h"
 

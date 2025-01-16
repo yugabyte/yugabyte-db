@@ -118,7 +118,7 @@
 
 /* Yugabyte includes */
 #include "catalog/pg_am_d.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "funcapi.h"
 #include "utils/relcache.h"
 

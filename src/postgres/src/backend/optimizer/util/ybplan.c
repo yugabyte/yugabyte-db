@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybcplan.c
+ * ybplan.c
  *	  Utilities for YugaByte scan.
  *
  * Copyright (c) YugaByte, Inc.
@@ -15,7 +15,7 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/backend/executor/ybcplan.c
+ * src/backend/optimizer/util/ybplan.c
  *
  *--------------------------------------------------------------------------------------------------
  */
@@ -23,12 +23,12 @@
 
 #include "postgres.h"
 
-#include "optimizer/ybcplan.h"
+#include "optimizer/ybplan.h"
 #include "access/htup_details.h"
 #include "access/relation.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "executor/ybcExpr.h"
+#include "executor/ybExpr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"

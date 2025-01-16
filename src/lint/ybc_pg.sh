@@ -17,19 +17,9 @@
 # Simple linter for src/yb/yql/***/ybc_*.h files.
 set -euo pipefail
 
-if ! which ctags >/dev/null || \
-   ! grep -q "Exuberant Ctags" <<<"$(ctags --version)"; then
-  echo "Please install Exuberant Ctags" >/dev/stderr
-  if which dnf >/dev/null; then
-    echo "HINT: dnf install ctags" >/dev/stderr
-  elif which apt >/dev/null; then
-    echo "HINT: apt install exuberant-ctags" >/dev/stderr
-  elif which brew >/dev/null; then
-    echo "HINT: brew install ctags" >/dev/stderr
-  fi
-  exit 1
-fi
+. "${BASH_SOURCE%/*}/util.sh"
 
+check_ctags
 echo "$1" \
   | ctags -n -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout \
   | while read -r line; do

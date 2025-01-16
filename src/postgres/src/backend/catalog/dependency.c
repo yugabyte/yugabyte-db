@@ -89,7 +89,7 @@
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "commands/yb_profile.h"
 #include "commands/tablegroup.h"
 #include "miscadmin.h"

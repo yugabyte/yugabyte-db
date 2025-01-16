@@ -19,7 +19,7 @@
 #include "commands/defrem.h"
 #include "commands/prepare.h"
 #include "executor/nodeHash.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "foreign/fdwapi.h"
 #include "jit/jit.h"
 #include "nodes/extensible.h"

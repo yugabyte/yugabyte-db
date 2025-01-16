@@ -97,7 +97,7 @@
 
 /* YB includes. */
 #include "pg_yb_utils.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "replication/yb_virtual_wal_client.h"
 
 /*
@@ -3273,7 +3273,7 @@ XLogSendLogical(void)
 	XLogRecord *record;
 	char	   *errm;
 
-	YBCPgVirtualWalRecord *yb_record;
+	YbVirtualWalRecord *yb_record;
 
 	/*
 	 * We'll use the current flush point to determine whether we've caught up.

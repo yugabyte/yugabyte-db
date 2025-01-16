@@ -76,7 +76,7 @@
 #include "utils/syscache.h"
 
 #include "pg_yb_utils.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "commands/yb_profile.h"
 
 /* Hook for plugins to get control in ProcessUtility() */

@@ -46,10 +46,10 @@
 #include "utils/relmapper.h"
 
 /* Yugabyte includes */
-#include "bootstrap/ybcbootstrap.h"
+#include "bootstrap/yb_bootstrap.h"
 #include "catalog/pg_database.h"
-#include "commands/ybccmds.h"
-#include "executor/ybcModifyTable.h"
+#include "commands/yb_cmds.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "storage/pg_shmem.h"
 
