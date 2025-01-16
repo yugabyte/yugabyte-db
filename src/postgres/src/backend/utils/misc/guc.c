@@ -594,7 +594,7 @@ static struct config_enum_entry recovery_init_sync_method_options[] = {
 	{NULL, 0, false}
 };
 
-const struct config_enum_entry yb_pg_batch_detection_mechanism_options[] = {
+const struct config_enum_entry yb_batch_detection_mechanism_options[] = {
   {"detect_by_peeking", DETECT_BY_PEEKING, false},
   {"assume_all_batch_executions", ASSUME_ALL_BATCH_EXECUTIONS, false},
   {"ignore_batch_delete_and_update_may_fail", IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL, false},
@@ -6643,7 +6643,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&yb_pg_batch_detection_mechanism,
 		DETECT_BY_PEEKING,
-		yb_pg_batch_detection_mechanism_options,
+		yb_batch_detection_mechanism_options,
 		NULL, assign_yb_pg_batch_detection_mechanism, NULL
 	},
 

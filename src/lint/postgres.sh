@@ -160,6 +160,11 @@ if ! [[ "$1" == src/postgres/contrib/bloom/bloom.h ||
     | grep -Ev '__asm__\s__volatile__\(' \
     | sed 's/^/error:bad_opening_paren:/'
 fi
+if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
+        "$1" == src/postgres/src/include/snowball/libstemmer/* ]]; then
+  grep -nE '^extern "C" {' "$1" \
+    | sed 's/^/error:bad_opening_brace_extern:/'
+fi
 
 # Logging
 if ! [[ "$1" == src/postgres/src/backend/utils/activity/pgstat_function.c ||

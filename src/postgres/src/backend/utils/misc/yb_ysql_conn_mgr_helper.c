@@ -536,12 +536,15 @@ yb_shmem_get(const Oid user, const char *user_name, bool is_superuser,
 	if (attach_shmem(shmem_id, &shmem_ptr) < 0)
 		return -1;
 
+	struct YbYsqlConnMgrShmemHeader tmp = {
+		.session_parameter_array_len = DEFAULT_SHMEM_ARR_LEN,
+		.database = database,
+		.user = user,
+		.is_superuser = is_superuser
+	};
+
 	memcpy(shmem_ptr,
-		   &(struct YbYsqlConnMgrShmemHeader){.session_parameter_array_len =
-													DEFAULT_SHMEM_ARR_LEN,
-												.database = database,
-												.user = user,
-												.is_superuser = is_superuser},
+		   &tmp,
 		   sizeof(struct YbYsqlConnMgrShmemHeader));
 
 	strncpy(((struct YbYsqlConnMgrShmemHeader *) shmem_ptr)->rolename,

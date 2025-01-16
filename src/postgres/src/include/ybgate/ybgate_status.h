@@ -31,7 +31,8 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 //-----------------------------------------------------------------------------

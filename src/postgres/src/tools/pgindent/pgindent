@@ -19,6 +19,8 @@ my $INDENT_VERSION = "2.1.1";
 # Our standard indent settings
 my $indent_opts =
   "-bad -bap -bbb -bc -bl -cli1 -cp33 -cdb -nce -d0 -di12 -nfc1 -i4 -l79 -lp -lpl -nip -npro -sac -tpg -ts4";
+# YB: add more settings
+$indent_opts .= " -nfcb";
 
 my $devnull = File::Spec->devnull;
 
@@ -120,7 +122,7 @@ sub load_typedefs
 		$tdtry = "$tdtry/..";
 	}
 	die "cannot locate typedefs file \"$typedefs_file\"\n"
-	  unless $typedefs_file && -f $typedefs_file;
+	  unless $typedefs_file;    # YB: allow /dev/*, /proc/self/fd/*
 
 	open(my $typedefs_fh, '<', $typedefs_file)
 	  || die "cannot open typedefs file \"$typedefs_file\": $!\n";

@@ -147,6 +147,15 @@
         "(.*)": "error"
       }
     },
+    "unique_sort": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/src/.+/yb.*typedefs.list$)"
+      ],
+      "script-and-regex.script": "src/lint/unique_sort.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+)/m"
+    },
     "postgres": {
       "type": "script-and-regex",
       "exclude": [
