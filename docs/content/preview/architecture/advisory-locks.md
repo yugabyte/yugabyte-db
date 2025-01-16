@@ -11,8 +11,7 @@ menu:
     weight: 10
 type: docs
 ---
-
-Advisory locks feature is in {{<tags/feature/tp>}} as of v2.25.1. Advisory locks feature in PostgreSQL allows applications to manage concurrent access to resources through a cooperative locking mechanism.
+Advisory locks feature is in {{<tags/feature/tp>}} as of v2.25.1. Advisory locks feature allows applications to manage concurrent access to resources through a cooperative locking mechanism.
 
 ##Overview
 
@@ -20,17 +19,19 @@ Just like in PostgreSQL, where in all sessions should be able to see the advisor
  
 Advisory locks feature can be turned on using the [Advisory locks flags](../../reference/configuration/yb-tserver/#advisory-locks-flags).
 
-### There are types of advisory locks
+### Types of advisory locks
 
 **Session level**: Once acquired at session level, the advisory lock is held until it is explicitly released or the session ends. Unlike standard lock requests, session-level advisory lock requests do not honor transaction semantics: a lock acquired during a transaction that is later rolled back will still be held following the rollback, and likewise an unlock is effective even if the calling transaction fails later. A lock can be acquired multiple times by its owning process; for each completed lock request there must be a corresponding unlock request before the lock is actually released. 
 
-Example: select pg_advisory_lock(10);
+Example: 
+select pg_advisory_lock(10);
 
 **Transaction level**:  Transaction-level lock requests, on the other hand, behave more like regular row level lock requests: they are automatically released at the end of the transaction, and there is no explicit unlock operation. This behavior is often more convenient than the session-level behavior for short-term usage of an advisory lock.
 
-Example: select pg_advisory_xact_lock(10);
+Example: 
+select pg_advisory_xact_lock(10);
 
-### There are two modes in which an application can acquire advisory locks - exclusive or shared
+### Modes of acquiring advisory locks
 
 **Exclusive Lock**: Only one session/transaction can hold the lock at a time. Other sessions/transactions can’t acquire the lock until the lock is released.
 
@@ -44,9 +45,11 @@ Example:
 select pg_advisory_lock_shared(10); 
 select pg_advisory_xact_lock_shared(10);
 
-### There are two ways to acquire advisory locks: blocking or non-blocking way:
+### Ways to acquire advisory locks
 
 **Blocking**: With the blocking way, the process trying to acquire the lock will wait till the lock is acquired.
 **Non-blocking**: With non-blocking way, the process will immediately return with a boolean value stating if the lock is acquired or not.
 
-Example: select pg_try_advisory_lock(10);
+Example: 
+select pg_try_advisory_lock(10);
+
