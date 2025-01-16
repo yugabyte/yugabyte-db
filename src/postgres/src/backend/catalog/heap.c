@@ -1389,7 +1389,13 @@ heap_create_with_catalog(const char *relname,
 				relid = binary_upgrade_next_heap_pg_class_oid;
 				binary_upgrade_next_heap_pg_class_oid = InvalidOid;
 
-				if (RELKIND_HAS_STORAGE(relkind) && !yb_binary_restore)
+				/*
+				 * YB: The parent partition has DocDB storage, so we preserve
+				 * its relfilenode when upgrading.
+				 */
+				if ((RELKIND_HAS_STORAGE(relkind) ||
+					 (IsYugaByteEnabled() && relkind == RELKIND_PARTITIONED_TABLE))
+					&& !yb_binary_restore)
 				{
 					if (!OidIsValid(binary_upgrade_next_heap_pg_class_relfilenode))
 						ereport(ERROR,
