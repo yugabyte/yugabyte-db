@@ -33,7 +33,7 @@ namespace {
 
 const std::string kCoreLimitFlagName = "tablet_replicas_per_core_limit";
 const std::string kMemoryLimitFlagName = "tablet_replicas_per_gib_limit";
-
+const std::string kCpusFlagName = "num_cpus";
 const std::string kErrorMessageFragment = "to exceed the safe system maximum";
 }  // namespace
 
@@ -122,7 +122,8 @@ class CreateTableLimitTestRF1 : public CreateTableLimitTestBase {
     options.num_masters = 1;
     options.extra_master_flags = {
         "--replication_factor=1", "--enable_load_balancing=false",
-        "--initial_tserver_registration_duration_secs=0"};
+        "--initial_tserver_registration_duration_secs=0",
+        "--enforce_tablet_replica_limits=true"};
     return options;
   }
 };
@@ -134,7 +135,7 @@ TEST_F(CreateTableLimitTestRF1, CoreLimit) {
   ASSERT_OK(conn.Execute(DDLToCreateNTabletTable("warmup")));
   UpdateStartupMasterFlags(
       {{kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))}});
-  UpdateStartupTServerFlags({{"num_cpus", "1"}});
+  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
   // Restart the cluster to ensure the master uses the new number of cores for the tserver.
   cluster_->Shutdown();
   ASSERT_OK(cluster_->Restart());
@@ -176,7 +177,7 @@ TEST_F(CreateTableLimitTestRF1, MultipleTablets) {
   UpdateStartupMasterFlags(
       {{kCoreLimitFlagName,
         std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()) + 1)}});
-  UpdateStartupTServerFlags({{"num_cpus", "1"}});
+  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
   // Restart the cluster to ensure the master uses the new number of cores for the tserver.
   cluster_->Shutdown();
   ASSERT_OK(cluster_->Restart());
@@ -197,7 +198,7 @@ TEST_F(CreateTableLimitTestRF1, DeadTServer) {
   UpdateStartupMasterFlags(
       {{kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))},
        {"tserver_unresponsive_timeout_ms", std::to_string(3000)}});
-  UpdateStartupTServerFlags({{"num_cpus", "1"}});
+  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
   // Restart the cluster to ensure the master uses the new number of cores for the tserver.
   cluster_->Shutdown();
   ASSERT_OK(cluster_->Restart());
@@ -222,7 +223,7 @@ TEST_F(CreateTableLimitTestRF1, BlacklistTServer) {
   UpdateStartupMasterFlags(
       {{kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))},
        {"tserver_unresponsive_timeout_ms", std::to_string(3000)}});
-  UpdateStartupTServerFlags({{"num_cpus", "1"}});
+  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
   // Restart the cluster to ensure the master uses the new number of cores for the tserver.
   cluster_->Shutdown();
   ASSERT_OK(cluster_->Restart());

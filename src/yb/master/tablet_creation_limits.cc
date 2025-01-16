@@ -19,6 +19,10 @@
 
 #include "yb/util/atomic.h"
 
+DEFINE_RUNTIME_bool(enforce_tablet_replica_limits, false,
+                    "Whether to enforce the tablet replica limits.");
+TAG_FLAG(enforce_tablet_replica_limits, experimental);
+
 namespace yb::master {
 
 using tserver::AggregatedClusterInfo;
@@ -73,6 +77,9 @@ AggregatedClusterInfo ComputeAggregatedClusterInfo(
 Status CanCreateTabletReplicas(
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs) {
+  if (!GetAtomicFlag(&FLAGS_enforce_tablet_replica_limits)) {
+    return Status::OK();
+  }
   auto limits = tserver::GetTabletReplicaPerResourceLimits();
   if (!limits.per_gib && !limits.per_core) {
     return Status::OK();

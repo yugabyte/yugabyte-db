@@ -21,6 +21,7 @@
 
 DECLARE_uint32(tablet_replicas_per_gib_limit);
 DECLARE_uint32(tablet_replicas_per_core_limit);
+DECLARE_bool(enforce_tablet_replica_limits);
 
 namespace yb::master {
 

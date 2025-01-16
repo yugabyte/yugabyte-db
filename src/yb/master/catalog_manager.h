@@ -2499,6 +2499,10 @@ class CatalogManager : public TabletSplitCandidateFilterIf,
 
   TSDescriptorVector GetAllLiveNotBlacklistedTServers() const override;
 
+  Status CanSupportAdditionalTabletsForTableCreation(
+    int num_tablets, const ReplicationInfoPB& replication_info,
+    const TSDescriptorVector& ts_descs);
+
  private:
   friend class SnapshotLoader;
   friend class yb::master::ClusterLoadBalancer;
