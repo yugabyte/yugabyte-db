@@ -13596,6 +13596,112 @@
       "required" : [ "conflictingTablespaces", "containsTablespaces", "unsupportedTablespaces" ],
       "type" : "object"
     },
+    "TaskApiFilter" : {
+      "properties" : {
+        "dateRangeEnd" : {
+          "description" : "The end date to filter paged query.",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "dateRangeStart" : {
+          "description" : "The start date to filter paged query.",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "status" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "targetList" : {
+          "items" : {
+            "enum" : [ "Universe", "Cluster", "Table", "Provider", "Node", "Backup", "Schedule", "CustomerConfiguration", "KMSConfiguration", "XClusterConfig", "DrConfig", "UniverseKey", "MasterKey", "NodeAgent", "Yba" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "targetUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "typeList" : {
+          "items" : {
+            "enum" : [ "Create", "Pause", "Resume", "Update", "Delete", "Stop", "Start", "Restart", "Remove", "Add", "Release", "Reboot", "HardReboot", "Replace", "Edit", "Sync", "LdapSync", "RestartUniverse", "SoftwareUpgrade", "SoftwareUpgradeYB", "FinalizeUpgrade", "RollbackUpgrade", "GFlagsUpgrade", "KubernetesOverridesUpgrade", "EditKubernetesUniverse", "CertsRotate", "TlsToggle", "VMImageUpgrade", "SystemdUpgrade", "RebootUniverse", "UpgradeSoftware", "UpgradeVMImage", "ResizeNode", "UpdateCert", "UpdateDiskSize", "UpgradeGflags", "UpdateLoadBalancerConfig", "BulkImportData", "Backup", "Restore", "CreatePitrConfig", "UpdatePitrConfig", "DeletePitrConfig", "RestoreSnapshotSchedule", "SetEncryptionKey", "EnableEncryptionAtRest", "SetActiveUniverseKeys", "RotateEncryptionKey", "DisableEncryptionAtRest", "StartMaster", "CreateAlertDefinitions", "ManageAlertDefinitions", "ExternalScript", "CreateXClusterConfig", "EditXClusterConfig", "DeleteXClusterConfig", "SyncXClusterConfig", "Failover", "Switchover", "PrecheckNode", "Abort", "CreateSupportBundle", "CreateTableSpaces", "ThirdpartySoftwareUpgrade", "ModifyAuditLoggingConfig", "RotateAccessKey", "CreateAndRotateAccessKey", "RunApiTriggeredHooks", "InstallYbcSoftware", "InstallYbcSoftwareOnK8s", "UpgradeUniverseYbc", "DisableYbc", "UpgradeYbcGFlags", "ConfigureDBApis", "ConfigureDBApisKubernetes", "CreateImageBundle", "ReprovisionNode", "Install", "MasterFailover", "UpdateProxyConfig", "SyncMasterAddresses", "CreateYbaBackup", "RestoreYbaBackup", "RestoreContinuousBackup", "EnableNodeAgent", "Decommission", "CloneNamespace" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "typeNameList" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "required" : [ "status", "targetList", "targetUUIDList", "typeList", "typeNameList" ],
+      "type" : "object"
+    },
+    "TaskPagedApiQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [ "ASC", "DESC" ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/TaskApiFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [ "createTime" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "direction", "filter", "limit", "needTotalCount", "offset", "sortBy" ],
+      "type" : "object"
+    },
+    "TaskPagedApiResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/CustomerTaskData"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "totalCount" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
+      "type" : "object"
+    },
     "TelemetryProvider" : {
       "description" : "Telemetry Provider Model",
       "properties" : {
@@ -26594,6 +26700,51 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List task",
+        "tags" : [ "Customer Tasks" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/tasks_list/page" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "listTasksV2",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "in" : "body",
+          "name" : "PageTasksRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/TaskPagedApiQuery"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TaskPagedApiResponse"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TaskPagedApiResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List Tasks (paginated)",
         "tags" : [ "Customer Tasks" ]
       }
     },

@@ -471,6 +471,9 @@ GET    /customers/:cUUID/universes/:uniUUID/tasks                              c
 GET    /customers/:cUUID/tasks/:tUUID/failed                                   com.yugabyte.yw.controllers.CustomerTaskController.failedSubtasks(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/failed_subtasks                          com.yugabyte.yw.controllers.CustomerTaskController.listFailedSubtasks(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/details                                  com.yugabyte.yw.controllers.CustomerTaskController.getTaskStatusWithDetails(cUUID: java.util.UUID, tUUID: java.util.UUID)
++ forceNoAudit
+POST    /customers/:cUUID/tasks_list/page                                           com.yugabyte.yw.controllers.CustomerTaskController.pageTaskList(cUUID: java.util.UUID, request: Request)
+
 
 # Node Management API
 GET    /customers/:cUUID/nodes/:nodeUUID/list                                  com.yugabyte.yw.controllers.NodeInstanceController.get(cUUID: java.util.UUID, nodeUUID: java.util.UUID)
