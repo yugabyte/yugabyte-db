@@ -23,15 +23,16 @@ import (
 func CreateBackupScript(outputPath string, dataDir string, excludePrometheus bool,
 	excludeReleases bool, restart bool, disableVersion bool, verbose bool, plat Platform) {
 
-		if err := CreateBackupScriptHelper(outputPath, dataDir, excludePrometheus, excludeReleases, restart,
-			disableVersion, verbose, plat.backupScript(), plat.YsqlDump, plat.PgBin + "/pg_dump"); err != nil {
+		if err := CreateBackupScriptHelper(outputPath, dataDir, plat.backupScript(), plat.YsqlDump,
+			plat.PgBin + "/pg_dump", excludePrometheus, excludeReleases, restart, disableVersion, verbose,
+			true); err != nil {
 				log.Fatal(err.Error())
 			}
 }
 
 // CreateBackupScript calls the yb_platform_backup.sh script with the correct args.
-func CreateBackupScriptHelper(outputPath string, dataDir string, excludePrometheus bool,
-	excludeReleases bool, restart bool, disableVersion bool, verbose bool, script, ysqldump, pgdump string) error {
+func CreateBackupScriptHelper(outputPath, dataDir, script, ysqldump, pgdump string,
+	excludePrometheus, excludeReleases, restart, disableVersion, verbose, usePromProtocol bool) error {
 
 
 	err := os.Chmod(script, 0777)
