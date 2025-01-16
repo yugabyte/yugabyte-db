@@ -582,6 +582,8 @@ extern int yb_insert_on_conflict_read_batch_size;
  */
 extern bool yb_enable_nop_alter_role_optimization;
 
+extern bool yb_disable_catalog_version_check;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

@@ -1235,6 +1235,15 @@ setup_connection(Archive *AH, const char *dumpencoding,
 		appendPQExpBuffer(query, "SET yb_read_time To %s", dopt->yb_read_time);
 		ExecuteSqlStatement(AH, query->data);
 		destroyPQExpBuffer(query);
+		/*
+		 * Disable catalog version check for read requests in case of
+		 * time-traveling queries, as queries in this session might read old data
+		 * with old catalog version.
+		 */
+		query = createPQExpBuffer();
+		appendPQExpBuffer(query, "SET yb_disable_catalog_version_check To True");
+		ExecuteSqlStatement(AH, query->data);
+		destroyPQExpBuffer(query);
 	}
 	/*
 	 * Start transaction-snapshot mode transaction to dump consistent data.
