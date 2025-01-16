@@ -107,15 +107,15 @@ To locate your data directory, run `SHOW data_directory` in ysqlsh.
 
 ### Constants
 
-Provides details of the executed bind variables when the specified query ID corresponds to a prepared statement. Otherwise, provides the constants embedded in the query. Additionally, it includes the time of each execution along with the bind variable. Using the `bind_var_query_min_duration_ms` parameter, you can log only those bind_variables that take more than a specified duration.
+Provides details of the executed bind variables when the specified query ID corresponds to a prepared statement. Otherwise, provides the constants embedded in the query. Additionally, it includes the time of each execution along with the bind variable. Using the `bind_var_query_min_duration_ms` parameter, you can log only those bind variables that take more than a specified duration.
 
 Output file: constants_and_bind_variables.csv
 
 For example:
 
 ```output
-| Query_id            | query_time | var1  | var2 | var3     |
-| 7317833532428971166 | 12.323     | 19146 | 9008 | 'text_1' |
+| var1  | var2 | var3     | query_time |
+| 19146 | 9008 | 'text_1' | 12.323     |
 ```
 
 ### pg_stat_statements
@@ -138,30 +138,27 @@ For example, the following query would generate schema details as follows:
 
 ```sql
 SELECT 
-    e.employee_id,
-    e.name AS employee_name,
-    e.department_id,
-    d.department_name
+    a,
+    b
 FROM 
-    employees e
-INNER JOIN 
-    departments d ON e.department_id = d.department_id;
+    test_table1
+WHERE 
+    b > 0;
 ```
 
 ```output
-- Table: employees
-    - Columns:
-        - employee_id (Type: integer, Primary Key)
-        - name (Type: character varying)
-        - department_id (Type: integer, Foreign Key: references departments(department_id))
-        - email (Type: character varying, Unique Key)
-    - Index: employees_pkey (Primary Key)
+Table name: test_table1
+- Table information:
+|Table Name         |Table Groupname |Colocated |
++-------------------+----------------+----------+
+|public.test_table1 |                |false     |
 
-- Table: departments
-    - Columns:
-        - department_id (Type: integer, Primary Key)
-        - department_name (Type: character varying)
-    - Index: departments_pkey (Primary Key)
+- Columns:
+|Column |Type             |Collation |Nullable |Default |Storage  |Stats Target |Description |
++-------+-----------------+----------+---------+--------+---------+-------------+------------+
+|a      |text             |          |         |        |extended |             |            |
+|b      |integer          |          |         |        |plain    |             |            |
+|c      |double precision |          |         |        |plain    |             |            |
 ```
 
 ### Active session history
