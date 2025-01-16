@@ -4,6 +4,8 @@ headerTitle: PostgreSQL 15 features
 linkTitle: PG15 features
 description: Use PostgreSQL 15 features in your applications
 headContent: Use PostgreSQL 15 features in your applications
+tags:
+  feature: tech-preview
 menu:
   preview:
     identifier: yb-postgresql-15
