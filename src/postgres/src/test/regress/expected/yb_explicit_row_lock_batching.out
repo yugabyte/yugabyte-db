@@ -517,7 +517,7 @@ SELECT * FROM (SELECT * FROM yb_locks_t LIMIT 13 FOR UPDATE) AS y JOIN (SELECT *
                            ->  Seq Scan on yb_locks_t2 (actual rows=3 loops=1)
                                  Storage Table Read Requests: 1
                                  Storage Table Rows Scanned: 3
- Storage Read Requests: 6
+ Storage Read Requests: 5
  Storage Rows Scanned: 34
  Storage Write Requests: 0
  Storage Flush Requests: 0
@@ -559,7 +559,7 @@ SELECT * FROM (SELECT * FROM yb_locks_t ORDER BY k LIMIT 10 FOR UPDATE) AS y JOI
                                        ->  Seq Scan on yb_locks_t2 (actual rows=4 loops=1)
                                              Storage Table Read Requests: 3
                                              Storage Table Rows Scanned: 4
- Storage Read Requests: 8
+ Storage Read Requests: 7
  Storage Rows Scanned: 23
  Storage Write Requests: 0
  Storage Flush Requests: 0
