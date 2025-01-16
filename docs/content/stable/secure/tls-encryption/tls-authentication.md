@@ -178,9 +178,9 @@ SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 25
 Type "help" for help.
 ```
 
-### TLS with password and certificate authentication
+### TLS with password authentication and certificate verification
 
-This configuration requires the client to use client-to-server encryption and authenticate with both the appropriate certificate and the password to connect.
+This configuration requires the client to use client-to-server encryption, supplying a signed client certificate, while using a password to authenticate. Note that the server verifies that the client certificate is signed by a known CA but it does not use the CN (Common Name) of the client certificate to authenticate the user. It is not possible to configure the server to require authentication via both password and client certificate.
 
 {{< note title="Note" >}}
 Before version 2.5.2, this was the default for TLS with authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
