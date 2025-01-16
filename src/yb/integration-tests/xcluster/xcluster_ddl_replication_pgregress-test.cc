@@ -22,7 +22,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/tsan_util.h"
 
-DECLARE_bool(TEST_skip_schema_validation);
+DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_int32(ysql_num_tablets);
 
 using namespace std::chrono_literals;
@@ -65,6 +65,8 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     args.push_back(producer_cluster_.pg_host_port_.host());
     args.push_back("--port");
     args.push_back(AsString(producer_cluster_.pg_host_port_.port()));
+    // Fail the script on the first error.
+    args.push_back("--variable=ON_ERROR_STOP=1");
     args.push_back("-f");
     args.push_back(file_path);
 
@@ -134,6 +136,8 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateTableUnsupported) {
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropPartitionedTable) {
   // Tests basic create and drop of partitioned tables.
+  // Need to prefetch pg_operator to avoid DFATAL in pg systable prefetch. See GHI #25639.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) = "pg_operator";
   ASSERT_OK(TestPgRegress("create_table_partitioned.sql", "drop_table_partitioned.sql"));
 }
 
@@ -149,7 +153,6 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTablePartitions2)
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterTable) {
   // Tests various add column types, alter index columns, renames and partitioned tables.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_schema_validation) = true;
   ASSERT_OK(TestPgRegress("alter_table.sql", "alter_table2.sql"));
 }
 

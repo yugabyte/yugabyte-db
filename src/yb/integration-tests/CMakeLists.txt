@@ -47,12 +47,14 @@ add_custom_command(
 
 add_custom_target(fips_install DEPENDS ${CMAKE_BINARY_DIR}/openssl-config/openssl-fips.cnf)
 
-file(COPY
-  ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
-  DESTINATION ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql)
-
-add_custom_target(
-  xcluster_ddl_replication_sql DEPENDS ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql)
+add_custom_target(xcluster_ddl_replication_sql
+  COMMAND ${CMAKE_COMMAND} -E remove_directory
+    ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
+    ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql/sql
+  DEPENDS ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
+  COMMENT "Copying SQL files for xcluster_ddl_replication_pgregress-test.cc")
 
 configure_file(
   ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/upgrade-tests/builds.xml

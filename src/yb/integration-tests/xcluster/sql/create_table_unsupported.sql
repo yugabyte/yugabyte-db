@@ -5,6 +5,8 @@
 -- Taken from Postgres test/regress/sql/create_table.sql
 -- Commands that aren't supported currently by YB or yb_xcluster_ddl_replication.
 
+\set ON_ERROR_STOP off
+
 -- invalid: non-lowercase quoted reloptions identifiers
 CREATE TABLE tas_case WITH ("Fillfactor" = 10) AS SELECT 1 a;
 CREATE TABLE tas_case (a text) WITH ("Oids" = true);

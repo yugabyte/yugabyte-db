@@ -1,6 +1,3 @@
--- Fail the script on the first error
-\set ON_ERROR_STOP on
-
 DROP EXTENSION file_fdw;
 
 DROP EXTENSION fuzzystrmatch;

@@ -1,7 +1,7 @@
 -- Drops basic tables from test/regress/sql/create_table.sql
-q
+
 DROP TABLE a_star;
-DROP TABLE a_star CASCADE;
+-- DROP TABLE a_star CASCADE;
 
 DROP TABLE aggtest;
 

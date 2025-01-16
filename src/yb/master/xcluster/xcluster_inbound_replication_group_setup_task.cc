@@ -61,9 +61,6 @@ DEFINE_test_flag(bool, fail_universe_replication_merge, false,
 DEFINE_test_flag(bool, exit_unfinished_merging, false,
     "Whether to exit part way through the merging universe process.");
 
-DEFINE_test_flag(bool, skip_schema_validation, false,
-    "Skip schema validation during xCluster replication setup.");
-
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
 DECLARE_bool(TEST_xcluster_enable_sequence_replication);
@@ -947,9 +944,6 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
     RETURN_NOT_OK(SchemaFromPB(table_schema_resp.schema(), &target_schema));
 
     // We now have a table match. Validate the schema.
-    if (FLAGS_TEST_skip_schema_validation) {
-      break;  // TODO(#23078): Will replace this with better checks.
-    }
     SCHECK(
         target_schema.EquivalentForDataCopy(source_schema), IllegalState,
         Format(

@@ -1,6 +1,3 @@
--- Fail the script on the first error
-\set ON_ERROR_STOP on
-
 -- ALTER AGGREGATE
 ALTER AGGREGATE my_sum(integer) RENAME TO my_total;
 
