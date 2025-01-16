@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/aggregation/tdigest_utils.c
+ * src/aggregation/bson_tdigest.c
  *
  * Helper functions to implement t-digest.
  *
@@ -9,6 +9,23 @@
  * This code contains modifications from the t-digest implementation by Tomas Vondra
  * (Copyright (C) Tomas Vondra, 2019)
  * The original code can be found at: https://github.com/tvondra/tdigest
+ *
+ * Copyright (c) 2019, Tomas Vondra (tomas.vondra@postgresql.org).
+ *
+ * Permission to use, copy, modify, and distribute this software and its documentation
+ * for any purpose, without fee, and without a written agreement is hereby granted,
+ * provided that the above copyright notice and this paragraph and the following two
+ * paragraphs appear in all copies.
+ *
+ * IN NO EVENT SHALL $ORGANISATION BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT, SPECIAL,
+ * INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF THE USE
+ * OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF TOMAS VONDRA HAS BEEN ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * TOMAS VONDRA SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+ * SOFTWARE PROVIDED HEREUNDER IS ON AN "AS IS" BASIS, AND $ORGANISATION HAS NO
+ * OBLIGATIONS TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
  *-------------------------------------------------------------------------
  */
 
