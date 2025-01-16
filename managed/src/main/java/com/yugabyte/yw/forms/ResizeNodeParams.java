@@ -285,13 +285,22 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         }
         hasChanges = true;
       }
-      if (currentUserIntent.providerType == Common.CloudType.aws && nodeDiskChanged) {
+      boolean isHyperdisks =
+          currentUserIntent.providerType == Common.CloudType.gcp
+              && (curDeviceInfo.storageType == PublicCloudConstants.StorageType.Hyperdisk_Balanced
+                  || curDeviceInfo.storageType
+                      == PublicCloudConstants.StorageType.Hyperdisk_Extreme);
+      if ((currentUserIntent.providerType == Common.CloudType.aws || isHyperdisks)
+          && nodeDiskChanged) {
         int cooldownInHours =
-            runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsDiskResizeCooldownHours);
+            currentUserIntent.providerType == Common.CloudType.aws
+                ? runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsDiskResizeCooldownHours)
+                : runtimeConfGetter.getGlobalConf(GlobalConfKeys.gcpHyperdiskResizeCooldownHours);
         if (node.lastVolumeUpdateTime != null
             && DateUtils.addHours(node.lastVolumeUpdateTime, cooldownInHours).after(new Date())) {
           return String.format(
-              "Resize cooldown in aws (%d hours) is still active", cooldownInHours);
+              "Resize cooldown in %s (%d hours) is still active",
+              currentUserIntent.providerType, cooldownInHours);
         }
       }
 
@@ -331,8 +340,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         if (newDeviceInfo.diskIops == null) {
           newDeviceInfo.diskIops = currentDeviceInfo.diskIops;
         }
-        if (providerType != Common.CloudType.aws) {
-          errorConsumer.accept("Disk IOPS provisioning is only supported for AWS");
+        if (providerType != Common.CloudType.aws && providerType != Common.CloudType.gcp) {
+          errorConsumer.accept("Disk IOPS provisioning is only supported for AWS and GCP");
           return true;
         }
         if (currentDeviceInfo.storageType == null
@@ -361,8 +370,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         if (newDeviceInfo.throughput == null) {
           newDeviceInfo.throughput = currentDeviceInfo.throughput;
         }
-        if (providerType != Common.CloudType.aws) {
-          errorConsumer.accept("Disk Throughput provisioning is only supported for AWS");
+        if (providerType != Common.CloudType.aws && providerType != Common.CloudType.gcp) {
+          errorConsumer.accept("Disk Throughput provisioning is only supported for AWS and GCP");
           return true;
         }
         if (currentDeviceInfo.storageType == null
