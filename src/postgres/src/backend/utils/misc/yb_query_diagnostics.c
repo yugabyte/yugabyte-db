@@ -123,7 +123,11 @@ TimestampTz *yb_pgss_last_reset_time;
 YbPgssFillInConstantLengths yb_qd_fill_in_constant_lengths = NULL;
 
 /* session variables */
-static QueryConstantsMetadata query_constants = {0, 0, {0}};
+static QueryConstantsMetadata query_constants = {
+	.stmt_location = 0,
+	.count = 0,
+	.locations = {{0, 0}}
+};
 
 /* shared variables */
 static HTAB *bundles_in_progress = NULL;
