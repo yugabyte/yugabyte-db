@@ -20,6 +20,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include <boost/atomic.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index_container.hpp>
@@ -141,6 +142,9 @@ METRIC_DEFINE_event_stats(
     "The size of PgClient exchange response in bytes");
 
 namespace yb::tserver {
+
+struct LockablePgClientSessionAccessorTag {};
+
 namespace {
 
 template <class Resp>
@@ -189,11 +193,13 @@ class TxnAssignment {
 
 class PgClientSessionLocker;
 
-class LockablePgClientSession : public PgClientSession {
+class LockablePgClientSession {
  public:
+  auto id() const { return session_.id(); }
+
   template <class... Args>
   explicit LockablePgClientSession(CoarseDuration lifetime, Args&&... args)
-      : PgClientSession(std::forward<Args>(args)...),
+      : session_(std::forward<Args>(args)...),
         lifetime_(lifetime), expiration_(NewExpiration()) {
   }
 
@@ -202,27 +208,27 @@ class LockablePgClientSession : public PgClientSession {
     exchange_.emplace(std::move(exchange), [this](size_t size) {
       Touch();
       std::unique_lock lock(mutex_);
-      ProcessSharedRequest(size, &exchange_->exchange());
+      session_.ProcessSharedRequest(size, &exchange_->exchange());
     });
     return Status::OK();
   }
 
-  void StartShutdown() override {
+  void StartShutdown() {
     if (exchange_) {
       exchange_->StartShutdown();
     }
-    PgClientSession::StartShutdown();
+    session_.StartShutdown();
   }
 
   bool ReadyToShutdown() const {
     return !exchange_ || exchange_->ReadyToShutdown();
   }
 
-  void CompleteShutdown() override {
+  void CompleteShutdown() {
     if (exchange_) {
       exchange_->CompleteShutdown();
     }
-    PgClientSession::CompleteShutdown();
+    session_.CompleteShutdown();
   }
 
   CoarseTimePoint expiration() const {
@@ -244,6 +250,8 @@ class LockablePgClientSession : public PgClientSession {
     }
   }
 
+  PgClientSession& session() { return session_; }
+
  private:
   friend class PgClientSessionLocker;
 
@@ -252,43 +260,10 @@ class LockablePgClientSession : public PgClientSession {
   }
 
   std::mutex mutex_;
+  PgClientSession session_;
   std::optional<SharedExchangeThread> exchange_;
   const CoarseDuration lifetime_;
   std::atomic<CoarseTimePoint> expiration_;
-};
-
-template <class T>
-class DeferredConstructible {
- public:
-  DeferredConstructible() = default;
-
-  ~DeferredConstructible() {
-    get().~T();
-  }
-
-  T& get() const {
-#ifndef NDEBUG
-    DCHECK(initialized_);
-#endif
-    return *pointer_cast<T*>(holder_);
-  }
-
-  template <class... Args>
-  void Init(Args&&... args) {
-#ifndef NDEBUG
-    DCHECK(!initialized_);
-    initialized_ = true;
-#endif
-    new (holder_) T(std::forward<Args>(args)...);
-  }
-
- private:
-  mutable char holder_[sizeof(T)];
-#ifndef NDEBUG
-  bool initialized_{false};
-#endif
-
-  DISALLOW_COPY_AND_ASSIGN(DeferredConstructible);
 };
 
 using TransactionBuilder = std::function<
@@ -297,40 +272,37 @@ using TransactionBuilder = std::function<
         client::ForceCreateTransaction)>;
 
 class SessionInfo {
- public:
-  LockablePgClientSession& session() { return session_.get(); }
+ private:
+  class PrivateTag {};
 
-  uint64_t id() const { return session_.get().id(); }
+ public:
+  SessionInfo(rw_spinlock& txn_assignment_mutex, PrivateTag)
+      : txn_assignment_(&txn_assignment_mutex) {}
+
+  LockablePgClientSession& session() { return *session_; }
+
+  auto id() const { return session_->id(); }
 
   TxnAssignment& txn_assignment() { return txn_assignment_; }
 
   template <class... Args>
-  static auto Make(rw_spinlock* txn_assignment_mutex,
-                   CoarseDuration lifetime,
-                   const TransactionBuilder& builder,
-                   Args&&... args) {
-    struct ConstructorAccessor : public SessionInfo {
-      explicit ConstructorAccessor(rw_spinlock* txn_assignment_mutex)
-          : SessionInfo(txn_assignment_mutex) {}
-    };
-    auto accessor = std::make_shared<ConstructorAccessor>(txn_assignment_mutex);
-    SessionInfo* session_info = accessor.get();
-    session_info->session_.Init(
+  static auto Make(
+      rw_spinlock& txn_assignment_mutex, CoarseDuration lifetime, const TransactionBuilder& builder,
+      Args&&... args) {
+    auto session_info = std::make_shared<SessionInfo>(txn_assignment_mutex, PrivateTag{});
+    session_info->session_.emplace(
         lifetime,
         [&builder, txn_assignment = &session_info->txn_assignment_](auto&&... builder_args) {
           return builder(txn_assignment, std::forward<decltype(builder_args)>(builder_args)...);
         },
-        accessor,
+        session_info,
         std::forward<Args>(args)...);
-    return std::shared_ptr<SessionInfo>(std::move(accessor), session_info);
+    return session_info;
   }
 
  private:
-  explicit SessionInfo(rw_spinlock* txn_assignment_mutex)
-      : txn_assignment_(txn_assignment_mutex) {}
-
   TxnAssignment txn_assignment_;
-  DeferredConstructible<LockablePgClientSession> session_;
+  std::optional<LockablePgClientSession> session_;
 };
 
 void AddTransactionInfo(
@@ -351,7 +323,7 @@ class PgClientSessionLocker {
       : lockable_(std::move(lockable)), lock_(lockable_->mutex_) {
   }
 
-  PgClientSession* operator->() const { return lockable_.get(); }
+  PgClientSession* operator->() const { return &lockable_->session(); }
 
  private:
   LockablePgClientSessionPtr lockable_;
@@ -373,7 +345,6 @@ using OldTxnMetadataVariant =
     std::variant<OldSingleShardWaiterMetadataPB, OldTransactionMetadataPB>;
 using OldTxnMetadataPtrVariant =
     std::variant<OldSingleShardWaiterMetadataPBPtr, OldTransactionMetadataPBPtr>;
-
 
 void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB* partition_list) {
   const auto table_partition_list = table->GetVersionedPartitions();
@@ -446,8 +417,6 @@ class PgClientServiceImpl::Impl {
         table_cache_(client_future_),
         check_expired_sessions_(&messenger->scheduler()),
         check_object_id_allocators_(&messenger->scheduler()),
-        xcluster_context_(xcluster_context),
-        pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(parent_mem_tracker, metric_entity),
         instance_id_(permanent_uuid),
         shared_mem_pool_(parent_mem_tracker, instance_id_),
@@ -457,6 +426,18 @@ class PgClientServiceImpl::Impl {
           return BuildTransaction(std::forward<decltype(args)>(args)...);
         }),
         advisory_locks_table_(client_future_),
+        session_context_{
+            .client = nullptr,
+            .xcluster_context = xcluster_context,
+            .advisory_locks_table = advisory_locks_table_,
+            .pg_node_level_mutation_counter = pg_node_level_mutation_counter,
+            .clock = clock_,
+            .table_cache = table_cache_,
+            .response_cache = response_cache_,
+            .sequence_cache = sequence_cache_,
+            .shared_mem_pool = shared_mem_pool_,
+            .stats_exchange_response_size = stats_exchange_response_size_
+        },
         cdc_state_table_(client_future_) {
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
@@ -499,11 +480,9 @@ class PgClientServiceImpl::Impl {
 
     auto session_id = ++session_serial_no_;
     auto session_info = SessionInfo::Make(
-        &txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
+        txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_,
-        session_id, &client(), clock_, &table_cache_, xcluster_context_,
-        pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_, shared_mem_pool_,
-        stats_exchange_response_size_, messenger_.scheduler(), advisory_locks_table_);
+        SessionContext(), session_id, messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);
@@ -2068,9 +2047,19 @@ class PgClientServiceImpl::Impl {
       std::chrono::seconds(FLAGS_check_pg_object_id_allocators_interval_secs));
   }
 
+  const PgClientSessionContext& SessionContext() {
+    auto* client_ptr = &client();
+    client::YBClient* expected = nullptr;
+    [[maybe_unused]] const auto exchanged =
+        boost::atomic_ref{session_context_.client}.compare_exchange_strong(
+            expected, client_ptr);
+    DCHECK(exchanged || expected == client_ptr);
+    return session_context_;
+  }
+
   const TabletServerIf& tablet_server_;
   std::shared_future<client::YBClient*> client_future_;
-  scoped_refptr<ClockBase> clock_;
+  const scoped_refptr<ClockBase> clock_;
   TransactionPoolProvider transaction_pool_provider_;
   rpc::Messenger& messenger_;
   PgTableCache table_cache_;
@@ -2102,10 +2091,6 @@ class PgClientServiceImpl::Impl {
   CoarseTimePoint check_expired_sessions_time_ GUARDED_BY(mutex_);
   rpc::ScheduledTaskTracker check_object_id_allocators_;
 
-  const TserverXClusterContextIf* xcluster_context_;
-
-  PgMutationCounter* pg_node_level_mutation_counter_;
-
   PgResponseCache response_cache_;
 
   PgSequenceCache sequence_cache_;
@@ -2114,10 +2099,13 @@ class PgClientServiceImpl::Impl {
 
   PgSharedMemoryPool shared_mem_pool_;
 
-  EventStatsPtr stats_exchange_response_size_;
+  const EventStatsPtr stats_exchange_response_size_;
 
   std::array<rw_spinlock, 8> txns_assignment_mutexes_;
   TransactionBuilder transaction_builder_;
+  YsqlAdvisoryLocksTable advisory_locks_table_;
+
+  PgClientSessionContext session_context_;
 
   boost::multi_index_container<
       SessionInfoPtr,
@@ -2129,8 +2117,6 @@ class PgClientServiceImpl::Impl {
   > sessions_ GUARDED_BY(mutex_);
 
   std::vector<SessionInfoPtr> stopping_sessions_ GUARDED_BY(mutex_);
-
-  YsqlAdvisoryLocksTable advisory_locks_table_;
 
   std::optional<cdc::CDCStateTable> cdc_state_table_;
 };
