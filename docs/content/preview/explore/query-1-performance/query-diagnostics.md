@@ -80,7 +80,6 @@ SELECT yb_cancel_query_diagnostics(query_id => 7317833532428971166);
 | explain_sample_rate | You can export the output of the EXPLAIN command for a randomly selected percentage (1-100) of queries that are running during the diagnostics interval. | 1 |
 | explain_analyze | Enhance the EXPLAIN plan output with planning and execution data. Note that this data is gathered during query execution itself, and the query is not re-executed. | false |
 | explain_dist | Log distributed data in the EXPLAIN plan. explain_analyze must be set to true. | false |
-| bind_var_query_min_duration_ms | The minimum query duration for logging bind variables, in milliseconds. Set to 0 to turn bind variable logging off. | 10 |
 
 ### Check diagnostic status
 
