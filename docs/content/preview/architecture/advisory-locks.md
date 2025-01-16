@@ -11,11 +11,11 @@ menu:
     weight: 10
 type: docs
 ---
-Advisory locks feature is in {{<tags/feature/tp>}} as of v2.25.1. Advisory locks feature allows applications to manage concurrent access to resources through a cooperative locking mechanism.
+Advisory locks feature is in {{<tags/feature/tp>}} as of v2.25.1. 
 
 ## Overview
 
-Just like in PostgreSQL, where in all sessions should be able to see the advisory locks acquired by any other session, in YugabyteDB, all the sessions should be able to see the advisory locks acquired by any session in the universe (regardless of the node the session is connected to). This is achieved by creating a system table pg_advisory_locks dedicated to host advisory locks. All advisory lock requests will be stored in that system table. Advisory locks YugabyteDB provide the same set of semantics as PostgreSQL. 
+Advisory locks feature allows applications to manage concurrent access to resources through a cooperative locking mechanism. In PostgreSQL, if advisory lock is taken on one session, all sessions should be able to see the advisory locks acquired by any other session. Similarly, In YugabyteDB, if advisory lock is acquired on one session, all the sessions should be able to see the advisory locks regardless of the node the PG session is connected to. This is achieved by creating a system table pg_advisory_locks dedicated to host advisory locks. All advisory lock requests will be stored in that system table. Advisory locks YugabyteDB provide the same set of semantics as PostgreSQL. 
  
 Advisory locks feature can be turned on using the [Advisory locks flags](../../reference/configuration/yb-tserver/#advisory-locks-flags).
 
@@ -47,7 +47,7 @@ select pg_advisory_xact_lock_shared(10);
 
 ### Ways to acquire advisory locks
 
-**Blocking**: With the blocking way, the process trying to acquire the lock will wait till the lock is acquired.
+**Blocking**: With the blocking way, the process trying to acquire the lock will wait till the lock is acquired. 
 **Non-blocking**: With non-blocking way, the process will immediately return with a boolean value stating if the lock is acquired or not.
 
 Example: 
