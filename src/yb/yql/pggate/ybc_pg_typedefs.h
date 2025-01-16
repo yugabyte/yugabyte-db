@@ -878,6 +878,13 @@ typedef enum YbInsertOnConflictKeyState {
   KEY_JUST_INSERTED,
 } YBCPgInsertOnConflictKeyState;
 
+// A thread-safe way to control the behavior of regex matching.
+typedef struct {
+  int pg_regex_strategy; // PG_Locale_Strategy
+  void* pg_regex_locale; // struct pg_locale_t
+  YBCPgOid pg_regex_collation;
+} YBCPgThreadLocalRegexpMetadata;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
