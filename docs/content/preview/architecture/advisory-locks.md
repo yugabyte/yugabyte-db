@@ -13,7 +13,7 @@ type: docs
 ---
 Advisory locks feature is in {{<tags/feature/tp>}} as of v2.25.1. Advisory locks feature allows applications to manage concurrent access to resources through a cooperative locking mechanism.
 
-##Overview
+## Overview
 
 Just like in PostgreSQL, where in all sessions should be able to see the advisory locks acquired by any other session, in YugabyteDB, all the sessions should be able to see the advisory locks acquired by any session in the universe (regardless of the node the session is connected to). This is achieved by creating a system table pg_advisory_locks dedicated to host advisory locks. All advisory lock requests will be stored in that system table. Advisory locks YugabyteDB provide the same set of semantics as PostgreSQL. 
  
