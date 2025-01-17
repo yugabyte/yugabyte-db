@@ -123,6 +123,7 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 using namespace std::literals;
 

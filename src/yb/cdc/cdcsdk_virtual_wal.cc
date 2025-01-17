@@ -86,11 +86,13 @@ using RecordInfo = CDCSDKVirtualWAL::RecordInfo;
 using TabletRecordInfoPair = CDCSDKVirtualWAL::TabletRecordInfoPair;
 
 CDCSDKVirtualWAL::CDCSDKVirtualWAL(
-    CDCServiceImpl* cdc_service, const xrepl::StreamId& stream_id, const uint64_t session_id)
+    CDCServiceImpl* cdc_service, const xrepl::StreamId& stream_id, const uint64_t session_id,
+    ReplicationSlotLsnType lsn_type)
     : cdc_service_(cdc_service),
       stream_id_(stream_id),
       vwal_session_id_(session_id),
-      log_prefix_(Format("VWAL [$0:$1]: ", stream_id_, vwal_session_id_)) {}
+      log_prefix_(Format("VWAL [$0:$1]: ", stream_id_, vwal_session_id_)),
+      slot_lsn_type_(lsn_type) {}
 
 std::string CDCSDKVirtualWAL::LogPrefix() const {
   return log_prefix_;
@@ -541,17 +543,24 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       metadata.min_lsn = std::min(metadata.min_lsn, row_message->pg_lsn());
       metadata.max_lsn = std::max(metadata.max_lsn, row_message->pg_lsn());
 
+      auto& record_entry = metadata.txn_id_to_ct_records_map_[*txn_id_result];
       switch (record->row_message().op()) {
         case RowMessage_Op_INSERT: {
           metadata.insert_records++;
+          record_entry.second += 1;
+          record_entry.first = *lsn_result;
           break;
         }
         case RowMessage_Op_UPDATE: {
           metadata.update_records++;
+          record_entry.second += 1;
+          record_entry.first = *lsn_result;
           break;
         }
         case RowMessage_Op_DELETE: {
           metadata.delete_records++;
+          record_entry.second += 1;
+          record_entry.first = *lsn_result;
           break;
         }
         case RowMessage_Op_BEGIN: {
@@ -584,6 +593,8 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         case RowMessage_Op_UNKNOWN:
           break;
       }
+
+      VLOG_WITH_PREFIX(4) << "shipping record: " << record->ShortDebugString();
 
       auto records = resp->add_cdc_sdk_proto_records();
       resp_records_size += (*record).ByteSizeLong();
@@ -634,6 +645,15 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         << ", contains_publication_refresh_record: " << metadata.contains_publication_refresh_record
         << ", VWAL lag: " << (metadata.commit_records > 0 ? Format("$0 ms", vwal_lag_in_ms) : "-1")
         << ", Number of unacked txns in VWAL: " << unacked_txn;
+
+    if (metadata.txn_ids.size() > 0) {
+      oss << ", Records per txn details:";
+
+      for (const auto& entry : metadata.txn_id_to_ct_records_map_) {
+        oss << ", {txn_id, ct, dml}: {" << entry.first << ", " << entry.second.first << ", "
+            << entry.second.second << "}";
+      }
+    }
 
     YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
   }
@@ -901,7 +921,19 @@ Result<uint64_t> CDCSDKVirtualWAL::GetRecordLSN(
   // duplicate records like BEGIN/COMMIT that can be received in case of multi-shard transaction or
   // multiple transactions with same commit_time.
   if (curr_unique_record_id->GreaterThanDistributedLSN(last_seen_unique_record_id_)) {
-    last_seen_lsn_ += 1;
+    switch (slot_lsn_type_) {
+      case ReplicationSlotLsnType_SEQUENCE:
+        last_seen_lsn_ += 1;
+        break;
+      case ReplicationSlotLsnType_HYBRID_TIME:
+        last_seen_lsn_ = curr_unique_record_id->GetCommitTime();
+        break;
+      default:
+        return STATUS_FORMAT(
+            IllegalState,
+            Format("Invalid LSN type specified $0 for stream $1", slot_lsn_type_, stream_id_));
+    }
+
     return last_seen_lsn_;
   }
 
