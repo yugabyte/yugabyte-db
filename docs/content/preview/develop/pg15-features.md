@@ -26,10 +26,10 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 
 PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 preview release.
 
-| Product | Try it out |
+| Product | To try it out |
 | :--- | :--- |
 | YugabyteDB | Follow the instructions in [Quick Start](../../tutorials/quick-start/). |
-| YugabyteDB&nbsp;Anywhere | [Install YugabyteDB Anywhere 2.25.0.0 or later](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#quick-start) and [create a universe](../../yugabyte-platform/create-deployments/create-universe-multi-zone/) using DB Version 2.25.0.0 or later. |
+| YugabyteDB&nbsp;Anywhere | [Install YugabyteDB Anywhere v2.25.0.0 or later](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#quick-start) and [create a universe](../../yugabyte-platform/create-deployments/create-universe-multi-zone/) using DB Version 2.25.0.0 or later. |
 | YugabyteDB Aeon| Coming Soon |
 
 ## What's new
