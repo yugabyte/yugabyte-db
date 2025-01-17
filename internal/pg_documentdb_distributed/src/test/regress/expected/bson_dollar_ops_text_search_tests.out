@@ -76,7 +76,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM helio_api.collection('db', 'text_search
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiQueryScan)
+         ->  Custom Scan (DocumentDBApiQueryScan)
                ->  Bitmap Heap Scan on documents_7980_7980005 collection
                      Filter: helio_api_internal.bson_text_meta_qual(document, '''cat'''::tsquery, '\x0400000000000000ffffffff000000000000000000000000000000002800000000000000010000000000803f000000000000803f000000000000803f000000000000803f00000000010000006100'::bytea, true)
                      ->  Bitmap Index Scan on a_text

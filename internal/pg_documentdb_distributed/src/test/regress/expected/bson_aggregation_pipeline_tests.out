@@ -920,7 +920,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db',
          Node: host=localhost port=58070 dbname=regression
          ->  Limit
                Output: document, (helio_api_internal.current_cursor_state(document))
-               ->  Custom Scan (HelioApiScan)
+               ->  Custom Scan (DocumentDBApiScan)
                      Output: document, helio_api_internal.current_cursor_state(document)
                      ->  Bitmap Heap Scan on helio_data.documents_4110_411001 collection
                            Output: shard_key_value, object_id, document, creation_time

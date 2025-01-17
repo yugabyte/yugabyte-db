@@ -95,7 +95,7 @@ typedef struct ContinuationState
 } ContinuationState;
 
 /*
- * The custom Scan State for the HelioApiScan.
+ * The custom Scan State for the DocumentDBApiScan.
  */
 typedef struct ExtensionScanState
 {
@@ -180,24 +180,23 @@ static bool EqualUnsupportedExtensionScanNode(const struct ExtensibleNode *a,
 											  const struct ExtensibleNode *b);
 static Node * ReplaceCursorParamValuesMutator(Node *node, ParamListInfo boundParams);
 
-
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
 
 /* Declaration of extensibility paths for query processing (See extensible.h) */
 static const struct CustomPathMethods ExtensionScanPathMethods = {
-	.CustomName = "HelioApiScan",
+	.CustomName = "DocumentDBApiScan",
 	.PlanCustomPath = ExtensionScanPlanCustomPath,
 };
 
 static const struct CustomScanMethods ExtensionScanMethods = {
-	.CustomName = "HelioApiScan",
+	.CustomName = "DocumentDBApiScan",
 	.CreateCustomScanState = ExtensionScanCreateCustomScanState
 };
 
 static const struct CustomExecMethods ExtensionScanExecuteMethods = {
-	.CustomName = "HelioApiScan",
+	.CustomName = "DocumentDBApiScan",
 	.BeginCustomScan = ExtensionScanBeginCustomScan,
 	.ExecCustomScan = ExtensionScanExecCustomScan,
 	.EndCustomScan = ExtensionScanEndCustomScan,
@@ -1544,7 +1543,7 @@ OutInputContinuation(StringInfo str, const struct ExtensibleNode *raw_node)
 
 
 /*
- * Function for reading HelioApiScan node inverse of Out
+ * Function for reading DocumentDBApiScan node inverse of Out
  */
 static void
 ReadCustomScanContinuationExtensionScanNode(struct ExtensibleNode *node)

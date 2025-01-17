@@ -197,7 +197,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF ) SELECT document, bson_dollar_project(document, 
    ->  Task
          Query: SELECT document, helio_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson) AS bson_dollar_project, helio_api_internal.current_cursor_state(document) AS current_cursor_state FROM helio_data.documents_6720_6720016 documents_6720 WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "3" }, "continuation" : [ { "table_name" : "documents_6720_6720023", "value" : { "$binary" : { "base64" : "AAAAAAEA", "subType" : "00" } } } ] }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.#>) '{ "a.b" : { "$numberInt" : "12" } }'::helio_core.bsonquery))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document, helio_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson), helio_api_internal.current_cursor_state(document)
                Page Row Count: 3 rows
                ->  Tid Range Scan on helio_data.documents_6720_6720016 documents_6720
@@ -234,7 +234,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF ) SELECT document, bson_dollar_project(document, 
    ->  Task
          Query: SELECT document, helio_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson) AS bson_dollar_project, helio_api_internal.current_cursor_state(document) AS current_cursor_state FROM helio_data.documents_6720_6720016 documents_6720 WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "3" }, "continuation" : [ { "table_name" : "someOtherTable" } ] }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.#>) '{ "a.b" : { "$numberInt" : "12" } }'::helio_core.bsonquery))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document, helio_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson), helio_api_internal.current_cursor_state(document)
                Page Row Count: 3 rows
                ->  Tid Range Scan on helio_data.documents_6720_6720016 documents_6720

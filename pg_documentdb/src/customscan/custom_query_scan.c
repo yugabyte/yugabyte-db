@@ -85,7 +85,7 @@ typedef struct InputQueryState
 
 
 /*
- * The custom Scan State for the HelioApiQueryScan.
+ * The custom Scan State for the DocumentDBApiQueryScan.
  */
 typedef struct ExtensionQueryScanState
 {
@@ -144,30 +144,30 @@ static List * AddCustomPathForVectorCore(PlannerInfo *info, List *pathList,
 										 InputQueryState *queryState, bool
 										 failIfNotFound);
 
-
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
 
 /* Declaration of extensibility paths for query processing (See extensible.h) */
 static const struct CustomPathMethods ExtensionQueryScanPathMethods = {
-	.CustomName = "HelioApiQueryScan",
+	.CustomName = "DocumentDBApiQueryScan",
 	.PlanCustomPath = ExtensionQueryScanPlanCustomPath,
 };
 
 static const struct CustomScanMethods ExtensionQueryScanMethods = {
-	.CustomName = "HelioApiQueryScan",
+	.CustomName = "DocumentDBApiQueryScan",
 	.CreateCustomScanState = ExtensionQueryScanCreateCustomScanState
 };
 
 static const struct CustomExecMethods ExtensionQueryScanExecuteMethods = {
-	.CustomName = "HelioApiQueryScan",
+	.CustomName = "DocumentDBApiQueryScan",
 	.BeginCustomScan = ExtensionQueryScanBeginCustomScan,
 	.ExecCustomScan = ExtensionQueryScanExecCustomScan,
 	.EndCustomScan = ExtensionQueryScanEndCustomScan,
 	.ReScanCustomScan = ExtensionQueryScanReScanCustomScan,
 	.ExplainCustomScan = ExtensionQueryScanExplainCustomScan,
 };
+
 
 static const ExtensibleNodeMethods InputQueryStateMethods =
 {
@@ -726,7 +726,7 @@ OutInputQueryScanNode(StringInfo str, const struct ExtensibleNode *raw_node)
 
 
 /*
- * Function for reading HelioApiQueryScan node (unsupported)
+ * Function for reading DocumentDBApiQueryScan node (unsupported)
  */
 static void
 ReadUnsupportedExtensionQueryScanNode(struct ExtensibleNode *node)

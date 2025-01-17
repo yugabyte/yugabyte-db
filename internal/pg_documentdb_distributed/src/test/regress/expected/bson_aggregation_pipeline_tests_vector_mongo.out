@@ -61,7 +61,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
          Node: host=localhost port=58070 dbname=regression
          ->  Limit
                Output: document, ((vector(helio_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
-               ->  Custom Scan (HelioApiQueryScan)
+               ->  Custom Scan (DocumentDBApiQueryScan)
                      Output: document, (vector(helio_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
                      CosmosSearch Custom Params: { "efSearch" : 40 }
                      ->  Index Scan using foo_1 on helio_data.documents_8300_8300005 collection
@@ -108,7 +108,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                      Node: host=localhost port=58070 dbname=regression
                      ->  Limit
                            Output: document, ((vector(helio_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4,1]'::vector))
-                           ->  Custom Scan (HelioApiQueryScan)
+                           ->  Custom Scan (DocumentDBApiQueryScan)
                                  Output: document, (vector(helio_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4,1]'::vector)
                                  CosmosSearch Custom Params: { "efSearch" : 100 }
                                  ->  Index Scan using foo_1 on helio_data.documents_8300_8300016 collection
@@ -260,7 +260,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                      ->  Sort
                            Output: collection_1.document, ((vector(helio_api_internal.bson_extract_vector(collection_1.document, 'v'::text), 3, true) <-> '[3,4.9,1]'::vector)), collection_1.ctid
                            Sort Key: ((vector(helio_api_internal.bson_extract_vector(collection_1.document, 'v'::text), 3, true) <-> '[3,4.9,1]'::vector))
-                           ->  Custom Scan (HelioApiQueryScan)
+                           ->  Custom Scan (DocumentDBApiQueryScan)
                                  Output: collection_1.document, (vector(helio_api_internal.bson_extract_vector(collection_1.document, 'v'::text), 3, true) <-> '[3,4.9,1]'::vector), collection_1.ctid
                                  CosmosSearch Custom Params: { "efSearch" : 100 }
                                  ->  Seq Scan on helio_data.documents_8301_8300030 collection_1
@@ -370,7 +370,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                ->  Sort
                      Output: document, ((vector(helio_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
                      Sort Key: ((vector(helio_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
-                     ->  Custom Scan (HelioApiQueryScan)
+                     ->  Custom Scan (DocumentDBApiQueryScan)
                            Output: document, (vector(helio_api_internal.bson_extract_vector(document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
                            CosmosSearch Custom Params: { "nProbes" : 1 }
                            ->  Index Scan using _id_ on helio_data.documents_8302_8300052 collection

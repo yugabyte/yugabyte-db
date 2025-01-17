@@ -307,7 +307,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
    Output: document, (bson_orderby(document, '{ "$meta" : { "$numberInt" : "1" } }'::bson))
    Sort Key: (bson_orderby(collection.document, '{ "$meta" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
    Sort Method: quicksort  Memory: 25kB
-   ->  Custom Scan (HelioApiQueryScan)  (cost=0.00..0.00 rows=1 width=64) (actual rows=0 loops=1)
+   ->  Custom Scan (DocumentDBApiQueryScan)  (cost=0.00..0.00 rows=1 width=64) (actual rows=0 loops=1)
          Output: document, bson_orderby(document, '{ "$meta" : { "$numberInt" : "1" } }'::bson)
          ->  Index Scan using _id_ on helio_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
                Output: document

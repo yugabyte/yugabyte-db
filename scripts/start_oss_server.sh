@@ -5,17 +5,15 @@ set -e
 # fail if trying to reference a variable that is not set.
 set -u
 
+PG_VERSION=${PG_VERSION_USED:-16}
 coordinatorPort="9712"
 postgresDirectory=""
 initSetup="false"
 help="false"
 stop="false"
-serverType="helio"
-while getopts "d:t:hcs" opt; do
+while getopts "d:hcs" opt; do
   case $opt in
     d) postgresDirectory="$OPTARG"
-    ;;
-    t) serverType="$OPTARG"
     ;;
     c) initSetup="true"
     ;;
@@ -42,25 +40,14 @@ if [ "$help" == "true" ]; then
     echo "${green}sets up and launches a postgres server with extension installed on port $coordinatorPort."
     echo "${green}start_oss_server -d <postgresDir> [-t <serverType>] [-c] [-s]"
     echo "${green}<postgresDir> is the data directory for your postgres instance with extension"
-    echo "${green}[-t] - optional argument. serverType is the type of server to start. Supported values are helio and documentdb, default is helio"
     echo "${green}[-c] - optional argument. removes all existing data if it exists"
     echo "${green}[-s] - optional argument. Stops all servers and exits"
     echo "${green}if postgresDir not specified assumed to be ~/${serverType}_test"
     exit 1;
 fi
 
-extensionName=""
-preloadLibraries=""
-if [ "$serverType" == "helio" ]; then
-  extensionName="pg_helio_api"
-  preloadLibraries="pg_helio_core, pg_helio_api"
-elif [ "$serverType" == "documentdb" ]; then
-  extensionName="documentdb"
-  preloadLibraries="pg_documentdb_core, pg_documentdb"
-else
-  echo "${red}Unknown server type ${serverType}"
-  exit 1
-fi
+extensionName="documentdb"
+preloadLibraries="pg_documentdb_core, pg_documentdb"
 
 source="${BASH_SOURCE[0]}"
 while [[ -h $source ]]; do
@@ -77,7 +64,7 @@ scriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
 . $scriptDir/utils.sh
 
 if [ -z $postgresDirectory ]; then
-    postgresDirectory="$HOME/${serverType}_test"
+    postgresDirectory="$HOME/documentdb_test"
 fi
 
 if ! [ -d "$postgresDirectory" ]; then

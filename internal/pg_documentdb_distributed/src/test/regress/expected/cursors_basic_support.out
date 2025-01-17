@@ -198,7 +198,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api.collection('db', 
    ->  Task
          Query: SELECT document FROM helio_data.documents_6700_6700003 collection WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 1 rows
                ->  Bitmap Heap Scan on helio_data.documents_6700_6700003 collection
@@ -219,7 +219,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api.collection('db', 
    ->  Task
          Query: SELECT document FROM helio_data.documents_6700_6700003 collection WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::helio_core.bson) AND helio_api_catalog.bson_dollar_elemmatch(document, '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 5 rows
                ->  Bitmap Heap Scan on helio_data.documents_6700_6700003 collection
@@ -240,7 +240,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) EXECUTE q1('db', 'cursors_basic', '{ "getpage_ba
    ->  Task
          Query: SELECT document FROM helio_data.documents_6700_6700003 collection WHERE ((helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "7" } }'::helio_core.bson) AND helio_api_catalog.bson_true_match($3::helio_core.bson)) AND ((document OPERATOR(helio_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND helio_api_catalog.bson_true_match($4::helio_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 7 rows
                ->  Bitmap Heap Scan on helio_data.documents_6700_6700003 collection
@@ -266,7 +266,7 @@ EXPLAIN (VERBOSE ON, ANALYZE ON, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE q1(
          ->  Result (actual rows=7 loops=1)
                Output: document
                One-Time Filter: (helio_api_catalog.bson_true_match($3) AND helio_api_catalog.bson_true_match($4))
-               ->  Custom Scan (HelioApiScan) (actual rows=7 loops=1)
+               ->  Custom Scan (DocumentDBApiScan) (actual rows=7 loops=1)
                      Output: document
                      Page Row Count: 7 rows
                      ->  Result (actual rows=8 loops=1)
@@ -292,7 +292,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document, bson_dollar_project(document, '
    ->  Task
          Query: SELECT document, helio_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson) AS bson_dollar_project FROM helio_data.documents_6700_6700003 collection WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::helio_core.bson) AND helio_api_catalog.bson_dollar_elemmatch(document, '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document, helio_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
                Page Row Count: 5 rows
                ->  Bitmap Heap Scan on helio_data.documents_6700_6700003 collection
@@ -324,7 +324,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api.collection('db', 
    ->  Task
          Query: SELECT document FROM helio_data.documents_6700_6700003 collection WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::helio_core.bson) AND ((document OPERATOR(helio_api_catalog.#>) '{ "_id" : "10" }'::helio_core.bsonquery) AND (object_id OPERATOR(helio_core.>) '{ "" : "10" }'::helio_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 5 rows
                ->  Bitmap Heap Scan on helio_data.documents_6700_6700003 collection
@@ -352,7 +352,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api.collection('db', 
    ->  Task
          Query: SELECT document FROM helio_data.documents_6700_6700003 collection WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::helio_core.bson) AND ((document OPERATOR(helio_api_catalog.#=) '{ "_id" : "10" }'::helio_core.bsonquery) AND (object_id OPERATOR(helio_core.=) '{ "" : "10" }'::helio_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 5 rows
                ->  Bitmap Heap Scan on helio_data.documents_6700_6700003 collection
@@ -424,7 +424,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api.collection('db', 
    ->  Task
          Query: SELECT document FROM helio_data.documents_6700_6700003 collection WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 1 rows
                ->  Tid Range Scan on helio_data.documents_6700_6700003 collection
@@ -443,7 +443,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api.collection('db', 
    ->  Task
          Query: SELECT document FROM helio_data.documents_6700_6700003 collection WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::helio_core.bson) AND helio_api_catalog.bson_dollar_elemmatch(document, '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 5 rows
                ->  Tid Range Scan on helio_data.documents_6700_6700003 collection
@@ -462,7 +462,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) EXECUTE q1('db', 'cursors_basic', '{ "getpage_ba
    ->  Task
          Query: SELECT document FROM helio_data.documents_6700_6700003 collection WHERE ((helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "7" } }'::helio_core.bson) AND helio_api_catalog.bson_true_match($3::helio_core.bson)) AND ((document OPERATOR(helio_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND helio_api_catalog.bson_true_match($4::helio_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 7 rows
                ->  Tid Range Scan on helio_data.documents_6700_6700003 collection
@@ -503,7 +503,7 @@ set local enable_seqscan TO OFF;
    ->  Task
          Query: SELECT document FROM helio_data.documents_6700_6700003 collection WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 1 rows
                ->  Bitmap Heap Scan on helio_data.documents_6700_6700003 collection
@@ -535,7 +535,7 @@ set local enable_indexscan TO OFF;
    ->  Task
          Query: SELECT document FROM helio_data.documents_6700_6700003 collection WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 1 rows
                ->  Bitmap Heap Scan on helio_data.documents_6700_6700003 collection
@@ -573,7 +573,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api.collection('db', 
    ->  Task
          Query: SELECT document FROM helio_data.documents_6700_6700003 collection WHERE (helio_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Custom Scan (HelioApiScan)
+         ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 1 rows
                ->  Tid Range Scan on helio_data.documents_6700_6700003 collection
