@@ -1033,7 +1033,6 @@ yb_txn_errcode(uint16_t txn_errcode)
 	return 0;					/* return value does not matter */
 }
 
-
 /*
  * errcode_for_file_access --- add SQLSTATE error code to the current error
  *

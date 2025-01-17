@@ -4441,16 +4441,11 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			 * If we got a schema-version-mismatch error while a DDL happened,
 			 * this is likely caused by a conflict between the current
 			 * transaction and the DDL transaction.
-			 * So we map it to the retryable serialization failure error code.
-			 * TODO: consider if we should
-			 * 1. map this case to a different (retryable) error code
-			 * 2. always map schema-version-mismatch to a retryable error.
 			 */
 			if (need_table_cache_refresh || isInvalidCatalogSnapshotError)
 			{
 				error_code = ERRCODE_T_R_SERIALIZATION_FAILURE;
 			}
-
 			/*
 			 * Report the original error, but add a context mentioning that a
 			 * possibly-conflicting, concurrent DDL transaction happened.
@@ -4466,10 +4461,27 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 		}
 		else
 		{
+			/*
+			 * We get here if there's a DocDB schema version mismatch
+			 * but not a catalog version mismatch. This can happen in several cases:
+			 *
+			 * 1. The DDL operation may have already incremented the schema version, 
+			 * so it needs to roll back the change. Even though when yb_ddl_rollback_enabled 
+			 * is true, DocDB will roll back to the old schema, it does not decrement the 
+			 * schema version while undoing the failed DDL. Instead it makes another schema 
+			 * version increment, resulting in two schema version increments. However since 
+			 * the DDL is aborted, the catalog version is not incremented.
+			 *
+			 * 2. The DDL has incremented the table schema version and propagated the new schema
+			 * to tablet servers, but the DDL itself has not committed and therefore has not
+			 * incremented the catalog version.
+			 *
+			 * 3. This can also happen during certain YB-specific operations,
+			 * such as calling set_wal_retention_secs (which happens during 
+			 * xCluster setup).
+			 */
 			Assert(need_table_cache_refresh);
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("%s", edata->message)));
+			ThrowErrorData(edata);
 		}
 	}
 }
@@ -5256,6 +5268,12 @@ yb_attempt_to_retry_on_error(int attempt, const YBQueryRetryData *retry_data,
 
 	if (yb_is_retry_possible(edata, attempt, retry_data))
 	{
+		/*
+		 * We shouldn't be retrying schema version mismatches here.
+		 * Those are handled separately in YBPrepareCacheRefreshIfNeeded.
+		 */
+		Assert(!YBTableSchemaVersionMismatchError(edata, NULL));
+
 		FlushErrorState();
 		yb_perform_retry_on_error(attempt, edata->yb_txn_errcode,
 								  retry_data->portal_name);
@@ -6369,10 +6387,7 @@ PostgresMain(const char *dbname, const char *username)
 							}
 							PG_CATCH();
 							{
-								if (YBTableSchemaVersionMismatchError(edata, NULL /* table_id */))
-									ReThrowError(edata);
-								else
-									PG_RE_THROW();
+								PG_RE_THROW();
 							}
 							PG_END_TRY();
 						}
