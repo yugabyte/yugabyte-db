@@ -105,18 +105,24 @@ RUN add-apt-repository -y ppa:ubuntugis/ppa && apt-get update && \
 COPY scripts/install_setup_postgis.sh /tmp/install_setup/
 RUN [ "bin/bash", "-c", "PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_postgis.sh" ]
 
-# Add postgre path to the PATH
-ENV PATH=/usr/lib/postgresql/$PG_VERSION/bin:$PATH
-
 # locale
 RUN rm -rf /var/lib/apt/lists/* \
     && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
 
-ENV LANG en_US.utf8
+ENV LANG en_US.UTF-8
+ENV LC_ALL en_US.UTF-8
+ENV LANGUAGE en_US
 
-# Create heliodb user
-RUN useradd -ms /bin/bash heliodb -G sudo
+# Create documentdb user
+RUN useradd -ms /bin/bash documentdb -G sudo
 RUN echo "%sudo ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers.d/no-pass-ask
 
-USER heliodb
-WORKDIR /home/heliodb
+# Add postgres to path for sudo commands.
+# Add path for sudoers
+RUN cat /etc/sudoers | grep secure_path | sed "s/\:\/bin\:/\:\/bin\:\/usr\/lib\/postgresql\/$PG_VERSION\/bin\:/" >> /etc/sudoers.d/postgres_path
+
+# Add PG to the path
+ENV PATH=$PATH:/usr/lib/postgresql/$PG_VERSION/bin
+
+USER documentdb
+WORKDIR /home/documentdb
