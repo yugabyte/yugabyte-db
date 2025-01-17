@@ -2499,12 +2499,13 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
       if (slot_entries_to_be_deleted && !slot_entries_to_be_deleted->contains(stream_id)) {
         // This is possible when Update Peers and Metrics thread comes into action before the slot
         // entry is added to the cdc_state table.
-        if (!namespace_to_min_record_id_commit_time.contains(namespace_id)) {
+        auto it = namespace_to_min_record_id_commit_time.find(namespace_id);
+        if (it == namespace_to_min_record_id_commit_time.end()) {
           LOG(WARNING) << "Did not find any value for record_id_commit_time for the namespace: "
                        << namespace_id;
           return;
         }
-        cdc_sdk_safe_time = HybridTime(namespace_to_min_record_id_commit_time.at(namespace_id));
+        cdc_sdk_safe_time = HybridTime(it->second);
       }
     } else if (entry.cdc_sdk_safe_time) {
       cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
@@ -2731,15 +2732,14 @@ CDCServiceImpl::GetNamespaceMinRecordIdCommitTimeMap(
     }
 
     auto stream_metadata = VERIFY_RESULT(GetStream(stream_id));
-    auto namespace_id = stream_metadata->GetNamespaceId();
+    auto namespace_id = (*stream_metadata).GetNamespaceId();
 
     auto record_id_commit_time = *entry.record_id_commit_time;
-    if (!namespace_to_min_record_id_commit_time.contains(namespace_id)) {
-      namespace_to_min_record_id_commit_time.insert({namespace_id, record_id_commit_time});
-      continue;
+    auto [it, inserted] = namespace_to_min_record_id_commit_time.try_emplace(
+        namespace_id, record_id_commit_time);
+    if (!inserted) {
+      it->second = std::min(it->second, record_id_commit_time);
     }
-    namespace_to_min_record_id_commit_time[namespace_id] =
-        std::min(namespace_to_min_record_id_commit_time[namespace_id], record_id_commit_time);
   }
 
   RETURN_NOT_OK(*iteration_status);
@@ -2884,11 +2884,15 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
       &iteration_status));
 
   // Get the minimum record_id_commit_time for each namespace by looking at all the slot entries.
-  std::unordered_map<NamespaceId, uint64_t> namespace_to_min_record_id_commit_time;
+  Result<std::unordered_map<NamespaceId, uint64_t>> namespace_to_min_record_id_commit_time =
+      std::unordered_map<NamespaceId, uint64_t>();
   StreamIdSet streams_with_tablet_entries_to_be_deleted;
   if (FLAGS_ysql_yb_enable_replication_slot_consumption) {
-    namespace_to_min_record_id_commit_time = VERIFY_RESULT(GetNamespaceMinRecordIdCommitTimeMap(
-        table_range, &iteration_status, &slot_entries_to_be_deleted));
+    namespace_to_min_record_id_commit_time = GetNamespaceMinRecordIdCommitTimeMap(
+        table_range, &iteration_status, &slot_entries_to_be_deleted);
+    LOG_IF(WARNING, !namespace_to_min_record_id_commit_time.ok())
+        << "Failed to get namespace_to_min_record_id_commit_time: "
+        << namespace_to_min_record_id_commit_time.status();
   }
 
   for (auto entry_result : table_range) {
@@ -2958,20 +2962,29 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
       streams_with_tablet_entries_to_be_deleted.insert(stream_id);
     }
 
-    if (stream_metadata.GetSourceType() == CDCSDK) {
-      auto tablet_peer = context_->LookupTablet(tablet_id);
-      if (!tablet_peer) {
-        LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
-                     << ". Will not update its peers in this round";
+    switch (stream_metadata.GetSourceType()) {
+      case CDCRequestSource::CDCSDK: {
+        if (!namespace_to_min_record_id_commit_time.ok()) {
+          continue;
+        }
+        auto tablet_peer = context_->LookupTablet(tablet_id);
+        if (!tablet_peer) {
+          LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
+                       << ". Will not update its peers in this round";
+          continue;
+        }
+
+        ProcessEntryForCdcsdk(
+            entry, stream_metadata, tablet_peer, cdcsdk_min_checkpoint_map,
+            &slot_entries_to_be_deleted, *namespace_to_min_record_id_commit_time,
+            &expired_tables_map);
         continue;
       }
-
-      ProcessEntryForCdcsdk(
-          entry, stream_metadata, tablet_peer, cdcsdk_min_checkpoint_map,
-          &slot_entries_to_be_deleted, namespace_to_min_record_id_commit_time, &expired_tables_map);
-    } else if (stream_metadata.GetSourceType() == XCLUSTER) {
-      ProcessEntryForXCluster(entry, xcluster_tablet_min_opid_map);
+      case CDCRequestSource::XCLUSTER:
+        ProcessEntryForXCluster(entry, xcluster_tablet_min_opid_map);
+        continue;
     }
+    FATAL_INVALID_ENUM_VALUE(CDCRequestSource, stream_metadata.GetSourceType());
   }
 
   RETURN_NOT_OK(iteration_status);
