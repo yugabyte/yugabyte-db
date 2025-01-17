@@ -29,9 +29,6 @@ The four default cases are shown in the following table.
 | TLS disabled | `host all all all trust`</br>(no ssl, no password) | `host all all all md5`</br>(no ssl, password required) |
 | TLS enabled | `hostssl all all all trust`</br>(require ssl, no password) | `hostssl all all all md5`</br>(require ssl and password) |
 
-{{< note title="Note" >}}
-Before YugabyteDB v2.5.2, when TLS was enabled the default was to use the more strict `cert` option when auth was disabled, and `md5 clientcert=verify-ca` (password auth + cert verification) when auth was enabled.
-{{< /note >}}
 
 Additionally, `ysql_hba_conf_csv` can be used to manually configure a custom HBA configuration.
 
@@ -143,10 +140,6 @@ The other modes (that is, `sslmode=require` or `disable`) behave analogously.
 
 This configuration requires the client to use client-to-server encryption and authenticate with the appropriate certificate to connect.
 
-{{< note title="Note" >}}
-Before version 2.5.2, this was the default for TLS without authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
-{{< /note >}}
-
 To create the database, execute the following command:
 
 ```sh
@@ -183,8 +176,7 @@ Type "help" for help.
 This configuration requires the client to use client-to-server encryption and authenticate with both the appropriate certificate and the password to connect.
 
 {{< note title="Note" >}}
-Before version 2.5.2, this was the default for TLS with authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
-
+To use the client certificate only for verification (signed by the CA) but not for authentication, the clientcert parameter can be set to verify-ca.
 {{< /note >}}
 
 To create the database, execute the following command:
