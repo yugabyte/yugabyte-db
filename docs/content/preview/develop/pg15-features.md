@@ -181,9 +181,9 @@ To avoid this issue, add a space between $1 and ORDER, as follows:
 SELECT * FROM t WHERE migration_UUID=$1 ORDER BY schema_name
 ```
 
-### clientcert=1
+### TLS and authentication
 
-The `clientcert=1` option is no longer supported in `pg_hba.conf`. You need to use a string value. This change was made in PostgreSQL 12; refer to [Secure TCP/IP Connections with SSL](https://www.postgresql.org/docs/12/ssl-tcp.html) in the PostgreSQL documentation.
+The `clientcert=1` option is no longer supported in `pg_hba.conf`. You need to use a string value. This change was made in [PostgreSQL 12](https://www.postgresql.org/docs/12/ssl-tcp.html) in the PostgreSQL documentation. For more information on TLS in YugabyteDB, refer to [TLS and authentication](../../secure/tls-encryption/tls-authentication/).
 
 ### CREATE permission on public schema revoked for new users
 
