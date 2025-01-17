@@ -1,17 +1,17 @@
-// Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not
-// use this file except in compliance with the License.  You may obtain a copy
-// of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
-// License for the specific language governing permissions and limitations under
-// the License.
-
+/* Copyright (c) YugaByte, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
 #include "postgres.h"
 
 #include "access/xact.h"
@@ -106,7 +106,7 @@ _PG_init(void)
 							   0,
 							   NULL, NULL, NULL);
 
-  // YB_TODO(jhe): Remove this flag once colocated objects are supported.
+  /* YB_TODO(jhe): Remove this flag once colocated objects are supported. */
 	DefineCustomBoolVariable("yb_xcluster_ddl_replication.TEST_allow_colocated_objects",
 							 gettext_noop("Allow colocated objects to be replicated."),
 							 NULL,
@@ -165,10 +165,10 @@ InsertIntoTable(const char *table_name, int64 start_time, int64 query_id,
 void
 InsertIntoDDLQueue(Jsonb *yb_data)
 {
-	// Compute the transaction start time in micros since epoch.
+	/* Compute the transaction start time in micros since epoch. */
 	TimestampTz epoch_time =
 		GetCurrentTransactionStartTimestamp() - SetEpochTimestamp();
-	// Use random int for the query_id.
+	/* Use random int for the query_id. */
 	InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, random(), yb_data);
 }
 
@@ -185,13 +185,15 @@ IsExtensionDdl(CommandTag command_tag)
 	return false;
 }
 
-// Extensions DDLs result in multiple DDL statements being executed during
-// create/alter/drop of extensions. This function checks whether the current
-// DDL is being executed as part of an Extension DDL such as CREATE/ALTER/DROP extension.
+/*
+ * Extensions DDLs result in multiple DDL statements being executed during
+ * create/alter/drop of extensions. This function checks whether the current
+ * DDL is being executed as part of an Extension DDL such as CREATE/ALTER/DROP extension.
+ */
 bool
 IsCurrentDdlPartOfExtensionDdlBatch(CommandTag command_tag)
 {
-	// Extension DDL cannot be executed within another extension DDL.
+	/* Extension DDL cannot be executed within another extension DDL. */
 	if (IsExtensionDdl(command_tag))
 	{
 		return false;
@@ -236,8 +238,10 @@ DisallowMultiStatementQueries(CommandTag command_tag)
 		++count;
 		RawStmt *stmt = (RawStmt *) lfirst(lc);
 		CommandTag stmt_command_tag = CreateCommandTag(stmt->stmt);
-		// Only Extension DDLs are allowed to be part of multi-statement as they
-		// typically executes multiple DDLs under the covers.
+		/*
+		 * Only Extension DDLs are allowed to be part of multi-statement as they
+		 * typically executes multiple DDLs under the covers.
+		 */
 		if (!IsExtensionDdl(stmt_command_tag))
 		{
 			if (count > 1 || command_tag != stmt_command_tag)
@@ -268,13 +272,13 @@ DisallowMultiStatementQueries(CommandTag command_tag)
 void
 HandleSourceDDLEnd(EventTriggerData *trig_data)
 {
-	// Create memory context for handling json creation + query execution.
+	/* Create memory context for handling json creation + query execution. */
 	MemoryContext context_new, context_old;
 	Oid save_userid;
 	int save_sec_context;
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceDDLEnd context");
 
-	// Begin constructing json, fill common fields first.
+	/* Begin constructing json, fill common fields first. */
 	JsonbParseState *state = NULL;
 	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 	(void) AddNumericJsonEntry(state, "version", 1);
@@ -303,7 +307,7 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 
 	if (should_replicate_ddl)
 	{
-		// Construct the jsonb and insert completed row into ddl_queue table.
+		/* Construct the jsonb and insert completed row into ddl_queue table. */
 		JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 		Jsonb *jsonb = JsonbValueToJsonb(jsonb_val);
 
@@ -316,7 +320,7 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 void
 HandleTargetDDLEnd(EventTriggerData *trig_data)
 {
-	// Manual DDLs are not captured at all on the target.
+	/* Manual DDLs are not captured at all on the target. */
 	if (EnableManualDDLReplication)
 		return;
 	/*
@@ -328,7 +332,7 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 	int64 pkey_query_id = GetInt64FromVariable(DDLQueuePrimaryKeyQueryId,
 												"ddl_queue_primary_key_query_id");
 
-	// Create memory context for handling json creation + query execution.
+	/* Create memory context for handling json creation + query execution. */
 	MemoryContext context_new, context_old;
 	Oid save_userid;
 	int save_sec_context;
@@ -352,7 +356,7 @@ HandleSourceSQLDrop(EventTriggerData *trig_data)
 	if (EnableManualDDLReplication)
 		return;
 
-	// Create memory context for handling query execution.
+	/* Create memory context for handling query execution. */
 	MemoryContext context_new, context_old;
 	Oid save_userid;
 	int save_sec_context;
@@ -369,7 +373,7 @@ HandleSourceTableRewrite(EventTriggerData *trig_data)
 	if (EnableManualDDLReplication)
 		return;
 
-	// Create memory context for handling query execution.
+	/* Create memory context for handling query execution. */
 	MemoryContext context_new, context_old;
 	Oid save_userid;
 	int save_sec_context;
@@ -440,7 +444,7 @@ handle_ddl_end(PG_FUNCTION_ARGS)
 	if (IsInIgnoreList(trig_data))
 		PG_RETURN_NULL();
 
-	// Capture the DDL as long as its not a step within another Extension DDL batch.
+	/* Capture the DDL as long as its not a step within another Extension DDL batch. */
 	if (!IsCurrentDdlPartOfExtensionDdlBatch(trig_data->tag))
 	{
 		if (IsReplicationSource())
@@ -524,7 +528,7 @@ static char *GetExtensionName(CommandTag tag, List *parse_tree)
 		{
 			DropStmt *stmt = (DropStmt *) linitial_node(RawStmt, parse_tree)->stmt;
 
-			// Ensure there is at least one object in the list.
+			/* Ensure there is at least one object in the list. */
 			if (stmt->objects == NULL || list_length(stmt->objects) != 1)
 			{
 				elog(WARNING, "Unexpected number of objects in DROP EXTENSION statement");
@@ -563,4 +567,3 @@ IsInIgnoreList(EventTriggerData *trig_data)
 
 	return false;
 }
-

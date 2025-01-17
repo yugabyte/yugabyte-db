@@ -1,17 +1,17 @@
-// Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not
-// use this file except in compliance with the License.  You may obtain a copy
-// of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
-// License for the specific language governing permissions and limitations under
-// the License.
-
+/* Copyright (c) YugaByte, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
 #include "source_ddl_end_handler.h"
 
 #include "catalog/pg_am_d.h"
@@ -248,28 +248,30 @@ IsPassThroughDdlSupported(const char *command_tag_name)
 	return IsPassThroughDdlCommandSupported(command_tag);
 }
 
-// This function handles both new relation from create table/index,
-// and also new relations as a result of table rewrites.
+/*
+ * This function handles both new relation from create table/index,
+ * and also new relations as a result of table rewrites.
+ */
 bool
 ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
 {
 	Relation rel = RelationIdGetRelation(rel_oid);
 	if (!rel)
 		elog(ERROR, "Could not find relation with oid %d", rel_oid);
-	// Ignore temporary tables.
+	/* Ignore temporary tables. */
 	if (!IsYBBackedRelation(rel))
 	{
 		RelationClose(rel);
 		return false;
 	}
-	// Primary indexes are YB-backed, but don't have table properties.
+	/* Primary indexes are YB-backed, but don't have table properties. */
 	if (IsPrimaryIndex(rel))
 	{
 		RelationClose(rel);
 		return true;
 	}
 
-	// Also need to disallow colocated objects until that is supported.
+	/* Also need to disallow colocated objects until that is supported. */
 	YbcTableProperties table_props = YbGetTableProperties(rel);
 	bool is_colocated = table_props->is_colocated;
 	RelationClose(rel);
@@ -279,7 +281,7 @@ ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
 							   "yb_xcluster_ddl_replication"),
 						errdetail("%s", kManualReplicationErrorMsg)));
 
-	// Add the new relation to the list of relations to replicate.
+	/* Add the new relation to the list of relations to replicate. */
 	YbNewRelMapEntry *new_rel_entry = palloc(sizeof(struct YbNewRelMapEntry));
 	new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
 	new_rel_entry->rel_name = pstrdup(RelationGetRelationName(rel));
@@ -306,12 +308,14 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 			"WHERE i.tablename = '%s' AND i.schemaname = '%s';",
 			rewritten_table_name, schema_name);
 
-	// Preserve current state of SPI_processed and SPI_tuptable because they will be overwritten
-	// by the next SPI_execute call. This ensures that caller's expected state remains unchanged.
+	/*
+   * Preserve current state of SPI_processed and SPI_tuptable because they will be overwritten
+	 * by the next SPI_execute call. This ensures that caller's expected state remains unchanged.
+   */
 	int saved_processed = SPI_processed;
 	SPITupleTable * saved_tuptable = SPI_tuptable;
 
-	int exec_res = SPI_execute(query_buf.data, /*readonly*/ true, /*tcount*/ 0);
+	int exec_res = SPI_execute(query_buf.data, /* readonly */ true, /* tcount */ 0);
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
@@ -338,20 +342,20 @@ ShouldReplicateAlterReplication(Oid rel_oid)
 	Relation rel = RelationIdGetRelation(rel_oid);
 	if (!rel)
 		elog(ERROR, "Could not find relation with oid %d", rel_oid);
-	// Ignore temporary tables.
+	/* Ignore temporary tables. */
 	if (!IsYBBackedRelation(rel))
 	{
 		RelationClose(rel);
 		return false;
 	}
-	// Primary indexes are YB-backed, but don't have table properties.
+	/* Primary indexes are YB-backed, but don't have table properties. */
 	if (IsPrimaryIndex(rel))
 	{
 		RelationClose(rel);
 		return true;
 	}
 
-	// Also need to disallow colocated objects until that is supported.
+	/* Also need to disallow colocated objects until that is supported. */
 	YbcTableProperties table_props = YbGetTableProperties(rel);
 	bool is_colocated = table_props->is_colocated;
 	RelationClose(rel);
@@ -374,8 +378,10 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
-	// As long as there is at least one command that needs to be replicated, we
-	// will set this to true and replicate the entire query string.
+	/*
+   * As long as there is at least one command that needs to be replicated, we
+	 * will set this to true and replicate the entire query string.
+   */
 	List *new_rel_list = NIL;
 	bool should_replicate_ddl = false;
 	for (int row = 0; row < SPI_processed; row++)
@@ -395,27 +401,33 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		else if (command_tag == CMDTAG_ALTER_TABLE &&
 				 list_member_oid(rewritten_table_oid_list, obj_id))
 		{
-			// Verify if the command is ALTER COLUMN TYPE, which is currently unsupported.
-			// TODO(yyan): Unblock ALTER COLUMN TYPE table rewrite after resolving issue #24007.
+			/*
+			 * Verify if the command is ALTER COLUMN TYPE, which is currently unsupported.
+			 * TODO(yyan): Unblock ALTER COLUMN TYPE table rewrite after resolving issue #24007.
+			 */
 			CollectedCommand *cmd = GetCollectedCommand(spi_tuple, DDL_END_COMMAND_COLUMN_ID);
 			CheckAlterColumnTypeDDL(cmd);
 
 			rewritten_table_oid_list = list_delete_oid(rewritten_table_oid_list, obj_id);
-			// We need to also add the rewritten table to the new_rel_list, because in case of a table rewrite,
-			// the associated old DocDB table is discarded and a new one is created,
-			// and the relfile_oid of the table is updated to reference this new DocDB table,
+			/*
+			 * We need to also add the rewritten table to the new_rel_list, because in case of a table rewrite,
+			 * the associated old DocDB table is discarded and a new one is created,
+			 * and the relfile_oid of the table is updated to reference this new DocDB table,
+			 */
 			should_replicate_ddl |=
 				ShouldReplicateNewRelation(obj_id, &new_rel_list);
 
-			// Add all indexes that are associated with this table, as table rewrite will
-			// also rewrite all dependent index tables.
+			/*
+			 * Add all indexes that are associated with this table, as table rewrite will
+			 * also rewrite all dependent index tables.
+			 */
 			const char *schema_name = SPI_GetText(spi_tuple, DDL_END_SCHEMA_NAME_COLUMN_ID);
 			ProcessRewrittenIndexes(obj_id, schema_name, &new_rel_list);
 		}
 		else if (command_tag == CMDTAG_ALTER_TABLE ||
 				 command_tag == CMDTAG_ALTER_INDEX)
 		{
-			// TODO(jhe): May need finer grained control over ALTER TABLE commands.
+			/* TODO(jhe): May need finer grained control over ALTER TABLE commands. */
 			should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
 		}
 		else if (IsPassThroughDdlSupported(command_tag_name))
@@ -431,7 +443,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 
 	if (new_rel_list)
 	{
-		// Add the new_rel_map to the JSON output.
+		/* Add the new_rel_map to the JSON output. */
 		AddJsonKey(state, "new_rel_map");
 		(void) pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
 
@@ -461,15 +473,17 @@ ProcessSourceEventTriggerTableRewrite()
 	StringInfoData query_buf;
 	initStringInfo(&query_buf);
 	appendStringInfo(&query_buf, "SELECT pg_event_trigger_table_rewrite_oid()");
-	int exec_res = SPI_execute(query_buf.data, /*readonly*/ true, /*tcount*/ 0);
+	int exec_res = SPI_execute(query_buf.data, /* readonly */ true, /* tcount */ 0);
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
 	HeapTuple spi_tuple = SPI_tuptable->vals[0];
 	Oid rewritten_table_oid = SPI_GetOid(spi_tuple, TABLE_REWRITE_OBJID_COLUMN_ID);
 
-	// Add the rewritten table to the list of rewritten tables, so that ddl end event
-	// triggers can process the rewritten table.
+	/*
+	 * Add the rewritten table to the list of rewritten tables, so that ddl end event
+	 * triggers can process the rewritten table.
+	 */
 	MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	rewritten_table_oid_list = lappend_oid(rewritten_table_oid_list, rewritten_table_oid);
 	MemoryContextSwitchTo(oldcontext);
@@ -487,8 +501,10 @@ ProcessSourceEventTriggerDroppedObjects()
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
-	// As long as there is at least one command that needs to be replicated, we
-	// will set this to true and replicate the entire query string.
+	/*
+	 * As long as there is at least one command that needs to be replicated, we
+	 * will set this to true and replicate the entire query string.
+	 */
 	bool should_replicate_ddl = false;
 	bool found_temp = false;
 	for (int row = 0; row < SPI_processed; row++)
