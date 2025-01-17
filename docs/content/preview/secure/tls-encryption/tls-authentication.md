@@ -175,10 +175,6 @@ Type "help" for help.
 
 This configuration requires the client to use client-to-server encryption and authenticate with both the appropriate certificate and the password to connect.
 
-{{< note title="Note" >}}
-To use the client certificate only for verification (signed by the CA) but not for authentication, the clientcert parameter can be set to verify-ca.
-{{< /note >}}
-
 To create the database, execute the following command:
 
 ```sh
@@ -212,3 +208,7 @@ ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
+
+{{< note title="Note" >}}
+To use the client certificate only for verification (signed by the CA) but not for authentication, the clientcert parameter can be set to verify-ca.
+{{< /note >}}
