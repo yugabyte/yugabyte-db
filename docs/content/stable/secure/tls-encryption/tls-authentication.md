@@ -30,7 +30,7 @@ The four default cases are shown in the following table.
 | TLS enabled | `hostssl all all all trust`</br>(require ssl, no password) | `hostssl all all all md5`</br>(require ssl and password) |
 
 {{< note title="Note" >}}
-Before version 2.5.2, when TLS was enabled the default was to use the more strict `cert` option when auth was disabled, and `md5 clientcert=1` (md5 auth + cert verification) when auth was enabled.
+Before YugabyteDB v2.5.2, when TLS was enabled the default was to use the more strict `cert` option when auth was disabled, and `md5 clientcert=1` (md5 auth + cert verification) when auth was enabled.
 {{< /note >}}
 
 Additionally, `ysql_hba_conf_csv` can be used to manually configure a custom HBA configuration.
