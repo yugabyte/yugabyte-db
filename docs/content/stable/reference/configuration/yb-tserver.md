@@ -887,6 +887,12 @@ Specifies the [severity level](https://www.postgresql.org/docs/11/runtime-config
 
 Default: `WARNING`
 
+##### --enable_pg_cron
+
+Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
+
+Default: `false`
+
 ##### --ysql_cron_database_name
 
 Specifies the database where pg_cron is to be installed. You can create the database after setting the flag.
