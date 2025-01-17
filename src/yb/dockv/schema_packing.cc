@@ -83,6 +83,10 @@ struct DoGetValueVisitor {
   Slice Primitive() const {
     return Slice(data, sizeof(T));
   }
+
+  Slice Vector() const {
+    return Binary();
+  }
 };
 
 UnsafeStatus NopRouter(

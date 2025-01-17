@@ -121,9 +121,11 @@ CMake
 Cobertura
 Codepen
 Cognito
+Cohesity
 colocated
 colocating
 colocation
+Commvault
 compilable
 composable
 Conda

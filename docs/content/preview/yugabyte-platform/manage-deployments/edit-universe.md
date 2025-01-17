@@ -54,6 +54,20 @@ YugabyteDB automatically ensures that new nodes start hosting the tablet leaders
 
 To change the number of nodes of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities, you must first add the certificates to the nodes you will add to the universe. Refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-ca/). Ensure that the certificates are signed by the same external CA and have the same root certificate. In addition, ensure that you copy the certificates to the same locations that you originally used when creating the universe.
 
+### Edit connection pooling
+
+{{<tags/feature/ea>}}If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).
+
+While in Early Access, the feature is not available by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+
+To enable or disable connection pooling on a universe:
+
+1. Navigate to your universe.
+1. Click **Actions > Edit Connection Pooling** to open the **Edit Connection Pooling** dialog.
+1. Enable or disable the **Built-In Connection Pooling** option.
+1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
+1. Click **Apply Changes**.
+
 ## Smart resize
 
 Normally when resizing a universe, YugabyteDB moves the data from the old nodes to the new nodes. However, if the universe is deployed on AWS, GCP, or Azure using a [cloud provider configuration](../../configure-yugabyte-platform/aws/), you can perform some resizing operations without migrating the data. This is referred to as smart resize, and can be significantly faster than a full copy of the data.
