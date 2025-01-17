@@ -15,15 +15,17 @@ YugabyteDB ships with command line interface (CLI) shells for interacting with e
 | [ysqlsh](../../api/ysqlsh/) | [YSQL](../../api/ysql/) | SQL shell for interacting with YugabyteDB using PostgreSQL-compatible YSQL API. |
 | [ycqlsh](../../api/ycqlsh/) | [YCQL](../../api/ycql/) | CQL shell for interacting with YugabyteDB using Cassandra-compatible YCQL API. |
 
+## Compatibility
+
+Clients work best with servers of the same or an older major version. If you are running multiple versions of YugabyteDB, use the newest version of the client to connect. You can keep and use the matching version of a client to use with each version of YugabyteDB, but in practice, this shouldn't be necessary. For best results, use the latest client.
+
+While the general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, this cannot be guaranteed in all cases. In particular, due to the change from PostgreSQL 11 to 15 in YugabyteDB 2.25, use only the latest client to avoid compatibility issues.
+
 ## Installation
 
 The YugabyteDB clients are installed with [YugabyteDB](../ybdb-releases/) and located in the `bin` directory of the YugabyteDB home directory.
 
-Clients work best with servers of the same or an older major version. The general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, but this cannot be guaranteed in all cases.
-
-If you are running multiple versions of YugabyteDB, use the newest version of the client to connect. You can keep and use the matching version of a client to use with each version of YugabyteDB, but in practice, this shouldn't be necessary.
-
-You can install a standalone version using any of the following methods:
+You can also install a standalone version using any of the following methods:
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

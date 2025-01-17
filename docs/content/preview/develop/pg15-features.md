@@ -161,7 +161,9 @@ Upgrading to v2.25 from previous versions (v2.23) is not yet available.
 
 When upgrading a YugabyteDB cluster from PostgreSQL 11-compatible versions (v2024.2 and earlier) to a PostgreSQL 15-compatible version (v2.25 and later), the following features have different behaviors due to changes in the underlying PostgreSQL implementation.
 
-### ysqlsh flags
+### ysqlsh
+
+To ensure compatibility, make sure you are using the [latest ysqlsh client](../../releases/yugabyte-clients/) (v2.25) with YugabyteDB v2.25.
 
 Due to the addition of the `--csv` option in psql (and hence [ysqlsh](../../api/ysqlsh/)), you can no longer use the `--c` (double-hyphen) flag in place of `--command`. Use either `-c` (single hyphen) or `--command` instead.
 
