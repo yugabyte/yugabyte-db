@@ -133,4 +133,8 @@ bool TypeInfo::is_collection() const {
          type == DataType::USER_DEFINED_TYPE;
 }
 
+bool TypeInfo::is_vector() const {
+  return type == DataType::VECTOR;
+}
+
 } // namespace yb

@@ -163,6 +163,10 @@ struct VisitDoDecodeValueV2 {
     return Status::OK();
   }
 
+  Status Vector() const {
+    return Binary();
+  }
+
   template <class T>
   Status Primitive() const {
 #ifdef IS_LITTLE_ENDIAN
@@ -302,18 +306,28 @@ void EncodeBinary(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncode
   }
 
   auto slice = row.GetVarlenSlice(index);
-  if (!row.projection().columns[index].is_vector) {
-    buffer->AppendWithPrefix(0, slice);
-  } else {
-    // Vector's value contains VectorId at the end, but it is docdb internal field. Hence the value
-    // should be repacked without VectorId.
-    auto encoded_value = DocVectorValue::SanitizeValue(BinaryAppender::SanitizeBinary(slice));
+  buffer->AppendWithPrefix(0, slice);
+  CallNextEncoder<kLast>(row, buffer, chain);
+}
 
-    ByteBuffer<BinaryAppender::kLengthSize> encoded_value_size;
-    BinaryAppender::AppendLength(&encoded_value_size, encoded_value.size());
-
-    buffer->AppendValues(char{0}, encoded_value_size.AsSlice(), encoded_value);
+template <bool kLast>
+void EncodeVector(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncoderEntry* chain) {
+  auto index = chain->data;
+  if (PREDICT_FALSE(row.IsNull(index))) {
+    buffer->PushBack(1);
+    CallNextEncoder<kLast>(row, buffer, chain);
+    return;
   }
+
+  auto slice = row.GetVarlenSlice(index);
+  // Vector's value contains VectorId at the end, but it is docdb internal field. Hence the value
+  // should be repacked without VectorId.
+  auto encoded_value = DocVectorValue::SanitizeValue(BinaryAppender::SanitizeBinary(slice));
+
+  ByteBuffer<BinaryAppender::kLengthSize> encoded_value_size;
+  BinaryAppender::AppendLength(&encoded_value_size, encoded_value.size());
+
+  buffer->AppendValues(char{0}, encoded_value_size.AsSlice(), encoded_value);
 
   CallNextEncoder<kLast>(row, buffer, chain);
 }
@@ -335,6 +349,10 @@ struct EncoderProvider {
 
   PgWireEncoder Decimal() const {
     return Binary();
+  }
+
+  PgWireEncoder Vector() const {
+    return EncodeVector<kLast>;
   }
 };
 
@@ -568,6 +586,10 @@ struct GetPackedColumnDecoderVisitorV2 {
     return Apply<BinaryValueDecoder<true, ValueEntryTypeAsChar::kDecimal>>();
   }
 
+  PackedColumnDecoderV2 Vector() const {
+    return Binary();
+  }
+
  private:
   template<class Decoder>
   PackedColumnDecoderV2 Apply() const {
@@ -592,6 +614,10 @@ struct GetPackedColumnDecoderVisitorV1 {
 
   PackedColumnDecoderV1 Decimal() const {
     return Apply<BinaryValueDecoder<true, ValueEntryTypeAsChar::kDecimal>>();
+  }
+
+  PackedColumnDecoderV1 Vector() const {
+    return Binary();
   }
 
  private:

@@ -1236,7 +1236,6 @@ class GetHelperBase : public PackedRowContext {
       .id = ColumnId(dockv::KeyEntryValue::kLivenessColumn.GetColumnId()),
       .subkey = dockv::KeyEntryValue::kLivenessColumn,
       .data_type = DataType::NULL_VALUE_TYPE,
-      .is_vector = false,
     };
     return kProjectedLivenessColumn;
   }
@@ -1366,6 +1365,10 @@ struct MakePackedRowDecoderV2Visitor {
 
   dockv::PackedColumnDecoderV2 Decimal() const {
     return Apply<0>();
+  }
+
+  dockv::PackedColumnDecoderV2 Vector() const {
+    return Binary();
   }
 
  private:

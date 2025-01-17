@@ -129,25 +129,6 @@ std::string MakeTableInfoLogPrefix(
   return primary ? tablet_log_prefix : Format("TBL $0 $1", table_id, tablet_log_prefix);
 }
 
-std::vector<ColumnId> GetVectorIndexedColumns(const qlexpr::IndexMap& index_map) {
-  std::vector<ColumnId> result;
-  result.reserve(1); // It is expected to have only 1 vector-indexed column.
-  for (const auto& it : index_map) {
-    const auto& index = it.second;
-    if (!index.is_vector_index()) {
-      continue;
-    }
-    const auto& vector_options = index.vector_idx_options();
-    if (!vector_options.has_column_id()) {
-      DCHECK(vector_options.has_column_id());
-      continue;
-    }
-
-    result.emplace_back(make_signed(vector_options.column_id()));
-  }
-  return result;
-}
-
 } // namespace
 
 const int64 kNoDurableMemStore = -1;
@@ -271,20 +252,6 @@ TableInfo::~TableInfo() = default;
 void TableInfo::CompleteInit() {
   if (index_info && index_info->is_vector_index()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
-
-    // TODO(vector-index) could be removed if PG uses DataType::VECTOR for a column.
-    if (!index_info->vector_idx_options().has_column_id()) {
-      LOG_WITH_PREFIX(DFATAL) << "It is expected to have column id specified for vector index";
-    } else {
-      // NB! Index schema must have the last column be a vector for which vector index created.
-      ColumnId id = doc_read_context->schema().column_ids().back();
-      doc_read_context->mutable_schema()->SetVectorColumns({ id });
-    }
-  }
-
-  // TODO(vector-index) could be removed if PG uses DataType::VECTOR for a column.
-  if (index_map) {
-    doc_read_context->mutable_schema()->SetVectorColumns(GetVectorIndexedColumns(*index_map));
   }
 
   if (!index_info || !index_info->is_unique()) {
