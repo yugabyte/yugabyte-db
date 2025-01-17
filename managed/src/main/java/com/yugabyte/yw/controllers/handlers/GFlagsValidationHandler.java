@@ -45,6 +45,9 @@ public class GFlagsValidationHandler {
   public static final Set<String> GFLAGS_FILTER_TAGS =
       ImmutableSet.of("experimental", "hidden", "auto");
 
+  public static final Set<String> GFLAGS_FILTER_TAGS_ALLOW_EXPERIMENTAL =
+      ImmutableSet.of("hidden", "auto");
+
   public static final Set<Pattern> GFLAGS_FILTER_PATTERN =
       ImmutableSet.of(
           Pattern.compile("^.*_test.*$", CASE_INSENSITIVE),
@@ -68,12 +71,17 @@ public class GFlagsValidationHandler {
               .build();
 
   public List<GFlagDetails> listGFlags(
-      String version, String gflag, String serverType, Boolean mostUsedGFlags) throws IOException {
+      String version,
+      String gflag,
+      String serverType,
+      Boolean mostUsedGFlags,
+      Boolean showExperimental)
+      throws IOException {
     validateServerType(serverType);
     validateVersionFormat(version);
     List<GFlagDetails> gflagsList =
         gflagsValidation.extractGFlags(version, serverType, mostUsedGFlags);
-    gflagsList = filterGFlagsList(gflagsList);
+    gflagsList = filterGFlagsList(gflagsList, showExperimental);
     if (StringUtils.isEmpty(gflag)) {
       return gflagsList;
     }
@@ -266,7 +274,8 @@ public class GFlagsValidationHandler {
     }
   }
 
-  private List<GFlagDetails> filterGFlagsList(List<GFlagDetails> gflagsList) {
+  private List<GFlagDetails> filterGFlagsList(
+      List<GFlagDetails> gflagsList, Boolean showExperimental) {
     return gflagsList.stream()
         .filter(
             flag ->
@@ -275,7 +284,9 @@ public class GFlagsValidationHandler {
                             regexMatcher ->
                                 !StringUtils.isEmpty(flag.name)
                                     && regexMatcher.matcher(flag.name).find())
-                    && !GFLAGS_FILTER_TAGS.stream()
+                    && !(showExperimental
+                            ? GFLAGS_FILTER_TAGS_ALLOW_EXPERIMENTAL.stream()
+                            : GFLAGS_FILTER_TAGS.stream())
                         .anyMatch(
                             tags -> !StringUtils.isEmpty(flag.tags) && flag.tags.contains(tags))
                     && !GFlagsUtil.GFLAGS_FORBIDDEN_TO_OVERRIDE.contains(flag.name))
