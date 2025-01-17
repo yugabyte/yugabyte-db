@@ -79,8 +79,8 @@ This view provides a list of wait events and their metadata. The columns of the 
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
 | wait_event_aux | text | Additional information for the wait event. For example, tablet ID for TServer wait events. |
 | top_level_node_id | UUID | 16-byte TServer UUID of the YSQL/YCQL node where the query is being executed. |
-| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](../../query-1-performance/ycql-stat-statements/). It is set as a known constant for background activities. For example, _flush_ is 2, _compaction_ is 3, and so on. |
-| pid | bigint | PID of the process that is executing the query. For YCQL and background activites, this will be the YB-TServer PID. |
+| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](../../query-1-performance/ycql-stat-statements/). See [Constant query identifiers](#constant-query-identifiers). |
+| pid | bigint | PID of the process that is executing the query. For YCQL and background activities, this will be the YB-TServer PID. |
 | client_node_ip | text | IP address of the client which sent the query to YSQL/YCQL. Null for background activities. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `ysql_yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events are collected, each of the collected samples will have a weight of (200 / 100) = 2.0 |
 | ysql_dbid | oid | Database OID of the YSQL database. This is 0 for YCQL databases.  |
@@ -98,16 +98,16 @@ This view displays the class, type, name, and description of each wait event. Th
 
 ## Constant query identifiers
 
-These fixed constants are used to identify various YugabyteDB background activities. The query ids of the fixed constants are described in the following table.
+These fixed constants are used to identify various YugabyteDB background activities. The query IDs of the fixed constants are described in the following table.
 
-| Query id | Wait Event Component | Description |
+| Query ID | Wait Event Component | Description |
 | :------- | :------------------- | :---------- |
-| 1 | TServer | Query id for write ahead log (WAL) appender thread. |
-| 2 | TServer | Query id for background flush tasks. |
-| 3 | TServer | Query id for background compaction tasks. |
-| 4 | TServer | Query id for Raft update consensus. |
-| 5 | YSQL/TServer | Default query id before it's calculated in YSQL. |
-| 6 | TServer | Query id for write ahead log (WAL) background sync. |
+| 1 | TServer | Query ID for write ahead log (WAL) appender thread. |
+| 2 | TServer | Query ID for background flush tasks. |
+| 3 | TServer | Query ID for background compaction tasks. |
+| 4 | TServer | Query ID for Raft update consensus. |
+| 5 | YSQL/TServer | Default query ID as observed in pg_stat_statements. |
+| 6 | TServer | Query ID for write ahead log (WAL) background sync. |
 
 ## Wait events
 
@@ -115,7 +115,7 @@ List of wait events by the wait event components.
 
 ### YSQL
 
-These are the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/current/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
+These are the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/11/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
 
 | Wait Event Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 | :--------------- |:---------- | :-------------- |:--- | :---------- |
