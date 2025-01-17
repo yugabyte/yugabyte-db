@@ -25,10 +25,9 @@ The default (auto-generated) configuration in the `ysql_hba.conf` file depends o
 The four default cases are shown in the following table.
 
 | | Auth disabled | Auth enabled |
-| ---|---|---|
+| :--- | :--- | :--- |
 | TLS disabled | `host all all all trust`</br>(no ssl, no password) | `host all all all md5`</br>(no ssl, password required) |
 | TLS enabled | `hostssl all all all trust`</br>(require ssl, no password) | `hostssl all all all md5`</br>(require ssl and password) |
-
 
 Additionally, `ysql_hba_conf_csv` can be used to manually configure a custom HBA configuration.
 
@@ -37,6 +36,10 @@ For instance, to use TLS with both password authentication and client certificat
 ```sh
 hostssl all all all md5 clientcert=verify-full
 ```
+
+{{< note title="Note" >}}
+To use the client certificate only for verification (signed by the CA) but not for authentication, you can set `clientcert` to verify-ca.
+{{< /note >}}
 
 The `ysql_hba_conf_csv` rules are added above the auto-generated rules in the `ysql_hba.conf` file, so if they do not match the connection type, database, user, or host, then the auto-generated rules (that is, from the table above) may still be used.
 
@@ -208,7 +211,3 @@ ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
-
-{{< note title="Note" >}}
-To use the client certificate only for verification (signed by the CA) but not for authentication, the clientcert parameter can be set to verify-ca.
-{{< /note >}}

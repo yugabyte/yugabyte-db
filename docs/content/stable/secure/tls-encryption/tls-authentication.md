@@ -25,7 +25,7 @@ The default (auto-generated) configuration in the `ysql_hba.conf` file depends o
 The four default cases are shown in the following table.
 
 | | Auth disabled | Auth enabled |
----|---|---|
+| :--- | :--- | :--- |
 | TLS disabled | `host all all all trust`</br>(no ssl, no password) | `host all all all md5`</br>(no ssl, password required) |
 | TLS enabled | `hostssl all all all trust`</br>(require ssl, no password) | `hostssl all all all md5`</br>(require ssl and password) |
 
@@ -144,7 +144,7 @@ The other modes (that is, `sslmode=require` or `disable`) behave analogously.
 This configuration requires the client to use client-to-server encryption and authenticate with the appropriate certificate to connect.
 
 {{< note title="Note" >}}
-Before version 2.5.2, this was the default for TLS without authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
+Before YugabyteDB v2.5.2, this was the default for TLS without authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
 {{< /note >}}
 
 To create the database, execute the following command:
@@ -183,7 +183,7 @@ Type "help" for help.
 This configuration requires the client to use client-to-server encryption, supplying a signed client certificate, while using a password to authenticate. Note that the server verifies that the client certificate is signed by the configured CA but it does not use the CN (Common Name) of the client certificate to authenticate the user. It is not possible to configure the server to require authentication via both password and client certificate.
 
 {{< note title="Note" >}}
-Before version 2.5.2, this was the default for TLS with authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
+Before YugabyteDB v2.5.2, this was the default for TLS with authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
 
 {{< /note >}}
 
