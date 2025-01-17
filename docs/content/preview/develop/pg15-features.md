@@ -155,6 +155,10 @@ The following features supported in v2024.2 and earlier are not yet available in
 
 ## Upgrading
 
+{{< warning title="Upgrading to v2.25" >}}
+Upgrading to v2.25 from previous versions (v2.23) is not yet available.
+{{< /warning >}}
+
 When upgrading a YugabyteDB cluster from PostgreSQL 11-compatible versions (v2024.2 and earlier) to a PostgreSQL 15-compatible version (v2.25 and later), the following features have different behaviors due to changes in the underlying PostgreSQL implementation.
 
 ### ysqlsh flags
