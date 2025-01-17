@@ -28,27 +28,18 @@ Analyzing the wait events and wait event types lets you troubleshoot, answer the
 
 ## Configure ASH
 
-To use ASH, enable and configure the following flags for each node of your cluster.
+To configure ASH, you can set the following YB-TServer flags for each node of your cluster. Changing these flags doesn't require a VM restart.
 
-| Flag | Description |
-| :--- | :---------- |
-| allowed_preview_flags_csv | Set the value of this flag to include `ysql_yb_ash_enable_infra,ysql_yb_enable_ash`. |
-| ysql_yb_ash_enable_infra | Enable or disable ASH infrastructure. <br>Default: false. Changing this flag requires a VM restart. |
-| ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Setting this flag to true enables the collection of wait events for YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a VM restart. |
-
-### Additional flags
-
-You can also use the following flags based on your requirements.
-
-| Flag | Description |
-| :--- | :---------- |
-| ysql_yb_ash_circular_buffer_size | Size (in KBs) of circular buffer where the samples are stored. <br> Default: 16*1024. Changing this flag requires a VM restart. |
-| ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). <br>Default: 1000. Changing this flag doesn't require a VM restart. |
-| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. <br>Default: 500. Changing this flag doesn't require a VM restart. |
+| Flag | Description | Default |
+| :--- | :---------- | :------ |
+| ysql_yb_enable_ash | Set this flag to true enable the collection of wait events for YSQL and YCQL queries, and YB-TServer requests. | true |
+| ysql_yb_ash_circular_buffer_size | Size (in KBs) of circular buffer where the samples are stored. | 16*1024 |
+| ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). | 1000 |
+| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. | 500 |
 
 ## Limitations
 
-Note that the following limitations are subject to change as the feature is in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+Note that the following limitations are subject to change.
 
 - ASH is available per node and is not aggregated across the cluster.
 - ASH is not available for [YB-Master](../../../architecture/yb-master/) processes.
@@ -80,7 +71,7 @@ This view provides a list of wait events and their metadata. The columns of the 
 | wait_event_aux | text | Additional information for the wait event. For example, tablet ID for TServer wait events. |
 | top_level_node_id | UUID | 16-byte TServer UUID of the YSQL/YCQL node where the query is being executed. |
 | query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](../../query-1-performance/ycql-stat-statements/). It is set as a known constant for background activities. For example, _flush_ is 2, _compaction_ is 3, and so on. |
-| pid | bigint | PID of the process that is executing the query. For YCQL and background activites, this will be the YB-TServer PID. |
+| pid | bigint | PID of the process that is executing the query. For YCQL and background activities, this will be the YB-TServer PID. |
 | client_node_ip | text | IP address of the client which sent the query to YSQL/YCQL. Null for background activities. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `ysql_yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events are collected, each of the collected samples will have a weight of (200 / 100) = 2.0 |
 
