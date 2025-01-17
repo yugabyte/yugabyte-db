@@ -4,8 +4,6 @@ headerTitle: Active Session History
 linkTitle: Active Session History
 description: Use Active Session History to get current and past views of the database system activity.
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues
-tags:
-  feature: tech-preview
 menu:
   preview:
     identifier: ash
@@ -74,6 +72,31 @@ This view provides a list of wait events and their metadata. The columns of the 
 | pid | bigint | PID of the process that is executing the query. For YCQL and background activities, this will be the YB-TServer PID. |
 | client_node_ip | text | IP address of the client which sent the query to YSQL/YCQL. Null for background activities. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `ysql_yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events are collected, each of the collected samples will have a weight of (200 / 100) = 2.0 |
+| ysql_dbid | oid | Database OID of the YSQL database. This is 0 for YCQL databases.  |
+
+### yb_wait_event_desc
+
+This view displays the class, type, name, and description of each wait event. The columns of the view are described in the following table.
+
+| Column | Type | Description |
+| :----- | :--- | :---------- |
+| wait_event_class | text | Class of the wait event, such as TabletWait, RocksDB, and so on. |
+| wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
+| wait_event | text | Name of the wait event. |
+| wait_event_description | text | Description of the wait event. |
+
+## Constant query identifiers
+
+These fixed constants are used to identify various YugabyteDB background activities. The query ids of the fixed constants are described in the following table.
+
+| Query id | Wait Event Component | Description |
+| :------- | :------------------- | :---------- |
+| 1 | TServer | Query id for write ahead log (WAL) appender thread. |
+| 2 | TServer | Query id for background flush tasks. |
+| 3 | TServer | Query id for background compaction tasks. |
+| 4 | TServer | Query id for Raft update consensus. |
+| 5 | YSQL/TServer | Default query id before it's calculated in YSQL. |
+| 6 | TServer | Query id for write ahead log (WAL) background sync. |
 
 ## Wait events
 
@@ -81,17 +104,28 @@ List of wait events by the wait event components.
 
 ### YSQL
 
-These are the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/current/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
+These are the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/15/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
 
 | Wait Event Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 | :--------------- |:---------- | :-------------- |:--- | :---------- |
-| TServerWait | StorageRead | Network  |  | A YSQL backend is waiting for a table read from DocDB. |
+| TServerWait | TableRead | Network  |  | A YSQL backend is waiting for a table read from DocDB. |
 | TServerWait | CatalogRead | Network  |   | A YSQL backend is waiting for a catalog read from master. |
 | TServerWait | IndexRead | Network |   | A YSQL backend is waiting for a secondary index read from DocDB.  |
 | TServerWait | StorageFlush  | Network |  | A YSQL backend is waiting for a table/index read/write from DocDB. |
-| YSQLQuery | QueryProcessing| CPU |  | Doing CPU work |
+| TServerWait | TableWrite  | Network |  | A YSQL backend is waiting for a table write from DocDB. |
+| TServerWait | CatalogWrite  | Network |  | A YSQL backend is waiting for a catalog write from master. |
+| TServerWait | IndexWrite | Network |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
+| YSQLQuery | QueryProcessing| CPU |  | A YSQL backend is doing CPU work.|
 | YSQLQuery | yb_ash_metadata | LWLock |  | A YSQL backend is waiting to update ASH metadata for a query. |
-| Timeout | YBTxnConflictBackoff | Timeout |  | A YSQL backend is waiting due to conflict in DocDB. |
+| YSQLQuery | YBParallelScanEmpty| IPC |  | A YSQL backend is waiting on an empty queue while fetching parallel range keys. |
+| YSQLQuery | CopyCommandStreamRead| IO |  | A YSQL backend is waiting for a read from a file or program during COPY. |
+| YSQLQuery | CopyCommandStreamWrite| IO |  | A YSQL backend is waiting for a write to a file or program during COPY. |
+| YSQLQuery | YbAshMain| Activity |  | The YugabyteDB ASH collector background worker is waiting in the main loop. |
+| YSQLQuery | YbAshCircularBuffer| LWLock |  | A YSQL backend is waiting for YugabyteDB ASH circular buffer memory access. |
+| YSQLQuery | QueryDiagnosticsMain| Activity |  | The YugabyteDB query diagnostics background worker is waiting in the main loop. |
+| YSQLQuery | YbQueryDiagnostics| LWLock |  | A YSQL backend is waiting for YugabyteDB query diagnostics hash table memory access. |
+| YSQLQuery | YbQueryDiagnosticsCircularBuffer| LWLock |  | A YSQL backend is waiting for YugabyteDB query diagnostics circular buffer memory access. |
+| YSQLQuery | YBTxnConflictBackoff | Timeout |  | A YSQL backend is waiting for transaction conflict resolution with an exponential backoff. |
 
 ### YB-TServer
 
@@ -194,7 +228,7 @@ ORDER BY
   6107501747146929242 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |    10
   6107501747146929242 | TServer              | Rpc_Done                           | WaitOnCondition |    15
   6107501747146929242 | YSQL                 | QueryProcessing                    | Cpu             |   285
-  6107501747146929242 | YSQL                 | StorageRead                        | Network         |   658
+  6107501747146929242 | YSQL                 | TableRead                        | Network         |   658
   6107501747146929242 | YSQL                 | CatalogRead                        | Network         |     1
 ```
 
