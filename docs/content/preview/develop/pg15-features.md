@@ -22,6 +22,16 @@ Initially based on PostgreSQL 11.2, YSQL has been continuously enhanced with fea
 Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/).
 {{</lead>}}
 
+## Try it out
+
+PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 preview release.
+
+| Product | Try it out |
+| :--- | :--- |
+| YugabyteDB | Follow the instructions in [Quick Start](../../tutorials/quick-start/). |
+| YugabyteDB&nbsp;Anywhere | [Install YugabyteDB Anywhere 2.25.0.0 or later](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#quick-start) and [create a universe](../../yugabyte-platform/create-deployments/create-universe-multi-zone/) using DB Version 2.25.0.0 or later. |
+| YugabyteDB Aeon| Coming Soon |
+
 ## What's new
 
 ### Major features
