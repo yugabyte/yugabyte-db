@@ -100,7 +100,7 @@ This view displays the class, type, name, and description of each wait event. Th
 
 These fixed constants are used to identify various YugabyteDB background activities. The query IDs of the fixed constants are described in the following table.
 
-| Query id | Wait Event Component | Description |
+| Query ID | Wait Event Component | Description |
 | :------- | :------------------- | :---------- |
 | 1 | TServer | Query ID for write ahead log (WAL) appender thread. |
 | 2 | TServer | Query ID for background flush tasks. |
