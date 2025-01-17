@@ -30,7 +30,7 @@ The four default cases are shown in the following table.
 | TLS enabled | `hostssl all all all trust`</br>(require ssl, no password) | `hostssl all all all md5`</br>(require ssl and password) |
 
 {{< note title="Note" >}}
-Before version 2.5.2, when TLS was enabled the default was to use the more strict `cert` option when auth was disabled, and `md5 clientcert=1` (effectively md5 + cert) when auth was enabled.
+Before version 2.5.2, when TLS was enabled the default was to use the more strict `cert` option when auth was disabled, and `md5 clientcert=verify-ca` (password auth + cert verification) when auth was enabled.
 {{< /note >}}
 
 Additionally, `ysql_hba_conf_csv` can be used to manually configure a custom HBA configuration.
@@ -38,7 +38,7 @@ Additionally, `ysql_hba_conf_csv` can be used to manually configure a custom HBA
 For instance, to use TLS with both `md5` and `cert` authentication, you can set the `ysql_hba_conf_csv` flag as follows:
 
 ```sh
-hostssl all all all md5 clientcert=1
+hostssl all all all md5 clientcert=verify-full
 ```
 
 The `ysql_hba_conf_csv` rules are added above the auto-generated rules in the `ysql_hba.conf` file, so if they do not match the connection type, database, user, or host, then the auto-generated rules (that is, from the table above) may still be used.
@@ -192,7 +192,7 @@ To create the database, execute the following command:
 ```sh
 $ ./bin/yb-ctl destroy && ./bin/yb-ctl create \
     --tserver_flags="$ENABLE_TLS,ysql_enable_auth=true" \
-    --ysql_hba_conf_csv="hostssl all all all md5 clientcert=1"
+    --ysql_hba_conf_csv="hostssl all all all md5 clientcert=verify-full"
 ```
 
 The `ysql_enable_auth=true` flag is redundant in this case, but included to demonstrate the ability to override the auto-generated configuration using `ysql_hba_conf_csv`.
