@@ -978,10 +978,10 @@ option = 'ANALYZE' [ boolean ]
            | 'COSTS' [ boolean ]
            | 'DEBUG' [boolean]
            | 'DIST' [boolean]
-           | 'FORMAT' ( 'TEXT' | 'XML' | 'JSON' | 'YAML' ) ;
+           | 'FORMAT' ( 'TEXT' | 'XML' | 'JSON' | 'YAML' )
            | 'SUMMARY' [ boolean ]
            | 'TIMING' [ boolean ]
-           | 'VERBOSE' [ boolean ]
+           | 'VERBOSE' [ boolean ] ;
 
 (* 'GRANT' *)
 grant = ( grant_table |
