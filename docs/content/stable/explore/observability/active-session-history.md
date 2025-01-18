@@ -42,7 +42,7 @@ You can also use the following flags based on your requirements.
 
 | Flag | Description |
 | :--- | :---------- |
-| ysql_yb_ash_circular_buffer_size | Size (in KBs) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MB for 1-2 cores</li><li>64 MB for 3-4 cores</li><li>128 MB for 5-8 cores</li><li>256 MB for 9-16 cores</li><li>512 MB for 17-32 cores</li><li>1024 MB for more than 32 cores</li></ul> Changing this flag requires a VM restart. |
+| ysql_yb_ash_circular_buffer_size | Size (in KB) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MB for 1-2 cores</li><li>64 MB for 3-4 cores</li><li>128 MB for 5-8 cores</li><li>256 MB for 9-16 cores</li><li>512 MB for 17-32 cores</li><li>1024 MB for more than 32 cores</li></ul> Changing this flag requires a VM restart. |
 | ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). <br>Default: 1000. Changing this flag doesn't require a VM restart. |
 | ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. <br>Default: 500. Changing this flag doesn't require a VM restart. |
 
@@ -106,7 +106,7 @@ These fixed constants are used to identify various YugabyteDB background activit
 | 2 | TServer | Query ID for background flush tasks. |
 | 3 | TServer | Query ID for background compaction tasks. |
 | 4 | TServer | Query ID for Raft update consensus. |
-| 5 | YSQL/TServer | Default query ID as observed in pg_stat_statements. |
+| 5 | YSQL/TServer | Default query ID before it's calculated in YSQL. |
 | 6 | TServer | Query ID for write ahead log (WAL) background sync. |
 
 ## Wait events
