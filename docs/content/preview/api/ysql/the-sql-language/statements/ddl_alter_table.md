@@ -66,7 +66,6 @@ Renaming a table is a non blocking metadata change operation.
 
 {{< /note >}}
 
-
 #### SET TABLESPACE *tablespace_name*
 
 Asynchronously change the tablespace of an existing table.
@@ -85,8 +84,8 @@ DETAIL:  Data movement is a long running asynchronous process and can be monitor
 ALTER TABLE
 ```
 
-
 Tables can be moved to the default tablespace using:
+
 ```sql
 ALTER TABLE table_name SET TABLESPACE pg_default;
 ```

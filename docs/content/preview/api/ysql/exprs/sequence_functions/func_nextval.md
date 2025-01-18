@@ -6,7 +6,7 @@ description: Returns the next value from the sequence cache for the current sess
 menu:
   preview_api:
     identifier: api-ysql-exprs-nextval
-    parent: api-ysql-exprs
+    parent: sequence-functions
 aliases:
   - /preview/api/ysql/exprs/func_nextval
 type: docs
@@ -26,7 +26,7 @@ Specify the name of the sequence.
 
 ## Caching values on the YB-TServer
 
-If [ysql_sequence_cache_method](../../../../reference/configuration/yb-tserver/#ysql-sequence-cache-method) is set to `server`, sequence values are cached on the YB-TServer, to be shared with all connections on that YB-TServer. This is beneficial when many connections on the server are expected to get the next value of a sequence. Normally, each connection waits for replication to complete, which can be expensive, especially in a multi-region cluster. With the server cache method, only one connection waits for Raft replication and the rest retrieve values from the same cached range.
+If [ysql_sequence_cache_method](../../../../../reference/configuration/yb-tserver/#ysql-sequence-cache-method) is set to `server`, sequence values are cached on the YB-TServer, to be shared with all connections on that YB-TServer. This is beneficial when many connections on the server are expected to get the next value of a sequence. Normally, each connection waits for replication to complete, which can be expensive, especially in a multi-region cluster. With the server cache method, only one connection waits for Raft replication and the rest retrieve values from the same cached range.
 
 When the server cache method is used, the connection cache size is implicitly set to 1. When the cache method is changed from `connection` to `server`, sequences continue to use the connection cache until it is exhausted, at which point they begin using the server cache. When the cache method is changed from `server` to `connection`, sequences immediately begin using a connection cache. The server cache is not cleared in this case, and its values can later be retrieved if the cache method is again set to `server`.
 
@@ -109,8 +109,5 @@ nextval
 
 ## See also
 
-- [`CREATE SEQUENCE`](../../the-sql-language/statements/ddl_create_sequence)
-- [`DROP SEQUENCE`](../../the-sql-language/statements/ddl_drop_sequence)
-- [`currval()`](../func_currval)
-- [`lastval()`](../func_lastval)
-- [`setval()`](../func_setval)
+- [`CREATE SEQUENCE`](../../../the-sql-language/statements/ddl_create_sequence)
+- [`DROP SEQUENCE`](../../../the-sql-language/statements/ddl_drop_sequence)

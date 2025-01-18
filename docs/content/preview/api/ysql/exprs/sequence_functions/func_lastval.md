@@ -6,7 +6,7 @@ description: Returns the value returned from the last call to nextval(), for any
 menu:
   preview_api:
     identifier: api-ysql-exprs-lastval
-    parent: api-ysql-exprs
+    parent: sequence-functions
 aliases:
   - /preview/api/ysql/exprs/func_lastval
 type: docs
@@ -28,7 +28,7 @@ Create two sequences and call `nextval()` for each of them.
 yugabyte=# CREATE SEQUENCE s1;
 ```
 
-```
+```output
 CREATE SEQUENCE
 ```
 
@@ -36,7 +36,7 @@ CREATE SEQUENCE
 yugabyte=# CREATE SEQUENCE s2 START -100 MINVALUE -100;
 ```
 
-```
+```output
 CREATE SEQUENCE
 ```
 
@@ -44,7 +44,7 @@ CREATE SEQUENCE
 yugabyte=# SELECT nextval('s1');
 ```
 
-```
+```output
  nextval
 ---------
        1
@@ -55,7 +55,7 @@ yugabyte=# SELECT nextval('s1');
 yugabyte=# SELECT nextval('s2');
 ```
 
-```
+```output
  nextval
 ---------
     -100
@@ -68,7 +68,7 @@ Call `lastval()`.
 yugabyte=# SELECT lastval()
 ```
 
-```
+```output
  lastval
 ---------
     -100
@@ -78,8 +78,5 @@ yugabyte=# SELECT lastval()
 
 ## See also
 
-- [`CREATE SEQUENCE`](../../the-sql-language/statements/ddl_create_sequence)
-- [`DROP SEQUENCE`](../../the-sql-language/statements/ddl_drop_sequence)
-- [`currval()`](../func_currval)
-- [`nextval()`](../func_nextval)
-- [`setval()`](../func_setval)
+- [`CREATE SEQUENCE`](../../../the-sql-language/statements/ddl_create_sequence)
+- [`DROP SEQUENCE`](../../../the-sql-language/statements/ddl_drop_sequence)

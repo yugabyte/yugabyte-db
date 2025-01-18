@@ -389,6 +389,7 @@ mbox
 memoization
 memoize
 memoized
+memoizes
 memoizing
 Memorystore
 mergeability
@@ -461,6 +462,7 @@ pgAdmin
 pgaudit
 PgBouncer
 pgLoader
+pg_stat_statements
 pg_cron
 pg_recvlogical
 Phabricator
