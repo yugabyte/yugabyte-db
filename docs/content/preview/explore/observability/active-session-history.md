@@ -31,7 +31,7 @@ To configure ASH, you can set the following YB-TServer flags for each node of yo
 | Flag | Description |
 | :--- | :---------- |
 | ysql_yb_enable_ash | Enables ASH. Changing this flag requires a VM restart. Default: true |
-| ysql_yb_ash_circular_buffer_size | Size (in KB) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MB for 1-2 cores</li><li>64 MB for 3-4 cores</li><li>128 MB for 5-8 cores</li><li>256 MB for 9-16 cores</li><li>512 MB for 17-32 cores</li><li>1024 MB for more than 32 cores</li></ul> Changing this flag requires a VM restart. |
+| ysql_yb_ash_circular_buffer_size | Size (in KiB) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MiB for 1-2 cores</li><li>64 MiB for 3-4 cores</li><li>128 MiB for 5-8 cores</li><li>256 MiB for 9-16 cores</li><li>512 MiB for 17-32 cores</li><li>1024 MiB for more than 32 cores</li></ul> Changing this flag requires a VM restart. |
 | ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). Changing this flag doesn't require a VM restart. Default: 1000 |
 | ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. Changing this flag doesn't require a VM restart. Default:  500 |
 
@@ -95,7 +95,7 @@ These fixed constants are used to identify various YugabyteDB background activit
 | 2 | TServer | Query ID for background flush tasks. |
 | 3 | TServer | Query ID for background compaction tasks. |
 | 4 | TServer | Query ID for Raft update consensus. |
-| 5 | YSQL/TServer | Default query ID before it's calculated in YSQL. |
+| 5 | YSQL/TServer | Default query ID, assigned in the interim before pg_stat_statements calculates a proper ID for the query. |
 | 6 | TServer | Query ID for write ahead log (WAL) background sync. |
 
 To obtain the IP address and location of a node where a query is being executed, use the `top_level_node_id` from the active session history view in the following command:
