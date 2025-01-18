@@ -26,14 +26,14 @@ Analyzing the wait events and wait event types lets you troubleshoot, answer the
 
 ## Configure ASH
 
-To configure ASH, you can set the following YB-TServer flags for each node of your cluster. Changing these flags doesn't require a VM restart.
+To configure ASH, you can set the following YB-TServer flags for each node of your cluster.
 
-| Flag | Description | Default |
-| :--- | :---------- | :------ |
-| ysql_yb_enable_ash | Set this flag to true enable the collection of wait events for YSQL and YCQL queries, and YB-TServer requests. | true |
-| ysql_yb_ash_circular_buffer_size | Size (in KBs) of circular buffer where the samples are stored. | 16*1024 |
-| ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). | 1000 |
-| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. | 500 |
+| Flag | Description |
+| :--- | :---------- |
+| ysql_yb_enable_ash | Enables ASH. Changing this flag requires a VM restart. Default: true |
+| ysql_yb_ash_circular_buffer_size | Size (in KiB) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MiB for 1-2 cores</li><li>64 MiB for 3-4 cores</li><li>128 MiB for 5-8 cores</li><li>256 MiB for 9-16 cores</li><li>512 MiB for 17-32 cores</li><li>1024 MiB for more than 32 cores</li></ul> Changing this flag requires a VM restart. |
+| ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). Changing this flag doesn't require a VM restart. Default: 1000 |
+| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. Changing this flag doesn't require a VM restart. Default:  500 |
 
 ## Limitations
 
@@ -95,7 +95,7 @@ These fixed constants are used to identify various YugabyteDB background activit
 | 2 | TServer | Query ID for background flush tasks. |
 | 3 | TServer | Query ID for background compaction tasks. |
 | 4 | TServer | Query ID for Raft update consensus. |
-| 5 | YSQL/TServer | Default query ID as observed in pg_stat_statements. |
+| 5 | YSQL/TServer | Default query ID, assigned in the interim before pg_stat_statements calculates a proper ID for the query. |
 | 6 | TServer | Query ID for write ahead log (WAL) background sync. |
 
 To obtain the IP address and location of a node where a query is being executed, use the `top_level_node_id` from the active session history view in the following command:
