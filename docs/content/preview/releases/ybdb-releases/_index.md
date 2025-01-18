@@ -15,8 +15,8 @@ cascade:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2.25](v2.25/) {{<tags/release/preview>}} | {{< yb-eol-dates "v2.25" release >}} | No support | n/a |
 | [v2024.2](v2024.2/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2024.2" release >}} | {{< yb-eol-dates "v2024.2" EOM >}} | {{< yb-eol-dates "v2024.2" EOL >}} |
-| [v2.23](v2.23/) {{<tags/release/preview>}} | {{< yb-eol-dates "v2.23" release >}} | No support | n/a |
 | [v2024.1](v2024.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |
 | [v2.20](v2.20/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
 | [v2.18](v2.18/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
@@ -40,6 +40,7 @@ The following stable and preview releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2.23](v2.23/) {{<tags/release/preview>}} | September 13, 2024  | n/a | n/a |
 | [v2.21](v2.21/) {{<tags/release/preview>}} | March 26, 2024 | n/a | n/a |
 | [v2.19](v2.19/) {{<tags/release/preview>}} | June 20, 2023 | n/a | n/a |
 | [v2.17](v2.17/) {{<tags/release/preview>}} | December 8, 2022 | n/a | n/a |
