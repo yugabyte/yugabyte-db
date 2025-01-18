@@ -83,7 +83,7 @@ USER root
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive && \
   apt-get install -y netcat --no-install-recommends
 
-RUN curl -sSLo ./yugabyte.tar.gz https://downloads.yugabyte.com/yugabyte-${YB_VERSION}-linux.tar.gz \
+RUN curl -sSLo ./yugabyte.tar.gz https://software.yugabyte.com/yugabyte-${YB_VERSION}-linux.tar.gz \
   && mkdir yugabyte \
   && tar -xvf yugabyte.tar.gz -C yugabyte --strip-components=1 \
   && mv ./yugabyte /usr/local/ \

@@ -26,13 +26,13 @@ The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is avai
 If you prefer, you can install a standalone version using a shell script:
 
 ```sh
-curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+curl -sSL https://software.yugabyte.com/get_clients.sh | bash
 ```
 
 If you have `wget`, you can use the following:
 
 ```sh
-wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
+wget -q -O - https://software.yugabyte.com/get_clients.sh | sh
 ```
 
 ### Starting ycqlsh

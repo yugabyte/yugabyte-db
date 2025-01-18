@@ -65,7 +65,7 @@ On a computer connected to the Internet, perform the following steps:
 - Download the `yugaware` binary and change the following number, as required:
 
   ```sh
-  wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.14">}}/yugaware-{{<yb-version version="v2.14" format="build">}}-linux-x86_64.airgap
+  wget https://software.yugabyte.com/releases/{{<yb-version version="v2.14">}}/yugaware-{{<yb-version version="v2.14" format="build">}}-linux-x86_64.airgap
   ```
 
 - Switch to the following directory:

@@ -332,7 +332,7 @@ You need to perform the following steps:
 Installing YugabyteDB Anywhere on Airgapped hosts, without access to any Internet traffic (inbound or outbound) requires the following:
 
 - Whitelisting endpoints: to install Replicated and YugabyteDB Anywhere on a host with no Internet connectivity, you have to first download the binaries on a computer that has Internet connectivity, and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation:
-  `https://downloads.yugabyte.com`
+  `https://software.yugabyte.com`
   `https://download.docker.com`
 
 - Ensuring that Docker Engine version 20.10.n is available. If it is not installed, you need to follow the procedure described in [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
