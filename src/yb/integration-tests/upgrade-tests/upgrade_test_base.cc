@@ -215,6 +215,8 @@ bool IsUpgradeSupported(const std::string& from_version) {
 
 }  // namespace
 
+const MonoDelta UpgradeTestBase::kNoDelayBetweenNodes = 0s;
+
 UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
     : old_version_info_(CHECK_RESULT(GetBuildInfoForVersion(from_version))) {
   LOG(INFO) << "Old version: " << old_version_info_.version << ": "

@@ -323,23 +323,16 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionCatalogUpgrade(const Lea
 Result<YsqlInitDBAndMajorUpgradeHandler::DbNameToOidList>
 YsqlInitDBAndMajorUpgradeHandler::GetDbNameToOidListForMajorUpgrade() {
   DbNameToOidList db_name_to_oid_list;
-  // Store DB name to OID mapping for all system databases except template1. This mapping will be
-  // passed to initdb so that the system database OIDs will match. The template1 database is
-  // special because it's created by the bootstrap phase of initdb (see file comment for initdb.c
-  // for more details). The template1 database always has OID 1.
-  {
-    std::vector<scoped_refptr<NamespaceInfo>> all_namespaces;
-    catalog_manager_.GetAllNamespaces(&all_namespaces);
-    for (const auto& ns_info : all_namespaces) {
-      if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
-        continue;
-      }
-      uint32_t oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns_info->id()));
-      if (oid < kPgFirstNormalObjectId && oid != kTemplate1Oid) {
-        db_name_to_oid_list.push_back({ns_info->name(), oid});
-      }
-    }
+  // Retrieve the OID for template0 and yugabyte databases. These two and the template1 are the only
+  // databases created by initdb in major upgrade mode. template1 is always hardcoded to use oid 1
+  // and we cannot asign a different oid for it, so it is skipped.
+  for (const auto& namespace_name : {"template0", "yugabyte"}) {
+    auto namespace_id =
+        VERIFY_RESULT(catalog_manager_.GetNamespaceId(YQL_DATABASE_PGSQL, namespace_name));
+    auto oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+    db_name_to_oid_list.push_back({namespace_name, oid});
   }
+
   return db_name_to_oid_list;
 }
 

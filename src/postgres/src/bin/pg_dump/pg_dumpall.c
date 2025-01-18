@@ -843,8 +843,8 @@ dumpRoles(PGconn *conn)
 		}
 
 		/*
-		 * In Yugabyte, there are additional roles created by initdb that emit
-		 * an error if re-created.
+		 * In Yugabyte major upgrade, there are additional roles already created
+		 * by initdb.
 		 */
 		if (IsYugabyteEnabled && binary_upgrade &&
 			strncmp(rolename, "yb_", 3) == 0)
@@ -876,20 +876,11 @@ dumpRoles(PGconn *conn)
 		if (IsYugabyteEnabled && binary_upgrade)
 		{
 			/*
-			 * In Yugabyte, the restore can be run by a different user than the
-			 * one running the dump, so create all users with an if-exists
-			 * check.
+			 * In Yugabyte major upgrade, initdb always creates the yugabyte
+			 * and postgres users.
 			 */
-			appendPQExpBuffer(buf,
-					"\\set role_exists false\n"
-					"SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = '%s')"
-					" AS role_exists \\gset\n"
-					"\\if :role_exists\n"
-					"    \\echo 'Role %s already exists.'\n"
-					"\\else\n"
-					"    CREATE ROLE %s;\n"
-					"\\endif\n",
-					rolename, yb_frolename, rolename);
+			if (strcmp(rolename, "yugabyte") != 0 && strcmp(rolename, "postgres") != 0)
+				appendPQExpBuffer(buf, "CREATE ROLE %s;\n", yb_frolename);
 		}
 		else if (!binary_upgrade ||
 				 strcmp(PQgetvalue(res, i, i_is_current_user), "f") == 0)

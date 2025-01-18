@@ -41,7 +41,7 @@ void Pg15UpgradeTestBase::SetUp() {
       "RESET yb_non_ddl_txn_for_sys_tables_allowed"}));
 }
 
-Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility() {
+Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user_name) {
   const auto tserver = cluster_->tablet_server(0);
   const auto data_path = JoinPathSegments(tserver->GetDataDirs().front(), "../../pg_data");
 
@@ -50,7 +50,7 @@ Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility() {
     "--old-datadir", data_path,
     "--old-host", tserver->bind_host(),
     "--old-port", AsString(tserver->pgsql_rpc_port()),
-    "--username", "yugabyte",
+    "--username", user_name,
     "--check"
   };
 

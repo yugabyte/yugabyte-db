@@ -39,6 +39,7 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   void SetUp() override;
 
  protected:
+  static const MonoDelta kNoDelayBetweenNodes;
   void SetUpOptions(ExternalMiniClusterOptions& opts) override;
   Status StartClusterInOldVersion();
   Status StartClusterInOldVersion(const ExternalMiniClusterOptions& options);

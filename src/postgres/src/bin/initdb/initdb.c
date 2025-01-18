@@ -341,6 +341,19 @@ static bool IsYugaByteLocalNodeInitdb()
 	return IsEnvSet("YB_PG_LOCAL_NODE_INITDB");
 }
 
+bool
+YBIsMajorUpgradeInitDb()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		const char *env_var_value = getenv("YB_PG_MAJOR_UPGRADE_INITDB");
+		cached_value = env_var_value && strcmp(env_var_value, "true") == 0;
+	}
+
+	return cached_value;
+}
+
 /*
  * pclose() plus useful error reporting
  *
@@ -1998,12 +2011,17 @@ make_template0(FILE *cmdfd)
 		 * version's database OIDs. For a new installation, we use PG's expected
 		 * OID.
 		 */
-		Oid template0_oid = YBGetDatabaseOidFromEnv("template0");
-		if (OidIsValid(template0_oid))
+		if (YBIsMajorUpgradeInitDb())
+		{
+			Oid template0_oid = YBGetDatabaseOidFromEnv("template0");
+			if (!OidIsValid(template0_oid))
+				pg_fatal("missing oid for template0 database");
+
 			PG_CMD_PRINTF("CREATE DATABASE template0 IS_TEMPLATE = true"
-						  " ALLOW_CONNECTIONS = false OID = %u"
-						  " STRATEGY = file_copy;\n\n",
-						  template0_oid);
+							" ALLOW_CONNECTIONS = false OID = %u"
+							" STRATEGY = file_copy;\n\n",
+							template0_oid);
+		}
 		else
 			PG_CMD_PUTS(template0_setup[0]);
 		PG_CMD_PUTS(template0_setup[2]);
@@ -2030,58 +2048,56 @@ make_postgres(FILE *cmdfd)
 	 * OID to postgres and select the file_copy strategy.
 	 */
 	static const char *const postgres_setup[] = {
-		/* YB: Must be kept in sync with the below version using the provided OID. */
 		"CREATE DATABASE postgres OID = " CppAsString2(PostgresDbOid)
 		" STRATEGY = file_copy;\n\n",
 		"COMMENT ON DATABASE postgres IS 'default administrative connection database';\n\n",
 		NULL
 	};
 
-	/*
-	 * Just as we did for template0, and for the same reasons, set the postgres
-	 * database OID to the existing database OID for online upgrade.
-	 */
-	Oid postgres_oid = YBGetDatabaseOidFromEnv("postgres");
-	if (IsYugaByteGlobalClusterInitdb() && OidIsValid(postgres_oid))
-		PG_CMD_PRINTF("CREATE DATABASE postgres OID = %u STRATEGY = file_copy;\n\n",
-					  postgres_oid);
-	else
-		PG_CMD_PUTS(postgres_setup[0]);
-
-	for (line = &postgres_setup[1]; *line; line++)
+	for (line = postgres_setup; *line; line++)
 		PG_CMD_PUTS(*line);
 }
 
-
 /*
- * Create yugabyte database and user.
+ * Create yugabyte user and database.
  */
 static void
 make_yugabyte(FILE *cmdfd)
 {
-	const char *const *line;
-	static const char *const yugabyte_setup[] = {
-		"CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'yugabyte';\n\n",
-		/* YB: Must be kept in sync with the below version using the provided OID. */
-		"CREATE DATABASE yugabyte;\n\n",
+	char *const *line;
+	char **lines;
+	static char *yugabyte_setup[] = {
+		"CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD $YB_PASSWORD;\n\n",
+		"CREATE DATABASE yugabyte $YB_OID;\n\n",
 		"COMMENT ON DATABASE yugabyte IS 'default administrative connection database';\n\n",
-		NULL
-	};
+		NULL};
+	lines = yugabyte_setup;
 
-	/*
-	 * As we did for template0, set the yugabyte database OID to the existing
-	 * database OID for online upgrade. However, for a clean install, we don't
-	 * have a reserved OID and just let one be assigned.
-	 */
-	Oid yugabyte_oid = YBGetDatabaseOidFromEnv("yugabyte");
+	char oidtok[MAXPGPATH] = "";
 
-	PG_CMD_PUTS(yugabyte_setup[0]);
-	if (OidIsValid(yugabyte_oid))
-		PG_CMD_PRINTF("CREATE DATABASE yugabyte OID = %u;\n\n", yugabyte_oid);
+	if (YBIsMajorUpgradeInitDb())
+	{
+		/* Create without password. The restore will set the password from the old version. */
+		lines = replace_token(lines, "$YB_PASSWORD", "NULL");
+
+		/*
+		 * As we did for template0, set the yugabyte database OID to the
+		 * existing database OID for online upgrade. However, for a clean
+		 * install, we don't have a reserved OID and just let one be assigned.
+		 */
+		Oid yugabyte_oid = YBGetDatabaseOidFromEnv("yugabyte");
+		if (!OidIsValid(yugabyte_oid))
+			pg_fatal("missing oid for yugabyte database");
+
+		snprintf(oidtok, sizeof(oidtok), "OID = %u", yugabyte_oid);
+	}
 	else
-		PG_CMD_PUTS(yugabyte_setup[1]);
+		lines =
+			replace_token(lines, "$YB_PASSWORD", "'yugabyte'");
 
-	for (line = &yugabyte_setup[2]; *line; line++)
+	lines = replace_token(lines, "$YB_OID", oidtok);
+
+	for (line = lines; *line; line++)
 		PG_CMD_PUTS(*line);
 }
 
@@ -2093,25 +2109,11 @@ static void
 make_system_platform(FILE *cmdfd) {
 	const char *const *line;
 	static const char *const system_platform_setup[] = {
-		/* YB: Must be kept in sync with the below version using the provided OID. */
 		"CREATE DATABASE system_platform;\n\n",
 		"COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';\n\n",
-		NULL
-	};
+		NULL};
 
-	/*
-	 * Set the system_platform database OID the same way we do for the yugabyte
-	 * database.
-	 */
-	Oid system_platform_oid = YBGetDatabaseOidFromEnv("system_platform");
-
-	if (OidIsValid(system_platform_oid))
-		PG_CMD_PRINTF("CREATE DATABASE system_platform OID = %u;\n\n",
-					  system_platform_oid);
-	else
-		PG_CMD_PUTS(system_platform_setup[0]);
-
-	for (line = &system_platform_setup[1]; *line; line++)
+	for (line = system_platform_setup; *line; line++)
 		PG_CMD_PUTS(*line);
 }
 
@@ -2385,7 +2387,7 @@ setlocales(void)
 		fprintf(stderr,
 				_("In YugabyteDB, setting LC_COLLATE to %s and all other locale settings to %s "
 				  "by default. Locale support will be enhanced as part of addressing "
-			  	  "https://github.com/yugabyte/yugabyte-db/issues/1557\n"),
+			  	 	 "https://github.com/yugabyte/yugabyte-db/issues/1557\n"),
 				lc_collate, locale);
 	}
 
@@ -3118,14 +3120,23 @@ initialize_data_directory(void)
 
 	make_template0(cmdfd);
 
-	make_postgres(cmdfd);
-
-	if (IsYugaByteGlobalClusterInitdb()) {
-		/* Create the yugabyte db and user (defaults for YugaByte/ysqlsh) */
+	if (YBIsMajorUpgradeInitDb())
+	{
+		/*
+		 * pg_upgrade uses the yugabyte user and database to prepare all other
+		 * databases.
+		 */
 		make_yugabyte(cmdfd);
+	}
+	else
+	{
+		make_postgres(cmdfd);
 
-		/* Create the system_platform database used by the YugaByte platform UI */
-		make_system_platform(cmdfd);
+		if (IsYugaByteGlobalClusterInitdb())
+		{
+			make_yugabyte(cmdfd);
+			make_system_platform(cmdfd);
+		}
 	}
 
 	PG_CMD_CLOSE;
