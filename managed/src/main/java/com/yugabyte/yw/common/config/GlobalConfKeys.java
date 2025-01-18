@@ -1861,4 +1861,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable performing automatic rollback of edit operation (if possible)",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.continuous_platform_backups",
+          ScopeType.GLOBAL,
+          "Enable new YBA platform backup and restore UI",
+          "Exposes a new subtab on the platform administration page where users can enable"
+              + " automated platform backups.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

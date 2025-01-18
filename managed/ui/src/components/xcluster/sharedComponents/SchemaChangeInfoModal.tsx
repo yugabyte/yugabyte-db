@@ -77,7 +77,7 @@ const useStyles = makeStyles((theme) => ({
     },
     '& a': {
       textDecoration: 'underline',
-      color: theme.palette.ybacolors.linkBlue
+      color: theme.palette.ybacolors.primary4
     }
   },
   learnMoreLink: {
@@ -89,7 +89,7 @@ const useStyles = makeStyles((theme) => ({
 
     '& a': {
       textDecoration: 'underline',
-      color: theme.palette.ybacolors.linkBlue
+      color: theme.palette.ybacolors.primary4
     }
   },
   upgradeAvailableLink: {

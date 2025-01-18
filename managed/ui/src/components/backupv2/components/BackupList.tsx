@@ -15,7 +15,7 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import Select, { OptionTypeBase } from 'react-select';
 import clsx from 'clsx';
-import { Backup_States, IBackup, IStorageConfig, TIME_RANGE_STATE } from '..';
+import { Backup_States, IBackup, CustomerConfig, TIME_RANGE_STATE } from '..';
 import { getBackupsList } from '../common/BackupAPI';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
@@ -200,7 +200,10 @@ export const BackupList: FC<BackupListOptions> = ({
   const isNewRestoreModalEnabled =
     featureFlags.test.enableNewRestoreModal || featureFlags.released.enableNewRestoreModal;
 
-  const { data: runtimeConfigs, isLoading: runtimeConfigLoading } = useQuery(['runtimeConfigs', universeUUID], () => api.fetchRunTimeConfigs(true, universeUUID));
+  const { data: runtimeConfigs, isLoading: runtimeConfigLoading } = useQuery(
+    ['runtimeConfigs', universeUUID],
+    () => api.fetchRunTimeConfigs(true, universeUUID)
+  );
 
   const enableBackupPITR = !runtimeConfigLoading && isBackupPITREnabled(runtimeConfigs!);
 
@@ -873,7 +876,7 @@ export const BackupList: FC<BackupListOptions> = ({
           selectedBackups[0] &&
           convertBackupToFormValues(
             selectedBackups[0],
-            storageConfigs?.data.find((e: IStorageConfig) => {
+            storageConfigs?.data.find((e: CustomerConfig) => {
               return e.configUUID === selectedBackups[0].commonBackupInfo.storageConfigUUID;
             })
           )

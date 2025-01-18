@@ -2,7 +2,7 @@ import { makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
+import { CustomerConfig as BackupStorageConfig } from '../../../backupv2';
 
 interface ConfigureBootstrapStepProps {
   storageConfigUuid: string;
