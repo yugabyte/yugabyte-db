@@ -75,6 +75,8 @@ Refer to [roadmap tracker](https://github.com/yugabyte/yugabyte-db/issues?q=is:i
 
 ## v2.25 (Preview) - Jan, 2025
 
+**v2.25** is the current [Preview](https://docs.yugabyte.com/preview/releases/versioning/#preview-releases) release. This includes features under active development and is recommended for development and testing only. For the full list of features and improvements in this release, see [Release notes - v2.25](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.25/). Here are some of the prominent features.
+
 ### [PostgreSQL 15 Support](https://docs.yugabyte.com/preview/develop/pg15-features/)
 
 As part of this release, we have upgraded our PostgreSQL fork from version 11.2 to 15.0, enabling you to leverage the many key capabilities introduced in PostgreSQL between these two versions. This upgrade brings YSQL API support for numerous features, including stored generated columns, foreign keys on partitioned tables, and non-distinct NULLs in unique indexes. It also introduces query execution optimizations like incremental sort and memoization, along with various observability and security enhancements.
