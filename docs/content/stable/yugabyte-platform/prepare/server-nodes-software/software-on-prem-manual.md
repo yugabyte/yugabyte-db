@@ -78,7 +78,7 @@ The following instructions use user-level systemd to provide the necessary acces
 
 ## Verify the python version installed on the node
 
-Verify that Python 3.5-3.9 is installed on the node. v3.8 is recommended.
+Verify that Python 3.5-3.8 is installed on the node. v3.6 is recommended.
 
 In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one. For example:
 
@@ -96,7 +96,7 @@ python3 -m pip install selinux
 
 Refer to [Ansible playbook fails with libselinux-python aren't installed on RHEL8](https://access.redhat.com/solutions/5674911) for more information.
 
-Set the **Max Python Version (exclusive)** Global runtime configuration option to the python version. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+If you are using Python later than v3.7, set the **Max Python Version (exclusive)** Global Configuration option to the python version. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 ## Set up time synchronization
 

@@ -33,12 +33,6 @@ If you are running YBA on a [deprecated OS](../../reference/configuration/operat
 
 {{< /note >}}
 
-{{< note title="Upgrading YBA on systems that have older versions of Python" >}}
-
-YBA v25.0 and later requires Python v3.10-3.12. If you are running YBA on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YBA to v25.0 or later.
-
-{{< /note >}}
-
 {{<index/block>}}
 
   {{<index/item
