@@ -47,7 +47,7 @@ YugabyteDB Anywhere has the following software requirements:
 
 - x86 Linux operating system
 - License
-- Python 3.8-3.11
+- Python
 - Sudo root permissions for installation
 
 ### Linux OS
