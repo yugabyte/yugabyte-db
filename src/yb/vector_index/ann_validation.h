@@ -76,7 +76,7 @@ class GroundTruth {
 
   // This works on queries convertered from input vector io indexed vector format. Only uses up to
   // k_ first elements of precomputed_correct_results.
-  std::vector<VertexWithDistance<DistanceResult>> AugmentWithDistancesAndTrimToK(
+  std::vector<VectorWithDistance<DistanceResult>> AugmentWithDistancesAndTrimToK(
       const std::vector<VectorId>& precomputed_correct_results, const Vector& converted_query);
 
   VertexIdToVectorDistanceFunction<Vector, DistanceResult> distance_fn_;

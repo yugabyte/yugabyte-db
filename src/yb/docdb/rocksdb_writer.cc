@@ -13,6 +13,8 @@
 
 #include "yb/docdb/rocksdb_writer.h"
 
+#include <boost/dynamic_bitset/dynamic_bitset.hpp>
+
 #include "yb/common/row_mark.h"
 
 #include "yb/docdb/conflict_resolution.h"
@@ -30,6 +32,7 @@
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value_type.h"
+#include "yb/dockv/vector_id.h"
 
 #include "yb/gutil/walltime.h"
 
@@ -688,7 +691,7 @@ Result<bool> ApplyIntentsContext::Entry(
     }
 
     if (vector_indexes_) {
-      RETURN_NOT_OK(ProcessVectorIndexes(intent.doc_path, decoded_value.body));
+      RETURN_NOT_OK(ProcessVectorIndexes(handler, intent.doc_path, decoded_value.body));
     }
 
     ++write_id_;
@@ -704,7 +707,16 @@ Result<bool> ApplyIntentsContext::Entry(
   return false;
 }
 
-Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
+void ApplyIntentsContext::AddVectorIndexReverseEntry(
+    rocksdb::DirectWriteHandler* handler, Slice ybctid, Slice value) {
+  DocHybridTimeBuffer ht_buf;
+  auto encoded_write_time = ht_buf.EncodeWithValueType({ commit_ht_, write_id_ });
+
+  handler->Put(dockv::VectorIndexReverseEntryKeyParts(value, encoded_write_time), {&ybctid, 1});
+}
+
+Status ApplyIntentsContext::ProcessVectorIndexes(
+    rocksdb::DirectWriteHandler* handler, Slice key, Slice value) {
   auto sizes = VERIFY_RESULT(dockv::DocKey::EncodedPrefixAndDocKeySizes(key));
   if (sizes.doc_key_size < key.size()) {
     auto entry_type = static_cast<KeyEntryType>(key[sizes.doc_key_size]);
@@ -712,6 +724,7 @@ Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
       auto column_id = VERIFY_RESULT(ColumnId::FullyDecode(
           key.WithoutPrefix(sizes.doc_key_size + 1)));
       // We expect small amount of vector indexes, usually 1. So it is faster to iterate over them.
+      bool added_to_vector_index = false;
       for (size_t i = 0; i != vector_indexes_->size(); ++i) {
         if (!ApplyToVectorIndex(i)) {
           continue;
@@ -719,10 +732,15 @@ Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
         const auto& vector_index = *(*vector_indexes_)[i];
         auto table_key_prefix = vector_index.indexed_table_key_prefix();
         if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id) {
+          auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
           vector_index_batches_[i].push_back(VectorIndexInsertEntry {
-            .key = KeyBuffer(key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size())),
+            .key = KeyBuffer(ybctid),
             .value = ValueBuffer(value),
           });
+          if (!added_to_vector_index) {
+            AddVectorIndexReverseEntry(handler, ybctid, value);
+            added_to_vector_index = true;
+          }
         }
       }
     } else {
@@ -740,10 +758,10 @@ Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
     switch (*packed_row_version) {
       case dockv::PackedRowVersion::kV1:
         return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV1>(
-            sizes.prefix_size, key, value);
+            handler, sizes.prefix_size, key, value);
       case dockv::PackedRowVersion::kV2:
         return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV2>(
-            sizes.prefix_size, key, value);
+            handler, sizes.prefix_size, key, value);
     }
     FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, *packed_row_version);
   }
@@ -752,7 +770,7 @@ Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
 
 template <class Decoder>
 Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
-    size_t prefix_size, Slice key, Slice value) {
+    rocksdb::DirectWriteHandler* handler, size_t prefix_size, Slice key, Slice value) {
   value.consume_byte();
 
   auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&value)));
@@ -771,6 +789,7 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
   }
   Decoder decoder(*schema_packing_, value.data());
 
+  boost::dynamic_bitset<> columns_added_to_vector_index;
   for (size_t i = 0; i != vector_indexes_->size(); ++i) {
     if (!ApplyToVectorIndex(i)) {
       continue;
@@ -786,10 +805,18 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
       continue;
     }
 
+    auto ybctid = key.WithoutPrefix(table_key_prefix.size());
     vector_index_batches_[i].push_back(VectorIndexInsertEntry {
-      .key = KeyBuffer(key.WithoutPrefix(table_key_prefix.size())),
+      .key = KeyBuffer(ybctid),
       .value = ValueBuffer(*column_value),
     });
+
+    size_t column_index = schema_packing_->GetIndex(vector_index.column_id());
+    columns_added_to_vector_index.resize(
+        std::max(columns_added_to_vector_index.size(), column_index + 1));
+    if (!columns_added_to_vector_index.test_set(column_index)) {
+      AddVectorIndexReverseEntry(handler, ybctid, *column_value);
+    }
   }
   return Status::OK();
 }
@@ -804,8 +831,7 @@ Status ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
     DocHybridTime write_time { commit_ht_, write_id_ };
     for (size_t i = 0; i != vector_index_batches_.size(); ++i) {
       if (!vector_index_batches_[i].empty()) {
-        RETURN_NOT_OK((*vector_indexes_)[i]->Insert(
-            vector_index_batches_[i], frontiers(), handler, write_time));
+        RETURN_NOT_OK((*vector_indexes_)[i]->Insert(vector_index_batches_[i], frontiers()));
       }
     }
   }

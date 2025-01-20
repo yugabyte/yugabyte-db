@@ -143,9 +143,9 @@ class HnswlibIndex :
     return space_->get_dist_func()(lhs.data(), rhs.data(), space_->get_dist_func_param());
   }
 
-  std::vector<VertexWithDistance<DistanceResult>> DoSearch(
+  std::vector<VectorWithDistance<DistanceResult>> DoSearch(
       const Vector& query_vector, const SearchOptions& options) const {
-    std::vector<VertexWithDistance<DistanceResult>> result;
+    std::vector<VectorWithDistance<DistanceResult>> result;
     auto tmp_result = hnsw_->searchKnnCloserFirst(query_vector.data(), options.max_num_results);
     result.reserve(tmp_result.size());
     for (const auto& entry : tmp_result) {

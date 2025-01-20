@@ -919,7 +919,7 @@ class PgsqlVectorFilter {
   }
 
   bool operator()(const vector_index::VectorId& vector_id) {
-    auto key = VectorIdKey(vector_id);
+    auto key = dockv::VectorIdKey(vector_id);
     // TODO(vector_index) handle failure
     auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key.AsSlice()));
     if (ybctid.empty()) {
