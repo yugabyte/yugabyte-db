@@ -864,9 +864,9 @@ class AzureCloudAdmin():
                 image_identifier['sku']))
 
             if (image_identifier is not None
-                    and image_identifier['publisher'] is not None
-                    and image_identifier['offer'] is not None
-                    and image_identifier['sku'] is not None):
+                    and image_identifier.get('publisher', None) is not None
+                    and image_identifier.get('offer', None) is not None
+                    and image_identifier.get('sku', None) is not None):
                 plan = {
                     "publisher": image_identifier['publisher'],
                     "product": image_identifier['offer'],
