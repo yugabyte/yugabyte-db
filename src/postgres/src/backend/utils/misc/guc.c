@@ -4816,6 +4816,12 @@ static struct config_string ConfigureNamesString[] =
 		check_locale_time, assign_locale_time, NULL
 	},
 
+	/*
+	 * YB: Check var.h (odyssey) file to confirm if guc var need to be added in
+	 * avoid_enquote_guc_list list. Basic requirements are if GUC_LIST_INPUT, GUC_LIST_QUOTE flags
+	 * are enabled on a var and can be set in a session without making connection sticky.
+	 */
+
 	{
 		{"session_preload_libraries", PGC_SUSET, CLIENT_CONN_PRELOAD,
 			gettext_noop("Lists shared libraries to preload into each backend."),
