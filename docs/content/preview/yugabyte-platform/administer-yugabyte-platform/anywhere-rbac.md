@@ -34,7 +34,7 @@ The following built-in roles are available:
 
 - **Super Admin** is the first user that is created during installation. This role has the highest level of privilege and allows all read and write actions on all YugabyteDB Anywhere resources. There can be only one Super Admin. Super Admin can perform the following:
 
-  - Manage all resources, including universes, nodes, backup, restore, and cloud providers.
+  - Manage all resources, including universes, nodes, backup, restore, and provider configurations.
   - Manage the user access control by creating and managing users.
 
   For more information, see [Create admin user](../../install-yugabyte-platform/create-admin-user/).

@@ -214,7 +214,7 @@ In cases of failover, the previous active instance may be unavailable or unreach
 
 Afterwards, follow the steps in [Failover](#failover) to ensure that the old active does not come back up or that it goes into standby mode when it does come up.
 
-You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, cloud providers, and so on.
+You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, provider configurations, and so on.
 
 ### Verify promotion
 

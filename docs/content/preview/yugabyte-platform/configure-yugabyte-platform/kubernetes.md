@@ -1,5 +1,5 @@
 ---
-title: Configure the Kubernetes cloud provider
+title: Configure the Kubernetes provider configuration
 headerTitle: Create Kubernetes provider configuration
 linkTitle: Kubernetes
 description: Configure the Kubernetes provider configuration
@@ -425,9 +425,9 @@ spec:
 
 Refer to [Multi-Region YugabyteDB Deployments on Kubernetes with Istio](https://www.yugabyte.com/blog/multi-region-yugabytedb-deployments-on-kubernetes-with-istio/) for a step-by-step guide and an explanation of the options being used.
 
-### Configure the cloud provider for MCS
+### Configure the provider configuration for MCS
 
-After you have the cluster set up, follow the instructions in [Configure the Kubernetes cloud provider](#provider-settings), and refer to this section for region and zone configuration required for multi-region universes.
+After you have the cluster set up, follow the instructions in [Create a provider](#create-a-provider), and refer to this section for region and zone configuration required for multi-region universes.
 
 #### Configure region and zone for GKE MCS
 
@@ -452,7 +452,7 @@ For example, if your cluster membership name is `yb-asia-south1`, then the **Add
 
 #### Configure region and zones for OpenShift MCS
 
-Follow the instructions in [Configure the OpenShift cloud provider](../openshift/) and [Create a provider](#create-a-provider). For all the zones from your OpenShift clusters connected via MCS (Submariner), add a region as follows:
+Follow the instructions in [Create OpenShift provider configuration](../openshift/) and [Create a provider](#create-a-provider). For all the zones from your OpenShift clusters connected via MCS (Submariner), add a region as follows:
 
 1. Specify fields such as Region, Zone, and so on as you would normally.
 1. Set the **Cluster DNS Domain** to `clusterset.local`.
