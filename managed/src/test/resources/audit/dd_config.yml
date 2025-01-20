@@ -2,7 +2,8 @@
 exporters:
   datadog/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$DataDogExporter
     api: {key: apikey, site: ddsite}
-    retry_on_failure: {enabled: true, initial_interval: 1m, max_interval: 1800m}
+    retry_on_failure: {enabled: true, initial_interval: 1m, max_elapsed_time: 1800m,
+      max_interval: 1800m}
     sending_queue: {enabled: true, storage: file_storage/queue}
 extensions:
   file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension
