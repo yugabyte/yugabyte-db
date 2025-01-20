@@ -5,8 +5,9 @@ use arrow_schema::SchemaRef;
 use parquet::{
     arrow::{async_writer::ParquetObjectWriter, AsyncArrowWriter},
     file::properties::{EnabledStatistics, WriterProperties},
+    format::KeyValue,
 };
-use pgrx::{heap_tuple::PgHeapTuple, pg_sys::RECORDOID, AllocatedByRust, PgTupleDesc};
+use pgrx::{heap_tuple::PgHeapTuple, AllocatedByRust, PgTupleDesc};
 use url::Url;
 
 use crate::{
@@ -18,7 +19,10 @@ use crate::{
         uri_utils::parquet_writer_from_uri,
     },
     pgrx_utils::{collect_attributes_for, CollectAttributesFor},
-    type_compat::{geometry::reset_postgis_context, map::reset_map_context},
+    type_compat::{
+        geometry::{geoparquet_metadata_json_from_tupledesc, reset_postgis_context},
+        map::reset_map_context,
+    },
     PG_BACKEND_TOKIO_RUNTIME,
 };
 
@@ -42,24 +46,10 @@ impl ParquetWriterContext {
         compression_level: i32,
         tupledesc: &PgTupleDesc,
     ) -> ParquetWriterContext {
-        debug_assert!(tupledesc.oid() == RECORDOID);
-
         // Postgis and Map contexts are used throughout writing the parquet file.
         // We need to reset them to avoid reading the stale data. (e.g. extension could be dropped)
         reset_postgis_context();
         reset_map_context();
-
-        let writer_props = WriterProperties::builder()
-            .set_statistics_enabled(EnabledStatistics::Page)
-            .set_compression(
-                PgParquetCompressionWithLevel {
-                    compression,
-                    compression_level,
-                }
-                .into(),
-            )
-            .set_created_by("pg_parquet".to_string())
-            .build();
 
         let attributes = collect_attributes_for(CollectAttributesFor::CopyTo, tupledesc);
 
@@ -71,6 +61,8 @@ impl ParquetWriterContext {
         let schema = parse_arrow_schema_from_attributes(&attributes);
         let schema = Arc::new(schema);
 
+        let writer_props = Self::writer_props(tupledesc, compression, compression_level);
+
         let parquet_writer = parquet_writer_from_uri(&uri, schema.clone(), writer_props);
 
         let attribute_contexts =
@@ -81,6 +73,33 @@ impl ParquetWriterContext {
             schema,
             attribute_contexts,
         }
+    }
+
+    fn writer_props(
+        tupledesc: &PgTupleDesc,
+        compression: PgParquetCompression,
+        compression_level: i32,
+    ) -> WriterProperties {
+        let compression = PgParquetCompressionWithLevel {
+            compression,
+            compression_level,
+        };
+
+        let mut writer_props_builder = WriterProperties::builder()
+            .set_statistics_enabled(EnabledStatistics::Page)
+            .set_compression(compression.into())
+            .set_created_by("pg_parquet".to_string());
+
+        let geometry_columns_metadata_value = geoparquet_metadata_json_from_tupledesc(tupledesc);
+
+        if geometry_columns_metadata_value.is_some() {
+            let key_value_metadata = KeyValue::new("geo".into(), geometry_columns_metadata_value);
+
+            writer_props_builder =
+                writer_props_builder.set_key_value_metadata(Some(vec![key_value_metadata]));
+        }
+
+        writer_props_builder.build()
     }
 
     pub(crate) fn write_new_row_group(

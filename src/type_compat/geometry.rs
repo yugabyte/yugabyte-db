@@ -1,4 +1,4 @@
-use std::{ffi::CString, ops::Deref};
+use std::{collections::HashMap, ffi::CString, ops::Deref};
 
 use once_cell::sync::OnceCell;
 use pgrx::{
@@ -8,8 +8,11 @@ use pgrx::{
         InvalidOid, LookupFuncName, Oid, OidFunctionCall1Coll, SysCacheIdentifier::TYPENAMENSP,
         BYTEAOID,
     },
-    FromDatum, IntoDatum, PgList, Spi,
+    FromDatum, IntoDatum, PgList, PgTupleDesc, Spi,
 };
+use serde::{Deserialize, Serialize};
+
+use crate::pgrx_utils::{collect_attributes_for, CollectAttributesFor};
 
 // we need to reset the postgis context at each copy start
 static mut POSTGIS_CONTEXT: OnceCell<PostgisContext> = OnceCell::new();
@@ -43,6 +46,125 @@ pub(crate) fn is_postgis_geometry_type(typoid: Oid) -> bool {
     }
 
     false
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub(crate) enum GeometryType {
+    Point,
+    LineString,
+    Polygon,
+    MultiPoint,
+    MultiLineString,
+    MultiPolygon,
+    GeometryCollection,
+}
+
+impl GeometryType {
+    fn from_typmod(typmod: i32) -> Option<Self> {
+        // see postgis: https://github.com/postgis/postgis/blob/2845d3f37896e64ad24a2ee6863213b297da1301/liblwgeom/liblwgeom.h.in#L194
+        let geom_type = (typmod & 0x000000FC) >> 2;
+
+        match geom_type {
+            1 => Some(GeometryType::Point),
+            2 => Some(GeometryType::LineString),
+            3 => Some(GeometryType::Polygon),
+            4 => Some(GeometryType::MultiPoint),
+            5 => Some(GeometryType::MultiLineString),
+            6 => Some(GeometryType::MultiPolygon),
+            7 => Some(GeometryType::GeometryCollection),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub(crate) enum GeometryEncoding {
+    // only WKB is supported for now
+    #[allow(clippy::upper_case_acronyms)]
+    WKB,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct GeometryColumn {
+    pub(crate) encoding: GeometryEncoding,
+    pub(crate) geometry_types: Vec<GeometryType>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct GeometryColumnsMetadata {
+    pub(crate) version: String,
+    pub(crate) primary_column: String,
+    pub(crate) columns: HashMap<String, GeometryColumn>,
+}
+
+impl GeometryColumnsMetadata {
+    fn from_tupledesc(tupledesc: &PgTupleDesc) -> Option<GeometryColumnsMetadata> {
+        let mut columns = HashMap::new();
+        let mut primary_column = String::new();
+
+        let attributes = collect_attributes_for(CollectAttributesFor::CopyTo, tupledesc);
+
+        for attribute in attributes {
+            let attribute_typoid = attribute.type_oid().value();
+
+            if !is_postgis_geometry_type(attribute_typoid) {
+                continue;
+            }
+
+            let typmod = attribute.type_mod();
+
+            let geometry_types = if let Some(geom_type) = GeometryType::from_typmod(typmod) {
+                vec![geom_type]
+            } else {
+                vec![]
+            };
+
+            let encoding = GeometryEncoding::WKB;
+
+            let geometry_column = GeometryColumn {
+                encoding,
+                geometry_types,
+            };
+
+            let column_name = attribute.name().to_string();
+
+            // we use the first geometry column as the primary column
+            if primary_column.is_empty() {
+                primary_column = column_name.clone();
+            }
+
+            columns.insert(column_name, geometry_column);
+        }
+
+        if columns.is_empty() {
+            return None;
+        }
+
+        Some(GeometryColumnsMetadata {
+            version: "1.1.0".into(),
+            primary_column,
+            columns,
+        })
+    }
+}
+
+// geoparquet_metadata_json_from_tupledesc returns metadata for geometry columns in json format.
+// in a format specified by https://geoparquet.org/releases/v1.1.0
+// e.g. "{\"version\":\"1.1.0\",
+//        \"primary_column\":\"a\",
+//        \"columns\":{\"a\":{\"encoding\":\"WKB\", \"geometry_types\":[\"Point\"]},
+//                     \"b\":{\"encoding\":\"WKB\", \"geometry_types\":[\"LineString\"]}}}"
+pub(crate) fn geoparquet_metadata_json_from_tupledesc(tupledesc: &PgTupleDesc) -> Option<String> {
+    let geometry_columns_metadata = GeometryColumnsMetadata::from_tupledesc(tupledesc);
+
+    geometry_columns_metadata.map(|metadata| {
+        serde_json::to_string(&metadata).unwrap_or_else(|_| {
+            panic!(
+                "failed to serialize geometry columns metadata {:?}",
+                metadata
+            )
+        })
+    })
 }
 
 #[derive(Debug, PartialEq, Clone)]

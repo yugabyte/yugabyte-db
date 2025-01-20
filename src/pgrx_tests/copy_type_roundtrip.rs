@@ -8,18 +8,20 @@ mod tests {
         LOCAL_TEST_FILE_PATH,
     };
     use crate::type_compat::fallback_to_text::FallbackToText;
-    use crate::type_compat::geometry::Geometry;
+    use crate::type_compat::geometry::{
+        Geometry, GeometryColumnsMetadata, GeometryEncoding, GeometryType,
+    };
     use crate::type_compat::map::Map;
     use crate::type_compat::pg_arrow_type_conversions::{
         DEFAULT_UNBOUNDED_NUMERIC_PRECISION, DEFAULT_UNBOUNDED_NUMERIC_SCALE,
     };
     use pgrx::pg_sys::Oid;
-    use pgrx::pg_test;
     use pgrx::{
         composite_type,
         datum::{Date, Time, TimeWithTimeZone, Timestamp, TimestampWithTimeZone},
         AnyNumeric, Spi,
     };
+    use pgrx::{pg_test, JsonB};
 
     #[pg_test]
     fn test_int2() {
@@ -944,6 +946,117 @@ mod tests {
         let test_table = TestTable::<Vec<Option<Geometry>>>::new("geometry[]".into());
         test_table.insert("INSERT INTO test_expected (a) VALUES (array[ST_GeomFromText('POINT(1 1)'), ST_GeomFromText('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'), null]), (null), (array[]::geometry[]);");
         test_table.assert_expected_and_result_rows();
+    }
+
+    #[pg_test]
+    fn test_geometry_geoparquet_metadata() {
+        // Skip the test if postgis extension is not available
+        if !extension_exists("postgis") {
+            return;
+        }
+
+        let query = "DROP EXTENSION IF EXISTS postgis; CREATE EXTENSION postgis;";
+        Spi::run(query).unwrap();
+
+        let copy_to_query = format!(
+            "COPY (SELECT ST_GeomFromText('POINT(1 1)')::geometry(point) as a,
+                          ST_GeomFromText('LINESTRING(0 0, 1 1)')::geometry(linestring) as b,
+                          ST_GeomFromText('POLYGON((0 0, 1 1, 2 2, 0 0))')::geometry(polygon) as c,
+                          ST_GeomFromText('MULTIPOINT((0 0), (1 1))')::geometry(multipoint) as d,
+                          ST_GeomFromText('MULTILINESTRING((0 0, 1 1), (2 2, 3 3))')::geometry(multilinestring) as e,
+                          ST_GeomFromText('MULTIPOLYGON(((0 0, 1 1, 2 2, 0 0)), ((3 3, 4 4, 5 5, 3 3)))')::geometry(multipolygon) as f,
+                          ST_GeomFromText('GEOMETRYCOLLECTION(POINT(1 1), LINESTRING(0 0, 1 1))')::geometry(geometrycollection) as g
+                  )
+            TO '{LOCAL_TEST_FILE_PATH}' WITH (format parquet);",
+        );
+        Spi::run(copy_to_query.as_str()).unwrap();
+
+        // Check geoparquet metadata
+        let geoparquet_metadata_query = format!(
+            "select encode(value, 'escape')::jsonb
+            from parquet.kv_metadata('{LOCAL_TEST_FILE_PATH}')
+            where encode(key, 'escape') = 'geo';",
+        );
+        let geoparquet_metadata_json = Spi::get_one::<JsonB>(geoparquet_metadata_query.as_str())
+            .unwrap()
+            .unwrap();
+
+        let geoparquet_metadata: GeometryColumnsMetadata =
+            serde_json::from_value(geoparquet_metadata_json.0).unwrap();
+
+        // assert common metadata
+        assert_eq!(geoparquet_metadata.version, "1.1.0");
+        assert_eq!(geoparquet_metadata.primary_column, "a");
+
+        // point
+        assert_eq!(
+            geoparquet_metadata.columns.get("a").unwrap().encoding,
+            GeometryEncoding::WKB
+        );
+        assert_eq!(
+            geoparquet_metadata.columns.get("a").unwrap().geometry_types,
+            vec![GeometryType::Point]
+        );
+
+        // linestring
+        assert_eq!(
+            geoparquet_metadata.columns.get("b").unwrap().encoding,
+            GeometryEncoding::WKB
+        );
+        assert_eq!(
+            geoparquet_metadata.columns.get("b").unwrap().geometry_types,
+            vec![GeometryType::LineString]
+        );
+
+        // polygon
+        assert_eq!(
+            geoparquet_metadata.columns.get("c").unwrap().encoding,
+            GeometryEncoding::WKB
+        );
+        assert_eq!(
+            geoparquet_metadata.columns.get("c").unwrap().geometry_types,
+            vec![GeometryType::Polygon]
+        );
+
+        // multipoint
+        assert_eq!(
+            geoparquet_metadata.columns.get("d").unwrap().encoding,
+            GeometryEncoding::WKB
+        );
+        assert_eq!(
+            geoparquet_metadata.columns.get("d").unwrap().geometry_types,
+            vec![GeometryType::MultiPoint]
+        );
+
+        // multilinestring
+        assert_eq!(
+            geoparquet_metadata.columns.get("e").unwrap().encoding,
+            GeometryEncoding::WKB
+        );
+        assert_eq!(
+            geoparquet_metadata.columns.get("e").unwrap().geometry_types,
+            vec![GeometryType::MultiLineString]
+        );
+
+        // multipolygon
+        assert_eq!(
+            geoparquet_metadata.columns.get("f").unwrap().encoding,
+            GeometryEncoding::WKB
+        );
+        assert_eq!(
+            geoparquet_metadata.columns.get("f").unwrap().geometry_types,
+            vec![GeometryType::MultiPolygon]
+        );
+
+        // geometrycollection
+        assert_eq!(
+            geoparquet_metadata.columns.get("g").unwrap().encoding,
+            GeometryEncoding::WKB
+        );
+        assert_eq!(
+            geoparquet_metadata.columns.get("g").unwrap().geometry_types,
+            vec![GeometryType::GeometryCollection]
+        );
     }
 
     #[pg_test]

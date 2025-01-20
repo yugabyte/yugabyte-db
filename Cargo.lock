@@ -2477,6 +2477,8 @@ dependencies = [
  "pgrx",
  "pgrx-tests",
  "rust-ini",
+ "serde",
+ "serde_json",
  "tokio",
  "url",
 ]
