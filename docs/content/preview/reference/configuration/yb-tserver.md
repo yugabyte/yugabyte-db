@@ -753,7 +753,7 @@ For example:
 --ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '","pgaudit.log='all, -misc'",pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
 ```
 
-For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
+For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
 
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL server options](#postgresql-server-options).
 
@@ -875,7 +875,7 @@ Default: `-1` (disables logging statement durations)
 
 ##### --ysql_log_min_messages
 
-Specifies the [severity level](https://www.postgresql.org/docs/11/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) of messages to log.
+Specifies the [severity level](https://www.postgresql.org/docs/15/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) of messages to log.
 
 Default: `WARNING`
 
@@ -1730,7 +1730,7 @@ You can modify these parameters in the following ways:
     SET session yb_locks_max_transactions = 10;
     ```
 
-For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
+For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
 
 ### YSQL configuration parameters
 
@@ -1747,7 +1747,7 @@ YugabyteDB supports the following additional options for the `log_line_prefix` p
 - %N = node and cluster name
 - %H = current hostname
 
-For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
+For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/15/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
 
 ##### suppress_nonpg_logs (boolean)
 

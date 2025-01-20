@@ -180,7 +180,7 @@ kubectl exec -n yb-demo -it yb-client -- ysqlsh -h yb-tservers.yb-demo.svc.clust
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -240,7 +240,7 @@ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro yugabytedb/yugabyte-c
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -262,7 +262,7 @@ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro \
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Connected to local cluster at 35.200.205.208:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.

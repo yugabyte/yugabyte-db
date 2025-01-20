@@ -300,7 +300,7 @@ This is the result:
 
 ## Semantics
 
-You can find various formulations of the following explanation by Internet search. In particular, here is a version from the [PostgreSQL Version 11 documentation](https://www.postgresql.org/docs/11/queries-with.html#id-1.5.6.12.5.4).
+You can find various formulations of the following explanation by Internet search. In particular, here is a version from the [PostgreSQL Version 11 documentation](https://www.postgresql.org/docs/15/queries-with.html#id-1.5.6.12.5.4).
 
 In informal prose:
 
@@ -378,7 +378,7 @@ end;
 $body$;
 ```
 
-Notice that the [PostgreSQL Version 11 documentation](https://www.postgresql.org/docs/11/queries-with.html#id-1.5.6.12.5.4) says this:
+Notice that the [PostgreSQL Version 11 documentation](https://www.postgresql.org/docs/15/queries-with.html#id-1.5.6.12.5.4) says this:
 
 > Strictly speaking, this process is iteration not recursion, but RECURSIVE is the terminology chosen by the SQL standards committee.
 

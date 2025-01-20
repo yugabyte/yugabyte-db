@@ -103,11 +103,11 @@ These are the polymorphic data types:
 - _anyenum_
 - _anyrange_
 
-See the PostgreSQL documentation section [38.2.5. Polymorphic Types](https://www.postgresql.org/docs/11/extend-type-system.html#EXTEND-TYPES-POLYMORPHIC). These data types are a subset of the so-called pseudo-Types. See the PostgreSQL documentation section [8.21. Pseudo-Types](https://www.postgresql.org/docs/11/datatype-pseudo.html). Notice this from the Polymorphic Types account:
+See the PostgreSQL documentation section [38.2.5. Polymorphic Types](https://www.postgresql.org/docs/15/extend-type-system.html#EXTEND-TYPES-POLYMORPHIC). These data types are a subset of the so-called pseudo-Types. See the PostgreSQL documentation section [8.21. Pseudo-Types](https://www.postgresql.org/docs/15/datatype-pseudo.html). Notice this from the Polymorphic Types account:
 
 > Note that _anynonarray_ and _anyenum_ do not represent separate type variables; they are the same type as _anyelement_, just with an additional constraint. For example, declaring a function as _f(anyelement, anyenum)_ is equivalent to declaring it as _f(anyenum, anyenum)_: both actual arguments have to be the same _enum_ type.
 
-This section illustrates the use of just _anyelement_ and _anyarray_. See the PostgreSQL documentation section [38.5.10. Polymorphic SQL Functions](https://www.postgresql.org/docs/11/xfunc-sql.html#id-1.8.3.8.18) for more information on this topic.
+This section illustrates the use of just _anyelement_ and _anyarray_. See the PostgreSQL documentation section [38.5.10. Polymorphic SQL Functions](https://www.postgresql.org/docs/15/xfunc-sql.html#id-1.8.3.8.18) for more information on this topic.
 
 ### Proof-of-concept example #1
 
