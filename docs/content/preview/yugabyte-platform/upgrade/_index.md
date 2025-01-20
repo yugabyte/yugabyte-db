@@ -32,6 +32,11 @@ If you have upgraded YBA to version 2.12 or later and [xCluster replication](../
 If you are running YBA on a [deprecated OS](../../reference/configuration/operating-systems/), you will need to update your OS before you can upgrade YBA to the next major release.
 
 {{< /note >}}
+{{< note title="Upgrading YBA on systems that have older versions of Python" >}}
+
+YBA v25.0 and later requires Python v3.10-3.12. If you are running YBA on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YBA to v25.0 or later.
+
+{{< /note >}}
 
 {{<index/block>}}
 

@@ -41,6 +41,11 @@ If you are upgrading a YugabyteDB Anywhere installation with high availability e
 If you are running YBA on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YBA to the next major release.
 
 {{< /note >}}
+{{< note title="Upgrading YBA on systems that have older versions of Python" >}}
+
+YBA v25.0 and later requires Python v3.10-3.12. If you are running YBA on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YBA to v25.0 or later.
+
+{{< /note >}}
 
 ## Upgrade using YBA Installer
 
