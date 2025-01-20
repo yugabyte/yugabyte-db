@@ -698,7 +698,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (currentNode.masterState != MasterState.Configured) {
       // Check that installed MASTER software version is consistent.
       createSoftwareInstallTasks(
-          nodeSet, ServerType.MASTER, null, SubTaskGroupType.InstallingSoftware);
+          nodeSet,
+          ServerType.MASTER,
+          null,
+          SubTaskGroupType.InstallingSoftware,
+          null /* ysqlMajorVersionUpgradeState */);
 
       // TODO Configuration subtasks may be skipped if it is already a master.
       // Update master configuration on the node.
@@ -1029,7 +1033,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
       UserIntent userIntent = cluster.userIntent;
 
-      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      AnsibleConfigureServers.Params params =
+          getBaseAnsibleServerTaskParams(
+              userIntent,
+              node,
+              serverType,
+              UpgradeTaskParams.UpgradeTaskType.GFlags,
+              null /* taskSubType */);
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.getDeviceInfoForNode(node);
       // Add the node name.
@@ -1503,7 +1513,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
       UserIntent userIntent = cluster.userIntent;
-      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      AnsibleConfigureServers.Params params =
+          getBaseAnsibleServerTaskParams(
+              userIntent, node, null /* processType */, null /* type */, null /* taskSubType */);
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.getDeviceInfoForNode(node);
       // Add the node name.
@@ -2898,6 +2910,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       ServerType processType,
       String softwareVersion,
       SubTaskGroupType subTaskGroupType) {
+
+    createSoftwareInstallTasks(
+        nodes,
+        processType,
+        softwareVersion,
+        subTaskGroupType,
+        null /* ysqlMajorVersionUpgradeState */);
+  }
+
+  public void createSoftwareInstallTasks(
+      Collection<NodeDetails> nodes,
+      ServerType processType,
+      String softwareVersion,
+      SubTaskGroupType subTaskGroupType,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
       return;
@@ -2911,7 +2938,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(
-              node, processType, UpgradeTaskSubType.Install, softwareVersion));
+              node,
+              processType,
+              UpgradeTaskSubType.Install,
+              softwareVersion,
+              taskParams().getYbcSoftwareVersion(),
+              ysqlMajorVersionUpgradeState));
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -2919,6 +2951,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void createYbcSoftwareInstallTasks(
       List<NodeDetails> nodes, String softwareVersion, SubTaskGroupType subTaskGroupType) {
+    createYbcSoftwareInstallTasks(nodes, softwareVersion, subTaskGroupType, null);
+  }
+
+  public void createYbcSoftwareInstallTasks(
+      List<NodeDetails> nodes,
+      String softwareVersion,
+      SubTaskGroupType subTaskGroupType,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
 
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
@@ -2940,7 +2980,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               ServerType.CONTROLLER,
               UpgradeTaskSubType.YbcInstall,
               softwareVersion,
-              stableYbcVersion));
+              stableYbcVersion,
+              ysqlMajorVersionUpgradeState));
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -3053,17 +3094,37 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UpgradeTaskSubType taskSubType,
       String softwareVersion,
       String ybcSoftwareVersion) {
+    return getAnsibleConfigureServerTask(
+        node,
+        processType,
+        taskSubType,
+        softwareVersion,
+        ybcSoftwareVersion,
+        null /* ysqlMajorVersionUpgradeState */);
+  }
+
+  protected AnsibleConfigureServers getAnsibleConfigureServerTask(
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskSubType taskSubType,
+      String softwareVersion,
+      String ybcSoftwareVersion,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
+    Universe universe = getUniverse();
     UserIntent userIntent =
-        getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+    // Override ysql major version upgrade state if provided.
+    if (ysqlMajorVersionUpgradeState != null) {
+      params.ysqlMajorVersionUpgradeState = ysqlMajorVersionUpgradeState;
+    }
     if (softwareVersion == null) {
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
     } else {
       params.ybSoftwareVersion = softwareVersion;
       if (processType == ServerType.MASTER || processType == ServerType.TSERVER) {
         // GFlags groups may depend on software version, so need to calculate them using fresh one.
-        Universe universe = getUniverse();
         universe
             .getUniverseDetails()
             .clusters
@@ -3075,11 +3136,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 universe.getCluster(node.placementUuid),
                 universe.getUniverseDetails().clusters);
       }
-    }
-    if (gFlagsValidation.ysqlMajorVersionUpgrade(
-        userIntent.ybSoftwareVersion, params.ybSoftwareVersion)) {
-      // As this task is used for software upgrade, we need to set pg upgrade flag to true.
-      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.IN_PROGRESS;
     }
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     if (!StringUtils.isEmpty(params.getYbcSoftwareVersion())) {
@@ -3141,6 +3197,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.installYbc = taskParams().installYbc;
     params.setYbcInstalled(taskParams().isYbcInstalled());
     params.ybcGflags = userIntent.ybcFlags;
+    params.isMaster = node.isMaster;
 
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
 
