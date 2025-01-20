@@ -755,6 +755,8 @@ void TabletServer::Shutdown() {
 Status TabletServer::BootstrapDdlObjectLocks(
     const master::ClientOperationLeaseUpdatePB& lease_update) {
   VLOG(2) << __func__;
+  // todo(zdrudi):
+  // Need to track the lease. Process the other fields of ClientOperationLeaseUpdatePB.
   if (!lease_update.has_ddl_lock_entries() || !ts_local_lock_manager_) {
     return Status::OK();
   }

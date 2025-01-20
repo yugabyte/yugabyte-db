@@ -983,8 +983,8 @@ Status CatalogManager::Init() {
   RETURN_NOT_OK(xcluster_manager_->Init());
 
   master_->ts_manager()->SetLeaseExpiredCallback(std::bind(
-      &ObjectLockInfoManager::ReleaseOldObjectLocks, object_lock_info_manager_.get(), _1, _2, false,
-      _3));
+      &ObjectLockInfoManager::ReleaseLocksHeldByExpiredLeaseEpoch, object_lock_info_manager_.get(),
+      _1, _2, false, _3));
 
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
@@ -1385,6 +1385,8 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
 
     permissions_manager_->BuildRecursiveRoles();
 
+    object_lock_info_manager_->BootstrapLocksPostLoad();
+
     if (!VERIFY_RESULT(ysql_manager_->StartRunningInitDbIfNeeded(state->epoch))) {
       // If we are not running initdb, this is an existing cluster, and we need to check whether we
       // need to do a one-time migration to make YSQL system catalog tables transactional.
@@ -1480,6 +1482,8 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", state));
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", state));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", state));
+  RETURN_NOT_OK(master_->ts_manager()->RunLoader(
+      master_->MakeCloudInfoPB(), &master_->proxy_cache(), *state));
   RETURN_NOT_OK(Load<ObjectLockLoader>("Object locks", state));
 
   if (!transaction_tables_config_) {
@@ -1492,8 +1496,6 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   RETURN_NOT_OK(xcluster_manager_->RunLoaders(hidden_tablets_));
   RETURN_NOT_OK(master_->clone_state_manager().ClearAndRunLoaders(state->epoch));
-  RETURN_NOT_OK(master_->ts_manager()->RunLoader(
-      master_->MakeCloudInfoPB(), &master_->proxy_cache(), *state));
 
   return Status::OK();
 }
@@ -6283,11 +6285,6 @@ void CatalogManager::ReleaseObjectLocksGlobal(
     return;
   }
   object_lock_info_manager_->UnlockObject(*req, resp, std::move(rpc));
-}
-
-void CatalogManager::ExportObjectLockInfo(
-    const std::string& tserver_uuid, tserver::DdlLockEntriesPB* resp) {
-  object_lock_info_manager_->ExportObjectLockInfo(tserver_uuid, resp);
 }
 
 Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
@@ -13449,6 +13446,11 @@ Result<TSDescriptorPtr> CatalogManager::GetClosestLiveTserver(bool* local_ts) co
 
   return best_tserver;
 }
+
+Result<TSDescriptorPtr> CatalogManager::LookupTSByUUID(const TabletServerId& tserver_uuid) {
+  return master_->ts_manager()->LookupTSByUUID(tserver_uuid);
+}
+
 
 bool CatalogManager::IsYsqlMajorCatalogUpgradeInProgress() const {
   return ysql_manager_->IsYsqlMajorCatalogUpgradeInProgress();

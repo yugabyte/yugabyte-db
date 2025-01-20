@@ -422,7 +422,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void ReleaseObjectLocksGlobal(
       const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
-  void ExportObjectLockInfo(const std::string& tserver_uuid, tserver::DdlLockEntriesPB* resp);
   ObjectLockInfoManager* object_lock_info_manager() { return object_lock_info_manager_.get(); }
 
   // Gets the progress of ongoing index backfills.
@@ -1657,6 +1656,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       QLWriteRequestPB::QLStmtType op_type);
 
   Result<TSDescriptorPtr> GetClosestLiveTserver(bool* local_ts = nullptr) const override;
+
+  Result<TSDescriptorPtr> LookupTSByUUID(const TabletServerId& tserver_uuid);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.

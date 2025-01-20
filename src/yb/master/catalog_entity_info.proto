@@ -404,8 +404,8 @@ message SysObjectLockEntryPB {
   // host_uid is part of the key. Thus not stored
   // explicitly in this proto again.
 
-  // incarnation id -> Transaction ...
-  map<uint64, TransactionSubtxnMapPB> incarnations = 1;
+  // lease_epoch -> Transaction ...
+  map<uint64, TransactionSubtxnMapPB> lease_epochs = 1;
 }
 
 message SysXClusterConfigEntryPB {
