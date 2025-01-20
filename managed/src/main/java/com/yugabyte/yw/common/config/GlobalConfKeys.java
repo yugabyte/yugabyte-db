@@ -469,6 +469,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Default refresh interval for the KMS providers.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> kmsAllowCiphertrust =
+      new ConfKeyInfo<>(
+          "yb.kms.allow_ciphertrust",
+          ScopeType.GLOBAL,
+          "Allow CipherTrust KMS",
+          "Allow the usage of CipherTrust KMS.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   // TODO() Add metadata
   public static final ConfKeyInfo<Boolean> startMasterOnStopNode =
       new ConfKeyInfo<>(
