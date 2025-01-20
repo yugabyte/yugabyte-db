@@ -1,5 +1,5 @@
 ---
-title: Configure the Microsoft Azure cloud provider
+title: Configure the Microsoft Azure provider configuration
 headerTitle: Create cloud provider configuration
 linkTitle: Cloud providers
 description: Configure the Microsoft Azure provider configuration
