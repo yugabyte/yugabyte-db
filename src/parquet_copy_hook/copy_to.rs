@@ -31,7 +31,7 @@ pub(crate) fn execute_copy_to_with_dest_receiver(
     query_string: &CStr,
     params: &PgBox<ParamListInfoData>,
     query_env: &PgBox<QueryEnvironment>,
-    parquet_dest: PgBox<DestReceiver>,
+    parquet_dest: &PgBox<DestReceiver>,
 ) -> u64 {
     unsafe {
         debug_assert!(is_a(p_stmt.utilityStmt, T_CopyStmt));

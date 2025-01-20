@@ -23,7 +23,6 @@ use crate::{
 use super::{
     copy_from::{execute_copy_from, pop_parquet_reader_context},
     copy_to::execute_copy_to_with_dest_receiver,
-    copy_to_dest_receiver::pop_parquet_writer_context,
     copy_utils::{copy_to_stmt_compression, validate_copy_from_options, validate_copy_to_options},
 };
 
@@ -62,25 +61,26 @@ fn process_copy_to_parquet(
     let compression = copy_to_stmt_compression(p_stmt, uri.clone());
     let compression_level = copy_to_stmt_compression_level(p_stmt, uri.clone());
 
+    let parquet_dest = create_copy_to_parquet_dest_receiver(
+        uri_as_string(&uri).as_pg_cstr(),
+        &row_group_size,
+        &row_group_size_bytes,
+        &compression,
+        &compression_level.unwrap_or(INVALID_COMPRESSION_LEVEL),
+    );
+
+    let parquet_dest = unsafe { PgBox::from_pg(parquet_dest) };
+
     PgTryBuilder::new(|| {
-        let parquet_dest = create_copy_to_parquet_dest_receiver(
-            uri_as_string(&uri).as_pg_cstr(),
-            &row_group_size,
-            &row_group_size_bytes,
-            &compression,
-            &compression_level.unwrap_or(INVALID_COMPRESSION_LEVEL),
-        );
-
-        let parquet_dest = unsafe { PgBox::from_pg(parquet_dest) };
-
-        execute_copy_to_with_dest_receiver(p_stmt, query_string, params, query_env, parquet_dest)
+        execute_copy_to_with_dest_receiver(p_stmt, query_string, params, query_env, &parquet_dest)
     })
     .catch_others(|cause| {
-        // make sure to pop the parquet writer context
-        // In case we did not push the context, we should not throw an error while popping
-        let throw_error = false;
-        pop_parquet_writer_context(throw_error);
-
+        // make sure to cleanup parquet dest receiver
+        if let Some(shutdown_callback) = parquet_dest.rShutdown {
+            unsafe {
+                shutdown_callback(parquet_dest.as_ptr());
+            }
+        }
         cause.rethrow()
     })
     .execute()
