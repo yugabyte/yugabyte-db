@@ -1,6 +1,7 @@
 # Leave this running first since this validates global config database state.
 test: documentdb_test_helpers
 test: public_api_schema
+test: authentication_scram_sha_256
 # Leave this running first since this validates global config database state.
 test: bson_aggregation_pipeline_config_database
 test: command_insert_one_basic_types
