@@ -1,6 +1,6 @@
-# Contibuting to HelioDB
+# Contibuting to DocumentDB
 
-Thank you for your interest in contributing to HelioDB. There are several ways and means through which contributions to the project can be made and you can get involved.
+Thank you for your interest in contributing to DocumentDB. There are several ways through which contributions to the project can be made and you can get involved.
 
 ## Asking Questions
 
@@ -49,7 +49,7 @@ Wherever applicable, pull requests should contain tests.
 
 ## Suggestions
 
-We’re keen to hear your feedback on the future of HelioDB. Feature Requests can be submitted through the issue tracker. To ensure suggestions are reviewed faster, we do request that the following information be provided for each suggestion:
+We’re keen to hear your feedback on the future of DocumentDB. Feature Requests can be submitted through the issue tracker. To ensure suggestions are reviewed faster, we do request that the following information be provided for each suggestion:
 
 * Purpose/Motivation for the feature
 
@@ -57,7 +57,7 @@ We’re keen to hear your feedback on the future of HelioDB. Feature Requests ca
 
 * Description of a few scenarios that will help test and validate this feature
 
-For even quicker engagement and real-time discussions about your feature ideas, join our [Discord channel](https://discord.gg/WXUrVbnt4n). Our team and community members are actively available there to provide feedback, answer questions, and collaborate on refining your suggestions before they are formally submitted through the issue tracker. 
+For even quicker engagement and real-time discussions about your feature ideas, join our [Discord channel](https://discord.gg/WXUrVbnt4n). Our team and community members are actively available to provide feedback, answer questions, and collaborate on refining your suggestions before they are formally submitted through the issue tracker. 
 
 ## Discussion Etiquette
 
