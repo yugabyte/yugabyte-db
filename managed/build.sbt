@@ -686,7 +686,7 @@ lazy val pythonGenV2Client = project.in(file("client/python"))
 // Generate a Go API client.
 lazy val gogen = project.in(file("client/go"))
   .settings(
-    openApiInputSpec := "src/main/resources/swagger.json",
+    openApiInputSpec := "src/main/resources/swagger-all.json",
     openApiGeneratorName := "go",
     openApiOutputDir := "client/go/v1",
     openApiGenerateModelTests := SettingDisabled,
@@ -1146,6 +1146,7 @@ lazy val swagger = project
       // Consider generating this only in managedResources
       val swaggerJson = (root / Compile / resourceDirectory).value / "swagger.json"
       val swaggerStrictJson = (root / Compile / resourceDirectory).value / "swagger-strict.json"
+      val swaggerAllJson = (root / Compile / resourceDirectory).value / "swagger-all.json"
       Def.sequential(
         (Test / runMain )
           .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerJson"),
@@ -1156,6 +1157,8 @@ lazy val swagger = project
         // or use '--exclude_deprecated all' to drop all deprecated APIs
         (Test / runMain )
           .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerStrictJson --exclude_deprecated all"),
+        (Test / runMain )
+          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerAllJson --exclude_internal none")
       )
     }.value,
 
