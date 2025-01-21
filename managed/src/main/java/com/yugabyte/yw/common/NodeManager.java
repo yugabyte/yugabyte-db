@@ -2725,6 +2725,10 @@ public class NodeManager extends DevopsBase {
     result.add(Integer.toString(ports.tserverHttpPort));
     result.add("--tserver_rpc_port");
     result.add(Integer.toString(ports.tserverRpcPort));
+    result.add("--yb_controller_http_port");
+    result.add(Integer.toString(ports.ybControllerHttpPort));
+    result.add("--yb_controller_rpc_port");
+    result.add(Integer.toString(ports.ybControllerrRpcPort));
     if (userIntent.enableYCQL) {
       result.add("--cql_proxy_http_port");
       result.add(Integer.toString(ports.yqlServerHttpPort));

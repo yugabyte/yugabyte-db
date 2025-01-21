@@ -388,15 +388,10 @@ public class NodeConfigValidator {
       case YCQL_SERVER_RPC_PORT:
       case YSQL_SERVER_HTTP_PORT:
       case YSQL_SERVER_RPC_PORT:
-        {
-          return !input.isDetached();
-        }
       case YB_CONTROLLER_HTTP_PORT:
       case YB_CONTROLLER_RPC_PORT:
         {
-          // TODO change this to !input.isDetached() once the issue of not cleaning up yb_controller
-          // is fixed.
-          return false;
+          return !input.isDetached();
         }
       case NODE_EXPORTER_PORT:
         {
