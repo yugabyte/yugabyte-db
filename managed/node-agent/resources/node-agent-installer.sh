@@ -354,7 +354,7 @@ install_systemd_service() {
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
 
   [Install]
-  WantedBy=multi-user.target
+  WantedBy=default.target
 EOF
   else
     tee "$SERVICE_FILE_PATH" <<-EOF
@@ -372,7 +372,7 @@ EOF
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
 
   [Install]
-  WantedBy=multi-user.target
+  WantedBy=default.target
 EOF
   # Set the permissions after file creation. This is needed so that the service file
   # is executable during restart of systemd unit.
