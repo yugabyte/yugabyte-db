@@ -1318,6 +1318,22 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			if (desc.operator_name[0] == '\0') {
 				/* no need for odyssey to track unnamed prepared statements */
 				prev_named_prep_stmt = 0;
+
+				if (client->yb_unnamed_prep_stmt) {
+					free(client->yb_unnamed_prep_stmt);
+					client->yb_unnamed_prep_stmt = NULL;
+				}
+
+				client->yb_unnamed_prep_stmt = malloc(size);
+				if (client->yb_unnamed_prep_stmt == NULL) {
+					return OD_EOOM;
+				}
+
+				memcpy(client->yb_unnamed_prep_stmt, data, size);
+				client->yb_unnamed_prep_stmt_size = size;
+
+				server->yb_unnamed_prep_stmt_client_id = client->id;
+
 				break;
 			}
 
@@ -1501,6 +1517,36 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			/* unnamed prepared statement, ignore processing of the packet */
 			if (operator_name[0] == '\0') {
+				assert(client->yb_unnamed_prep_stmt);
+
+				if (od_id_cmp(&client->id, &server->yb_unnamed_prep_stmt_client_id)) {
+					od_debug(&instance->logger, "rewrite parse", client, server,
+					"server already has the cache plan from previous parse");
+					break;
+				}
+
+				machine_msg_t *msg_new = NULL;
+				msg_new = kiwi_fe_copy_msg(msg_new, client->yb_unnamed_prep_stmt,
+					client->yb_unnamed_prep_stmt_size);
+
+				if (instance->config.log_query ||
+					route->rule->log_query) {
+					od_frontend_log_parse(
+						instance, client,
+						"rewrite parse",
+						machine_msg_data(msg_new),
+						machine_msg_size(msg_new));
+				}
+
+				od_stat_parse(&route->stats);
+				rc = od_write(&server->io, msg_new);
+				if (rc == -1) {
+					od_error(&instance->logger,
+						"rewrite parse", NULL, server,
+						"write error: %s",
+						od_io_error(&server->io));
+					return OD_ESERVER_WRITE;
+				}
 				break;
 			}
 
