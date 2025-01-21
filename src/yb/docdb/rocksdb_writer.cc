@@ -482,9 +482,9 @@ IntentsWriter::IntentsWriter(const Slice& start_key,
   reverse_index_upperbound_ = txn_reverse_index_prefix_.AsSlice();
 
   reverse_index_iter_ = CreateRocksDBIterator(
-      intents_db_, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      rocksdb::kDefaultQueryId, CreateIntentHybridTimeFileFilter(file_filter_ht),
-      &reverse_index_upperbound_, rocksdb::CacheRestartBlockKeys::kFalse);
+      intents_db_, &KeyBounds::kNoBounds, BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId,
+      CreateIntentHybridTimeFileFilter(file_filter_ht), &reverse_index_upperbound_,
+      rocksdb::CacheRestartBlockKeys::kFalse);
 }
 
 Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
@@ -574,9 +574,9 @@ ApplyIntentsContext::ApplyIntentsContext(
       vector_indexes_(vector_indexes),
       apply_to_storages_(apply_to_storages),
       intent_iter_(CreateRocksDBIterator(
-          intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-          rocksdb::kDefaultQueryId, CreateIntentHybridTimeFileFilter(file_filter_ht),
-          /* iterate_upper_bound = */ nullptr, rocksdb::CacheRestartBlockKeys::kFalse)) {
+          intents_db, key_bounds, BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId,
+          CreateIntentHybridTimeFileFilter(file_filter_ht), /* iterate_upper_bound = */ nullptr,
+          rocksdb::CacheRestartBlockKeys::kFalse)) {
   if (vector_indexes_) {
     vector_index_batches_.resize(vector_indexes_->size());
   }
@@ -952,9 +952,8 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
       intents_write_batch_(intents_write_batch) {
   if (put_batch_.apply_external_transactions().size() > 0) {
     intents_db_iter_ = CreateRocksDBIterator(
-        intents_db, &docdb::KeyBounds::kNoBounds, docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-        /* user_key_for_filter= */ boost::none, rocksdb::kDefaultQueryId,
-        /* read_filter= */ nullptr, &intents_db_iter_upperbound_,
+        intents_db, &docdb::KeyBounds::kNoBounds, BloomFilterOptions::Inactive(),
+        rocksdb::kDefaultQueryId, /* read_filter= */ nullptr, &intents_db_iter_upperbound_,
         rocksdb::CacheRestartBlockKeys::kFalse);
   }
 }

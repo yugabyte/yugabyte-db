@@ -720,4 +720,12 @@ int64_t FlushTick() {
   return flush_tick_.fetch_add(1, std::memory_order_acq_rel);
 }
 
+QueryOptions QueryOptions::FromReadOptions(const ReadOptions& read_options) {
+  return QueryOptions {
+    .query_id = read_options.query_id,
+    .no_io = read_options.read_tier == kBlockCacheTier,
+    .statistics = read_options.statistics,
+  };
+}
+
 }  // namespace rocksdb

@@ -896,23 +896,20 @@ class StrongConflictChecker {
 
   Status Check(
       Slice intent_key, bool strong, ConflictManagementPolicy conflict_management_policy) {
-    const auto bloom_filter_prefix = VERIFY_RESULT(ExtractFilterPrefixFromKey(intent_key));
-    if (!value_iter_.Initialized() || bloom_filter_prefix != value_iter_bloom_filter_prefix_) {
+    if (!value_iter_.Initialized()) {
       auto hybrid_time_file_filter =
           FLAGS_docdb_ht_filter_conflict_with_committed ? CreateHybridTimeFileFilter(read_time_)
                                                         : nullptr;
       value_iter_ = CreateRocksDBIterator(
           resolver_.doc_db().regular,
           resolver_.doc_db().key_bounds,
-          BloomFilterMode::USE_BLOOM_FILTER,
-          intent_key,
+          BloomFilterOptions::Variable(),
           rocksdb::kDefaultQueryId,
           hybrid_time_file_filter,
           /* iterate_upper_bound = */ nullptr,
           rocksdb::CacheRestartBlockKeys::kFalse);
-      value_iter_bloom_filter_prefix_ = bloom_filter_prefix;
     }
-    value_iter_.Seek(intent_key);
+    value_iter_.SeekWithNewFilter(intent_key);
 
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
@@ -994,7 +991,6 @@ class StrongConflictChecker {
 
   // RocksDb iterator with bloom filter can be reused in case keys has same hash component.
   BoundedRocksDbIterator value_iter_;
-  Slice value_iter_bloom_filter_prefix_;
 };
 
 class ConflictResolverContextBase : public ConflictResolverContext {
