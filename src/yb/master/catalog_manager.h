@@ -2923,8 +2923,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       bool is_colocated_via_database, const NamespaceId& namespace_id,
       const NamespaceName& namespace_name, const TableInfoPtr& indexed_table) REQUIRES(mutex_);
 
-  bool IsYsqlMajorCatalogUpgradeInProgress() const;
-
   bool SkipCatalogVersionChecks() override;
 
   // Should be bumped up when tablet locations are changed.

@@ -3725,7 +3725,7 @@ Status PrintTableInfoForYsqlMajorVersionUpgrade(const scoped_refptr<TableInfo>& 
   RETURN_NOT_OK(SchemaFromPB(request_schema_pb, &request_schema));
   auto existing_schema = VERIFY_RESULT(table->GetSchema());
   if (!request_schema.Equals(existing_schema)) {
-    // During a ysql major catalog upgrade, with columns that have been dropped, the master's Schema
+    // During a major YSQL upgrade, with columns that have been dropped, the master's Schema
     // object doesn't keep a record. However, PostgreSQL does. To restore ordering properly,
     // pg_restore sends a dummy value for each dropped column in the CreateTable request (see
     // comments about dropped columns in dumpTableSchema in pg_dump.c). We ignore the dummy value
@@ -3737,12 +3737,12 @@ Status PrintTableInfoForYsqlMajorVersionUpgrade(const scoped_refptr<TableInfo>& 
     // Here we log the existing and request schemas for debugging purposes.
     SchemaPB existing_schema_pb;
     SchemaToPB(existing_schema, &existing_schema_pb);
-    LOG(INFO) << "During ysql major catalog upgrade, CreateTable request schema: "
+    LOG(INFO) << "During a major YSQL upgrade, CreateTable request schema: "
               << request_schema_pb.DebugString()
               << " does not equal existing schema: " << existing_schema_pb.DebugString();
   }
   LOG(INFO) << "Table already exists with id " << table->id()
-            << " during ysql major catalog upgrade, returning early from CreateTable";
+            << " during a major YSQL upgrade, returning early from CreateTable";
   return Status::OK();
 }
 
@@ -3814,17 +3814,17 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Looking up namespace");
   auto ns = VERIFY_RESULT(FindNamespace(orig_req->namespace_()));
 
-  // If we're doing a ysql major catalog upgrade, then for a user table, we expect it to already
+  // If we're doing a major YSQL upgrade, then for a user table, we expect it to already
   // exist. We will wire the current version's catalog to it. For a PG catalog table, we expect it
   // to be creating the new version's PG catalog, and so the table must not already exist.
-  if (IsYsqlMajorCatalogUpgradeInProgress()) {
+  if (ysql_manager_->IsMajorUpgradeInProgress()) {
     LockGuard lock(mutex_);
     auto ns_lock = ns->LockForRead();
     TRACE("Acquired catalog manager lock");
 
     RSTATUS_DCHECK_EQ(
         orig_req->table_type(), PGSQL_TABLE_TYPE, IllegalState,
-        "Creating non-PGSQL table during a ysql major catalog upgrade");
+        "Creating non-PGSQL table during a major YSQL upgrade");
     scoped_refptr<TableInfo> table = tables_->FindTableOrNull(orig_req->table_id());
     if (table != nullptr && !table->is_deleted()) {
       RSTATUS_DCHECK(!is_pg_catalog_table, IllegalState,
@@ -3836,7 +3836,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
     RSTATUS_DCHECK(
         is_pg_catalog_table, IllegalState,
-        "Trying to create a new user table during a ysql major catalog upgrade");
+        "No new tables can be created during a major YSQL upgrade");
   }
 
   RETURN_NOT_OK(CreateGlobalTransactionStatusTableIfNeededForNewTable(*orig_req, rpc, epoch));
@@ -5923,10 +5923,10 @@ Status CatalogManager::BackfillIndex(
     BackfillIndexResponsePB* resp,
     rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  // We don't expect to be called for index backfill during a ysql major catalog upgrade.
+  // We don't expect to be called for index backfill during a major YSQL upgrade.
   RSTATUS_DCHECK(
-      !IsYsqlMajorCatalogUpgradeInProgress(), InternalError,
-      "Attempting to backfill index during ysql major catalog upgrade");
+      !ysql_manager_->IsMajorUpgradeInProgress(), InternalError,
+      "Attempting to backfill index during a major YSQL upgrade");
   const TableIdentifierPB& index_table_identifier = req->index_identifier();
 
   scoped_refptr<TableInfo> index_table = VERIFY_RESULT(FindTable(index_table_identifier));
@@ -7222,48 +7222,6 @@ Status ApplyAlterSteps(server::Clock* clock,
   return Status::OK();
 }
 
-// Verifies that the request steps are to drop columns, the columns are not present in the YB
-// master's schema, and the columns being dropped were dropped previously in the prior version. The
-// PG restore process created the table with a dummy column in this column's place, but we returned
-// early from CreateTable, whose existing schema doesn't have the dropped column. For use only
-// during a ysql major catalog upgrade.
-Status VerifyDroppedColumnsForUpgrade(
-    const Schema& schema,
-    const google::protobuf::RepeatedPtrField<AlterTableRequestPB::Step>& steps) {
-  for (const auto& step : steps) {
-    const string& col_name = step.drop_column().name();
-    if (step.type() != AlterTableRequestPB::DROP_COLUMN) {
-      return STATUS_FORMAT(
-          InvalidArgument, "Invalid alter table type $0 during ysql major catalog upgrade",
-          AlterTableRequestPB::StepType_Name(step.type()));
-    }
-
-    if (schema.find_column(col_name) != Schema::kColumnNotFound) {
-      return STATUS(IllegalState, "Column unexpectedly found while doing drop column during ysql "
-                    "major version upgrade");
-    }
-    // Name specified by heap.c:RemoveAttributeById(), "........pg.dropped.#........"
-    const std::string kDroppedPrefix = "........pg.dropped.";
-    const std::string kDroppedSuffix = "........";
-    if (!(col_name.starts_with(kDroppedPrefix) && col_name.ends_with(kDroppedSuffix))) {
-      return STATUS_FORMAT(InvalidArgument, "Attempting to drop unexpected column '$0' during ysql "
-                           "major version upgrade", col_name);
-    }
-    size_t end_dots = col_name.find(kDroppedSuffix, kDroppedPrefix.length());
-    const std::string maybe_number = col_name.substr(kDroppedPrefix.length(),
-                                                    end_dots - kDroppedPrefix.length());
-    if (!std::all_of(maybe_number.begin(), maybe_number.end(),
-                     [](unsigned char c) { return std::isdigit(c); })) {
-      return STATUS_FORMAT(InvalidArgument, "Attempting to drop unexpected column '$0' during ysql "
-                           "major version upgrade", col_name);
-    }
-    LOG(INFO) << "Ignoring missing column '" << col_name
-              << "' during ALTER TABLE DROP COLUMN in a ysql major catalog upgrade";
-  }
-
-  return Status::OK();
-}
-
 } // namespace
 
 Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
@@ -7273,9 +7231,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   LOG_WITH_PREFIX(INFO) << "Servicing " << __func__ << " request from " << RequestorString(rpc)
                         << ": " << req->ShortDebugString();
 
-  if (IsYsqlMajorCatalogUpgradeInProgress()) {
-    // Alter table commands done during the upgrade are catalog changes only.
-    LOG(INFO) << "Ignoring alter table request during ysql major catalog upgrade";
+  if (ysql_manager_->IsMajorUpgradeInProgress()) {
+    // User attempts to alter the table come from a user facing pg backend which is blocked from
+    // updating the catalog, so they can never reach here.
+    // Only the pg running the restore phase of pg_upgrade will be allowed to reach this point, and
+    // those can be ignored since they are metadata only modifications.
+    LOG(INFO) << "Ignoring alter table request during a major YSQL upgrade";
     return Status::OK();
   }
 
@@ -7378,29 +7339,15 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   string previous_table_name = l->pb.name();
   ColumnId next_col_id = ColumnId(l->pb.next_column_id());
   if (req->alter_schema_steps_size() || req->has_alter_properties() || req->has_pgschema_name()) {
-    if (IsYsqlMajorCatalogUpgradeInProgress()) {
-      // In a ysql major catalog upgrade, to ensure the new version's PG catalog is semantically
-      // identical to the old version's catalog, pg_restore goes through the motions of creating a
-      // table with the dropped columns and then dropping them. However, the catalog manager
-      // maintains its own schema state that's invariant across ysql major versions, and from the
-      // original drop column request, it has already deleted dropped columns from its own
-      // representation of the schema. Since we don't need to make any further changes to the
-      // catalog manager's schema during the pg_restore process, in ysql major catalog upgrade mode,
-      // we simply verify the alter table command and catalog manager state are as expected, and
-      // return early.
-      return VerifyDroppedColumnsForUpgrade(previous_schema, req->alter_schema_steps());
-    } else {
-      TRACE("Apply alter schema");
-      Status s = ApplyAlterSteps(
-          master_->clock(), table->id(), l->pb, req, &new_schema, &next_col_id, &ddl_log_entries);
-      if (!s.ok()) {
-        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
-      }
-      DCHECK_NE(next_col_id, 0);
-      DCHECK_EQ(new_schema.find_column_by_id(next_col_id),
-                static_cast<int>(Schema::kColumnNotFound));
-      has_changes = true;
+    TRACE("Apply alter schema");
+    Status s = ApplyAlterSteps(
+        master_->clock(), table->id(), l->pb, req, &new_schema, &next_col_id, &ddl_log_entries);
+    if (!s.ok()) {
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
+    DCHECK_NE(next_col_id, 0);
+    DCHECK_EQ(new_schema.find_column_by_id(next_col_id), static_cast<int>(Schema::kColumnNotFound));
+    has_changes = true;
   }
 
   if (req->has_pgschema_name()) {
@@ -8450,19 +8397,18 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   TransactionMetadata txn;
   const auto db_type = GetDatabaseType(*req);
   NamespaceInfo::WriteLock ns_l;
-  const bool is_ysql_major_upgrade_in_progress = IsYsqlMajorCatalogUpgradeInProgress();
+  const bool is_ysql_major_upgrade_in_progress = ysql_manager_->IsMajorUpgradeInProgress();
 
   {
     LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     // Validate the user request.
-
     auto check_ns_errors = [req, resp, db_type, is_ysql_major_upgrade_in_progress](
                                const scoped_refptr<NamespaceInfo>& ns, bool by_id) -> Status {
       Status return_status;
       if (is_ysql_major_upgrade_in_progress) {
-        // During a ysql major catalog upgrade, each *system* namespace (template1, template0,
+        // During a major YSQL upgrade, each *system* namespace (template1, template0,
         // postgres, yugabyte, and system_platform) is "created" twice: once by initdb, and then
         // once again after a DROP DATABASE that's part of upstream Postgres's dump and restore
         // process. In both cases, the namespace must already exist in DocDB for the prior version,
@@ -8482,14 +8428,14 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
             context = "Namespace is unexpectedly missing from the namespace names mapper";
           }
           return_status =
-              STATUS(IllegalState, StrCat(context, " during a ysql major catalog upgrade"));
+              STATUS(IllegalState, StrCat(context, " during a major YSQL upgrade"));
           return SetupError(
               resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, return_status);
         }
         RSTATUS_DCHECK_EQ(
             ns->name(), req->name(), InternalError,
             Format(
-                "Namespace created during a ysql major catalog upgrade had $0 "
+                "Namespace created during a major YSQL upgrade had $0 "
                 "that matched a different namespace $1",
                 by_id ? "an ID" : "a name", by_id ? "name" : "ID"));
       } else if (ns != nullptr) {
@@ -8534,7 +8480,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Create unique id for this new namespace, unless it already exists in the online ysql major
     // version catalog upgrade case.
-    if (!IsYsqlMajorCatalogUpgradeInProgress()) {
+    if (!ysql_manager_->IsMajorUpgradeInProgress()) {
       NamespaceId new_id = !req->namespace_id().empty()
                                ? req->namespace_id()
                                : GenerateIdUnlocked(SysRowEntryType::NAMESPACE);
@@ -8565,7 +8511,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
           // The expectation is that we're copying "all" of the PG tables from the source namespace
           // to the target namespace. There are 3 situations in which we copy a namespace:
           //  1) initdb, during a clean install
-          //  2) initdb, running as part of a ysql major catalog upgrade
+          //  2) initdb, running as part of a major YSQL upgrade
           //  3) steady state in either case (post-universe-creation, or post-upgrade)
           //
           // What does "all" mean in these cases?
@@ -8769,7 +8715,7 @@ void CatalogManager::ProcessPendingNamespace(
     if (status.ok()) return;
     TRACE("Handling failed keyspace creation");
     // Do not set on-disk state here. The loader treats the PREPARING state as FAILED.
-    if (IsYsqlMajorCatalogUpgradeInProgress()) {
+    if (ysql_manager_->IsMajorUpgradeInProgress()) {
       metadata.set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_FAILED);
     } else {
       metadata.set_state(SysNamespaceEntryPB::FAILED);
@@ -8975,19 +8921,21 @@ Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
   {
     // Don't allow deletion if the namespace is in a transient state.
     auto cur_state = ns->state();
-    if (IsYsqlMajorCatalogUpgradeInProgress()) {
-      // Note that during a ysql major catalog upgrade, deleting a namespace is only done by the
-      // upgrade process, and only "deletes" the new major version's namespace. In Yugabyte, we
-      // track the deleted state, and delete the new major version's catalog tables, without
-      // deleting the namespace itself, or touching the old major version's catalog tables or any
-      // user tables.
+    if (ysql_manager_->IsMajorUpgradeInProgress()) {
+      // User attempts to delete the namespace come from a user facing pg backend which is blocked
+      // from updating the catalog, so they can never reach here.
+      //
+      // Only the upgrade process can reach here, and it only "deletes" the new major version's
+      // namespace. In Yugabyte, we track the deleted state, and delete the new major version's
+      // catalog tables, without deleting the namespace itself, or touching the old major version's
+      // catalog tables or any user tables.
       SCHECK_FORMAT(cur_state == SysNamespaceEntryPB::RUNNING, IllegalState,
                     "Deleting the namespace for the new YSQL version isn't allowed if the primary "
                     "state of the namespace isn't RUNNING. Current state is $0",
                     SysNamespaceEntryPB::State_Name(cur_state));
       // Note that if the ysql next major version state enters state FAILED, we would expect the
       // user to roll back (deleting all signs of the new ysql major catalog) before trying
-      // another ysql major catalog upgrade.
+      // another major YSQL upgrade.
       auto cur_ysql_next_major_version_state = ns->ysql_next_major_version_state();
       SCHECK_FORMAT(cur_ysql_next_major_version_state == SysNamespaceEntryPB::NEXT_VER_RUNNING,
                     IllegalState,
@@ -8995,6 +8943,10 @@ Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
                     "state isn't RUNNING. Current upgrade state is $0",
                     SysNamespaceEntryPB::YsqlNextMajorVersionState_Name(
                         cur_ysql_next_major_version_state));
+
+      SCHECK_EQ(
+          ns->database_type(), YQL_DATABASE_PGSQL, IllegalState,
+          "keyspace deletion during a major YSQL upgrade is not allowed");
     } else if (
         cur_state != SysNamespaceEntryPB::RUNNING && cur_state != SysNamespaceEntryPB::FAILED) {
       if (cur_state == SysNamespaceEntryPB::DELETED) {
@@ -9136,29 +9088,9 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   TRACE("Locking database");
   auto l = database->LockForWrite();
   SysNamespaceEntryPB& metadata = database->mutable_metadata()->mutable_dirty()->pb;
-  if (IsYsqlMajorCatalogUpgradeInProgress()) {
-    if (metadata.state() != SysNamespaceEntryPB::RUNNING) {
-      return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::INTERNAL_ERROR),
-                              "Keyspace ($0) has invalid state ($1), aborting delete",
-                              database->name(), metadata.state());
-    }
-    if (metadata.ysql_next_major_version_state() != SysNamespaceEntryPB::NEXT_VER_RUNNING) {
-      return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::INTERNAL_ERROR),
-                              "Keyspace ($0) has invalid ysql next major version state ($1), "
-                              "aborting delete",
-                              database->name(), metadata.ysql_next_major_version_state());
-    }
-  } else if (
-      metadata.state() != SysNamespaceEntryPB::RUNNING &&
-      metadata.state() != SysNamespaceEntryPB::FAILED) {
-    return SetupError(
-        resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR,
-        STATUS_SUBSTITUTE(
-            IllegalState, "Keyspace ($0) has invalid state ($1), aborting delete", database->name(),
-            metadata.state()));
-  }
-  if (IsYsqlMajorCatalogUpgradeInProgress()) {
-    // During a ysql major catalog upgrade, the upstream Postgres mechanism drops and re-creates
+
+  if (ysql_manager_->IsMajorUpgradeInProgress()) {
+    // During a major YSQL upgrade, the upstream Postgres mechanism drops and re-creates
     // system namespaces. Therefore, we keep a separate state machine for the status of the new
     // major version's namespace. It starts at RUNNING when called from initdb, and then is later
     // "deleted" and then "re-created" by the upgrade process.
@@ -9177,7 +9109,7 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     scoped_refptr<NamespaceInfo> database, const LeaderEpoch& epoch) {
   TEST_PAUSE_IF_FLAG(TEST_hang_on_namespace_transition);
 
-  const auto is_ysql_major_upgrade = IsYsqlMajorCatalogUpgradeInProgress();
+  const auto is_ysql_major_upgrade = ysql_manager_->IsMajorUpgradeInProgress();
 
   // Lock database before removing content.
   TRACE("Locking database");
@@ -9216,7 +9148,7 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     }
   }
 
-  // Delete all tables in the database. If we're in a ysql major catalog upgrade, this will delete
+  // Delete all tables in the database. If we're in a major YSQL upgrade, this will delete
   // only the new version's tables.
   TRACE("Delete all tables in YSQL database");
   Status s = DeleteYsqlDBTables(
@@ -9259,7 +9191,7 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
 
   // During an upgrade, we skip the actual namespace deletion.
   if (is_ysql_major_upgrade) {
-    LOG(INFO) << "We're in a ysql major catalog upgrade, skipping actual namespace deletion";
+    LOG(INFO) << "We're in a major YSQL upgrade, skipping actual namespace deletion";
     l.Commit();
     return;
   }
@@ -9297,8 +9229,10 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
 Status CatalogManager::DeleteYsqlDBTables(
     const NamespaceId& database_id, const bool is_for_ysql_major_rollback,
     const LeaderEpoch& epoch) {
-  const auto is_ysql_major_upgrade = IsYsqlMajorCatalogUpgradeInProgress();
+  const auto is_ysql_major_upgrade = ysql_manager_->IsMajorUpgradeInProgress();
   if (is_for_ysql_major_rollback) {
+    // User attempts to delete the table come from a user facing pg backend which is blocked from
+    // updating the catalog, so they can never reach here.
     RSTATUS_DCHECK(
         is_ysql_major_upgrade, IllegalState,
         "DeleteYsqlDBTables called with is_for_ysql_major_upgrade when not in a YSQL major catalog "
@@ -9317,7 +9251,7 @@ Status CatalogManager::DeleteYsqlDBTables(
 
     // Populate tables and sys_table_ids.
     for (const auto& table : tables_->GetAllTables()) {
-      // In ysql major catalog upgrade mode, there are two possibilities:
+      // In major YSQL upgrade mode, there are two possibilities:
       //  * To propagate database-level properties for certain databases in an upgrade, pg_upgrade
       //    drops those databases and recreates them. We pretend to do so, but only delete the
       //    current version's catalog tables, so the restore portion doesn't get confused.
@@ -9336,11 +9270,11 @@ Status CatalogManager::DeleteYsqlDBTables(
         continue;
       }
 
-      // During the YSQL major catalog upgrade, don't drop shared tables for drop database (see the
+      // During the major YSQL upgrade, don't drop shared tables for drop database (see the
       // comment at the beginning of the for loop), because such tables are technically global
       // tables, not contained in template1.
       //
-      // During YSQL major catalog upgrade rollback, shared tables for the current version hosted in
+      // During a major YSQL upgrade rollback, shared tables for the current version hosted in
       // the template1 namespace must be deleted so that we return to a clean state. This is safe
       // because DDLs are disabled and there are no current-version tservers connected.
       if (is_ysql_major_upgrade) {
@@ -9470,7 +9404,7 @@ Status CatalogManager::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestP
   auto& metadata = l->pb;
 
   // First, check if this is a major ysql version upgrade.
-  if (IsYsqlMajorCatalogUpgradeInProgress()) {
+  if (ysql_manager_->IsMajorUpgradeInProgress()) {
     if (metadata.ysql_next_major_version_state() == SysNamespaceEntryPB::NEXT_VER_DELETED) {
       resp->set_done(true);
       return Status::OK();
@@ -12868,7 +12802,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
 
   if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql) {
     // Initialize the catalog version cache.
-    // This is needed for cases like ysql major upgrade where master runs a postgres process.
+    // This is needed for cases like major YSQL upgrade where master runs a postgres process.
     DbOidToCatalogVersionMap versions;
     WARN_NOT_OK(
         GetYsqlAllDBCatalogVersions(false /* use_cache */, &versions, nullptr /* fingerprint */),
@@ -13451,16 +13385,11 @@ Result<TSDescriptorPtr> CatalogManager::LookupTSByUUID(const TabletServerId& tse
   return master_->ts_manager()->LookupTSByUUID(tserver_uuid);
 }
 
-
-bool CatalogManager::IsYsqlMajorCatalogUpgradeInProgress() const {
-  return ysql_manager_->IsYsqlMajorCatalogUpgradeInProgress();
-}
-
 bool CatalogManager::SkipCatalogVersionChecks() {
   // Only skip if we are leader and the major catalog upgrade is in progress.
   SCOPED_LEADER_SHARED_LOCK(l, this);
   if (l.IsInitializedAndIsLeader()) {
-    return IsYsqlMajorCatalogUpgradeInProgress();
+    return ysql_manager_->IsMajorUpgradeInProgress();
   }
   return false;
 }

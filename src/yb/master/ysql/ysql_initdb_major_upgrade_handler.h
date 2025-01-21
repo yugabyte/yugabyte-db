@@ -62,9 +62,7 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // The upgrade is considered to have started when the yb-master leader has upgraded to a new major
   // catalog version.
   // The upgrade is completed after it has been finalized.
-  bool IsYsqlMajorUpgradeInProgress() const { return ysql_major_upgrade_in_progress_; }
-
-  bool IsYsqlMajorCatalogUpgradeInProgress() const;
+  bool IsMajorUpgradeInProgress() const { return ysql_major_upgrade_in_progress_; }
 
   Result<YsqlMajorCatalogUpgradeState> GetYsqlMajorCatalogUpgradeState() const;
 

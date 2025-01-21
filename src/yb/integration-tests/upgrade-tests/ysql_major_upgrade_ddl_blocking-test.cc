@@ -226,10 +226,9 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, CreateAndDropDBs) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
   auto validate_db_ddls_fail = [this] {
-    // TODO: Enable after CreateDatabase blocking is properly implemented.
-    // ASSERT_NOK_STR_CONTAINS(
-    //     ExecuteStatement("CREATE DATABASE new_db2"),
-    //     "No new namespaces can be created during a major YSQL upgrade");
+    ASSERT_NOK_STR_CONTAINS(
+        ExecuteStatement("CREATE DATABASE new_db2"),
+        "No new namespaces can be created during a major YSQL upgrade");
     ASSERT_NOK_STR_CONTAINS(ExecuteStatement("DROP DATABASE new_db1"), kExpectedDdlError);
   };
 
