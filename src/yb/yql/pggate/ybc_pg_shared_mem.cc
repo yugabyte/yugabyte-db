@@ -9,24 +9,19 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-//
 
-#pragma once
+#include "yb/yql/pggate/ybc_pg_shared_mem.h"
 
-#include <functional>
-#include <map>
+#include "yb/yql/pggate/pg_shared_mem.h"
 
-#include "yb/util/status_fwd.h"
+namespace yb::pggate {
 
-namespace yb::tserver {
+extern "C" {
 
-class TServerSharedData;
-class SharedMemoryManager;
+void YBCSetupSharedMemoryAddressSegment() {
+  PgSetupSharedMemoryAddressSegment();
+}
 
-struct CatalogVersionInfo;
-// Use ordered map to make computing fingerprint of the map easier.
-using DbOidToCatalogVersionInfoMap = std::map<uint32_t, CatalogVersionInfo>;
+} // extern "C"
 
-using CertificateReloader = std::function<Status(void)>;
-
-} // namespace yb::tserver
+} // namespace yb::pggate

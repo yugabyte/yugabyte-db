@@ -3082,14 +3082,6 @@ void TabletServiceImpl::GetSplitKey(
   });
 }
 
-void TabletServiceImpl::GetSharedData(const GetSharedDataRequestPB* req,
-                                      GetSharedDataResponsePB* resp,
-                                      rpc::RpcContext context) {
-  auto& data = server_->SharedObject();
-  resp->mutable_data()->assign(pointer_cast<const char*>(&data), sizeof(data));
-  context.RespondSuccess();
-}
-
 void TabletServiceImpl::GetTserverCatalogVersionInfo(
     const GetTserverCatalogVersionInfoRequestPB* req,
     GetTserverCatalogVersionInfoResponsePB* resp,

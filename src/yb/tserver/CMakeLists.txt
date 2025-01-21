@@ -145,7 +145,7 @@ set(TSERVER_YRPC_LIBS
   remote_bootstrap_proto
   rpc_header_proto
   tserver_proto
-  tserver_util)
+  tserver_shared)
 ADD_YB_LIBRARY(tserver_service_proto
   SRCS ${TSERVER_YRPC_SRCS}
   DEPS ${TSERVER_YRPC_LIBS}
@@ -206,20 +206,21 @@ ADD_YB_LIBRARY(pg_cron_leader_service_proto
   NONLINK_DEPS ${TSERVER_YRPC_TGTS})
 
 #########################################
-# tserver_util
+# tserver_shared
 #########################################
 
-set(TSERVER_UTIL_SRCS
+set(TSERVER_SHARED_SRCS
   tserver_flags.cc
   tserver_error.cc
   tserver_shared_mem.cc)
 set(TSERVER_UTIL_LIBS
   yb_util
+  yb_util_shmem
   consensus_error)
-ADD_YB_LIBRARY(tserver_util
-  SRCS ${TSERVER_UTIL_SRCS}
-  DEPS ${TSERVER_UTIL_LIBS})
-add_dependencies(tserver_util gen_proto)
+ADD_YB_LIBRARY(tserver_shared
+  SRCS ${TSERVER_SHARED_SRCS}
+  DEPS ${TSERVER_SHARED_LIBS})
+add_dependencies(tserver_shared gen_proto)
 
 #########################################
 # tserver

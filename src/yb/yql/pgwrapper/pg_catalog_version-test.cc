@@ -155,19 +155,12 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ShmCatalogVersionMap result;
     for (size_t tablet_index = 0; tablet_index != cluster_->num_tablet_servers(); ++tablet_index) {
       // Get the shared memory object from tserver at 'tablet_index'.
-      auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
-          cluster_->tablet_server(tablet_index));
-      rpc::RpcController controller;
-      controller.set_timeout(kRpcTimeout);
-      tserver::GetSharedDataRequestPB shared_data_req;
-      tserver::GetSharedDataResponsePB shared_data_resp;
-      RETURN_NOT_OK(proxy.GetSharedData(shared_data_req, &shared_data_resp, &controller));
-      const auto& data = shared_data_resp.data();
-      tserver::TServerSharedData tserver_shared_data;
-      SCHECK_EQ(
-          data.size(), sizeof(tserver_shared_data),
-          IllegalState, "Unexpected response size");
-      memcpy(pointer_cast<void*>(&tserver_shared_data), data.c_str(), data.size());
+      auto uuid = cluster_->tablet_server(0)->instance_id().permanent_uuid();
+      tserver::SharedMemoryManager shared_mem_manager;
+      RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(uuid));
+
+      auto& tserver_shared_data = shared_mem_manager.SharedData();
+
       size_t initialized_slots_count = 0;
       for (size_t i = 0; i < tserver::TServerSharedData::kMaxNumDbCatalogVersions; ++i) {
         if (tserver_shared_data.ysql_db_catalog_version(i)) {
@@ -176,10 +169,13 @@ class PgCatalogVersionTest : public LibPqTestBase {
       }
 
       // Get the tserver catalog version info from tserver at 'tablet_index'.
+      rpc::RpcController controller;
+      controller.set_timeout(kRpcTimeout);
+      auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
+          cluster_->tablet_server(tablet_index));
+
       tserver::GetTserverCatalogVersionInfoRequestPB catalog_version_req;
       tserver::GetTserverCatalogVersionInfoResponsePB catalog_version_resp;
-      controller.Reset();
-      controller.set_timeout(kRpcTimeout);
       RETURN_NOT_OK(proxy.GetTserverCatalogVersionInfo(
           catalog_version_req, &catalog_version_resp, &controller));
       if (catalog_version_resp.has_error()) {

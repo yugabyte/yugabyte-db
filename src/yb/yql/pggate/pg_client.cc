@@ -377,15 +377,13 @@ class PgClient::Impl : public BigDataFetcher {
 
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
-               const tserver::TServerSharedObject& tserver_shared_object,
+               const tserver::TServerSharedData& tserver_shared_data,
                std::optional<uint64_t> session_id) {
-    CHECK_NOTNULL(&tserver_shared_object);
     MonoDelta resolve_cache_timeout;
-    const auto& tserver_shared_data_ = *tserver_shared_object;
-    HostPort host_port(tserver_shared_data_.endpoint());
+    HostPort host_port(tserver_shared_data.endpoint());
     if (FLAGS_use_node_hostname_for_local_tserver) {
-      host_port = HostPort(tserver_shared_data_.host().ToBuffer(),
-                           tserver_shared_data_.endpoint().port());
+      host_port = HostPort(tserver_shared_data.host().ToBuffer(),
+                           tserver_shared_data.endpoint().port());
       resolve_cache_timeout = MonoDelta::kMax;
     }
     LOG(INFO) << "Using TServer host_port: " << host_port;
@@ -404,7 +402,7 @@ class PgClient::Impl : public BigDataFetcher {
     LOG_WITH_PREFIX(INFO) << "Session id acquired. Postgres backend pid: " << getpid();
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
 
-    memcpy(ash_config_.top_level_node_id, tserver_shared_data_.tserver_uuid(), 16);
+    memcpy(ash_config_.top_level_node_id, tserver_shared_data.tserver_uuid(), 16);
 
     return Status::OK();
   }
@@ -1491,7 +1489,7 @@ PgClient::~PgClient() = default;
 
 Status PgClient::Start(
     rpc::ProxyCache* proxy_cache, rpc::Scheduler* scheduler,
-    const tserver::TServerSharedObject& tserver_shared_object,
+    const tserver::TServerSharedData& tserver_shared_object,
     std::optional<uint64_t> session_id) {
   return impl_->Start(proxy_cache, scheduler, tserver_shared_object, session_id);
 }

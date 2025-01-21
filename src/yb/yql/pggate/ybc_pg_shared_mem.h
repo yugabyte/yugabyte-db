@@ -9,24 +9,16 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-//
 
 #pragma once
 
-#include <functional>
-#include <map>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#include "yb/util/status_fwd.h"
+// Communicates with parent process to agree on an address to place shared memory allocator in.
+void YBCSetupSharedMemoryAddressSegment();
 
-namespace yb::tserver {
-
-class TServerSharedData;
-class SharedMemoryManager;
-
-struct CatalogVersionInfo;
-// Use ordered map to make computing fingerprint of the map easier.
-using DbOidToCatalogVersionInfoMap = std::map<uint32_t, CatalogVersionInfo>;
-
-using CertificateReloader = std::function<Status(void)>;
-
-} // namespace yb::tserver
+#ifdef __cplusplus
+} // extern "C"
+#endif

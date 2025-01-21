@@ -15,6 +15,7 @@
 
 #include <atomic>
 #include <memory>
+#include <string_view>
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/interprocess/ipc/message_queue.hpp>
@@ -24,9 +25,13 @@
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
+#include "yb/util/shmem/reserved_address_segment.h"
+#include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/thread.h"
 #include "yb/util/uuid.h"
@@ -51,6 +56,14 @@ class TServerSharedData {
         << "Shared memory atomics must be lock-free";
     host_[0] = 0;
   }
+
+  // This object is initialized early on, but until address negotiation with postmaster finishes,
+  // it is mapped at a temporary address, and pointers in shared memory cannot be used. This is
+  // called on tserver when negotiation is finished, and sets up the fields that require pointer
+  // support.
+  Status AllocatorsInitialized(SharedMemoryBackingAllocator& allocator);
+
+  Status WaitAllocatorsInitialized();
 
   void SetHostEndpoint(const Endpoint& value, const std::string& host) {
     endpoint_ = value;
@@ -140,6 +153,52 @@ class TServerSharedData {
 
   // pid of the local TServer
   pid_t pid_;
+
+  // Whether AllocatorsInitialized() has been called -- until then, pointers in shared memory cannot
+  // be used.
+  std::atomic<bool> fully_initialized_{false};
+};
+
+class SharedMemoryManager {
+ public:
+  ~SharedMemoryManager();
+
+  Status InitializeTServer(std::string_view uuid);
+  Status PrepareNegotiationTServer();
+  Status SkipNegotiation();
+
+  Status InitializePostmaster(int fd);
+  Status InitializePgBackend(std::string_view uuid);
+
+  Status ShutdownNegotiator();
+
+  int NegotiationFd() const;
+
+  bool IsReady() const {
+    return ready_;
+  }
+
+  TServerSharedData& SharedData() const {
+    return *data_;
+  }
+
+ private:
+  void ExecuteParentNegotiator(const std::shared_ptr<AddressSegmentNegotiator>& negotiator);
+
+  Status PrepareAllocators(std::string_view uuid);
+  Status InitializeParentAllocatorsAndObjects();
+  Status InitializeChildAllocatorsAndObjects(std::string_view uuid);
+
+  ReservedAddressSegment address_segment_;
+  SharedMemoryBackingAllocator allocator_;
+
+  ThreadPtr parent_negotiator_thread_;
+  std::weak_ptr<AddressSegmentNegotiator> parent_negotiator_;
+  bool is_parent_ = false;
+
+  std::atomic<bool> ready_{false};
+  SharedMemoryAllocatorPrepareState prepare_state_;
+  TServerSharedData* data_ = nullptr;
 };
 
 YB_STRONGLY_TYPED_BOOL(Create);

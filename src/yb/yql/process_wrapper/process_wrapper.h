@@ -59,7 +59,7 @@ YB_DEFINE_ENUM(YbSubProcessState, (kNotStarted)(kRunning)(kStopping)(kStopped));
 class ProcessSupervisor {
  public:
   virtual ~ProcessSupervisor() {}
-  void Stop();
+  virtual void Stop();
   Status Start();
 
   // Returns the current state of the process.

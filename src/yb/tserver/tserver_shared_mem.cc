@@ -20,14 +20,21 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/shmem/interprocess_semaphore.h"
+#include "yb/util/shmem/shared_mem_segment.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/thread.h"
+#include "yb/util/uuid.h"
+
+DEFINE_RUNTIME_uint64(ts_shared_memory_setup_max_wait_ms, 10000,
+                      "Maximum wait time for tserver to set up shared memory state");
 
 DEFINE_test_flag(bool, pg_client_crash_on_shared_memory_send, false,
                  "Crash while performing pg client send via shared memory.");
@@ -35,11 +42,24 @@ DEFINE_test_flag(bool, pg_client_crash_on_shared_memory_send, false,
 DEFINE_test_flag(bool, skip_remove_tserver_shared_memory_object, false,
                  "Skip remove tserver shared memory object in tests.");
 
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+
+using namespace std::literals;
+
 namespace yb::tserver {
 
 namespace {
 
 using SystemClock = std::chrono::system_clock;
+
+Result<std::string> MakeAllocatorName(std::string_view uuid) {
+  // Hex-encoded uuid is too long for allocator name, so base64 encoding is used.
+  std::string uuid_bytes;
+  VERIFY_RESULT(Uuid::FromHexStringBigEndian(std::string(uuid))).ToBytes(&uuid_bytes);
+  std::string out;
+  WebSafeBase64Escape(uuid_bytes, &out);
+  return out;
+}
 
 std::chrono::system_clock::time_point ToSystemBase() {
   auto now_system = SystemClock::now();
@@ -181,6 +201,145 @@ std::string MakeSharedMemoryName(const std::string& instance_id, uint64_t sessio
 }
 
 } // namespace
+
+Status TServerSharedData::AllocatorsInitialized(SharedMemoryBackingAllocator& allocator) {
+  fully_initialized_ = true;
+  return Status::OK();
+}
+
+Status TServerSharedData::WaitAllocatorsInitialized() {
+  return WaitFor(
+      [this]() -> Result<bool> { return fully_initialized_; },
+      FLAGS_ts_shared_memory_setup_max_wait_ms * 1ms,
+      "Wait for shared memory allocators to be initialized");
+}
+
+SharedMemoryManager::~SharedMemoryManager() {
+  CHECK_OK(ShutdownNegotiator());
+  if (is_parent_ && data_) {
+    data_->~TServerSharedData();
+  }
+}
+
+Status SharedMemoryManager::InitializeTServer(std::string_view uuid) {
+  is_parent_ = true;
+  return PrepareAllocators(uuid);
+}
+
+Status SharedMemoryManager::PrepareNegotiationTServer() {
+  if (parent_negotiator_thread_) {
+    RETURN_NOT_OK(ShutdownNegotiator());
+  }
+
+  auto negotiator = std::make_shared<AddressSegmentNegotiator>();
+  RETURN_NOT_OK(negotiator->PrepareNegotiation(&address_segment_));
+
+  parent_negotiator_ = negotiator;
+  parent_negotiator_thread_ = VERIFY_RESULT(Thread::Make(
+      "SharedMemoryManager", "Negotiator",
+      &SharedMemoryManager::ExecuteParentNegotiator, this, negotiator));
+
+  return Status::OK();
+}
+
+Status SharedMemoryManager::SkipNegotiation() {
+  address_segment_ = VERIFY_RESULT(AddressSegmentNegotiator::ReserveWithoutNegotiation());
+  CHECK_OK(InitializeParentAllocatorsAndObjects());
+  return Status::OK();
+}
+
+Status SharedMemoryManager::InitializePostmaster(int fd) {
+  address_segment_ = VERIFY_RESULT(AddressSegmentNegotiator::NegotiateChild(fd));
+  return Status::OK();
+}
+
+Status SharedMemoryManager::InitializePgBackend(std::string_view uuid) {
+  bool pointer_support = address_segment_.Active();
+  if (!pointer_support) {
+    // Shared memory for the case of master and initdb processes does not have pointer support,
+    // since there is no "parent" process like postmaster from which all PG processes are forked
+    // from to do address negotiation with.
+    LOG(INFO) << "Initializing shared memory without pointer support";
+    address_segment_ = VERIFY_RESULT(AddressSegmentNegotiator::ReserveWithoutNegotiation());
+  }
+  RETURN_NOT_OK(InitializeChildAllocatorsAndObjects(uuid));
+  if (pointer_support) {
+    RETURN_NOT_OK(SharedData().WaitAllocatorsInitialized());
+  }
+  return Status::OK();
+}
+
+Status SharedMemoryManager::ShutdownNegotiator() {
+  if (auto negotiator = parent_negotiator_.lock()) {
+    RETURN_NOT_OK(negotiator->Shutdown());
+  }
+  if (parent_negotiator_thread_) {
+    parent_negotiator_thread_->Join();
+    parent_negotiator_thread_.reset();
+  }
+  return Status::OK();
+}
+
+int SharedMemoryManager::NegotiationFd() const {
+  if (auto negotiator = parent_negotiator_.lock()) {
+    return negotiator->GetFd();
+  }
+  return -1;
+}
+
+Status SharedMemoryManager::PrepareAllocators(std::string_view uuid) {
+  if (ready_) {
+    return Status::OK();
+  }
+
+  prepare_state_ = VERIFY_RESULT(allocator_.Prepare(
+      VERIFY_RESULT(MakeAllocatorName(uuid)), sizeof(TServerSharedData)));
+  data_ = new (prepare_state_.UserData()) TServerSharedData();
+  return Status::OK();
+}
+
+void SharedMemoryManager::ExecuteParentNegotiator(
+    const std::shared_ptr<AddressSegmentNegotiator>& negotiator) {
+  auto result = negotiator->NegotiateParent();
+  if (!result.ok()) {
+    if (result.status().IsShutdownInProgress()) {
+      return;
+    }
+
+    // FATAL is necessary here: in event of postmaster restart, negotiation may fail in the
+    // (unlikely) situation where the address segment that we were using (and which has initialized
+    // shared memory data structures) is unavailable on the newly started postmaster. In this case,
+    // we make use of tserver restart to renegotiate addresses from scratch.
+    LOG(FATAL) << "Address segment negotiation failed: " << result.status();
+  }
+
+  address_segment_ = std::move(*result);
+
+  CHECK_OK(InitializeParentAllocatorsAndObjects());
+
+  LOG(INFO) << "Finished address segment negotiation";
+}
+
+Status SharedMemoryManager::InitializeParentAllocatorsAndObjects() {
+  if (ready_) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(allocator_.InitOwner(address_segment_, std::move(prepare_state_)));
+  data_ = allocator_.UserData<TServerSharedData>();
+  RETURN_NOT_OK(data_->AllocatorsInitialized(allocator_));
+  ready_.store(true);
+  return Status::OK();
+}
+
+Status SharedMemoryManager::InitializeChildAllocatorsAndObjects(std::string_view uuid) {
+  if (ready_) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(allocator_.InitChild(address_segment_, VERIFY_RESULT(MakeAllocatorName(uuid))));
+  data_ = allocator_.UserData<TServerSharedData>();
+  ready_.store(true);
+  return Status::OK();
+}
 
 class SharedExchange::Impl {
  public:
