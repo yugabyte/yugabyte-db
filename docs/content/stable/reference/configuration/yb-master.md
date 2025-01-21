@@ -945,6 +945,8 @@ Default: `14400` (4 hours)
 
 Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
 
+Default: `false`
+
 ##### --enable_truncate_cdcsdk_table
 
 By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables.
@@ -953,7 +955,7 @@ Default: `false`
 
 ##### --enable_tablet_split_of_replication_slot_streamed_tables
 
-Toggle automatic tablet splitting for tables under replication slot.
+Toggle automatic tablet splitting for tables under replication slot. Applicable for [CDC using gRPC protocol](../../../develop/change-data-capture/using-yugabytedb-grpc-replication/) only.
 
 Default: `false`
 
