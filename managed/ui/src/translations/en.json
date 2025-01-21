@@ -1009,17 +1009,9 @@
                 "submitButton": "Next: Confirm Full Copy",
                 "pitrSetUpNote": "<bold>Note!</bold> Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
               },
-              "configureBootstrap": {
-                "instruction": "Choose the storage config to use for performing the initial copy",
-                "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
-                "submitButton": "Next: Configure PITR Settings",
-                "backupStorageConfig": {
-                  "label": "Backup Storage Config",
-                  "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
-                },
-                "error": {
-                  "backupStorageConfigRequired": "Required."
-                }
+              "bootstrapSummary": {
+                "instruction": "Confirm full copy creation plan",
+                "submitButton": "Next: Confirm Alert Threshold"
               },
               "configurePitr": {
                 "instruction": "Configure point-in-time recovery (PITR) settings",
@@ -1304,6 +1296,7 @@
             "backupStorageConfig": {
               "instruction": "Choose the storage config to use for performing the initial copy",
               "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
+              "infoTextDrRequirement": "Regardless of the full copy creation plan, YBA requires a backup storage configuration to be selected when creating a disaster recovery configuration because it is necessary for running disaster recovery operations like failover.",
               "label": "Backup Storage Config",
               "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both {{sourceUniverseTerm}} and {{targetUniverseTerm}} universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>",
               "currentStorageConfigInfo": "<bold>{{storageConfigName}}</bold> will be used as the storage config for this operation. To use a different storage config, edit the DR config.",
