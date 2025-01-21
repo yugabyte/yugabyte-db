@@ -4,8 +4,6 @@ headerTitle: Deploy on multiple Kubernetes clusters
 linkTitle: Multi-cluster
 description: Deploy YugabyteDB on multiple geo-distributed Kubernetes clusters.
 headcontent: Deploy YugabyteDB natively on multiple Kubernetes clusters.
-aliases:
-  - /preview/deploy/kubernetes/multi-cluster
 menu:
   preview:
     identifier: deploy-kubernetes-mc
@@ -18,18 +16,12 @@ As described in the [Kubernetes documentation](https://kubernetes.io/docs/setup/
 
 [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs/concepts/types-of-clusters) can be configured to support global DNS across multiple Kubernetes clusters. For example, you can deploy a three-region YugabyteDB cluster on three Kubernetes clusters, each deployed in a different region, using the standard single-zone YugabyteDB Helm chart to deploy one third of the nodes in the database cluster in each of the three clusters.
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="gke/helm-chart/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/gke.png" aria-hidden="true" />
-        <div class="title">Google Kubernetes Engine (GKE)</div>
-      </div>
-      <div class="body">
-        Multi-cluster deployment on GKE.
-      </div>
-    </a>
-  </div>
-</div>
+  {{<index/item
+    title="Google Kubernetes Engine (GKE)"
+    body="Multi-cluster deployment on GKE."
+    href="gke/helm-chart/"
+    icon="/images/section_icons/deploy/gke.png">}}
 
+{{</index/block>}}

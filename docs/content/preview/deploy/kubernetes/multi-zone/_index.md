@@ -4,8 +4,6 @@ linkTitle: Multi-zone
 headerTitle: Multi-zone Kubernetes
 description: Deploy YugabyteDB on multi-zone Kubernetes
 headcontent: Deploy YugabyteDB on a multi-zone Kubernetes cluster
-aliases:
-  - /preview/deploy/kubernetes/multi-zone
 menu:
   preview:
     identifier: deploy-kubernetes-mz
@@ -17,30 +15,18 @@ As highlighted in <a href="https://kubernetes.io/docs/setup/best-practices/multi
 
 <a href="https://docs.aws.amazon.com/eks/latest/userguide/network_reqs.html">Amazon Elastic Kubernetes Service</a> and <a href="https://cloud.google.com/kubernetes-engine/docs/concepts/types-of-clusters">Google Kubernetes Engine</a> supports multi-zone Kubernetes clusters automatically. The following instructions highlight how to deploy a 3-zone YugabyteDB cluster on a 3-zone Kubernetes cluster. Both these deployments use the standard single-zone YugabyteDB Helm Chart to deploy one third of the nodes in the database cluster in each of the 3 zones.
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="eks/helm-chart/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/amazon-eks.png" aria-hidden="true" />
-        <div class="title">Amazon Elastic Kubernetes Service (Amazon EKS)</div>
-      </div>
-      <div class="body">
-        Multi-zone deployment on Amazon EKS.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Amazon Elastic Kubernetes Service (Amazon EKS)"
+    body="Multi-zone deployment on Amazon EKS."
+    href="eks/helm-chart/"
+    icon="/images/section_icons/deploy/amazon-eks.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="gke/helm-chart/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/gke.png" aria-hidden="true" />
-        <div class="title">Google Kubernetes Engine (GKE)</div>
-      </div>
-      <div class="body">
-        Multi-zone deployment on GKE.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Google Kubernetes Engine (GKE)"
+    body="Multi-zone deployment on GKE."
+    href="gke/helm-chart/"
+    icon="/images/section_icons/deploy/gke.png">}}
 
-</div>
+{{</index/block>}}
