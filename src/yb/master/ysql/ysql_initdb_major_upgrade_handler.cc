@@ -282,7 +282,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog(
   }
 
   RETURN_NOT_OK(PgWrapper::InitDbForYSQL(
-      master_.options(), *master_.fs_manager(), FLAGS_tmp_dir, master_.GetSharedMemoryFd(),
+      &master_, master_.options(), *master_.fs_manager(), FLAGS_tmp_dir,
       db_name_to_oid_list, is_major_upgrade));
 
   if (!snapshot_writer) {
@@ -375,7 +375,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
 
   // Run local initdb to prepare the node for starting postgres.
   auto pg_conf = VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-      FLAGS_rpc_bind_addresses, pg_upgrade_data_dir, master_.GetSharedMemoryFd()));
+      FLAGS_rpc_bind_addresses, pg_upgrade_data_dir));
 
   pg_conf.master_addresses = master_opts.master_addresses_flag;
   pg_conf.pg_port = FLAGS_ysql_upgrade_postgres_port;
@@ -385,7 +385,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   LOG(INFO) << "Starting PostgreSQL server listening on " << pg_conf.listen_addresses << ", port "
             << pg_conf.pg_port;
 
-  pgwrapper::PgSupervisor pg_supervisor(pg_conf, nullptr);
+  pgwrapper::PgSupervisor pg_supervisor(pg_conf, &master_);
   auto se = ScopeExit([&pg_supervisor]() { pg_supervisor.Stop(); });
   RETURN_NOT_OK(pg_supervisor.Start());
 

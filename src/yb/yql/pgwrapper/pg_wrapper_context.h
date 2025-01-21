@@ -13,20 +13,22 @@
 
 #pragma once
 
-#include <functional>
-#include <map>
+#include <string>
 
+#include "yb/tserver/tserver_util_fwd.h"
 #include "yb/util/status_fwd.h"
 
-namespace yb::tserver {
+namespace yb::pgwrapper {
 
-class TServerSharedData;
-class SharedMemoryManager;
+class PgWrapperContext {
+ public:
+  virtual ~PgWrapperContext() = default;
+  virtual void RegisterCertificateReloader(tserver::CertificateReloader reloader) = 0;
+  virtual Status StartSharedMemoryNegotiation() = 0;
+  virtual Status StopSharedMemoryNegotiation() = 0;
+  virtual int SharedMemoryNegotiationFd() = 0;
+  virtual tserver::TServerSharedData& shared_object() const = 0;
+  virtual const std::string& permanent_uuid() const = 0;
+};
 
-struct CatalogVersionInfo;
-// Use ordered map to make computing fingerprint of the map easier.
-using DbOidToCatalogVersionInfoMap = std::map<uint32_t, CatalogVersionInfo>;
-
-using CertificateReloader = std::function<Status(void)>;
-
-} // namespace yb::tserver
+} // namespace yb::pgwrapper

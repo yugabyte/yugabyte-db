@@ -882,8 +882,8 @@ class PgApiImpl {
 
   scoped_refptr<server::HybridClock> clock_;
 
-  // Local tablet-server shared memory segment handle.
-  tserver::TServerSharedObject tserver_shared_object_;
+  // Local tablet-server shared memory data.
+  tserver::TServerSharedData* tserver_shared_object_;
 
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 

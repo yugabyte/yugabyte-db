@@ -98,8 +98,6 @@ service TabletServerService {
 
   rpc GetSplitKey(GetSplitKeyRequestPB) returns (GetSplitKeyResponsePB);
 
-  rpc GetSharedData(GetSharedDataRequestPB) returns (GetSharedDataResponsePB);
-
   rpc GetTserverCatalogVersionInfo(GetTserverCatalogVersionInfoRequestPB)
       returns (GetTserverCatalogVersionInfoResponsePB);
 
@@ -510,13 +508,6 @@ message GetSplitKeyResponsePB {
   optional bytes split_partition_key = 2;
   optional bytes split_encoded_key = 3;
   optional fixed64 propagated_hybrid_time = 4;
-}
-
-message GetSharedDataRequestPB {
-}
-
-message GetSharedDataResponsePB {
-  optional bytes data = 1;
 }
 
 message GetTserverCatalogVersionInfoRequestPB {

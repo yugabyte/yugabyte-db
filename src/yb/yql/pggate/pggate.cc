@@ -68,6 +68,7 @@
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_shared_mem.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
@@ -124,14 +125,6 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
       std::move(secure_context),
       VERIFY_RESULT(client::CreateClientMessenger(
           client_name, num_reactors, metric_entity, parent_mem_tracker, secure_context.get()))};
-}
-
-tserver::TServerSharedObject BuildTServerSharedObject() {
-  VLOG(1) << __func__
-          << ": " << YBCIsInitDbModeEnvVarSet()
-          << ", " << FLAGS_pggate_tserver_shm_fd;
-  LOG_IF(DFATAL, FLAGS_pggate_tserver_shm_fd == -1) << "pggate_tserver_shm_fd is not specified";
-  return CHECK_RESULT(tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd));
 }
 
 class ExplicitRowLockErrorInfoAdapter {
@@ -600,17 +593,19 @@ PgApiImpl::PgApiImpl(
       }),
       pg_client_(ash_config, wait_event_watcher_),
       clock_(new server::HybridClock()),
-      tserver_shared_object_(BuildTServerSharedObject()),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_)),
       ybctid_reader_provider_(pg_session_),
       fk_reference_cache_(ybctid_reader_provider_, buffering_settings_),
       explicit_row_lock_buffer_(ybctid_reader_provider_) {
+  PgBackendSetupSharedMemory();
+  tserver_shared_object_ = &PgSharedMemoryManager().SharedData();
+
   CHECK_OK(interrupter_->Start());
   CHECK_OK(clock_->Init());
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
-      tserver_shared_object_, session_id));
+      *tserver_shared_object_, session_id));
 }
 
 PgApiImpl::~PgApiImpl() {

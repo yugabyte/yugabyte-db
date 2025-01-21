@@ -50,7 +50,6 @@ namespace tserver {
 class PgYCQLStatementStatsRequestPB;
 class PgYCQLStatementStatsResponsePB;
 
-using CertificateReloader = std::function<Status(void)>;
 using PgConfigReloader = std::function<Status(void)>;
 
 class TabletServerIf : public LocalTabletServer {

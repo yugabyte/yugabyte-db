@@ -80,10 +80,11 @@ set(CLIENT_LIBS
   pg_cron_leader_service_proto
   gutil
   test_echo_service_proto
-  tserver_util
+  tserver_shared
   yb_ql_expr
   yb_ash
   yb_util
+  yb_util_shmem
   yrpc
   yb_dockv)
 

@@ -13,20 +13,19 @@
 
 #pragma once
 
-#include <functional>
-#include <map>
+#include <string_view>
 
+#include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/status_fwd.h"
 
-namespace yb::tserver {
+namespace yb::pggate {
 
-class TServerSharedData;
-class SharedMemoryManager;
+void PgSetupSharedMemoryAddressSegment();
 
-struct CatalogVersionInfo;
-// Use ordered map to make computing fingerprint of the map easier.
-using DbOidToCatalogVersionInfoMap = std::map<uint32_t, CatalogVersionInfo>;
+void PgBackendSetupSharedMemory();
 
-using CertificateReloader = std::function<Status(void)>;
+tserver::SharedMemoryManager& PgSharedMemoryManager();
 
-} // namespace yb::tserver
+} // namespace yb::pggate

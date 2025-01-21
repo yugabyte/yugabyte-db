@@ -524,6 +524,10 @@ Status TabletServer::Init() {
     pg_table_mutation_count_sender_.reset(new TableMutationCountSender(this));
   }
 
+  if (!FLAGS_enable_ysql) {
+    RETURN_NOT_OK(SkipSharedMemoryNegotiation());
+  }
+
   RETURN_NOT_OK_PREPEND(tablet_manager_->Init(),
                         "Could not init Tablet Manager");
 
