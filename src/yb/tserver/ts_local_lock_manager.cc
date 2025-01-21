@@ -80,7 +80,7 @@ class TSLocalLockManager::Impl {
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
 
     auto keys_to_lock = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
-    if (object_lock_manager_.Lock(object_lock_owner, keys_to_lock.lock_batch, deadline)) {
+    if (object_lock_manager_.Lock(keys_to_lock.lock_batch, deadline, object_lock_owner)) {
       TRACE("Successfully obtained object locks.");
       return Status::OK();
     }
@@ -148,7 +148,7 @@ class TSLocalLockManager::Impl {
 
   void UpdateLeaseEpochIfNecessary(const std::string& uuid, uint64_t lease_epoch) EXCLUDES(mutex_) {
     TRACE_FUNC();
-    std::lock_guard<LockType> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto it = max_seen_lease_epoch_.find(uuid);
     if (it == max_seen_lease_epoch_.end()) {
       max_seen_lease_epoch_[uuid] = lease_epoch;
@@ -158,7 +158,7 @@ class TSLocalLockManager::Impl {
   }
 
   uint64_t GetMaxSeenLeaseEpoch(const std::string& uuid) EXCLUDES(mutex_) {
-    std::lock_guard<LockType> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto it = max_seen_lease_epoch_.find(uuid);
     if (it != max_seen_lease_epoch_.end()) {
       return it->second;
@@ -169,7 +169,7 @@ class TSLocalLockManager::Impl {
   Status AddToInProgressTxns(const std::string& txn_id, const CoarseTimePoint& deadline)
       EXCLUDES(mutex_) {
     TRACE_FUNC();
-    yb::UniqueLock<LockType> lock(mutex_);
+    yb::UniqueLock lock(mutex_);
     while (txns_in_progress_.find(txn_id) != txns_in_progress_.end()) {
       if (deadline <= CoarseMonoClock::Now()) {
         LOG(ERROR) << "Failed to add txn " << txn_id << " to in progress txns until deadline: "
@@ -193,7 +193,7 @@ class TSLocalLockManager::Impl {
   void RemoveFromInProgressTxns(const std::string& txn_id) EXCLUDES(mutex_) {
     TRACE_FUNC();
     {
-      std::lock_guard<LockType> lock(mutex_);
+      std::lock_guard lock(mutex_);
       txns_in_progress_.erase(txn_id);
     }
     TRACE("Removed from in progress txn.");
