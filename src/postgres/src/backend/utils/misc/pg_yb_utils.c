@@ -1614,7 +1614,7 @@ int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool yb_prefer_bnl = false;
 bool yb_explain_hide_non_deterministic_fields = false;
 bool yb_enable_saop_pushdown = true;
-int yb_toast_catcache_threshold = -1;
+int yb_toast_catcache_threshold = 2048; /* 2 KB */
 int yb_parallel_range_size = 1024 * 1024;
 int yb_insert_on_conflict_read_batch_size = 1024;
 bool yb_enable_fkey_catcache = true;
@@ -5213,7 +5213,7 @@ YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture)
 void
 YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version)
 {
-	/* 
+	/*
 	 * Skip setting catalog version which skips catalog version check at
 	 * tserver. Used in time-traveling queries as they might read old data
 	 * with old catalog version.

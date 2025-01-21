@@ -4943,7 +4943,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&yb_toast_catcache_threshold,
-		-1, -1, INT_MAX,
+		2048, -1, INT_MAX,
 		yb_check_toast_catcache_threshold, NULL, NULL
 	},
 
@@ -6292,7 +6292,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL
 		},
 		&default_toast_compression,
-		TOAST_PGLZ_COMPRESSION,
+		TOAST_LZ4_COMPRESSION,
 		default_toast_compression_options,
 		NULL, NULL, NULL
 	},

@@ -298,7 +298,7 @@ DEFINE_RUNTIME_PG_FLAG(
     "Maximum number of changes kept in memory per transaction in reorder buffer, which is used in "
     "streaming changes via logical replication . After that, changes are spooled to disk.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, 2048, // 2 KB
     "Size threshold in bytes for a catcache tuple to be compressed.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
