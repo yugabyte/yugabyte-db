@@ -126,6 +126,8 @@ impl CopyToParquetDestReceiver {
     fn cleanup(&mut self) {
         if !self.per_copy_context.is_null() {
             unsafe { MemoryContextDelete(self.per_copy_context) };
+
+            self.per_copy_context = std::ptr::null_mut();
         }
 
         if !self.parquet_writer_context.is_null() {
