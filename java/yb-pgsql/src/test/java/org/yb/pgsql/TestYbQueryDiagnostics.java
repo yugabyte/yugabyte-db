@@ -55,6 +55,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.client.TestUtils;
 
 @RunWith(value = YBTestRunner.class)
 public class TestYbQueryDiagnostics extends BasePgSQLTest {
@@ -105,6 +106,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         "pg_stat_statements was reset, query string not available;";
     private static final String permissionDeniedWarning =
         "Failed to create query diagnostics directory, Permission denied;";
+    private static final String bgWorkerType = "yb_query_diagnostics bgworker";
     private static final String preparedStmt =
         "PREPARE stmt(text, int, float) AS " +
         "SELECT * FROM test_table1 WHERE a = $1 AND b = $2 AND c = $3";
@@ -872,6 +874,16 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     }
 
     /*
+     * Checks if yb_query_diagnostics's bgworker is switched on.
+     */
+    private boolean IsBackgroundWorkerRunning(Statement statement) throws Exception {
+        String query = "SELECT pid FROM pg_stat_activity WHERE backend_type = '" +
+                        bgWorkerType + "'";
+        ResultSet resultSet = statement.executeQuery(query);
+        return resultSet.next();
+    }
+
+    /*
      * Tests the dumping of bind varaibles data in the case of a prepared statement.
      */
     @Test
@@ -1619,7 +1631,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             Path bundleDataPath3 = runQueryDiagnostics(statement, queryId3, params3);
 
             /* Wait for the 1st bundle to expire */
-            Thread.sleep((bundle1Interval * 1000) + BG_WORKER_INTERVAL_MS);
+            waitForBundleCompletion(queryId1, statement, bundle1Interval);
 
             /* Cancel further processing of the 2nd bundle */
             statement.execute("SELECT yb_cancel_query_diagnostics('" + queryId2 + "')");
@@ -1652,7 +1664,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             assertQueryDiagnosticsStatus(expectedBundleViewEntry3, bundleViewEntry3);
 
             /* Wait for the 3rd bundle to expire */
-            Thread.sleep((bundle3Interval * 1000) + BG_WORKER_INTERVAL_MS);
+            waitForBundleCompletion(queryId3, statement, bundle3Interval);
 
             /* 3rd bundle must have successfully completed */
             bundleViewEntry3 = getViewData(statement, queryId3, "");
@@ -1914,6 +1926,60 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute("CREATE DATABASE db1");
             statement.execute("ALTER DATABASE db1 RENAME TO db2");
             statement.execute("DROP DATABASE db2");
+        }
+    }
+
+    /*
+     * Tests if bgworker is switching on and off dynamically.
+     * The test checks that ini
+     */
+    @Test
+    public void testDynamicBackgroundWorker() throws Exception {
+        int diagnosticsInterval = 10;
+        QueryDiagnosticsParams params = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            // Bgworker should be switched off initially
+            assertFalse("Background worker should not be running but it is",
+                    IsBackgroundWorkerRunning(statement));
+
+            // Run query diagnostics
+            String queryId = generateUniqueQueryId();
+            runQueryDiagnostics(statement, queryId, params);
+
+            // Ensure bundle has started
+            ResultSet resultSet = statement.executeQuery(
+                "SELECT * FROM yb_query_diagnostics_status WHERE query_id = '" + queryId + "'");
+            assertTrue("No rows found in yb_query_diagnostics_status", resultSet.next());
+
+            // Ensure that bgworker has started
+            try {
+                TestUtils.waitFor(() -> IsBackgroundWorkerRunning(statement),
+                                  10000L, 1000);
+            }
+            catch (Exception e) {
+                throw new AssertionError(
+                    "Background worker did not start after bundle creation");
+            }
+
+            // Wait for the bundle to expire
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+
+            // Background worker should stop if no bundle is processing
+            try {
+                TestUtils.waitFor(() -> !IsBackgroundWorkerRunning(statement),
+                                  10000L, 1000);
+            }
+            catch (Exception e) {
+                throw new AssertionError(
+                    "Background worker did not stop after bundle completion");
+            }
         }
     }
 }
