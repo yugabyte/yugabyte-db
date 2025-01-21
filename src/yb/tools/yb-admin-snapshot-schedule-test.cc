@@ -911,7 +911,6 @@ TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
 
   // Absolute timestamp format. Should have the first set of rows.
   auto target_namespace_name = "absolute_time_namespace";
-  ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
   ASSERT_OK(CloneAndWait(
       kSourceNamespace, target_namespace_name, 30s /* timeout */,
@@ -959,7 +958,6 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteRowsFromCloneYcql) {
   ASSERT_OK(conn.ExecuteQueryFormat("DELETE FROM $0 WHERE key=1", kTableName));
 
   const auto kTargetNamespace = "cloned";
-  ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
   ASSERT_OK(CloneAndWait(
       kSourceNamespace, kTargetNamespace, 30s /* timeout */,
@@ -1196,7 +1194,6 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
 
   virtual std::vector<std::string> ExtraMasterFlags() override {
     auto flags = YbAdminSnapshotScheduleTestWithYsql::ExtraMasterFlags();
-    flags.push_back("--allowed_preview_flags_csv=enable_db_clone");
     flags.push_back("--enable_db_clone=true");
     return flags;
   }
