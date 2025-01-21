@@ -102,7 +102,16 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
 
 TEST_F(Pg15UpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
 
-TEST_F(Pg15UpgradeTest, SimpleTableRollback) { ASSERT_OK(TestRollbackWithSimpleTable()); }
+TEST_F(Pg15UpgradeTest, SimpleTableRollback) {
+  ASSERT_OK(TestRollbackWithSimpleTable());
+
+// Disabled the re-upgrade step on debug builds and MacOS because it times out.
+#if !defined(__APPLE__) && defined(NDEBUG)
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  ASSERT_OK(InsertRowInSimpleTableAndValidate());
+#endif
+}
 
 TEST_F(Pg15UpgradeTest, BackslashD) {
   ASSERT_OK(ExecuteStatement("CREATE TABLE t (a INT)"));

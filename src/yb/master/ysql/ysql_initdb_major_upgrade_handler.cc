@@ -412,7 +412,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunRollbackMajorVersionUpgrade(const Le
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RollbackMajorVersionCatalogImpl(const LeaderEpoch& epoch) {
-  std::vector<scoped_refptr<NamespaceInfo>> namespaces;
+  std::vector<scoped_refptr<NamespaceInfo>> ysql_namespaces;
   {
     std::vector<scoped_refptr<NamespaceInfo>> all_namespaces;
     catalog_manager_.GetAllNamespaces(&all_namespaces);
@@ -421,14 +421,11 @@ Status YsqlInitDBAndMajorUpgradeHandler::RollbackMajorVersionCatalogImpl(const L
       if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
         continue;
       }
-      uint32_t oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns_info->id()));
-      if (oid < kPgFirstNormalObjectId) {
-        namespaces.push_back(ns_info);
-      }
+      ysql_namespaces.push_back(ns_info);
     }
   }
 
-  for (const auto& ns_info : namespaces) {
+  for (const auto& ns_info : ysql_namespaces) {
     LOG(INFO) << "Deleting ysql major catalog tables for namespace " << ns_info->name();
     RETURN_NOT_OK(catalog_manager_.DeleteYsqlDBTables(
         ns_info->id(),
@@ -437,7 +434,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::RollbackMajorVersionCatalogImpl(const L
 
   // Reset state machines for all YSQL namespaces.
   {
-    for (const auto& ns_info : namespaces) {
+    for (const auto& ns_info : ysql_namespaces) {
       NamespaceInfo::WriteLock ns_l = ns_info->LockForWrite();
       if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
         continue;

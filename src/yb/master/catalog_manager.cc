@@ -8450,13 +8450,13 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   TransactionMetadata txn;
   const auto db_type = GetDatabaseType(*req);
   NamespaceInfo::WriteLock ns_l;
+  const bool is_ysql_major_upgrade_in_progress = IsYsqlMajorCatalogUpgradeInProgress();
+
   {
     LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     // Validate the user request.
-
-    const bool is_ysql_major_upgrade_in_progress = IsYsqlMajorCatalogUpgradeInProgress();
 
     auto check_ns_errors = [req, resp, db_type, is_ysql_major_upgrade_in_progress](
                                const scoped_refptr<NamespaceInfo>& ns, bool by_id) -> Status {
@@ -8627,7 +8627,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   if (!return_status.ok()) {
     ns_l.Unlock();
     LOG(WARNING) << "Keyspace creation failed:" << return_status.ToString();
-    {
+    if (!is_ysql_major_upgrade_in_progress) {
       LockGuard lock(mutex_);
       namespace_ids_map_.erase(ns->id());
       namespace_names_mapper_[db_type].erase(req->name());
