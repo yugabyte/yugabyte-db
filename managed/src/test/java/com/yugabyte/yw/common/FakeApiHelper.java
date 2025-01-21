@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.models.Users.Role;
 import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,6 +9,7 @@ import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
