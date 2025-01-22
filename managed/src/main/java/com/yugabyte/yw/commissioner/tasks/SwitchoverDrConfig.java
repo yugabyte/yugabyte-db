@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -23,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Retryable
 @Abortable
+@CanRollback
 public class SwitchoverDrConfig extends EditDrConfig {
 
   @Inject
@@ -50,7 +52,7 @@ public class SwitchoverDrConfig extends EditDrConfig {
     //  which means the old xCluster config can potentially be deleted.
     if (isFirstTry() && Objects.isNull(currentXClusterConfig)) {
       throw new IllegalStateException(
-          "The old xCluster config does not exist and cannot do a failover");
+          "The old xCluster config does not exist and cannot do a switchover");
     } else if (!isFirstTry() && Objects.isNull(currentXClusterConfig)) {
       log.warn("The old xCluster config got deleted in the previous run");
     }
@@ -130,7 +132,7 @@ public class SwitchoverDrConfig extends EditDrConfig {
           createDeleteXClusterConfigSubtasks(
               currentXClusterConfig,
               false /* keepEntry */,
-              false /*forceDelete*/,
+              false /* forceDelete */,
               false /* deleteSourcePitrConfigs */,
               false /* deleteTargetPitrConfigs */);
         }

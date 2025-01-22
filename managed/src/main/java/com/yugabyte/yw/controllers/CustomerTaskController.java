@@ -117,6 +117,7 @@ public class CustomerTaskController extends AuthenticatedController {
       taskData.status = taskProgress.get("status").asText();
       taskData.abortable = taskProgress.get("abortable").asBoolean();
       taskData.retryable = taskProgress.get("retryable").asBoolean();
+      taskData.canRollback = taskProgress.get("canRollback").asBoolean();
       taskData.id = task.getTaskUUID();
       taskData.title = task.getFriendlyDescription();
       taskData.createTime = task.getCreateTime();
@@ -148,7 +149,7 @@ public class CustomerTaskController extends AuthenticatedController {
       if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
       return taskData;
     } catch (RuntimeException e) {
-      LOG.error("Error fetching task progress for {}. TaskInfo is not found", task.getTaskUUID());
+      LOG.error("Error fetching task progress for {} : {}", task.getTaskUUID(), e);
       return null;
     }
   }
@@ -370,6 +371,44 @@ public class CustomerTaskController extends AuthenticatedController {
             Audit.TargetType.CustomerTask,
             taskUUID.toString(),
             Audit.ActionType.Retry,
+            Json.toJson(taskInfo),
+            customerTask.getTaskUUID());
+
+    return new PlatformResults.YBPTask(customerTask.getTaskUUID(), customerTask.getTargetUUID())
+        .asResult();
+  }
+
+  @ApiOperation(
+      value = "Rollback a Universe or Provider task",
+      notes = "Rollback a Universe or Provider task.",
+      response = PlatformResults.YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = "details.universeUUID",
+                sourceType = SourceType.DB,
+                dbClass = TaskInfo.class,
+                identifier = "tasks",
+                columnName = "uuid"))
+  })
+  public Result rollbackTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
+    CustomerTask customerTask = customerTaskManager.rollbackCustomerTask(customerUUID, taskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for target {}:{}",
+        customerTask.getTaskUUID(),
+        customerTask.getTargetUUID(),
+        customerTask.getTargetName());
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.CustomerTask,
+            taskUUID.toString(),
+            Audit.ActionType.Rollback,
             Json.toJson(taskInfo),
             customerTask.getTaskUUID());
 

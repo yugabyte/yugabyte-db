@@ -116,6 +116,16 @@ public class Commissioner {
   }
 
   /**
+   * Returns true if the task identified by the task type can rollback.
+   *
+   * @param taskType the task type.
+   * @return true if can rollback.
+   */
+  public static boolean canTaskTypeRollback(TaskType taskType) {
+    return TaskExecutor.canTaskRollback(taskType.getTaskClass());
+  }
+
+  /**
    * Creates a new task runnable to run the required task, and submits it to the TaskExecutor.
    *
    * @param taskType the task type.
@@ -353,6 +363,7 @@ public class Commissioner {
               return taskUuidsToAllowRetry.contains(taskInfo.getUuid().toString());
             });
     responseJson.put("retryable", retryable);
+    responseJson.put("canRollback", canTaskRollback(taskInfo));
     if (isTaskPaused(taskInfo.getUuid())) {
       // Set this only if it is true. The thread is just parking. From the task state
       // perspective, it is still running.
@@ -378,6 +389,11 @@ public class Commissioner {
       return moreCondition.test(taskInfo);
     }
     return false;
+  }
+
+  public boolean canTaskRollback(TaskInfo taskInfo) {
+    return canTaskTypeRollback(taskInfo.getTaskType())
+        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState());
   }
 
   public ObjectNode getVersionInfo(CustomerTask task, TaskInfo taskInfo) {

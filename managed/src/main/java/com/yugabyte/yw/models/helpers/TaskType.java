@@ -421,6 +421,11 @@ public enum TaskType {
       CustomerTask.TaskType.Switchover,
       CustomerTask.TargetType.DrConfig),
 
+  SwitchoverDrConfigRollback(
+      com.yugabyte.yw.commissioner.tasks.SwitchoverDrConfigRollback.class,
+      CustomerTask.TaskType.Switchover,
+      CustomerTask.TargetType.DrConfig),
+
   EditDrConfig(
       com.yugabyte.yw.commissioner.tasks.EditDrConfig.class,
       CustomerTask.TaskType.Edit,

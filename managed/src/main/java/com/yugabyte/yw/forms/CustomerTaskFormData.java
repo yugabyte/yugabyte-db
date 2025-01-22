@@ -57,6 +57,9 @@ public class CustomerTaskFormData {
   @ApiModelProperty(value = "Customer task retryable")
   public boolean retryable;
 
+  @ApiModelProperty(value = "Whether the Customer task can be rolled back")
+  public boolean canRollback;
+
   @ApiModelProperty(value = "Correlation id")
   public String correlationId;
 

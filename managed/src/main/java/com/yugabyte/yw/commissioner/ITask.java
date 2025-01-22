@@ -22,6 +22,13 @@ public interface ITask extends Runnable {
     boolean enabled() default true;
   }
 
+  /** Annotation for a ITask class to enable/disable rollback on a Task Type. */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.TYPE)
+  @interface CanRollback {
+    boolean enabled() default true;
+  }
+
   /** Annotation for a ITask class to enable/disable abortable. */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.TYPE)
