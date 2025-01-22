@@ -15,6 +15,8 @@ import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { AllowedTasks } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';
 import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
+import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
+import { formatYbSoftwareVersionString } from '../../../../utils/Formatters';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
@@ -49,8 +51,17 @@ const useStyles = makeStyles((theme) => ({
       cursor: 'pointer'
     }
   },
-  infoBanner: {
-    marginTop: 'auto'
+  bannerContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+
+    marginTop: theme.spacing(10)
+  },
+  versionMismatchBannerContentContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1)
   },
   confirmTextInputBox: {
     width: '400px'
@@ -74,6 +85,13 @@ export const InitiateSwitchoverModal = ({
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
   const queryClient = useQueryClient();
+
+  const sourceUniverseUuid = drConfig.primaryUniverseUuid;
+  const sourceUniverseQuery = useQuery(
+    universeQueryKey.detail(sourceUniverseUuid),
+    () => api.fetchUniverse(sourceUniverseUuid),
+    { enabled: sourceUniverseUuid !== undefined }
+  );
 
   const targetUniverseUuid = drConfig.drReplicaUniverseUuid;
   const targetUniverseQuery = useQuery(
@@ -164,7 +182,8 @@ export const InitiateSwitchoverModal = ({
   if (
     !drConfig.primaryUniverseUuid ||
     !drConfig.drReplicaUniverseUuid ||
-    targetUniverseQuery.isError
+    targetUniverseQuery.isError ||
+    sourceUniverseQuery.isError
   ) {
     const customErrorMessage = !drConfig.primaryUniverseUuid
       ? t('undefinedDrPrimaryUniverseUuid', {
@@ -178,6 +197,11 @@ export const InitiateSwitchoverModal = ({
       ? t('failedToFetchDrReplicaUniverse', {
           keyPrefix: 'queryError',
           universeUuid: drConfig.drReplicaUniverseUuid
+        })
+      : sourceUniverseQuery.isError
+      ? t('failedToFetchDrPrimaryUniverse', {
+          keyPrefix: 'queryError',
+          universeUuid: drConfig.primaryUniverseUuid
         })
       : '';
 
@@ -195,7 +219,12 @@ export const InitiateSwitchoverModal = ({
     );
   }
 
-  if (targetUniverseQuery.isLoading || targetUniverseQuery.isIdle) {
+  if (
+    targetUniverseQuery.isLoading ||
+    targetUniverseQuery.isIdle ||
+    sourceUniverseQuery.isLoading ||
+    sourceUniverseQuery.isIdle
+  ) {
     return <YBLoading />;
   }
 
@@ -208,11 +237,18 @@ export const InitiateSwitchoverModal = ({
     initiateSwitchoverMutation.mutate(drConfig, { onSettled: () => resetModal() });
   };
 
-  const isSwitchoverActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.SWITCHIVER_DR);
+  const isSwitchoverActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.SWITCHOVER_DR);
   const targetUniverseName = targetUniverseQuery.data.name;
   const isFormDisabled =
     isSubmitting || confirmationText !== targetUniverseName || isSwitchoverActionFrozen;
 
+  const sourceUniverseVersion =
+    getPrimaryCluster(sourceUniverseQuery.data.universeDetails.clusters)?.userIntent
+      .ybSoftwareVersion ?? '';
+  const targetUniverseVersion =
+    getPrimaryCluster(targetUniverseQuery.data.universeDetails.clusters)?.userIntent
+      .ybSoftwareVersion ?? '';
+  const isVersionMatching = sourceUniverseVersion === targetUniverseVersion;
   return (
     <YBModal
       customTitle={modalTitle}
@@ -222,6 +258,7 @@ export const InitiateSwitchoverModal = ({
       buttonProps={{ primary: { disabled: isFormDisabled } }}
       isSubmitting={isSubmitting}
       size="md"
+      overrideHeight="fit-content"
       dialogContentProps={{
         className: classes.dialogContentRoot
       }}
@@ -257,12 +294,35 @@ export const InitiateSwitchoverModal = ({
           onChange={(event) => setConfirmationText(event.target.value)}
         />
       </Box>
-      <YBBanner className={classes.infoBanner} variant={YBBannerVariant.INFO}>
-        <Trans
-          i18nKey={`${TRANSLATION_KEY_PREFIX}.note.stopWorkload`}
-          components={{ bold: <b /> }}
-        />
-      </YBBanner>
+
+      <div className={classes.bannerContainer}>
+        <YBBanner variant={YBBannerVariant.INFO}>
+          <Trans
+            i18nKey={`${TRANSLATION_KEY_PREFIX}.note.stopWorkload`}
+            components={{ bold: <b /> }}
+          />
+        </YBBanner>
+        {!isVersionMatching && (
+          <YBBanner variant={YBBannerVariant.WARNING}>
+            <div className={classes.versionMismatchBannerContentContainer}>
+              <Trans
+                i18nKey={`${TRANSLATION_KEY_PREFIX}.note.versionMismatch`}
+                components={{ bold: <b /> }}
+              />
+              <Trans
+                i18nKey={`${TRANSLATION_KEY_PREFIX}.note.drPrimaryYbdbVersion`}
+                components={{ bold: <b /> }}
+                values={{ ybdbVersion: formatYbSoftwareVersionString(sourceUniverseVersion, true) }}
+              />
+              <Trans
+                i18nKey={`${TRANSLATION_KEY_PREFIX}.note.drReplicaYbdbVersion`}
+                components={{ bold: <b /> }}
+                values={{ ybdbVersion: formatYbSoftwareVersionString(targetUniverseVersion, true) }}
+              />
+            </div>
+          </YBBanner>
+        )}
+      </div>
     </YBModal>
   );
 };

@@ -850,7 +850,10 @@
             "confirmationInstructions": "Enter DR replica universe name to confirm.",
             "submitButton": "Initiate Switchover",
             "note": {
-              "stopWorkload": "<bold>Stop application workloads</bold> before initiating switchover as all <bold>writes will be rejected</bold> during switchover."
+              "stopWorkload": "<bold>Stop application workloads</bold> before initiating switchover as all <bold>writes will be rejected</bold> during switchover.",
+              "versionMismatch": "<bold>Warning!</bold> A clean switchover will not be possible because DR primary database version and DR replica database version do not match. To avoid issues with auto flag support, please ensure the DR primary and DR replica are both on the same database version.",
+              "drPrimaryYbdbVersion": "<bold>DR Primary Database Version:</bold> {{ybdbVersion}}",
+              "drReplicaYbdbVersion": "<bold>DR Replica Database Version:</bold> {{ybdbVersion}}"
             },
             "error": {
               "taskFailure": "Switchover task failed.",
