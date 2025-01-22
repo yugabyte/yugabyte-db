@@ -72,8 +72,8 @@ When enabling the cost models, ensure that packed row for colocated tables is en
 
 {{</note>}}
 
-{{<lead link="../../../architecture/query-layer/planner-optimizer/">}}
-To learn about how the Cost-based optimizer works, see [Query Planner / CBO](../../../architecture/query-layer/planner-optimizer/)
+{{<lead link="../../architecture/query-layer/planner-optimizer/">}}
+To learn about how the Cost-based optimizer works, see [Query Planner / CBO](../../architecture/query-layer/planner-optimizer/)
 {{</lead>}}
 
 #### Wait-on-conflict concurrency
