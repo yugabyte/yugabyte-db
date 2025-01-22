@@ -658,8 +658,11 @@ GetAllMongoCollectionShardOidsAndNamesInDB(ArrayType *collectionIdArray,
 	 * part of the logicalrelid
 	 *      e.g. documents_1_10240
 	 */
-	const char *query =
-		"SELECT array_agg(right(logicalrelid::regclass::text,-11) || '_' || shardid) FROM pg_dist_shard WHERE logicalrelid = ANY($1)";
+	StringInfo queryStr = makeStringInfo();
+	appendStringInfo(queryStr,
+					 "SELECT array_agg(right(logicalrelid::regclass::text,-%lu) || '_' || shardid) FROM pg_dist_shard WHERE logicalrelid = ANY($1)",
+					 strlen(ApiDataSchemaName) + 1); /* length of "ApiDataSchemaName." */
+
 
 	int nargs = 1;
 	Oid argTypes[1] = { OIDARRAYOID };
@@ -667,7 +670,7 @@ GetAllMongoCollectionShardOidsAndNamesInDB(ArrayType *collectionIdArray,
 
 	bool isReadOnly = true;
 	bool isNull = false;
-	Datum shardIds = ExtensionExecuteQueryWithArgsViaSPI(query, nargs, argTypes,
+	Datum shardIds = ExtensionExecuteQueryWithArgsViaSPI(queryStr->data, nargs, argTypes,
 														 argValues,
 														 NULL, isReadOnly, SPI_OK_SELECT,
 														 &isNull);

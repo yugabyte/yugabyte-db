@@ -1,7 +1,7 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 314000;
-SET helio_api.next_collection_id TO 3140;
-SET helio_api.next_collection_index_id TO 3140;
+SET documentdb.next_collection_id TO 3140;
+SET documentdb.next_collection_index_id TO 3140;
 -- collection agnostic with no pipeline should work and return 0 rows.
 SELECT document from bson_aggregation_pipeline('db', '{ "aggregate" : 1.0, "pipeline" : [  ], "cursor" : {  }, "txnNumber" : 0, "lsid" : { "id" : { "$binary" : { "base64": "H+W3J//vSn6obaefeJ6j/g==", "subType" : "04" } } }, "$db" : "admin" }');
  document 
@@ -31,7 +31,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipelin
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "a": 1 }, { "b": 2 } ] }], "cursor": {} }');
                                                                          QUERY PLAN                                                                         
 ---------------------------------------------------------------------
- Function Scan on helio_api_catalog.bson_lookup_unwind documents
+ Function Scan on documentdb_api_catalog.bson_lookup_unwind documents
    Output: documents
    Function Call: bson_lookup_unwind('{ "$documents" : [ { "a" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }'::bson, '$documents'::text)
 (3 rows)
@@ -39,7 +39,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "a": 1 }, { "b": 2 } ] }, { "$addFields": { "b": 1 } } ], "cursor": {} }');
                                                                          QUERY PLAN                                                                         
 ---------------------------------------------------------------------
- Function Scan on helio_api_catalog.bson_lookup_unwind documents
+ Function Scan on documentdb_api_catalog.bson_lookup_unwind documents
    Output: bson_dollar_add_fields(documents.documents, '{ "b" : { "$numberInt" : "1" } }'::bson)
    Function Call: bson_lookup_unwind('{ "$documents" : [ { "a" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }'::bson, '$documents'::text)
 (3 rows)

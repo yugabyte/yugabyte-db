@@ -33,11 +33,9 @@ check-dist-minimal:
 	$(call common_test,--schedule=./minimal_schedule, $(EXTRA_TESTS))
 
 check-basic:
-	# TODO(OSSRename)
-	# $(call common_test,--schedule=./basic_schedule --schedule=./basic_schedule_core)
-	$(call common_test,--schedule=./basic_schedule)
+	$(call common_test,--schedule=./basic_schedule --schedule=./basic_schedule_core)
 
 check-test-output:
 	./validate_test_output.sh
 
-all: check-basic # TODO(OSSRename) check-test-output
+all: check-basic check-test-output

@@ -1,33 +1,33 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 
 SET citus.next_shard_id TO 9610000;
-SET helio_api.next_collection_id TO 961000;
-SET helio_api.next_collection_index_id TO 961000;
+SET documentdb.next_collection_id TO 961000;
+SET documentdb.next_collection_index_id TO 961000;
 
 -- Insert data
-SELECT helio_api.insert_one('db','facet',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
-SELECT helio_api.insert_one('db','facet',' { "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
-SELECT helio_api.insert_one('db','facet',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
-SELECT helio_api.insert_one('db','facet',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
-SELECT helio_api.insert_one('db','facet',' { "_id" : 5, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
-SELECT helio_api.insert_one('db','facet',' { "_id" : 6, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
-SELECT helio_api.insert_one('db','facet',' { "_id" : 7, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
-SELECT helio_api.insert_one('db','facet',' { "_id" : 8, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facet',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+SELECT documentdb_api.insert_one('db','facet',' { "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','facet',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facet',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facet',' { "_id" : 5, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+SELECT documentdb_api.insert_one('db','facet',' { "_id" : 6, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','facet',' { "_id" : 7, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facet',' { "_id" : 8, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
 
 -- Test filter generation empty input
-SELECT bson_array_agg(document, 'myarray'::text) FROM helio_api.collection('db', 'facet1');
+SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection('db', 'facet1');
 
 -- Test filter generation 
-SELECT bson_array_agg(document, 'myarray'::text) FROM helio_api.collection('db', 'facet');
+SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection('db', 'facet');
 
-SELECT bson_object_agg(document, true) FROM helio_api.collection('db', 'facet');
+SELECT bson_object_agg(document, true) FROM documentdb_api.collection('db', 'facet');
 
 -- Test full facetSQL sql
 WITH "stage0" as (
   SELECT 
-    helio_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
+    documentdb_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
   FROM 
-    helio_api.collection('db', 'facet')
+    documentdb_api.collection('db', 'facet')
 ), 
 "stage1" as (
   WITH FacetStage AS (
@@ -38,13 +38,13 @@ WITH "stage0" as (
           bson_expression_get(document, '{ "$first" : "$quantity" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        helio_api.collection('db', 'facet')
+        documentdb_api.collection('db', 'facet')
       GROUP BY 
         bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
     ), 
     "FacetStage01" as (
       SELECT 
-        helio_core.bson_repath_and_build(
+        documentdb_core.bson_repath_and_build(
           '_id' :: text, "accid", 'first':: text, "acc0"
         ) AS document 
       FROM 
@@ -57,13 +57,13 @@ WITH "stage0" as (
           bson_expression_get(document, '{ "$last" : "$quantity" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        helio_api.collection('db', 'facet') 
+        documentdb_api.collection('db', 'facet') 
       GROUP BY 
         bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
     ), 
     "FacetStage11" as (
       SELECT 
-        helio_core.bson_repath_and_build(
+        documentdb_core.bson_repath_and_build(
           '_id' :: text, "accid", 'last':: text, "acc0"
         ) AS document 
       FROM 
@@ -100,9 +100,9 @@ SET JIT To off;
 EXPLAIN(costs off)
 WITH "stage0" as (
   SELECT 
-    helio_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
+    documentdb_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
   FROM 
-    helio_api.collection('db', 'facet')
+    documentdb_api.collection('db', 'facet')
 ), 
 "stage1" as (
   WITH FacetStage AS (
@@ -113,13 +113,13 @@ WITH "stage0" as (
           bson_expression_get(document, '{ "$first" : "$quantity" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        helio_api.collection('db', 'facet')
+        documentdb_api.collection('db', 'facet')
       GROUP BY 
         bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
     ), 
     "FacetStage01" as (
       SELECT 
-        helio_core.bson_repath_and_build(
+        documentdb_core.bson_repath_and_build(
           '_id' :: text, "accid", 'first':: text, "acc0"
         ) AS document 
       FROM 
@@ -132,13 +132,13 @@ WITH "stage0" as (
           bson_expression_get(document, '{ "$last" : "$quantity" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        helio_api.collection('db', 'facet') 
+        documentdb_api.collection('db', 'facet') 
       GROUP BY 
         bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
     ), 
     "FacetStage11" as (
       SELECT 
-        helio_core.bson_repath_and_build(
+        documentdb_core.bson_repath_and_build(
           '_id' :: text, "accid", 'last':: text, "acc0"
         ) AS document 
       FROM 

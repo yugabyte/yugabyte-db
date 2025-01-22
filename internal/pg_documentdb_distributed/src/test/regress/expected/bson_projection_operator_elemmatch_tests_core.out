@@ -1,8 +1,8 @@
 -- Test $elemMatch projection operator
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 280000;
-SET helio_api.next_collection_id TO 2800;
-SET helio_api.next_collection_index_id TO 2800;
+SET documentdb.next_collection_id TO 2800;
+SET documentdb.next_collection_index_id TO 2800;
 SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a": [ 11, 21, 31, 41 ], "z": "World" }', '{ "a":{ "$elemMatch":{ "$gt":25 }} }', '{}');
                        bson_dollar_project_find                        
 ---------------------------------------------------------------------

@@ -1,9 +1,9 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 
 
 SET citus.next_shard_id TO 335000;
-SET helio_api.next_collection_id TO 3350;
-SET helio_api.next_collection_index_id TO 3350;
+SET documentdb.next_collection_id TO 3350;
+SET documentdb.next_collection_index_id TO 3350;
 
 SELECT create_collection('db','regex');
 
@@ -38,13 +38,13 @@ SELECT insert_one('db','regex', '{"_id" : 132, "text" : "suárez"}');
 
 SELECT document from collection('db', 'regex') where document @@ '{"sku": {"$regex": true} }';
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"sku": 1}, "name": "index_on_sku"}]}', true);
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"x": 1},   "name": "index_on_x"  }]}', true);
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"F1": 1},  "name": "index_on_F1"  }]}', true);
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"a": 1, "b": 1},  "name": "Compound_index_on_a_and_b"  }]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"sku": 1}, "name": "index_on_sku"}]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"x": 1},   "name": "index_on_x"  }]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"F1": 1},  "name": "index_on_F1"  }]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"a": 1, "b": 1},  "name": "Compound_index_on_a_and_b"  }]}', true);
 
 -- avoid plans that use the primary key index
-SELECT helio_distributed_test_helpers.drop_primary_key('db','regex');
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','regex');
 
 SELECT document from collection('db', 'regex') where document @@ '{"sku": {"$regex": true} }';
 
@@ -106,18 +106,18 @@ SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$rege
 BEGIN;
 /* Make use of Index */
 SET LOCAL enable_seqscan to OFF;
-SET LOCAL helio_api.forceRumIndexScantoBitmapHeapScan TO OFF;
+SET LOCAL documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
 -- 111 117   Multiple regex in a single query. Ensuring multiple regexes, in the same query, are cached as separate entry in the cache
 SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
 EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
 ROLLBACK;
 
 -- shard the collection by "_id"
-select helio_api.shard_collection('db', 'regex', '{"_id": "hashed"}', false);
+select documentdb_api.shard_collection('db', 'regex', '{"_id": "hashed"}', false);
 
 BEGIN;
 SET LOCAL enable_seqscan to OFF;
-SET LOCAL helio_api.forceRumIndexScantoBitmapHeapScan TO OFF;
+SET LOCAL documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
 -- 111 117   Multiple regex in a single query on sharded collection. Index Path. Ensuring multiple regexes, in the same query, are cached as separate entry in the cache
 SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
 EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
@@ -134,10 +134,10 @@ SELECT drop_collection('db','regex') IS NOT NULL;
 
 SELECT create_collection('db','regex');
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"a": 1}, "name": "index_on_a"}]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"a": 1}, "name": "index_on_a"}]}', true);
 
 -- shard the collection by "a"
-select helio_api.shard_collection('db', 'regex', '{"a": "hashed"}', false);
+select documentdb_api.shard_collection('db', 'regex', '{"a": "hashed"}', false);
 
 
 SELECT insert_one('db','regex', '{"_id" : 106, "a" : "hello a\bcde world" }');
@@ -155,7 +155,7 @@ ROLLBACK;
 
 BEGIN;
 SET LOCAL enable_seqscan to ON;
-SET LOCAL helio_api.ForceUseIndexIfAvailable to OFF;
+SET LOCAL documentdb.ForceUseIndexIfAvailable to OFF;
 -- 111 117   Multiple regex in a single query on sharded collection, where query is on the shard id column. Seq Scan Path
 SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
 EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';

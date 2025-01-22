@@ -1,9 +1,9 @@
 CREATE SCHEMA regex5;
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal,public,regex5;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal,public,regex5;
 
 SET citus.next_shard_id TO 1010000;
-SET helio_api.next_collection_id TO 101000;
-SET helio_api.next_collection_index_id TO 101000;
+SET documentdb.next_collection_id TO 101000;
+SET documentdb.next_collection_index_id TO 101000;
 
 SELECT insert_one('db','regex5', '{"x": "ayc"}');
 SELECT insert_one('db','regex5', '{"x": ["abc", "xyz1"]}');
@@ -12,12 +12,12 @@ SELECT insert_one('db','regex5', '{"F1" : "F1_value",  "x": ["first regular expr
 SELECT insert_one('db','regex5', '{"F1" : "F1_value2"}');
 
 -- DROP PRIMARY KEY
-SELECT helio_distributed_test_helpers.drop_primary_key('db', 'regex5');
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'regex5');
 
 \set prevEcho :ECHO
 \set ECHO none
 \o /dev/null
-SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('regex5', 'index_wc', '{"$**": 1}'), true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('regex5', 'index_wc', '{"$**": 1}'), true);
 \o
 \set ECHO :prevEcho
 
@@ -27,7 +27,7 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distribute
 
 BEGIN;
 set local enable_seqscan TO OFF;
-set local helio_api.forceRumIndexScantoBitmapHeapScan TO OFF;
+set local documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
 
 -- When x is non-array
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": [{"$regex" : ".*Yc", "$options": "i"}]}}';

@@ -1,7 +1,7 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 270000;
-SET helio_api.next_collection_id TO 2700;
-SET helio_api.next_collection_index_id TO 2700;
+SET documentdb.next_collection_id TO 2700;
+SET documentdb.next_collection_index_id TO 2700;
 
 -- Invalid scenarios
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": 1, "b.$": 1}', '{}');
@@ -97,10 +97,10 @@ SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": [4,5,6,7]
 
 -- Test with multiple docs
 BEGIN;
-SELECT helio_api.insert_one('db','positionalProjection', '{"_id": 1, "a" : { "b" : [{"c": 1, "d": 1}, {"c": 2, "d": 2}]}, "x": [1,2]}', NULL);
-SELECT helio_api.insert_one('db','positionalProjection', '{"_id": 2, "a" : { "b" : {"c": [11, 12], "d": [13, 14]} }, "x": [1,2]}', NULL);
+SELECT documentdb_api.insert_one('db','positionalProjection', '{"_id": 1, "a" : { "b" : [{"c": 1, "d": 1}, {"c": 2, "d": 2}]}, "x": [1,2]}', NULL);
+SELECT documentdb_api.insert_one('db','positionalProjection', '{"_id": 2, "a" : { "b" : {"c": [11, 12], "d": [13, 14]} }, "x": [1,2]}', NULL);
 SELECT bson_dollar_project_find(document, '{"a.b.c.$": 1}', '{"x": 2}')
-    FROM helio_api.collection('db', 'positionalProjection')
+    FROM documentdb_api.collection('db', 'positionalProjection')
     WHERE document @@ '{ "x": 2}' 
     ORDER BY object_id;
 ROLLBACK;
@@ -123,15 +123,15 @@ SELECT bson_dollar_add_fields('{"a": {"b": [1,2,3]}}', '{ "a.b.$" : "1", "a.y": 
 --sharded collection tests
 BEGIN;
 -- Insert data into a new collection to be sharded
-SELECT helio_api.insert_one('db','positional_sharded',' { "_id" : 0, "key": {"a": "b"}, "a" : [{"b": 1, "c": 1}, {"b": 1, "c": 2}], "x":[11,12,13] }', NULL);
-SELECT helio_api.insert_one('db','positional_sharded',' { "_id" : 1, "key": {"a": "b"}, "a" : [{"b": {"c": 1}}, {"b": {"c": 2}}], "x":[11,12,13] }', NULL);
-SELECT helio_api.insert_one('db','positional_sharded',' { "_id" : 2, "key": {"b": "c"}, "a" : { "b": [{"c": 1, "d": 1}, {"c": 2, "d": 2}] }, "x":[11,12,13] }', NULL);
-SELECT helio_api.insert_one('db','positional_sharded',' { "_id" : 3, "key": {"c": "d"}, "a" : { "b": {"c": [{"d": 1, "d": 2}], "e": [1,2,3]} }, "x":[11,12,13] }', NULL);
+SELECT documentdb_api.insert_one('db','positional_sharded',' { "_id" : 0, "key": {"a": "b"}, "a" : [{"b": 1, "c": 1}, {"b": 1, "c": 2}], "x":[11,12,13] }', NULL);
+SELECT documentdb_api.insert_one('db','positional_sharded',' { "_id" : 1, "key": {"a": "b"}, "a" : [{"b": {"c": 1}}, {"b": {"c": 2}}], "x":[11,12,13] }', NULL);
+SELECT documentdb_api.insert_one('db','positional_sharded',' { "_id" : 2, "key": {"b": "c"}, "a" : { "b": [{"c": 1, "d": 1}, {"c": 2, "d": 2}] }, "x":[11,12,13] }', NULL);
+SELECT documentdb_api.insert_one('db','positional_sharded',' { "_id" : 3, "key": {"c": "d"}, "a" : { "b": {"c": [{"d": 1, "d": 2}], "e": [1,2,3]} }, "x":[11,12,13] }', NULL);
 
 -- Shard orders collection on key
-SELECT helio_api.shard_collection('db','positional_sharded', '{"key":"hashed"}', false);
+SELECT documentdb_api.shard_collection('db','positional_sharded', '{"key":"hashed"}', false);
 SELECT bson_dollar_project_find(document, '{"a.b.c.$": 1}', '{"x": 11}')
-    FROM helio_api.collection('db', 'positional_sharded')
+    FROM documentdb_api.collection('db', 'positional_sharded')
     WHERE document @@ '{ "x": 11}' 
     ORDER BY object_id;
 ROLLBACK;

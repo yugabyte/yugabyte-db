@@ -1,7 +1,7 @@
-SET search_path TO helio_api_catalog, helio_distributed_test_helpers;
+SET search_path TO documentdb_api_catalog, documentdb_distributed_test_helpers;
 SET citus.next_shard_id TO 6990000;
-SET helio_api.next_collection_id TO 699000;
-SET helio_api.next_collection_index_id TO 699000;
+SET documentdb.next_collection_id TO 699000;
+SET documentdb.next_collection_index_id TO 699000;
 -- Case 1: All the below cases are just ignored to have a geodetic type and returns NULL geometry
 -- This a check based on the type of the field at the given path, if it is not array or object or empty array and objects then it will return NULL
 SELECT bson_extract_geometry(NULL, 'a') IS NULL;
@@ -877,7 +877,7 @@ SELECT public.ST_ASTEXT(
  POLYGON((-168.75000000000003 55.520540637748496,-163.08803378528958 55.389661039662776,-157.5 55,-157.5 54.765625,-180 55,-174.41196621471047 55.389661039662776,-168.75000000000003 55.520540637748496))
 (5 rows)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "segmentsTest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds" }]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "segmentsTest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds" }]}', true);
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
 ---------------------------------------------------------------------
@@ -885,33 +885,33 @@ NOTICE:  creating collection
 (1 row)
 
 --Insert 2 points one out one at the boundary and one inside the original polygon
-SELECT helio_api.insert_one('db','segmentsTest','{ "_id" : 1, "a" : { "type": "Point", "coordinates": [ -167, 48] } }', NULL); -- inside
+SELECT documentdb_api.insert_one('db','segmentsTest','{ "_id" : 1, "a" : { "type": "Point", "coordinates": [ -167, 48] } }', NULL); -- inside
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','segmentsTest','{ "_id" : 2, "a" : { "type": "Point", "coordinates": [ -180, 40] } }', NULL); -- overlap with a vertex
+SELECT documentdb_api.insert_one('db','segmentsTest','{ "_id" : 2, "a" : { "type": "Point", "coordinates": [ -180, 40] } }', NULL); -- overlap with a vertex
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','segmentsTest','{ "_id" : 3, "a" : { "type": "Point", "coordinates": [ -142, 49] } }', NULL); -- outside
+SELECT documentdb_api.insert_one('db','segmentsTest','{ "_id" : 3, "a" : { "type": "Point", "coordinates": [ -142, 49] } }', NULL); -- outside
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
                                                  
-SELECT document FROM helio_api.collection('db', 'segmentsTest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[-180, 40], [-157.5, 40], [-157.5, 55], [-180, 55], [-180, 40]]]}}}}';
+SELECT document FROM documentdb_api.collection('db', 'segmentsTest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[-180, 40], [-157.5, 40], [-157.5, 55], [-180, 55], [-180, 40]]]}}}}';
                                                                 document                                                                
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "-167" }, { "$numberInt" : "48" } ] } }
  { "_id" : { "$numberInt" : "2" }, "a" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "-180" }, { "$numberInt" : "40" } ] } }
 (2 rows)
 
-EXPLAIN SELECT document FROM helio_api.collection('db', 'segmentsTest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[-180, 40], [-157.5, 40], [-157.5, 55], [-180, 55], [-180, 40]]]}}}}'; -- Polygon with points on a great circle of earth
+EXPLAIN SELECT document FROM documentdb_api.collection('db', 'segmentsTest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[-180, 40], [-157.5, 40], [-157.5, 55], [-180, 55], [-180, 40]]]}}}}'; -- Polygon with points on a great circle of earth
                                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
@@ -920,9 +920,9 @@ EXPLAIN SELECT document FROM helio_api.collection('db', 'segmentsTest') WHERE do
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_699000_6990005 collection  (cost=8.56..12.58 rows=1 width=32)
-               Recheck Cond: (helio_api_catalog.bson_validate_geography(document, 'a'::text) OPERATOR(helio_api_catalog.@|#|) '{ "a" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "-180" }, { "$numberInt" : "40" } ], [ { "$numberDouble" : "-157.5" }, { "$numberInt" : "40" } ], [ { "$numberDouble" : "-157.5" }, { "$numberInt" : "55" } ], [ { "$numberInt" : "-180" }, { "$numberInt" : "55" } ], [ { "$numberInt" : "-180" }, { "$numberInt" : "40" } ] ] ] } } }'::helio_core.bson)
+               Recheck Cond: (documentdb_api_catalog.bson_validate_geography(document, 'a'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "a" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "-180" }, { "$numberInt" : "40" } ], [ { "$numberDouble" : "-157.5" }, { "$numberInt" : "40" } ], [ { "$numberDouble" : "-157.5" }, { "$numberInt" : "55" } ], [ { "$numberInt" : "-180" }, { "$numberInt" : "55" } ], [ { "$numberInt" : "-180" }, { "$numberInt" : "40" } ] ] ] } } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on my_2ds  (cost=0.00..4.13 rows=8 width=0)
-                     Index Cond: (helio_api_catalog.bson_validate_geography(document, 'a'::text) OPERATOR(helio_api_catalog.@|#|) '{ "a" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "-180" }, { "$numberInt" : "40" } ], [ { "$numberDouble" : "-157.5" }, { "$numberInt" : "40" } ], [ { "$numberDouble" : "-157.5" }, { "$numberInt" : "55" } ], [ { "$numberInt" : "-180" }, { "$numberInt" : "55" } ], [ { "$numberInt" : "-180" }, { "$numberInt" : "40" } ] ] ] } } }'::helio_core.bson)
+                     Index Cond: (documentdb_api_catalog.bson_validate_geography(document, 'a'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "a" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "-180" }, { "$numberInt" : "40" } ], [ { "$numberDouble" : "-157.5" }, { "$numberInt" : "40" } ], [ { "$numberDouble" : "-157.5" }, { "$numberInt" : "55" } ], [ { "$numberInt" : "-180" }, { "$numberInt" : "55" } ], [ { "$numberInt" : "-180" }, { "$numberInt" : "40" } ] ] ] } } }'::documentdb_core.bson)
 (9 rows)
 
 RESET search_path;

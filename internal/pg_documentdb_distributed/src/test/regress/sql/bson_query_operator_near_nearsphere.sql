@@ -1,29 +1,29 @@
 SET citus.next_shard_id TO 523000;
-SET helio_api.next_collection_id TO 5230;
-SET helio_api.next_collection_index_id TO 5230;
+SET documentdb.next_collection_id TO 5230;
+SET documentdb.next_collection_index_id TO 5230;
 
-SET search_path to helio_api_catalog;
+SET search_path to documentdb_api_catalog;
 
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 1, "a": { "b": [ 0, 0]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 2, "a": { "b": [ 1.1, 1.1]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 3, "a": { "b": [ 2.29, 2.29]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 4, "a": { "b": [ 3.31, 3.31]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 5, "a": { "b": [ 4.42, 4.42]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 6, "a": { "b": [ 5.5, 5.5]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 7, "a": { "b": [ 6.66, 6.66]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 8, "a": { "b": [ 7.74, 7.74]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 9, "a": { "b": [ 8.81, 8.81]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 10, "a": { "geo": {"type": "Point", "coordinates": [35.3, 35.4]}} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 11, "a": { "geo": {"type": "LineString", "coordinates": [[35.36, 35.42], [32.3, 30]]}} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 12, "a": { "geo": {"type": "Polygon", "coordinates": [[[35.73, 35.74], [38.6, 35.3], [38.7, 39.2], [35.73, 35.74]]]}} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 13, "a": { "geo": {"type": "MultiPoint", "coordinates": [[35.43, 35.44], [32.3, 30.3]]}} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 14, "a": { "geo": {"type": "MultiLineString", "coordinates": [[[35.83, 35.84], [32.3, 30.6]]]}} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere','{ "_id": 15, "a": { "geo": {"type": "MultiPolygon", "coordinates": [[[[35.312, 35.441], [38.644, 35.3231], [38.71, 39.32], [35.312, 35.441]]]]}} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 1, "a": { "b": [ 0, 0]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 2, "a": { "b": [ 1.1, 1.1]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 3, "a": { "b": [ 2.29, 2.29]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 4, "a": { "b": [ 3.31, 3.31]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 5, "a": { "b": [ 4.42, 4.42]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 6, "a": { "b": [ 5.5, 5.5]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 7, "a": { "b": [ 6.66, 6.66]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 8, "a": { "b": [ 7.74, 7.74]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 9, "a": { "b": [ 8.81, 8.81]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 10, "a": { "geo": {"type": "Point", "coordinates": [35.3, 35.4]}} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 11, "a": { "geo": {"type": "LineString", "coordinates": [[35.36, 35.42], [32.3, 30]]}} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 12, "a": { "geo": {"type": "Polygon", "coordinates": [[[35.73, 35.74], [38.6, 35.3], [38.7, 39.2], [35.73, 35.74]]]}} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 13, "a": { "geo": {"type": "MultiPoint", "coordinates": [[35.43, 35.44], [32.3, 30.3]]}} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 14, "a": { "geo": {"type": "MultiLineString", "coordinates": [[[35.83, 35.84], [32.3, 30.6]]]}} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 15, "a": { "geo": {"type": "MultiPolygon", "coordinates": [[[[35.312, 35.441], [38.644, 35.3231], [38.71, 39.32], [35.312, 35.441]]]]}} }', NULL);
 
 -- $near and $nearSphere enforce index usage
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere", "indexes": [{"key": {"a.b": "2d"}, "name": "my_2d_ab_idx" }, {"key": {"a.b": "2dsphere"}, "name": "my_2ds_ab_idx" }, {"key": {"a.geo": "2dsphere"}, "name": "my_2ds_ageo_idx" }]}', true);
-SELECT helio_distributed_test_helpers.drop_primary_key('db','near_sphere');
-SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'near_sphere') ORDER BY collection_id, index_id;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere", "indexes": [{"key": {"a.b": "2d"}, "name": "my_2d_ab_idx" }, {"key": {"a.b": "2dsphere"}, "name": "my_2ds_ab_idx" }, {"key": {"a.geo": "2dsphere"}, "name": "my_2ds_ageo_idx" }]}', true);
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','near_sphere');
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'near_sphere') ORDER BY collection_id, index_id;
 
 -- validations
 -- $near/$nearSphere tests
@@ -72,11 +72,11 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filt
 
 -- invalid places to call $near/$nearSphere
 
-SELECT document FROM helio_api.collection('db','near_sphere') WHERE document @@ '{ "a.b": { "$elemMatch" : {"$near": [1,1] }}}';
-SELECT document FROM helio_api.collection('db','near_sphere') WHERE document @@ '{ "$or": [{"a.b": {"$near": [1,1] }},{"t": 1}]}';
+SELECT document FROM documentdb_api.collection('db','near_sphere') WHERE document @@ '{ "a.b": { "$elemMatch" : {"$near": [1,1] }}}';
+SELECT document FROM documentdb_api.collection('db','near_sphere') WHERE document @@ '{ "$or": [{"a.b": {"$near": [1,1] }},{"t": 1}]}';
 SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": {}, "projection": { "p" : {"$elemMatch": {"geo": {"$near": [1,1]}}}}}');
-SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{},"u":{"$set": {"a.$[elem].b": 1}},"multi":false,"upsert":true, "arrayFilters": [{"elem.geo": {"$near": [1, 1]}}]}]}');
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere", "indexes": [{"key": {"t": 1}, "name": "my_invalid_idx", "partialFilterExpression": {"geo": {"$near": [1,1]}} }]}', true);
+SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{},"u":{"$set": {"a.$[elem].b": 1}},"multi":false,"upsert":true, "arrayFilters": [{"elem.geo": {"$near": [1, 1]}}]}]}');
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere", "indexes": [{"key": {"t": 1}, "name": "my_invalid_idx", "partialFilterExpression": {"geo": {"$near": [1,1]}} }]}', true);
 
 
 BEGIN;
@@ -154,10 +154,10 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filt
 SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": {"coordinates": [5, 6]}}}}');
 
 -- Verify that @@ operator handles the near / nearSphere operators
-SELECT document FROM helio_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.b": { "$near": [5, 6]}}';
-SELECT document FROM helio_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.b": { "$near": [5, 6]}}';
-SELECT document FROM helio_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.geo": { "$nearSphere": [5, 6]}}';
-SELECT document FROM helio_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.geo": { "$nearSphere": {"coordinates": [5, 6]}}}';
+SELECT document FROM documentdb_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.b": { "$near": [5, 6]}}';
+SELECT document FROM documentdb_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.b": { "$near": [5, 6]}}';
+SELECT document FROM documentdb_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.geo": { "$nearSphere": [5, 6]}}';
+SELECT document FROM documentdb_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.geo": { "$nearSphere": {"coordinates": [5, 6]}}}';
 
 -- Explain tests to ensure index pushdown
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$near": [0, 0]}}}');
@@ -177,13 +177,13 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filt
 
 -- check update
 BEGIN;
-SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
-SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1.1,1.1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
-SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
+SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
+SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1.1,1.1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
+SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
 ROLLBACK;
 
 -- Shard the collection
-SELECT helio_api.shard_collection('db', 'near_sphere', '{"_id": "hashed"}', false);
+SELECT documentdb_api.shard_collection('db', 'near_sphere', '{"_id": "hashed"}', false);
 
 
 BEGIN;
@@ -282,29 +282,29 @@ ROLLBACK;
 
 -- update with sharded
 BEGIN;
-SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
+SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
 ROLLBACK;
 
 
 -- Test near and nearsphere with different sorting features.
-SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 1, "zone": 1, "loc": { "type": "Point", "coordinates": [-20, -20]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 2, "zone": 2, "loc": { "type": "Point", "coordinates": [-10, -10]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 3, "zone": 3, "loc": { "type": "Point", "coordinates": [0, 0]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 4, "zone": 4, "loc": { "type": "Point", "coordinates": [10, 10]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 5, "zone": 5, "loc": { "type": "Point", "coordinates": [20, 20]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 6, "zone": 1, "loc": { "type": "Point", "coordinates": [-20, -20]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 7, "zone": 2, "loc": { "type": "Point", "coordinates": [-10, -10]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 8, "zone": 3, "loc": { "type": "Point", "coordinates": [0, 0]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 9, "zone": 4, "loc": { "type": "Point", "coordinates": [10, 10]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 10, "zone": 5, "loc": { "type": "Point", "coordinates": [20, 20]} }', NULL);
-SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 11, "zone": 6, "loc": { "type": "Point", "coordinates": [30, 30]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 1, "zone": 1, "loc": { "type": "Point", "coordinates": [-20, -20]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 2, "zone": 2, "loc": { "type": "Point", "coordinates": [-10, -10]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 3, "zone": 3, "loc": { "type": "Point", "coordinates": [0, 0]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 4, "zone": 4, "loc": { "type": "Point", "coordinates": [10, 10]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 5, "zone": 5, "loc": { "type": "Point", "coordinates": [20, 20]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 6, "zone": 1, "loc": { "type": "Point", "coordinates": [-20, -20]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 7, "zone": 2, "loc": { "type": "Point", "coordinates": [-10, -10]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 8, "zone": 3, "loc": { "type": "Point", "coordinates": [0, 0]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 9, "zone": 4, "loc": { "type": "Point", "coordinates": [10, 10]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 10, "zone": 5, "loc": { "type": "Point", "coordinates": [20, 20]} }', NULL);
+SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 11, "zone": 6, "loc": { "type": "Point", "coordinates": [30, 30]} }', NULL);
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere_distinct", "indexes": [{"key": {"loc.coordinates": "2d"}, "name": "my_2d_loccoord_idx" }]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere_distinct", "indexes": [{"key": {"loc.coordinates": "2d"}, "name": "my_2d_loccoord_idx" }]}', true);
 
 SELECT document FROM bson_aggregation_distinct('db', '{ "distinct": "near_sphere_distinct", "key": "zone", "query": {"loc.coordinates": { "$near": [0, 0], "$maxDistance": 1}} }');
 
 -- find and modify fails with geonear
 -- With sort on findAndModify with near, sort takes precedence
-SELECT helio_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [0, 0], "$maxDistance": 1} }, "sort": {"_id": -1}, "update": {"a": 10}, "fields": {"_id": 1}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [0, 0], "$maxDistance": 1} }, "sort": {"_id": -1}, "update": {"a": 10}, "fields": {"_id": 1}}');
 -- If no sort clause then near decides the ordering
-SELECT helio_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [30, 30]} }, "update": {"a": 10}, "fields": {"_id": 1}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [30, 30]} }, "update": {"a": 10}, "fields": {"_id": 1}}');

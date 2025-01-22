@@ -1,16 +1,16 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 5120000;
-SET helio_api.next_collection_id TO 51200;
-SET helio_api.next_collection_index_id TO 51200;
+SET documentdb.next_collection_id TO 51200;
+SET documentdb.next_collection_index_id TO 51200;
 
 -- Insert data
-SELECT helio_api.insert_one('db','dollarBucket',' { "_id" : 1, "item" : "almonds", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 2, "year": 2020 }', NULL);
-SELECT helio_api.insert_one('db','dollarBucket','{ "_id" : 2, "item" : "pecans", "pricing" : { "wholesale": 10, "retail": 9 }, "quantity" : 1, "year": 2021 }', NULL);
-SELECT helio_api.insert_one('db','dollarBucket',' { "_id" : 3, "item" : "bread", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 5 , "year": 2020}', NULL);
-SELECT helio_api.insert_one('db','dollarBucket',' { "_id" : 4, "item" : "meat", "pricing" : { "wholesale": 4, "retail": 10 }, "quantity" : 3 , "year": 2022}', NULL);
-SELECT helio_api.insert_one('db','dollarBucket','{ "_id" : 5, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
-SELECT helio_api.insert_one('db','dollarBucket','{ "_id" : 6, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
-SELECT helio_api.insert_one('db','dollarBucket','{ "_id" : 7, "item" : "bread", "pricing" : { "retail": 15, "wholesale": 10 }, "quantity" : 1, "year": 2020 }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket',' { "_id" : 1, "item" : "almonds", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 2, "year": 2020 }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 2, "item" : "pecans", "pricing" : { "wholesale": 10, "retail": 9 }, "quantity" : 1, "year": 2021 }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket',' { "_id" : 3, "item" : "bread", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 5 , "year": 2020}', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket',' { "_id" : 4, "item" : "meat", "pricing" : { "wholesale": 4, "retail": 10 }, "quantity" : 3 , "year": 2022}', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 5, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 6, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 7, "item" : "bread", "pricing" : { "retail": 15, "wholesale": 10 }, "quantity" : 1, "year": 2020 }', NULL);
 
 -- positive cases:
 -- $bucket with only required fields
@@ -35,9 +35,9 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$item", "boundaries": ["a", "c", "n"], "default": "others" } } ] }');
 
 -- groupBy array or document field
-SELECT helio_api.insert_one('db','dollarBucketGroupBy', '{ "_id" : 1, "valueArray" : [1, 2, 3], "valueDocument" : { "a": 1, "b": 2 } }', NULL);
-SELECT helio_api.insert_one('db','dollarBucketGroupBy', '{ "_id" : 2, "valueArray" : [4, 5, 6], "valueDocument" : { "a": 3, "b": 4 } }', NULL);
-SELECT helio_api.insert_one('db','dollarBucketGroupBy', '{ "_id" : 3, "valueArray" : [9, 8], "valueDocument" : { "a": 5, "b": 6 } }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucketGroupBy', '{ "_id" : 1, "valueArray" : [1, 2, 3], "valueDocument" : { "a": 1, "b": 2 } }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucketGroupBy', '{ "_id" : 2, "valueArray" : [4, 5, 6], "valueDocument" : { "a": 3, "b": 4 } }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucketGroupBy', '{ "_id" : 3, "valueArray" : [9, 8], "valueDocument" : { "a": 5, "b": 6 } }', NULL);
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketGroupBy", "pipeline": [ { "$bucket": { "groupBy": "$valueArray", "boundaries": [[0], [5], [10]] } } ] }');
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketGroupBy", "pipeline": [ { "$bucket": { "groupBy": "$valueDocument", "boundaries": [{"a": 0}, {"a": 5}, {"a": 10}] } } ] }');
 
@@ -68,7 +68,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 
 
 -- sharded collection
-SELECT helio_api.shard_collection('db', 'dollarBucket', '{ "_id": "hashed" }', false);
+SELECT documentdb_api.shard_collection('db', 'dollarBucket', '{ "_id": "hashed" }', false);
 
 -- $bucket with only required fields
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');

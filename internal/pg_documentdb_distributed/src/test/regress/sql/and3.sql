@@ -1,17 +1,17 @@
 -- Based on and3.js
 CREATE SCHEMA and3;
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal,public,and3;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal,public,and3;
 SET citus.next_shard_id TO 547000;
-SET helio_api.next_collection_id TO 5470;
-SET helio_api.next_collection_index_id TO 5470;
+SET documentdb.next_collection_id TO 5470;
+SET documentdb.next_collection_index_id TO 5470;
 
 SELECT drop_collection('db','and3');
 SELECT 1 FROM insert_one('db','and3', '{"a":3}');
 SELECT 1 FROM insert_one('db','and3', '{"a":"foo"}');
 
-SELECT helio_distributed_test_helpers.drop_primary_key('db', 'and3');
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'and3');
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('and3', 'index_1', '{"a.$**": 1}'), true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('and3', 'index_1', '{"a.$**": 1}'), true);
 
 -- examined_row_count is currently ignored
 CREATE OR REPLACE FUNCTION and3.checkScanMatch(query bson, examined_row_count int, expected_row_count int)

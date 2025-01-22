@@ -120,6 +120,7 @@ CREATE SCHEMA documentdb_data;
 #include "udfs/metadata/empty_data_table--0.16-0.sql"
 #include "udfs/metadata/collection--0.10-0.sql"
 
+#include "udfs/aggregation/bson_aggregation_redact--0.24-0.sql"
 
 /*
  * Region: Collection Metadata

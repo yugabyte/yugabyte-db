@@ -1,7 +1,7 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 8800000;
-SET helio_api.next_collection_id TO 8800;
-SET helio_api.next_collection_index_id TO 8800;
+SET documentdb.next_collection_id TO 8800;
+SET documentdb.next_collection_index_id TO 8800;
 -- $tsSecond operator
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": null }}');
  bson_dollar_project 
@@ -63,7 +63,7 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": { "$timest
 (1 row)
 
 -- Create Collection
-SELECT helio_api.create_collection('db', 'timestampTest');
+SELECT documentdb_api.create_collection('db', 'timestampTest');
 NOTICE:  creating collection
  create_collection 
 ---------------------------------------------------------------------
@@ -71,31 +71,31 @@ NOTICE:  creating collection
 (1 row)
 
 -- $tsIncrement/$tsSecond operator , input document tests
-SELECT helio_api.insert_one('db','timestampTest','{ "symbol": "a", "saleTimestamp": { "$timestamp": { "t": 1622731060, "i": 1 }} }', NULL);
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "a", "saleTimestamp": { "$timestamp": { "t": 1622731060, "i": 1 }} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','timestampTest','{ "symbol": "a", "saleTimestamp": { "$timestamp": { "t": 1622731060, "i": 2 }} }', NULL);
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "a", "saleTimestamp": { "$timestamp": { "t": 1622731060, "i": 2 }} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124193, "i": 1 }} }', NULL);
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124193, "i": 1 }} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124192, "i": 1 }} }', NULL);
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124192, "i": 1 }} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124192, "i": 2 }} }', NULL);
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124192, "i": 2 }} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }

@@ -1,10 +1,10 @@
-set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+set search_path to documentdb_core,documentdb_api,documentdb_api_catalog,pg_catalog;
 SET citus.next_shard_id TO 7700000;
-SET helio_api.next_collection_id TO 7700;
-SET helio_api.next_collection_index_id TO 7700;
+SET documentdb.next_collection_id TO 7700;
+SET documentdb.next_collection_index_id TO 7700;
 
 
-SELECT helio_api.insert_one('db', 'colJsonSchQry', '{ 
+SELECT documentdb_api.insert_one('db', 'colJsonSchQry', '{ 
     "_id": 0, "vehicle": "car", "seats" : 4, "ac" : true, 
     "height" : 5.8, "width" : { "$numberDecimal": "4.2" }, 
     "model" : { "year" : 2020, "color" : "black" }, 
@@ -13,7 +13,7 @@ SELECT helio_api.insert_one('db', 'colJsonSchQry', '{
 }');
 
 
-SELECT helio_api.insert_one('db', 'colJsonSchQry', '{ 
+SELECT documentdb_api.insert_one('db', 'colJsonSchQry', '{ 
     "_id": 1, "vehicle": 20, "seats" : "many", "ac" : "1 ton", 
     "height" : "very high", "width" : { "upper" : 10, "lower" : 20 }, 
     "model" : 2010, 
@@ -29,76 +29,76 @@ SELECT helio_api.insert_one('db', 'colJsonSchQry', '{
 ---------------------------- "type" -------------------------------------------
 
 -- All docs Match
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { } } }');
 
 -- All docs Match, as none of docs have given field
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "cosmosdb" : { "type" : "string" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "cosmosdb" : { "type" : "string" } } } }');
 
 -- No Match
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }');
 
 -- Matches where "vehicle" is "string"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }');
 
 -- Matches where "seats" is "number"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "number" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "number" } } } }');
 
 -- Matches where "height" is "number"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "height" : { "type" : "number" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "height" : { "type" : "number" } } } }');
 
 -- Matches where "width" is "number"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "width" : { "type" : "number" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "width" : { "type" : "number" } } } }');
 
 -- Matches where "model" is "object"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "model" : { "type" : "object" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "model" : { "type" : "object" } } } }');
 
 -- Matches where "options" is "array"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "options" : { "type" : "array" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "options" : { "type" : "array" } } } }');
 
 -- Matches where "ac" is "boolean"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "ac" : { "type" : "boolean" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "ac" : { "type" : "boolean" } } } }');
 
 -- Matches where "vehicle" is "string" and "seats" is "number"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" }, "seats" : { "type" : "number" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" }, "seats" : { "type" : "number" } } } }');
 
 -- Unsupported: "integer" type
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "integer" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "integer" } } } }');
 
 
 ---------------------------- "bsonType" -------------------------------------------
 
 -- All docs Match, as none of docs have given field
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "cosmosdb" : { "bsonType" : "string" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "cosmosdb" : { "bsonType" : "string" } } } }');
 
 -- No Match
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "bool" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "bool" } } } }');
 
 -- Matches where "vehicle" is "string"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "string" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "string" } } } }');
 
 -- Matches where "seats" is "int"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "bsonType" : "int" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "bsonType" : "int" } } } }');
 
 -- Matches where "height" is "double"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "height" : { "bsonType" : "double" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "height" : { "bsonType" : "double" } } } }');
 
 -- Matches where "width" is "decimal"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "width" : { "bsonType" : "decimal" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "width" : { "bsonType" : "decimal" } } } }');
 
 -- Matches where "model" is "object"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "model" : { "bsonType" : "object" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "model" : { "bsonType" : "object" } } } }');
 
 -- Matches where "options" is "array"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "options" : { "bsonType" : "array" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "options" : { "bsonType" : "array" } } } }');
 
 -- Matches where "ac" is "boolean"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "ac" : { "bsonType" : "bool" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "ac" : { "bsonType" : "bool" } } } }');
 
 -- Matches where "vehicle" is "string" and "seats" is "int"
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "string" }, "seats" : { "bsonType" : "int" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "string" }, "seats" : { "bsonType" : "int" } } } }');
 
 -- Unsupported: "integer" type
-SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "integer" } } } }');
+SELECT document FROM documentdb_api.collection('db', 'colJsonSchQry') WHERE documentdb_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "integer" } } } }');
 
 -------------------------------------------------------------------------------
 --                         Numeric Validations                               --
@@ -416,10 +416,10 @@ SELECT bson_dollar_json_schema('{"data" : 1 }','{ "$jsonSchema": { "properties":
 -------------------------------------------------------------------------------
 
 -- All docs Match
-SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { } } }, "$db" : "db" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { } } }, "$db" : "db" }');
 
 -- -- No Match
-SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }, "$db" : "db" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }, "$db" : "db" }');
 
 -- -- Matches where "vehicle" is "string"
-SELECT cursorPage FROM helio_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }, "$db" : "db" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }, "$db" : "db" }');

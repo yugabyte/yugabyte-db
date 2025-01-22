@@ -1,34 +1,34 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 9630000;
-SET helio_api.next_collection_id TO 963000;
-SET helio_api.next_collection_index_id TO 963000;
+SET documentdb.next_collection_id TO 963000;
+SET documentdb.next_collection_index_id TO 963000;
 -- Insert data
-SELECT helio_api.insert_one('invmatch','airports','{ "_id": 1, "airport_id": 10165, "city": "Adak Island", "state": "AK", "name": "Adak", "rule": { "flight_type": "private"} }', NULL);
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 1, "airport_id": 10165, "city": "Adak Island", "state": "AK", "name": "Adak", "rule": { "flight_type": "private"} }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','airports','{ "_id": 3, "airport_id": 11308, "city": "Dothan", "state": "AL", "name": "Dothan Regional", "rule": { "$or": [ { "origin": "WA"}, {"flight_type": "private"}] } }', NULL);
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 3, "airport_id": 11308, "city": "Dothan", "state": "AL", "name": "Dothan Regional", "rule": { "$or": [ { "origin": "WA"}, {"flight_type": "private"}] } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','airports','{ "_id": 4, "airport_id": 11778, "city": "Fort Smith", "state": "AR", "name": "Fort Smith Regional", "rule": { "$in": [{"is_emergency": true}, {"is_vip": true}] }}', NULL);
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 4, "airport_id": 11778, "city": "Fort Smith", "state": "AR", "name": "Fort Smith Regional", "rule": { "$in": [{"is_emergency": true}, {"is_vip": true}] }}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','airports','{ "_id": 6, "airport_id": 14689, "city": "Santa Barbara", "state": "CA", "name": "Santa Barbara Municipal", "rule": { "$or": [ {"$and": [{"flight_type": "private"}, {"origin": "CA"}]}, {"$or": [{"is_emergency": true}, {"is_vip": true}]} ] }}', NULL);
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 6, "airport_id": 14689, "city": "Santa Barbara", "state": "CA", "name": "Santa Barbara Municipal", "rule": { "$or": [ {"$and": [{"flight_type": "private"}, {"origin": "CA"}]}, {"$or": [{"is_emergency": true}, {"is_vip": true}]} ] }}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','airports','{ "_id": 7, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "rule": { "tags": { "$all": ["private", "vip"]}}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 7, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "rule": { "tags": { "$all": ["private", "vip"]}}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -112,7 +112,7 @@ ERROR:  $inverseMatch requires that if 'input' is an array its contents be docum
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": [{"path": "rule", "input": [{"flight_type": "private"}, ""] }, {"path": "rule2", "input": {}}]}]}');
 ERROR:  $inverseMatch requires a document as an input instead got: array
 -- insert a document with an invalid query
-SELECT helio_api.insert_one('invmatch','airports','{ "_id": 8, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "specialRule": { "tags": { "$allValues": ["private", "vip"]}}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 8, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "specialRule": { "tags": { "$allValues": ["private", "vip"]}}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -143,39 +143,39 @@ SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airp
 (1 row)
 
 -- add tests with lookup for RBAC "like" scenarios
-SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 1, "user_id": 100, "roles": ["basic"]}', NULL);
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 1, "user_id": 100, "roles": ["basic"]}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 2, "user_id": 101, "roles": ["basic", "sales"]}', NULL);
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 2, "user_id": 101, "roles": ["basic", "sales"]}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 3, "user_id": 102, "roles": ["admin"]}', NULL);
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 3, "user_id": 102, "roles": ["admin"]}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','sales','{ "_id": 1, "order": 100, "paid": true, "total": 0, "rule": {"roles": {"$in": ["basic", "sales", "admin"]}}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','sales','{ "_id": 1, "order": 100, "paid": true, "total": 0, "rule": {"roles": {"$in": ["basic", "sales", "admin"]}}}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','sales','{ "_id": 2, "order": 102, "paid": true, "total": 1000, "rule": {"roles": {"$in": ["sales", "admin"]}}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','sales','{ "_id": 2, "order": 102, "paid": true, "total": 1000, "rule": {"roles": {"$in": ["sales", "admin"]}}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','sales','{ "_id": 3, "order": 103, "paid": true, "total": 1000, "rule": {"roles": {"$in": ["admin"]}}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','sales','{ "_id": 3, "order": 103, "paid": true, "total": 1000, "rule": {"roles": {"$in": ["admin"]}}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -271,24 +271,24 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM helio_data.documents_963003_9630006 collection WHERE (helio_api_internal.bson_dollar_inverse_match(document, (SELECT helio_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::helio_core.bson, (SELECT COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::helio_core.bson) AS document FROM helio_data.documents_963002_9630004 collection_0_1 WHERE (helio_api_catalog.bson_dollar_ne(collection_0_1.document, '{ "user_id" : { "$numberInt" : "200" } }'::helio_core.bson) AND (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963002'::bigint)) LIMIT '1'::bigint)) AS spec)) AND (shard_key_value OPERATOR(pg_catalog.=) '963003'::bigint))
+         Query: SELECT document FROM documentdb_data.documents_963003_9630006 collection WHERE (documentdb_api_internal.bson_dollar_inverse_match(document, (SELECT documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson) AS document FROM documentdb_data.documents_963002_9630004 collection_0_1 WHERE (documentdb_api_catalog.bson_dollar_ne(collection_0_1.document, '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson) AND (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963002'::bigint)) LIMIT '1'::bigint)) AS spec)) AND (shard_key_value OPERATOR(pg_catalog.=) '963003'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on helio_data.documents_963003_9630006 collection
+         ->  Bitmap Heap Scan on documentdb_data.documents_963003_9630006 collection
                Output: collection.document
                Recheck Cond: (collection.shard_key_value = '963003'::bigint)
-               Filter: helio_api_internal.bson_dollar_inverse_match(collection.document, $1)
+               Filter: documentdb_api_internal.bson_dollar_inverse_match(collection.document, $1)
                InitPlan 2 (returns $1)
                  ->  Result
-                       Output: helio_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::helio_core.bson, $0)
+                       Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, $0)
                        InitPlan 1 (returns $0)
                          ->  Limit
-                               Output: (COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::helio_core.bson))
+                               Output: (COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson))
                                ->  Aggregate
-                                     Output: COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::helio_core.bson)
-                                     ->  Bitmap Heap Scan on helio_data.documents_963002_9630004 collection_0_1
+                                     Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson)
+                                     ->  Bitmap Heap Scan on documentdb_data.documents_963002_9630004 collection_0_1
                                            Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
                                            Recheck Cond: (collection_0_1.shard_key_value = '963002'::bigint)
-                                           Filter: (collection_0_1.document OPERATOR(helio_api_catalog.@!=) '{ "user_id" : { "$numberInt" : "200" } }'::helio_core.bson)
+                                           Filter: (collection_0_1.document OPERATOR(documentdb_api_catalog.@!=) '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson)
                                            ->  Bitmap Index Scan on _id_
                                                  Index Cond: (collection_0_1.shard_key_value = '963002'::bigint)
                ->  Bitmap Index Scan on _id_
@@ -303,22 +303,22 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM helio_data.documents_963003_9630006 collection WHERE (helio_api_internal.bson_dollar_inverse_match(document, (SELECT helio_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::helio_core.bson, (SELECT COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::helio_core.bson) AS document FROM helio_data.documents_963002_9630004 collection_0_1 WHERE (helio_api_catalog.bson_dollar_ne(collection_0_1.document, '{ "user_id" : { "$numberInt" : "200" } }'::helio_core.bson) AND (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963002'::bigint)))) AS spec)) AND (shard_key_value OPERATOR(pg_catalog.=) '963003'::bigint))
+         Query: SELECT document FROM documentdb_data.documents_963003_9630006 collection WHERE (documentdb_api_internal.bson_dollar_inverse_match(document, (SELECT documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson) AS document FROM documentdb_data.documents_963002_9630004 collection_0_1 WHERE (documentdb_api_catalog.bson_dollar_ne(collection_0_1.document, '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson) AND (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963002'::bigint)))) AS spec)) AND (shard_key_value OPERATOR(pg_catalog.=) '963003'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on helio_data.documents_963003_9630006 collection
+         ->  Bitmap Heap Scan on documentdb_data.documents_963003_9630006 collection
                Output: collection.document
                Recheck Cond: (collection.shard_key_value = '963003'::bigint)
-               Filter: helio_api_internal.bson_dollar_inverse_match(collection.document, $1)
+               Filter: documentdb_api_internal.bson_dollar_inverse_match(collection.document, $1)
                InitPlan 2 (returns $1)
                  ->  Result
-                       Output: helio_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::helio_core.bson, $0)
+                       Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, $0)
                        InitPlan 1 (returns $0)
                          ->  Aggregate
-                               Output: COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::helio_core.bson)
-                               ->  Bitmap Heap Scan on helio_data.documents_963002_9630004 collection_0_1
+                               Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson)
+                               ->  Bitmap Heap Scan on documentdb_data.documents_963002_9630004 collection_0_1
                                      Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
                                      Recheck Cond: (collection_0_1.shard_key_value = '963002'::bigint)
-                                     Filter: (collection_0_1.document OPERATOR(helio_api_catalog.@!=) '{ "user_id" : { "$numberInt" : "200" } }'::helio_core.bson)
+                                     Filter: (collection_0_1.document OPERATOR(documentdb_api_catalog.@!=) '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson)
                                      ->  Bitmap Index Scan on _id_
                                            Index Cond: (collection_0_1.shard_key_value = '963002'::bigint)
                ->  Bitmap Index Scan on _id_
@@ -328,7 +328,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": {}}} ], "cursor": {} }'); 
                                               QUERY PLAN                                               
 ---------------------------------------------------------------------
- Bitmap Heap Scan on helio_data.documents_963003_9630006 collection
+ Bitmap Heap Scan on documentdb_data.documents_963003_9630006 collection
    Output: document
    Recheck Cond: (collection.shard_key_value = '963003'::bigint)
    Filter: bson_dollar_inverse_match(collection.document, '{ "path" : "rule", "input" : {  } }'::bson)
@@ -337,13 +337,13 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
 (6 rows)
 
 -- test with sharded collections.
-SELECT helio_api.shard_collection('invmatch', 'sales', '{"order": "hashed"}', false);
+SELECT documentdb_api.shard_collection('invmatch', 'sales', '{"order": "hashed"}', false);
  shard_collection 
 ---------------------------------------------------------------------
  
 (1 row)
 
-SELECT helio_api.shard_collection('invmatch', 'user_roles', '{"_id": "hashed"}', false);
+SELECT documentdb_api.shard_collection('invmatch', 'user_roles', '{"_id": "hashed"}', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -432,75 +432,75 @@ SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sale
 (3 rows)
 
 -- drop and recreate so that it is not sharded and test with group and sort
-SELECT helio_api.drop_database('invmatch');
+SELECT documentdb_api.drop_database('invmatch');
  drop_database 
 ---------------------------------------------------------------------
  
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 2, "user_id": 101, "role": "admin"}', NULL);
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 2, "user_id": 101, "role": "admin"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 1, "user_id": 100, "role": "basic"}', NULL);
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 1, "user_id": 100, "role": "basic"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 5, "user_id": 103, "role": "basic"}', NULL);
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 5, "user_id": 103, "role": "basic"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 3, "user_id": 102, "role": "sales"}', NULL);
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 3, "user_id": 102, "role": "sales"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 4, "user_id": 100, "role": "sales"}', NULL);
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 4, "user_id": 100, "role": "sales"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 6, "user_id": 102, "role": "admin"}', NULL);
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 6, "user_id": 102, "role": "admin"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','payments','{ "_id": 5, "order": 102, "order_total": 1000, "amount": 100, "rule": "admin"}', NULL);
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 5, "order": 102, "order_total": 1000, "amount": 100, "rule": "admin"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','payments','{ "_id": 1, "order": 100, "order_total": 50, "amount": 20, "rule": "basic"}', NULL);
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 1, "order": 100, "order_total": 50, "amount": 20, "rule": "basic"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','payments','{ "_id": 2, "order": 102, "order_total": 1000, "amount": 300, "rule": "sales"}', NULL);
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 2, "order": 102, "order_total": 1000, "amount": 300, "rule": "sales"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','payments','{ "_id": 4, "order": 100, "order_total": 50, "amount": 5, "rule": "basic"}', NULL);
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 4, "order": 100, "order_total": 50, "amount": 5, "rule": "basic"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','payments','{ "_id": 3, "order": 102, "order_total": 1000, "amount": 200, "rule": "basic"}', NULL);
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 3, "order": 102, "order_total": 1000, "amount": 200, "rule": "basic"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -526,38 +526,38 @@ SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "paym
  { "_id" : { "$numberInt" : "102" }, "payed" : { "$numberInt" : "600" }, "rule" : { "role" : { "$in" : [ "admin", "sales", "basic" ] } } }
 (2 rows)
 
-SELECT helio_api.drop_collection('invmatch', 'payments');
+SELECT documentdb_api.drop_collection('invmatch', 'payments');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','payments','{ "_id": 5, "order": 102, "order_total": 1000, "amount": 100, "rule": { "role": "admin"}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 5, "order": 102, "order_total": 1000, "amount": 100, "rule": { "role": "admin"}}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','payments','{ "_id": 1, "order": 100, "order_total": 50, "amount": 20, "rule": { "role": "basic"}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 1, "order": 100, "order_total": 50, "amount": 20, "rule": { "role": "basic"}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','payments','{ "_id": 2, "order": 102, "order_total": 1000, "amount": 300, "rule": { "role": "sales"}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 2, "order": 102, "order_total": 1000, "amount": 300, "rule": { "role": "sales"}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','payments','{ "_id": 4, "order": 100, "order_total": 50, "amount": 5, "rule": { "role": "basic"}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 4, "order": 100, "order_total": 50, "amount": 5, "rule": { "role": "basic"}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('invmatch','payments','{ "_id": 3, "order": 102, "order_total": 1000, "amount": 200, "rule": { "role": "admin"}}', NULL);
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 3, "order": 102, "order_total": 1000, "amount": 200, "rule": { "role": "admin"}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
