@@ -322,6 +322,7 @@ od_frontend_attach(od_client_t *client, char *context,
 				continue;
 			}
 
+			/* YB: check auth failure status codes to update OID status */
 			if (yb_frontend_error_is_db_does_not_exist(client))
 				((od_route_t *)server->route)->yb_database_entry->status = YB_OID_DROPPED;
 			else if (yb_frontend_error_is_role_does_not_exist(client))
@@ -1977,22 +1978,6 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 
 	for (;;) {
 		for (;;) {
-			rc = yb_is_route_invalid(client->route);
-			if (rc == ROUTE_INVALID_DB_OID) {
-				od_frontend_fatal(
-					client, KIWI_CONNECTION_FAILURE,
-					"Database might have been dropped by another user");
-				status = OD_ECLIENT_READ;
-				break;
-			} else if (rc == ROUTE_INVALID_ROLE_OID) {
-				od_frontend_fatal(
-					client, KIWI_CONNECTION_FAILURE,
-					"invalid role OID: %d",
-					((od_route_t *)(client->route))->yb_user_entry->oid);
-				status = OD_ECLIENT_READ;
-				break;
-			}
-
 			if (od_should_drop_connection(client, server)) {
 				/* Odyssey is going to shut down or client conn is dropped
 				* due some idle timeout, we drop the connection  */
