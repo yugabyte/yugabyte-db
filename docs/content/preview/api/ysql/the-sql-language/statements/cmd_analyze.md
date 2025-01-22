@@ -53,9 +53,9 @@ List of columns to be analyzed. Optional. Omit to analyze all columns of the tab
 
 ## Resetting statistics
 
-Over time, statistics can reach a point where they no longer represent the current workload accurately. Resetting allows you to measure the impact of recent changes, like optimizations or new queries, without the influence of historical data. Also when diagnosing issues, fresh statistics can help pinpoint current issues more effectively, rather than having to sift through historical data that may not be relevant.
+Over time, statistics can reach a point where they no longer represent the current workload accurately. Resetting allows you to measure the impact of recent changes, like optimizations or new queries, without the influence of historical data. Also, when diagnosing issues, fresh statistics can help pinpoint current issues more effectively, rather than having to sift through historical data that may not be relevant.
 
-The `yb_reset_analyze_statistics` function is a convenient helper that offers an easy way to clear statistics collected for a specific table or for all tables within a database. This function can be called as,
+The `yb_reset_analyze_statistics()` function is a convenient helper that offers an easy way to clear statistics collected for a specific table or for all tables in a database. Call this function as follows:
 
 ```sql
 SELECT yb_reset_analyze_statistics ( table_oid );
