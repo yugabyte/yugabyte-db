@@ -90,6 +90,14 @@ setup_simple_rel_arrays(PlannerInfo *root)
 	Index		rti;
 	ListCell   *lc;
 
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * In a new block so bump the block count.
+		 */
+		root->ybBlockId = ++(root->glob->ybBlockCnt);
+	}
+
 	/* Arrays are accessed using RT indexes (1..N) */
 	size = list_length(root->parse->rtable) + 1;
 	root->simple_rel_array_size = size;
@@ -191,6 +199,27 @@ expand_planner_arrays(PlannerInfo *root, int add_size)
 }
 
 /*
+ * See if the name pointed to by 'hintAlias' appears in the list.
+ */
+bool
+ybFindHintAlias(List *ybPlanHintsAliasMapping, char *hintAlias)
+{
+	ListCell *lc;
+	bool found = false;
+	foreach(lc, ybPlanHintsAliasMapping)
+	{
+		char *existingAlias = (char *) lfirst(lc);
+		if (existingAlias != NULL && strcmp(hintAlias, existingAlias) == 0)
+		{
+			found = true;
+			break;
+		}
+	}
+
+	return found;
+}
+
+/*
  * build_simple_rel
  *	  Construct a new RelOptInfo for a base relation or 'other' relation.
  */
@@ -263,6 +292,10 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	rel->all_partrels = NULL;
 	rel->partexprs = NULL;
 	rel->nullable_partexprs = NULL;
+	rel->ybUniqueBaseId = 0;
+	rel->ybHintAlias = NULL;
+	rel->ybBlockId = 0;
+	rel->ybRoot = root;
 
 	/*
 	 * Pass assorted information down the inheritance hierarchy.
@@ -367,6 +400,103 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 
 	/* Save the finished struct in the query's simple_rel_array */
 	root->simple_rel_array[relid] = rel;
+
+	if (IsYugaByteEnabled())
+	{
+		if (rte->ybHintAlias != NULL)
+		{
+			/*
+			 * This code path is taken when we have an INSERT, UPDATE, DELETE, or MERGE statement
+			 * and have already processed the target RTE (when PlannerGlobal instance was allocated
+			 * standard_planner()). Just place the information on 'rel'.
+			 */
+			rel->ybHintAlias = rte->ybHintAlias;
+			rel->ybBlockId = root->ybBlockId;
+			rel->ybUniqueBaseId = rte->ybUniqueBaseId;
+
+			if (yb_enable_planner_trace)
+			{
+				ereport(DEBUG1,
+						(errmsg("\nblock %d : table %s (unique base id = %d, relid = %d) -> Hint alias %s",
+								rel->ybBlockId, rte->eref->aliasname, rel->ybUniqueBaseId, relid, rel->ybHintAlias)));
+			}
+		}
+		else if (rte->eref != NULL && rte->eref->aliasname != NULL)
+		{
+			PlannerGlobal *glob = root->glob;
+
+			/*
+			 * Assign a unique id to the rel.
+			 */
+			rel->ybUniqueBaseId = ++(glob->ybBaseRelCnt);
+
+			/*
+			 * Start with the existing rel alias.
+			 */
+			char *hintAlias = rte->eref->aliasname;
+
+			int aliasSuffix = 1;
+			StringInfo buf = NULL;
+
+			/*
+			 * Loop as long as the alias is found in the global list (across all blocks).
+			 */
+			while (ybFindHintAlias(glob->ybPlanHintsAliasMapping, hintAlias))
+			{
+				if (buf == NULL)
+				{
+					buf = makeStringInfo();
+				}
+				else
+				{
+					resetStringInfo(buf);
+				}
+
+				/*
+				 * Append the next numeric suffix.
+				 */
+				appendStringInfoString(buf, rte->eref->aliasname);
+				appendStringInfoString(buf, "_");
+				appendStringInfo(buf, "%d", aliasSuffix);
+				hintAlias = pstrdup(buf->data);
+				++aliasSuffix;
+			}
+
+			if (buf != NULL)
+			{
+				pfree(buf->data);
+				pfree(buf);
+			}
+
+			if (glob->ybPlanHintsAliasMapping == NIL)
+			{
+				/*
+				 * Insert a NULL at position 0 since we start in position 1 for convenience and numbering/indexing
+				 * begins at 1 for relations when planning.
+				 */
+				glob->ybPlanHintsAliasMapping = list_insert_nth(glob->ybPlanHintsAliasMapping, 0, NULL);
+			}
+
+			/*
+			 * Insert the alias we decided upon into the global list at position corresponding to rel's unique base relation id.
+			 */
+			glob->ybPlanHintsAliasMapping = list_insert_nth(glob->ybPlanHintsAliasMapping, rel->ybUniqueBaseId, hintAlias);
+
+			/*
+			 * Store the info on the RTE and RelOptInfo.
+			 */
+			rte->ybHintAlias = hintAlias;
+			rel->ybHintAlias = hintAlias;
+			rel->ybBlockId = root->ybBlockId;
+
+			if (yb_enable_planner_trace)
+			{
+				ereport(DEBUG1,
+						(errmsg("\nblock %d : table %s (unique base id = %d, relid = %d) -> Hint alias %s",
+								rel->ybBlockId, rte->eref->aliasname, rel->ybUniqueBaseId, relid, rel->ybHintAlias)));
+			}
+		}
+	}
 
 	return rel;
 }
@@ -678,6 +808,10 @@ build_join_rel(PlannerInfo *root,
 	joinrel->all_partrels = NULL;
 	joinrel->partexprs = NULL;
 	joinrel->nullable_partexprs = NULL;
+	joinrel->ybUniqueBaseId = 0;
+	joinrel->ybHintAlias = NULL;
+	joinrel->ybBlockId = 0;
+	joinrel->ybRoot = root;
 
 	/* Compute information relevant to the foreign relations. */
 	set_foreign_rel_properties(joinrel, outer_rel, inner_rel);
@@ -857,6 +991,7 @@ build_child_join_rel(PlannerInfo *root, RelOptInfo *outer_rel,
 	joinrel->all_partrels = NULL;
 	joinrel->partexprs = NULL;
 	joinrel->nullable_partexprs = NULL;
+	joinrel->ybRoot = root;
 
 	joinrel->top_parent_relids = bms_union(outer_rel->top_parent_relids,
 										   inner_rel->top_parent_relids);
@@ -1246,6 +1381,10 @@ fetch_upper_rel(PlannerInfo *root, UpperRelationKind kind, Relids relids)
 	upperrel->cheapest_total_path = NULL;
 	upperrel->cheapest_unique_path = NULL;
 	upperrel->cheapest_parameterized_paths = NIL;
+	upperrel->ybUniqueBaseId = 0;
+	upperrel->ybHintAlias = NULL;
+	upperrel->ybBlockId = 0;
+	upperrel->ybRoot = root;
 
 	root->upper_rels[kind] = lappend(root->upper_rels[kind], upperrel);
 

@@ -22,7 +22,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: op_index_key, collation_index_key, both_index_key
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (fruit, key, fruit, key) do nothing;
@@ -31,7 +31,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: op_index_key, collation_index_key, both_index_key
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit), key, lower(fruit), key) do nothing;
@@ -40,7 +40,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: both_index_expr_key
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (key, fruit) do update set fruit = excluded.fruit
@@ -51,7 +51,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: op_index_key, collation_index_key, both_index_key
    Conflict Filter: (SubPlan 1)
-   ->  Result
+   ->  Result *RESULT*
    SubPlan 1
      ->  Index Only Scan using both_index_expr_key on insertconflicttest ii
            Index Cond: (key = excluded.key)
@@ -66,7 +66,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: op_index_key, both_index_key
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 -- Okay, arbitrates using both index where text_pattern_ops opclass does and
@@ -77,7 +77,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: collation_index_key, both_index_key
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 -- Okay, but only accepts the single index where both opclass and collation are
@@ -88,7 +88,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: both_index_key
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 -- Okay, but only accepts the single index where both opclass and collation are
@@ -99,7 +99,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: both_index_expr_key
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 -- Attribute appears twice, while not all attributes/expressions on attributes
@@ -122,7 +122,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: op_index_key, both_index_key
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) collate "C" text_pattern_ops, key, key) do nothing;
@@ -131,7 +131,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: both_index_expr_key
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 drop index op_index_key;
@@ -152,7 +152,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: cross_match
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 drop index cross_match;
@@ -169,7 +169,7 @@ explain (costs off) insert into insertconflicttest values (0, 'Bilberry') on con
  Insert on insertconflicttest
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: key_index
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 -- Should display qual actually attributable to internal sequential scan:
@@ -180,7 +180,7 @@ explain (costs off) insert into insertconflicttest values (0, 'Bilberry') on con
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: key_index
    Conflict Filter: (insertconflicttest.fruit <> 'Cawesh'::text)
-   ->  Result
+   ->  Result *RESULT*
 (5 rows)
 
 -- With EXCLUDED.* expression in scan node:
@@ -191,7 +191,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: key_index
    Conflict Filter: (excluded.fruit <> 'Elderberry'::text)
-   ->  Result
+   ->  Result *RESULT*
 (5 rows)
 
 -- Does the same, but JSON format shows "Conflict Arbiter Index" as JSON array:
@@ -212,7 +212,7 @@ explain (costs off, format json) insert into insertconflicttest values (0, 'Bilb
        "Conflict Filter": "(insertconflicttest.fruit <> 'Lime'::text)",+
        "Plans": [                                                      +
          {                                                             +
-           "Node Type": "Result",                                      +
+           "Node Type": "Result *RESULT*",                             +
            "Parent Relationship": "Outer",                             +
            "Parallel Aware": false,                                    +
            "Async Capable": false                                      +
@@ -338,7 +338,7 @@ explain (costs off) insert into insertconflicttest values (26, 'Fig') on conflic
  Insert on insertconflicttest
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: expr_comp_key_index
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 -- inference fails:
@@ -424,7 +424,7 @@ explain (costs off) insert into insertconflicttest as i values (23, 'Avocado') o
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: plain
    Conflict Filter: (excluded.* IS NULL)
-   ->  Result
+   ->  Result *RESULT*
 (5 rows)
 
 explain (costs off) insert into insertconflicttest as i values (23, 'Avocado') on conflict (key) do update set fruit = excluded.*::text;
@@ -433,7 +433,7 @@ explain (costs off) insert into insertconflicttest as i values (23, 'Avocado') o
  Insert on insertconflicttest i
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: plain
-   ->  Result
+   ->  Result *RESULT*
 (4 rows)
 
 drop index plain;

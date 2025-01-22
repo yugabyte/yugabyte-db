@@ -4286,8 +4286,19 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 
 	Assert(list_length(exprlist) == list_length(oprlist));
 
+	List *ybIndexList = rel->indexlist;
+	if (list_length(ybIndexList) < list_length(rel->ybHintsOrigIndexlist))
+	{
+		/*
+		 * 'ybHintsOrigIndexlist' holds the original set of indexes for the relation.
+		 * rel->indexlist may have been pruned by the hint code but we need all indexes
+		 * to prove uniqueness of columns.
+		 */
+		ybIndexList = rel->ybHintsOrigIndexlist;
+	}
+
 	/* Short-circuit if no indexes... */
-	if (rel->indexlist == NIL)
+	if (ybIndexList == NIL)
 		return false;
 
 	/*
@@ -4332,7 +4343,7 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 		return false;
 
 	/* Examine each index of the relation ... */
-	foreach(ic, rel->indexlist)
+	foreach(ic, ybIndexList)
 	{
 		IndexOptInfo *ind = (IndexOptInfo *) lfirst(ic);
 		int			c;

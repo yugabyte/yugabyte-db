@@ -1219,14 +1219,14 @@ SELECT (SELECT x FROM s1 LIMIT 1) xx, * FROM s2 WHERE y like '%28%';
 EXPLAIN (COSTS OFF) SELECT (SELECT x FROM s1 LIMIT 1) xx, * FROM s2 WHERE y like '%28%';
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
- Seq Scan on s2
+ Seq Scan on s2 s2_1
    Storage Filter: (((x % 2) = 0) AND (y ~~ '%28%'::text))
    SubPlan 2
      ->  Limit
            ->  Seq Scan on s1
                  Filter: (hashed SubPlan 1)
                  SubPlan 1
-                   ->  Seq Scan on s2 s2_1
+                   ->  Seq Scan on s2
                          Storage Filter: (((x % 2) = 0) AND (y ~~ '%af%'::text))
 (9 rows)
 
@@ -2712,7 +2712,7 @@ SELECT * FROM t1;
 EXPLAIN (COSTS OFF) SELECT * FROM t1;
         QUERY PLAN        
 --------------------------
- Result
+ Result t1
    One-Time Filter: false
 (2 rows)
 
@@ -2725,7 +2725,7 @@ SELECT * FROM t1;
 EXPLAIN (COSTS OFF) SELECT * FROM t1;
         QUERY PLAN        
 --------------------------
- Result
+ Result t1
    One-Time Filter: false
 (2 rows)
 

@@ -310,6 +310,9 @@ extern PGDLLIMPORT int yb_toast_catcache_threshold;
 extern PGDLLIMPORT bool yb_enable_fkey_catcache;
 extern PGDLLIMPORT bool	yb_index_checker;
 
+extern PGDLLIMPORT bool yb_enable_planner_trace;
+extern PGDLLIMPORT char	*yb_hinted_uids;
+
 /*
  * Functions exported by guc.c
  */

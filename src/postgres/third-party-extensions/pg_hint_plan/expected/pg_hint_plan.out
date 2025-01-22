@@ -899,26 +899,22 @@ not used hint:
 duplication hint:
 error hint:
 
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
    ->  YB Batched Nested Loop Join
          Join Filter: (t3.id = t1.id)
-         Sort Keys: t1.id
-         ->  Merge Join
-               Merge Cond: (t3.id = t4.id)
-               ->  Sort
-                     Sort Key: t3.id
-                     ->  Seq Scan on t3
-               ->  Sort
-                     Sort Key: t4.id
-                     ->  Seq Scan on t4
+         ->  YB Batched Nested Loop Join
+               Join Filter: (t3.id = t4.id)
+               ->  Seq Scan on t4
+               ->  Index Scan using t3_pkey on t3
+                     Index Cond: (id = ANY (ARRAY[t4.id, $1, $2, ..., $1023]))
          ->  Index Scan using t1_pkey on t1
-               Index Cond: (id = ANY (ARRAY[t3.id, $1, $2, ..., $1023]))
+               Index Cond: (id = ANY (ARRAY[t3.id, $1025, $1026, ..., $2047]))
    ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = ANY (ARRAY[t1.id, $1025, $1026, ..., $2047]))
-(17 rows)
+         Index Cond: (id = ANY (ARRAY[t1.id, $2049, $2050, ..., $3071]))
+(13 rows)
 
 /*+Leading(t3 t4 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -2541,14 +2537,12 @@ EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id 
 
 /*+MergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
-INFO:  pg_hint_plan: hint syntax error at or near "MergeJoin(t1 t2)"
-DETAIL:  Relation name "t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
+MergeJoin(t1 t2)
 not used hint:
 duplication hint:
 error hint:
-MergeJoin(t1 t2)
 
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
@@ -2566,7 +2560,7 @@ MergeJoin(t1 t2)
 /*+Leading(t1 t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
 INFO:  pg_hint_plan: hint syntax error at or near "Leading(t1 t2 t1)"
-DETAIL:  Relation name "t1" is ambiguous.
+DETAIL:  Relation name "t1" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -2849,15 +2843,15 @@ error hint:
 
                QUERY PLAN                
 -----------------------------------------
- Nested Loop
-   Join Filter: (t2.val = t3.val)
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
    ->  Hash Join
          Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
                Storage Filter: (id < 10)
          ->  Hash
                ->  Seq Scan on t2
-   ->  Materialize
+   ->  Hash
          ->  Seq Scan on t3
 (10 rows)
 
@@ -3366,10 +3360,10 @@ MergeJoin(t3 t4)
 duplication hint:
 error hint:
 
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (t3.id = t4.id)
+                  QUERY PLAN                   
+-----------------------------------------------
+ Hash Join
+   Hash Cond: (t3.id = t4.id)
    ->  Hash Join
          Hash Cond: (t1.val = t3.val)
          ->  Hash Join
@@ -3380,12 +3374,9 @@ error hint:
                      ->  Seq Scan on t2
          ->  Hash
                ->  Seq Scan on t3
-   ->  Memoize
-         Cache Key: t3.id
-         Cache Mode: logical
-         ->  Index Scan using t4_pkey on t4
-               Index Cond: (id = ANY (ARRAY[t3.id, $1, $2, ..., $1023]))
-(17 rows)
+   ->  Hash
+         ->  Seq Scan on t4
+(14 rows)
 
 /*+Leading(((t1 t2) t3)) MergeJoin(t1 t2 t3 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
@@ -4659,10 +4650,10 @@ not used hint:
 duplication hint:
 error hint:
 
-                            QUERY PLAN                             
--------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (t1.id = t3.id)
+             QUERY PLAN              
+-------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t3.id)
    ->  Merge Join
          Merge Cond: (t1.id = t2.id)
          ->  Sort
@@ -4671,7 +4662,8 @@ error hint:
          ->  Sort
                Sort Key: t2.id
                ->  Seq Scan on t2
-   ->  Index Scan using t3_pkey on t3
-         Index Cond: (id = ANY (ARRAY[t1.id, $1, $2, ..., $1023]))
-(12 rows)
+   ->  Sort
+         Sort Key: t3.id
+         ->  Seq Scan on t3
+(13 rows)
 

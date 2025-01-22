@@ -27,6 +27,7 @@
 #include "utils/typcache.h"
 
 /* YB includes */
+#include "optimizer/planner.h"
 #include "optimizer/restrictinfo.h"
 #include "pg_yb_utils.h"
 
@@ -140,6 +141,18 @@ add_paths_to_joinrel(PlannerInfo *root,
 	ListCell   *lc;
 	Relids		joinrelids;
 
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		char ybMsgBuf[30];
+		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
+		ereport(DEBUG1,
+				(errmsg("\n%s BEGIN add_paths_to_joinrel Level %d\n", ybMsgBuf,
+						bms_num_members(joinrel->relids))));
+		ybTraceRelOptInfo(root, joinrel, "join rel");
+		ybTraceRelOptInfo(root, outerrel, "outer rel");
+		ybTraceRelOptInfo(root, innerrel, "inner rel");
+	}
+
 	/*
 	 * PlannerInfo doesn't contain the SpecialJoinInfos created for joins
 	 * between child relations, even if there is a SpecialJoinInfo node for
@@ -205,6 +218,20 @@ add_paths_to_joinrel(PlannerInfo *root,
 													restrictlist,
 													false);
 			break;
+	}
+
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		char ybMsgBuf[30];
+		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
+		StringInfoData buf;
+		initStringInfo(&buf);
+		ybBuildRelidsString(root, innerrel->relids, &buf);
+		ereport(DEBUG1,
+				(errmsg("\n%s inner rel %s is unique ? %s\n",
+						ybMsgBuf, buf.data,
+						extra.inner_unique ? "true" : "false")));
+		pfree(buf.data);
 	}
 
 	/*
@@ -342,6 +369,14 @@ add_paths_to_joinrel(PlannerInfo *root,
 	if (set_join_pathlist_hook)
 		set_join_pathlist_hook(root, joinrel, outerrel, innerrel,
 							   jointype, &extra);
+
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		char ybMsgBuf[30];
+		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
+		ereport(DEBUG1,
+				(errmsg("\n%s END add_paths_to_joinrel\n", ybMsgBuf)));
+	}
 }
 
 /*
@@ -1777,6 +1812,11 @@ match_unsorted_outer(PlannerInfo *root,
 			!ExecMaterializesOutput(inner_cheapest_total->pathtype))
 			matpath = (Path *)
 				create_material_path(innerrel, inner_cheapest_total);
+
+		if (IsYugaByteEnabled() && matpath != NULL)
+		{
+			yb_assign_unique_path_node_id(root, matpath);
+		}
 	}
 
 	foreach(lc1, outerrel->pathlist)

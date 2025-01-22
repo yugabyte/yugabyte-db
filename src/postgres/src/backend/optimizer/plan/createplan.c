@@ -373,6 +373,7 @@ static ModifyTable *make_modifytable(PlannerInfo *root, Plan *subplan,
 									 List *mergeActionList, int epqParam);
 static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 											 GatherMergePath *best_path);
+static void yb_assign_unique_plan_node_id(PlannerInfo *root, Plan *plan);
 
 extern int	yb_bnl_batch_size;
 bool		yb_bnl_optimize_first_batch;
@@ -1594,6 +1595,7 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 				Sort	   *sort = make_sort(subplan, numsortkeys,
 											 sortColIdx, sortOperators,
 											 collations, nullsFirst);
+				yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 				label_sort_with_costsize(root, sort, best_path->limit_tuples);
 				subplan = (Plan *) sort;
@@ -1772,6 +1774,7 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 			Sort	   *sort = make_sort(subplan, numsortkeys,
 										 sortColIdx, sortOperators,
 										 collations, nullsFirst);
+			yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 			label_sort_with_costsize(root, sort, best_path->limit_tuples);
 			subplan = (Plan *) sort;
@@ -2156,6 +2159,7 @@ create_unique_plan(PlannerInfo *root, UniquePath *best_path, int flags)
 			groupColPos++;
 		}
 		sort = make_sort_from_sortclauses(sortList, subplan);
+		yb_assign_unique_plan_node_id(root, (Plan *) sort);
 		label_sort_with_costsize(root, sort, -1.0);
 		plan = (Plan *) make_unique_from_sortclauses((Plan *) sort, sortList);
 	}
@@ -2725,6 +2729,7 @@ create_groupingsets_plan(PlannerInfo *root, GroupingSetsPath *best_path)
 					make_sort_from_groupcols(rollup->groupClause,
 											 new_grpColIdx,
 											 subplan);
+				yb_assign_unique_plan_node_id(root, sort_plan);
 			}
 
 			if (!rollup->is_hashed)
@@ -2750,6 +2755,7 @@ create_groupingsets_plan(PlannerInfo *root, GroupingSetsPath *best_path)
 										 rollup->numGroups,
 										 best_path->transitionSpace,
 										 sort_plan);
+			yb_assign_unique_plan_node_id(root, agg_plan);
 
 			/*
 			 * Remove stuff we don't need to avoid bloating debug output.
@@ -6249,6 +6255,7 @@ create_mergejoin_plan(PlannerInfo *root,
 		Sort	   *sort = make_sort_from_pathkeys(outer_plan,
 												   best_path->outersortkeys,
 												   outer_relids);
+		yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 		label_sort_with_costsize(root, sort, -1.0);
 		outer_plan = (Plan *) sort;
@@ -6263,6 +6270,7 @@ create_mergejoin_plan(PlannerInfo *root,
 		Sort	   *sort = make_sort_from_pathkeys(inner_plan,
 												   best_path->innersortkeys,
 												   inner_relids);
+		yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 		label_sort_with_costsize(root, sort, -1.0);
 		inner_plan = (Plan *) sort;
@@ -6599,6 +6607,8 @@ create_hashjoin_plan(PlannerInfo *root,
 						  skewTable,
 						  skewColumn,
 						  skewInherit);
+
+	yb_assign_unique_plan_node_id(root, (Plan *) hash_plan);
 
 	/*
 	 * Set Hash node's startup & total costs equal to total cost of input
@@ -7319,6 +7329,22 @@ copy_generic_path_info(Plan *dest, Path *src)
 	dest->plan_width = src->pathtarget->width;
 	dest->parallel_aware = src->parallel_aware;
 	dest->parallel_safe = src->parallel_safe;
+
+	if (IsYugaByteEnabled())
+	{
+		dest->ybUniqueId = src->ybUniqueId;
+		if (src->parent != NULL && src->parent->ybHintAlias != NULL)
+		{
+			dest->ybHintAlias = pstrdup(src->parent->ybHintAlias);
+		}
+		else
+		{
+			dest->ybHintAlias = NULL;
+		}
+
+		dest->ybIsHinted = src->ybIsHinted;
+		dest->ybHasHintedUid = src->ybHasHintedUid;
+	}
 }
 
 /*
@@ -9311,6 +9337,17 @@ static bool
 is_bnl_projection_capable(YbBatchedNestLoop *bnl)
 {
 	return bnl->numSortCols == 0;
+}
+
+/*
+ * Assign a unique id to a plan node. This will only be called for Plan nodes that
+ * are not created from a corresponding Path node (since a Path node itself contains a
+ * unique identifier that is passed on to a Plan node).
+ */
+static void
+yb_assign_unique_plan_node_id(PlannerInfo *root, Plan *plan)
+{
+	plan->ybUniqueId = ++(root->glob->ybNextNodeUid);
 }
 
 /*

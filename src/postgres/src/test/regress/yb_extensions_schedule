@@ -4,3 +4,4 @@
 # Extensions Testsuites
 ####################################################################################################
 test: yb.orig.extensions
+test: yb.orig.hints

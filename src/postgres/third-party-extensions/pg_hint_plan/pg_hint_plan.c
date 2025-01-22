@@ -404,6 +404,9 @@ struct HintState
 	RowsHint	  **rows_hints;			/* parsed Rows hints */
 	ParallelHint  **parallel_hints;		/* parsed Parallel hints */
 	JoinMethodHint **memoize_hints;		/* parsed Memoize hints */
+	bool			ybAnyHintFailed;	/* was any problem found with hinting? */
+	/* all valid hint aliases */
+	List   		   *ybAllAliasNamesInScope;
 };
 
 /*
@@ -415,6 +418,15 @@ typedef struct HintParser
 	HintCreateFunction	create_func;
 	HintKeyword			hint_keyword;
 } HintParser;
+
+typedef enum YbBadHintMode
+{
+	BAD_HINT_OFF,
+	BAD_HINT_WARN,
+	BAD_HINT_REPLAN,
+	BAD_HINT_ERROR,
+	BAD_HINT_UNRECORNIZED
+} YbBadHintMode;
 
 static bool enable_hint_table_check(bool *newval, void **extra, GucSource source);
 static void assign_enable_hint_table(bool newval, void *extra);
@@ -496,7 +508,9 @@ static void quote_value(StringInfo buf, const char *value);
 
 static const char *parse_quoted_value(const char *str, char **word,
 									  bool truncate);
-
+static char *ybCheckPlanForDisabledNodes(Plan *plan, PlannedStmt *plannedStmt);
+static void ybCheckBadOrUnusedHints(PlannedStmt *result);
+static void ybTraceLeadingHint(LeadingHint *leadingHint, char *msg);
 RelOptInfo *pg_hint_plan_standard_join_search(PlannerInfo *root,
 											  int levels_needed,
 											  List *initial_rels);
@@ -535,6 +549,14 @@ static int set_config_int32_option(const char *name, int32 value,
 static int set_config_double_option(const char *name, double value,
 									GucContext context);
 
+static bool ybCheckValidPathForRelExists(PlannerInfo * root, RelOptInfo *rel);
+static char *ybCheckBadIndexHintExists(PlannerInfo *root, RelOptInfo *rel);
+extern void ybBuildRelidsString(PlannerInfo *root, Relids relids, StringInfoData *buf);
+static void ybAddHintedJoin(PlannerInfo *root, Relids outer_relids, Relids inner_relids);
+static void ybAddProhibitedJoin(PlannerInfo *root, NodeTag ybJoinTag, Relids join_relids);
+static HintKeyword ybIsNegationHint(Hint *hint);
+static NodeTag ybIsNegationJoinHint(Hint *hint);
+
 /* GUC variables */
 static bool	pg_hint_plan_enable_hint = true;
 static int debug_level = 0;
@@ -543,6 +565,11 @@ static int	pg_hint_plan_debug_message_level = LOG;
 /* Default is off, to keep backward compatibility. */
 static bool	pg_hint_plan_enable_hint_table = false;
 static bool	pg_hint_plan_hints_anywhere = false;
+static int yb_bad_hint_mode = BAD_HINT_OFF;
+static bool yb_enable_internal_hint_test = false;
+static bool yb_internal_hint_test_fail = false;
+static bool yb_use_generated_hints_for_plan = false;
+static bool yb_use_query_id_for_hinting = false;
 
 static int plpgsql_recurse_level = 0;		/* PLpgSQL recursion level            */
 static int recurse_level = 0;		/* recursion level incl. direct SPI calls */
@@ -584,6 +611,14 @@ static const struct config_enum_entry parse_debug_level_options[] = {
 	{"yes", 1, true},
 	{"false", 0, true},
 	{"true", 1, true},
+	{NULL, 0, false}
+};
+
+static const struct config_enum_entry parse_yb_bad_hint_mode[] = {
+	{"off", BAD_HINT_OFF, false},
+	{"warn", BAD_HINT_WARN, false},
+	{"replan", BAD_HINT_REPLAN, false},
+	{"error", BAD_HINT_ERROR, false},
 	{NULL, 0, false}
 };
 
@@ -747,6 +782,62 @@ _PG_init(void)
 							 NULL,
 							 NULL,
 							 NULL);
+
+	DefineCustomEnumVariable("pg_hint_plan.yb_bad_hint_mode",
+							"Level reflecting what action to take on bad hints.",
+							NULL,
+							&yb_bad_hint_mode,
+							BAD_HINT_OFF,
+							parse_yb_bad_hint_mode,
+							PGC_USERSET,
+							0,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomBoolVariable("pg_hint_plan.yb_enable_internal_hint_test",
+							"Internal test for generated hints.",
+							NULL,
+							&yb_enable_internal_hint_test,
+							false,
+							PGC_USERSET,
+							0,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomBoolVariable("pg_hint_plan.yb_internal_hint_test_fail",
+							"Issue an error if generated hints do not give same plan.",
+							NULL,
+							&yb_internal_hint_test_fail,
+							false,
+							PGC_USERSET,
+							0,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomBoolVariable("pg_hint_plan.yb_use_generated_hints_for_plan",
+							"Use plan from generated hints as the one to process the query.",
+							NULL,
+							&yb_use_generated_hints_for_plan,
+							false,
+							PGC_USERSET,
+							0,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomBoolVariable("pg_hint_plan.yb_use_query_id_for_hinting",
+							"Use query id instead of query text for hinting.",
+							NULL,
+							&yb_use_query_id_for_hinting,
+							false,
+							PGC_USERSET,
+							0,
+							NULL,
+							NULL,
+							NULL);
 
 	EmitWarningsOnPlaceholders("pg_hint_plan");
 
@@ -1104,6 +1195,8 @@ HintStateCreate(void)
 	hstate->set_hints = NULL;
 	hstate->rows_hints = NULL;
 	hstate->parallel_hints = NULL;
+	hstate->ybAnyHintFailed = false;
+	hstate->ybAllAliasNamesInScope = NIL;
 
 	return hstate;
 }
@@ -1125,6 +1218,11 @@ HintStateDelete(HintState *hstate)
 		pfree(hstate->all_hints);
 	if (hstate->parent_index_infos)
 		list_free(hstate->parent_index_infos);
+
+	if (IsYugaByteEnabled())
+	{
+		list_free_deep(hstate->ybAllAliasNamesInScope);
+	}
 
 	/*
 	 * We have another few or dozen of palloced block in the struct, but don't
@@ -1187,7 +1285,7 @@ ScanMethodHintDesc(ScanMethodHint *hint, StringInfo buf, bool nolf)
 static void
 JoinMethodHintDesc(JoinMethodHint *hint, StringInfo buf, bool nolf)
 {
-	int	i;
+	int i;
 
 	appendStringInfo(buf, "%s(", hint->base.keyword);
 	if (hint->relnames != NULL)
@@ -1761,6 +1859,94 @@ parse_parentheses(const char *str, List **name_list, HintKeyword keyword)
 }
 
 static void
+ybTraceOuterInnerRels(OuterInnerRels *outer_inner_rels, StringInfoData *buf, int indent)
+{
+	appendStringInfoSpaces(buf, indent);
+
+	appendStringInfo(buf, "relation : %s\n", (outer_inner_rels->relation != NULL ? outer_inner_rels->relation : "<null>"));
+	appendStringInfoSpaces(buf, indent);
+	appendStringInfoString(buf, "outer-inner pairs : ");
+
+	if (outer_inner_rels->outer_inner_pair == NULL)
+	{
+		appendStringInfoString(buf, "<null>\n");
+	}
+	else
+	{
+		appendStringInfoString(buf, "\n");
+		int cnt = 0;
+		ListCell *lc;
+		foreach(lc, outer_inner_rels->outer_inner_pair)
+		{
+			OuterInnerRels *outerInnerRels = (OuterInnerRels *) lfirst(lc);
+			appendStringInfoSpaces(buf, indent + 2);
+			appendStringInfo(buf, "Pair %d\n", cnt);
+			ybTraceOuterInnerRels(outerInnerRels, buf, indent + 4);
+			++cnt;
+		}
+	}
+}
+
+static void
+ybTraceLeadingHint(LeadingHint *leadingHint, char *msg)
+{
+	StringInfoData buf;
+	initStringInfo(&buf);
+
+	if (msg != NULL)
+	{
+		appendStringInfo(&buf, "%s : \n  ", msg);
+	}
+
+	if (leadingHint == NULL)
+	{
+		appendStringInfoString(&buf, "<null>");
+	}
+	else
+	{
+		if (leadingHint->relations != NULL)
+		{
+			LeadingHintDesc(leadingHint, &buf, true);
+		}
+		else
+		{
+			appendStringInfoString(&buf, "<null>");
+		}
+
+		appendStringInfo(&buf, " (Used? : %s , Error? : %s)",
+						 leadingHint->base.state == HINT_STATE_USED ? 
+						 "true" : "false",
+						 leadingHint->base.state == HINT_STATE_ERROR ? 
+						 "true" : "false");
+
+		OuterInnerRels *outerInnerRels = leadingHint->outer_inner;
+		appendStringInfoString(&buf, "\n");
+		appendStringInfoSpaces(&buf, 4);
+		appendStringInfoString(&buf, "Outer-inner :\n");
+
+		if (outerInnerRels != NULL)
+		{
+			ybTraceOuterInnerRels(outerInnerRels, &buf, 10);
+		}
+		else
+		{
+			appendStringInfoSpaces(&buf, 6);
+			appendStringInfoString(&buf, "<null>");
+		}
+	}
+
+	if (msg != NULL)
+	{
+		appendStringInfo(&buf, "\n%s", msg);
+	}
+
+	ereport(DEBUG1,
+			(errmsg("%s", buf.data)));
+
+	pfree(buf.data);
+}
+
+static void
 parse_hints(HintState *hstate, Query *parse, const char *str)
 {
 	StringInfoData	buf;
@@ -1791,9 +1977,23 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 			/* parser of each hint does parse in a parenthesis. */
 			if ((str = hint->parse_func(hint, hstate, parse, str)) == NULL)
 			{
+				if (IsYugaByteEnabled())
+				{
+					hstate->ybAnyHintFailed = true;
+				}
+
 				hint->delete_func(hint);
 				pfree(buf.data);
 				return;
+			}
+
+			if (IsYugaByteEnabled() && yb_enable_planner_trace)
+			{
+				if (hint->hint_keyword == HINT_KEYWORD_LEADING)
+				{
+					LeadingHint *lhint = (LeadingHint *) hint;
+					ybTraceLeadingHint(lhint, "parse_hints : leading hint");
+				}
 			}
 
 			/*
@@ -1824,6 +2024,11 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 
 		if (parser->keyword == NULL)
 		{
+			if (IsYugaByteEnabled())
+			{
+				hstate->ybAnyHintFailed = true;
+			}
+
 			hint_ereport(head,
 						 ("Unrecognized hint keyword \"%s\".", buf.data));
 			pfree(buf.data);
@@ -1923,12 +2128,14 @@ get_hints_from_table(const char *client_query, const char *client_application)
  * Get hints from the head block comment in client-supplied query string.
  */
 static const char *
-get_hints_from_comment(const char *p)
+get_hints_from_comment(const char *p, bool *ybHitError)
 {
 	const char *hint_head;
 	char	   *head;
 	char	   *tail;
 	int			len;
+
+	*ybHitError = false;
 
 	if (p == NULL)
 		return NULL;
@@ -1963,7 +2170,10 @@ get_hints_from_comment(const char *p)
 				*p != ',' &&
 				*p != '(' && *p != ')' &&
 				*p != '[' && *p != ']')
-				return NULL;
+				{
+					*ybHitError = true;
+					return NULL;
+				}
 		}
 	}
 
@@ -1975,6 +2185,7 @@ get_hints_from_comment(const char *p)
 	if ((tail = strstr(p, HINT_END)) == NULL)
 	{
 		hint_ereport(head, ("Unterminated block comment."));
+		*ybHitError = true;
 		return NULL;
 	}
 
@@ -1982,6 +2193,7 @@ get_hints_from_comment(const char *p)
 	if ((head = strstr(p, BLOCK_COMMENT_START)) != NULL && head < tail)
 	{
 		hint_ereport(head, ("Nested block comments are not supported."));
+		*ybHitError = true;
 		return NULL;
 	}
 
@@ -2062,6 +2274,10 @@ create_hintstate(Query *parse, const char *hints)
 			hint_ereport(cur_hint->hint_str,
 						 ("Conflict %s hint.", HintTypeName[cur_hint->type]));
 			cur_hint->state = HINT_STATE_DUPLICATION;
+			if (IsYugaByteEnabled())
+			{
+				hstate->ybAnyHintFailed = true;
+			}
 		}
 	}
 
@@ -2110,6 +2326,12 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 		hint_ereport(str,
 					 ("%s hint requires a relation.",  hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
+
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
+
 		return str;
 	}
 
@@ -2123,6 +2345,12 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 					 ("%s hint accepts only one relation.",
 					  hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
+
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
+
 		return str;
 	}
 
@@ -2173,6 +2401,12 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 			break;
 		default:
 			hint_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
+
+			if (IsYugaByteEnabled())
+			{
+				hstate->ybAnyHintFailed = true;
+			}
+
 			return NULL;
 			break;
 	}
@@ -2219,6 +2453,12 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 					 ("%s hint requires at least two relations.",
 					  hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
+
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
+
 		return str;
 	}
 
@@ -2257,6 +2497,12 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 			break;
 		default:
 			hint_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
+
+			if (IsYugaByteEnabled())
+			{
+				hstate->ybAnyHintFailed = true;
+			}
+
 			return NULL;
 			break;
 	}
@@ -2335,6 +2581,11 @@ LeadingHintParse(LeadingHint *hint, HintState *hstate, Query *parse,
 					 ("%s hint requires at least two relations.",
 					  HINT_LEADING));
 		hint->base.state = HINT_STATE_ERROR;
+
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
 	}
 	else if (hint->outer_inner != NULL &&
 			 !OuterInnerPairCheck(hint->outer_inner))
@@ -2343,6 +2594,11 @@ LeadingHintParse(LeadingHint *hint, HintState *hstate, Query *parse,
 					 ("%s hint requires two sets of relations when parentheses nests.",
 					  HINT_LEADING));
 		hint->base.state = HINT_STATE_ERROR;
+
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
 	}
 
 	return str;
@@ -2371,6 +2627,11 @@ SetHintParse(SetHint *hint, HintState *hstate, Query *parse, const char *str)
 					 ("%s hint requires name and value of GUC parameter.",
 					  HINT_SET));
 		hint->base.state = HINT_STATE_ERROR;
+
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
 	}
 
 	return str;
@@ -2399,6 +2660,11 @@ RowsHintParse(RowsHint *hint, HintState *hstate, Query *parse,
 					 ("%s hint needs at least one relation followed by one correction term.",
 					  hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
+
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
 
 		return str;
 	}
@@ -2444,6 +2710,12 @@ RowsHintParse(RowsHint *hint, HintState *hstate, Query *parse,
 	{
 		hint_ereport(rows_str, ("Unrecognized rows value type notation."));
 		hint->base.state = HINT_STATE_ERROR;
+
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
+
 		return str;
 	}
 	hint->rows = strtod(rows_str, &end_ptr);
@@ -2453,6 +2725,12 @@ RowsHintParse(RowsHint *hint, HintState *hstate, Query *parse,
 					 ("%s hint requires valid number as rows estimation.",
 					  hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
+
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
+
 		return str;
 	}
 
@@ -2463,6 +2741,12 @@ RowsHintParse(RowsHint *hint, HintState *hstate, Query *parse,
 					 ("%s hint requires at least two relations.",
 					  hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
+
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
+
 		return str;
 	}
 
@@ -2497,6 +2781,12 @@ ParallelHintParse(ParallelHint *hint, HintState *hstate, Query *parse,
 					 ("wrong number of arguments (%d): %s",
 					  length,  hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
+
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
+
 		return str;
 	}
 
@@ -2520,6 +2810,11 @@ ParallelHintParse(ParallelHint *hint, HintState *hstate, Query *parse,
 						 ("number of workers = %d is larger than max_worker_processes(%d): %s",
 						  nworkers, max_worker_processes, hint->base.keyword));
 
+		if (IsYugaByteEnabled())
+		{
+			hstate->ybAnyHintFailed = true;
+		}
+
 		hint->base.state = HINT_STATE_ERROR;
 	}
 
@@ -2537,6 +2832,11 @@ ParallelHintParse(ParallelHint *hint, HintState *hstate, Query *parse,
 						 ("enforcement must be soft or hard: %s",
 							 hint->base.keyword));
 			hint->base.state = HINT_STATE_ERROR;
+
+			if (IsYugaByteEnabled())
+			{
+				hstate->ybAnyHintFailed = true;
+			}
 		}
 	}
 
@@ -2919,30 +3219,64 @@ get_current_hint_string(Query *query, const char *query_str,
 
 		if (hint_table_deactivated)
 		{
-			ereport(LOG, (errmsg ("hint table feature is reactivated")));
+			ereport(LOG,
+					(errmsg ("hint table feature is reactivated")));
 			hint_table_deactivated = false;
 		}
 
-		if (!jstate)
-			jstate = JumbleQuery(query, query_str);
+		if (!yb_use_query_id_for_hinting || query->queryId == 0)
+		{
+			/*
+			 * If we are not using query ids for hinting, or the query id has
+			 * not been set, then compute the query id. This is the path
+			 * the original code always takes. If we are using query ids
+			 * for hinting, and the query id has already been computed, do not
+			 * recompute it in case changes have been nade to the query since
+			 * the original computation.
+			 */
+			if (!jstate)
+				jstate = JumbleQuery(query, query_str);
 
-		if (!jstate)
-			return;
+			if (!jstate)
+				return;
 
-		/*
-		 * Normalize the query string by replacing constants with '?'
-		 */
-		/*
-		 * Search hint string which is stored keyed by query string
-		 * and application name.  The query string is normalized to allow
-		 * fuzzy matching.
-		 *
-		 * Adding 1 byte to query_len ensures that the returned string has
-		 * a terminating NULL.
-		 */
-		query_len = strlen(query_str) + 1;
-		normalized_query =
-			generate_normalized_query(jstate, query_str, 0, &query_len);
+			/*
+			 * Normalize the query string by replacing constants with '?'
+			 */
+			/*
+			 * Search hint string which is stored keyed by query string
+			 * and application name.  The query string is normalized to allow
+			 * fuzzy matching.
+			 *
+			 * Adding 1 byte to query_len ensures that the returned string has
+			 * a terminating NULL.
+			 */
+			query_len = strlen(query_str) + 1;
+			normalized_query =
+				generate_normalized_query(jstate, query_str, 0, &query_len);
+		}
+
+		if (IsYugaByteEnabled() && yb_use_query_id_for_hinting)
+		{
+			/*
+			 * Put the query id in a string as a signed 64-bit int since that is
+			 * what shows in EXPLAIN.
+			 */
+			StringInfoData buf;
+			initStringInfo(&buf);
+			appendStringInfo(&buf, INT64_FORMAT, query->queryId);
+			normalized_query = pstrdup(buf.data);
+
+			if (IsYugaByteEnabled() && yb_enable_planner_trace)
+			{
+				ereport(DEBUG1,
+						(errmsg("\nhinting query: %s , id = %ld",
+								query_str != NULL ? query_str : "<null>", 
+								query->queryId)));
+			}
+
+			pfree(buf.data);
+		}
 
 		/*
 		 * find a hint for the normalized query. the result should be in
@@ -2952,6 +3286,14 @@ get_current_hint_string(Query *query, const char *query_str,
 		current_hint_str =
 			get_hints_from_table(normalized_query, application_name);
 		MemoryContextSwitchTo(oldcontext);
+
+		if (IsYugaByteEnabled() && yb_enable_planner_trace &&
+			yb_use_query_id_for_hinting && current_hint_str != NULL)
+		{
+			ereport(DEBUG1,
+					(errmsg("\nfound hints for query id %s in hint table : %s",
+							normalized_query, current_hint_str)));
+		}
 
 		if (debug_level > 1)
 		{
@@ -2986,7 +3328,15 @@ get_current_hint_string(Query *query, const char *query_str,
 
 	/* get hints from the comment */
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-	current_hint_str = get_hints_from_comment(query_str);
+	bool ybHitError;
+	current_hint_str = get_hints_from_comment(query_str, &ybHitError);
+
+	if (ybHitError && yb_bad_hint_mode >= BAD_HINT_WARN)
+	{
+		ereport(WARNING,
+				(errmsg("error trying to get hints from comment")));
+	}
+
 	MemoryContextSwitchTo(oldcontext);
 
 	if (debug_level > 1)
@@ -3036,6 +3386,8 @@ pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query,
 		get_current_hint_string(query, pstate->p_sourcetext, jstate);
 }
 
+static bool ybInRecursionForTesting = false;
+
 /*
  * Read and set up hint information
  */
@@ -3046,6 +3398,13 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 	PlannedStmt	   *result;
 	HintState	   *hstate;
 	const char 	   *prev_hint_str = NULL;
+
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		ereport(DEBUG1,
+				(errmsg("\n++ BEGIN pg_hint_plan_planner\n        query: %s",
+						query_string)));
+	}
 
 	/*
 	 * Use standard planner if pg_hint_plan is disabled or current nesting
@@ -3101,6 +3460,23 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 	/* run standard planner if we're given with no valid hints */
 	if (!hstate)
 	{
+		if (IsYugaByteEnabled())
+		{
+			if (yb_bad_hint_mode >= BAD_HINT_WARN)
+			{
+				ereport(WARNING,
+						(errmsg("no valid hints found, planning query "
+								"without hints")));
+			}
+
+			if (yb_bad_hint_mode == BAD_HINT_ERROR)
+			{
+				ereport(ERROR,
+						(errmsg("errors found in hints (no state), "
+								"will fail")));
+			}
+		}
+
 		/* forget invalid hint string */
 		if (current_hint_str)
 		{
@@ -3109,6 +3485,26 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 		}
 
 		goto standard_planner_proc;
+	}
+	else if (IsYugaByteEnabled() && hstate->ybAnyHintFailed)
+	{
+		if (yb_bad_hint_mode >= BAD_HINT_WARN)
+		{
+			ereport(WARNING,
+					(errmsg("errors found in hints")));
+
+			if (yb_bad_hint_mode == BAD_HINT_REPLAN)
+			{
+				ereport(WARNING,
+						(errmsg("replanning query without hints")));
+				goto standard_planner_proc;
+			}
+			else if (yb_bad_hint_mode == BAD_HINT_ERROR)
+			{
+				ereport(ERROR,
+						(errmsg("errors found in hints, will fail")));
+			}
+		}
 	}
 
 	/*
@@ -3170,6 +3566,12 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 			msgqno = qno;
 		}
 
+		Query *ybSaveQuery = NULL;
+		if (yb_bad_hint_mode == BAD_HINT_REPLAN)
+		{
+			ybSaveQuery = castNode(Query, copyObject(parse));
+		}
+
 		if (prev_planner)
 			result = (*prev_planner) (parse, query_string,
 									  cursorOptions, boundParams);
@@ -3179,6 +3581,57 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 
 		current_hint_str = prev_hint_str;
 		recurse_level--;
+
+		if (IsYugaByteEnabled())
+		{
+			ybCheckBadOrUnusedHints(result);
+
+			if (current_hint_state->ybAnyHintFailed)
+			{
+				if (yb_bad_hint_mode >= BAD_HINT_WARN)
+				{
+					ereport(WARNING,
+							(errmsg("unused hints, and/or hints "
+									"causing errors, exist")));
+
+					if (yb_enable_planner_trace)
+					{
+						ereport(DEBUG1,
+								(errmsg("unused hints, and/or hints "
+										"causing errors, exist")));
+					}
+
+					if (yb_bad_hint_mode == BAD_HINT_REPLAN)
+					{
+						if (yb_enable_planner_trace)
+						{
+							ereport(DEBUG1,
+									(errmsg("replanning without hints")));
+						}
+
+						ereport(WARNING,
+								(errmsg("replanning without hints")));
+
+						HintState *save_current_hint_state = current_hint_state;
+						current_hint_state = NULL;
+						result = standard_planner(ybSaveQuery, query_string,
+											cursorOptions, boundParams);
+						current_hint_state = save_current_hint_state;
+					}
+					else if (yb_bad_hint_mode == BAD_HINT_ERROR)
+					{
+						if (yb_enable_planner_trace)
+						{
+							ereport(DEBUG1,
+									(errmsg("errors found in hints, will fail")));
+						}
+
+						ereport(ERROR,
+								(errmsg("errors found in hints, will fail")));
+					}
+				}
+			}
+		}
 	}
 	PG_CATCH();
 	{
@@ -3219,6 +3672,13 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 	AtEOXact_GUC(true, save_nestlevel);
 	pop_hint();
 
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		ereport(DEBUG1,
+				(errmsg("\n++ END pg_hint_plan_planner\n        query: %s",
+						query_string)));
+	}
+
 	return result;
 
 standard_planner_proc:
@@ -3231,6 +3691,21 @@ standard_planner_proc:
 		msgqno = qno;
 	}
 	current_hint_state = NULL;
+
+	Query *ybSaveQuery = NULL;
+	if (yb_enable_internal_hint_test && query_string != NULL &&
+		strlen(query_string) > 0 && !ybInRecursionForTesting &&
+		(parse->commandType == CMD_SELECT ||
+		 parse->commandType  == CMD_DELETE ||
+		 parse->commandType == CMD_UPDATE ||
+		 parse->commandType == CMD_INSERT))
+	{
+		/*
+		 * Save a copy of the query if we want to test hint generation.
+		 */
+		ybSaveQuery = castNode(Query, copyObject(parse));
+	}
+
 	if (prev_planner)
 		result =  (*prev_planner) (parse, query_string,
 								   cursorOptions, boundParams);
@@ -3238,11 +3713,142 @@ standard_planner_proc:
 		result = standard_planner(parse, query_string,
 								  cursorOptions, boundParams);
 
+	if (yb_enable_internal_hint_test && result != NULL &&
+		query_string != NULL && strlen(query_string) > 0 &&
+		!ybInRecursionForTesting &&
+		(result->commandType == CMD_SELECT ||
+			result->commandType == CMD_DELETE ||
+			result->commandType  == CMD_UPDATE ||
+			result->commandType == CMD_INSERT))
+	{
+		ybInRecursionForTesting = true;
+		char *generatedHintString = ybGenerateHintString(result);
+		if (yb_enable_planner_trace)
+		{
+			ereport(DEBUG1,
+					(errmsg("\ngenerated hints: %s\n",
+							generatedHintString != NULL ?
+							generatedHintString : "none")));
+		}
+
+		if ( generatedHintString != NULL)
+		{
+			StringInfoData buf;
+			initStringInfo(&buf);
+			appendStringInfoString(&buf, generatedHintString);
+			appendStringInfoSpaces(&buf, 1);
+			appendStringInfoString(&buf, query_string);
+			bool save_current_hint_retrieved = current_hint_retrieved;
+			current_hint_retrieved = false;
+			HintState *save_current_hint_state = current_hint_state;
+			current_hint_state = NULL;
+			const char *save_current_hint_str = current_hint_str;
+			current_hint_str = NULL;
+			bool save_pg_hint_plan_enable_hint_table = pg_hint_plan_enable_hint_table;
+			pg_hint_plan_enable_hint_table = false;
+
+			PlannedStmt *hintedResult = pg_hint_plan_planner(ybSaveQuery, 
+											   				 buf.data, 
+															 cursorOptions,
+															 boundParams);
+
+			pg_hint_plan_enable_hint_table = save_pg_hint_plan_enable_hint_table;
+
+			char *generatedHintString2 = ybGenerateHintString(hintedResult);
+
+			if (yb_enable_planner_trace)
+			{
+				ereport(DEBUG1,
+						(errmsg("generated hints (2): %s\n",
+								generatedHintString2 != NULL ?
+								generatedHintString2 : "none")));
+			}
+
+			bool plansAreEqual = ybComparePlanShapesAndMethods(result,
+															   result->planTree,
+												 			   hintedResult,
+															   hintedResult->planTree,
+															   true /* trace */ );
+
+			if (yb_enable_planner_trace)
+			{
+				ereport(DEBUG1,
+						(errmsg("\nplans are equal? %s\n",
+								plansAreEqual ? "true" : "false")));
+			}
+
+			if (!plansAreEqual)
+			{
+				if (yb_enable_planner_trace)
+				{
+					ereport(DEBUG1,
+							(errmsg("\nplan generated from hints not "
+									"equivalent to non-hinted plan\n")));
+				}
+
+				if (yb_internal_hint_test_fail)
+				{
+					ereport(ERROR,
+							(errmsg("\nplan generated from hints not "
+									"equivalent  to non-hinted plan, "
+									"will fail\n")));
+				}
+				else if (yb_bad_hint_mode >= BAD_HINT_WARN)
+				{
+					ereport(WARNING,
+							(errmsg("\nplan generated from hints not "
+									"equivalent to non-hinted plan\n")));
+				}
+			}
+
+			if (yb_use_generated_hints_for_plan)
+			{
+				result = hintedResult;
+				if (yb_enable_planner_trace)
+				{
+					ereport(DEBUG1,
+							(errmsg("\nused plan from generated hints (2)\n")));
+				}
+			}
+
+			current_hint_retrieved = save_current_hint_retrieved;
+			current_hint_state = save_current_hint_state;
+			current_hint_str = save_current_hint_str;
+		}
+
+		ybInRecursionForTesting = false;
+	}
+
 	/* The upper-level planner still needs the current hint state */
 	if (HintStateStack != NIL)
 		current_hint_state = (HintState *) lfirst(list_head(HintStateStack));
 
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		ereport(DEBUG1,
+				(errmsg("\n++ END pg_hint_plan_planner\n        query: %s",
+						query_string)));
+	}
+
 	return result;
+}
+
+static char *
+ybAliasForHinting(List *aliasMapping, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	char *aliasForHint = NULL;
+	if (rel != NULL &&
+		rel->ybUniqueBaseId > 0 &&
+		aliasMapping != NIL)
+	{
+		aliasForHint = list_nth(aliasMapping, rel->ybUniqueBaseId);
+	}
+	else
+	{
+		aliasForHint = rte->eref->aliasname;
+	}
+
+	return aliasForHint;
 }
 
 /*
@@ -3286,6 +3892,9 @@ find_scan_hint(PlannerInfo *root, Index relid)
 		rte->relkind == RELKIND_FOREIGN_TABLE)
 		return NULL;
 
+	char *aliasForHint = ybAliasForHinting(root->glob->ybPlanHintsAliasMapping, 
+										   rel, rte);
+
 	/* Find scan method hint, which matches given names, from the list. */
 	for (i = 0; i < current_hint_state->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
 	{
@@ -3296,7 +3905,7 @@ find_scan_hint(PlannerInfo *root, Index relid)
 			continue;
 
 		if (!alias_hint &&
-			RelnameCmp(&rte->eref->aliasname, &hint->relname) == 0)
+			RelnameCmp(&aliasForHint, &hint->relname) == 0)
 			alias_hint = hint;
 
 		/* check the real name for appendrel children */
@@ -3354,6 +3963,9 @@ find_parallel_hint(PlannerInfo *root, Index relid)
 	rte = root->simple_rte_array[relid];
 	Assert(rte);
 
+	char *ybAlias = ybAliasForHinting(root->glob->ybPlanHintsAliasMapping,
+									  rel, rte);
+
 	/* Find parallel method hint, which matches given names, from the list. */
 	for (i = 0; i < current_hint_state->num_hints[HINT_TYPE_PARALLEL]; i++)
 	{
@@ -3364,7 +3976,7 @@ find_parallel_hint(PlannerInfo *root, Index relid)
 			continue;
 
 		if (!alias_hint &&
-			RelnameCmp(&rte->eref->aliasname, &hint->relname) == 0)
+			RelnameCmp(&ybAlias, &hint->relname) == 0)
 			alias_hint = hint;
 
 		/* check the real name for appendrel children */
@@ -3444,7 +4056,11 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 	if (hint->enforce_mask == ENABLE_SEQSCAN ||
 		hint->enforce_mask == ENABLE_TIDSCAN)
 	{
-		list_free_deep(rel->indexlist);
+		/*
+		 * YB: Do not do a list_free_deep here since we need the IndexOptInfo
+		 * objects for proving uniqueness.
+		 */
+		list_free(rel->indexlist);
 		rel->indexlist = NIL;
 		hint->base.state = HINT_STATE_USED;
 
@@ -4048,8 +4664,11 @@ find_relid_aliasname(PlannerInfo *root, char *aliasname, List *initial_rels,
 
 		Assert(i == root->simple_rel_array[i]->relid);
 
-		if (RelnameCmp(&aliasname,
-					   &root->simple_rte_array[i]->eref->aliasname) != 0)
+		char * aliasForHint = ybAliasForHinting(root->glob->ybPlanHintsAliasMapping,
+												root->simple_rel_array[i],
+												root->simple_rte_array[i]);
+
+		if (RelnameCmp(&aliasname, &aliasForHint) != 0)
 			continue;
 
 		foreach(l, initial_rels)
@@ -4131,6 +4750,67 @@ find_memoize_hint(Relids joinrelids)
 	return NULL;
 }
 
+static void
+ybAddProhibitedJoin(PlannerInfo *root, NodeTag ybJoinTag, Relids join_relids)
+{
+	Assert(join_relids);
+	root->ybProhibitedJoinTypes
+		= lappend_int(root->ybProhibitedJoinTypes, ybJoinTag);
+	root->ybProhibitedJoins = lappend(root->ybProhibitedJoins, join_relids);
+
+	if (yb_enable_planner_trace)
+	{
+		StringInfoData buf;
+		initStringInfo(&buf);
+		appendStringInfoString(&buf, "ybAddProhibitedJoin");
+
+		StringInfoData buf2;
+		initStringInfo(&buf2);
+		ybBuildRelidsString(root, join_relids, &buf2);
+		appendStringInfoSpaces(&buf, 2);
+		appendStringInfo(&buf, "join relids : %s\n", buf2.data);;
+		ereport(DEBUG1,
+				(errmsg("\n%s", buf.data)));
+		pfree(buf.data);
+		pfree(buf2.data);
+	}
+}
+
+static void
+ybAddHintedJoin(PlannerInfo *root, Relids outer_relids, Relids inner_relids)
+{
+	Assert(outer_relids);
+	Assert(inner_relids);
+	root->ybHintedJoinsOuter = lappend(root->ybHintedJoinsOuter, outer_relids);
+	root->ybHintedJoinsInner = lappend(root->ybHintedJoinsInner, inner_relids);
+
+	if (yb_enable_planner_trace)
+	{
+		Relids join_relids = bms_union(outer_relids, inner_relids);
+		StringInfoData buf;
+		initStringInfo(&buf);
+		appendStringInfoString(&buf, "ybAddHintedJoin");
+
+		StringInfoData buf2;
+		initStringInfo(&buf2);
+		ybBuildRelidsString(root, join_relids, &buf2);
+		appendStringInfoSpaces(&buf, 2);
+		appendStringInfo(&buf, "join relids : %s\n", buf2.data);
+		resetStringInfo(&buf2);
+		ybBuildRelidsString(root, outer_relids, &buf2);
+		appendStringInfoSpaces(&buf, 4);
+		appendStringInfo(&buf, "outer relids : %s\n", buf2.data);
+		resetStringInfo(&buf2);
+		ybBuildRelidsString(root, inner_relids, &buf2);
+		appendStringInfoSpaces(&buf, 4);
+		appendStringInfo(&buf, "inner relids : %s\n", buf2.data);
+		ereport(DEBUG1,
+				(errmsg("\n%s", buf.data)));
+		bms_free(join_relids);
+		pfree(buf.data);
+		pfree(buf2.data);
+	}
+}
 
 static Relids
 OuterInnerJoinCreate(OuterInnerRels *outer_inner, LeadingHint *leading_hint,
@@ -4167,10 +4847,34 @@ OuterInnerJoinCreate(OuterInnerRels *outer_inner, LeadingHint *leading_hint,
 										hstate,
 										nbaserel);
 
+	Relids ybOrigOuterRelids = NULL;
+	Relids ybOrigInnerRelids = NULL;
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * Copy the input relids since at least the outer will be modified below
+		 * by the bms_add_members() call to form join_relids.
+		 */
+		ybOrigOuterRelids = bms_copy(outer_relids);
+		ybOrigInnerRelids = bms_copy(inner_relids);
+		if (yb_enable_planner_trace)
+		{
+			ybTraceRelds(root, outer_relids,
+							"OuterInnerJoinCreate : outer relids");
+			ybTraceRelds(root, inner_relids,
+							"OuterInnerJoinCreate : inner relids");
+		}
+	}
+
 	join_relids = bms_add_members(outer_relids, inner_relids);
 
 	if (bms_num_members(join_relids) > nbaserel)
 		return join_relids;
+
+	if (IsYugaByteEnabled())
+	{
+		ybAddHintedJoin(root, ybOrigOuterRelids, ybOrigInnerRelids);
+	}
 
 	/*
 	 * If we don't have join method hint, create new one for the
@@ -4196,11 +4900,33 @@ OuterInnerJoinCreate(OuterInnerRels *outer_inner, LeadingHint *leading_hint,
 
 		hstate->join_hint_level[hint->nrels] =
 			lappend(hstate->join_hint_level[hint->nrels], hint);
+
+		if (IsYugaByteEnabled() && yb_enable_planner_trace)
+		{
+			StringInfoData buf;
+			initStringInfo(&buf);
+			JoinMethodHintDesc(hint, &buf, true);
+			ereport(DEBUG1,
+					(errmsg("no method hint found, "
+							"created one at level %d: %s",
+							hint->nrels, buf.data)));
+			pfree(buf.data);
+		}
 	}
 	else
 	{
 		hint->inner_nrels = bms_num_members(inner_relids);
 		hint->inner_joinrelids = bms_copy(inner_relids);
+
+		if (IsYugaByteEnabled() && yb_enable_planner_trace)
+		{
+			StringInfoData buf;
+			initStringInfo(&buf);
+			JoinMethodHintDesc(hint, &buf, true);
+			ereport(DEBUG1,
+					(errmsg("  found hint : %s", buf.data)));
+			pfree(buf.data);
+		}
 	}
 
 	return join_relids;
@@ -4283,8 +5009,27 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 		if (hint->joinrelids == NULL || hint->base.state == HINT_STATE_ERROR)
 			continue;
 
+		if (IsYugaByteEnabled())
+		{
+			NodeTag ybJoinTag = ybIsNegationJoinHint((Hint *) hint);
+			if (ybJoinTag != 0)
+			{
+				ybAddProhibitedJoin(root, ybJoinTag, bms_copy(hint->joinrelids));
+			}
+		}
+
 		hstate->join_hint_level[hint->nrels] =
 			lappend(hstate->join_hint_level[hint->nrels], hint);
+
+		if (IsYugaByteEnabled() && yb_enable_planner_trace)
+		{
+			StringInfoData buf;
+			initStringInfo(&buf);
+			JoinMethodHintDesc(hint, &buf, true);
+			ereport(DEBUG1,
+					(errmsg("transform_join_hints : added join method hint at "
+							"join level %d : %s", hint->nrels, buf.data)));
+		}
 	}
 
 	/* ditto for memoize hints */
@@ -4320,6 +5065,15 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 									 initial_rels, hint->nrels, hint->relnames);
 	}
 
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		if (hstate->num_hints[HINT_TYPE_LEADING] == 0)
+		{
+			ereport(DEBUG1,
+					(errmsg("no leading hints")));
+		}
+	}
+
 	/* Do nothing if no Leading hint was supplied. */
 	if (hstate->num_hints[HINT_TYPE_LEADING] == 0)
 		return false;
@@ -4331,6 +5085,23 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 	{
 		LeadingHint	   *leading_hint = (LeadingHint *)hstate->leading_hint[i];
 		Relids			relids;
+
+		if (IsYugaByteEnabled() && yb_enable_planner_trace)
+		{
+			StringInfoData buf;
+			initStringInfo(&buf);
+			LeadingHintDesc(leading_hint, &buf, true);
+			StringInfoData buf2;
+			initStringInfo(&buf2);
+			appendStringInfo(&buf2,
+				"transform_join_hints : next leading hint : %s (error? : %s)",
+				buf.data,
+				leading_hint->base.state == HINT_STATE_ERROR ? " true" : "false");
+			ereport(DEBUG1,
+					(errmsg("next leading hint : %s", buf2.data)));
+			pfree(buf.data);
+			pfree(buf2.data);
+		}
 
 		if (leading_hint->base.state == HINT_STATE_ERROR)
 			continue;
@@ -4347,6 +5118,12 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 			if (relid == -1)
 				leading_hint->base.state = HINT_STATE_ERROR;
 
+			if (IsYugaByteEnabled() && yb_enable_planner_trace)
+			{
+				ereport(DEBUG1,
+						(errmsg("  relname %s -> relid %d", relname, relid)));
+			}
+
 			if (relid <= 0)
 				break;
 
@@ -4355,6 +5132,12 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 				hint_ereport(leading_hint->base.hint_str,
 							 ("Relation name \"%s\" is duplicated.", relname));
 				leading_hint->base.state = HINT_STATE_ERROR;
+
+				if (IsYugaByteEnabled())
+				{
+					hstate->ybAnyHintFailed = true;
+				}
+
 				break;
 			}
 
@@ -4369,6 +5152,11 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 			hint_ereport(lhint->base.hint_str,
 				 ("Conflict %s hint.", HintTypeName[lhint->base.type]));
 			lhint->base.state = HINT_STATE_DUPLICATION;
+
+			if (IsYugaByteEnabled())
+			{
+				hstate->ybAnyHintFailed = true;
+			}
 		}
 		leading_hint->base.state = HINT_STATE_USED;
 		lhint = leading_hint;
@@ -4376,7 +5164,16 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 
 	/* check to exist Leading hint marked with 'used'. */
 	if (lhint == NULL)
+	{
+		if (IsYugaByteEnabled() && yb_enable_planner_trace)
+		{
+			ereport(DEBUG1,
+					(errmsg("transform_join_hints : leading hint is NULL, "
+							"returning FALSE")));
+		}
+
 		return false;
+	}
 
 	/*
 	 * We need join method hints which fit specified join order in every join
@@ -4393,6 +5190,12 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 	njoinrels = 0;
 	if (lhint->outer_inner == NULL)
 	{
+		if (IsYugaByteEnabled() && yb_enable_planner_trace)
+		{
+			ereport(DEBUG1,
+					(errmsg("  no outer-inner")));
+		}
+
 		foreach(l, lhint->relations)
 		{
 			JoinMethodHint *hint;
@@ -4407,6 +5210,8 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 			relid = find_relid_aliasname(root, relname, initial_rels,
 										 hstate->hint_str);
 
+			Relids yb_prev_relids = bms_copy(joinrelids);
+
 			/* Create bitmap of relids for current join level. */
 			joinrelids = bms_add_member(joinrelids, relid);
 			njoinrels++;
@@ -4414,6 +5219,32 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 			/* We never have join method hint for single relation. */
 			if (njoinrels < 2)
 				continue;
+
+			if (IsYugaByteEnabled())
+			{
+				/* Make relid set with the current single relation. */
+				Relids current_relids = bms_make_singleton(relid);
+
+				if (yb_enable_planner_trace)
+				{
+					ereport(DEBUG1,
+							(errmsg("transform_join_hints : adding hinted join")));
+				}
+
+				/*
+				 * For a Leading hint with no nesting the inner and outer can 
+				 * be swapped so allow join both ways.
+				 */
+				ybAddHintedJoin(root, yb_prev_relids, current_relids);
+				ybAddHintedJoin(root, current_relids, yb_prev_relids);
+
+				if (yb_enable_planner_trace)
+				{
+					ybTraceRelds(root, joinrelids,
+								 "transform_join_hints : looking for join "
+								 "method hint for relids");
+				}
+			}
 
 			/*
 			 * If we don't have join method hint, create new one for the
@@ -4434,6 +5265,29 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 				hint->nrels = njoinrels;
 				hint->enforce_mask = ENABLE_ALL_JOIN;
 				hint->joinrelids = bms_copy(joinrelids);
+
+				if (IsYugaByteEnabled() && yb_enable_planner_trace)
+				{
+					StringInfoData buf;
+					initStringInfo(&buf);
+					JoinMethodHintDesc(hint, &buf, true);
+					ereport(DEBUG1,
+							(errmsg("  no method hint found , created one : %s",
+									buf.data)));
+					pfree(buf.data);
+				}
+			}
+			else
+			{
+				if (IsYugaByteEnabled() && yb_enable_planner_trace)
+				{
+					StringInfoData buf;
+					initStringInfo(&buf);
+					JoinMethodHintDesc(hint, &buf, true);
+					ereport(DEBUG1,
+							(errmsg("  found method hint found : %s", buf.data)));
+					pfree(buf.data);
+				}
 			}
 
 			join_method_hints[njoinrels] = hint;
@@ -4459,12 +5313,23 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 	}
 	else
 	{
+		if (IsYugaByteEnabled() && yb_enable_planner_trace)
+		{
+			ereport(DEBUG1,
+					(errmsg("  found outer-inner")));
+		}
+
 		joinrelids = OuterInnerJoinCreate(lhint->outer_inner,
 										  lhint,
                                           root,
                                           initial_rels,
 										  hstate,
 										  nbaserel);
+
+		if (IsYugaByteEnabled() && yb_enable_planner_trace)
+		{
+			ybTraceRelds(root, joinrelids, "created outer-inner relids");
+		}
 
 		njoinrels = bms_num_members(joinrelids);
 		Assert(njoinrels >= 2);
@@ -4526,6 +5391,41 @@ make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	memoize_hint = find_memoize_hint(joinrelids);
 	bms_free(joinrelids);
 
+	int ybLevel = bms_num_members(rel1->relids) + bms_num_members(rel2->relids);
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		StringInfoData buf;
+		initStringInfo(&buf);
+		char ybMsgBuf[30];
+		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
+		appendStringInfo(&buf, "%s Created logical join Level %d : ",
+						 ybMsgBuf, ybLevel);
+		StringInfoData buf2;
+		initStringInfo(&buf2);
+		ybBuildRelidsString(root, rel1->relids, &buf2);
+		appendStringInfoString(&buf, buf2.data);
+		appendStringInfoSpaces(&buf, 1);
+		resetStringInfo(&buf2);
+		ybBuildRelidsString(root, rel2->relids, &buf2);
+		appendStringInfoString(&buf, buf2.data);
+		ereport(DEBUG1,
+				(errmsg("\n%s\n", buf.data)));
+
+		if (join_hint != NULL)
+		{
+			resetStringInfo(&buf);
+			join_hint->base.desc_func((Hint *) join_hint, &buf, false);
+			ereport(DEBUG1,
+					(errmsg("\nlevel %d join method hint: %s (mask 0x%x)\n",
+							ybLevel, buf.data, join_hint->enforce_mask)));
+		}
+
+		pfree(buf.data);
+		pfree(buf2.data);
+	}
+
+	bool ybSetJoinHints = false;
+
 	/* reject non-matching hints */
 	if (join_hint && join_hint->inner_nrels != 0)
 		join_hint = NULL;
@@ -4553,11 +5453,27 @@ make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 		}
 	}
 
+	if (IsYugaByteEnabled() && join_hint == NULL)
+	{
+		if (current_hint_state->join_hint_level[ybLevel] == NULL)
+		{
+			/*
+			 * There is no join method hint for this join. Also, there
+			 * no leading or join method hints for the level. In this case
+			 * we enable all join methods for this join.
+			 */
+			save_nestlevel = NewGUCNestLevel();
+			set_join_config_options(ENABLE_ALL_JOIN, false,
+									current_hint_state->context);
+			ybSetJoinHints = true;
+		}
+	}
+
 	/* do the work */
 	rel = pg_hint_plan_make_join_rel(root, rel1, rel2);
 
 	/* Restore the GUC variables we set above. */
-	if (join_hint || memoize_hint)
+	if (join_hint || memoize_hint || ybSetJoinHints)
 	{
 		if (join_hint)
 			join_hint->base.state = HINT_STATE_USED;
@@ -4566,6 +5482,29 @@ make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 			memoize_hint->base.state = HINT_STATE_USED;
 
 		AtEOXact_GUC(true, save_nestlevel);
+	}
+
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		StringInfoData buf;
+		initStringInfo(&buf);
+		char ybMsgBuf[30];
+		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
+		if (rel != NULL)
+		{
+			appendStringInfo(&buf, "%s New join rel Level %d : ",
+							ybMsgBuf, ybLevel);
+			ybTraceRelOptInfo(root, rel, buf.data);
+		}
+		else
+		{
+			appendStringInfo(&buf, "%s No join rel formed Level %d",
+							 ybMsgBuf, ybLevel);
+			ereport(DEBUG1,
+					(errmsg("\n%s\n", buf.data)));
+		}
+
+		pfree(buf.data);
 	}
 
 	return rel;
@@ -4588,6 +5527,21 @@ add_paths_to_joinrel_wrapper(PlannerInfo *root,
 	JoinMethodHint *memoize_hint;
 	int				save_nestlevel;
 
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		int level = (bms_num_members(outerrel->relids) +
+						bms_num_members(innerrel->relids));
+
+		char ybMsgBuf[30];
+		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
+		ereport(DEBUG1,
+				(errmsg("\n%s add_paths_to_joinrel_wrapper : (Level %d)",
+						ybMsgBuf, level)));
+		ybTraceRelOptInfo(root, joinrel, "join rel");
+		ybTraceRelOptInfo(root, outerrel, "outer rel");
+		ybTraceRelOptInfo(root, innerrel, "inner rel");
+	}
+
 	joinrelids = bms_union(outerrel->relids, innerrel->relids);
 	join_hint = find_join_hint(joinrelids);
 	memoize_hint = find_memoize_hint(joinrelids);
@@ -4607,6 +5561,49 @@ add_paths_to_joinrel_wrapper(PlannerInfo *root,
 
 		if (join_hint)
 		{
+			if (IsYugaByteEnabled() && yb_enable_planner_trace)
+			{
+				int level = (bms_num_members(outerrel->relids) +
+							bms_num_members(innerrel->relids));
+
+				char ybMsgBuf[30];
+				sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
+				ereport(DEBUG1,
+						(errmsg("\n%s add_paths_to_joinrel_wrapper : "
+								"found join hint (Level %d)",
+								ybMsgBuf, level)));
+				if (join_hint->base.hint_str != NULL)
+				{
+					ereport(DEBUG1,
+							(errmsg("\n  join hint string : %s",
+									join_hint->base.hint_str)));
+				}
+
+				ybTraceRelOptInfo(root, joinrel, "join rel");
+				ybTraceRelOptInfo(root, outerrel, "outer rel");
+				ybTraceRelOptInfo(root, innerrel, "inner rel");
+				ybTraceRelds(root, join_hint->inner_joinrelids,
+								"join hint inner rels");
+				ybTraceRelds(root, innerrel->relids, "inner rels");
+
+				sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
+
+				if (bms_equal(join_hint->inner_joinrelids, innerrel->relids))
+				{
+					ereport(DEBUG1,
+							(errmsg("\n+++ %s Level %d ACCEPTED join for hint, "
+									"enabling join options +++",
+									ybMsgBuf, level)));
+				}
+				else
+				{
+					ereport(DEBUG1,
+							(errmsg("\n--- %s Level %d REJECTED join for hint, "
+									"disabling all join options ---",
+									ybMsgBuf, level)));
+				}
+			}
+
 			if (bms_equal(join_hint->inner_joinrelids, innerrel->relids))
 				set_join_config_options(join_hint->enforce_mask, false,
 										current_hint_state->context);
@@ -4630,6 +5627,11 @@ add_paths_to_joinrel_wrapper(PlannerInfo *root,
 	/* generate paths */
 	add_paths_to_joinrel(root, joinrel, outerrel, innerrel, jointype,
 						 sjinfo, restrictlist);
+
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		ybTraceRelOptInfo(root, joinrel, "join rel after adding paths");
+	}
 
 	/* restore GUC variables */
 	if (join_hint || memoize_hint)
@@ -4666,6 +5668,327 @@ get_num_baserels(List *initial_rels)
 	}
 
 	return nbaserel;
+}
+
+static HintKeyword
+ybIsNegationHint(Hint *hint)
+{
+	HintKeyword hintKeyword;
+	switch (hint->hint_keyword)
+	{
+		case HINT_KEYWORD_NONESTLOOP:
+		case HINT_KEYWORD_NOBATCHEDNL:
+		case HINT_KEYWORD_NOMERGEJOIN:
+		case HINT_KEYWORD_NOHASHJOIN:
+		case HINT_KEYWORD_NOINDEXSCAN:
+		case HINT_KEYWORD_NOBITMAPSCAN:
+		case HINT_KEYWORD_NOTIDSCAN:
+		case HINT_KEYWORD_NOINDEXONLYSCAN:
+		case HINT_KEYWORD_NOMEMOIZE:
+			hintKeyword = hint->hint_keyword;
+			break;
+		default:
+			hintKeyword = HINT_KEYWORD_UNRECOGNIZED;
+			break;
+	}
+
+	return hintKeyword;
+}
+
+static NodeTag
+ybIsNegationJoinHint(Hint *hint)
+{
+	NodeTag joinTag;
+	switch (hint->hint_keyword)
+	{
+		case HINT_KEYWORD_NONESTLOOP:
+			joinTag = T_NestLoop;
+			break;
+		case HINT_KEYWORD_NOBATCHEDNL:
+			joinTag = T_YbBatchedNestLoop;
+			break;
+		case HINT_KEYWORD_NOMERGEJOIN:
+			joinTag = T_MergeJoin;
+			break;
+		case HINT_KEYWORD_NOHASHJOIN:
+			joinTag = T_HashJoin;
+			break;
+		default:
+			joinTag = 0;
+			break;
+	}
+
+	return joinTag;
+}
+
+static bool
+ybIsRelationNameInScope(char *hintRelationName)
+{
+	Assert(current_hint_state != NULL);
+	Assert(hintRelationName != NULL);
+
+	bool relationNameInScope = false;
+
+	ListCell *lc;
+	foreach(lc, current_hint_state->ybAllAliasNamesInScope)
+	{
+		char *aliasNameInScope = (char *) lfirst(lc);
+		if (strcmp(hintRelationName, aliasNameInScope) == 0)
+		{
+			relationNameInScope = true;
+			break;
+		}
+	}
+
+	return relationNameInScope;
+}
+
+static char *
+ybCheckPlanForDisabledNodes(Plan *plan, PlannedStmt *plannedStmt)
+{
+	char *errorMsg = NULL;
+
+	if (plan != NULL)
+	{
+		switch (nodeTag(plan))
+		{
+			case T_SeqScan:
+			case T_YbSeqScan:
+			case T_BitmapHeapScan:
+			case T_YbBitmapTableScan:
+			case T_TidScan:
+			case T_TidRangeScan:
+			case T_IndexScan:
+			case T_IndexOnlyScan:
+			case T_BitmapIndexScan:
+			case T_YbBitmapIndexScan:
+				{
+					if (plan->total_cost >= disable_cost)
+					{
+						if (plan->ybHintAlias != NULL)
+						{
+							StringInfoData buf;
+							initStringInfo(&buf);
+							appendStringInfo(&buf,
+											 "no valid access method found for "
+											 "relation \"%s\"",
+											 plan->ybHintAlias);
+							errorMsg = buf.data;
+						}
+						else
+						{
+							errorMsg = "no valid access method found for "
+										"some relation";
+						}
+					}
+				}
+				break;
+
+			case T_NestLoop:
+			case T_YbBatchedNestLoop:
+			case T_MergeJoin:
+			case T_HashJoin:
+				{
+					if (plan->total_cost >= disable_cost)
+					{
+						if (!(plan->ybIsHinted))
+						{
+							if (plan->ybUniqueId > 0)
+							{
+								StringInfoData buf;
+								initStringInfo(&buf);
+								appendStringInfo(&buf,
+												 "no valid method found for join "
+												 "with UID %d",
+												 plan->ybUniqueId);
+								errorMsg = buf.data;
+							}
+							else
+							{
+								errorMsg
+									= "no valid method found for some join";
+							}
+						}
+					}
+				}
+				break;
+			default:
+				break;
+		}
+
+		char *childErrorMsg = NULL;
+		if (plan->lefttree != NULL)
+		{
+			childErrorMsg = ybCheckPlanForDisabledNodes(plan->lefttree, 
+														plannedStmt);
+
+			if (childErrorMsg == NULL && plan->righttree != NULL)
+			{
+				childErrorMsg = ybCheckPlanForDisabledNodes(plan->righttree, 
+															plannedStmt);
+			}
+		}
+
+		if (childErrorMsg == NULL)
+		{
+			ListCell *lc;
+			foreach(lc, plan->initPlan)
+			{
+				SubPlan *initPlan = (SubPlan *) lfirst(lc);
+				Plan *subPlan = (Plan *) list_nth(plannedStmt->subplans,
+													initPlan->plan_id - 1);
+
+				childErrorMsg = ybCheckPlanForDisabledNodes(subPlan, 
+															plannedStmt);
+
+				if (childErrorMsg != NULL)
+				{
+					break;
+				}
+			}
+		}
+
+		if (childErrorMsg != NULL)
+		{
+			errorMsg = childErrorMsg;
+		}
+	}
+
+	return errorMsg;
+}
+
+static void
+ybCheckBadOrUnusedHints(PlannedStmt *plannedStmt)
+{
+	if (current_hint_state != NULL && yb_bad_hint_mode >= BAD_HINT_WARN)
+	{
+		char *errorMsg = ybCheckPlanForDisabledNodes(plannedStmt->planTree,
+														plannedStmt);
+		if (errorMsg != NULL)
+		{
+			ereport(WARNING,
+					(errmsg("%s", errorMsg)));
+
+			current_hint_state->ybAnyHintFailed = true;
+		}
+
+		StringInfoData buf;
+		initStringInfo(&buf);
+
+		for (int i = 0; i < current_hint_state->nall_hints; ++i)
+		{
+			Hint *currentHint = current_hint_state->all_hints[i];
+
+			if (currentHint->state == HINT_STATE_ERROR)
+			{
+				currentHint->desc_func(currentHint, &buf, true);
+
+				ereport(WARNING,
+						(errmsg("error in hint: %s", buf.data)));
+
+				current_hint_state->ybAnyHintFailed = true;
+			}
+			else if (currentHint->state == HINT_STATE_NOTUSED &&
+					 ybIsNegationHint(currentHint) == HINT_KEYWORD_UNRECOGNIZED)
+			{
+				currentHint->desc_func(currentHint, &buf, true);
+				current_hint_state->ybAnyHintFailed = true;
+
+				ereport(WARNING,
+						(errmsg("unused hint: %s", buf.data)));
+
+				if (currentHint->type == HINT_TYPE_SCAN_METHOD)
+				{
+					ScanMethodHint *scanHint = (ScanMethodHint *) currentHint;
+
+					if (!ybIsRelationNameInScope(scanHint->relname))
+					{
+						ereport(WARNING,
+								(errmsg("bad relation name \"%s\" in scan "
+										"hint: %s "
+										"(use alias name from EXPLAIN)",
+										scanHint->relname, buf.data)));
+					}
+				}
+				else if (currentHint->type == HINT_TYPE_JOIN_METHOD ||
+							currentHint->type == HINT_TYPE_MEMOIZE)
+				{
+					JoinMethodHint *joinMethodHint = (JoinMethodHint *) currentHint;
+					Assert(joinMethodHint->nrels > 0);
+					for (int i = 0; i < joinMethodHint->nrels; ++i)
+					{
+						char *relNameInHint = joinMethodHint->relnames[i];
+						if (!ybIsRelationNameInScope(relNameInHint))
+						{
+							ereport(WARNING,
+									(errmsg("bad relation name \"%s\" in join "
+											"hint: %s "
+											"(use alias name from EXPLAIN)",
+											relNameInHint, buf.data)));
+						}
+					}
+				}
+				else if (currentHint->type == HINT_TYPE_LEADING)
+				{
+					LeadingHint *leadingHint = (LeadingHint *) currentHint;
+					ListCell *lc;
+					foreach (lc, leadingHint->relations)
+					{
+						char *relNameInHint = (char *) lfirst(lc);
+						if (!ybIsRelationNameInScope(relNameInHint))
+						{
+							ereport(WARNING,
+									(errmsg("bad relation name \"%s\" "
+											"in leading hint: %s "
+											"(use alias name from EXPLAIN)",
+											relNameInHint, buf.data)));
+						}
+					}
+				}
+				else if (currentHint->type == HINT_TYPE_ROWS)
+				{
+					RowsHint *rowsHint = (RowsHint *) currentHint;
+
+					for (int i = 0; i < rowsHint->nrels; ++i)
+					{
+						char *relNameInHint = rowsHint->relnames[i];
+						if (!ybIsRelationNameInScope(relNameInHint))
+						{
+							ereport(WARNING,
+									(errmsg("bad relation name \"%s\" in "
+											"rows hint: %s (use alias name from "
+											"EXPLAIN)",
+											relNameInHint, buf.data)));
+						}
+					}
+				}
+				else if (currentHint->type == HINT_TYPE_PARALLEL)
+				{
+					ParallelHint *parallelHint = (ParallelHint *) currentHint;
+
+					if (!ybIsRelationNameInScope(parallelHint->relname))
+					{
+						ereport(WARNING,
+								(errmsg("bad relation name \"%s\" in parallel "
+										"hint: %s (use alias name from EXPLAIN)",
+										parallelHint->relname, buf.data)));
+					}
+				}
+				else
+				{
+					ereport(WARNING,
+							(errmsg("unexpected hint type %d in unused hint: %s",
+									currentHint->type, buf.data)));
+				}
+			}
+
+			resetStringInfo(&buf);
+		}
+
+		pfree(buf.data);
+	}
+
+	return;
 }
 
 static RelOptInfo *
@@ -4710,6 +6033,16 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	leading_hint_enable = transform_join_hints(current_hint_state,
 											   root, nbaserel,
 											   initial_rels, join_method_hints);
+
+	if (IsYugaByteEnabled())
+	{
+		if (leading_hint_enable && yb_enable_planner_trace &&
+			current_hint_state->leading_hint != NULL)
+		{
+			ybTraceLeadingHint(*(current_hint_state->leading_hint),
+							   "pg_hint_plan_join_search : leading hint after transformation");
+		}
+	}
 
 	rel = pg_hint_plan_standard_join_search(root, levels_needed, initial_rels);
 
@@ -4764,6 +6097,101 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	return rel;
 }
 
+static char *
+ybCheckBadIndexHintExists(PlannerInfo *root, RelOptInfo *rel)
+{
+	char *badIndexName = NULL;
+	ScanMethodHint *shint = find_scan_hint(root, rel->relid);
+	if (shint != NULL)
+	{
+		if (shint->indexnames != NULL)
+		{
+			ListCell *lc;
+			foreach(lc, shint->indexnames)
+			{
+				char *hintIndexName = lfirst(lc);
+				bool matchedHintIndex = false;
+
+				ListCell *lc1;
+				foreach(lc1, rel->indexlist)
+				{
+					IndexOptInfo *index = (IndexOptInfo *) lfirst(lc1);
+					char *indexName = get_rel_name(index->indexoid);
+
+					if (RelnameCmp(&indexName, &hintIndexName) == 0)
+					{
+						matchedHintIndex = true;
+						break;
+					}
+				}
+
+				if (!matchedHintIndex)
+				{
+					badIndexName = hintIndexName;
+					break;
+				}
+			}
+		}
+	}
+
+	return badIndexName;
+}
+
+static bool
+ybCheckValidPathForRelExists(PlannerInfo * root, RelOptInfo *rel)
+{
+	bool 		relHintingFailedOnCost = false;
+	bool 		enabledPathFound = false;
+	bool 		disabledPathFound = false;
+	ListCell   *lc;
+	foreach (lc, rel->pathlist)
+	{
+		Path *path = (Path *) lfirst(lc);
+		if (path->total_cost < disable_cost || path->ybIsHinted ||
+			path->ybHasHintedUid)
+		{
+			enabledPathFound = true;
+			break;
+		}
+		else
+		{
+			disabledPathFound = true;
+		}
+	}
+
+	if (!enabledPathFound && disabledPathFound)
+	{
+		relHintingFailedOnCost = true;
+	}
+
+	if (!relHintingFailedOnCost)
+	{
+		enabledPathFound = false;
+		disabledPathFound = false;
+		foreach (lc, rel->partial_pathlist)
+		{
+			Path *path = (Path *) lfirst(lc);
+			if (path->total_cost < disable_cost || path->ybIsHinted ||
+				path->ybHasHintedUid)
+			{
+				enabledPathFound = true;
+				break;
+			}
+			else
+			{
+				disabledPathFound = true;
+			}
+		}
+	}
+
+	if (!enabledPathFound && disabledPathFound)
+	{
+		relHintingFailedOnCost = true;
+	}
+
+	return !relHintingFailedOnCost;
+}
+
 /*
  * Force number of wokers if instructed by hint
  */
@@ -4774,6 +6202,16 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 	ParallelHint   *phint;
 	ListCell	   *l;
 	int				found_hints;
+
+	if (IsYugaByteEnabled())
+	{
+		if (current_hint_state != NULL && rel->ybHintAlias != NULL &&
+			!ybIsRelationNameInScope(rel->ybHintAlias))
+		{
+			current_hint_state->ybAllAliasNamesInScope = lappend(current_hint_state->ybAllAliasNamesInScope,
+																 pstrdup(rel->ybHintAlias));
+		}
+	}
 
 	/* call the previous hook */
 	if (prev_set_rel_pathlist)
@@ -4796,9 +6234,17 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 		rte->tablesample != NULL)
 		return;
 
-	/* We cannot handle if this requires an outer */
-	if (rel->lateral_relids)
-		return;
+	if (!IsYugaByteEnabled())
+	{
+		/* We cannot handle if this requires an outer */
+		if (rel->lateral_relids)
+			return;
+	}
+
+	if (list_length(rel->ybHintsOrigIndexlist) < list_length(rel->indexlist))
+	{
+		rel->ybHintsOrigIndexlist = list_copy(rel->indexlist);
+	}
 
 	/* Return if this relation gets no enfocement */
 	if ((found_hints = setup_hint_enforcement(root, rel, NULL, &phint)) == 0)
@@ -4807,6 +6253,21 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 	/* Here, we regenerate paths with the current hint restriction */
 	if (found_hints & HINT_BM_SCAN_METHOD || found_hints & HINT_BM_PARALLEL)
 	{
+		if (IsYugaByteEnabled())
+		{
+			char *badIndexName = ybCheckBadIndexHintExists(root, rel);
+			if (badIndexName != NULL)
+			{
+				current_hint_state->ybAnyHintFailed = true;
+				if (yb_bad_hint_mode >= BAD_HINT_WARN)
+				{
+					ereport(WARNING,
+							(errmsg("bad index hint name \"%s\" for table %s",
+									badIndexName, rel->ybHintAlias)));
+				}
+			}
+		}
+
 		/*
 		 * When hint is specified on non-parent relations, discard existing
 		 * paths and regenerate based on the hint considered. Otherwise we
@@ -4833,6 +6294,7 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 						if (ppath->parallel_safe)
 						{
 							ppath->parallel_workers	= phint->nworkers;
+							ppath->ybIsHinted = true;
 							ppath->startup_cost = 0;
 							ppath->total_cost = 0;
 						}
@@ -4875,7 +6337,7 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 				foreach (l, rel->partial_pathlist)
 				{
 					Path *path = (Path *) lfirst(l);
-
+					path->ybIsHinted = true;
 					path->startup_cost = 0;
 					path->total_cost = 0;
 				}
@@ -4899,6 +6361,26 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 				if (rel->reloptkind == RELOPT_BASEREL &&
 					!bms_equal(rel->relids, root->all_baserels))
 					generate_useful_gather_paths(root, rel, false);
+			}
+		}
+
+		if (IsYugaByteEnabled())
+		{
+			if (!ybCheckValidPathForRelExists(root, rel))
+			{
+				current_hint_state->ybAnyHintFailed = true;
+
+				if (yb_bad_hint_mode >= BAD_HINT_WARN)
+				{
+					StringInfoData buf;
+					initStringInfo(&buf);
+					ybBuildRelidsString(root, rel->relids, &buf);
+					ereport(WARNING,
+							(errmsg("hinting led to no path being found "
+									"for relation \"%s\"",
+									buf.data)));
+					pfree(buf.data);
+				}
 			}
 		}
 	}

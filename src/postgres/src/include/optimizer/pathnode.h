@@ -352,4 +352,7 @@ extern Path *yb_create_distinct_index_path(PlannerInfo *root,
 										   int yb_distinct_prefixlen,
 										   int yb_distinct_nkeys);
 
+extern bool ybfindHintAlias(List *ybfindHintAlias, char *hintAlias);
+extern void yb_assign_unique_path_node_id(PlannerInfo *root, Path *path);
+
 #endif							/* PATHNODE_H */

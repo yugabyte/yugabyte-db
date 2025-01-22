@@ -172,6 +172,28 @@ typedef struct Plan
 	 */
 	Bitmapset  *extParam;
 	Bitmapset  *allParam;
+
+	/* alias to use for hinting - unique across all blocks/entire query */
+	char	   *ybHintAlias;
+
+	/*
+	 * Unique id across all plan nodes. This is inherited from corresponding
+	 * Path node (in a few cases there is not one).
+	 */
+	uint32		ybUniqueId;
+
+	/*
+	 * If a node is a child of a Subquery Scan node and the scan node gets
+	 * removed the child node will 'inherit' the unique hint alias
+	 * of the scan.
+	 */
+	char	   *ybInheritedHintAlias;
+
+	/* Is this a join that was referenced in a leading join hint? */
+	bool		ybIsHinted;
+
+	/* Is this node forced using a UID? */
+	bool		ybHasHintedUid;
 } Plan;
 
 /* ----------------

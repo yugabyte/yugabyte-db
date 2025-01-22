@@ -1466,6 +1466,22 @@ set_subqueryscan_references(PlannerInfo *root,
 		 * We can omit the SubqueryScan node and just pull up the subplan.
 		 */
 		result = clean_up_removed_plan_level((Plan *) plan, plan->subplan);
+
+		if (IsYugaByteEnabled() && rel->ybHintAlias != NULL)
+		{
+			/*
+			 * We are eliminating this subquery scan so put its hint alias on
+			 * its input Plan.
+			 */
+			if (yb_enable_planner_trace)
+			{
+				ereport(DEBUG1,
+						(errmsg("\nPlan id %d inherited hint alias : [block %d : table %s (uid = %d, relid = %d)]",
+								plan->subplan->plan_node_id, root->ybBlockId, rel->ybHintAlias, rel->ybUniqueBaseId, rel->relid)));
+			}
+
+			result->ybInheritedHintAlias = rel->ybHintAlias;
+		}
 	}
 	else
 	{

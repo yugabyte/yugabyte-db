@@ -5248,7 +5248,7 @@ select i, a from
 -----------------------------------------------------------------
  Nested Loop
    Output: i.i, (returns_rw_array(1))
-   ->  Result
+   ->  Result *RESULT*
          Output: returns_rw_array(1)
    ->  Function Scan on public.consumes_rw_array i
          Output: i.i

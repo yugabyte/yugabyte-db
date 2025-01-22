@@ -4093,6 +4093,13 @@ set_rtable_names(deparse_namespace *dpns, List *parent_namespaces,
 			refname = rte->eref->aliasname;
 		}
 
+		/* Check for a hint alias and that the RTE is not unreferenced. */
+		if (IsYugaByteEnabled() && rte->ybHintAlias != NULL && (!rels_used || bms_is_member(rtindex, rels_used)))
+		{
+			/* Use the hint alias from the RTE. */
+			refname = rte->ybHintAlias;
+		}
+
 		/*
 		 * If the selected name isn't unique, append digits to make it so, and
 		 * make a new hash entry for it once we've got a unique name.  For a

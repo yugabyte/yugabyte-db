@@ -598,7 +598,18 @@ rel_supports_distinctness(PlannerInfo *root, RelOptInfo *rel)
 		 */
 		ListCell   *lc;
 
-		foreach(lc, rel->indexlist)
+		List *ybIndexList = rel->indexlist;
+		if (list_length(ybIndexList) < list_length(rel->ybHintsOrigIndexlist))
+		{
+			/*
+			 * 'ybHintsOrigIndexlist' holds the original set of indexes for the relation.
+			 * rel->indexlist may have been pruned by the hint code but we need all indexes
+			 * to prove uniqueness of columns.
+			 */
+			ybIndexList = rel->ybHintsOrigIndexlist;
+		}
+
+		foreach(lc, ybIndexList)
 		{
 			IndexOptInfo *ind = (IndexOptInfo *) lfirst(lc);
 

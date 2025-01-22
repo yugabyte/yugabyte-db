@@ -39,6 +39,7 @@
 #include "access/xact.h"
 #include "access/yb_scan.h"
 #include "catalog/pg_am.h"
+#include "optimizer/planner.h"
 #include "pg_yb_utils.h"
 
 typedef enum
@@ -76,6 +77,35 @@ static List *reparameterize_pathlist_by_child(PlannerInfo *root,
 int
 compare_path_costs(Path *path1, Path *path2, CostSelector criterion)
 {
+	if (IsYugaByteEnabled() && path1->parent != NULL && path2->parent != NULL &&
+		path1->parent->reloptkind == path2->parent->reloptkind)
+	{
+		/*
+		 * A hinted path should always 'win' over an unhinted one, regardless of cost. Need
+		 * to check in case an estimated cost exceeds a disabled cost. Also may need this if forcing
+		 * parallelism.
+		 */
+		if (path1->ybHasHintedUid && !(path2->ybHasHintedUid))
+		{
+			return -1;
+		}
+
+		if (!(path1->ybHasHintedUid) && path2->ybHasHintedUid)
+		{
+			return 1;
+		}
+
+		if (path1->ybIsHinted && !(path2->ybIsHinted))
+		{
+			return -1;
+		}
+
+		if (!(path1->ybIsHinted) && path2->ybIsHinted)
+		{
+			return 1;
+		}
+	}
+
 	if (criterion == STARTUP_COST)
 	{
 		if (path1->startup_cost < path2->startup_cost)
@@ -173,6 +203,35 @@ compare_path_costs_fuzzily(Path *path1, Path *path2, double fuzz_factor)
 {
 #define CONSIDER_PATH_STARTUP_COST(p)  \
 	((p)->param_info == NULL ? (p)->parent->consider_startup : (p)->parent->consider_param_startup)
+
+	if (IsYugaByteEnabled() && path1->parent != NULL && path2->parent != NULL &&
+		path1->parent->reloptkind == path2->parent->reloptkind)
+	{
+		/*
+		 * A hinted path should always 'win' over an unhinted one, regardless of cost. Need
+		 * to check in case an estimated cost exceeds a disabled cost. Also may need this if forcing
+		 * parallelism.
+		 */
+		if (path1->ybHasHintedUid && !(path2->ybHasHintedUid))
+		{
+			return COSTS_BETTER1;
+		}
+
+		if (!(path1->ybHasHintedUid) && path2->ybHasHintedUid)
+		{
+			return COSTS_BETTER2;
+		}
+
+		if (path1->ybIsHinted && !(path2->ybIsHinted))
+		{
+			return COSTS_BETTER1;
+		}
+
+		if (!(path1->ybIsHinted) && path2->ybIsHinted)
+		{
+			return COSTS_BETTER2;
+		}
+	}
 
 	/*
 	 * Check total cost first since it's more likely to be different; many
@@ -470,11 +529,52 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 		PathKeysComparison keyscmp;
 		BMS_Comparison outercmp;
 
+		if (IsYugaByteEnabled() && yb_enable_planner_trace && parent_rel->ybRoot != NULL)
+		{
+			char msgBuf[30];
+			sprintf(msgBuf, "(UID %u) ", ybGetNextUid(parent_rel->ybRoot->glob));
+
+			ereport(DEBUG1,
+				(errmsg("\n%s add_path NODE %u add_path NODE %u\n", msgBuf, old_path->ybUniqueId,
+									new_path->ybUniqueId)));
+			ybTracePath(parent_rel->ybRoot, old_path, "old path");
+			ybTracePath(parent_rel->ybRoot, new_path, "new path");
+		}
+
 		/*
 		 * Do a fuzzy cost comparison with standard fuzziness limit.
 		 */
 		costcmp = compare_path_costs_fuzzily(new_path, old_path,
 											 STD_FUZZ_FACTOR);
+
+		if (IsYugaByteEnabled() && yb_enable_planner_trace && parent_rel->ybRoot != NULL)
+		{
+			char msgBuf[30];
+			sprintf(msgBuf, "(UID %u) ", ybGetNextUid(parent_rel->ybRoot->glob));
+
+			char *cmpValue;
+			switch (costcmp)
+			{
+				case COSTS_EQUAL:
+					cmpValue = "costs equal";
+					break;
+				case COSTS_BETTER1:
+					cmpValue = "new path cheaper";
+					break;
+				case COSTS_BETTER2:
+					cmpValue = "old path cheaper";
+					break;
+				case COSTS_DIFFERENT:
+					cmpValue = "costs different";
+					break;
+				default:
+					cmpValue = NULL;
+					Assert(false);
+					break;
+			}
+
+			ereport(DEBUG1,(errmsg("\n%s compare_path_costs_fuzzily : %s\n", msgBuf, cmpValue)));
+		}
 
 		/*
 		 * If the two paths compare differently for startup and total cost,
@@ -714,8 +814,28 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 		}
 		else
 		{
-			if (new_path->total_cost >= old_path->total_cost)
+			bool ybNewPathCostsMore = false;
+			if (!(new_path->ybHasHintedUid) && old_path->ybHasHintedUid)
+			{
+				ybNewPathCostsMore = true;
+			}
+			else if (!(new_path->ybIsHinted) && old_path->ybIsHinted)
+			{
+				ybNewPathCostsMore = true;
+			}
+			else if (new_path->total_cost >= old_path->total_cost)
+			{
+				ybNewPathCostsMore = true;
+			}
+
+			if (ybNewPathCostsMore)
+			{
+				/*
+				 * If new path cost exceeds old path cost, and they are both hinted or both unhinted joins,
+				 * insert at appropriate position in list.
+				 */
 				insert_at = foreach_current_index(p1) + 1;
+			}
 		}
 
 		/*
@@ -895,6 +1015,18 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 
 		/* Compare pathkeys. */
 		keyscmp = compare_pathkeys(new_path->pathkeys, old_path->pathkeys);
+
+		if (IsYugaByteEnabled() && yb_enable_planner_trace && parent_rel->ybRoot != NULL)
+		{
+			char msgBuf[30];
+			sprintf(msgBuf, "(UID %u) ", ybGetNextUid(parent_rel->ybRoot->glob));
+
+			ereport(DEBUG1,
+				(errmsg("\n%s add_partial_path NODE %u add_partial_path NODE %u\n", msgBuf, old_path->ybUniqueId,
+									new_path->ybUniqueId)));
+			ybTracePath(parent_rel->ybRoot, old_path, "old path");
+			ybTracePath(parent_rel->ybRoot, new_path, "new path");
+		}
 
 		/* Unless pathkeys are incompatible, keep just one of the two paths. */
 		if (keyscmp != PATHKEYS_DIFFERENT)
@@ -1110,7 +1242,6 @@ yb_propagate_mmagg_fields(YbPathInfo *parent_fields, List *mmaggregates)
 		return;
 }
 
-
 /*****************************************************************************
  *		PATH NODE CREATION ROUTINES
  *****************************************************************************/
@@ -1128,6 +1259,7 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->pathtype = T_SeqScan;
 	pathnode->parent = rel;
+	yb_assign_unique_path_node_id(root, pathnode);
 	pathnode->pathtarget = rel->reltarget;
 	pathnode->param_info = get_baserel_parampathinfo(root, rel,
 													 required_outer);
@@ -1175,6 +1307,7 @@ create_samplescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer
 
 	pathnode->pathtype = T_SampleScan;
 	pathnode->parent = rel;
+	yb_assign_unique_path_node_id(root, pathnode);
 	pathnode->pathtarget = rel->reltarget;
 	pathnode->param_info = get_baserel_parampathinfo(root, rel,
 													 required_outer);
@@ -1233,6 +1366,7 @@ create_index_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = indexonly ? T_IndexOnlyScan : T_IndexScan;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 	pathnode->path.param_info = get_baserel_parampathinfo(root, rel,
 														  required_outer);
@@ -1288,6 +1422,7 @@ create_bitmap_heap_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_BitmapHeapScan;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 	pathnode->path.param_info = get_baserel_parampathinfo(root, rel,
 														  required_outer);
@@ -1332,6 +1467,7 @@ create_yb_bitmap_table_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_YbBitmapTableScan;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 	pathnode->path.param_info = get_baserel_parampathinfo(root, rel,
 														  required_outer);
@@ -1366,12 +1502,13 @@ create_bitmap_and_path(PlannerInfo *root,
 					   RelOptInfo *rel,
 					   List *bitmapquals)
 {
-	BitmapAndPath *pathnode = makeNode(BitmapAndPath);
+	BitmapAndPath *pathnode = makeNode(BitmapAndPath);;
 	Relids		required_outer = NULL;
 	ListCell   *lc;
 
 	pathnode->path.pathtype = T_BitmapAnd;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 
 	/*
@@ -1430,6 +1567,7 @@ create_bitmap_or_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_BitmapOr;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 
 	/*
@@ -1485,6 +1623,7 @@ create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tidquals,
 
 	pathnode->path.pathtype = T_TidScan;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 	pathnode->path.param_info = get_baserel_parampathinfo(root, rel,
 														  required_outer);
@@ -1514,6 +1653,7 @@ create_tidrangescan_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->path.pathtype = T_TidRangeScan;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 	pathnode->path.param_info = get_baserel_parampathinfo(root, rel,
 														  required_outer);
@@ -1553,6 +1693,7 @@ create_append_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_Append;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 
 	/*
@@ -1726,6 +1867,7 @@ create_merge_append_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_MergeAppend;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 	pathnode->path.param_info = get_appendrel_parampathinfo(rel,
 															required_outer);
@@ -1821,6 +1963,7 @@ create_group_result_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->path.pathtype = T_Result;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target;
 	pathnode->path.param_info = NULL;	/* there are no other rels... */
 	pathnode->path.parallel_aware = false;
@@ -1907,6 +2050,7 @@ create_memoize_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 
 	pathnode->path.pathtype = T_Memoize;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 	pathnode->path.param_info = subpath->param_info;
 	pathnode->path.parallel_aware = false;
@@ -1993,6 +2137,7 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 
 	pathnode->path.pathtype = T_Unique;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 	pathnode->path.param_info = subpath->param_info;
 	pathnode->path.parallel_aware = false;
@@ -2190,9 +2335,15 @@ create_gather_merge_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 
 	pathnode->path.pathtype = T_GatherMerge;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.param_info = get_baserel_parampathinfo(root, rel,
 														  required_outer);
 	pathnode->path.parallel_aware = false;
+
+	if (IsYugaByteEnabled() && subpath->ybIsHinted)
+	{
+		pathnode->path.ybIsHinted = true;
+	}
 
 	pathnode->subpath = subpath;
 	pathnode->num_workers = subpath->parallel_workers;
@@ -2281,6 +2432,7 @@ create_gather_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 
 	pathnode->path.pathtype = T_Gather;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target;
 	pathnode->path.param_info = get_baserel_parampathinfo(root, rel,
 														  required_outer);
@@ -2288,6 +2440,11 @@ create_gather_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	pathnode->path.parallel_safe = false;
 	pathnode->path.parallel_workers = 0;
 	pathnode->path.pathkeys = NIL;	/* Gather has unordered result */
+
+	if (IsYugaByteEnabled() && subpath->ybIsHinted)
+	{
+		pathnode->path.ybIsHinted = true;
+	}
 
 	yb_propagate_fields(&pathnode->path.yb_path_info,
 						&subpath->yb_path_info);
@@ -2323,6 +2480,7 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 
 	pathnode->path.pathtype = T_SubqueryScan;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = rel->reltarget;
 	pathnode->path.param_info = get_baserel_parampathinfo(root, rel,
 														  required_outer);
@@ -2353,6 +2511,7 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->pathtype = T_FunctionScan;
 	pathnode->parent = rel;
+	yb_assign_unique_path_node_id(root, pathnode);
 	pathnode->pathtarget = rel->reltarget;
 	pathnode->param_info = get_baserel_parampathinfo(root, rel,
 													 required_outer);
@@ -2379,6 +2538,7 @@ create_tablefuncscan_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->pathtype = T_TableFuncScan;
 	pathnode->parent = rel;
+	yb_assign_unique_path_node_id(root, pathnode);
 	pathnode->pathtarget = rel->reltarget;
 	pathnode->param_info = get_baserel_parampathinfo(root, rel,
 													 required_outer);
@@ -2405,6 +2565,7 @@ create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->pathtype = T_ValuesScan;
 	pathnode->parent = rel;
+	yb_assign_unique_path_node_id(root, pathnode);
 	pathnode->pathtarget = rel->reltarget;
 	pathnode->param_info = get_baserel_parampathinfo(root, rel,
 													 required_outer);
@@ -2430,6 +2591,7 @@ create_ctescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer)
 
 	pathnode->pathtype = T_CteScan;
 	pathnode->parent = rel;
+	yb_assign_unique_path_node_id(root, pathnode);
 	pathnode->pathtarget = rel->reltarget;
 	pathnode->param_info = get_baserel_parampathinfo(root, rel,
 													 required_outer);
@@ -2456,6 +2618,7 @@ create_namedtuplestorescan_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->pathtype = T_NamedTuplestoreScan;
 	pathnode->parent = rel;
+	yb_assign_unique_path_node_id(root, pathnode);
 	pathnode->pathtarget = rel->reltarget;
 	pathnode->param_info = get_baserel_parampathinfo(root, rel,
 													 required_outer);
@@ -2482,6 +2645,7 @@ create_resultscan_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->pathtype = T_Result;
 	pathnode->parent = rel;
+	yb_assign_unique_path_node_id(root, pathnode);
 	pathnode->pathtarget = rel->reltarget;
 	pathnode->param_info = get_baserel_parampathinfo(root, rel,
 													 required_outer);
@@ -2508,6 +2672,7 @@ create_worktablescan_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->pathtype = T_WorkTableScan;
 	pathnode->parent = rel;
+	yb_assign_unique_path_node_id(root, pathnode);
 	pathnode->pathtarget = rel->reltarget;
 	pathnode->param_info = get_baserel_parampathinfo(root, rel,
 													 required_outer);
@@ -2549,6 +2714,7 @@ create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->path.pathtype = T_ForeignScan;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target ? target : rel->reltarget;
 	pathnode->path.param_info = get_baserel_parampathinfo(root, rel,
 														  required_outer);
@@ -2600,6 +2766,7 @@ create_foreign_join_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->path.pathtype = T_ForeignScan;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target ? target : rel->reltarget;
 	pathnode->path.param_info = NULL;	/* XXX see above */
 	pathnode->path.parallel_aware = false;
@@ -2645,6 +2812,7 @@ create_foreign_upper_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->path.pathtype = T_ForeignScan;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target ? target : rel->reltarget;
 	pathnode->path.param_info = NULL;
 	pathnode->path.parallel_aware = false;
@@ -2750,6 +2918,19 @@ create_nestloop_path(PlannerInfo *root,
 	NestPath   *pathnode = makeNode(NestPath);
 	Relids		inner_req_outer = PATH_REQ_OUTER(inner_path);
 
+	if (yb_enable_planner_trace)
+	{
+		StringInfoData buf;
+		initStringInfo(&buf);
+		char msgBuf[30];
+		sprintf(msgBuf, "(UID %u)", ybGetNextUid(root->glob));
+		appendStringInfo(&buf, "%s %s", msgBuf, "create_nestloop_path");
+		ereport(DEBUG1,(errmsg("\n%s", buf.data)));
+		ybTracePath(root, outer_path, "outer path");
+		ybTracePath(root, inner_path, "inner path");
+		pfree(buf.data);
+	}
+
 	/*
 	 * If the inner path is parameterized by the outer, we must drop any
 	 * restrict_clauses that are due to be moved into the inner path.  We have
@@ -2810,7 +2991,43 @@ create_nestloop_path(PlannerInfo *root,
 	pathnode->jpath.innerjoinpath = inner_path;
 	pathnode->jpath.joinrestrictinfo = restrict_clauses;
 
+	if (IsYugaByteEnabled())
+	{
+		yb_assign_unique_path_node_id(root, (Path *) pathnode);
+
+		pathnode->jpath.path.ybIsHinted
+			= ybFindHintedJoin(root, outer_path->parent->relids, inner_path->parent->relids,
+					false /* do not swap */ );
+
+		if (pathnode->jpath.path.ybIsHinted)
+		{
+			if (ybFindProhibitedJoin(root, T_NestLoop, joinrel->relids))
+			{
+				/*
+				 * This is a prohibited NestLoop join (e.g., hinted with 'Leading(((t1 t2) t3)) noNestLoop(t1 t2)' so mark the path
+				 * as not a hinted join path (so costing code does not prefer it).
+				 */
+				pathnode->jpath.path.ybIsHinted = false;
+			}
+			else if (yb_is_nestloop_batched(pathnode) && ybFindProhibitedJoin(root, T_YbBatchedNestLoop, joinrel->relids))
+			{
+				/*
+				 * Ditto for a prohibited YbBatchedNestLoop join.
+				 */
+				pathnode->jpath.path.ybIsHinted = false;
+			}
+		}
+	}
+
 	final_cost_nestloop(root, pathnode, workspace, extra);
+
+	if (yb_enable_planner_trace)
+	{
+		StringInfoData buf;
+		initStringInfo(&buf);
+		appendStringInfo(&buf, "allocated join path %u", pathnode->jpath.path.ybUniqueId);
+		ybTracePath(root, (Path *) pathnode, "allocated join path");
+	}
 
 	return pathnode;
 }
@@ -2853,6 +3070,41 @@ create_mergejoin_path(PlannerInfo *root,
 
 	pathnode->jpath.path.pathtype = T_MergeJoin;
 	pathnode->jpath.path.parent = joinrel;
+
+	if (IsYugaByteEnabled())
+	{
+		if (yb_enable_planner_trace)
+		{
+			StringInfoData buf;
+			initStringInfo(&buf);
+			char msgBuf[30];
+			sprintf(msgBuf, "(UID %u)", ybGetNextUid(root->glob));
+			appendStringInfo(&buf, "%s %s", msgBuf, "create_mergejoin_path");
+			ereport(DEBUG1,(errmsg("\n%s", buf.data)));
+			ybTracePath(root, outer_path, "outer path");
+			ybTracePath(root, inner_path, "inner path");
+			pfree(buf.data);
+		}
+
+		yb_assign_unique_path_node_id(root, (Path *) pathnode);
+
+		pathnode->jpath.path.ybIsHinted
+			= ybFindHintedJoin(root, outer_path->parent->relids, inner_path->parent->relids,
+					false /* do not swap */ );
+
+		if (pathnode->jpath.path.ybIsHinted)
+		{
+			if (ybFindProhibitedJoin(root, T_MergeJoin, joinrel->relids))
+			{
+				/*
+				 * This is a prohibited MergeJoin join so mark the path as not a hinted join path
+				 * (so costing code does not prefer it).
+				 */
+				pathnode->jpath.path.ybIsHinted = false;
+			}
+		}
+	}
+
 	pathnode->jpath.path.pathtarget = joinrel->reltarget;
 	pathnode->jpath.path.param_info =
 		get_joinrel_parampathinfo(root,
@@ -2883,6 +3135,14 @@ create_mergejoin_path(PlannerInfo *root,
 	/* pathnode->materialize_inner will be set by final_cost_mergejoin */
 
 	final_cost_mergejoin(root, pathnode, workspace, extra);
+
+	if (yb_enable_planner_trace)
+	{
+		StringInfoData buf;
+		initStringInfo(&buf);
+		appendStringInfo(&buf, "allocated join path %u", pathnode->jpath.path.ybUniqueId);
+		ybTracePath(root, (Path *) pathnode, "allocated join path");
+	}
 
 	return pathnode;
 }
@@ -2920,6 +3180,39 @@ create_hashjoin_path(PlannerInfo *root,
 
 	pathnode->jpath.path.pathtype = T_HashJoin;
 	pathnode->jpath.path.parent = joinrel;
+
+	if (IsYugaByteEnabled())
+	{
+		if (yb_enable_planner_trace)
+		{
+			StringInfoData buf;
+			initStringInfo(&buf);
+			char msgBuf[30];
+			sprintf(msgBuf, "(UID %u)", ybGetNextUid(root->glob));
+			appendStringInfo(&buf, "%s %s", msgBuf, "create_hashjoin_path");
+			ereport(DEBUG1,(errmsg("\n%s", buf.data)));
+			ybTracePath(root, outer_path, "outer path");
+			ybTracePath(root, inner_path, "inner path");
+			pfree(buf.data);
+		}
+
+		yb_assign_unique_path_node_id(root, (Path *) pathnode);
+
+		pathnode->jpath.path.ybIsHinted
+			= ybFindHintedJoin(root, outer_path->parent->relids, inner_path->parent->relids, false /* do not swap */ );
+		if (pathnode->jpath.path.ybIsHinted)
+		{
+			if (ybFindProhibitedJoin(root, T_HashJoin, joinrel->relids))
+			{
+				/*
+				 * This is a prohibited HashJoin join so mark the path as not a hinted join path
+				 * (so costing code does not prefer it).
+				 */
+				pathnode->jpath.path.ybIsHinted = false;
+			}
+		}
+	}
+
 	pathnode->jpath.path.pathtarget = joinrel->reltarget;
 	pathnode->jpath.path.param_info =
 		get_joinrel_parampathinfo(root,
@@ -2961,6 +3254,14 @@ create_hashjoin_path(PlannerInfo *root,
 
 	final_cost_hashjoin(root, pathnode, workspace, extra);
 
+	if (yb_enable_planner_trace)
+	{
+		StringInfoData buf;
+		initStringInfo(&buf);
+		appendStringInfo(&buf, "allocated join path %u", pathnode->jpath.path.ybUniqueId);
+		ybTracePath(root, (Path *) pathnode, "allocated join path");
+	}
+
 	return pathnode;
 }
 
@@ -2999,6 +3300,7 @@ create_projection_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_Result;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target;
 	/* For now, assume we are above any joins, so no parameterization */
 	pathnode->path.param_info = NULL;
@@ -3184,6 +3486,7 @@ create_set_projection_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_ProjectSet;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target;
 	/* For now, assume we are above any joins, so no parameterization */
 	pathnode->path.param_info = NULL;
@@ -3262,6 +3565,7 @@ create_incremental_sort_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_IncrementalSort;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) sort);
 	/* Sort doesn't project, so use source path's pathtarget */
 	pathnode->path.pathtarget = subpath->pathtarget;
 	/* For now, assume we are above any joins, so no parameterization */
@@ -3309,6 +3613,7 @@ create_sort_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_Sort;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	/* Sort doesn't project, so use source path's pathtarget */
 	pathnode->path.pathtarget = subpath->pathtarget;
 	/* For now, assume we are above any joins, so no parameterization */
@@ -3317,6 +3622,12 @@ create_sort_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = rel->consider_parallel &&
 		subpath->parallel_safe;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
+
+	if (IsYugaByteEnabled() && subpath->ybIsHinted)
+	{
+		pathnode->path.ybIsHinted = true;
+	}
+
 	pathnode->path.pathkeys = pathkeys;
 
 	yb_propagate_fields(&pathnode->path.yb_path_info,
@@ -3358,6 +3669,7 @@ create_group_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_Group;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target;
 	/* For now, assume we are above any joins, so no parameterization */
 	pathnode->path.param_info = NULL;
@@ -3365,6 +3677,12 @@ create_group_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = rel->consider_parallel &&
 		subpath->parallel_safe;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
+
+	if (IsYugaByteEnabled() && subpath->ybIsHinted)
+	{
+		pathnode->path.ybIsHinted = true;
+	}
+
 	/* Group doesn't change sort ordering */
 	pathnode->path.pathkeys = subpath->pathkeys;
 
@@ -3417,6 +3735,7 @@ create_upper_unique_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_Unique;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	/* Unique doesn't project, so use source path's pathtarget */
 	pathnode->path.pathtarget = subpath->pathtarget;
 	/* For now, assume we are above any joins, so no parameterization */
@@ -3477,6 +3796,7 @@ create_agg_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_Agg;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target;
 	/* For now, assume we are above any joins, so no parameterization */
 	pathnode->path.param_info = NULL;
@@ -3484,6 +3804,12 @@ create_agg_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = rel->consider_parallel &&
 		subpath->parallel_safe;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
+
+	if (IsYugaByteEnabled() && subpath->ybIsHinted)
+	{
+		pathnode->path.ybIsHinted = true;
+	}
+
 	if (aggstrategy == AGG_SORTED)
 		pathnode->path.pathkeys = subpath->pathkeys;	/* preserves order */
 	else
@@ -3549,6 +3875,7 @@ create_groupingsets_path(PlannerInfo *root,
 	/* The topmost generated Plan node will be an Agg */
 	pathnode->path.pathtype = T_Agg;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target;
 	pathnode->path.param_info = subpath->param_info;
 	pathnode->path.parallel_aware = false;
@@ -3710,6 +4037,7 @@ create_minmaxagg_path(PlannerInfo *root,
 	/* The topmost generated Plan node will be a Result */
 	pathnode->path.pathtype = T_Result;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target;
 	/* For now, assume we are above any joins, so no parameterization */
 	pathnode->path.param_info = NULL;
@@ -3790,6 +4118,7 @@ create_windowagg_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_WindowAgg;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target;
 	/* For now, assume we are above any joins, so no parameterization */
 	pathnode->path.param_info = NULL;
@@ -3861,6 +4190,7 @@ create_setop_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_SetOp;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	/* SetOp doesn't project, so use source path's pathtarget */
 	pathnode->path.pathtarget = subpath->pathtarget;
 	/* For now, assume we are above any joins, so no parameterization */
@@ -3924,6 +4254,7 @@ create_recursiveunion_path(PlannerInfo *root,
 
 	pathnode->path.pathtype = T_RecursiveUnion;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	pathnode->path.pathtarget = target;
 	/* For now, assume we are above any joins, so no parameterization */
 	pathnode->path.param_info = NULL;
@@ -3969,6 +4300,7 @@ create_lockrows_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->path.pathtype = T_LockRows;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	/* LockRows doesn't project, so use source path's pathtarget */
 	pathnode->path.pathtarget = subpath->pathtarget;
 	/* For now, assume we are above any joins, so no parameterization */
@@ -4051,6 +4383,7 @@ create_modifytable_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->path.pathtype = T_ModifyTable;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	/* pathtarget is not interesting, just make it minimally valid */
 	pathnode->path.pathtarget = rel->reltarget;
 	/* For now, assume we are above any joins, so no parameterization */
@@ -4138,6 +4471,7 @@ create_limit_path(PlannerInfo *root, RelOptInfo *rel,
 
 	pathnode->path.pathtype = T_Limit;
 	pathnode->path.parent = rel;
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 	/* Limit doesn't project, so use source path's pathtarget */
 	pathnode->path.pathtarget = subpath->pathtarget;
 	/* For now, assume we are above any joins, so no parameterization */
@@ -4156,6 +4490,11 @@ create_limit_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->limitOffset = limitOffset;
 	pathnode->limitCount = limitCount;
 	pathnode->limitOption = limitOption;
+
+	if (subpath->ybIsHinted)
+	{
+		pathnode->path.ybIsHinted = true;
+	}
 
 	/*
 	 * Adjust the output rows count and costs according to the offset/limit.
@@ -4282,6 +4621,7 @@ reparameterize_path(PlannerInfo *root, Path *path,
 				 * the cost estimate.
 				 */
 				memcpy(newpath, ipath, sizeof(IndexPath));
+				yb_assign_unique_path_node_id(root, (Path *) newpath);
 				newpath->path.param_info =
 					get_baserel_parampathinfo(root, rel, required_outer);
 				cost_index(newpath, root, loop_count, false);
@@ -4681,6 +5021,7 @@ do { \
 		ADJUST_CHILD_ATTRS(new_path->pathtarget->exprs);
 	}
 
+	yb_assign_unique_path_node_id(root, new_path);
 	return new_path;
 }
 
@@ -4873,6 +5214,7 @@ yb_create_distinct_index_path(PlannerInfo *root,
 	 * reparameterize_path function.
 	 */
 	memcpy(pathnode, basepath, sizeof(IndexPath));
+	yb_assign_unique_path_node_id(root, (Path *) pathnode);
 
 	/*
 	 * Adjust prefix length appropriately.
@@ -5000,4 +5342,27 @@ yb_create_distinct_index_path(PlannerInfo *root,
 	}
 
 	return (Path *) pathnode;
+}
+
+/*
+ * Assign a unique id to the Path.
+ */
+void
+yb_assign_unique_path_node_id(PlannerInfo *root, Path *path)
+{
+	/*
+	 * Need to check if root is NULL. One would think this is never the case.
+	 * An example of when it is NULL is when an Append path is created from
+	 * set_dummy_rel_pathlist((). mark_dummy_rel() also creates an Append path
+	 * without a PlannerInfo instance.
+	 */
+	if (root != NULL)
+	{
+		path->ybUniqueId = ybGetNextNodeUid(root->glob);
+
+		if (root->glob->ybHintedUids != NIL && ybIsHintedUid(root->glob, path->ybUniqueId))
+		{
+			path->ybHasHintedUid = true;
+		}
+	}
 }

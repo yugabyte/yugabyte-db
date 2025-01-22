@@ -174,12 +174,96 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 			if (!bms_equal(rel->relids, root->all_baserels))
 				generate_useful_gather_paths(root, rel, false);
 
+			if (IsYugaByteEnabled() && yb_enable_planner_trace)
+			{
+				ybTraceRelOptInfo(root, rel, "standard_join_search :");
+				ybTracePathList(root, rel->pathlist, "all paths");
+			}
+
 			/* Find and save the cheapest paths for this rel */
 			set_cheapest(rel);
+
+			if (IsYugaByteEnabled() && yb_enable_planner_trace)
+			{
+				ybTraceCheapestPaths(rel, "standard_join_search");
+			}
 
 #ifdef OPTIMIZER_DEBUG
 			debug_print_rel(root, rel);
 #endif
+		}
+
+		if (IsYugaByteEnabled())
+		{
+			/*
+			 * Sweep all joins at this level and look for disabled join
+			 * and non-disabled joins.
+			 */
+			List *levelJoinRels = NIL;
+			bool foundDisabledRel = false;
+			ListCell *lc2;
+			foreach(lc2, root->join_rel_level[lev])
+			{
+				RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
+				if (rel->cheapest_total_path->total_cost < disable_cost ||
+					rel->cheapest_total_path->ybIsHinted ||
+					rel->cheapest_total_path->ybHasHintedUid)
+				{
+					/*
+					 * Found a join with cost < disable cost. Or cost could be
+					 * >= disable cost (because the join is really expensive)
+					 * but it is in a Leading hint.
+					 */
+					levelJoinRels = lappend(levelJoinRels, rel);
+				}
+				else
+				{
+					/*
+					 * Found a path that has been disabled via hints.
+					 */
+					foundDisabledRel = true;
+				}
+			}
+
+			/*
+			 * Now look for a mix of enabled and disabled join paths at this level.
+			 */
+			if (levelJoinRels != NIL && foundDisabledRel)
+			{
+				if (yb_enable_planner_trace)
+				{
+					StringInfoData dropMsg;
+					initStringInfo(&dropMsg);
+					appendStringInfo(&dropMsg, "\n++ Level %d DROP rel", lev);
+
+					StringInfoData keepMsg;
+					initStringInfo(&keepMsg);
+					appendStringInfo(&keepMsg, "\n++ Level %d KEEP rel", lev);
+
+					foreach(lc2, root->join_rel_level[lev])
+					{
+						RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
+						if (!list_member_ptr(levelJoinRels, rel))
+						{
+							ybTraceRelOptInfo(root, rel, dropMsg.data);
+						}
+					}
+
+					foreach(lc2, levelJoinRels)
+					{
+						RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
+						ybTraceRelOptInfo(root, rel, keepMsg.data);
+					}
+
+					pfree(dropMsg.data);
+					pfree(keepMsg.data);
+				}
+
+				/*
+				 * Keep only the non-disabled joins since the disabled ones cannot be part of the best plan.
+				 */
+				root->join_rel_level[lev] = levelJoinRels;
+			}
 		}
 	}
 
@@ -193,6 +277,15 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 	rel = (RelOptInfo *) linitial(root->join_rel_level[levels_needed]);
 
 	root->join_rel_level = NULL;
+
+	if (IsYugaByteEnabled()&& yb_enable_planner_trace)
+	{
+		StringInfoData buf;
+		initStringInfo(&buf);
+		appendStringInfo(&buf, "final rel Level %d :", levels_needed);
+		ybTraceRelOptInfo(root, rel, buf.data);
+		pfree(buf.data);
+	}
 
 	return rel;
 }
@@ -352,9 +445,21 @@ join_search_one_level(PlannerInfo *root, int level)
 			 * We can ignore relations without join clauses here, unless they
 			 * participate in join-order restrictions --- then we might have
 			 * to force a bushy join plan.
+			 *
+			 * YB : Also want any join that is in Leading Hint. If you hint
+			 * a bushy join that needs a cross join then the ybFindHintedJoin()
+			 * check is required here. E.g.
+			 *
+			 * leading(((t1 t2) (t3 t4)))
+			 * select * from t1, t2, t3, t4  where a1=a2 and a3=a4;
+			 *
+			 * The standard PG join search will not try (t1 t2) join (t3 t4)
+			 * but we need to since it is hinted.
 			 */
 			if (old_rel->joininfo == NIL && !old_rel->has_eclass_joins &&
-				!has_join_restriction(root, old_rel))
+				!has_join_restriction(root, old_rel) &&
+				!ybFindHintedJoin(root, old_rel->relids, NULL,
+						true /* try swapped */ ))
 				continue;
 
 			if (k == other_level)
@@ -379,9 +484,13 @@ join_search_one_level(PlannerInfo *root, int level)
 					 * OK, we can build a rel of the right level from this
 					 * pair of rels.  Do so if there is at least one relevant
 					 * join clause or join order restriction.
+					 *
+					 * YB : Also want any join that is in Leading Hint.
 					 */
 					if (have_relevant_joinclause(root, old_rel, new_rel) ||
-						have_join_order_restriction(root, old_rel, new_rel))
+						have_join_order_restriction(root, old_rel, new_rel)  ||
+						ybFindHintedJoin(root, old_rel->relids, new_rel->relids,
+								true /* try swapped */ ))
 					{
 						(void) make_join_rel(root, old_rel, new_rel);
 					}
@@ -485,7 +594,9 @@ make_rels_by_clause_joins(PlannerInfo *root,
 
 		if (!bms_overlap(old_rel->relids, other_rel->relids) &&
 			(have_relevant_joinclause(root, old_rel, other_rel) ||
-			 have_join_order_restriction(root, old_rel, other_rel)))
+			have_join_order_restriction(root, old_rel, other_rel) ||
+			ybFindHintedJoin(root, old_rel->relids, other_rel->relids,
+					true /* try swapped */ )))
 		{
 			(void) make_join_rel(root, old_rel, other_rel);
 		}

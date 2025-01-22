@@ -235,6 +235,15 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 		/* Build a RelOptInfo for this leaf subquery. */
 		rel = build_simple_rel(root, rtr->rtindex, NULL);
 
+		if (IsYugaByteEnabled())
+		{
+			/*
+			 * These blocks cannot be hinted so set the hint aliases to NULL.
+			 */
+			rel->ybHintAlias = NULL;
+			rte->ybHintAlias = NULL;
+		}
+
 		/* plan_params should not be in use in current query level */
 		Assert(root->plan_params == NIL);
 
@@ -1100,6 +1109,16 @@ choose_hashed_setop(PlannerInfo *root, List *groupClauses,
 	tuple_fraction = root->tuple_fraction;
 	if (tuple_fraction >= 1.0)
 		tuple_fraction /= dNumOutputRows;
+
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * Set the parent RelOptInfos to NULL so we do not try to use them
+		 * in the cost comparison.
+		 */
+		hashed_p.parent = NULL;
+		sorted_p.parent = NULL;
+	}
 
 	if (compare_fractional_path_costs(&hashed_p, &sorted_p,
 									  tuple_fraction) < 0)

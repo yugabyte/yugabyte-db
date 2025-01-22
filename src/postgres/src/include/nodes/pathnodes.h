@@ -130,6 +130,25 @@ typedef struct PlannerGlobal
 	char		maxParallelHazard;	/* worst PROPARALLEL hazard level */
 
 	PartitionDirectory partition_directory; /* partition descriptors */
+
+	/* count of base rels across all blocks */
+	int			ybBaseRelCnt;
+
+	/* hint aliases - alias can be found using rel->ybUniqueBaseId as index */
+	List	   *ybPlanHintsAliasMapping;
+
+	/* count of number of blocks */
+	int			ybBlockCnt;
+
+	/*
+	 * list of unique ids, e.g. used to uniquely indentify Path/Plan nodes, or
+	 * messages written when yb_enable_planner_trace is enabled
+	 */
+	uint32		ybNextUid;
+
+	uint32		ybNextNodeUid;
+
+	List	   *ybHintedUids;
 } PlannerGlobal;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -402,6 +421,24 @@ struct PlannerInfo
 	 * constraint exclusion and partition pruning.
 	 */
 	int			yb_num_referenced_relations;
+
+	/* id of block this instance represents */
+	int			ybBlockId;
+
+	/* outer relids for each hinted join. i.e. joins in Leading hint */
+	List	   *ybHintedJoinsOuter;
+
+	/* parallel relid list of inner relids for each hinted join */
+	List	   *ybHintedJoinsInner;
+
+	/*
+	 * If a join appears in a leading hint but has a 'negated' join method
+	 * hint then the type of the join is stored in this list.
+	 */
+	List	   *ybProhibitedJoinTypes;
+
+	/* parallel list of relids of 'prohibited joins */
+	List	   *ybProhibitedJoins;
 };
 
 
@@ -800,7 +837,25 @@ typedef struct RelOptInfo
 	List	  **nullable_partexprs; /* Nullable partition key expressions */
 
 	/* used for YB relations */
-	bool		is_yb_relation; /* Is a YbRelation */
+	bool		is_yb_relation;	/* Is a YbRelation */
+
+	/* unique identifer (across all blocks) for a base rel - starting at '1' */
+	uint32		ybUniqueBaseId;
+
+	/* alias to use for hinting - unique across all blocks/entire query */
+	char	   *ybHintAlias;
+
+	/* id of the block this rel is in */
+	uint32		ybBlockId;
+
+	/* list to store initially populated 'indexlist' member above.
+	 * The hint code can prune 'indexlist' but the optimizer uses
+	 * indexes to prove uniqueness.
+	 */
+	List	   *ybHintsOrigIndexlist;
+
+	PlannerInfo
+			   *ybRoot;
 } RelOptInfo;
 
 /*
@@ -1283,6 +1338,9 @@ typedef struct Path
 
 	YbPlanInfo	yb_plan_info;
 	YbPathInfo	yb_path_info;	/* fields used for YugabyteDB */
+	uint32		ybUniqueId;		/* unique id of Path */
+	bool		ybIsHinted;	/* does this represent a hint path? */
+	bool		ybHasHintedUid;	/* force this path using UID? */
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */

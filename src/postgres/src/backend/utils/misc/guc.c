@@ -3121,6 +3121,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_planner_trace", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables planner tracing."),
+			NULL
+		},
+		&yb_enable_planner_trace,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_query_diagnostics", PGC_POSTMASTER, STATS_MONITORING,
 			gettext_noop("Enables the collection of query diagnostics data "
 						 "for YSQL queries, facilitating the creation of diagnostic bundles."),
@@ -6439,6 +6449,17 @@ static struct config_string ConfigureNamesString[] =
 		&yb_default_replica_identity,
 		"CHANGE",
 		check_default_replica_identity, NULL, NULL
+	},
+
+	{
+		{"yb_hinted_uids", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Node UIDS to prefer in cost comparisons."),
+			NULL,
+			GUC_LIST_INPUT
+		},
+		&yb_hinted_uids,
+		"",
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */
