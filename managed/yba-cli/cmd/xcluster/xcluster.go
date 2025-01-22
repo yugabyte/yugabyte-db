@@ -6,6 +6,7 @@ package xcluster
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
 // XClusterCmd set of commands are used to perform operations on xClusters
@@ -29,9 +30,9 @@ func init() {
 	XClusterCmd.AddCommand(pauseXClusterCmd)
 	XClusterCmd.AddCommand(resumeXClusterCmd)
 
-	// util.PreviewCommand(XClusterCmd, []*cobra.Command{
-	// 	createXClusterCmd,
-	// 	// updateXClusterCmd,
-	// 	bootstrapTablesXClusterCmd,
-	// })
+	util.PreviewCommand(XClusterCmd, []*cobra.Command{
+		createXClusterCmd,
+		updateXClusterCmd,
+		fullCopyXClusterCmd,
+	})
 }

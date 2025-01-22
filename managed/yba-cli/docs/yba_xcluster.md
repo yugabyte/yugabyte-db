@@ -33,11 +33,14 @@ yba xcluster [flags]
 ### SEE ALSO
 
 * [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
+* [yba xcluster create](yba_xcluster_create.md)	 - Create an asynchronous replication config in YugabyteDB Anywhere
 * [yba xcluster delete](yba_xcluster_delete.md)	 - Delete a YugabyteDB Anywhere xCluster
 * [yba xcluster describe](yba_xcluster_describe.md)	 - Describe a YugabyteDB Anywhere xcluster between two universes
 * [yba xcluster list](yba_xcluster_list.md)	 - List a YugabyteDB Anywhere xcluster between two universes
+* [yba xcluster needs-full-copy-tables](yba_xcluster_needs-full-copy-tables.md)	 - Check whether source universe tables need full copy before setting up xCluster replication
 * [yba xcluster pause](yba_xcluster_pause.md)	 - Pause a YugabyteDB Anywhere xCluster
-* [yba xcluster restart](yba_xcluster_restart.md)	 - Restart replication for databases in the YugabyteDB Anywhere sxCluster configuration
+* [yba xcluster restart](yba_xcluster_restart.md)	 - Restart replication for databases in the YugabyteDB Anywhere xCluster configuration
 * [yba xcluster resume](yba_xcluster_resume.md)	 - Resume a YugabyteDB Anywhere xCluster
 * [yba xcluster sync](yba_xcluster_sync.md)	 - Reconcile a YugabyteDB Anywhere xcluster configuration with database
+* [yba xcluster update](yba_xcluster_update.md)	 - Update an asynchronous replication config in YugabyteDB Anywhere
 
