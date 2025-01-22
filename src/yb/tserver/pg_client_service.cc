@@ -20,7 +20,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include <boost/atomic.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index_container.hpp>
@@ -427,7 +426,6 @@ class PgClientServiceImpl::Impl {
         }),
         advisory_locks_table_(client_future_),
         session_context_{
-            .client = nullptr,
             .xcluster_context = xcluster_context,
             .advisory_locks_table = advisory_locks_table_,
             .pg_node_level_mutation_counter = pg_node_level_mutation_counter,
@@ -482,7 +480,7 @@ class PgClientServiceImpl::Impl {
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_,
-        SessionContext(), session_id, messenger_.scheduler());
+        client(), session_context_, session_id, messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);
@@ -2045,16 +2043,6 @@ class PgClientServiceImpl::Impl {
         ScheduleCheckObjectIdAllocators();
       },
       std::chrono::seconds(FLAGS_check_pg_object_id_allocators_interval_secs));
-  }
-
-  const PgClientSessionContext& SessionContext() {
-    auto* client_ptr = &client();
-    client::YBClient* expected = nullptr;
-    [[maybe_unused]] const auto exchanged =
-        boost::atomic_ref{session_context_.client}.compare_exchange_strong(
-            expected, client_ptr);
-    DCHECK(exchanged || expected == client_ptr);
-    return session_context_;
   }
 
   const TabletServerIf& tablet_server_;

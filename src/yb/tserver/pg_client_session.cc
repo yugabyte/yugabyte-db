@@ -896,9 +896,10 @@ void PgClientSession::ReadPointHistory::Clear() {
 
 PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
-    std::reference_wrapper<const PgClientSessionContext> context, uint64_t id,
-    rpc::Scheduler& scheduler)
-    : context_(context),
+    client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
+    uint64_t id, rpc::Scheduler& scheduler)
+    : client_(client),
+      context_(context),
       shared_this_(std::shared_ptr<PgClientSession>(std::move(shared_this_source), this)),
       id_(id),
       transaction_builder_(std::move(transaction_builder)),
@@ -920,7 +921,7 @@ Status PgClientSession::CreateTable(
 
   const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
       req.use_transaction(), context->GetClientDeadline()));
-  RETURN_NOT_OK(helper.Exec(&client(), metadata, context->GetClientDeadline()));
+  RETURN_NOT_OK(helper.Exec(&client_, metadata, context->GetClientDeadline()));
   VLOG_WITH_PREFIX(1) << __func__ << ": " << req.table_name();
   const auto& indexed_table_id = helper.indexed_table_id();
   if (indexed_table_id.IsValid()) {
@@ -945,7 +946,7 @@ Status PgClientSession::CreateDatabase(
       .tgt_owner = req.target_owner().c_str(),
     };
   }
-  return client().CreateNamespace(
+  return client_.CreateNamespace(
       req.database_name(), YQL_DATABASE_PGSQL, "" /* creator_role_name */,
       GetPgsqlNamespaceId(req.database_oid()),
       req.source_database_oid() != kPgInvalidOid ? GetPgsqlNamespaceId(req.source_database_oid())
@@ -957,7 +958,7 @@ Status PgClientSession::CreateDatabase(
 
 Status PgClientSession::DropDatabase(
     const PgDropDatabaseRequestPB& req, PgDropDatabaseResponsePB* resp, rpc::RpcContext* context) {
-  return client().DeleteNamespace(
+  return client_.DeleteNamespace(
       req.database_name(),
       YQL_DATABASE_PGSQL,
       GetPgsqlNamespaceId(req.database_oid()),
@@ -974,7 +975,7 @@ Status PgClientSession::DropTable(
   // transaction has been determined to be a success.
   if (req.index()) {
     client::YBTableName indexed_table;
-    RETURN_NOT_OK(client().DeleteIndexTable(
+    RETURN_NOT_OK(client_.DeleteIndexTable(
         yb_table_id, &indexed_table, !YsqlDdlRollbackEnabled() /* wait */,
         metadata, context->GetClientDeadline()));
     indexed_table.SetIntoTableIdentifierPB(resp->mutable_indexed_table());
@@ -983,7 +984,7 @@ Status PgClientSession::DropTable(
     return Status::OK();
   }
 
-  RETURN_NOT_OK(client().DeleteTable(yb_table_id, !YsqlDdlRollbackEnabled(), metadata,
+  RETURN_NOT_OK(client_.DeleteTable(yb_table_id, !YsqlDdlRollbackEnabled(), metadata,
         context->GetClientDeadline()));
   table_cache().Invalidate(yb_table_id);
   return Status::OK();
@@ -992,7 +993,7 @@ Status PgClientSession::DropTable(
 Status PgClientSession::AlterDatabase(
     const PgAlterDatabaseRequestPB& req, PgAlterDatabaseResponsePB* resp,
     rpc::RpcContext* context) {
-  const auto alterer = client().NewNamespaceAlterer(
+  const auto alterer = client_.NewNamespaceAlterer(
       req.database_name(), GetPgsqlNamespaceId(req.database_oid()));
   alterer->SetDatabaseType(YQL_DATABASE_PGSQL);
   alterer->RenameTo(req.new_name());
@@ -1002,7 +1003,7 @@ Status PgClientSession::AlterDatabase(
 Status PgClientSession::AlterTable(
     const PgAlterTableRequestPB& req, PgAlterTableResponsePB* resp, rpc::RpcContext* context) {
   const auto table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
-  const auto alterer = client().NewTableAlterer(table_id);
+  const auto alterer = client_.NewTableAlterer(table_id);
   const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(
       req.use_transaction(), context->GetClientDeadline()));
   if (txn) {
@@ -1060,7 +1061,7 @@ Status PgClientSession::AlterTable(
 Status PgClientSession::TruncateTable(
     const PgTruncateTableRequestPB& req, PgTruncateTableResponsePB* resp,
     rpc::RpcContext* context) {
-  return client().TruncateTable(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+  return client_.TruncateTable(PgObjectId::GetYbTableIdFromPB(req.table_id()));
 }
 
 Status PgClientSession::CreateReplicationSlot(
@@ -1105,7 +1106,7 @@ Status PgClientSession::CreateReplicationSlot(
   }
 
   uint64_t consistent_snapshot_time;
-  auto stream_result = VERIFY_RESULT(client().CreateCDCSDKStreamForNamespace(
+  auto stream_result = VERIFY_RESULT(client_.CreateCDCSDKStreamForNamespace(
       GetPgsqlNamespaceId(req.database_oid()), options,
       /* populate_namespace_id_as_table_id */ false,
       ReplicationSlotName(req.replication_slot_name()),
@@ -1122,7 +1123,7 @@ Status PgClientSession::CreateReplicationSlot(
 Status PgClientSession::DropReplicationSlot(
     const PgDropReplicationSlotRequestPB& req, PgDropReplicationSlotResponsePB* resp,
     rpc::RpcContext* context) {
-  return client().DeleteCDCStream(ReplicationSlotName(req.replication_slot_name()));
+  return client_.DeleteCDCStream(ReplicationSlotName(req.replication_slot_name()));
 }
 
 Status PgClientSession::WaitForBackendsCatalogVersion(
@@ -1130,7 +1131,7 @@ Status PgClientSession::WaitForBackendsCatalogVersion(
     PgWaitForBackendsCatalogVersionResponsePB* resp,
     rpc::RpcContext* context) {
   // TODO(jason): send deadline to client.
-  const int num_lagging_backends = VERIFY_RESULT(client().WaitForYsqlBackendsCatalogVersion(
+  const int num_lagging_backends = VERIFY_RESULT(client_.WaitForYsqlBackendsCatalogVersion(
       req.database_oid(), req.catalog_version(), context->GetClientDeadline(),
       req.requestor_pg_backend_pid()));
   resp->set_num_lagging_backends(num_lagging_backends);
@@ -1140,7 +1141,7 @@ Status PgClientSession::WaitForBackendsCatalogVersion(
 Status PgClientSession::BackfillIndex(
     const PgBackfillIndexRequestPB& req, PgBackfillIndexResponsePB* resp,
     rpc::RpcContext* context) {
-  return client().BackfillIndex(
+  return client_.BackfillIndex(
       PgObjectId::GetYbTableIdFromPB(req.table_id()), /* wait= */ true,
       context->GetClientDeadline());
 }
@@ -1152,7 +1153,7 @@ Status PgClientSession::CreateTablegroup(
   auto tablespace_id = PgObjectId::FromPB(req.tablespace_id());
   const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
       true /* use_transaction */, context->GetClientDeadline()));
-  auto s = client().CreateTablegroup(
+  auto s = client_.CreateTablegroup(
       req.database_name(),
       GetPgsqlNamespaceId(id.database_oid),
       id.GetYbTablegroupId(),
@@ -1178,7 +1179,7 @@ Status PgClientSession::DropTablegroup(
   const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
       true /* use_transaction */, context->GetClientDeadline()));
   const auto status =
-      client().DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid), metadata);
+      client_.DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid), metadata);
   if (status.IsNotFound()) {
     return Status::OK();
   }
@@ -1389,7 +1390,7 @@ Status PgClientSession::DdlAtomicityFinishTransaction(
       // If we failed to report the status of this DDL transaction, we can just log and ignore it,
       // as the poller in the YB-Master will figure out the status of this transaction using the
       // transaction status tablet and PG catalog.
-      ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, *commit),
+      ERROR_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
                    Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", *commit));
     }
 
@@ -1404,7 +1405,7 @@ Status PgClientSession::DdlAtomicityFinishTransaction(
       // (commit.has_value() is false), the purpose is to use the side effect of
       // WaitForDdlVerificationToFinish to trigger the start of a background task to
       // complete the DDL transaction at the DocDB side.
-      ERROR_NOT_OK(client().WaitForDdlVerificationToFinish(*metadata),
+      ERROR_NOT_OK(client_.WaitForDdlVerificationToFinish(*metadata),
                   "WaitForDdlVerificationToFinish call failed");
     }
   }
@@ -1911,7 +1912,7 @@ Status PgClientSession::InsertSequenceTuple(
   PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   auto result = table_cache().Get(table_oid.GetYbTableId());
   if (!result.ok()) {
-    RETURN_NOT_OK(CreateSequencesDataTable(&client(), context->GetClientDeadline()));
+    RETURN_NOT_OK(CreateSequencesDataTable(&client_, context->GetClientDeadline()));
     // Try one more time.
     result = table_cache().Get(table_oid.GetYbTableId());
   }
@@ -2328,7 +2329,7 @@ client::YBSessionPtr& PgClientSession::EnsureSession(
     PgClientSessionKind kind, CoarseTimePoint deadline, std::optional<uint64_t> read_time) {
   auto& session = Session(kind);
   if (!session) {
-    session = CreateSession(&client(), deadline, clock());
+    session = CreateSession(&client_, deadline, clock());
   } else {
     session->SetDeadline(deadline);
   }

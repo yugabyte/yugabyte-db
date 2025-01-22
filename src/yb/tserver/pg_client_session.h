@@ -118,7 +118,6 @@ YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence)(kPgSessi
 YB_STRONGLY_TYPED_BOOL(IsDDL);
 
 struct PgClientSessionContext {
-  client::YBClient* client;
   const TserverXClusterContextIf* xcluster_context;
   YsqlAdvisoryLocksTable& advisory_locks_table;
   PgMutationCounter* pg_node_level_mutation_counter;
@@ -171,8 +170,8 @@ class PgClientSession final {
 
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
-      std::reference_wrapper<const PgClientSessionContext> context, uint64_t id,
-      rpc::Scheduler& scheduler);
+      client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
+      uint64_t id, rpc::Scheduler& scheduler);
 
   uint64_t id() const { return id_; }
 
@@ -317,7 +316,6 @@ class PgClientSession final {
 
   void ScheduleBigSharedMemExpirationCheck(std::chrono::steady_clock::duration delay);
 
-  auto& client() { return *context_.client; }
   const auto* xcluster_context() const { return context_.xcluster_context; }
   auto& advisory_locks_table() { return context_.advisory_locks_table; }
   auto* pg_node_level_mutation_counter() { return context_.pg_node_level_mutation_counter; }
@@ -348,6 +346,7 @@ class PgClientSession final {
     std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
   };
 
+  client::YBClient& client_;
   const PgClientSessionContext& context_;
   const std::weak_ptr<PgClientSession> shared_this_;
   const uint64_t id_;
