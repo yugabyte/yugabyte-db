@@ -69,12 +69,12 @@ export const formatDatetime = (
 type FormatDateProps = {
   date: Date | string | number;
   timeFormat: YBTimeFormats;
+  timezone?: string;
 };
 
-export const YBFormatDate: FC<FormatDateProps> = ({ date, timeFormat }) => {
-  const currentUserTimezone = useSelector(
-    (state: any) => state.customer?.currentUser?.data?.timezone
-  );
+export const YBFormatDate: FC<FormatDateProps> = ({ date, timeFormat, timezone }) => {
+  const userTimezone = useSelector((state: any) => state.customer?.currentUser?.data?.timezone);
+  const currentUserTimezone = timezone ?? userTimezone;
   return <>{formatDatetime(date, timeFormat, currentUserTimezone)}</>;
 };
 
@@ -97,4 +97,15 @@ const getMomentObject = (date: moment.MomentInput) => {
   return !isInteger(date) && moment(date, YB_INPUT_TIMESTAMP_FORMAT).isValid()
     ? moment(date, YB_INPUT_TIMESTAMP_FORMAT)
     : moment(date);
+};
+
+export const getBrowserTimezoneOffset = (): string => {
+  const offset = new Date().getTimezoneOffset();
+  const sign = offset <= 0 ? '+' : '-';
+  const absOffset = Math.abs(offset);
+  const hours = Math.floor(absOffset / 60)
+    .toString()
+    .padStart(2, '0');
+  const minutes = (absOffset % 60).toString().padStart(2, '0');
+  return `UTC${sign}${hours}${minutes}`;
 };

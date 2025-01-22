@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import React, { Component } from 'react';
 import { jsPDF } from 'jspdf';
 import { Canvg, presets } from 'canvg';
 import { Box, Typography } from '@material-ui/core';
@@ -28,7 +28,7 @@ import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import CustomerMetricsPanel from '../CustomerMetricsPanel/CustomerMetricsPanel';
 import { YBModal, YBProgress } from '../../../redesign/components';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { isValidObject, isNonEmptyObject, isEmptyString } from '../../../utils/ObjectUtils';
 import { isDedicatedNodePlacement, isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { MetricsComparisonModal } from '../MetricsComparisonModal/MetricsComparisonModal';
 import { NodeSelector } from '../MetricsComparisonModal/NodeSelector';
@@ -37,8 +37,9 @@ import { NodeTypeSelector } from '../NodeTypeSelector/NodeTypeSelector';
 import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasureSelector';
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
-import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
-import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
+import { GraphPanelHeaderTimezone } from './GraphPanelHeaderTimezone';
+import { YBFormatDate, ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
+import { DEFAULT_TIMEZONE, RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
@@ -144,7 +145,9 @@ class GraphPanelHeader extends Component {
       isSingleNodeSelected: false,
       openPreviewMetricsModal: false,
       pdfDownloadInProgress: false,
-      downloadPercent: 0
+      downloadPercent: 0,
+      selectedTimezone: sessionStorage.getItem('metricsTimezone') ?? DEFAULT_TIMEZONE.value,
+      currentDate: new Date()
     };
     this.props.setGraphFilter(defaultFilters);
 
@@ -182,10 +185,10 @@ class GraphPanelHeader extends Component {
           currentFilterItem.type
         );
       }
-
       this.state = {
         ...defaultFilters,
-        ...filterParams
+        ...filterParams,
+        selectedTimezone: sessionStorage.getItem('metricsTimezone') ?? DEFAULT_TIMEZONE.value
       };
       props.changeGraphQueryFilters(filterParams);
     } else {
@@ -200,6 +203,7 @@ class GraphPanelHeader extends Component {
     if (this.props.origin === MetricOrigin.CUSTOMER && getPromiseState(universeList).isInit()) {
       this.props.fetchUniverseList();
     }
+    this.props.fetchCustomerRunTimeConfigs();
   }
 
   componentDidUpdate(prevProps) {
@@ -265,6 +269,7 @@ class GraphPanelHeader extends Component {
 
   refreshGraphQuery = () => {
     const newParams = this.state;
+    this.setState({ currentDate: new Date() }); // Update the current date
     if (newParams.filterLabel !== 'Custom') {
       newParams.startMoment = moment().subtract(newParams.filterValue, newParams.filterType);
       newParams.endMoment = moment();
@@ -319,6 +324,11 @@ class GraphPanelHeader extends Component {
 
     newParams.refreshIntervalLabel = intervalInfo.selectedLabel;
     this.updateUrlQueryParams(newParams);
+  };
+
+  handleTZChange = (tz) => {
+    sessionStorage.setItem('metricsTimezone', tz);
+    this.setState({ selectedTimezone: tz });
   };
 
   universeItemChanged = (universeUUID) => {
@@ -564,7 +574,7 @@ class GraphPanelHeader extends Component {
       visibleModal,
       enableNodeComparisonModal,
       printMode,
-      customer: { customerRuntimeConfigs }
+      customer: { runtimeConfigs, customerRuntimeConfigs, currentUser }
     } = this.props;
     const {
       filterType,
@@ -579,6 +589,13 @@ class GraphPanelHeader extends Component {
 
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     let datePicker = null;
+    const sessionTimezone =
+      !this.state.selectedTimezone ||
+      isEmptyString(this.state.selectedTimezone) ||
+      this.state.selectedTimezone === DEFAULT_TIMEZONE.value
+        ? currentUser.data.timezone
+        : this.state.selectedTimezone;
+
     if (this.state.filterLabel === 'Custom') {
       datePicker = (
         <CustomDatePicker
@@ -587,6 +604,7 @@ class GraphPanelHeader extends Component {
           handleTimeframeChange={this.applyCustomFilter}
           setStartMoment={this.handleStartDateChange}
           setEndMoment={this.handleEndDateChange}
+          timezone={sessionTimezone}
         />
       );
     }
@@ -594,6 +612,10 @@ class GraphPanelHeader extends Component {
     const isDownloadMetricsAllowed =
       customerRuntimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.DOWNLOAD_METRICS_PDF
+      )?.value === 'true';
+    const isMetricsSessionTZEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.ENABLE_METRICS_TZ
       )?.value === 'true';
 
     const self = this;
@@ -630,17 +652,6 @@ class GraphPanelHeader extends Component {
       );
     });
 
-    let universePicker = <span />;
-    if (origin === MetricOrigin.CUSTOMER) {
-      universePicker = (
-        <UniversePicker
-          {...this.props}
-          universeItemChanged={this.universeItemChanged}
-          selectedUniverse={self.state.currentSelectedUniverse}
-        />
-      );
-    }
-
     const splitType =
       this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES ? SplitType.TABLE : SplitType.NODE;
     // TODO: Need to fix handling of query params on Metrics tab
@@ -651,6 +662,7 @@ class GraphPanelHeader extends Component {
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
     const isDedicatedNodes = isDedicatedNodePlacement(this.state.currentSelectedUniverse);
     const isK8Universe = isKubernetesUniverse(this.state.currentSelectedUniverse);
+
     return (
       <div className="graph-panel-header">
         <YBPanelItem
@@ -658,15 +670,9 @@ class GraphPanelHeader extends Component {
           header={
             !printMode && (
               <div>
-                {this.props.origin === MetricOrigin.CUSTOMER ? (
-                  <h2 className="task-list-header content-title">Metrics</h2>
-                ) : (
-                  ''
-                )}
                 <FlexContainer>
                   <FlexGrow power={1}>
                     <div className="filter-container">
-                      {universePicker}
                       {this.props.origin !== MetricOrigin.TABLE && (
                         <RegionSelector
                           selectedUniverse={currentSelectedUniverse}
@@ -722,8 +728,24 @@ class GraphPanelHeader extends Component {
                     <form name="GraphPanelFilterForm">
                       <div id="reportrange" className="pull-right">
                         <div className="timezone">
-                          Current Timestamp:&nbsp;{ybFormatDate(new Date())}
+                          {'Current Timestamp:'}&nbsp;
+                          {isMetricsSessionTZEnabled ? (
+                            <YBFormatDate
+                              date={this.state.currentDate}
+                              timeFormat={YBTimeFormats.YB_DEFAULT_TIMESTAMP}
+                              timezone={this.state.selectedTimezone}
+                            />
+                          ) : (
+                            <>{ybFormatDate(this.state.currentDate)}</>
+                          )}
                         </div>
+                        {isMetricsSessionTZEnabled && (
+                          <GraphPanelHeaderTimezone
+                            selectedTimezone={this.state.selectedTimezone}
+                            handleTZChange={this.handleTZChange}
+                          />
+                        )}
+
                         <div className="graph-interval-container">
                           <Dropdown
                             id="graph-interval-dropdown"
@@ -1004,76 +1026,3 @@ class GraphPanelHeader extends Component {
 }
 
 export default withRouter(GraphPanelHeader);
-
-class UniversePicker extends Component {
-  render() {
-    const {
-      universeItemChanged,
-      universe: { universeList },
-      selectedUniverse
-    } = this.props;
-
-    let universeItems = universeList?.data
-      ?.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
-      .map(function (item, idx) {
-        return (
-          <MenuItem
-            onSelect={universeItemChanged}
-            key={idx}
-            // Added this line due to the issue that dropdown does not close
-            // when a menu item is selected
-            onClick={() => {
-              document.body.click();
-            }}
-            eventKey={item.universeUUID}
-            active={item.universeUUID === selectedUniverse.universeUUID}
-          >
-            {item.name}
-          </MenuItem>
-        );
-      });
-
-    const defaultMenuItem = (
-      <Fragment>
-        <MenuItem
-          onSelect={universeItemChanged}
-          key={-1}
-          // Added this line due to the issue that dropdown does not close
-          // when a menu item is selected
-          active={selectedUniverse === MetricConsts.ALL}
-          onClick={() => {
-            document.body.click();
-          }}
-          eventKey={MetricConsts.ALL}
-        >
-          {'All universes'}
-        </MenuItem>
-      </Fragment>
-    );
-
-    let currentUniverseValue = MetricConsts.ALL;
-    if (!_.isString(selectedUniverse)) {
-      currentUniverseValue = selectedUniverse.name;
-    }
-
-    // If we fail to retrieve list of Universes, still display the Universe dropdown with "All" option
-    if (!universeItems) {
-      universeItems = [];
-    }
-    universeItems.splice(0, 0, defaultMenuItem);
-    return (
-      <div className="universe-picker-container">
-        <Dropdown id="universeFilterDropdown" className="universe-filter-dropdown">
-          <Dropdown.Toggle className="dropdown-toggle-button">
-            <span className="default-universe-value">
-              {currentUniverseValue === MetricConsts.ALL ? universeItems[0] : currentUniverseValue}
-            </span>
-          </Dropdown.Toggle>
-          <Dropdown.Menu>
-            <span className={'universe-name'}>{universeItems}</span>
-          </Dropdown.Menu>
-        </Dropdown>
-      </div>
-    );
-  }
-}

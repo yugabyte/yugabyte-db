@@ -6,6 +6,7 @@ import moment from 'moment';
 import { Box, Typography, useTheme } from '@material-ui/core';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { ToggleButton } from '@material-ui/lab';
+import { useSelector } from 'react-redux';
 
 import { getTableName, getTableUuid, getIsTableInfoMissing } from '../../../utils/tableUtils';
 import { YBMetricGraph } from '../../../redesign/components/YBMetrics/YBMetricGraph';
@@ -71,6 +72,7 @@ export const TableReplicationLagGraphModal = ({
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const theme = useTheme();
 
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   const alertConfigFilter = {
     template: AlertTemplate.REPLICATION_LAG,
     targetUuid: sourceUniverseUuid
@@ -196,6 +198,7 @@ export const TableReplicationLagGraphModal = ({
               setStartMoment={(dateString: any) => setCustomStartMoment(moment(dateString))}
               setEndMoment={(dateString: any) => setCustomEndMoment(moment(dateString))}
               handleTimeframeChange={configReplicationLagMetricQuery.refetch}
+              timezone={currentUserTimezone}
             />
           )}
           <Dropdown id="LagGraphTimeRangeDropdown" pullRight>

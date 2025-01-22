@@ -50,6 +50,9 @@ const PanelBody = ({
     runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === RuntimeConfigKey.GRANULAR_METRICS_FEATURE_FLAG
     )?.value === 'true';
+  const isMetricsTimezoneEnabled =
+    runtimeConfigs?.data?.configEntries?.find((c) => c.key === RuntimeConfigKey.ENABLE_METRICS_TZ)
+      ?.value === 'true';
   const isPerProcessMetricsEnabled =
     runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === RuntimeConfigKey.PER_PROCESS_METRICS_FEATURE_FLAG
@@ -138,6 +141,7 @@ const PanelBody = ({
                   width={width}
                   tableName={tableName}
                   isGranularMetricsEnabled={isGranularMetricsEnabled}
+                  isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
                   printMode={printMode}
                 />
               </div>
@@ -160,6 +164,7 @@ const PanelBody = ({
                   width={width}
                   tableName={tableName}
                   isGranularMetricsEnabled={isGranularMetricsEnabled}
+                  isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
                 />
               </Tab>
             );
@@ -216,6 +221,7 @@ const PanelBody = ({
             title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
             width={width}
             tableName={tableName}
+            isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
             isGranularMetricsEnabled={isGranularMetricsEnabled}
             printMode={printMode}
           />
@@ -243,6 +249,7 @@ const PanelBody = ({
               title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
               width={width}
               tableName={tableName}
+              isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
               isGranularMetricsEnabled={isGranularMetricsEnabled}
             />
           </Tab>

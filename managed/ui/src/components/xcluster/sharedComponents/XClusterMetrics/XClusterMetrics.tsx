@@ -6,6 +6,7 @@ import { Box, Typography, useTheme } from '@material-ui/core';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { ToggleButton } from '@material-ui/lab';
 import i18next from 'i18next';
+import { useSelector } from 'react-redux';
 
 import {
   alertConfigQueryKey,
@@ -84,6 +85,7 @@ export const XClusterMetrics = ({
   );
   const [replicationLagMetricsSplitCount, setReplicationLagMetricsSplitCount] = useState<number>(5);
 
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   const [
     consumerSafeTimeLagMetricsNodeAggregation,
     setConsumerSafeTimeLagMetricsNodeAggregation
@@ -416,6 +418,7 @@ export const XClusterMetrics = ({
               setStartMoment={(dateString: any) => setCustomStartMoment(moment(dateString))}
               setEndMoment={(dateString: any) => setCustomEndMoment(moment(dateString))}
               handleTimeframeChange={refetchMetrics}
+              timezone={currentUserTimezone}
             />
           )}
           <Dropdown id="LagGraphTimeRangeDropdown" pullRight>
