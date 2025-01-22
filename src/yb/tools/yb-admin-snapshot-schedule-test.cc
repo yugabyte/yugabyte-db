@@ -911,7 +911,6 @@ TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
 
   // Absolute timestamp format. Should have the first set of rows.
   auto target_namespace_name = "absolute_time_namespace";
-  ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
   ASSERT_OK(CloneAndWait(
       kSourceNamespace, target_namespace_name, 30s /* timeout */,
@@ -959,7 +958,6 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteRowsFromCloneYcql) {
   ASSERT_OK(conn.ExecuteQueryFormat("DELETE FROM $0 WHERE key=1", kTableName));
 
   const auto kTargetNamespace = "cloned";
-  ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
   ASSERT_OK(CloneAndWait(
       kSourceNamespace, kTargetNamespace, 30s /* timeout */,
@@ -1196,7 +1194,6 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
 
   virtual std::vector<std::string> ExtraMasterFlags() override {
     auto flags = YbAdminSnapshotScheduleTestWithYsql::ExtraMasterFlags();
-    flags.push_back("--allowed_preview_flags_csv=enable_db_clone");
     flags.push_back("--enable_db_clone=true");
     return flags;
   }
@@ -1762,6 +1759,25 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlRenameTab
   ASSERT_STR_CONTAINS(insert_status.ToString(), "does not exist");
 
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'new value')"));
+}
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBackfillingIndex) {
+  // Test restoring to a point in time when the index is backfilling.
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "3000"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table "
+      "SELECT generate_series(1, 100), md5(random()::text)"));
+
+  // Clone to half way through the backfill.
+  auto t1 = ASSERT_RESULT(GetCurrentTime());
+  ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
+  auto t2 = ASSERT_RESULT(GetCurrentTime());
+  auto restore_time = Timestamp((t1.ToInt64() + t2.ToInt64()) / 2);
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, restore_time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlRenameColumn) {

@@ -381,12 +381,16 @@ public class DrConfigController extends AuthenticatedController {
     UUID taskUUID = commissioner.submit(TaskType.EditDrConfigParams, taskParams);
     CustomerTask.create(
         customer,
-        drConfig.getUuid(),
+        Objects.isNull(drConfig.getActiveXClusterConfig())
+            ? drConfig.getUuid()
+            : drConfig.getActiveXClusterConfig().getSourceUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.DrConfig,
         CustomerTask.TaskType.Edit,
         drConfig.getName());
+
     log.info("Submitted edit DrConfig({}), task {}", drConfig.getUuid(), taskUUID);
+
     auditService()
         .createAuditEntryWithReqBody(
             request,
