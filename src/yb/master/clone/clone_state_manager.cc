@@ -51,7 +51,9 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-DEFINE_RUNTIME_PREVIEW_bool(enable_db_clone, false, "Enable DB cloning.");
+DEFINE_RUNTIME_bool(enable_db_clone, false, "Enable DB cloning.");
+TAG_FLAG(enable_db_clone, advanced);
+
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 DEFINE_test_flag(bool, fail_clone_pg_schema, false, "Fail clone pg schema operation for testing");
 DEFINE_test_flag(bool, fail_clone_tablets, false, "Fail StartTabletsCloning for testing");
