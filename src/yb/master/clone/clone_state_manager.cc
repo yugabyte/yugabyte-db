@@ -366,7 +366,6 @@ Status CloneStateManager::StartTabletsCloning(
   lock.Commit();
 
   // Generate a new snapshot.
-  // All indexes already are in the request. Do not add them twice.
   // It is safe to trigger the clone op immediately after this since imported snapshots are created
   // synchronously.
   CreateSnapshotRequestPB create_snapshot_req;
@@ -380,6 +379,7 @@ Status CloneStateManager::StartTabletsCloning(
 
     create_snapshot_req.mutable_tables()->Add()->set_table_id(new_table_id);
   }
+  // All indexes already are in the request. Do not add them twice.
   create_snapshot_req.set_add_indexes(false);
   create_snapshot_req.set_imported(true);
   RETURN_NOT_OK(external_funcs_->DoCreateSnapshot(

@@ -1759,6 +1759,25 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlRenameTab
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'new value')"));
 }
 
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBackfillingIndex) {
+  // Test restoring to a point in time when the index is backfilling.
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "3000"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table "
+      "SELECT generate_series(1, 100), md5(random()::text)"));
+
+  // Clone to half way through the backfill.
+  auto t1 = ASSERT_RESULT(GetCurrentTime());
+  ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
+  auto t2 = ASSERT_RESULT(GetCurrentTime());
+  auto restore_time = Timestamp((t1.ToInt64() + t2.ToInt64()) / 2);
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, restore_time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
+}
+
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlRenameColumn) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));

@@ -2605,6 +2605,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ImportSnapshotProcessTablets(
       const SnapshotInfoPB& snapshot_pb,
       ExternalTableSnapshotDataMap* tables_data);
+  void ImportSnapshotRemoveInvalidIndexes(ExternalTableSnapshotDataMap* tables_data);
+
   void DeleteNewUDtype(
       const UDTypeId& udt_id, const std::unordered_set<UDTypeId>& type_ids_to_delete);
   void DeleteNewSnapshotObjects(
