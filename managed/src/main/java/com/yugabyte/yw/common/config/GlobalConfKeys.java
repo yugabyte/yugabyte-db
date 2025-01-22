@@ -802,6 +802,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " operations",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> xClusterTableStatusLoggingEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.table_status_logging_enabled",
+          ScopeType.GLOBAL,
+          "Whether to log information about gathering table statuses in xCluster",
+          "Whether to log information about gathering bad table statuses in xCluster; the logs can"
+              + " be huge and this gives you a leverage to disable it",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
       new ConfKeyInfo<>(
           "yb.xcluster.use_ybc",

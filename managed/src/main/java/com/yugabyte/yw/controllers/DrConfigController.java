@@ -1278,7 +1278,8 @@ public class DrConfigController extends AuthenticatedController {
             ybService,
             tableHandler,
             xClusterConfig,
-            confGetter.getGlobalConf(GlobalConfKeys.xclusterGetApiTimeoutMs));
+            confGetter.getGlobalConf(GlobalConfKeys.xclusterGetApiTimeoutMs),
+            this.confGetter);
       }
     }
 
