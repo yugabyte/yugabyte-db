@@ -51,7 +51,7 @@ Table name to be analyzed; may be schema-qualified. Optional. Omit to analyze al
 
 List of columns to be analyzed. Optional. Omit to analyze all columns of the table.
 
-## Resetting statistics
+## Reset statistics
 
 Over time, statistics can reach a point where they no longer represent the current workload accurately. Resetting allows you to measure the impact of recent changes, like optimizations or new queries, without the influence of historical data. Also, when diagnosing issues, fresh statistics can help pinpoint current issues more effectively, rather than having to sift through historical data that may not be relevant.
 

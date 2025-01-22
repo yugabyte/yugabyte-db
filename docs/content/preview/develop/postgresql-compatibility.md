@@ -66,7 +66,7 @@ Configuration parameter: `yb_enable_base_scans_cost_model=true`
 [Cost based optimizer (CBO)](../../architecture/query-layer/planner-optimizer/) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
 
 {{<note>}}
-When enabling this parameter, you must run `ANALYZE` on user tables to maintain up-to-date statistics.
+When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
 When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
 
