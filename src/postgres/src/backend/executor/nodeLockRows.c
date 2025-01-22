@@ -288,7 +288,10 @@ lnext:
 
 		if (!IsYBBackedRelation(erm->relation))
 		{
-			/* Remember locked tuple's TID for EPQ testing and WHERE CURRENT OF */
+			/*
+			 * Remember locked tuple's TID for EPQ testing and WHERE CURRENT
+			 * OF
+			 */
 			erm->curCtid = tid;
 		}
 	}
@@ -383,8 +386,9 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	 */
 	lrstate->lr_arowMarks = NIL;
 	epq_arowmarks = NIL;
-	bool row_lock_for_yb_rel_found = false;
-	bool row_lock_for_non_yb_rel_found = false;
+	bool		row_lock_for_yb_rel_found = false;
+	bool		row_lock_for_non_yb_rel_found = false;
+
 	foreach(lc, node->rowMarks)
 	{
 		PlanRowMark *rc = lfirst_node(PlanRowMark, lc);

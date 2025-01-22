@@ -204,7 +204,7 @@ char	   *namespace_search_path = NULL;
 
 typedef struct YbTempNamespaceSuffixBuffer
 {
-	char data[UUID_LEN * 2 + 2];
+	char		data[UUID_LEN * 2 + 2];
 } YbTempNamespaceSuffixBuffer;
 
 /* Local functions */
@@ -4059,8 +4059,9 @@ InitTempTableNamespace(void)
 	 * pg_toast_temp_<tserver_uuid>_<backend_id>.
 	 */
 	YbTempNamespaceSuffixBuffer ybSuffixBuf;
-	const char *yb_temp_namespace_suffix = IsYugaByteEnabled() ?
-		YbBuildTempNameSuffix(&ybSuffixBuf) : "";
+	const char *yb_temp_namespace_suffix = (IsYugaByteEnabled() ?
+											YbBuildTempNameSuffix(&ybSuffixBuf) :
+											"");
 
 	snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%s%d",
 			 yb_temp_namespace_suffix, MyBackendId);
@@ -4703,10 +4704,12 @@ static char *
 YbConvertToHex(const unsigned char *src, size_t len, char *dest)
 {
 	static const char hex_chars[] = "0123456789abcdef";
+
 	for (size_t i = 0; i < len; ++i)
 	{
-		const int high = src[i] >> 4;
-		const int low = src[i] & 0x0F;
+		const int	high = src[i] >> 4;
+		const int	low = src[i] & 0x0F;
+
 		*(dest++) = hex_chars[high];
 		*(dest++) = hex_chars[low];
 	}
@@ -4721,7 +4724,8 @@ YbConvertToHex(const unsigned char *src, size_t len, char *dest)
 static char *
 YbBuildTempNameSuffix(YbTempNamespaceSuffixBuffer *buf)
 {
-	char *tail = YbConvertToHex(YBCGetLocalTserverUuid(), UUID_LEN, buf->data);
+	char	   *tail = YbConvertToHex(YBCGetLocalTserverUuid(), UUID_LEN, buf->data);
+
 	*(tail++) = '_';
 	*tail = 0;
 	return buf->data;

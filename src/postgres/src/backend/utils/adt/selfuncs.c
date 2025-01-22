@@ -280,7 +280,7 @@ eqsel_internal(PG_FUNCTION_ARGS, bool negate)
 							 varonleft, negate);
 	else
 	{
-		bool yb_is_batched = IsYugaByteEnabled() && IsA(other, YbBatchedExpr);
+		bool		yb_is_batched = IsYugaByteEnabled() && IsA(other, YbBatchedExpr);
 
 		selec = var_eq_non_const(&vardata, operator, collation, other,
 								 varonleft, negate);
@@ -2193,7 +2193,7 @@ rowcomparesel(PlannerInfo *root,
 
 	/* Build equivalent arg list for single operator */
 	opargs = list_make2(linitial(clause->largs),
-		linitial(castNode(List, clause->rargs)));
+						linitial(castNode(List, clause->rargs)));
 
 	/*
 	 * Decide if it's a join clause.  This should match clausesel.c's
@@ -6371,17 +6371,19 @@ int
 yb_batch_expr_size(PlannerInfo *root, Index path_relid, Node *batched_expr)
 {
 	Assert(IsA(batched_expr, YbBatchedExpr));
-	Node *batched_operand =
-		(Node *) castNode(YbBatchedExpr, batched_expr)->orig_expr;
-	Relids other_varnos = pull_varnos(root, batched_operand);
-	Relids batched_relids = root->yb_cur_batched_relids;
+	Node	   *batched_operand = (Node *) castNode(YbBatchedExpr,
+													batched_expr)->orig_expr;
+	Relids		other_varnos = pull_varnos(root, batched_operand);
+	Relids		batched_relids = root->yb_cur_batched_relids;
+
 	root->yb_cur_batched_relids = NULL;
 
-	int num_outer_tuples =
-		get_loop_count(root, path_relid, other_varnos);
+	int			num_outer_tuples = get_loop_count(root, path_relid,
+												  other_varnos);
 
 	root->yb_cur_batched_relids = batched_relids;
-	int batch_size = yb_bnl_batch_size;
+	int			batch_size = yb_bnl_batch_size;
+
 	if (batch_size > num_outer_tuples)
 		batch_size = num_outer_tuples;
 

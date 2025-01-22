@@ -56,7 +56,7 @@
 #include "optimizer/placeholder.h"
 #include "rewrite/rewriteManip.h"
 
-int yb_bnl_batch_size = 1;
+int			yb_bnl_batch_size = 1;
 
 /*
  * Select a PARAM_EXEC number to identify the given Var as a parameter for
@@ -374,7 +374,7 @@ replace_nestloop_param_var(PlannerInfo *root, Var *var)
 			param->location = var->location;
 
 			yb_adjust_param_for_batching(root, nlp, param,
-				bms_make_singleton(var->varno));
+										 bms_make_singleton(var->varno));
 			return param;
 		}
 	}
@@ -394,7 +394,7 @@ replace_nestloop_param_var(PlannerInfo *root, Var *var)
 	root->curOuterParams = lappend(root->curOuterParams, nlp);
 
 	yb_generate_batched_params(root, nlp, param,
-		bms_make_singleton(var->varno));
+							   bms_make_singleton(var->varno));
 
 	/* And return the replacement Param */
 	return param;

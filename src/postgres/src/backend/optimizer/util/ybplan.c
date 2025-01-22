@@ -106,7 +106,8 @@ static void YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
  * And if all are true we will execute this op as a single-row transaction
  * rather than a distributed transaction.
  */
-static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
+static bool
+ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 {
 	/* Support INSERT, UPDATE, and DELETE. */
 	if (modifyTable->operation != CMD_INSERT &&
@@ -126,7 +127,7 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 	if (modifyTable->plan.initPlan != NIL)
 		return false;
 
-	Plan *plan = outerPlan(&modifyTable->plan);
+	Plan	   *plan = outerPlan(&modifyTable->plan);
 
 	/*
 	 * Only Result plan without a subplan produces single tuple without making
@@ -147,11 +148,13 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 	return true;
 }
 
-bool YBCIsSingleRowModify(PlannedStmt *pstmt)
+bool
+YBCIsSingleRowModify(PlannedStmt *pstmt)
 {
 	if (pstmt->planTree && IsA(pstmt->planTree, ModifyTable))
 	{
 		ModifyTable *node = castNode(ModifyTable, pstmt->planTree);
+
 		return ModifyTableIsSingleRowWrite(node);
 	}
 
@@ -167,7 +170,8 @@ bool YBCIsSingleRowModify(PlannedStmt *pstmt)
  *  - source data is a Result node (meaning we are skipping scan and thus
  *    are single row).
  */
-bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable)
+bool
+YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable)
 {
 	/* Support UPDATE and DELETE. */
 	if (modifyTable->operation != CMD_UPDATE &&
@@ -190,7 +194,8 @@ bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable)
  * matches the primary key attribute numbers of the relation.
  * Expects YBGetFirstLowInvalidAttributeNumber to be subtracted from attribute numbers.
  */
-bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs)
+bool
+YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs)
 {
 	if (bms_is_empty(attrs))
 	{
@@ -206,7 +211,7 @@ bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs)
 		return false;
 	}
 
-	Bitmapset *primary_key_attrs = YBGetTablePrimaryKeyBms(rel);
+	Bitmapset  *primary_key_attrs = YBGetTablePrimaryKeyBms(rel);
 
 	/* Verify the sets are the same. */
 	return bms_equal(attrs, primary_key_attrs);
@@ -224,11 +229,13 @@ bool
 is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 							 bool bitmapindex)
 {
-	ListCell *lc;
-	foreach (lc, colrefs)
+	ListCell   *lc;
+
+	foreach(lc, colrefs)
 	{
-		bool found = false;
+		bool		found = false;
 		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, lfirst(lc));
+
 		for (int i = 0; i < indexinfo->ncolumns; i++)
 		{
 			if (colref->attno == indexinfo->indexkeys[i])
@@ -259,9 +266,11 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 				else if (IsYugaByteEnabled() && bitmapindex &&
 						 indexinfo->relam == LSM_AM_OID)
 				{
-					Relation index;
+					Relation	index;
+
 					index = RelationIdGetRelation(indexinfo->indexoid);
-					bool is_primary = index->rd_index->indisprimary;
+					bool		is_primary = index->rd_index->indisprimary;
+
 					RelationClose(index);
 
 					if (is_primary)
@@ -309,18 +318,20 @@ extract_pushdown_clauses(List *restrictinfo_list,
 						 List **idx_remote_quals,
 						 List **idx_colrefs)
 {
-	ListCell *lc;
+	ListCell   *lc;
+
 	foreach(lc, restrictinfo_list)
 	{
 		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
+
 		/* ignore pseudoconstants */
 		if (ri->pseudoconstant)
 			continue;
 
 		if (ri->yb_pushable)
 		{
-			List *colrefs = NIL;
-			bool pushable PG_USED_FOR_ASSERTS_ONLY;
+			List	   *colrefs = NIL;
+			bool		pushable PG_USED_FOR_ASSERTS_ONLY;
 
 			/*
 			 * Find column references. It has already been determined that
@@ -378,6 +389,7 @@ YbSkippableEntities *
 YbInitSkippableEntities(List *no_update_index_list)
 {
 	YbSkippableEntities *skip_entities = makeNode(YbSkippableEntities);
+
 	skip_entities->index_list = no_update_index_list;
 	return skip_entities;
 }
@@ -406,7 +418,8 @@ void
 YbAddEntityToSkipList(YbSkippableEntityType etype, Oid oid,
 					  YbSkippableEntities *skip_entities)
 {
-	List **skip_list;
+	List	  **skip_list;
+
 	switch (etype)
 	{
 		case SKIP_PRIMARY_KEY:
@@ -462,8 +475,8 @@ YbInitAttrToIdxMap(const Relation rel, const Bitmapset *maybe_modified_cols,
 	 * 'FirstLowInvalidHeapAttributeNumber' in the bitmapset.
 	 */
 	YbAttrToColIdxMap attr_to_idx_map = palloc0(maxcols * (sizeof(size_t)));
-	size_t idx = 0;
-	int bms_idx = -1;
+	size_t		idx = 0;
+	int			bms_idx = -1;
 
 	while ((bms_idx = bms_next_member(maybe_modified_cols, bms_idx)) >= 0)
 	{
@@ -497,8 +510,9 @@ YbAddColumnReference(const Relation rel,
 					 YbUpdateAffectedEntities *affected_entities,
 					 YbAttrToColIdxMap map, int bms_idx, size_t ref_entity_idx)
 {
-	size_t idx = map[YBBmsIndexToAttnum(rel, bms_idx)];
+	size_t		idx = map[YBBmsIndexToAttnum(rel, bms_idx)];
 	struct YbUpdateColInfo *col_info = &affected_entities->col_info_list[idx];
+
 	col_info->attnum = bms_idx;
 	col_info->entity_refs =
 		lappend_int(col_info->entity_refs, (int) ref_entity_idx);
@@ -538,34 +552,41 @@ YbLogUpdateMatrix(const YbUpdateAffectedEntities *affected_entities)
 	if (log_min_messages >= DEBUG1)
 		return;
 
-	const int nfields = YB_UPDATE_AFFECTED_ENTITIES_NUM_FIELDS(affected_entities);
+	const int	nfields = YB_UPDATE_AFFECTED_ENTITIES_NUM_FIELDS(affected_entities);
+
 	if (!nfields)
 	{
 		elog(DEBUG2, "No columns benefit from update optimization");
 		return;
 	}
 
-	const int nentities = YB_UPDATE_AFFECTED_ENTITIES_NUM_ENTITIES(affected_entities);
+	const int	nentities = YB_UPDATE_AFFECTED_ENTITIES_NUM_ENTITIES(affected_entities);
+
 	if (!nentities)
 	{
 		elog(DEBUG2, "No entities benefit from update optimization");
 		return;
 	}
 
-	int length, prev_len, val_len, header_len;
+	int			length,
+				prev_len,
+				val_len,
+				header_len;
+
 	val_len = Max(nfields * 2, 10);
 	header_len = Max(nfields * 3, 10);
 
-	char *vals = (char *) palloc0(val_len * sizeof(char));
-	char *headers = (char *) palloc0(header_len * sizeof(char));
+	char	   *vals = (char *) palloc0(val_len * sizeof(char));
+	char	   *headers = (char *) palloc0(header_len * sizeof(char));
 
 	/* Print headers */
 	headers[0] = '-';
 	headers[1] = '\t';
-	prev_len = 2; /* for '-\t' chars */
+	prev_len = 2;				/* for '-\t' chars */
 	for (int j = 0; j < nentities; j++)
 	{
-		AttrNumber attnum = affected_entities->col_info_list[j].attnum;
+		AttrNumber	attnum = affected_entities->col_info_list[j].attnum;
+
 		/* Check if the column is populated */
 		if (!attnum)
 			break;
@@ -610,7 +631,7 @@ YbLogUpdateMatrix(const YbUpdateAffectedEntities *affected_entities)
 static Bitmapset *
 YbGetMaybeModifiedCols(Relation rel, Bitmapset *update_attrs)
 {
-	TupleDesc desc = RelationGetDescr(rel);
+	TupleDesc	desc = RelationGetDescr(rel);
 
 	/*
 	 * A BEFORE ROW UPDATE trigger could have modified any of the columns in the
@@ -623,12 +644,14 @@ YbGetMaybeModifiedCols(Relation rel, Bitmapset *update_attrs)
 	 */
 	if (rel->trigdesc && rel->trigdesc->trig_update_before_row)
 	{
-		Bitmapset *maybe_modified_cols = NULL;
+		Bitmapset  *maybe_modified_cols = NULL;
 		const AttrNumber offset = YBGetFirstLowInvalidAttributeNumber(rel);
+
 		for (int idx = 0; idx < desc->natts; ++idx)
 		{
 			const FormData_pg_attribute *attdesc = TupleDescAttr(desc, idx);
 			const AttrNumber bms_idx = attdesc->attnum - offset;
+
 			maybe_modified_cols = bms_add_member(maybe_modified_cols, bms_idx);
 		}
 
@@ -668,13 +691,14 @@ YbPopulateUpdateMatrix(YbUpdateAffectedEntities *affected_entities,
 {
 	YbInitBitMatrix(&affected_entities->matrix, nfields, nentities);
 
-	ListCell *refCell;
+	ListCell   *refCell;
+
 	for (int field_idx = 0; field_idx < nfields; field_idx++)
 	{
-		foreach (refCell, affected_entities->col_info_list[field_idx].entity_refs)
+		foreach(refCell, affected_entities->col_info_list[field_idx].entity_refs)
 		{
 			YbBitMatrixSetValue(&affected_entities->matrix, field_idx,
-								lfirst_int(refCell), true /* value */);
+								lfirst_int(refCell), true /* value */ );
 		}
 	}
 
@@ -714,28 +738,30 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 									 Bitmapset *update_attrs)
 {
 	/* Fetch a list of candidate entities that may be impacted by the update. */
-	List *fkeylist = copyObject(RelationGetFKeyList(rel));
-	List *fkeyreflist = YbRelationGetFKeyReferencedByList(rel);
+	List	   *fkeylist = copyObject(RelationGetFKeyList(rel));
+	List	   *fkeyreflist = YbRelationGetFKeyReferencedByList(rel);
 
-	const int maxentities = list_length(rel->rd_indexlist) +
-							(rel->rd_pkindex != InvalidOid ? 1 : 0) +
-							(fkeylist ? fkeylist->length : 0) +
-							(fkeyreflist ? fkeyreflist->length : 0);
+	const int	maxentities = (list_length(rel->rd_indexlist) +
+							   (rel->rd_pkindex != InvalidOid ? 1 : 0) +
+							   (fkeylist ? fkeylist->length : 0) +
+							   (fkeyreflist ? fkeyreflist->length : 0));
 
 	/* If there are no entities that benefit from the optimization, skip it */
 	if (!maxentities)
 		return NULL;
 
-	Bitmapset *maybe_modified_cols = YbGetMaybeModifiedCols(rel, update_attrs);
-	const int nfields = bms_num_members(maybe_modified_cols);
-	YbUpdateAffectedEntities *affected_entities =
-		YbInitUpdateAffectedEntities(rel, nfields, maxentities);
+	Bitmapset  *maybe_modified_cols = YbGetMaybeModifiedCols(rel, update_attrs);
+	const int	nfields = bms_num_members(maybe_modified_cols);
+	YbUpdateAffectedEntities *affected_entities = YbInitUpdateAffectedEntities(rel,
+																			   nfields,
+																			   maxentities);
 
-	TupleDesc desc = RelationGetDescr(rel);
-	YbAttrToColIdxMap map =
-		YbInitAttrToIdxMap(rel, maybe_modified_cols, desc->natts + 1);
+	TupleDesc	desc = RelationGetDescr(rel);
+	YbAttrToColIdxMap map = YbInitAttrToIdxMap(rel, maybe_modified_cols,
+											   desc->natts + 1);
 
-	int nentities = 0;
+	int			nentities = 0;
+
 	/*
 	 * Compute a list of indexes (primary or secondary) that potentially need to
 	 * be updated.
@@ -750,7 +776,7 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 											  maybe_modified_cols, map,
 											  affected_entities,
 											  modifyTable->yb_skip_entities,
-											  true /* is_referencing_rel */,
+											  true /* is_referencing_rel */ ,
 											  &nentities);
 
 	/* Compute a list of affected 'referenced' foreign key constraints */
@@ -758,7 +784,7 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 											  maybe_modified_cols, map,
 											  affected_entities,
 											  modifyTable->yb_skip_entities,
-											  false /* is_referencing_rel */,
+											  false /* is_referencing_rel */ ,
 											  &nentities);
 
 	Assert(nentities <= maxentities);
@@ -767,10 +793,10 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 	 * Sort the columns in descending order of the number of entities that
 	 * reference them.
 	 */
-	qsort(affected_entities->col_info_list /* what to sort? */,
-		  nfields /* how many? */,
-		  sizeof(struct YbUpdateColInfo) /* how is it stored? */,
-		  YbQsortCompareColRefsList) /* how to sort? */;
+	qsort(affected_entities->col_info_list /* what to sort? */ ,
+		  nfields /* how many? */ ,
+		  sizeof(struct YbUpdateColInfo) /* how is it stored? */ ,
+		  YbQsortCompareColRefsList) /* how to sort? */ ;
 
 	/* Finally create the update matrix */
 	YbPopulateUpdateMatrix(affected_entities, nentities, nfields);
@@ -816,16 +842,18 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 									 YbSkippableEntities *skip_entities,
 									 int *nentities)
 {
-	bool pk_maybe_modified = false;
+	bool		pk_maybe_modified = false;
+
 	/*
 	 * Add the primary key to the head of the entity list so that it gets
 	 * evaluated first.
 	 */
 	if (RelationGetPrimaryKeyIndex(rel) != InvalidOid)
 	{
-		Bitmapset *pkbms =
-			RelationGetIndexAttrBitmap(rel, INDEX_ATTR_BITMAP_PRIMARY_KEY);
-		int attnum = -1;
+		Bitmapset  *pkbms = RelationGetIndexAttrBitmap(rel,
+													   INDEX_ATTR_BITMAP_PRIMARY_KEY);
+		int			attnum = -1;
+
 		while ((attnum = bms_next_member(pkbms, attnum)) >= 0)
 		{
 			if (bms_is_member(attnum, maybe_modified_cols))
@@ -842,10 +870,11 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 								  skip_entities);
 	}
 
-	ListCell *lc = NULL;
-	foreach (lc, rel->rd_indexlist)
+	ListCell   *lc = NULL;
+
+	foreach(lc, rel->rd_indexlist)
 	{
-		Oid index_oid = lfirst_oid(lc);
+		Oid			index_oid = lfirst_oid(lc);
 
 		/* Avoid checking indexes that we already know to be not updated. */
 		if (list_member_oid(skip_entities->index_list, index_oid))
@@ -855,15 +884,17 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 		if (index_oid == rel->rd_pkindex)
 			continue;
 
-		Relation indexDesc = RelationIdGetRelation(index_oid);
+		Relation	indexDesc = RelationIdGetRelation(index_oid);
 		YbSkippableEntityType etype = SKIP_SECONDARY_INDEX;
-		bool index_maybe_modified = false;
+		bool		index_maybe_modified = false;
 
 		const AttrNumber offset = YBGetFirstLowInvalidAttributeNumber(rel);
+
 		for (int j = 0; j < indexDesc->rd_index->indnatts; j++)
 		{
-			const AttrNumber bms_idx =
-				indexDesc->rd_index->indkey.values[j] - offset;
+			const AttrNumber bms_idx = (indexDesc->rd_index->indkey.values[j] -
+										offset);
+
 			if (bms_is_member(bms_idx, maybe_modified_cols))
 			{
 				YbConsiderColumnAndEntityForUpdate(rel, affected_entities, map,
@@ -879,7 +910,8 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 		 * expression or predicate isn't applicable to this update, but the cost
 		 * of validating that will be prohibitively expensive.
 		 */
-		Bitmapset *extraattrs = NULL;
+		Bitmapset  *extraattrs = NULL;
+
 		if (indexDesc->rd_indpred)
 		{
 			YbComputeIndexExprOrPredicateAttrs(&extraattrs, indexDesc,
@@ -894,7 +926,8 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 
 		if (extraattrs)
 		{
-			int attnum = -1;
+			int			attnum = -1;
+
 			while ((attnum = bms_next_member(extraattrs, attnum)) >= 0)
 			{
 				if (bms_is_member(attnum, maybe_modified_cols))
@@ -924,21 +957,28 @@ YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
 										  bool is_referencing_rel,
 										  int *nentities)
 {
-	YbSkippableEntityType etype =
-		is_referencing_rel ? SKIP_REFERENCING_FKEY : SKIP_REFERENCED_FKEY;
+	YbSkippableEntityType etype = (is_referencing_rel ?
+								   SKIP_REFERENCING_FKEY :
+								   SKIP_REFERENCED_FKEY);
 	const AttrNumber offset = YBGetFirstLowInvalidAttributeNumber(rel);
-	Oid pk_oid = RelationGetPrimaryKeyIndex(rel);
-	bool pk_maybe_modified =
-		!(OidIsValid(pk_oid) && list_member_oid(skip_entities->index_list, pk_oid));
-	ListCell *cell;
-	foreach (cell, fkeylist)
+	Oid			pk_oid = RelationGetPrimaryKeyIndex(rel);
+	bool		pk_maybe_modified = !(OidIsValid(pk_oid) &&
+									  list_member_oid(skip_entities->index_list,
+													  pk_oid));
+	ListCell   *cell;
+
+	foreach(cell, fkeylist)
 	{
 		ForeignKeyCacheInfo *fkey = (ForeignKeyCacheInfo *) lfirst(cell);
-		bool fkey_maybe_modified = false;
+		bool		fkey_maybe_modified = false;
+
 		for (int idx = 0; idx < fkey->nkeys; idx++)
 		{
-			const int bms_idx =
-				(is_referencing_rel ? fkey->conkey[idx] : fkey->confkey[idx]) - offset;
+			const int	bms_idx = ((is_referencing_rel ?
+									fkey->conkey[idx] :
+									fkey->confkey[idx]) -
+								   offset);
+
 			if (bms_is_member(bms_idx, maybe_modified_cols))
 			{
 				YbConsiderColumnAndEntityForUpdate(rel, affected_entities, map,

@@ -37,15 +37,15 @@ typedef struct ExplainWorkersState
 
 typedef struct YbExplainExecStats
 {
-	YbPgRpcStats         read;
-	YbPgRpcStats         catalog_read;
-	YbPgRpcStats         flush;
-	double               write_count;
-	double               catalog_write_count;
+	YbPgRpcStats read;
+	YbPgRpcStats catalog_read;
+	YbPgRpcStats flush;
+	double		write_count;
+	double		catalog_write_count;
 
-	double               storage_gauge_metrics[YB_STORAGE_GAUGE_COUNT];
-	double               storage_counter_metrics[YB_STORAGE_COUNTER_COUNT];
-	YbPgEventMetric      storage_event_metrics[YB_STORAGE_EVENT_COUNT];
+	double		storage_gauge_metrics[YB_STORAGE_GAUGE_COUNT];
+	double		storage_counter_metrics[YB_STORAGE_COUNTER_COUNT];
+	YbPgEventMetric storage_event_metrics[YB_STORAGE_EVENT_COUNT];
 } YbExplainExecStats;
 
 typedef struct ExplainState
@@ -75,7 +75,7 @@ typedef struct ExplainState
 	/* state related to the current plan node */
 	ExplainWorkersState *workers_state; /* needed if parallel plan */
 
-	YbExplainExecStats yb_stats;		   /* hold YB-specific exec stats */
+	YbExplainExecStats yb_stats;	/* hold YB-specific exec stats */
 	bool		yb_debug;		/* print debug information */
 } ExplainState;
 

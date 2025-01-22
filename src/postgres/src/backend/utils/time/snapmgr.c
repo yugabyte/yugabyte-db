@@ -243,6 +243,7 @@ static void
 YBCOnActiveSnapshotChange()
 {
 	const SnapshotData *snap = ActiveSnapshot ? ActiveSnapshot->as_snap : NULL;
+
 	if (snap && snap->yb_read_time_point_handle.has_value)
 		HandleYBStatus(YBCRestoreReadTimePoint(snap->yb_read_time_point_handle.value));
 }
@@ -331,7 +332,11 @@ GetTransactionSnapshot(void)
 	if (YbIsReadCommittedTxn())
 	{
 		HandleYBStatus(YBCPgFlushBufferedOperations());
-		/* If this is a retry for a kReadRestart error, avoid resetting the read point */
+
+		/*
+		 * If this is a retry for a kReadRestart error, avoid resetting the
+		 * read point
+		 */
 		if (!YBCIsRestartReadPointRequested())
 		{
 			elog(DEBUG2, "Resetting read point for statement in Read Committed txn");
@@ -827,7 +832,8 @@ PopActiveSnapshot(void)
 }
 
 void
-PopAllActiveSnapshots() {
+PopAllActiveSnapshots()
+{
 	while (ActiveSnapshot)
 		PopActiveSnapshot();
 }

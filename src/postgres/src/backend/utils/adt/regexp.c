@@ -118,11 +118,12 @@ typedef struct cached_re_str
  */
 typedef struct YbReCacheInfo
 {
-	int *num;
+	int		   *num;
 	cached_re_str *array;
 } YbReCacheInfo;
 
-static void YbFreeRe(cached_re_str *re)
+static void
+YbFreeRe(cached_re_str *re)
 {
 	pg_regfree(&re->cre_re);
 	free(re->cre_pat);
@@ -133,6 +134,7 @@ YbFreeReCache(YbcPgThreadLocalRegexpCache *cache)
 {
 	Assert(cache && cache->array);
 	cached_re_str *re = cache->array;
+
 	for (cached_re_str *re_end = re + cache->num; re != re_end; ++re)
 		YbFreeRe(re);
 }
@@ -142,7 +144,8 @@ YbGetReCacheInfo()
 {
 	if (IsMultiThreadedMode())
 	{
-		YbcPgThreadLocalRegexpCache* cache = YBCPgGetThreadLocalRegexpCache();
+		YbcPgThreadLocalRegexpCache *cache = YBCPgGetThreadLocalRegexpCache();
+
 		if (!cache)
 		{
 			cache = YBCPgInitThreadLocalRegexpCache((sizeof(cached_re_str) *
@@ -151,15 +154,21 @@ YbGetReCacheInfo()
 			Assert(cache && cache->array);
 		}
 
-		return (YbReCacheInfo){
+		return (YbReCacheInfo)
+		{
 			.num = &cache->num,
-			.array = (cached_re_str *) cache->array};
+				.array = (cached_re_str *) cache->array,
+		};
 	}
 
-	static int	num_res = 0;		/* # of cached re's */
+	static int	num_res = 0;	/* # of cached re's */
 	static cached_re_str re_array[MAX_CACHED_RES];	/* cached re's */
 
-	return (YbReCacheInfo) {.num = &num_res, .array = re_array};
+	return (YbReCacheInfo)
+	{
+		.num = &num_res,
+			.array = re_array,
+	};
 }
 
 /* Local functions */
@@ -199,7 +208,7 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 	char		errMsg[100];
 
 	YbReCacheInfo yb_re_cache_info = YbGetReCacheInfo();
-	int *num_res = yb_re_cache_info.num;
+	int		   *num_res = yb_re_cache_info.num;
 	cached_re_str *re_array = yb_re_cache_info.array;
 
 	/*

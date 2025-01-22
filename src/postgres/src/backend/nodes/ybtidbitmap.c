@@ -46,9 +46,9 @@
 
 struct YbTBMIterator
 {
-	YbcConstSliceVector vector;	/* pointer to a C++ vector */
+	YbcConstSliceVector vector; /* pointer to a C++ vector */
 	size_t		index;			/* next element of the vector to be retrieved */
-	size_t		vector_size; 	/* number of elements in the vector */
+	size_t		vector_size;	/* number of elements in the vector */
 	YbTBMIterateResult output;	/* MUST BE LAST (because variable-size) */
 };
 
@@ -61,7 +61,7 @@ struct YbTBMIterator
 YbTIDBitmap *
 yb_tbm_create(long maxbytes)
 {
-	YbTIDBitmap  *ybtbm;
+	YbTIDBitmap *ybtbm;
 
 	/* Create the YbTIDBitmap struct and zero all its fields */
 	ybtbm = makeNode(YbTIDBitmap);
@@ -106,8 +106,9 @@ yb_tbm_add_tuples(YbTIDBitmap *ybtbm, YbcConstSliceVector ybctids)
 	if (ybtbm->work_mem_exceeded)
 		return false;
 
-	size_t new_bytes = YBCBitmapInsertYbctidsIntoSet(ybtbm->ybctid_set,
-													 ybctids);
+	size_t		new_bytes = YBCBitmapInsertYbctidsIntoSet(ybtbm->ybctid_set,
+														  ybctids);
+
 	ybtbm->nentries = YBCBitmapGetSetSize(ybtbm->ybctid_set);
 
 	YbPgMemAddConsumption(new_bytes);
@@ -134,7 +135,8 @@ yb_tbm_union_and_free(YbTIDBitmap *a, YbTIDBitmap *b)
 	if (b->nentries == 0)
 		return;
 
-	size_t added_size = YBCBitmapUnionSet(a->ybctid_set, b->ybctid_set);
+	size_t		added_size = YBCBitmapUnionSet(a->ybctid_set, b->ybctid_set);
+
 	pfree(b);
 
 	if (!yb_tbm_check_work_mem(a, added_size))
@@ -163,8 +165,8 @@ yb_tbm_intersect_and_free(YbTIDBitmap *a, YbTIDBitmap *b)
 	if (a->nentries == 0)
 		return;
 
-	size_t total_bytes = a->bytes_consumed + b->bytes_consumed;
-	size_t total_length = a->nentries + b->nentries;
+	size_t		total_bytes = a->bytes_consumed + b->bytes_consumed;
+	size_t		total_length = a->nentries + b->nentries;
 
 	a->ybctid_set = YBCBitmapIntersectSet(a->ybctid_set, b->ybctid_set);
 	a->nentries = YBCBitmapGetSetSize(a->ybctid_set);
@@ -204,6 +206,7 @@ YbTBMIterator *
 yb_tbm_begin_iterate(YbTIDBitmap *ybtbm)
 {
 	YbTBMIterator *iterator = palloc(sizeof(YbTBMIterator));
+
 	Assert(ybtbm->iterating != YB_TBM_ITERATING);
 
 	iterator->index = 0;
@@ -223,7 +226,8 @@ yb_tbm_begin_iterate(YbTIDBitmap *ybtbm)
 YbTBMIterateResult *
 yb_tbm_iterate(YbTBMIterator *iter, int count)
 {
-	YbTBMIterateResult	*result = &(iter->output);
+	YbTBMIterateResult *result = &(iter->output);
+
 	if (iter->index >= iter->vector_size)
 		return NULL;
 
@@ -260,14 +264,16 @@ yb_tbm_free_iter_result(YbTBMIterateResult *iter)
 	YBCBitmapShallowDeleteVector(iter->ybctid_vector);
 }
 
-void yb_tbm_set_work_mem_exceeded(YbTIDBitmap *ybtbm)
+void
+yb_tbm_set_work_mem_exceeded(YbTIDBitmap *ybtbm)
 {
 	elog(NOTICE, "exceeded work_mem, switching to full table scan");
 	ybtbm->work_mem_exceeded = true;
 	ybtbm->nentries = 0;
 }
 
-size_t yb_tbm_get_average_bytes(YbTIDBitmap *ybtbm)
+size_t
+yb_tbm_get_average_bytes(YbTIDBitmap *ybtbm)
 {
 	if (ybtbm->nentries > 0 && ybtbm->bytes_consumed > 0)
 		return ybtbm->bytes_consumed / ybtbm->nentries;

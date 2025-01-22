@@ -1,4 +1,5 @@
-/* Copyright (c) YugaByte, Inc.
+/*-----------------------------------------------------------------------------
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -11,7 +12,10 @@
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
  * License for the specific language governing permissions and limitations under
  * the License.
+ *
+ *-----------------------------------------------------------------------------
  */
+
 #ifndef YB_XCLUSTER_DDL_REPLICATION_UTIL
 #define YB_XCLUSTER_DDL_REPLICATION_UTIL
 
@@ -57,13 +61,13 @@ extern const char *kManualReplicationErrorMsg;
 extern bool TEST_AllowColocatedObjects;
 
 /* Get int64 value from string extension variable. */
-int64 GetInt64FromVariable(const char *var, const char *var_name);
+int64		GetInt64FromVariable(const char *var, const char *var_name);
 
 /*
  * XClusterExtensionOwner returns the oid of the user that owns the extension.
  * This is used in INIT_MEM_CONTEXT_AND_SPI_CONNECT to allow the extension to
  * update its objects.
  */
-Oid XClusterExtensionOwner(void);
+Oid			XClusterExtensionOwner(void);
 
 #endif

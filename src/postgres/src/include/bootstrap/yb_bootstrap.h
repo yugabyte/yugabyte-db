@@ -40,6 +40,6 @@ extern void YBCCreateSysCatalogTable(const char *table_name,
 									 TupleDesc tupDecs,
 									 bool is_shared_relation,
 									 IndexStmt *pkey_idx);
-extern Oid YBCExecSysCatalogInsert(Relation rel,
-								   TupleDesc tupleDesc,
-								   HeapTuple tuple);
+extern Oid	YBCExecSysCatalogInsert(Relation rel,
+									TupleDesc tupleDesc,
+									HeapTuple tuple);

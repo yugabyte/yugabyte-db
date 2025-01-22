@@ -45,7 +45,7 @@ extern int	md5_crypt_verify(const char *role, const char *shadow_pass,
 extern int	plain_crypt_verify(const char *role, const char *shadow_pass,
 							   const char *client_pass,
 							   const char **logdetail);
-extern int yb_plain_key_verify(const char *role, const uint64_t server_auth_key,
-							   const uint64_t client_auth_key, const char **logdetail);
+extern int	yb_plain_key_verify(const char *role, const uint64_t server_auth_key,
+								const uint64_t client_auth_key, const char **logdetail);
 
 #endif

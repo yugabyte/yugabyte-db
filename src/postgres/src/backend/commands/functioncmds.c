@@ -1779,9 +1779,13 @@ CreateCast(CreateCastStmt *stmt)
 #ifdef NEIL
 Oid
 get_cast_oid(Oid sourcetypeid, Oid targettypeid, bool missing_ok)
+{
+}
 
 void
 DropCastById(Oid castOid)
+{
+}
 #endif
 
 static void
@@ -2043,6 +2047,8 @@ get_transform_oid(Oid type_id, Oid lang_id, bool missing_ok)
 #ifdef NEIL
 void
 DropTransformById(Oid transformOid)
+{
+}
 #endif
 
 
@@ -2422,7 +2428,9 @@ AlterFunctionOwner(AlterOwnerStmt *stmt, Oid newOwnerId)
 
 	AlterFunctionOwner_internal(relation, tup, newOwnerId);
 
-	/* YB_TEST(neil) address should already have procid (address.objectid == tup->oid?)
+	/*
+	 * YB_TEST(neil) address should already have procid (address.objectid ==
+	 * tup->oid?)
 	 *   ObjectAddressSet(address, ProcedureRelationId, procId);
 	 */
 
@@ -2439,9 +2447,9 @@ AlterFunctionOwner(AlterOwnerStmt *stmt, Oid newOwnerId)
 void
 AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 {
-	Oid procId;
+	Oid			procId;
 	Form_pg_proc proc;
-	Oid namespaceId;
+	Oid			namespaceId;
 
 	proc = (Form_pg_proc) GETSTRUCT(tup);
 	procId = proc->oid;
@@ -2469,7 +2477,7 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 			AclResult	aclresult;
 
 			aclresult = pg_namespace_aclcheck(namespaceId, newOwnerId,
-												  ACL_CREATE);
+											  ACL_CREATE);
 			if (aclresult != ACLCHECK_OK)
 				aclcheck_error(aclresult, OBJECT_SCHEMA,
 							   get_namespace_name(namespaceId));
@@ -2522,8 +2530,8 @@ RenameFunction(RenameStmt *stmt, const char *newname)
 	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 	{
 		/* Must be owner of the existing object */
-		if (!has_privs_of_role(GetUserId(),proc->proowner))
-			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,  NameStr(proc->proname));
+		if (!has_privs_of_role(GetUserId(), proc->proowner))
+			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION, NameStr(proc->proname));
 	}
 
 	/* Make sure function with new name doesn't exist */

@@ -1,4 +1,5 @@
-/* Copyright (c) YugaByte, Inc.
+/*-----------------------------------------------------------------------------
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -11,16 +12,19 @@
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
  * License for the specific language governing permissions and limitations under
  * the License.
+ *
+ *-----------------------------------------------------------------------------
  */
+
 #ifndef YB_XCLUSTER_DDL_REPLICATION_JSON_UTIL
 #define YB_XCLUSTER_DDL_REPLICATION_JSON_UTIL
 
 #include "postgres.h"
 #include "utils/jsonb.h"
 
-void AddJsonKey(JsonbParseState *state, char *key_buf);
-void AddNumericJsonEntry(JsonbParseState *state, char *key_buf, int64 val);
-void AddStringJsonEntry(JsonbParseState *state, char *key_buf, const char *val);
-void AddBoolJsonEntry(JsonbParseState *state, char *key_buf, bool val);
+void		AddJsonKey(JsonbParseState *state, char *key_buf);
+void		AddNumericJsonEntry(JsonbParseState *state, char *key_buf, int64 val);
+void		AddStringJsonEntry(JsonbParseState *state, char *key_buf, const char *val);
+void		AddBoolJsonEntry(JsonbParseState *state, char *key_buf, bool val);
 
 #endif

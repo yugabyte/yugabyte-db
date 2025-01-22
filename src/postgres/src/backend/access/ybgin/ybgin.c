@@ -46,13 +46,13 @@ ybginhandler(PG_FUNCTION_ARGS)
 	amroutine->amcanorderbyop = false;
 	amroutine->amcanbackward = false;
 	amroutine->amcanunique = false;
-	amroutine->amcanmulticol = false; /* TODO(jason): support multicolumn */
+	amroutine->amcanmulticol = false;	/* TODO(jason): support multicolumn */
 	amroutine->amoptionalkey = true;
 	amroutine->amsearcharray = false;
 	amroutine->amsearchnulls = false;
 	amroutine->amstorage = true;
 	amroutine->amclusterable = false;
-	amroutine->ampredlocks = true; /* TODO(jason): check what this is */
+	amroutine->ampredlocks = true;	/* TODO(jason): check what this is */
 	amroutine->amcanparallel = false;
 	amroutine->amcaninclude = false;
 	amroutine->ybamcanupdatetupleinplace = false;
@@ -71,7 +71,7 @@ ybginhandler(PG_FUNCTION_ARGS)
 	amroutine->ambeginscan = ybginbeginscan;
 	amroutine->amrescan = ybginrescan;
 	amroutine->amgettuple = ybgingettuple;
-	amroutine->amgetbitmap = NULL; /* TODO(jason): support bitmap scan */
+	amroutine->amgetbitmap = NULL;	/* TODO(jason): support bitmap scan */
 	amroutine->amendscan = ybginendscan;
 	amroutine->ammarkpos = NULL;
 	amroutine->amrestrpos = NULL;

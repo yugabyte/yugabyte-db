@@ -129,6 +129,7 @@ bool		wal_init_zero = true;
 bool		wal_recycle = true;
 bool		log_checkpoints = true;
 int			sync_method = DEFAULT_SYNC_METHOD;
+
 /*
  * YB NOTE: wal_level is not applicable to YB. So for user experience, we set
  * the default to logical, so that any logical replication client doesn't throw

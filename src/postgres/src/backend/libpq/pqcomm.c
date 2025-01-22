@@ -130,12 +130,12 @@ static char *PqSendBuffer;
 static int	PqSendBufferSize;	/* Size send buffer */
 static int	PqSendPointer;		/* Next index to store a byte in PqSendBuffer */
 static int	PqSendStart;		/* Next index to send a byte in PqSendBuffer */
-static int	PqSendYbSavedBufPos;	/* Value of PqSendPointer to restore during
-									 * statement restart */
-static bool PqSendYbNonRestartableData;	/* Indicates whether data sent to user
+static int	PqSendYbSavedBufPos;	/* Value of PqSendPointer to restore
+									 * during statement restart */
+static bool PqSendYbNonRestartableData; /* Indicates whether data sent to user
 										 * should be treated as preventing
-										 * transparent restarts. This should be
-										 * false e.g. for BEGIN statement. */
+										 * transparent restarts. This should
+										 * be false e.g. for BEGIN statement. */
 
 static char PqRecvBuffer[PQ_RECV_BUFFER_SIZE];
 static int	PqRecvPointer;		/* Next index to read a byte from PqRecvBuffer */
@@ -820,7 +820,7 @@ StreamConnection(pgsocket server_fd, Port *port)
 
 #ifdef WIN32
 
-		#define PQ_SEND_BUFFER_SIZE 8192
+#define PQ_SEND_BUFFER_SIZE 8192
 
 		/*
 		 * This is a Win32 socket optimization.  The OS send buffer should be
@@ -1408,7 +1408,8 @@ socket_flush(void)
 static int
 internal_flush(void)
 {
-	if (PqSendYbNonRestartableData) {
+	if (PqSendYbNonRestartableData)
+	{
 		YBMarkDataSent();
 	}
 
