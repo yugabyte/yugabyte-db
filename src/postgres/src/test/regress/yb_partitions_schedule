@@ -7,3 +7,4 @@
 test: yb_partition_fk
 test: yb_partition_pk
 test: yb_partition_alter
+test: yb_partition_out_of_order
