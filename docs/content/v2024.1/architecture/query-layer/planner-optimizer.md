@@ -91,4 +91,4 @@ After the optimal plan is determined, YugabyteDB generates a detailed execution 
 ## Learn more
 
 - [Exploring the Cost Based Optimizer](https://www.yugabyte.com/blog/yugabytedb-cost-based-optimizer/)
-- [YugabyteDB Cost-Based Optimizer](https://dev.to/yugabyte/yugabytedb-cost-based-optimizer-and-cost-model-for-distributed-lsm-tree-1hb4)
+- [YugabyteDB Cost Based Optimizer](https://dev.to/yugabyte/yugabytedb-cost-based-optimizer-and-cost-model-for-distributed-lsm-tree-1hb4)
