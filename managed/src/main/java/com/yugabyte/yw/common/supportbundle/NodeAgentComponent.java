@@ -15,6 +15,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -27,6 +28,7 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 @Singleton
 public class NodeAgentComponent implements SupportBundleComponent {
+  private static final List<String> SOURCE_NODE_FILES = Arrays.asList("logs", "config");
   private final UniverseInfoHandler universeInfoHandler;
   private final NodeUniverseManager nodeUniverseManager;
   private final SupportBundleUtil supportBundleUtil;
@@ -119,6 +121,7 @@ public class NodeAgentComponent implements SupportBundleComponent {
       log.info("Skipping node-agent log download as node-agent is not installed");
       return res;
     }
+
     Path nodeAgentHome = Paths.get(optional.get().getHome());
     Path nodeAgentLogDirPath = nodeAgentHome.resolve("logs");
     if (!nodeUniverseManager.checkNodeIfFileExists(
@@ -126,9 +129,17 @@ public class NodeAgentComponent implements SupportBundleComponent {
       log.info("Skipping node-agent log download as {} does not exists", nodeAgentLogDirPath);
       return res;
     }
-    res =
-        nodeUniverseManager.getNodeFilePathAndSizes(
-            node, universe, nodeAgentLogDirPath.toString(), /* maxDepth */ 1, /* fileType */ "f");
+    for (String dir : SOURCE_NODE_FILES) {
+      Path dirPath = nodeAgentHome.resolve(dir);
+      if (!nodeUniverseManager.checkNodeIfFileExists(
+          node, universe, nodeAgentLogDirPath.toString())) {
+        log.info("Skipping non-existing node-agent path {}", dirPath);
+        continue;
+      }
+      res.putAll(
+          nodeUniverseManager.getNodeFilePathAndSizes(
+              node, universe, dirPath.toString(), /* maxDepth */ 1, /* fileType */ "f"));
+    }
     return res;
   }
 }

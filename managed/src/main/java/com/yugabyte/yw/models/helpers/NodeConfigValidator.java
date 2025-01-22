@@ -488,7 +488,7 @@ public class NodeConfigValidator {
         nodeAgentClient.ping(nodeAgent);
         return true;
       } catch (RuntimeException e) {
-        log.error("Failed to connect to node agent {} - {}", nodeAgent.getUuid(), e.getMessage());
+        log.error("Failed to connect to node agent {} - {}", nodeAgent, e.getMessage());
       }
     }
     return false;
