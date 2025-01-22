@@ -42,13 +42,6 @@ Using Debezium requires three separate services: [Zookeeper](http://zookeeper.ap
 
 In this tutorial, you will set up a single instance of each service using Docker and the Debezium container images.
 
-To start the services needed for this tutorial, you must:
-
-- [Start Zookeeper](#start-zookeeper)
-- [Start Kafka](#start-kafka)
-- [Start YugabyteDB](#start-yugabytedb)
-- [Start Kafka Connect](#start-kafka-connect)
-
 #### Start Zookeeper
 
 Zookeeper is the first service you must start.
@@ -79,43 +72,29 @@ In this tutorial, you will always connect to Kafka from in a Docker container. A
 
 At this point, you have started Zookeeper and Kafka, but you still need a database server from which Debezium can capture changes. In this procedure, you start a YugabyteDB instance with an example database. The example uses sample data in SQL scripts that are included with your YugabyteDB installation in the `share` directory.
 
-Follow the [Quick Start](/preview/tutorials/quick-start) to start an instance using yugabyted.
+1. Start YugabyteDB by following the instructions in [Quick Start](/preview/tutorials/quick-start).
 
-{{< note title="Note" >}}
+    You need to start the database on an IP that is resolvable by the docker containers. If you use the localhost address (that is, `127.0.0.1`) then if you deploy the connectors in the docker containers, they won't be able to talk to the database and will keep trying to connect to `127.0.0.1` inside the container. Use the [--advertise_address option for yugabyted](../../../../reference/configuration/yugabyted/#flags-8) to specify the IP you want to start your database instance.
 
-You need to start the database on an IP that is resolvable by the docker containers. If you use the localhost address (that is, `127.0.0.1`) then if you deploy the connectors in the docker containers, they won't be able to talk to the database and will keep trying to connect to `127.0.0.1` inside the container. Use the [--advertise_address option for yugabyted](../../../../reference/configuration/yugabyted#flags-8) to specify the IP you want to start your database instance.
+    For example, Linux users can use the following:
 
-For example, Linux users can use the following:
+    ```sh
+    ./bin/yugabyted start --advertise_address $(hostname -i)
+    ```
 
-```sh
-./bin/yugabyted start --advertise_address $(hostname -i)
-```
-
-{{< /note >}}
-
-##### Use the YSQL command line client
-
-After starting YugabyteDB, use ysqlsh to create your database:
-
-1. Connect the client to the database process running on the IP you specified when you started up the database instance.
+1. Using ysqlsh, connect to the database process running on the IP you specified when you started up the database instance.
 
     ```sh
     ./bin/ysqlsh -h <ip-of-your-machine>
-    ```
-
-    You should see output similar to the following:
-
-    ```output
-    ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
-    Type "help" for help.
-
-    yugabyte=#
     ```
 
 1. Load the schema of the sample tables.
 
     ```sql
     yugabyte=# \i share/schema.sql
+    ```
+
+    ```output
     CREATE TABLE
     CREATE TABLE
     CREATE TABLE
@@ -149,8 +128,11 @@ After starting YugabyteDB, use ysqlsh to create your database:
     yugabyte=# \i share/products.sql
     ```
 
-    ```output
+    ```sql
     yugabyte=# select count(*) from products;
+    ```
+
+    ```output
     count
     -------
       200
@@ -199,20 +181,15 @@ These commands use `localhost`. If you are using a non-native Docker platform (s
 
 ### Deploy the YugabyteDB connector
 
-After starting the Debezium and YugabyteDB service, you are ready to deploy the YugabyteDB connector. To deploy the connector, you must:
-
-- [Register the YugabyteDB connector to monitor the `yugabyte` database](#register-a-connector-to-monitor-yugabyte-database)
-- Watch the connector start
-
-#### Register a connector to monitor yugabyte database
-
-By registering the YugabyteDB connector, the connector will start monitoring the YugabyteDB database's table `products`. When a row in the table changes, Debezium generates a change event.
+After starting the Debezium and YugabyteDB service, you are ready to deploy the YugabyteDB connector. To deploy the connector, you register the YugabyteDB connector to monitor your database. By registering the YugabyteDB connector, the connector will start monitoring the YugabyteDB database's table (`products` in this example). When a row in the table changes, Debezium generates a change event.
 
 {{< note title="Note" >}}
 
 In a production environment, you would typically either use the Kafka tools to manually create the necessary topics, including specifying the number of replicas, or you would use the Kafka Connect mechanism for customizing the settings of [auto-created](https://debezium.io/documentation/reference/2.5/configuration/topic-auto-create-config.html) topics. However, for this tutorial, Kafka is configured to automatically create the topics with just one replica.
 
 {{< /note >}}
+
+To register the connector, do the following:
 
 1. Review the configuration of the YugabyteDB connector that you will register. Before registering the connector, you should be familiar with its configuration. In the next step, you will register the following connector:
 
@@ -282,8 +259,6 @@ Windows users may need to escape the double-quotes.
     ["ybconnector"]
     ```
 
-#### Watch the connector start
-
 When you register a connector, it generates a large amount of log output in the Kafka Connect container. By reviewing this output, you can better understand the process that the connector goes through from the time it is created until it begins reading the change events.
 
 After registering the `ybconnector` connector, you can review the log output in the Kafka Connect container (`connect`) to track the connector's status.
@@ -300,7 +275,7 @@ Kafka Connect reports some "errors". However, you can safely ignore these warnin
 
 ### View change events
 
-After deploying the YugabyteDB connector, it starts monitoring the `yugabyte` database for data change events.
+After it is deployed, the YugabyteDB connector starts monitoring the `yugabyte` database for data change events.
 
 For this tutorial, you will explore the `dbserver1.public.products` topic.
 
@@ -308,13 +283,13 @@ For this tutorial, you will explore the `dbserver1.public.products` topic.
 
 Open a new terminal, and use it to start the watch-topic utility to watch the `dbserver1.public.products` topic from the beginning of the topic.
 
-The following command runs the `watch-topic` utility in a new container using the `2.5.2.Final` version of the `debezium/kafka` image:
+The following command runs the watch-topic utility in a new container using the 2.5.2.Final version of the `debezium/kafka` image:
 
 ```sh
 docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:2.5.2.Final watch-topic -a dbserver1.public.products
 ```
 
-The `watch-topic` utility returns the event records from the `products` table. There will be 200 events, one for each row in the table which was snapshotted. Each event is formatted in JSON, because that is how you configured the Kafka Connect service. There are two JSON documents for each event: one for the key, and one for the value.
+The watch-topic utility returns the event records from the `products` table. There will be 200 events, one for each row in the table which was snapshotted. Each event is formatted in JSON, because that is how you configured the Kafka Connect service. There are two JSON documents for each event: one for the key, and one for the value.
 
 You should see output similar to the following:
 
@@ -328,11 +303,7 @@ Contents of topic dbserver1.public.products:
 ...
 ```
 
-{{< note title="Note" >}}
-
-This utility keeps watching the topic, so any new events will automatically appear as long as the utility is running.
-
-{{< /note >}}
+The watch-topic utility keeps watching the topic, so any new events appear automatically as long as the utility is running.
 
 #### Update the database and view the update event
 
@@ -359,7 +330,7 @@ By completing this procedure, you will learn how to find details about what chan
     (1 row)
     ```
 
-1. Switch to the terminal running `watch-topic` to see a new event.
+1. Switch to the terminal running watch-topic to see a new event.
 
     By changing a record in the `products` table, the YugabyteDB connector generated a new event.
 
@@ -388,7 +359,7 @@ By completing this procedure, you will learn how to find details about what chan
     }
     ```
 
-Note that the fields which were not updated are coming out as `null`. This is because the [REPLICA IDENTITY](../key-concepts/#replica-identity) of the table is `CHANGE` by default, where you only send the values of the updated columns in the change event.
+Note that the fields which were not updated are coming out as `null`. This is because the [REPLICA IDENTITY](../key-concepts/#replica-identity) of the table is CHANGE by default, where you only send the values of the updated columns in the change event.
 
 #### Delete a row and view the delete event
 
@@ -398,7 +369,7 @@ Note that the fields which were not updated are coming out as `null`. This is be
     delete from products where id = 22;
     ```
 
-1. Switch to the terminal running `watch-topic` to see two new events. By deleting a row in the `products` table, the YugabyteDB connector generated 2 new events.
+1. Switch to the terminal running watch-topic to see two new events. By deleting a row in the `products` table, the YugabyteDB connector generated 2 new events.
 
     The details for the payload of the first event will look similar to the following (formatted for readability):
 
@@ -450,7 +421,7 @@ The second event will have a *key* but the *value* will be `null`; that is a [to
 
 ### Clean up
 
-After you are finished with the tutorial, you can use Docker to stop all of the running containers.
+After you are finished, you can use Docker to stop all of the running containers.
 
 Run the following command:
 
