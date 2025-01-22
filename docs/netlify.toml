@@ -1392,6 +1392,10 @@
             https://www.google-analytics.com/
             https://www.yugabyte.com
             https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
+            wss://nexus-websocket-a.intercom.io/
+            wss://nexus-websocket-b.intercom.io/
+            wss://nexus-europe-websocket.intercom.io/
+            wss://nexus-australia-websocket.intercom.io/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
@@ -1419,6 +1423,7 @@
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
             https://x.clearbitjs.com/
+            https://js.intercomcdn.com/
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1439,6 +1444,8 @@
             https://fonts.gstatic.com
             https://ka-f.fontawesome.com/releases/
             https://use.fontawesome.com
+            https://js.intercomcdn.com/
+            https://fonts.intercomcdn.com/
         ;
 
         object-src 'none'
@@ -1453,6 +1460,8 @@
             https://www.yugabyte.com
             https://www.gstatic.com
             https://www.google.com/s2/favicons
+            https://js.intercomcdn.com/
+            https://static.intercomassets.com/
         ;
 
         child-src 'self' 'unsafe-inline'
