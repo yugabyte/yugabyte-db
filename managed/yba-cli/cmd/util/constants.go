@@ -455,6 +455,16 @@ const (
 	NoneServiceState = "NONE"
 )
 
+// XClusterConfigType
+const (
+	// BasicXClusterConfigType type
+	BasicXClusterConfigType = "Basic"
+	// TxnXClusterConfigType type
+	TxnXClusterConfigType = "Txn"
+	// DBXClusterConfigType type
+	DBXClusterConfigType = "Db"
+)
+
 // CompletedTaskStates returns set of states that mark the task as completed
 func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}

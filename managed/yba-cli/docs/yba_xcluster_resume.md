@@ -20,6 +20,7 @@ yba xcluster resume --uuid <xcluster-uuid>
 
 ```
   -u, --uuid string   [Required] The uuid of the xcluster to resume.
+  -f, --force         [Optional] Bypass the prompt for non-interactive usage.
   -h, --help          help for resume
 ```
 

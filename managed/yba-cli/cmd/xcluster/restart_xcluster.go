@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/xcluster"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -22,7 +23,7 @@ import (
 
 var restartXClusterCmd = &cobra.Command{
 	Use:     "restart",
-	Short:   "Restart replication for databases in the YugabyteDB Anywhere sxCluster configuration",
+	Short:   "Restart replication for databases in the YugabyteDB Anywhere xCluster configuration",
 	Long:    "Restart replication for databases in the YugabyteDB Anywhere xCluster configuration",
 	Example: `yba xcluster restart --uuid <xcluster-uuid> --storage-config-name <storage-config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
@@ -66,7 +67,7 @@ var restartXClusterCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		tableUUIDsString, err := cmd.Flags().GetString("table-uuid")
+		tableUUIDsString, err := cmd.Flags().GetString("table-uuids")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -161,6 +162,35 @@ var restartXClusterCmd = &cobra.Command{
 			}
 			logrus.Infof("The xcluster %s has been restarted\n",
 				formatter.Colorize(uuid, formatter.GreenColor))
+
+			rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
+			if err != nil {
+				errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "Restart - Get XCluster")
+				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+			r := make([]ybaclient.XClusterConfigGetResp, 0)
+			r = append(r, rXCluster)
+
+			sourceUniverse, targetUniverse := GetSourceAndTargetXClusterUniverse(
+				authAPI, "", "",
+				rXCluster.GetSourceUniverseUUID(),
+				rXCluster.GetTargetUniverseUUID(),
+				"Restart",
+			)
+
+			xcluster.SourceUniverse = sourceUniverse
+			xcluster.TargetUniverse = targetUniverse
+
+			xclusterCtx := formatter.Context{
+				Command: "restart",
+				Output:  os.Stdout,
+				Format:  xcluster.NewXClusterFormat(viper.GetString("output")),
+			}
+			if len(r) < 1 {
+				logrus.Fatalf(formatter.Colorize(
+					fmt.Sprintf("No xcluster with uuid: %s found\n", uuid), formatter.RedColor))
+			}
+			xcluster.Write(xclusterCtx, r)
 			return
 		}
 		logrus.Infoln(msg + "\n")
@@ -188,15 +218,17 @@ func init() {
 	restartXClusterCmd.Flags().Bool("dry-run", false,
 		"[Optional] Run the pre-checks without actually running the subtasks. (default false)")
 
-	restartXClusterCmd.Flags().String("table-uuid", "",
-		"[Optional] Comma separated list of source universe table uuids to restart. "+
+	restartXClusterCmd.Flags().String("table-uuids", "",
+		"[Optional] Comma separated list of source universe table IDs/UUIDs to restart. "+
 			"If not specified, all tables will be restarted.")
 
 	restartXClusterCmd.Flags().Int("parallelism", 8,
 		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
 
 	restartXClusterCmd.Flags().Bool("force-delete", false,
-		"[Optional] Force restart the universe xcluster despite errors. (default false)")
+		"[Optional] Force delete components of the universe xcluster despite errors during restart. "+
+			"May leave stale states and replication streams on the participating universes. "+
+			"(default false)")
 
 	restartXClusterCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")
