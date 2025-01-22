@@ -8,6 +8,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.endsWith;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.times;
@@ -37,7 +38,6 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -61,6 +61,7 @@ public class NodeAgentComponentTest extends FakeDBApplication {
       Paths.get(fakeSupportBundleBasePath, "yb-support-bundle-test-20220308000000.000-logs");
   private String nodeAgentHome = fakeSupportBundleBasePath + "/node-agent";
   private String nodeAgentLogDir = nodeAgentHome + "/logs";
+  private String nodeAgentConfigDir = nodeAgentHome + "/config";
   private Path targetNodeComponentPath =
       fakeBundlePath.resolve(NodeAgentComponent.class.getSimpleName() + ".tar.gz");
   private NodeDetails node = new NodeDetails();
@@ -102,13 +103,12 @@ public class NodeAgentComponentTest extends FakeDBApplication {
         Paths.get(createTempFile(nodeAgentLogDir, "node-agent.log", "test-logs-content"));
 
     // List of fake logs, simulates the absolute paths of files on the node server
-    List<String> fakeLogsList =
-        Arrays.asList(
-            nodeAgentLogDir + "/node-agent.log",
-            nodeAgentLogDir + "/node_agent-2023-08-07T22-50-15.473.log.gz");
-
     List<Path> fakeLogFilePathList =
-        fakeLogsList.stream().map(Paths::get).collect(Collectors.toList());
+        Arrays.asList(
+            Paths.get(nodeAgentLogDir, "/node-agent.log"),
+            Paths.get(nodeAgentLogDir, "/node_agent-2023-08-07T22-50-15.473.log.gz"));
+
+    List<Path> fakeConfigFilePathList = Arrays.asList(Paths.get(nodeAgentConfigDir, "/config.yml"));
 
     // Mock all the invocations with fake data
     when(mockSupportBundleUtil.unGzip(any(), any())).thenCallRealMethod();
@@ -118,8 +118,11 @@ public class NodeAgentComponentTest extends FakeDBApplication {
         .batchWiseDownload(
             any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
 
-    when(mockNodeUniverseManager.getNodeFilePaths(any(), any(), any(), eq(1), eq("f")))
+    when(mockNodeUniverseManager.getNodeFilePaths(any(), any(), endsWith("/logs"), eq(1), eq("f")))
         .thenReturn(fakeLogFilePathList);
+    when(mockNodeUniverseManager.getNodeFilePaths(
+            any(), any(), endsWith("/config"), eq(1), eq("f")))
+        .thenReturn(fakeConfigFilePathList);
     // Generate a fake shell response containing the output of the "check file exists" script
     // Mocks the server response as "file existing"
     when(mockNodeUniverseManager.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);
@@ -160,7 +163,8 @@ public class NodeAgentComponentTest extends FakeDBApplication {
     List<String> expectedSourceFiles =
         Arrays.asList(
             "node-agent/logs/node-agent.log",
-            "node-agent/logs/node_agent-2023-08-07T22-50-15.473.log.gz");
+            "node-agent/logs/node_agent-2023-08-07T22-50-15.473.log.gz",
+            "node-agent/config/config.yml");
     assertEquals(expectedSourceFiles, sourceFiles.getValue());
     // Check if the logs directory is created inside the bundle directory.
     assertTrue(fakeBundlePath.resolve("node-agent.log").toFile().exists());

@@ -220,11 +220,11 @@ public class NodeAgentEnabler {
     boolean clientEnabled =
         confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
     if (!clientEnabled) {
-      log.debug("Node agent server is disabled for provider {}", provider.getUuid());
+      log.trace("Node agent server is disabled for provider {}", provider.getUuid());
       return false;
     }
     if (!isEnabled()) {
-      log.debug("Node agent server is disabled for old provider {}", provider.getUuid());
+      log.trace("Node agent server is disabled for old provider {}", provider.getUuid());
       return provider.getDetails().isEnableNodeAgent();
     }
     // The internal provider flag is not checked if enabler is enabled.

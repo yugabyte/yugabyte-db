@@ -14,6 +14,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +27,7 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 @Singleton
 public class NodeAgentComponent implements SupportBundleComponent {
+  private static final List<String> SOURCE_NODE_FILES = Arrays.asList("logs", "config");
   private final UniverseInfoHandler universeInfoHandler;
   private final NodeUniverseManager nodeUniverseManager;
   private final SupportBundleUtil supportBundleUtil;
@@ -57,35 +60,40 @@ public class NodeAgentComponent implements SupportBundleComponent {
       return;
     }
     Path nodeAgentHome = Paths.get(optional.get().getHome());
+    Path nodeAgentHomeParent = nodeAgentHome.getParent();
     // Get target file path
     String nodeName = node.getNodeName();
     Path nodeTargetFile = Paths.get(bundlePath.toString(), getClass().getSimpleName() + ".tar.gz");
     log.debug(
-        "Gathering universe logs for node: {}, source path: {}, target path: {} ",
+        "Gathering node agent logs for node: {}, source path: {}, target path: {} ",
         nodeName,
         nodeAgentHome,
         nodeTargetFile);
-    Path nodeAgentLogDirPath = nodeAgentHome.resolve("logs");
-    if (!nodeUniverseManager.checkNodeIfFileExists(
-        node, universe, nodeAgentLogDirPath.toString())) {
-      log.info("Skipping node-agent log download as {} does not exists", nodeAgentLogDirPath);
+    List<String> relativeLogFilePaths = new ArrayList<>();
+    for (String dir : SOURCE_NODE_FILES) {
+      Path dirPath = nodeAgentHome.resolve(dir);
+      if (!nodeUniverseManager.checkNodeIfFileExists(node, universe, dirPath.toString())) {
+        log.info("Skipping non-existing node-agent path {}", dirPath);
+        continue;
+      }
+      List<Path> filepaths =
+          nodeUniverseManager.getNodeFilePaths(
+              node, universe, dirPath.toString(), /*maxDepth*/ 1, /*fileType*/ "f");
+      if (CollectionUtils.isEmpty(filepaths)) {
+        log.info("Skipping node-agent support-bundle download as no file exists in {}", dirPath);
+        continue;
+      }
+      // Relativize from the parent to include node-agent folder in the tgz.
+      relativeLogFilePaths.addAll(
+          filepaths.stream()
+              .map(filePath -> nodeAgentHomeParent.relativize(filePath))
+              .map(Path::toString)
+              .collect(Collectors.toList()));
+    }
+    if (CollectionUtils.isEmpty(relativeLogFilePaths)) {
+      log.info("Skipping node-agent support-bundle download as no file exists");
       return;
     }
-    List<Path> nodeAgentLogFilePaths =
-        nodeUniverseManager.getNodeFilePaths(
-            node, universe, nodeAgentLogDirPath.toString(), /*maxDepth*/ 1, /*fileType*/ "f");
-    if (CollectionUtils.isEmpty(nodeAgentLogFilePaths)) {
-      log.info("Skipping node-agent log download as no file exists in {}", nodeAgentLogDirPath);
-      return;
-    }
-    // Relativize from the parent to include node-agent folder in the tgz.
-    Path nodeAgentHomeParent = nodeAgentHome.getParent();
-    List<String> relativeLogFilePaths =
-        nodeAgentLogFilePaths.stream()
-            .map(filePath -> nodeAgentHomeParent.relativize(filePath))
-            .map(Path::toString)
-            .collect(Collectors.toList());
-
     supportBundleUtil.batchWiseDownload(
         universeInfoHandler,
         customer,
