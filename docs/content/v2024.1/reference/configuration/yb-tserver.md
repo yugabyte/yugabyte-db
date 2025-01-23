@@ -1344,11 +1344,11 @@ Interval in seconds at which the table list in the publication will be refreshed
 
 Default: `3600`
 
-##### --cdcsdk_max_consistent_records
+##### --cdc_stream_records_threshold_size_bytes
 
-Controls the maximum number of records sent from Virtual WAL (VWAL) to walsender in consistent order.
+Max size (in bytes) of changes from a tablet sent from CDC Service to gRPC connector in gRPC Protocol. Max size (in bytes) of changes sent from [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) to Walsender process in PostgreSQL Protocol. 
 
-Default: `500`
+Default: `4MB`
 
 ##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
 
