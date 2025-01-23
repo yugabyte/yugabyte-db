@@ -6306,7 +6306,6 @@ Status CatalogManager::DeleteIndexInfoFromTable(
 void CatalogManager::AcquireObjectLocksGlobal(
     const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
-  VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
         rpc::ErrorStatusPB::ERROR_APPLICATION,
@@ -6319,7 +6318,6 @@ void CatalogManager::AcquireObjectLocksGlobal(
 void CatalogManager::ReleaseObjectLocksGlobal(
     const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
-  VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
         rpc::ErrorStatusPB::ERROR_APPLICATION,

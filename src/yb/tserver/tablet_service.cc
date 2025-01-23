@@ -3447,6 +3447,7 @@ void TabletServiceImpl::AcquireObjectLocks(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
   }
   auto s = ts_local_lock_manager->AcquireObjectLocks(*req, context.GetClientDeadline());
+  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   if (!s.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
   } else {
@@ -3467,10 +3468,13 @@ void TabletServiceImpl::ReleaseObjectLocks(
 
   auto* ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
+    resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
     SetupErrorAndRespond(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
+    return;
   }
-  auto s = ts_local_lock_manager->ReleaseObjectLocks(*req);
+  auto s = ts_local_lock_manager->ReleaseObjectLocks(*req, context.GetClientDeadline());
+  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   if (!s.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
   } else {
