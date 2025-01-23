@@ -3543,21 +3543,12 @@ Status CatalogManager::BootstrapProducer(
   LOG(INFO) << "Servicing BootstrapProducer request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
 
-  const bool pg_database_type = req->db_type() == YQL_DATABASE_PGSQL;
-  SCHECK(
-      pg_database_type || req->db_type() == YQL_DATABASE_CQL, InvalidArgument,
-      "Invalid database type");
+  SCHECK_EQ(req->db_type(), YQL_DATABASE_PGSQL, InvalidArgument, "Invalid database type");
   SCHECK_PB_FIELDS_NOT_EMPTY(*req, namespace_name);
   SCHECK_GT(req->table_name_size(), 0, InvalidArgument, "No tables specified");
-  if (pg_database_type) {
-    SCHECK_EQ(
-        req->pg_schema_name_size(), req->table_name_size(), InvalidArgument,
-        "Number of tables and number of pg schemas must match");
-  } else {
-    SCHECK_EQ(
-        req->pg_schema_name_size(), 0, InvalidArgument,
-        "Pg Schema does not apply to CQL databases");
-  }
+  SCHECK_EQ(
+      req->pg_schema_name_size(), req->table_name_size(), InvalidArgument,
+      "Number of tables and number of pg schemas must match");
 
   NamespaceIdentifierPB ns_id;
   ns_id.set_database_type(req->db_type());
@@ -3571,12 +3562,12 @@ Status CatalogManager::BootstrapProducer(
   cdc::BootstrapProducerRequestPB bootstrap_req;
   master::TSDescriptorPtr ts = nullptr;
   for (int i = 0; i < req->table_name_size(); i++) {
-    string pg_schema_name = pg_database_type ? req->pg_schema_name(i) : "";
+    auto& pg_schema_name = req->pg_schema_name(i);
 
     auto table_designator = std::find_if(
         all_tables.begin(), all_tables.end(),
         [&table_name = req->table_name(i),
-         &pg_schema_name](const TableDesignator& table_designator) {
+         &pg_schema_name = req->pg_schema_name(i)](const TableDesignator& table_designator) {
           return table_designator.name() == table_name &&
                  table_designator.pgschema_name() == pg_schema_name;
         });
