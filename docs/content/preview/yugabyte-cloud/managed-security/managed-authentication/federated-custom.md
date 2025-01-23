@@ -70,7 +70,7 @@ To configure federated authentication in YugabyteDB Aeon, you need the following
   - Authorization endpoint
   - Token endpoint
   - JWKS endpoint
-  - Userinfo endpoint
+  - User info endpoint
 
   The discovery document is a JSON file stored in a well-known location.
 
