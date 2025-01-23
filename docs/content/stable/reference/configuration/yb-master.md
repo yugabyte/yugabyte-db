@@ -955,7 +955,7 @@ Default: `false`
 
 ##### --enable_tablet_split_of_replication_slot_streamed_tables
 
-Toggle automatic tablet splitting for tables under replication slot. Applicable only to CDC using [Logical replication protocol](../../../develop/change-data-capture/using-logical-replication/) only.
+Toggle automatic tablet splitting for tables under replication slot. Applicable only to CDC using the [PostgreSQL logical replication protocol](../../../develop/change-data-capture/using-logical-replication/).
 
 Default: `false`
 
