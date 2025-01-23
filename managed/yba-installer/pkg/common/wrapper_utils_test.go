@@ -1,8 +1,9 @@
 package common
 
 import (
-	"testing"
 	"os"
+	"strings"
+	"testing"
 )
 
 const CustomDirPerms = 0700 + os.ModeDir
@@ -46,5 +47,17 @@ func ValidateDirectory(t *testing.T, testdir string, perm os.FileMode) {
 	if fileInfo.Mode() != perm {
 		t.Fatalf("directory %s has incorrect permissions. expected: %s actual: %s",
 			testdir, perm, fileInfo.Mode())
+	}
+}
+
+func TestCreateInvalidPathDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	testdir := tmpDir + "/test/invalid\000path"
+	err := MkdirAll(testdir, CustomDirPerms)
+	if err == nil {
+		t.Fatalf("no error making directory %s", testdir)
+	}
+	if !strings.Contains(err.Error(), "invalid path") {
+		t.Fatalf("did not throw correct error: %s", err.Error())
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
@@ -29,25 +30,50 @@ func MkdirAll(path string, perm os.FileMode) error {
 	} else if errors.Is(err, os.ErrExist) {
 		log.Debug(fmt.Sprintf("Dir %s already exists. Skipping creation.", path))
 		return nil
+	} else if errors.Is(err, os.ErrPermission) {
+		return fmt.Errorf("permission denied creating %s error: %w", path, err)
+	} else if errors.Is(err, os.ErrInvalid) || strings.Contains(err.Error(), "invalid") {
+		return fmt.Errorf("invalid path %s error: %w", path, err)
 	} else if _, ok := err.(*os.PathError); ok {
 		// recursive case where we need to make parent directories
 		return mkdirAllHelper(filepath.Dir(path), []string{filepath.Base(path)}, perm)
 	}
-	return err
+	return fmt.Errorf("unexpected error: %w", err)
 }
 
 func mkdirAllHelper(path string, children []string, perm os.FileMode) error {
 	log.Debug("Creating directory " + path)
+	if (path == "/") {
+		return fmt.Errorf("Can not create root directory.")
+	}
 	err := os.Mkdir(path, os.ModePerm)
 	if err != nil {
-		// Directory can not be created at this level. More parents must be created.
-		// Appending to list so first directory that can be created will be at the end.
-		children = append(children, filepath.Base(path))
-		return mkdirAllHelper(filepath.Dir(path), children, perm)
+		if errors.Is(err, os.ErrExist) {
+			log.Debug(fmt.Sprintf("Dir %s already exists. Skipping creation.", path))
+			return nil
+		}
+		if errors.Is(err, os.ErrPermission) {
+			return fmt.Errorf("permission denied while creating %s error: %w", path, err)
+		}
+		if pathErr, ok := err.(*os.PathError); ok {
+			// Specific handling of insufficient disk space or too many links
+			if strings.Contains(strings.ToLower(pathErr.Err.Error()), "no space") {
+				return fmt.Errorf("insufficient disk space at %s error: %w", path, pathErr.Err)
+			}
+			if strings.Contains(strings.ToLower(pathErr.Err.Error()), "too many links") {
+				return fmt.Errorf("file system limit reached at %s error: %w", path, pathErr.Err)
+			}
+			if errors.Is(pathErr, os.ErrNotExist) {
+				// Directory can not be created at this level. More parents must be created.
+				// Appending to list so first directory that can be created will be at the end.
+				return mkdirAllHelper(filepath.Dir(path), append(children, filepath.Base(path)), perm)
+			}
+		}
+		return fmt.Errorf("unexpected error: %w", err)
 	}
 	// change modification bits as well
 	if e := os.Chmod(path, perm); e != nil {
-		return fmt.Errorf("error changing %s permissions to %d err: %s", path, perm, e.Error())
+		return fmt.Errorf("error changing %s permissions to %d err: %w", path, perm, e)
 	}
 	// Also make children
 	// Iterate in reverse because we appended all children starting with the deepest
@@ -56,11 +82,11 @@ func mkdirAllHelper(path string, children []string, perm os.FileMode) error {
 		path = path + string(os.PathSeparator) + children[i]
 		log.Debug("Creating directory " + path)
 		if e := os.Mkdir(path, os.ModePerm); err != nil && !errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("error making %s: %s", path, e.Error())
+			return fmt.Errorf("error making %s error: %w", path, e)
 		}
 		// change modification bits as well
 		if e := os.Chmod(path, perm); e != nil {
-			return fmt.Errorf("error changing %s permissions to %d err: %s", path, perm, e.Error())
+			return fmt.Errorf("error changing %s permissions to %d error: %w", path, perm, e)
 		}
 	}
 	return nil
