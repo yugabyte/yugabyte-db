@@ -142,6 +142,10 @@ static inline void od_server_free(od_server_t *server)
 		if (server->prep_stmts) {
 			od_hashmap_free(server->prep_stmts);
 		}
+		if (server->vars.vars != NULL) {
+			free(server->vars.vars);
+			server->vars.vars = NULL;
+		}
 		free(server);
 	}
 }
