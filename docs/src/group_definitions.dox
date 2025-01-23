@@ -1,0 +1,48 @@
+/**
+ * @defgroup commands_crud CRUD Commands Functions
+ * @brief Functions related to  CRUD.
+ *
+ * This group contains all the functions under `commands_crud`.
+ */
+
+/**
+ * @defgroup commands_diagnostic Diagnostics Command Functions
+ * @brief Functions related to Diagnostics Commands.
+ *
+ * This group contains all the functions under `commands_diagnostic`.
+ */
+
+/**
+ * @defgroup metadata Metadata Functions
+ * @brief Functions related to metadata.
+ *
+ * This group contains all the functions under `metadata`.
+ */
+
+/**
+ * @defgroup schema_mgmt Schema Management Functions
+ * @brief Functions related to Schema Management.
+ *
+ * This group contains all the functions under `schema_mgmt`.
+ */
+
+/**
+ * @defgroup users User Functions
+ * @brief Functions related to User.
+ *
+ * This group contains all the functions under `users`.
+ */
+
+/**
+ * @defgroup utils Utility Functions
+ * @brief Functions related to Utility.
+ *
+ * This group contains all the functions under `utils`.
+ */
+
+/**
+ * @defgroup index_mgmt Index Management Functions
+ * @brief Functions related to Index Management.
+ *
+ * This group contains all the functions under `index_mgmt`.
+ */
