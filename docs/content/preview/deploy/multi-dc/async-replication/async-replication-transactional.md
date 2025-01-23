@@ -10,7 +10,7 @@ menu:
   preview:
     parent: async-replication
     identifier: async-replication-transactional
-    weight: 20
+    weight: 10
 tags:
   other: ysql
 type: docs
