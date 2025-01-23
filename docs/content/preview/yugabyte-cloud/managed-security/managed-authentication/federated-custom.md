@@ -57,13 +57,14 @@ To configure federated authentication in YugabyteDB Aeon, you need the following
 
 - OIDC environment set up (for example, Google Cloud OIDC).
 - Identity provider configured (for example, Google Workspace).
-- Permissions to create applications on your OIDC provider. You will need the following for your application:
-  - Client ID of the application you registered with your IdP.
-  - Client secret of the application.
+- Permissions to create applications on your OIDC provider.
 - An OIDC-based web application created on your OIDC provider, configured with the YugabyteDB Okta redirect URL:
 
   `https://yugabyte-dev.oktapreview.com/oauth2/v1/authorize/callback`
 
+  You will need the following for your application:
+  - Client ID of the application you registered with your IdP.
+  - Client secret of the application.
 - The following information from your OIDC provider's discovery document:
   - Issuer URL
   - Authorization endpoint
