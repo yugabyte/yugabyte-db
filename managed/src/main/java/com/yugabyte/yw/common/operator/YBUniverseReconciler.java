@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
@@ -56,6 +57,7 @@ import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
+import java.io.IOException;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
@@ -98,6 +100,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final TaskExecutor taskExecutor;
   private final RuntimeConfGetter confGetter;
   private final CustomerTaskManager customerTaskManager;
+  private final UniverseActionsHandler universeActionsHandler;
   private final Set<UUID> universeReadySet;
   private final Map<String, String> universeDeletionReferenceMap;
   private final Map<String, UUID> universeTaskMap;
@@ -118,7 +121,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       KubernetesOperatorStatusUpdater kubernetesStatusUpdater,
       RuntimeConfGetter confGetter,
       CustomerTaskManager customerTaskManager,
-      OperatorUtils operatorUtils) {
+      OperatorUtils operatorUtils,
+      UniverseActionsHandler universeActionsHandler) {
     this(
         client,
         informerFactory,
@@ -131,7 +135,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         kubernetesStatusUpdater,
         confGetter,
         customerTaskManager,
-        operatorUtils);
+        operatorUtils,
+        universeActionsHandler);
   }
 
   @VisibleForTesting
@@ -147,7 +152,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       KubernetesOperatorStatusUpdater kubernetesStatusUpdater,
       RuntimeConfGetter confGetter,
       CustomerTaskManager customerTaskManager,
-      OperatorUtils operatorUtils) {
+      OperatorUtils operatorUtils,
+      UniverseActionsHandler universeActionsHandler) {
 
     super(client, informerFactory);
     this.ybUniverseClient = client.resources(YBUniverse.class);
@@ -168,6 +174,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     this.universeDeletionReferenceMap = new HashMap<>();
     this.universeTaskMap = new HashMap<>();
     this.operatorUtils = operatorUtils;
+    this.universeActionsHandler = universeActionsHandler;
   }
 
   private static String getWorkQueueKey(YBUniverse ybUniverse) {
@@ -709,8 +716,14 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     KubernetesResourceDetails k8ResourceDetails =
         KubernetesResourceDetails.fromResource(ybUniverse);
-    UUID taskUUID = null;
 
+    // If the universe is paused, and we aren't unpausing, requeue the task.
+    if (ybUniverse.getSpec().getPaused() && universeDetails.universePaused) {
+      log.debug("Universe {} is paused, requeuing", ybUniverse.getMetadata().getName());
+      workqueue.requeue(getWorkQueueKey(ybUniverse), OperatorWorkQueue.ResourceAction.NO_OP, false);
+    }
+
+    UUID taskUUID = null;
     try {
       if (specificTaskTypeToRerun != null) {
         // For cases when we want to do a re-run of same task type
@@ -759,8 +772,38 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             throw new RuntimeException("Unexpected task tried for re-run");
         }
       } else {
-        // Case with new edits
-        if (!StringUtils.equals(
+        // Handle Pause
+        if (!universeDetails.universePaused && ybUniverse.getSpec().getPaused()) {
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.PauseUniverse.name());
+          taskUUID =
+              universeActionsHandler.pause(
+                  cust, universe, KubernetesResourceDetails.fromResource(ybUniverse));
+          // Handle Resume
+        } else if (universeDetails.universePaused && !ybUniverse.getSpec().getPaused()) {
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.ResumeUniverse.name());
+          taskUUID = resumeYbUniverse(cust, universe, ybUniverse);
+          // Rare case where creating the Resume task will raise IOException and return null.
+          // Handle and requeue.
+          if (taskUUID == null) {
+            log.error("failed to create universe resume task");
+            kubernetesStatusUpdater.updateUniverseState(
+                KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.ERROR_UPDATING);
+            workqueue.requeue(
+                getWorkQueueKey(ybUniverse), OperatorWorkQueue.ResourceAction.NO_OP, false);
+            return;
+          }
+          // Case with new edits
+        } else if (!StringUtils.equals(
             incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
           log.info("Updating Kubernetes Overrides");
           kubernetesStatusUpdater.createYBUniverseEventStatus(
@@ -940,6 +983,16 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     log.info("Updating universe with new info now");
     universeCRUDHandler.configure(cust, taskConfigParams);
     return universeCRUDHandler.update(cust, oldUniverse, taskConfigParams);
+  }
+
+  private UUID resumeYbUniverse(Customer cust, Universe universe, YBUniverse ybUniverse) {
+    try {
+      return universeActionsHandler.resume(
+          cust, universe, KubernetesResourceDetails.fromResource(ybUniverse));
+    } catch (IOException e) {
+      log.error("Failed to resume universe", e);
+      return null;
+    }
   }
 
   @VisibleForTesting

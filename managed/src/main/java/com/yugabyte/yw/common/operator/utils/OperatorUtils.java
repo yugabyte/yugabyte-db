@@ -293,6 +293,8 @@ public class OperatorUtils {
     DeviceInfo incomingMasterDeviceInfo =
         mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
     int incomingNumNodes = (int) ybUniverse.getSpec().getNumNodes().longValue();
+    Boolean pauseChangeRequired =
+        ybUniverse.getSpec().getPaused() != u.getUniverseDetails().universePaused;
 
     if (prevTaskToRerun != null) {
       TaskType specificTaskTypeToRerun = prevTaskToRerun.getTaskType();
@@ -321,18 +323,32 @@ public class OperatorUtils {
           return false;
       }
     }
-
-    return (!StringUtils.equals(incomingOverrides, currentUserIntent.universeOverrides))
-        || checkIfGFlagsChanged(
-            u,
-            u.getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .specificGFlags /*Current gflags */,
-            specGFlags)
-        || shouldUpdateYbUniverse(
-            currentUserIntent, incomingNumNodes, incomingDeviceInfo, incomingMasterDeviceInfo)
-        || !StringUtils.equals(currentUserIntent.ybSoftwareVersion, incomingYbSoftwareVersion);
+    Boolean mismatch = false;
+    mismatch =
+        mismatch || !StringUtils.equals(incomingOverrides, currentUserIntent.universeOverrides);
+    log.trace("overrides mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || checkIfGFlagsChanged(
+                u,
+                u.getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .specificGFlags /*Current gflags */,
+                specGFlags);
+    log.trace("gflags mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || shouldUpdateYbUniverse(
+                currentUserIntent, incomingNumNodes, incomingDeviceInfo, incomingMasterDeviceInfo);
+    log.trace("nodes mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || !StringUtils.equals(currentUserIntent.ybSoftwareVersion, incomingYbSoftwareVersion);
+    log.trace("version mismatch: {}", mismatch);
+    mismatch = mismatch || pauseChangeRequired;
+    log.trace("pause mismatch: {}", mismatch);
+    return mismatch;
   }
 
   /*--- Release related help methods ---*/

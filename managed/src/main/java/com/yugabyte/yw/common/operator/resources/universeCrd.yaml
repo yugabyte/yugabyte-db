@@ -219,6 +219,15 @@ spec:
                       - message:   StorageClass cannot be changed once set.
                         rule: self == oldSelf
                 type: object
+              paused:
+                description: >
+                  If the universe is paused. A paused universe will have its statefulsets scaled
+                  to 0 pods. When unpaused, the statefulsets will be scaled back to their previous
+                  values.
+                  While Paused, all other actions on the universe will be ignored until the universe
+                  is resumed.
+                type: boolean
+                default: false
               kubernetesOverrides:
                 description: >
                   Kubernetes overrides for the universe.

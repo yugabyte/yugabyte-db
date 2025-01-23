@@ -37,7 +37,7 @@ import play.mvc.Http.Status;
 @Slf4j
 public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
-  private final OperatorStatusUpdater kubernetesStatus;
+  protected final OperatorStatusUpdater kubernetesStatus;
 
   protected KubernetesUpgradeTaskBase(
       BaseTaskDependencies baseTaskDependencies,
