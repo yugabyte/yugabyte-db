@@ -76,6 +76,8 @@ To configure federated authentication in YugabyteDB Aeon, you need the following
 
   [Google OIDC discovery endpoint](https://developers.google.com/identity/protocols/oauth2/openid-connect#an-id-tokens-payload) is an example of such file. For most identity providers, `/.well-known/openid-configuration` is appended to the issuer to generate the metadata URL for OIDC specifications.
 
+For more information on setting up OIDC, consult your IdP provider documentation.
+
 ## Configure federated authentication
 
 To configure federated authentication using a custom IdP in YugabyteDB Aeon, do the following:
