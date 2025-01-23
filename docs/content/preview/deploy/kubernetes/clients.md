@@ -11,11 +11,9 @@ menu:
 type: docs
 ---
 
-There is a number of options available for connecting to a YugabyteDB cluster deployed within Kubernetes.
-
 ## Prerequisites
 
-You must have a YugabyteDB cluster set up according to the [Kubernetes deployment instructions.](../../kubernetes/)
+You must have a YugabyteDB cluster set up according to the [Kubernetes deployment instructions](../../kubernetes/).
 
 ## Connect from within the Kubernetes cluster
 
