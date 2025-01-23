@@ -147,6 +147,8 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
   Status WaitForCreateReplicationToFinish(const std::string& target_master_addresses);
 
+  Status EnablePITROnClusters();
+
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
 

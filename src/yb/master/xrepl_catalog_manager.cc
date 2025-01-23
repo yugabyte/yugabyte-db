@@ -36,6 +36,7 @@
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master.h"
@@ -5504,9 +5505,7 @@ Status CatalogManager::BootstrapProducer(
   SCHECK(
       pg_database_type || req->db_type() == YQL_DATABASE_CQL, InvalidArgument,
       "Invalid database type");
-  SCHECK(
-      req->has_namespace_name() && !req->namespace_name().empty(), InvalidArgument,
-      "No namespace specified");
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, namespace_name);
   SCHECK_GT(req->table_name_size(), 0, InvalidArgument, "No tables specified");
   if (pg_database_type) {
     SCHECK_EQ(
@@ -5518,16 +5517,28 @@ Status CatalogManager::BootstrapProducer(
         "Pg Schema does not apply to CQL databases");
   }
 
+  NamespaceIdentifierPB ns_id;
+  ns_id.set_database_type(req->db_type());
+  ns_id.set_name(req->namespace_name());
+  auto ns = VERIFY_RESULT(FindNamespace(ns_id));
+  auto all_tables = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(*this, ns->id()));
+
   cdc::BootstrapProducerRequestPB bootstrap_req;
   master::TSDescriptor* ts = nullptr;
   for (int i = 0; i < req->table_name_size(); i++) {
     string pg_schema_name = pg_database_type ? req->pg_schema_name(i) : "";
-    auto table_info = GetTableInfoFromNamespaceNameAndTableName(
-        req->db_type(), req->namespace_name(), req->table_name(i), pg_schema_name);
-    SCHECK(
-        table_info, NotFound, Format("Table $0.$1$2 not found"), req->namespace_name(),
-        (pg_schema_name.empty() ? "" : pg_schema_name + "."), req->table_name(i));
 
+    auto table_info_itr = std::find_if(
+        all_tables.begin(), all_tables.end(),
+        [&table_name = req->table_name(i), &pg_schema_name](const TableInfoPtr& table_info) {
+          return table_info->name() == table_name && table_info->pgschema_name() == pg_schema_name;
+        });
+    SCHECK(
+        table_info_itr != all_tables.end(), NotFound, Format("Table $0.$1$2 not found"),
+        req->namespace_name(), (pg_schema_name.empty() ? "" : pg_schema_name + "."),
+        req->table_name(i));
+
+    auto& table_info = *table_info_itr;
     bootstrap_req.add_table_ids(table_info->id());
     resp->add_table_ids(table_info->id());
 

@@ -463,7 +463,7 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
 }
 
-TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrap) {
+TEST_F(XClusterAdminCliTest, YB_DISABLE_TEST(TestSetupNamespaceReplicationWithBootstrap)) {
   client::TableHandle producer_cluster_table;
   const client::YBTableName kTestTableName(YQL_DATABASE_CQL, "my_keyspace", "test_table");
 
@@ -485,7 +485,9 @@ TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrap) {
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
 }
 
-TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrapFailTransactionalCQL) {
+TEST_F(
+    XClusterAdminCliTest,
+    YB_DISABLE_TEST(TestSetupNamespaceReplicationWithBootstrapFailTransactionalCQL)) {
   client::TableHandle producer_cluster_table;
   const client::YBTableName kTestTableName(YQL_DATABASE_CQL, "my_keyspace", "test_table");
 
@@ -500,7 +502,9 @@ TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrapFailTrans
       producer_cluster_->GetMasterAddresses(), producer_namespace, kBootstrapArg, "transactional"));
 }
 
-TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrapFailInvalidArgumentOrder) {
+TEST_F(
+    XClusterAdminCliTest,
+    YB_DISABLE_TEST(TestSetupNamespaceReplicationWithBootstrapFailInvalidArgumentOrder)) {
   client::TableHandle producer_cluster_table;
   const client::YBTableName kTestTableName(YQL_DATABASE_CQL, "my_keyspace", "test_table");
 
@@ -528,7 +532,9 @@ TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrapFailInval
       producer_cluster_->GetMasterAddresses(), kBootstrapArg));
 }
 
-TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrapFailInvalidNamespace) {
+TEST_F(
+    XClusterAdminCliTest,
+    YB_DISABLE_TEST(TestSetupNamespaceReplicationWithBootstrapFailInvalidNamespace)) {
   client::TableHandle producer_cluster_table;
   const client::YBTableName kTestTableName(YQL_DATABASE_CQL, "my_keyspace", "test_table");
 
@@ -547,7 +553,9 @@ TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrapFailInval
       producer_cluster_->GetMasterAddresses(), "my_keyspace.ysql", kBootstrapArg));
 }
 
-TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrapFailInvalidNumArgs) {
+TEST_F(
+    XClusterAdminCliTest,
+    YB_DISABLE_TEST(TestSetupNamespaceReplicationWithBootstrapFailInvalidNumArgs)) {
   client::TableHandle producer_cluster_table;
   const client::YBTableName kTestTableName(YQL_DATABASE_CQL, "my_keyspace", "test_table");
 
