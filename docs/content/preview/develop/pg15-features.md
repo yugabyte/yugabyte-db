@@ -145,7 +145,7 @@ The following PG15 features are not yet implemented but are planned for the futu
 | [Extended statistics](https://www.postgresql.org/docs/15/planner-stats.html#PLANNER-STATS-EXTENDED)
 | Gather additional statistics using the [CREATE STATISTICS](https://www.postgresql.org/docs/15/sql-createstatistics.html) command. |
 
-| [Merge command](https://www.postgresql.org/docs/current/sql-merge.html)
+| [Merge command](https://www.postgresql.org/docs/15/sql-merge.html)
 | INSERT, UPDATE or DELETE in one statement. |
 
 | [Scram authentication as default](../../secure/authentication/password-authentication#enable-scram-sha-256-authentication)

@@ -14,7 +14,7 @@ type: docs
 
 ## Synopsis
 
-Use the `CREATE AGGREGATE` statement to create an aggregate function.  There are three ways to
+Use the CREATE AGGREGATE statement to create an aggregate function.  There are three ways to
 create aggregates.
 
 ## Syntax
@@ -32,8 +32,7 @@ create aggregates.
 
 ## Semantics
 
-The order of options does not matter.  Even the mandatory options `BASETYPE`, `SFUNC`, and `STYPE`
-may appear in any order.
+The order of options does not matter.  Even the mandatory options BASETYPE, SFUNC, and STYPE may appear in any order.
 
 See the semantics of each option in the [PostgreSQL docs][postgresql-docs-create-aggregate].
 
@@ -100,5 +99,6 @@ yugabyte=# SELECT newcnt(*) FROM pg_aggregate;
 
 ## See also
 
-- [`DROP AGGREGATE`](../ddl_drop_aggregate)
-- [postgresql-docs-create-aggregate](https://www.postgresql.org/docs/current/sql-createaggregate.html)
+- [DROP AGGREGATE](../ddl_drop_aggregate)
+
+[postgresql-docs-create-aggregate]: https://www.postgresql.org/docs/15/sql-createaggregate.html
