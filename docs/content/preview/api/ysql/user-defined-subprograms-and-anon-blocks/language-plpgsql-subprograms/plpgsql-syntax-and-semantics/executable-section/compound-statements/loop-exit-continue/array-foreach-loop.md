@@ -194,7 +194,7 @@ select s.three_dim_array(
 ```
 
 {{< note title="Array literals." >}}
-See: the section [Creating an array value using a literal](../../../../../../../datatypes/type_array/literals/); and the subsection [Array Input and Output Syntax](https://www.postgresql.org/docs/11/arrays.html#ARRAYS-IO) in the section [Arrays](https://www.postgresql.org/docs/11/arrays.html) in the PostgreSQL documentation.
+See: the section [Creating an array value using a literal](../../../../../../../datatypes/type_array/literals/); and the subsection [Array Input and Output Syntax](https://www.postgresql.org/docs/15/arrays.html#ARRAYS-IO) in the section [Arrays](https://www.postgresql.org/docs/15/arrays.html) in the PostgreSQL documentation.
 {{< /note >}}
 
 The result has no line breaks and so, in a screen window of usual width where line-wrap is turned on, it's very hard to read. Readability is enhanced by adding whitespace manually: line breaks; and a conventional indentation style to line up matching curly braces vertically.

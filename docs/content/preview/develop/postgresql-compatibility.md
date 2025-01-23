@@ -124,7 +124,7 @@ The following features are planned for EPCM in future releases.
 
 ### Parallel query
 
-Enables the use of PostgreSQL [parallel queries](https://www.postgresql.org/docs/11/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Parallel query provides feature compatibility and improved performance parity.
+Enables the use of PostgreSQL [parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Parallel query provides feature compatibility and improved performance parity.
 
 ## Enable EPCM
 

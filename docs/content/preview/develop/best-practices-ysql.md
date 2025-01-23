@@ -216,7 +216,7 @@ For more details, see [Large scans and batch jobs](../../develop/learn/transacti
 
 Use the [JSONB](../../api/ysql/datatypes/type_json) datatype to model JSON data; that is, data that doesn't have a set schema but has a truly dynamic schema.
 
-JSONB in YSQL is the same as the [JSONB datatype in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
+JSONB in YSQL is the same as the [JSONB datatype in PostgreSQL](https://www.postgresql.org/docs/15/datatype-json.html).
 
 You can use JSONB to group less interesting or less frequently accessed columns of a table.
 

@@ -11,7 +11,7 @@ showRightNav: true
 type: docs
 ---
 
-System catalogs, also known as system tables or system views, play a crucial role in the internal organization and management of the database and serve as the backbone of YugabyteDB's architecture. YugabyteDB builds upon the system catalog of [PostgreSQL](https://www.postgresql.org/docs/current/catalogs.html). These catalogs form a centralized repository that stores metadata about the database itself, such as tables, indexes, columns, constraints, functions, users, privileges, extensions, query statistics, and more. All the system catalog tables and views are organized under the _pg_catalog_ schema.
+System catalogs, also known as system tables or system views, play a crucial role in the internal organization and management of the database and serve as the backbone of YugabyteDB's architecture. YugabyteDB builds upon the system catalog of [PostgreSQL](https://www.postgresql.org/docs/11/catalogs.html). These catalogs form a centralized repository that stores metadata about the database itself, such as tables, indexes, columns, constraints, functions, users, privileges, extensions, query statistics, and more. All the system catalog tables and views are organized under the _pg_catalog_ schema.
 
 To list the tables in the system catalog, you can execute the following command:
 
@@ -189,4 +189,4 @@ The `pg_authid` table stores details of users, roles, groups, and the correspond
 
 ## Learn more
 
-- [List of PostgreSQL system tables](https://www.postgresql.org/docs/current/catalogs.html)
+- [List of PostgreSQL system tables](https://www.postgresql.org/docs/11/catalogs.html)

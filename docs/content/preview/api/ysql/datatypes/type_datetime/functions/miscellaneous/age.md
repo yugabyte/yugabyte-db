@@ -69,7 +69,7 @@ This is the result:
 
 ### function modeled_age(timestamp, timestamp) returns interval
 
-Because the [PostgreSQL documentation](https://www.postgresql.org/docs/11/functions-datetime.html#FUNCTIONS-DATETIME-TABLE) says nothing of value to describe the semantics that the function _age(timestamp, timestamp)_ implements, the function _modeled_age(timestamp, timestamp)_ was developed to a large extent by trial and error—in other words, thorough testing with a huge set of input values was key. (See the subsections that describe the functions [modeled_age_vs_age()](#function-modeled-age-vs-age-timestamp-timestamp-returns-text) and [random_test_report_for_modeled_age()](#function-random-test-report-for-modeled-age) below.)
+Because the [PostgreSQL documentation](https://www.postgresql.org/docs/15/functions-datetime.html#FUNCTIONS-DATETIME-TABLE) says nothing of value to describe the semantics that the function _age(timestamp, timestamp)_ implements, the function _modeled_age(timestamp, timestamp)_ was developed to a large extent by trial and error—in other words, thorough testing with a huge set of input values was key. (See the subsections that describe the functions [modeled_age_vs_age()](#function-modeled-age-vs-age-timestamp-timestamp-returns-text) and [random_test_report_for_modeled_age()](#function-random-test-report-for-modeled-age) below.)
 
 The implementation was made simpler by this intuitive, and trivially observable, realization:
 

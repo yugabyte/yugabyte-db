@@ -56,7 +56,7 @@ To enable audit logging, first configure audit logging for the cluster. This is 
 
     For example, `SET pgaudit.log='DDL'`
 
-    `SET` only affects the value used by the current session. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/sql-set.html).
+    `SET` only affects the value used by the current session. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/15/sql-set.html).
 
 ### Create the extension
 

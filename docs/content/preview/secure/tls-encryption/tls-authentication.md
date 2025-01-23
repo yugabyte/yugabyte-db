@@ -93,12 +93,12 @@ $ ./bin/ysqlsh "sslmode=require"
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
 
-The default ysqlsh SSL mode is `prefer` (refer to [SSL Support](https://www.postgresql.org/docs/11/libpq-ssl.html) in the PostgreSQL documentation), which tries SSL first, but falls back to `disable` if the server does not support it.
+The default ysqlsh SSL mode is `prefer` (refer to [SSL Support](https://www.postgresql.org/docs/15/libpq-ssl.html) in the PostgreSQL documentation), which tries SSL first, but falls back to `disable` if the server does not support it.
 
 In this case, a plain ysqlsh with no options will work and use encryption:
 
@@ -107,7 +107,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -132,7 +132,7 @@ $ ./bin/ysqlsh
 
 ```output
 Password for user yugabyte:
-ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -169,7 +169,7 @@ $ ./bin/ysqlsh "sslcert=$CERTS/node.127.0.0.1.crt sslkey=$CERTS/node.127.0.0.1.k
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -207,7 +207,7 @@ $ ./bin/ysqlsh "sslcert=$CERTS/node.127.0.0.1.crt sslkey=$CERTS/node.127.0.0.1.k
 
 ```output
 Password for user yugabyte:
-ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
