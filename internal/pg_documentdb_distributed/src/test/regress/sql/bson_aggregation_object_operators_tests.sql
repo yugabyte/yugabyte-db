@@ -1,7 +1,7 @@
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
 SET citus.next_shard_id TO 367000;
-SET documentdb.next_collection_id TO 3670;
-SET documentdb.next_collection_index_id TO 3670;
+SET helio_api.next_collection_id TO 3670;
+SET helio_api.next_collection_index_id TO 3670;
 
 -- -- $mergeObjects operator
 -- -- simple merge
@@ -143,9 +143,9 @@ SELECT * FROM bson_dollar_project('{"a": { "$b.01": {"c": "1"} }}', '{"result": 
 -- nested expression
 SELECT * FROM bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": { "$getField": "a" }}}}}');
 -- test pipeline
-SELECT documentdb_api.insert_one('db','getfield','{"_id":"1", "a": null }', NULL);
-SELECT documentdb_api.insert_one('db','getfield','{"_id":"2", "a": { "b": 1 } }', NULL);
-SELECT documentdb_api.insert_one('db','getfield','{"_id":"3"}', NULL);
+SELECT helio_api.insert_one('db','getfield','{"_id":"1", "a": null }', NULL);
+SELECT helio_api.insert_one('db','getfield','{"_id":"2", "a": { "b": 1 } }', NULL);
+SELECT helio_api.insert_one('db','getfield','{"_id":"3"}', NULL);
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "getfield", "pipeline": [ { "$project": { "fieldValue": { "$getField": { "field": "b", "input": "$a" }}}}], "cursor": {} }');
 
 -- shorthand expression

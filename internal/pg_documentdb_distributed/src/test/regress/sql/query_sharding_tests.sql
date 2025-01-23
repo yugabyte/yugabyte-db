@@ -1,14 +1,14 @@
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
 SET citus.next_shard_id TO 739000;
-SET documentdb.next_collection_id TO 7390;
-SET documentdb.next_collection_index_id TO 7390;
+SET helio_api.next_collection_id TO 7390;
+SET helio_api.next_collection_index_id TO 7390;
 
 
-SELECT documentdb_api.insert_one('qst', 'single_shard', '{ "_id": 1, "a": 1, "b": 2, "c": 3, "d": 4 }');
-SELECT documentdb_api.insert_one('qst', 'comp_shard', '{ "_id": 1, "a": 1, "b": 2, "c": 3, "d": 4 }');
+SELECT helio_api.insert_one('qst', 'single_shard', '{ "_id": 1, "a": 1, "b": 2, "c": 3, "d": 4 }');
+SELECT helio_api.insert_one('qst', 'comp_shard', '{ "_id": 1, "a": 1, "b": 2, "c": 3, "d": 4 }');
 
-SELECT documentdb_api.shard_collection('qst', 'single_shard', '{ "a": "hashed" }', false);
-SELECT documentdb_api.shard_collection('qst', 'comp_shard', '{ "a": "hashed", "b": "hashed", "c": "hashed" }', false);
+SELECT helio_api.shard_collection('qst', 'single_shard', '{ "a": "hashed" }', false);
+SELECT helio_api.shard_collection('qst', 'comp_shard', '{ "a": "hashed", "b": "hashed", "c": "hashed" }', false);
 
 -- cross shard queries
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "e": 1 } } ] }');

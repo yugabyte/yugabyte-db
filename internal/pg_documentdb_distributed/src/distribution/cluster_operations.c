@@ -34,12 +34,10 @@ extern char *ApiExtensionName;
 extern char *ApiGucPrefix;
 extern char *ClusterAdminRole;
 
-char *ApiDistributedSchemaName = "documentdb_api_distributed";
-char *DistributedExtensionName = "documentdb_distributed";
+char *ApiDistributedSchemaName = "helio_api_distributed";
+char *DistributedExtensionName = "pg_helio_distributed";
 bool CreateDistributedFunctions = false;
 bool CreateIndexBuildQueueTable = false;
-
-extern char * GetIndexQueueName(void);
 
 static char * GetClusterInitializedVersion(void);
 static void DistributeCrudFunctions(void);
@@ -64,7 +62,7 @@ static bool VersionEquals(ExtensionVersion versionA, ExtensionVersion versionB);
 static void GetInstalledVersion(ExtensionVersion *installedVersion);
 static void ParseVersionString(ExtensionVersion *extensionVersion, char *versionString);
 static bool SetupCluster(bool isInitialize);
-static void SetPermissionsForReadOnlyRole(void);
+static void SetPermissionsForHelioReadOnlyRole(void);
 static ArrayType * GetCollectionIds(void);
 
 PG_FUNCTION_INFO_V1(command_initialize_cluster);
@@ -227,7 +225,7 @@ SetupCluster(bool isInitialize)
 		char *oldExtensionPrefix = ExtensionObjectPrefix;
 		UnscheduleIndexBuildTasks(oldExtensionPrefix);
 
-		char *extensionPrefix = ExtensionObjectPrefixV2;
+		char *extensionPrefix = "helio";
 		ScheduleIndexBuildTasks(extensionPrefix);
 	}
 
@@ -240,14 +238,14 @@ SetupCluster(bool isInitialize)
 	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 15, 0))
 	{
 		/* reduce the Index background cron job schedule to 2 seconds by default. */
-		char *extensionPrefix = ExtensionObjectPrefixV2;
+		char *extensionPrefix = "helio";
 		UnscheduleIndexBuildTasks(extensionPrefix);
 		ScheduleIndexBuildTasks(extensionPrefix);
 	}
 
 	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 17, 1))
 	{
-		SetPermissionsForReadOnlyRole();
+		SetPermissionsForHelioReadOnlyRole();
 	}
 
 	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, DocDB_V0, 21, 0))
@@ -257,9 +255,7 @@ SetupCluster(bool isInitialize)
 			StringInfo cmdStr = makeStringInfo();
 			bool isNull = false;
 			appendStringInfo(cmdStr,
-							 "GRANT %s, %s TO %s WITH ADMIN OPTION;",
-							 ApiAdminRoleV2,
-							 ApiReadOnlyRole,
+							 "GRANT helio_admin_role, helio_readonly_role TO %s WITH ADMIN OPTION;",
 							 quote_identifier(ClusterAdminRole));
 			ExtensionExecuteQueryViaSPI(cmdStr->data, false, SPI_OK_UTILITY,
 										&isNull);
@@ -447,13 +443,13 @@ CreateIndexBuildQueueCore()
 
 	StringInfo dropStr = makeStringInfo();
 	appendStringInfo(dropStr,
-					 "DROP TABLE IF EXISTS %s;", GetIndexQueueName());
+					 "DROP TABLE IF EXISTS helio_api_catalog.helio_index_queue;");
 	ExtensionExecuteQueryViaSPI(dropStr->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
 	StringInfo createStr = makeStringInfo();
 	appendStringInfo(createStr,
-					 "CREATE TABLE IF NOT EXISTS %s ("
+					 "CREATE TABLE IF NOT EXISTS helio_api_catalog.helio_index_queue ("
 					 "index_cmd text not null,"
 
 	                 /* 'C' for CREATE INDEX and 'R' for REINDEX */
@@ -475,36 +471,32 @@ CreateIndexBuildQueueCore()
 	                 /* update_time shows the time when request was updated in the table */
 					 "update_time timestamp with time zone DEFAULT now()"
 
-					 ")", GetIndexQueueName(), CoreSchemaName);
+					 ")", CoreSchemaName);
 
 	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
 	resetStringInfo(createStr);
 	appendStringInfo(createStr,
-					 "CREATE INDEX IF NOT EXISTS %s_index_queue_indexid_cmdtype on %s (index_id, cmd_type)",
-					 ExtensionObjectPrefixV2, GetIndexQueueName());
+					 "CREATE INDEX IF NOT EXISTS helio_index_queue_indexid_cmdtype on helio_api_catalog.helio_index_queue (index_id, cmd_type)");
 	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
 	resetStringInfo(createStr);
 	appendStringInfo(createStr,
-					 "CREATE INDEX IF NOT EXISTS %s_index_queue_cmdtype_collectionid_cmdstatus on %s (cmd_type, collection_id, index_cmd_status)",
-					 ExtensionObjectPrefixV2, GetIndexQueueName());
+					 "CREATE INDEX IF NOT EXISTS helio_index_queue_cmdtype_collectionid_cmdstatus on helio_api_catalog.helio_index_queue (cmd_type, collection_id, index_cmd_status)");
 	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
 	resetStringInfo(createStr);
 	appendStringInfo(createStr,
-					 "GRANT SELECT ON TABLE %s TO public", GetIndexQueueName());
+					 "GRANT SELECT ON TABLE helio_api_catalog.helio_index_queue TO public");
 	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
 	resetStringInfo(createStr);
 	appendStringInfo(createStr,
-					 "GRANT ALL ON TABLE %s TO %s, %s",
-					 GetIndexQueueName(),
-					 ApiAdminRoleV2,
+					 "GRANT ALL ON TABLE helio_api_catalog.helio_index_queue TO helio_admin_role, %s",
 					 ApiAdminRole);
 	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
@@ -527,8 +519,7 @@ CreateIndexBuildsTable()
 	bool isNull = false;
 	StringInfo createStr = makeStringInfo();
 	appendStringInfo(createStr,
-					 "SELECT citus_add_local_table_to_metadata('%s')",
-					 GetIndexQueueName());
+					 "SELECT citus_add_local_table_to_metadata('helio_api_catalog.helio_index_queue')");
 	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_SELECT,
 								&isNull);
 }
@@ -811,23 +802,20 @@ AddUserColumnsToIndexQueue()
 
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
-					 "ALTER TABLE %s ADD COLUMN IF NOT EXISTS user_oid Oid;",
-					 GetIndexQueueName());
+					 "ALTER TABLE helio_api_catalog.helio_index_queue ADD COLUMN IF NOT EXISTS user_oid Oid;");
 	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
 	/* We first drop the check constraint if it already exists. Some upgrade paths can create it before this function is executed. */
 	resetStringInfo(cmdStr);
 	appendStringInfo(cmdStr,
-					 "ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s_index_queue_user_oid_check;",
-					 GetIndexQueueName(), ExtensionObjectPrefixV2);
+					 "ALTER TABLE helio_api_catalog.helio_index_queue DROP CONSTRAINT IF EXISTS helio_index_queue_user_oid_check;");
 	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
 	resetStringInfo(cmdStr);
 	appendStringInfo(cmdStr,
-					 "ALTER TABLE %s ADD CONSTRAINT %s_index_queue_user_oid_check CHECK (user_oid IS NULL OR user_oid != '0'::oid);",
-					 GetIndexQueueName(), ExtensionObjectPrefixV2);
+					 "ALTER TABLE helio_api_catalog.helio_index_queue ADD CONSTRAINT helio_index_queue_user_oid_check CHECK (user_oid IS NULL OR user_oid != '0'::oid);");
 	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 }
@@ -926,18 +914,18 @@ GetInstalledVersion(ExtensionVersion *installedVersion)
 
 
 /*
- * SetPermissionsForReadOnlyRole - Set the right permissions for ApiReadOnlyRole
+ * SetPermissionsForHelioReadOnlyRole - Set the right permissions for helio_readonly_role
  */
 static void
-SetPermissionsForReadOnlyRole()
+SetPermissionsForHelioReadOnlyRole()
 {
 	bool readOnly = false;
 	bool isNull = false;
 	StringInfo cmdStr = makeStringInfo();
 
 	appendStringInfo(cmdStr,
-					 "GRANT SELECT ON TABLE %s.%s_cluster_data TO %s;",
-					 ApiDistributedSchemaName, ExtensionObjectPrefix, ApiReadOnlyRole);
+					 "GRANT SELECT ON TABLE %s.%s_cluster_data TO helio_readonly_role;",
+					 ApiDistributedSchemaName, ExtensionObjectPrefix);
 	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 
@@ -958,8 +946,8 @@ SetPermissionsForReadOnlyRole()
 		int collection_id = DatumGetInt32(elements[i]);
 		resetStringInfo(cmdStr);
 		appendStringInfo(cmdStr,
-						 "GRANT SELECT ON %s.documents_%d TO %s;",
-						 ApiDataSchemaName, collection_id, ApiReadOnlyRole);
+						 "GRANT SELECT ON %s.documents_%d TO helio_readonly_role;",
+						 ApiDataSchemaName, collection_id);
 		ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
 									&isNull);
 	}
@@ -1004,10 +992,8 @@ UpdateClusterMetadata(bool isInitialize)
 
 	Datum clusterVersionDatum = ExtensionExecuteQueryViaSPI(
 		FormatSqlQuery(
-			"SELECT %s.bson_get_value_text(metadata, 'last_deploy_version') FROM %s.%s_cluster_data",
-			CoreSchemaNameV2, ApiDistributedSchemaName, ExtensionObjectPrefix),
-		true,
-		SPI_OK_SELECT,
+			"SELECT helio_core.bson_get_value_text(metadata, 'last_deploy_version') FROM %s.%s_cluster_data",
+			ApiDistributedSchemaName, ExtensionObjectPrefix), true, SPI_OK_SELECT,
 		&isNull);
 	Assert(!isNull);
 

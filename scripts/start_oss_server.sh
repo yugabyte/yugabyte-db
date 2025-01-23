@@ -38,11 +38,11 @@ reset=`tput sgr0`
 
 if [ "$help" == "true" ]; then
     echo "${green}sets up and launches a postgres server with extension installed on port $coordinatorPort."
-    echo "${green}start_oss_server -d <postgresDir> [-c] [-s]"
+    echo "${green}start_oss_server -d <postgresDir> [-t <serverType>] [-c] [-s]"
     echo "${green}<postgresDir> is the data directory for your postgres instance with extension"
     echo "${green}[-c] - optional argument. removes all existing data if it exists"
     echo "${green}[-s] - optional argument. Stops all servers and exits"
-    echo "${green}if postgresDir not specified assumed to be ~/documentdb_test"
+    echo "${green}if postgresDir not specified assumed to be ~/${serverType}_test"
     exit 1;
 fi
 

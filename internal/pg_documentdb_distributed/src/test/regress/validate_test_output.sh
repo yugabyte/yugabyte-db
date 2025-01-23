@@ -21,7 +21,7 @@ scriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
 for validationFileName in $(ls ./expected/*_tests_index.out); do
     runtimeFileName=${validationFileName/_tests_index.out/_tests_runtime.out};
 
-    $diff -s -I 'SELECT documentdb_api_internal.create_indexes' -I 'set local enable_seqscan' -I 'documentdb.next_collection_id' -I 'set local enable_bitmapscan' -I 'set local documentdb.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set documentdb.forceUseIndexIfAvailable' -I 'documentdb.enableGeospatial' \
+    $diff -s -I 'SELECT documentdb_api_internal.create_indexes' -I 'set local enable_seqscan' -I 'documentdb_api.next_collection_id' -I 'set local enable_bitmapscan' -I 'set local documentdb_api.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set documentdb_api.forceUseIndexIfAvailable' -I 'documentdb_api.enableGeospatial' \
         $validationFileName $runtimeFileName;
     if [ $? -ne 0 ]; then echo "Validation failed on '${validationFileName}' against '${runtimeFileName}' error code $?"; exit 1; fi;
 done
@@ -29,7 +29,7 @@ done
 # Validate index_backcompat/index equivalence.
 for validationFileName in $(ls ./expected/*_tests_index_backcompat.out); do
     indexFileName=${validationFileName/_tests_index_backcompat.out$/_tests_index.out};
-    $diff -s -I 'set local enable_seqscan' -I 'documentdb.next_collection_id' -I 'citus.next_shard_id' -I 'set documentdb.next_collection_index_id' -I 'set local documentdb.enableGenerateNonExistsTerm' -I 'set local enable_bitmapscan' -I 'set local documentdb.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set documentdb.forceUseIndexIfAvailable' \
+    $diff -s -I 'set local enable_seqscan' -I 'documentdb_api.next_collection_id' -I 'citus.next_shard_id' -I 'SET documentdb_api.next_collection_index_id' -I 'set local documentdb_api.enableGenerateNonExistsTerm' -I 'set local enable_bitmapscan' -I 'set local documentdb_api.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set documentdb_api.forceUseIndexIfAvailable' \
         $validationFileName $indexFileName;
     if [ $? -ne 0 ]; then echo "Validation failed on '${validationFileName}' against '${runtimeFileName}' error code $?"; exit 1; fi;
 done
@@ -37,7 +37,7 @@ done
 # Validate index (NoBitMap)/runtime equivalence.
 for validationFileName in $(ls ./expected/*_tests_index_no_bitmap.out); do
     regularIndexFileName=${validationFileName/_tests_index_no_bitmap.out$/_tests_index.out};
-    $diff -s -I 'set local enable_seqscan' -I 'set local enable_bitmapscan' -I 'set local documentdb.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set documentdb.forceUseIndexIfAvailable' \
+    $diff -s -I 'set local enable_seqscan' -I 'set local enable_bitmapscan' -I 'set local documentdb_api.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set documentdb_api.forceUseIndexIfAvailable' \
         $validationFileName $regularIndexFileName;
     if [ $? -ne 0 ]; then echo "Validation failed on '${validationFileName}' against '${runtimeFileName}' error code $?"; exit 1; fi;
 done
@@ -65,7 +65,7 @@ for validationFile in $(ls ./expected/*.out); do
     fi;
 
     # Extract the actual collection ID (we'll use this to check for uniqueness).
-    collectionIdOutput=$(grep 'documentdb.next_collection_id' $sqlFilePath)
+    collectionIdOutput=$(grep 'documentdb_api.next_collection_id' $sqlFilePath)
 
     # Check if the sql file contains invalid schema names."
     if grep -qE 'mongo_catalog|mongo_api_v1|mongo_data' "$sqlFilePath"; then
@@ -75,12 +75,12 @@ for validationFile in $(ls ./expected/*.out); do
 
     # Fail if not found.
     if [ "$collectionIdOutput" == "" ]; then
-        echo "Test file prefix Validation failed on '${sqlFile}': Please ensure test files set documentdb.next_collection_id";
+        echo "Test file prefix Validation failed on '${sqlFile}': Please ensure test files set documentdb_api.next_collection_id";
         exit 1;
     fi;
 
     # Get the actual collection ID.
-    collectionIdOutput=${collectionIdOutput/SET documentdb.next_collection_id TO/};
+    collectionIdOutput=${collectionIdOutput/SET documentdb_api.next_collection_id TO/};
     collectionIdOutput=${collectionIdOutput/[\s|;]/};
 
     # Allow skipping unique checks
@@ -108,13 +108,13 @@ for validationFile in $(ls ./expected/*.out); do
     fi
 
     # See if the index id is also set.
-    collectionIndexIdOutput=$(grep 'documentdb.next_collection_index_id' $sqlFilePath)
+    collectionIndexIdOutput=$(grep 'documentdb_api.next_collection_index_id' $sqlFilePath)
     if [ "$collectionIndexIdOutput" == "" ]; then
-        echo "Test file '${sqlFile}' does not set next_collection_index_id: consider setting documentdb.next_collection_index_id";
+        echo "Test file '${sqlFile}' does not set next_collection_index_id: consider setting documentdb_api.next_collection_index_id";
         exit 1;
     fi;
 
-    collectionIndexIdOutput=${collectionIndexIdOutput/SET documentdb.next_collection_index_id TO/};
+    collectionIndexIdOutput=${collectionIndexIdOutput/SET documentdb_api.next_collection_index_id TO/};
     collectionIndexIdOutput=${collectionIndexIdOutput/[\s|;]/};
     if [ "$collectionIndexIdOutput" != "$collectionIdOutput" ]; then
         echo "CollectionId and CollectionIndexId used in '$sqlFile' must match. CollectionId: $collectionIdOutput, CollectionIndexId: $collectionIndexIdOutput";

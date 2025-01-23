@@ -1,14 +1,14 @@
 -- Based on and.js
 CREATE SCHEMA and1;
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal,public,and1;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal,public,and1;
 SET citus.next_shard_id TO 549000;
-SET documentdb.next_collection_id TO 5490;
-SET documentdb.next_collection_index_id TO 5490;
+SET helio_api.next_collection_id TO 5490;
+SET helio_api.next_collection_index_id TO 5490;
 
 SELECT 1 FROM drop_collection('db','and1');
 SELECT 1 FROM insert_one('db','and1', '{"a":[1,2]}');
 SELECT 1 FROM insert_one('db','and1', '{"a":"foo"}');
-SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'and1');
+SELECT helio_distributed_test_helpers.drop_primary_key('db', 'and1');
 
 CREATE OR REPLACE FUNCTION and1.assert_count(expected_row_count int, query bson)
  RETURNS void
@@ -101,7 +101,7 @@ END; $$;
 
 SELECT check1();
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('and1', 'index_1', '{"a.$**": 1}'), true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('and1', 'index_1', '{"a.$**": 1}'), true);
 
 BEGIN;
 set local enable_seqscan TO OFF;

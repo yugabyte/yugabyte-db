@@ -1,7 +1,7 @@
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
 SET citus.next_shard_id TO 290000;
-SET documentdb.next_collection_id TO 2900;
-SET documentdb.next_collection_index_id TO 2900;
+SET helio_api.next_collection_id TO 2900;
+SET helio_api.next_collection_index_id TO 2900;
 --Input type positive number
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 0} }',NULL);
                                                                           bson_dollar_project_find                                                                          

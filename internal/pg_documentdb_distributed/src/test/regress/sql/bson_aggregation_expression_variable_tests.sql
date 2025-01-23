@@ -1,36 +1,36 @@
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
 SET citus.next_shard_id TO 4910000;
-SET documentdb.next_collection_id TO 4910;
-SET documentdb.next_collection_index_id TO 4910;
+SET helio_api.next_collection_id TO 4910;
+SET helio_api.next_collection_index_id TO 4910;
 
 
 -- $$ROOT as a variable.
 
-SELECT documentdb_api_catalog.bson_expression_get('{ "a": 1 }', '{ "c": "$$ROOT" }');
-SELECT documentdb_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": "$$ROOT.a" }');
-SELECT documentdb_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": "$$ROOT.a.b" }');
-SELECT documentdb_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": "$$ROOT.c" }');
-SELECT documentdb_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": { "$isArray": "$$ROOT.a.b" } }');
-SELECT documentdb_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": { "$isArray": "$$ROOT.a" } }');
-SELECT documentdb_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": { "$size": "$$ROOT.a.b" } }');
+SELECT helio_api_catalog.bson_expression_get('{ "a": 1 }', '{ "c": "$$ROOT" }');
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": "$$ROOT.a" }');
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": "$$ROOT.a.b" }');
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": "$$ROOT.c" }');
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": { "$isArray": "$$ROOT.a.b" } }');
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": { "$isArray": "$$ROOT.a" } }');
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": { "$size": "$$ROOT.a.b" } }');
 
-SELECT documentdb_api_catalog.bson_expression_get('{ "a": { "b": 2 } }', '{ "c": { "$eq": [ "$$ROOT.a.b", 2 ] } }');
-SELECT documentdb_api_catalog.bson_expression_get('{ "a": { "b": 2 } }', '{ "c": { "$eq": [ "$$ROOT.a.b", 3 ] } }');
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": 2 } }', '{ "c": { "$eq": [ "$$ROOT.a.b", 2 ] } }');
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": 2 } }', '{ "c": { "$eq": [ "$$ROOT.a.b", 3 ] } }');
 
 -- override $$CURRENT should change the meaning of path expressions since $a -> $$CURRENT.a
 SELECT * FROM bson_dollar_project('{"a": 1}', '{"b": {"$filter": {"input": [{"a": 10, "b": 8}, {"a": 7, "b": 8}], "as": "CURRENT", "cond": {"$and": [{"$gt": ["$a", 8]}, {"$gt": ["$b", 7]}]}}}}');
 
 -- $reduce with multiple documents in a collection to ensure variable context is reset between every row evaluation
-SELECT documentdb_api.insert_one('db', 'variable_tests', '{"_id": 1, "a": ["a", "b", "c"]}');
-SELECT documentdb_api.insert_one('db', 'variable_tests', '{"_id": 2, "a": ["d", "e", "f"]}');
-SELECT documentdb_api.insert_one('db', 'variable_tests', '{"_id": 3, "a": ["g", "h", "i"]}');
+SELECT helio_api.insert_one('db', 'variable_tests', '{"_id": 1, "a": ["a", "b", "c"]}');
+SELECT helio_api.insert_one('db', 'variable_tests', '{"_id": 2, "a": ["d", "e", "f"]}');
+SELECT helio_api.insert_one('db', 'variable_tests', '{"_id": 3, "a": ["g", "h", "i"]}');
 
-select bson_dollar_project(document, '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } }') from documentdb_api.collection('db', 'variable_tests');
+select bson_dollar_project(document, '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } }') from helio_api.collection('db', 'variable_tests');
 
 -- $$REMOVE should not be written
 select bson_dollar_project('{}', '{"result": "$$REMOVE" }');
-select bson_dollar_project(document, '{"result": [ "$a", "$$REMOVE", "final" ]  }') from documentdb_api.collection('db', 'variable_tests');
-select bson_dollar_project(document, '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$REMOVE", "$$this"] } } } }') from documentdb_api.collection('db', 'variable_tests');
+select bson_dollar_project(document, '{"result": [ "$a", "$$REMOVE", "final" ]  }') from helio_api.collection('db', 'variable_tests');
+select bson_dollar_project(document, '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$REMOVE", "$$this"] } } } }') from helio_api.collection('db', 'variable_tests');
 
 -- $let aggregation operator
 -- verify that defined variables work
@@ -63,19 +63,19 @@ SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"
 SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"value": {"a": "value a field"}}, "in": "$$value.nonExistent"}}}');
 
 -- test with multiple rows on a collection and a non constant spec such that caching is not in the picture to test we don't have memory corruption on the variable data itself
-SELECT documentdb_api.insert_one('db', 'dollar_let_test', '{"_id": 1, "name": "santi", "hobby": "running"}');
-SELECT documentdb_api.insert_one('db', 'dollar_let_test', '{"_id": 2, "name": "joe", "hobby": "soccer"}');
-SELECT documentdb_api.insert_one('db', 'dollar_let_test', '{"_id": 3, "name": "daniel", "hobby": "painting"}');
-SELECT documentdb_api.insert_one('db', 'dollar_let_test', '{"_id": 4, "name": "lucas", "hobby": "music"}');
-SELECT documentdb_api.insert_one('db', 'dollar_let_test', '{"_id": 5, "name": "richard", "hobby": "running"}');
-SELECT documentdb_api.insert_one('db', 'dollar_let_test', '{"_id": 6, "name": "daniela", "hobby": "reading"}');
-SELECT documentdb_api.insert_one('db', 'dollar_let_test', '{"_id": 7, "name": "isabella", "hobby": "video games"}');
-SELECT documentdb_api.insert_one('db', 'dollar_let_test', '{"_id": 8, "name": "daniel II", "hobby": "board games"}');
-SELECT documentdb_api.insert_one('db', 'dollar_let_test', '{"_id": 9, "name": "jose", "hobby": "music"}');
-SELECT documentdb_api.insert_one('db', 'dollar_let_test', '{"_id": 10, "name": "camille", "hobby": "painting"}');
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 1, "name": "santi", "hobby": "running"}');
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 2, "name": "joe", "hobby": "soccer"}');
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 3, "name": "daniel", "hobby": "painting"}');
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 4, "name": "lucas", "hobby": "music"}');
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 5, "name": "richard", "hobby": "running"}');
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 6, "name": "daniela", "hobby": "reading"}');
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 7, "name": "isabella", "hobby": "video games"}');
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 8, "name": "daniel II", "hobby": "board games"}');
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 9, "name": "jose", "hobby": "music"}');
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 10, "name": "camille", "hobby": "painting"}');
 
 SELECT bson_dollar_project(document, FORMAT('{"result": {"$let": {"vars": {"intro": "%s", "hobby_text": " , and my hobby is: "}, "in": {"$concat": ["$$intro", "$name", "$$hobby_text", "$hobby"]}}}}', 'Hello my name is: ')::bson)
-FROM documentdb_api.collection('db', 'dollar_let_test');
+FROM helio_api.collection('db', 'dollar_let_test');
 
 -- negative cases
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": [1, 2, 3]}}');

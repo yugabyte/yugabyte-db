@@ -1,63 +1,63 @@
-SET search_path to documentdb_core,documentdb_api,documentdb_api_catalog,pg_catalog;
+SET search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
 SET citus.next_shard_id TO 10120000;
-SET documentdb.next_collection_id TO 101200;
-SET documentdb.next_collection_index_id TO 101200;
-SELECT documentdb_api.insert_one('db','games','{ "playerId": "PlayerA", "gameId": "G1", "score": 85 }', NULL);
+SET helio_api.next_collection_id TO 101200;
+SET helio_api.next_collection_index_id TO 101200;
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerA", "gameId": "G1", "score": 85 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','games','{ "playerId": "PlayerB", "gameId": "G1", "score": 2 }', NULL);
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerB", "gameId": "G1", "score": 2 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','games','{ "playerId": "PlayerC", "gameId": "G1", "score": 3 }', NULL);
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerC", "gameId": "G1", "score": 3 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','games','{ "playerId": "PlayerD", "gameId": "G1", "score": 99 }', NULL);
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerD", "gameId": "G1", "score": 99 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','games','{ "playerId": "PlayerE", "gameId": "G1"}', NULL);
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerE", "gameId": "G1"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','games','{ "playerId": "PlayerF", "gameId": "G1", "score": [24, 23] }', NULL);
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerF", "gameId": "G1", "score": [24, 23] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','games','{ "playerId": "PlayerA", "gameId": "G2", "score": {"$undefined":true} }', NULL);
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerA", "gameId": "G2", "score": {"$undefined":true} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','games','{ "playerId": "PlayerB", "gameId": "G2", "score": 33 }', NULL);
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerB", "gameId": "G2", "score": 33 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','games','{ "playerId": "PlayerC", "gameId": "G2", "score": 40 }', NULL);
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerC", "gameId": "G2", "score": 40 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','games','{ "playerId": "PlayerD", "gameId": "G2", "score": 15 }', NULL);
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerD", "gameId": "G2", "score": 15 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -209,7 +209,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "p
 (2 rows)
 
 /* shard collection */
-SELECT documentdb_api.shard_collection('db', 'games', '{ "_id": "hashed" }', false);
+SELECT helio_api.shard_collection('db', 'games', '{ "_id": "hashed" }', false);
  shard_collection 
 ---------------------------------------------------------------------
  

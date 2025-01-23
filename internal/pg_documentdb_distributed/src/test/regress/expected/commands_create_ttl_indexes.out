@@ -1,91 +1,91 @@
 SET citus.next_shard_id TO 2000000;
-SET documentdb.next_collection_id TO 20000;
-SET documentdb.next_collection_index_id TO 20000;
-SET search_path TO documentdb_api_catalog, documentdb_core, documentdb_data, public;
+SET helio_api.next_collection_id TO 20000;
+SET helio_api.next_collection_index_id TO 20000;
+SET search_path TO helio_api_catalog, helio_core, helio_data, public;
 -- 1. Populate collection with a set of documents with different combination of $date fields --
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 0, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 0, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 1, "ttl" : { "$date": { "$numberLong": "0" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 1, "ttl" : { "$date": { "$numberLong": "0" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 2, "ttl" : { "$date": { "$numberLong": "100" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 2, "ttl" : { "$date": { "$numberLong": "100" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
     -- Documents with date older than when the test was written
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 3, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 3, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
     -- Documents with date way in future
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 4, "ttl" : { "$date": { "$numberLong": "2657899731608" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 4, "ttl" : { "$date": { "$numberLong": "2657899731608" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
     -- Documents with date array
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 5, "ttl" : [{ "$date": { "$numberLong": "100" }}] }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 5, "ttl" : [{ "$date": { "$numberLong": "100" }}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
     -- Documents with date array, should be deleted based on min timestamp
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 6, "ttl" : [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 6, "ttl" : [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 7, "ttl" : [true, { "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
-                              insert_one                              
----------------------------------------------------------------------
- { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
-(1 row)
-
-    -- Documents with non-date ttl field
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 8, "ttl" : true }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 7, "ttl" : [true, { "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
     -- Documents with non-date ttl field
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 9, "ttl" : "would not expire" }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 8, "ttl" : true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with non-date ttl field
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 9, "ttl" : "would not expire" }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- 1. Create TTL Index --
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index", "v" : 1, "expireAfterSeconds": 5}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index", "v" : 1, "expireAfterSeconds": 5}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- 2. List All indexes --
-SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll" }') ORDER BY 1;
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll" }') ORDER BY 1;
                                                                                                                               bson_dollar_unwind                                                                                                                              
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
 (2 rows)
 
-SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'ttlcoll') ORDER BY collection_id, index_id;
+SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'ttlcoll') ORDER BY collection_id, index_id;
  collection_id | index_id |                                                                index_spec_as_bson                                                                 | index_is_valid 
 ---------------------------------------------------------------------
          20000 |    20000 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                                     | t
@@ -93,9 +93,9 @@ SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', '
 (2 rows)
 
 -- 3. Call ttl purge procedure with a batch size of 2
-CALL documentdb_api_internal.delete_expired_rows(10);
+CALL helio_api_internal.delete_expired_rows(10);
 -- 4.a. Check what documents are left after purging
-SELECT shard_key_value, object_id, document  from documentdb_api.collection('db', 'ttlcoll') order by object_id;
+SELECT shard_key_value, object_id, document  from helio_api.collection('db', 'ttlcoll') order by object_id;
  shard_key_value |            object_id            |                                           document                                            
 ---------------------------------------------------------------------
            20000 | { "" : { "$numberInt" : "4" } } | { "_id" : { "$numberInt" : "4" }, "ttl" : { "$date" : { "$numberLong" : "2657899731608" } } }
@@ -106,8 +106,8 @@ SELECT shard_key_value, object_id, document  from documentdb_api.collection('db'
 -- 5. TTL indexes behaves like normal indexes that are used in queries
 BEGIN;
 set local enable_seqscan TO off;
-SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
-EXPLAIN(costs off) SELECT object_id FROM documentdb_data.documents_20000
+SELECT helio_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
+EXPLAIN(costs off) SELECT object_id FROM helio_data.documents_20000
 		WHERE bson_dollar_eq(document, '{ "ttl" : { "$date" : { "$numberLong" : "100" } } }'::bson)
         LIMIT 100;
 $Q$);
@@ -121,20 +121,20 @@ $Q$);
                Node: host=localhost port=58070 dbname=regression
                ->  Limit
                      ->  Bitmap Heap Scan on documents_20000_2000000 documents_20000
-                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "ttl" : { "$date" : { "$numberLong" : "100" } } }'::documentdb_core.bson)
+                           Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "ttl" : { "$date" : { "$numberLong" : "100" } } }'::helio_core.bson)
                            ->  Bitmap Index Scan on ttl_index
-                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "ttl" : { "$date" : { "$numberLong" : "100" } } }'::documentdb_core.bson)
+                                 Index Cond: (document OPERATOR(helio_api_catalog.@=) '{ "ttl" : { "$date" : { "$numberLong" : "100" } } }'::helio_core.bson)
 (11 rows)
 
 END;
 -- 6. Explain of the SQL query that is used to delete documents
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
-SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
-EXPLAIN(costs off) DELETE FROM documentdb_data.documents_20000_2000000
+SELECT helio_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
+EXPLAIN(costs off) DELETE FROM helio_data.documents_20000_2000000
     WHERE ctid IN
     (
-        SELECT ctid FROM documentdb_data.documents_20000_2000000
+        SELECT ctid FROM helio_data.documents_20000_2000000
         WHERE bson_dollar_lt(document, '{ "ttl" : { "$date" : { "$numberLong" : "100" } } }'::bson)
         AND shard_key_value = 20000
         LIMIT 100
@@ -171,10 +171,10 @@ SELECT
     (index_spec).index_expire_after_seconds as expiry,
     coll.shard_key,
     dist.shardid
-FROM documentdb_api_catalog.collection_indexes as idx, documentdb_api_catalog.collections as coll, pg_dist_shard as dist
+FROM helio_api_catalog.collection_indexes as idx, helio_api_catalog.collections as coll, pg_dist_shard as dist
 WHERE index_is_valid AND (index_spec).index_expire_after_seconds >= 0
 AND idx.collection_id = coll.collection_id 
-AND dist.logicalrelid = ('documentdb_data.documents_' || coll.collection_id)::regclass
+AND dist.logicalrelid = ('helio_data.documents_' || coll.collection_id)::regclass
 AND (dist.shardid = get_shard_id_for_distribution_column(logicalrelid, coll.collection_id) OR (coll.shard_key IS NOT NULL))
 AND coll.collection_id >= 20000 AND coll.collection_id < 21000 -- added to reduce test flakiness
 ORDER BY shardid ASC; -- added to remove reduce flakiness
@@ -184,32 +184,32 @@ ORDER BY shardid ASC; -- added to remove reduce flakiness
 (1 row)
 
 -- 8. Shard collection
-SELECT documentdb_api.shard_collection('db','ttlcoll', '{"ttl":"hashed"}', false);
+SELECT helio_api.shard_collection('db','ttlcoll', '{"ttl":"hashed"}', false);
  shard_collection 
 ---------------------------------------------------------------------
  
 (1 row)
 
 -- 9. Add more records with previous deleted as well as new ids
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 1, "ttl" : { "$date": { "$numberLong": "0" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 1, "ttl" : { "$date": { "$numberLong": "0" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 2, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 2, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 100, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 100, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll', '{ "_id" : 200, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll', '{ "_id" : 200, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -226,10 +226,10 @@ SELECT
     (index_spec).index_expire_after_seconds as expiry,
     coll.shard_key,
     dist.shardid
-FROM documentdb_api_catalog.collection_indexes as idx, documentdb_api_catalog.collections as coll, pg_dist_shard as dist
+FROM helio_api_catalog.collection_indexes as idx, helio_api_catalog.collections as coll, pg_dist_shard as dist
 WHERE index_is_valid AND (index_spec).index_expire_after_seconds >= 0
 AND idx.collection_id = coll.collection_id 
-AND dist.logicalrelid = ('documentdb_data.documents_' || coll.collection_id)::regclass
+AND dist.logicalrelid = ('helio_data.documents_' || coll.collection_id)::regclass
 AND (dist.shardid = get_shard_id_for_distribution_column(logicalrelid, coll.collection_id) OR (coll.shard_key IS NOT NULL))
 AND coll.collection_id >= 20000 AND coll.collection_id < 21000 -- added to reduce test flakiness
 ORDER BY shardid ASC; -- added to reduce test flakiness
@@ -249,16 +249,16 @@ ORDER BY shardid ASC; -- added to reduce test flakiness
 BEGIN;
 Set citus.log_remote_commands to on; -- Will print Citus rewrites of the queries
 Set citus.log_local_commands to on; -- Will print the local queries 
-set local documentdb.SingleTTLTaskTimeBudget to 1;
-CALL documentdb_api_internal.delete_expired_rows(0); -- To test the sql query, it won't delete any data
-NOTICE:  executing the command locally: SELECT idx.collection_id, idx.index_id, (idx.index_spec).index_key AS key, (idx.index_spec).index_pfe AS pfe, (trunc((EXTRACT(epoch FROM now()) OPERATOR(pg_catalog.*) (1000)::numeric), 0))::bigint AS currentdatetime, (idx.index_spec).index_expire_after_seconds AS expiry, coll.shard_key, dist.shardid FROM documentdb_api_catalog.collection_indexes_102009 idx, documentdb_api_catalog.collections_102008 coll, pg_dist_shard dist, pg_dist_placement placement, pg_dist_local_group lg WHERE (idx.index_is_valid AND ((idx.index_spec).index_expire_after_seconds OPERATOR(pg_catalog.>=) 0) AND (idx.collection_id OPERATOR(pg_catalog.=) coll.collection_id) AND ((dist.logicalrelid)::oid OPERATOR(pg_catalog.=) ((('documents_'::text OPERATOR(pg_catalog.||) coll.collection_id))::regclass)::oid) AND (placement.shardid OPERATOR(pg_catalog.=) dist.shardid) AND (placement.groupid OPERATOR(pg_catalog.=) lg.groupid) AND ((dist.shardid OPERATOR(pg_catalog.=) get_shard_id_for_distribution_column(dist.logicalrelid, coll.collection_id)) OR (coll.shard_key IS NOT NULL)))
+Set local helio_api.SingleTTLTaskTimeBudget to 1;
+CALL helio_api_internal.delete_expired_rows(0); -- To test the sql query, it won't delete any data
+NOTICE:  executing the command locally: SELECT idx.collection_id, idx.index_id, (idx.index_spec).index_key AS key, (idx.index_spec).index_pfe AS pfe, (trunc((EXTRACT(epoch FROM now()) OPERATOR(pg_catalog.*) (1000)::numeric), 0))::bigint AS currentdatetime, (idx.index_spec).index_expire_after_seconds AS expiry, coll.shard_key, dist.shardid FROM helio_api_catalog.collection_indexes_102009 idx, helio_api_catalog.collections_102008 coll, pg_dist_shard dist, pg_dist_placement placement, pg_dist_local_group lg WHERE (idx.index_is_valid AND ((idx.index_spec).index_expire_after_seconds OPERATOR(pg_catalog.>=) 0) AND (idx.collection_id OPERATOR(pg_catalog.=) coll.collection_id) AND ((dist.logicalrelid)::oid OPERATOR(pg_catalog.=) ((('documents_'::text OPERATOR(pg_catalog.||) coll.collection_id))::regclass)::oid) AND (placement.shardid OPERATOR(pg_catalog.=) dist.shardid) AND (placement.groupid OPERATOR(pg_catalog.=) lg.groupid) AND ((dist.shardid OPERATOR(pg_catalog.=) get_shard_id_for_distribution_column(dist.logicalrelid, coll.collection_id)) OR (coll.shard_key IS NOT NULL)))
 Set citus.log_remote_commands to off;
 Set citus.log_local_commands to off;
 END;
 -- 10.a.
-CALL documentdb_api_internal.delete_expired_rows(10);
+CALL helio_api_internal.delete_expired_rows(10);
 -- 11.a. Check what documents are left after purging
-SELECT shard_key_value, object_id, document  from documentdb_api.collection('db', 'ttlcoll') order by object_id;
+SELECT shard_key_value, object_id, document  from helio_api.collection('db', 'ttlcoll') order by object_id;
    shard_key_value    |            object_id            |                                           document                                            
 ---------------------------------------------------------------------
  -2476384318775456034 | { "" : { "$numberInt" : "4" } } | { "_id" : { "$numberInt" : "4" }, "ttl" : { "$date" : { "$numberLong" : "2657899731608" } } }
@@ -269,11 +269,11 @@ SELECT shard_key_value, object_id, document  from documentdb_api.collection('db'
 -- 12. Explain of the SQL query that is used to delete documents after sharding
 BEGIN;
 SET LOCAL enable_seqscan TO OFF;
-SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
-EXPLAIN(costs off) DELETE FROM documentdb_data.documents_20000_2000016
+SELECT helio_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
+EXPLAIN(costs off) DELETE FROM helio_data.documents_20000_2000016
     WHERE ctid IN
     (
-        SELECT ctid FROM documentdb_data.documents_20000_2000016
+        SELECT ctid FROM helio_data.documents_20000_2000016
         WHERE bson_dollar_lt(document, '{ "ttl" : { "$date" : { "$numberLong" : "100" } } }'::bson)
         LIMIT 100
     )
@@ -296,25 +296,25 @@ $Q$);
 
 END;
 -- 13. TTL index can be created
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl1": 1}, "name": "ttl_index1", "expireAfterSeconds": 100, "sparse" : true}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl1": 1}, "name": "ttl_index1", "expireAfterSeconds": 100, "sparse" : true}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl2": 1}, "name": "ttl_index2", "expireAfterSeconds": 100, "unique" : true}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl2": 1}, "name": "ttl_index2", "expireAfterSeconds": 100, "unique" : true}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl3": 1}, "name": "ttl_index3", "expireAfterSeconds": 100, "sparse" : true, "unique" : true}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl3": 1}, "name": "ttl_index3", "expireAfterSeconds": 100, "sparse" : true, "unique" : true}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll" }') ORDER BY 1;
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll" }') ORDER BY 1;
                                                                                                                                                  bson_dollar_unwind                                                                                                                                                 
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
@@ -325,57 +325,57 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.
 (5 rows)
 
 -- 14. TTL index creation restrictions
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": -1}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": -1}]}', true);
 ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : -1 } :: caused by :: TTL index 'expireAfterSeconds' option cannot be less than 0.
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": "stringNotAllowed"}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": "stringNotAllowed"}]}', true);
 ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : "stringNotAllowed" } :: caused by :: TTL index 'expireAfterSeconds' option must be numeric, but received a type of string.
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": true}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": true}]}', true);
 ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : true } :: caused by :: TTL index 'expireAfterSeconds' option must be numeric, but received a type of bool.
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": 707992037530324174}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": 707992037530324174}]}', true);
 ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : 707992037530324174 } :: caused by :: TTL index 'expireAfterSeconds' option must be within an acceptable range, try a different number than 707992037530324224.000000.
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": 100, "v" : 1}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": 100, "v" : 1}]}', true);
 ERROR:  An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { "v" : 1, "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : 100 }, existing index: { "v" : 2, "key" : { "ttl2" : 1 }, "name" : "ttl_index2", "unique" : true, "expireAfterSeconds" : 100 }
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"_id": 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"_id": 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
 ERROR:  Error in specification { "key" : { "_id" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 } :: caused by :: The field 'expireAfterSeconds' is not valid for an _id index specification.
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"_id": 1, "_id" : 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"_id": 1, "_id" : 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
 ERROR:  Error in specification { "key" : { "_id" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 } :: caused by :: The field 'expireAfterSeconds' is not valid for an _id index specification.
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"_id": 1, "non_id" : 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"_id": 1, "non_id" : 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
 ERROR:  Error in specification { "key" : { "_id" : 1, "non_id" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 } :: caused by :: TTL indexes are single-field indexes, compound indexes do not support TTL.
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"non_id1": 1, "non_id2" : 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"non_id1": 1, "non_id2" : 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
 ERROR:  Error in specification { "key" : { "non_id1" : 1, "non_id2" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 } :: caused by :: TTL indexes are single-field indexes, compound indexes do not support TTL.
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"non_id1.$**": 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"non_id1.$**": 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
 ERROR:  Error in specification { "key" : { "non_id1.$**" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 } :: caused by :: Index type 'wildcard' cannot be a TTL index.
 -- 15. Unsupported ttl index scenarios
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl4": "hashed"}, "name": "ttl_index4", "expireAfterSeconds": 100}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl4": "hashed"}, "name": "ttl_index4", "expireAfterSeconds": 100}]}', true);
 ERROR:  Creating a hash index as ttl index is not supported.
 -- 16. Behavioral difference with Native Sharded Mongo
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew": 1}, "name": "ttl_new_index1", "sparse" : true, "expireAfterSeconds" : 10}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew": 1}, "name": "ttl_new_index1", "sparse" : true, "expireAfterSeconds" : 10}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew": 1}, "name": "ttl_new_index2", "sparse" : false, "expireAfterSeconds" : 10}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew": 1}, "name": "ttl_new_index2", "sparse" : false, "expireAfterSeconds" : 10}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew": 1}, "name": "ttl_new_index3", "expireAfterSeconds": 100, "sparse" : true, "unique" : true}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew": 1}, "name": "ttl_new_index3", "expireAfterSeconds": 100, "sparse" : true, "unique" : true}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "7" }, "numIndexesAfter" : { "$numberInt" : "8" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew": "hashed"}, "name": "ttl_new_index4", "expireAfterSeconds": 100}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew": "hashed"}, "name": "ttl_new_index4", "expireAfterSeconds": 100}]}', true);
 ERROR:  Creating a hash index as ttl index is not supported.
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew2": 5}, "name": "ttl_new_indexj", "sparse" : true, "expireAfterSeconds" : 10}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew2": 5}, "name": "ttl_new_indexj", "sparse" : true, "expireAfterSeconds" : 10}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "8" }, "numIndexesAfter" : { "$numberInt" : "9" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll" }') ORDER BY 1;
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll" }') ORDER BY 1;
                                                                                                                                                     bson_dollar_unwind                                                                                                                                                    
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
@@ -389,10 +389,10 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew2" : { "$numberInt" : "5" } }, "name" : "ttl_new_indexj", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "10" } } }, "ok" : { "$numberDouble" : "1.0" } }
 (9 rows)
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew3": "hashed"}, "name": "ttl_new_indexk", "unique" : true, "expireAfterSeconds" : 10}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew3": "hashed"}, "name": "ttl_new_indexk", "unique" : true, "expireAfterSeconds" : 10}]}', true);
 ERROR:  Error in specification { "key" : { "ttlnew3" : "hashed" }, "name" : "ttl_new_indexk", "unique" : true, "expireAfterSeconds" : 10 } :: caused by :: Currently hashed indexes cannot guarantee uniqueness. Use a regular index
 -- 17. Partial filter expresson tests
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'db',
   '{
      "createIndexes": "ttlcoll2",
@@ -420,82 +420,82 @@ NOTICE:  creating collection
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll2" }') ORDER BY 1;
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll2" }') ORDER BY 1;
                                                                                                                                                                                                                  bson_dollar_unwind                                                                                                                                                                                                                  
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll2", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll2", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_pfe_index", "partialFilterExpression" : { "$and" : [ { "b" : { "$numberInt" : "55" } }, { "a" : { "$exists" : true } }, { "c" : { "$exists" : { "$numberInt" : "1" } } } ] }, "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
 (2 rows)
 
-SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'ttlcoll2') ORDER BY collection_id, index_id;
+SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'ttlcoll2') ORDER BY collection_id, index_id;
  collection_id | index_id |                                                                                                                                                   index_spec_as_bson                                                                                                                                                    | index_is_valid 
 ---------------------------------------------------------------------
          20001 |    20011 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                                                                                                                                                                                                           | t
          20001 |    20012 | { "v" : { "$numberInt" : "2" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_pfe_index", "partialFilterExpression" : { "$and" : [ { "b" : { "$numberInt" : "55" } }, { "a" : { "$exists" : true } }, { "c" : { "$exists" : { "$numberInt" : "1" } } } ] }, "expireAfterSeconds" : { "$numberInt" : "5" } } | t
 (2 rows)
 
-SELECT documentdb_api.insert_one('db','ttlcoll2', '{ "_id" : 0, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll2', '{ "_id" : 0, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll2', '{ "_id" : 1, "b": 56, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "0" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll2', '{ "_id" : 1, "b": 56, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "0" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll2', '{ "_id" : 2, "b": 56, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "100" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll2', '{ "_id" : 2, "b": 56, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "100" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll2', '{ "_id" : 3, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll2', '{ "_id" : 3, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll2', '{ "_id" : 4, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "2657899731608" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll2', '{ "_id" : 4, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "2657899731608" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll2', '{ "_id" : 5, "b": 55, "a" : 1, "c": 1, "ttl" : [{ "$date": { "$numberLong": "100" }}] }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll2', '{ "_id" : 5, "b": 55, "a" : 1, "c": 1, "ttl" : [{ "$date": { "$numberLong": "100" }}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll2', '{ "_id" : 6, "b": 55, "a" : 1, "d": 1, "ttl" : [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll2', '{ "_id" : 6, "b": 55, "a" : 1, "d": 1, "ttl" : [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll2', '{ "_id" : 7, "b": 55, "a" : 1, "c": 1, "ttl" : [true, { "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll2', '{ "_id" : 7, "b": 55, "a" : 1, "c": 1, "ttl" : [true, { "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll2', '{ "_id" : 8, "b": 55, "a" : 1, "c": 1, "ttl" : true }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll2', '{ "_id" : 8, "b": 55, "a" : 1, "c": 1, "ttl" : true }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll2', '{ "_id" : 9, "b": 55, "a" : 1, "c": 1, "ttl" : "would not expire" }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll2', '{ "_id" : 9, "b": 55, "a" : 1, "c": 1, "ttl" : "would not expire" }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-CALL documentdb_api_internal.delete_expired_rows(10);
-SELECT shard_key_value, object_id, document  from documentdb_api.collection('db', 'ttlcoll2') order by object_id;
+CALL helio_api_internal.delete_expired_rows(10);
+SELECT shard_key_value, object_id, document  from helio_api.collection('db', 'ttlcoll2') order by object_id;
  shard_key_value |            object_id            |                                                                                                               document                                                                                                                
 ---------------------------------------------------------------------
            20001 | { "" : { "$numberInt" : "1" } } | { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "56" }, "a" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" }, "ttl" : { "$date" : { "$numberLong" : "0" } } }
@@ -507,7 +507,7 @@ SELECT shard_key_value, object_id, document  from documentdb_api.collection('db'
 (6 rows)
 
 -- 18. Large TTL (expire after INT_MAX seconds aka 68 years)
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'db',
   '{
      "createIndexes": "ttlcoll3",
@@ -527,14 +527,14 @@ NOTICE:  creating collection
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll3" }') ORDER BY 1;
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll3" }') ORDER BY 1;
                                                                                                                                             bson_dollar_unwind                                                                                                                                             
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll3", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll3", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_large_expireAfterSeconds", "expireAfterSeconds" : { "$numberInt" : "2147483647" } } }, "ok" : { "$numberDouble" : "1.0" } }
 (2 rows)
 
-SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'ttlcoll3') ORDER BY collection_id, index_id;
+SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'ttlcoll3') ORDER BY collection_id, index_id;
  collection_id | index_id |                                                                              index_spec_as_bson                                                                               | index_is_valid 
 ---------------------------------------------------------------------
          20002 |    20013 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                                                                 | t
@@ -542,68 +542,68 @@ SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', '
 (2 rows)
 
   -- Timestamp: -623051866000 ( 4/4/1950 more than 68 years from 4/4/2024). So, with the ttl index index `ttl_large_expireAfterSeconds`, _id : [1, 6, 7] should be deleted.
-SELECT documentdb_api.insert_one('db','ttlcoll3', '{ "_id" : 0, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "-623051866000" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll3', '{ "_id" : 0, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "-623051866000" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll3', '{ "_id" : 1, "b": 56, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll3', '{ "_id" : 1, "b": 56, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll3', '{ "_id" : 2, "b": 56, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "1712253575000" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll3', '{ "_id" : 2, "b": 56, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "1712253575000" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll3', '{ "_id" : 3, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "4867927028000" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll3', '{ "_id" : 3, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "4867927028000" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll3', '{ "_id" : 4, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "2657899731608" } } }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll3', '{ "_id" : 4, "b": 55, "a" : 1, "c": 1, "ttl" : { "$date": { "$numberLong": "2657899731608" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll3', '{ "_id" : 5, "b": 55, "a" : 1, "c": 1, "ttl" : [{ "$date": { "$numberLong": "1697900030774" }}] }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll3', '{ "_id" : 5, "b": 55, "a" : 1, "c": 1, "ttl" : [{ "$date": { "$numberLong": "1697900030774" }}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll3', '{ "_id" : 6, "b": 55, "a" : 1, "d": 1, "ttl" : [{ "$date": { "$numberLong": "-623051866000" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll3', '{ "_id" : 6, "b": 55, "a" : 1, "d": 1, "ttl" : [{ "$date": { "$numberLong": "-623051866000" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll3', '{ "_id" : 7, "b": 55, "a" : 1, "c": 1, "ttl" : [true, { "$date": { "$numberLong": "-623051866000" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll3', '{ "_id" : 7, "b": 55, "a" : 1, "c": 1, "ttl" : [true, { "$date": { "$numberLong": "-623051866000" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll3', '{ "_id" : 8, "b": 55, "a" : 1, "c": 1, "ttl" : true }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll3', '{ "_id" : 8, "b": 55, "a" : 1, "c": 1, "ttl" : true }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','ttlcoll3', '{ "_id" : 9, "b": 55, "a" : 1, "c": 1, "ttl" : "would not expire" }', NULL);
+SELECT helio_api.insert_one('db','ttlcoll3', '{ "_id" : 9, "b": 55, "a" : 1, "c": 1, "ttl" : "would not expire" }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-CALL documentdb_api_internal.delete_expired_rows(10);
-SELECT shard_key_value, object_id, document  from documentdb_api.collection('db', 'ttlcoll3') order by object_id;
+CALL helio_api_internal.delete_expired_rows(10);
+SELECT shard_key_value, object_id, document  from helio_api.collection('db', 'ttlcoll3') order by object_id;
  shard_key_value |            object_id            |                                                                                           document                                                                                           
 ---------------------------------------------------------------------
            20002 | { "" : { "$numberInt" : "1" } } | { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "56" }, "a" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" }, "ttl" : { "$date" : { "$numberLong" : "1657900030774" } } }
@@ -616,20 +616,20 @@ SELECT shard_key_value, object_id, document  from documentdb_api.collection('db'
 (7 rows)
 
 -- 19 Float TTL
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll1", "indexes": [{"key": {"ttlnew": 1}, "name": "ttl_new_index5", "sparse" : true, "expireAfterSeconds" : {"$numberDouble":"12345.12345"}}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll1", "indexes": [{"key": {"ttlnew": 1}, "name": "ttl_new_index5", "sparse" : true, "expireAfterSeconds" : {"$numberDouble":"12345.12345"}}]}', true);
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll1", "indexes": [{"key": {"ttlnew": 1}, "name": "ttl_new_index6", "sparse" : false, "expireAfterSeconds" : {"$numberDouble":"12345.12345"}}]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll1", "indexes": [{"key": {"ttlnew": 1}, "name": "ttl_new_index6", "sparse" : false, "expireAfterSeconds" : {"$numberDouble":"12345.12345"}}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll1" }') ORDER BY 1;
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll1" }') ORDER BY 1;
                                                                                                                                              bson_dollar_unwind                                                                                                                                              
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll1", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }

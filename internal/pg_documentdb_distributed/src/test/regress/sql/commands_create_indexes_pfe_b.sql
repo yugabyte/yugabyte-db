@@ -1,21 +1,21 @@
 SET citus.next_shard_id TO 120000;
-SET documentdb.next_collection_id TO 12000;
-SET documentdb.next_collection_index_id TO 12000;
+SET helio_api.next_collection_id TO 12000;
+SET helio_api.next_collection_index_id TO 12000;
 
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog;
+SET search_path TO helio_core,helio_api,helio_api_catalog;
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('compound_index_test', 'compound_index', '{"a.b": 1, "c.d": 1}'), true);
-SELECT documentdb_distributed_test_helpers.drop_primary_key('db','compound_index_test');
+SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('compound_index_test', 'compound_index', '{"a.b": 1, "c.d": 1}'), true);
+SELECT helio_distributed_test_helpers.drop_primary_key('db','compound_index_test');
 
 BEGIN;
   set local enable_seqscan TO off;
-  EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'compound_index_test') WHERE document @@ '{ "a.b": { "$gte" : 1 }}';
+  EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'compound_index_test') WHERE document @@ '{ "a.b": { "$gte" : 1 }}';
 ROLLBACK;
 
 -- supported "partialFilterExpression" operators --
 
 -- note that inner $and is not an operator
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{
      "createIndexes": "collection_10",
@@ -34,10 +34,10 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_1');
+SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_1');
 
 -- note that it's not the $regex operator
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{
      "createIndexes": "collection_10",
@@ -53,10 +53,10 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_2');
+SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_2');
 
 -- $exists: true is supported
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{
      "createIndexes": "collection_10",
@@ -77,7 +77,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_3');
+SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_3');
 
 -- While Mongo throws an error for the following:
 --
@@ -87,7 +87,7 @@ SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'colle
 -- }
 --
 -- , doesn't throw an error for below by ignoring the first $and expression.
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{
      "createIndexes": "collection_10",
@@ -104,9 +104,9 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_4');
+SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_4');
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb_4',
   '{
      "createIndexes": "collection_10",
@@ -129,12 +129,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb_4', 'collection_10', 'my_idx_5');
+SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('mydb_4', 'collection_10', 'my_idx_5');
 
 
 -- force using my_idx_5 when possible
-SELECT documentdb_distributed_test_helpers.drop_primary_key('mydb_4', 'collection_10');
-SELECT SUM(1) FROM documentdb_api.insert_one('mydb_4','collection_10', '{"c":"foo"}'), generate_series(1, 10);
+SELECT helio_distributed_test_helpers.drop_primary_key('mydb_4', 'collection_10');
+SELECT SUM(1) FROM helio_api.insert_one('mydb_4','collection_10', '{"c":"foo"}'), generate_series(1, 10);
 
 BEGIN;
   set local enable_seqscan TO OFF;
@@ -142,7 +142,7 @@ BEGIN;
 
   -- uses my_idx_5
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  FROM helio_api.collection('mydb_4', 'collection_10')
   WHERE document @@ '
   {
     "a": [
@@ -158,7 +158,7 @@ BEGIN;
 
   -- cannot use my_idx_5 since "b.e" is missing
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  FROM helio_api.collection('mydb_4', 'collection_10')
   WHERE document @@ '
   {
     "a": [
@@ -173,7 +173,7 @@ BEGIN;
 
   -- cannot use my_idx_5 since the filter on "c" is missing
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  FROM helio_api.collection('mydb_4', 'collection_10')
   WHERE document @@ '
   {
     "a": [
@@ -188,7 +188,7 @@ BEGIN;
 
   -- uses my_idx_5 even if we added a filter on "another_field"
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  FROM helio_api.collection('mydb_4', 'collection_10')
   WHERE document @@ '
   {
     "$and": [
@@ -202,7 +202,7 @@ BEGIN;
 
   -- cannot use my_idx_5 due to order of the fields under "b"
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  FROM helio_api.collection('mydb_4', 'collection_10')
   WHERE document @@ '
   {
     "$and": [
@@ -216,7 +216,7 @@ BEGIN;
 
   -- cannot use my_idx_5 due to order of the elements in array "b.c.d"
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  FROM helio_api.collection('mydb_4', 'collection_10')
   WHERE document @@ '
   {
     "$and": [
@@ -229,7 +229,7 @@ BEGIN;
   ';
 COMMIT;
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{
      "createIndexes": "collection_10",
@@ -242,10 +242,10 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_6');
+SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_6');
 
 -- this is normally not supported due to $or
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{
      "createIndexes": "collection_10",
@@ -262,4 +262,4 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_7');
+SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_7');

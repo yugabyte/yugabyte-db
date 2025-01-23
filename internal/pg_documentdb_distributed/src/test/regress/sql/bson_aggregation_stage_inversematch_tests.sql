@@ -1,15 +1,15 @@
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
 
 SET citus.next_shard_id TO 9630000;
-SET documentdb.next_collection_id TO 963000;
-SET documentdb.next_collection_index_id TO 963000;
+SET helio_api.next_collection_id TO 963000;
+SET helio_api.next_collection_index_id TO 963000;
 
 -- Insert data
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 1, "airport_id": 10165, "city": "Adak Island", "state": "AK", "name": "Adak", "rule": { "flight_type": "private"} }', NULL);
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 3, "airport_id": 11308, "city": "Dothan", "state": "AL", "name": "Dothan Regional", "rule": { "$or": [ { "origin": "WA"}, {"flight_type": "private"}] } }', NULL);
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 4, "airport_id": 11778, "city": "Fort Smith", "state": "AR", "name": "Fort Smith Regional", "rule": { "$in": [{"is_emergency": true}, {"is_vip": true}] }}', NULL);
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 6, "airport_id": 14689, "city": "Santa Barbara", "state": "CA", "name": "Santa Barbara Municipal", "rule": { "$or": [ {"$and": [{"flight_type": "private"}, {"origin": "CA"}]}, {"$or": [{"is_emergency": true}, {"is_vip": true}]} ] }}', NULL);
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 7, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "rule": { "tags": { "$all": ["private", "vip"]}}}', NULL);
+SELECT helio_api.insert_one('invmatch','airports','{ "_id": 1, "airport_id": 10165, "city": "Adak Island", "state": "AK", "name": "Adak", "rule": { "flight_type": "private"} }', NULL);
+SELECT helio_api.insert_one('invmatch','airports','{ "_id": 3, "airport_id": 11308, "city": "Dothan", "state": "AL", "name": "Dothan Regional", "rule": { "$or": [ { "origin": "WA"}, {"flight_type": "private"}] } }', NULL);
+SELECT helio_api.insert_one('invmatch','airports','{ "_id": 4, "airport_id": 11778, "city": "Fort Smith", "state": "AR", "name": "Fort Smith Regional", "rule": { "$in": [{"is_emergency": true}, {"is_vip": true}] }}', NULL);
+SELECT helio_api.insert_one('invmatch','airports','{ "_id": 6, "airport_id": 14689, "city": "Santa Barbara", "state": "CA", "name": "Santa Barbara Municipal", "rule": { "$or": [ {"$and": [{"flight_type": "private"}, {"origin": "CA"}]}, {"$or": [{"is_emergency": true}, {"is_vip": true}]} ] }}', NULL);
+SELECT helio_api.insert_one('invmatch','airports','{ "_id": 7, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "rule": { "tags": { "$all": ["private", "vip"]}}}', NULL);
 
 -- positive cases
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AK"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "public"}}}]}');
@@ -33,7 +33,7 @@ SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airp
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": [{"path": "rule", "input": [{"flight_type": "private"}, ""] }, {"path": "rule2", "input": {}}]}]}');
 
 -- insert a document with an invalid query
-SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 8, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "specialRule": { "tags": { "$allValues": ["private", "vip"]}}}', NULL);
+SELECT helio_api.insert_one('invmatch','airports','{ "_id": 8, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "specialRule": { "tags": { "$allValues": ["private", "vip"]}}}', NULL);
 
 -- any inverseMatch that queries that path should fail
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "specialRule", "input": { "origin": "WA" }, "defaultResult": false}}]}');
@@ -47,13 +47,13 @@ SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airp
 
 
 -- add tests with lookup for RBAC "like" scenarios
-SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 1, "user_id": 100, "roles": ["basic"]}', NULL);
-SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 2, "user_id": 101, "roles": ["basic", "sales"]}', NULL);
-SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 3, "user_id": 102, "roles": ["admin"]}', NULL);
+SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 1, "user_id": 100, "roles": ["basic"]}', NULL);
+SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 2, "user_id": 101, "roles": ["basic", "sales"]}', NULL);
+SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 3, "user_id": 102, "roles": ["admin"]}', NULL);
 
-SELECT documentdb_api.insert_one('invmatch','sales','{ "_id": 1, "order": 100, "paid": true, "total": 0, "rule": {"roles": {"$in": ["basic", "sales", "admin"]}}}', NULL);
-SELECT documentdb_api.insert_one('invmatch','sales','{ "_id": 2, "order": 102, "paid": true, "total": 1000, "rule": {"roles": {"$in": ["sales", "admin"]}}}', NULL);
-SELECT documentdb_api.insert_one('invmatch','sales','{ "_id": 3, "order": 103, "paid": true, "total": 1000, "rule": {"roles": {"$in": ["admin"]}}}', NULL);
+SELECT helio_api.insert_one('invmatch','sales','{ "_id": 1, "order": 100, "paid": true, "total": 0, "rule": {"roles": {"$in": ["basic", "sales", "admin"]}}}', NULL);
+SELECT helio_api.insert_one('invmatch','sales','{ "_id": 2, "order": 102, "paid": true, "total": 1000, "rule": {"roles": {"$in": ["sales", "admin"]}}}', NULL);
+SELECT helio_api.insert_one('invmatch','sales','{ "_id": 3, "order": 103, "paid": true, "total": 1000, "rule": {"roles": {"$in": ["admin"]}}}', NULL);
 
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 100} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 101} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
@@ -74,8 +74,8 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": {}}} ], "cursor": {} }'); 
 
 -- test with sharded collections.
-SELECT documentdb_api.shard_collection('invmatch', 'sales', '{"order": "hashed"}', false);
-SELECT documentdb_api.shard_collection('invmatch', 'user_roles', '{"_id": "hashed"}', false);
+SELECT helio_api.shard_collection('invmatch', 'sales', '{"order": "hashed"}', false);
+SELECT helio_api.shard_collection('invmatch', 'user_roles', '{"_id": "hashed"}', false);
 
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 100} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 101} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
@@ -92,31 +92,31 @@ SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sale
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": []}} ], "cursor": {} }');
 
 -- drop and recreate so that it is not sharded and test with group and sort
-SELECT documentdb_api.drop_database('invmatch');
-SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 2, "user_id": 101, "role": "admin"}', NULL);
-SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 1, "user_id": 100, "role": "basic"}', NULL);
-SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 5, "user_id": 103, "role": "basic"}', NULL);
-SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 3, "user_id": 102, "role": "sales"}', NULL);
-SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 4, "user_id": 100, "role": "sales"}', NULL);
-SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 6, "user_id": 102, "role": "admin"}', NULL);
+SELECT helio_api.drop_database('invmatch');
+SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 2, "user_id": 101, "role": "admin"}', NULL);
+SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 1, "user_id": 100, "role": "basic"}', NULL);
+SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 5, "user_id": 103, "role": "basic"}', NULL);
+SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 3, "user_id": 102, "role": "sales"}', NULL);
+SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 4, "user_id": 100, "role": "sales"}', NULL);
+SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 6, "user_id": 102, "role": "admin"}', NULL);
 
-SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 5, "order": 102, "order_total": 1000, "amount": 100, "rule": "admin"}', NULL);
-SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 1, "order": 100, "order_total": 50, "amount": 20, "rule": "basic"}', NULL);
-SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 2, "order": 102, "order_total": 1000, "amount": 300, "rule": "sales"}', NULL);
-SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 4, "order": 100, "order_total": 50, "amount": 5, "rule": "basic"}', NULL);
-SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 3, "order": 102, "order_total": 1000, "amount": 200, "rule": "basic"}', NULL);
+SELECT helio_api.insert_one('invmatch','payments','{ "_id": 5, "order": 102, "order_total": 1000, "amount": 100, "rule": "admin"}', NULL);
+SELECT helio_api.insert_one('invmatch','payments','{ "_id": 1, "order": 100, "order_total": 50, "amount": 20, "rule": "basic"}', NULL);
+SELECT helio_api.insert_one('invmatch','payments','{ "_id": 2, "order": 102, "order_total": 1000, "amount": 300, "rule": "sales"}', NULL);
+SELECT helio_api.insert_one('invmatch','payments','{ "_id": 4, "order": 100, "order_total": 50, "amount": 5, "rule": "basic"}', NULL);
+SELECT helio_api.insert_one('invmatch','payments','{ "_id": 3, "order": 102, "order_total": 1000, "amount": 200, "rule": "basic"}', NULL);
 
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ {"$sort": {"order": 1}}, { "$group": { "_id": "$order", "ruleToCreate": {"$push": "$rule"}, "payed": {"$sum": "$amount"}}}, {"$project": {"rule": {"role": {"$arrayToObject": [[[{"$literal": "$in"}, "$ruleToCreate"]]]}}, "_id": 1, "payed": 1}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": []}}], "cursor": {} }');
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ {"$sort": {"order": 1}}, { "$group": { "_id": "$order", "ruleToCreate": {"$push": "$rule"}, "payed": {"$sum": "$amount"}}}, {"$project": {"rule": {"role": {"$arrayToObject": [[[{"$literal": "$in"}, "$ruleToCreate"]]]}}, "_id": 1, "payed": 1}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}]}}], "cursor": {} }');
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ {"$sort": {"order": 1}}, { "$group": { "_id": "$order", "ruleToCreate": {"$push": "$rule"}, "payed": {"$sum": "$amount"}}}, {"$project": {"rule": {"role": {"$arrayToObject": [[[{"$literal": "$in"}, "$ruleToCreate"]]]}}, "_id": 1, "payed": 1}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 100}}]}}], "cursor": {} }');
 
-SELECT documentdb_api.drop_collection('invmatch', 'payments');
+SELECT helio_api.drop_collection('invmatch', 'payments');
 
-SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 5, "order": 102, "order_total": 1000, "amount": 100, "rule": { "role": "admin"}}', NULL);
-SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 1, "order": 100, "order_total": 50, "amount": 20, "rule": { "role": "basic"}}', NULL);
-SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 2, "order": 102, "order_total": 1000, "amount": 300, "rule": { "role": "sales"}}', NULL);
-SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 4, "order": 100, "order_total": 50, "amount": 5, "rule": { "role": "basic"}}', NULL);
-SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 3, "order": 102, "order_total": 1000, "amount": 200, "rule": { "role": "admin"}}', NULL);
+SELECT helio_api.insert_one('invmatch','payments','{ "_id": 5, "order": 102, "order_total": 1000, "amount": 100, "rule": { "role": "admin"}}', NULL);
+SELECT helio_api.insert_one('invmatch','payments','{ "_id": 1, "order": 100, "order_total": 50, "amount": 20, "rule": { "role": "basic"}}', NULL);
+SELECT helio_api.insert_one('invmatch','payments','{ "_id": 2, "order": 102, "order_total": 1000, "amount": 300, "rule": { "role": "sales"}}', NULL);
+SELECT helio_api.insert_one('invmatch','payments','{ "_id": 4, "order": 100, "order_total": 50, "amount": 5, "rule": { "role": "basic"}}', NULL);
+SELECT helio_api.insert_one('invmatch','payments','{ "_id": 3, "order": 102, "order_total": 1000, "amount": 200, "rule": { "role": "admin"}}', NULL);
 
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ { "$group": { "_id": "$order", "rule": {"$mergeObjects": "$rule"}, "payed": {"$sum": "$amount"}}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}]}}], "cursor": {} }');
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ { "$group": { "_id": "$order", "rule": {"$mergeObjects": "$rule"}, "payed": {"$sum": "$amount"}}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 100}}]}}], "cursor": {} }');

@@ -1,8 +1,8 @@
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
 
 SET citus.next_shard_id TO 477000;
-SET documentdb.next_collection_id TO 4770;
-SET documentdb.next_collection_index_id TO 4770;
+SET helio_api.next_collection_id TO 4770;
+SET helio_api.next_collection_index_id TO 4770;
 
 
 SELECT insert_one('db','densify','{ "_id": 1, "a": "abc", "cost": 10, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
@@ -98,7 +98,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 
 
 -- Shard collection
-SELECT documentdb_api.shard_collection('db', 'densify', '{"a": "hashed"}', false);
+SELECT helio_api.shard_collection('db', 'densify', '{"a": "hashed"}', false);
 
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
@@ -116,7 +116,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
 
 -- Reshard multikey
-SELECT documentdb_api.shard_collection('db', 'densify', '{"a": "hashed", "quantity": "hashed"}', true);
+SELECT helio_api.shard_collection('db', 'densify', '{"a": "hashed", "quantity": "hashed"}', true);
 
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
@@ -136,7 +136,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 
 -- Test that internal number of documents generated limits are working
 -- Tests inspired from aggregation/sources/densify/generated_limit.js, currently we don't support setParameter so only a unit test should be suffice to test internal limits
-SET documentdb.test.internalQueryMaxAllowedDensifyDocs TO 10;
+SET helio_api.external.internalQueryMaxAllowedDensifyDocs TO 10;
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [0, 11], "step": 1 } } }]}');
 SELECT document FROM bson_aggregation_pipeline('db',
@@ -155,7 +155,7 @@ SELECT insert_one('db','densify_limit','{ "_id": 3, "a": "def", "cost": 0, "quan
 SELECT insert_one('db','densify_limit','{ "_id": 4, "a": "def", "cost": 12, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
 
 -- Test limit works across partitions
-SET documentdb.test.internalQueryMaxAllowedDensifyDocs TO 20;
+SET helio_api.external.internalQueryMaxAllowedDensifyDocs TO 20;
 
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
@@ -172,19 +172,19 @@ SELECT drop_collection('db', 'densify_limit') IS NOT NULL;
 SELECT insert_one('db','densify_limit','{ "_id": 1, "a": "abc", "cost": 0, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
 SELECT insert_one('db','densify_limit','{ "_id": 2, "a": "abc", "cost": 12, "quantity": 501, "date": { "$date": { "$numberLong": "1718841610000" } } }', NULL);
 
-SET documentdb.test.internalQueryMaxAllowedDensifyDocs TO 5;
+SET helio_api.external.internalQueryMaxAllowedDensifyDocs TO 5;
 
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "date", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 , "unit": "second"} } }]}');
 
-RESET documentdb.test.internalQueryMaxAllowedDensifyDocs;
+RESET helio_api.external.internalQueryMaxAllowedDensifyDocs;
 
 -- Test memory limit too
-SET documentdb.test.internaldocumentsourcedensifymaxmemorybytes TO 100;
+SET helio_api.external.internaldocumentsourcedensifymaxmemorybytes TO 100;
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [0, 40], "step": 1 } } }]}');
 
-RESET documentdb.test.internalDocumentSourceDensifyMaxmemoryBytes;
+RESET helio_api.external.internalDocumentSourceDensifyMaxmemoryBytes;
 
-SHOW documentdb.test.internalQueryMaxAllowedDensifyDocs;
-SHOW documentdb.test.internalDocumentSourceDensifyMaxmemoryBytes;
+SHOW helio_api.external.internalQueryMaxAllowedDensifyDocs;
+SHOW helio_api.external.internalDocumentSourceDensifyMaxmemoryBytes;

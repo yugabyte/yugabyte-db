@@ -1,8 +1,8 @@
 CREATE SCHEMA regex5;
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal,public,regex5;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal,public,regex5;
 SET citus.next_shard_id TO 90000;
-SET documentdb.next_collection_id TO 900;
-SET documentdb.next_collection_index_id TO 900;
+SET helio_api.next_collection_id TO 900;
+SET helio_api.next_collection_index_id TO 900;
 SELECT create_collection('db','regex5');
 NOTICE:  creating collection
  create_collection 
@@ -14,9 +14,9 @@ NOTICE:  creating collection
 \set ECHO none
 BEGIN;
 set local enable_seqscan TO OFF;
-set local documentdb.forceUseIndexIfAvailable to on;
+set local helio_api.forceUseIndexIfAvailable to on;
 \i sql/regex5_tests_core.sql
-CREATE OR REPLACE FUNCTION assert_count_regex5(expected_row_count int, query documentdb_core.bson)
+CREATE OR REPLACE FUNCTION assert_count_regex5(expected_row_count int, query helio_core.bson)
  RETURNS void
  LANGUAGE plpgsql
 AS $$
@@ -94,7 +94,7 @@ begin
 end
 $$;
 -- DROP PRIMARY KEY
-SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'regex5');
+SELECT helio_distributed_test_helpers.drop_primary_key('db', 'regex5');
  drop_primary_key 
 ---------------------------------------------------------------------
  

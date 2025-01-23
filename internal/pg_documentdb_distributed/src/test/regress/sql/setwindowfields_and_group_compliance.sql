@@ -1,7 +1,7 @@
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
 SET citus.next_shard_id TO 884500;
-SET documentdb.next_collection_id TO 88450;
-SET documentdb.next_collection_index_id TO 88450;
+SET helio_api.next_collection_id TO 88450;
+SET helio_api.next_collection_index_id TO 88450;
 
 CREATE SCHEMA setWindowFieldSchema;
 
@@ -28,7 +28,7 @@ $$ LANGUAGE plpgsql;
 
 
 -- Make a non-empty collection
-SELECT documentdb_api.insert_one('db','setWindowField_compliance','{ "_id": 1 }', NULL);
+SELECT helio_api.insert_one('db','setWindowField_compliance','{ "_id": 1 }', NULL);
 
 DO $$
 DECLARE
@@ -42,9 +42,9 @@ BEGIN
     LOOP
         supportedInSetWindowFields := TRUE;
         supportedInGroup := TRUE;
-        querySpec := FORMAT('{ "aggregate": "setWindowField_compliance", "pipeline":  [{"$group": { "_id": "$_id", "test": {"%s": { } } }}]}', operator)::documentdb_core.bson;
+        querySpec := FORMAT('{ "aggregate": "setWindowField_compliance", "pipeline":  [{"$group": { "_id": "$_id", "test": {"%s": { } } }}]}', operator)::helio_core.bson;
         BEGIN
-            SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', querySpec);
+            SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', querySpec);
         EXCEPTION WHEN OTHERS THEN
             errorMessage := SQLERRM;
             IF errorMessage LIKE '%Unknown group operator%' OR errorMessage LIKE '%not implemented%' THEN
@@ -52,9 +52,9 @@ BEGIN
             END IF;
         END;
 
-        querySpec := FORMAT('{ "aggregate": "setWindowField_compliance", "pipeline":  [{"$setWindowFields": { "output": { "field": { "%s": { } } } }}]}', operator)::documentdb_core.bson;
+        querySpec := FORMAT('{ "aggregate": "setWindowField_compliance", "pipeline":  [{"$setWindowFields": { "output": { "field": { "%s": { } } } }}]}', operator)::helio_core.bson;
         BEGIN
-            SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', querySpec);
+            SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', querySpec);
         EXCEPTION WHEN OTHERS THEN
             errorMessage := SQLERRM;
             IF errorMessage LIKE '%not supported%' THEN
@@ -103,10 +103,10 @@ BEGIN
     setwindowFields_spec := '{ "aggregate": "setWindowField_compliance", "pipeline":  [{"$setWindowFields": { "output": ' ||  bson_spec_str || ' }}]}';
 
     SET citus.log_remote_commands = 'on';
-    SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', group_by_spec::documentdb_core.bson) INTO groupResult;
+    SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', group_by_spec::helio_core.bson) INTO groupResult;
     RAISE NOTICE E'\n=============\nGroup by\n=============\nQuery: %\n\nResult: %', group_by_spec, groupResult;
 
-    SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', setwindowFields_spec::documentdb_core.bson) INTO setwindowFieldsResult;
+    SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', setwindowFields_spec::helio_core.bson) INTO setwindowFieldsResult;
     RAISE NOTICE E'\n=============\nSetWindowFields\n=============\nQuery: %\n\nResult: %', setwindowFields_spec, setwindowFieldsResult;
     RESET citus.log_remote_commands;
 END;

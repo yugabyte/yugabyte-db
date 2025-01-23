@@ -1,41 +1,41 @@
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
 -- CREATE EXTENSION IF NOT EXISTS tsm_system_rows;
 SET citus.next_shard_id TO 70000;
-SET documentdb.next_collection_id TO 7000;
-SET documentdb.next_collection_index_id TO 7000;
+SET helio_api.next_collection_id TO 7000;
+SET helio_api.next_collection_index_id TO 7000;
 -- Insert data
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 1, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT helio_api.insert_one('db','sample',' { "_id" : 1, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 2, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT helio_api.insert_one('db','sample',' { "_id" : 2, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 3, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT helio_api.insert_one('db','sample',' { "_id" : 3, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 4, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT helio_api.insert_one('db','sample',' { "_id" : 4, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 5, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT helio_api.insert_one('db','sample',' { "_id" : 5, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 6, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT helio_api.insert_one('db','sample',' { "_id" : 6, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -47,14 +47,14 @@ SELECT documentdb_api.insert_one('db','sample',' { "_id" : 6, "item" : "almonds"
 -- especially if only a small number of rows are requested.
 -- https://www.postgresql.org/docs/current/tsm-system-rows.html
 -- Sample with cursor for unsharded collection not supported - use persisted cursor
-SELECT * FROM documentdb_api.aggregate_cursor_first_page(database => 'db', commandSpec => '{ "aggregate": "sample", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ], "cursor": { "batchSize": 1 } }', cursorId => 4294967294);
+SELECT * FROM helio_api.aggregate_cursor_first_page(database => 'db', commandSpec => '{ "aggregate": "sample", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ], "cursor": { "batchSize": 1 } }', cursorId => 4294967294);
                                                                                                               cursorpage                                                                                                              |                                                                       continuation                                                                       | persistconnection |  cursorid  
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "db.sample", "firstBatch" : [ { "item" : "almonds", "price" : { "$numberInt" : "1" }, "quantity" : { "$numberInt" : "1" } } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" } } | t                 | 4294967294
 (1 row)
 
 -- Shard orders collection on item 
-SELECT documentdb_api.shard_collection('db','sample', '{"item":"hashed"}', false);
+SELECT helio_api.shard_collection('db','sample', '{"item":"hashed"}', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -71,7 +71,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sample", "
  { "item" : "almonds", "price" : { "$numberInt" : "1" }, "quantity" : { "$numberInt" : "1" } }
 (3 rows)
 
-SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
+SELECT helio_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
 EXPLAIN(costs off) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sample", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ] }');
 $Q$);
                              mask_plan_id_from_distributed_subplan                              

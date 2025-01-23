@@ -1,12 +1,12 @@
 SET citus.next_shard_id TO 1600000;
-SET documentdb.next_collection_id TO 16000;
-SET documentdb.next_collection_index_id TO 16000;
+SET helio_api.next_collection_id TO 16000;
+SET helio_api.next_collection_index_id TO 16000;
 
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog;
+SET search_path TO helio_core,helio_api,helio_api_catalog;
 
 -- supported "partialFilterExpression" operators --
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{
      "createIndexes": "collection_i",
@@ -22,10 +22,10 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_i', 'my_idx_1');
+SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_i', 'my_idx_1');
 
 -- not the same index since this doesn't specify partialFilterExpression
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{
      "createIndexes": "collection_i",
@@ -39,7 +39,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
 );
 
 -- but this is the same index, so should not return an error
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{
      "createIndexes": "collection_i",
@@ -56,7 +56,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    true
 );
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently(
+SELECT helio_api_internal.create_indexes_non_concurrently(
   'mydb',
   '{
      "createIndexes": "collection_i",
@@ -73,11 +73,11 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    true
 );
 
-SELECT documentdb_api.list_indexes_cursor_first_page('mydb','{ "listIndexes": "collection_i" }') ORDER BY 1;
+SELECT helio_api.list_indexes_cursor_first_page('mydb','{ "listIndexes": "collection_i" }') ORDER BY 1;
 
 -- force using my_idx_1 when possible
-SELECT documentdb_distributed_test_helpers.drop_primary_key('mydb', 'collection_i');
-SELECT SUM(1) FROM documentdb_api.insert_one('mydb','collection_i', '{"a":"foo"}'), generate_series(1, 10);
+SELECT helio_distributed_test_helpers.drop_primary_key('mydb', 'collection_i');
+SELECT SUM(1) FROM helio_api.insert_one('mydb','collection_i', '{"a":"foo"}'), generate_series(1, 10);
 
 BEGIN;
   set local enable_seqscan TO OFF;
@@ -86,7 +86,7 @@ BEGIN;
   -- even if filter exactly matches the partialFilterExpression of my_idx_1,
   -- cannot use the index since the index key is "a.$**"
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb', 'collection_i')
+  FROM helio_api.collection('mydb', 'collection_i')
   WHERE document @@ '
   {
     "$and": [
@@ -97,7 +97,7 @@ BEGIN;
 
   -- can use the index since it filters on the index key as well
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb', 'collection_i')
+  FROM helio_api.collection('mydb', 'collection_i')
   WHERE document @@ '
   {
     "$and": [
@@ -108,7 +108,7 @@ BEGIN;
   ';
 
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb', 'collection_i')
+  FROM helio_api.collection('mydb', 'collection_i')
   WHERE document @@ '
   {
     "$and": [
@@ -119,7 +119,7 @@ BEGIN;
   ';
 
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb', 'collection_i')
+  FROM helio_api.collection('mydb', 'collection_i')
   WHERE document @@ '
   {
     "$and": [
@@ -130,7 +130,7 @@ BEGIN;
   ';
 
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb', 'collection_i')
+  FROM helio_api.collection('mydb', 'collection_i')
   WHERE document @@ '
   {
     "$and": [
@@ -142,7 +142,7 @@ BEGIN;
 
  -- cannot use index (no PFE)
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb', 'collection_i')
+  FROM helio_api.collection('mydb', 'collection_i')
   WHERE document @@ '
   {
     "$and": [
@@ -153,7 +153,7 @@ BEGIN;
   ';
 
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb', 'collection_i')
+  FROM helio_api.collection('mydb', 'collection_i')
   WHERE document @@ '
   {
     "$and": [
@@ -165,7 +165,7 @@ BEGIN;
 
   -- can use index
   EXPLAIN (COSTS OFF) SELECT COUNT(*)
-  FROM documentdb_api.collection('mydb', 'collection_i')
+  FROM helio_api.collection('mydb', 'collection_i')
   WHERE document @@ '
   {
     "$and": [
@@ -178,8 +178,8 @@ COMMIT;
 
 -- unsupported "partialFilterExpression" operators --
 
-CREATE FUNCTION create_index_arg_using_pfe(p_pfe documentdb_core.bson)
-RETURNS documentdb_core.bson
+CREATE FUNCTION create_index_arg_using_pfe(p_pfe helio_core.bson)
+RETURNS helio_core.bson
 AS $$
 BEGIN
 	RETURN format(
@@ -194,11 +194,11 @@ BEGIN
       ]
     }',
     p_pfe
-  )::documentdb_core.bson;
+  )::helio_core.bson;
 END;
 $$ LANGUAGE plpgsql;
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$and": [
     {"$or": [{"a": 1}]}
@@ -206,20 +206,20 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_i
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$nor": [{"a": 1}]
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$nor": [{"a": 1}, {"b": 1}]
 }
 '), true);
 
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$and": [
     {"b": 3}, {"a": {"$in": [2]}}, {"c": 4}
@@ -227,25 +227,25 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_i
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$ne": 1
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "a": {"$ne": 1}
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "a": {"$nin": [1,2,3]}
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$and": [
     {"b": 3}, {"a": {"$in": 2}}, {"c": 4}
@@ -253,7 +253,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_i
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$and": [
     {"$and": [{"a": 1}, {"b": 3}]}
@@ -261,31 +261,31 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_i
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "a": 1, "$and": [{"c": 1}]
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "a": 1, "b": {"$and": [{"d": 1}]}
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "a": {"$not": {"$eq": [1,2,3]}}
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$and": [{"a": {"$not": {"$eq": [1,2,3]}}}]
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$and": [
     {"a": {"$exists": true}},
@@ -294,13 +294,13 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_i
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$and": [{"b": 55}, {"a": {"$exists": false}}]
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "a": "b",
   "item": {"$exists": 1, "$text": {"$search": "coffee"}},
@@ -308,13 +308,13 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_i
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "a": {"$and": [{"a": 1}, {"b": 3}]}
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$and": [{"p": 1}, {"q": 2}],
   "b": [{"z": 1}, {"t": 2}],
@@ -322,7 +322,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_i
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$and": [
     {"b": {"$gte": 1, "$lte": 3}}
@@ -330,13 +330,13 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_i
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "a": {"$unknown_operator": 1}
 }
 '), true);
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+SELECT helio_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
 {
   "$unknown_operator": [{"a": 1}]
 }

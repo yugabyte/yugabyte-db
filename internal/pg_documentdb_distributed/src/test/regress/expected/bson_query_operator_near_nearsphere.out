@@ -1,112 +1,112 @@
 SET citus.next_shard_id TO 523000;
-SET documentdb.next_collection_id TO 5230;
-SET documentdb.next_collection_index_id TO 5230;
-SET search_path to documentdb_api_catalog;
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 1, "a": { "b": [ 0, 0]} }', NULL);
+SET helio_api.next_collection_id TO 5230;
+SET helio_api.next_collection_index_id TO 5230;
+SET search_path to helio_api_catalog;
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 1, "a": { "b": [ 0, 0]} }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 2, "a": { "b": [ 1.1, 1.1]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 2, "a": { "b": [ 1.1, 1.1]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 3, "a": { "b": [ 2.29, 2.29]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 3, "a": { "b": [ 2.29, 2.29]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 4, "a": { "b": [ 3.31, 3.31]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 4, "a": { "b": [ 3.31, 3.31]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 5, "a": { "b": [ 4.42, 4.42]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 5, "a": { "b": [ 4.42, 4.42]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 6, "a": { "b": [ 5.5, 5.5]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 6, "a": { "b": [ 5.5, 5.5]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 7, "a": { "b": [ 6.66, 6.66]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 7, "a": { "b": [ 6.66, 6.66]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 8, "a": { "b": [ 7.74, 7.74]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 8, "a": { "b": [ 7.74, 7.74]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 9, "a": { "b": [ 8.81, 8.81]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 9, "a": { "b": [ 8.81, 8.81]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 10, "a": { "geo": {"type": "Point", "coordinates": [35.3, 35.4]}} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 10, "a": { "geo": {"type": "Point", "coordinates": [35.3, 35.4]}} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 11, "a": { "geo": {"type": "LineString", "coordinates": [[35.36, 35.42], [32.3, 30]]}} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 11, "a": { "geo": {"type": "LineString", "coordinates": [[35.36, 35.42], [32.3, 30]]}} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 12, "a": { "geo": {"type": "Polygon", "coordinates": [[[35.73, 35.74], [38.6, 35.3], [38.7, 39.2], [35.73, 35.74]]]}} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 12, "a": { "geo": {"type": "Polygon", "coordinates": [[[35.73, 35.74], [38.6, 35.3], [38.7, 39.2], [35.73, 35.74]]]}} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 13, "a": { "geo": {"type": "MultiPoint", "coordinates": [[35.43, 35.44], [32.3, 30.3]]}} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 13, "a": { "geo": {"type": "MultiPoint", "coordinates": [[35.43, 35.44], [32.3, 30.3]]}} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 14, "a": { "geo": {"type": "MultiLineString", "coordinates": [[[35.83, 35.84], [32.3, 30.6]]]}} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 14, "a": { "geo": {"type": "MultiLineString", "coordinates": [[[35.83, 35.84], [32.3, 30.6]]]}} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 15, "a": { "geo": {"type": "MultiPolygon", "coordinates": [[[[35.312, 35.441], [38.644, 35.3231], [38.71, 39.32], [35.312, 35.441]]]]}} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere','{ "_id": 15, "a": { "geo": {"type": "MultiPolygon", "coordinates": [[[[35.312, 35.441], [38.644, 35.3231], [38.71, 39.32], [35.312, 35.441]]]]}} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- $near and $nearSphere enforce index usage
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere", "indexes": [{"key": {"a.b": "2d"}, "name": "my_2d_ab_idx" }, {"key": {"a.b": "2dsphere"}, "name": "my_2ds_ab_idx" }, {"key": {"a.geo": "2dsphere"}, "name": "my_2ds_ageo_idx" }]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere", "indexes": [{"key": {"a.b": "2d"}, "name": "my_2d_ab_idx" }, {"key": {"a.b": "2dsphere"}, "name": "my_2ds_ab_idx" }, {"key": {"a.geo": "2dsphere"}, "name": "my_2ds_ageo_idx" }]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT documentdb_distributed_test_helpers.drop_primary_key('db','near_sphere');
+SELECT helio_distributed_test_helpers.drop_primary_key('db','near_sphere');
  drop_primary_key 
 ---------------------------------------------------------------------
  
 (1 row)
 
-SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'near_sphere') ORDER BY collection_id, index_id;
+SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'near_sphere') ORDER BY collection_id, index_id;
  collection_id | index_id |                                                               index_spec_as_bson                                                                | index_is_valid 
 ---------------------------------------------------------------------
           5230 |     5231 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : "2d" }, "name" : "my_2d_ab_idx" }                                                             | t
@@ -190,19 +190,19 @@ ERROR:  maxDistance must be nonnegative
 SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$nearSphere": [1, 1], "$maxDistance": {"$numberDouble": "-NaN"}}}}');
 ERROR:  maxDistance must be non-negative
 -- invalid places to call $near/$nearSphere
-SELECT document FROM documentdb_api.collection('db','near_sphere') WHERE document @@ '{ "a.b": { "$elemMatch" : {"$near": [1,1] }}}';
+SELECT document FROM helio_api.collection('db','near_sphere') WHERE document @@ '{ "a.b": { "$elemMatch" : {"$near": [1,1] }}}';
 ERROR:  $geoNear, $near, and $nearSphere are not allowed in this context, as these operators require sorting geospatial data. If you do not need sort, consider using $geoWithin instead.
-SELECT document FROM documentdb_api.collection('db','near_sphere') WHERE document @@ '{ "$or": [{"a.b": {"$near": [1,1] }},{"t": 1}]}';
+SELECT document FROM helio_api.collection('db','near_sphere') WHERE document @@ '{ "$or": [{"a.b": {"$near": [1,1] }},{"t": 1}]}';
 ERROR:  geo $near must be top-level expr
 SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": {}, "projection": { "p" : {"$elemMatch": {"geo": {"$near": [1,1]}}}}}');
 ERROR:  $geoNear, $near, and $nearSphere are not allowed in this context, as these operators require sorting geospatial data. If you do not need sort, consider using $geoWithin instead.
-SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{},"u":{"$set": {"a.$[elem].b": 1}},"multi":false,"upsert":true, "arrayFilters": [{"elem.geo": {"$near": [1, 1]}}]}]}');
+SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{},"u":{"$set": {"a.$[elem].b": 1}},"multi":false,"upsert":true, "arrayFilters": [{"elem.geo": {"$near": [1, 1]}}]}]}');
                                                                                                                                                                                                                           update                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context, as these operators require sorting geospatial data. If you do not need sort, consider using $geoWithin instead."" } ] }",f)
 (1 row)
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere", "indexes": [{"key": {"t": 1}, "name": "my_invalid_idx", "partialFilterExpression": {"geo": {"$near": [1,1]}} }]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere", "indexes": [{"key": {"t": 1}, "name": "my_invalid_idx", "partialFilterExpression": {"geo": {"$near": [1,1]}} }]}', true);
 ERROR:  Error in specification { "key" : { "t" : 1 }, "name" : "my_invalid_idx", "partialFilterExpression" : { "geo" : { "$near" : [ 1, 1 ] } } } :: caused by :: $geoNear, $near, and $nearSphere are not allowed in this context
 BEGIN;
 -- $near operator
@@ -698,7 +698,7 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filt
 (6 rows)
 
 -- Verify that @@ operator handles the near / nearSphere operators
-SELECT document FROM documentdb_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.b": { "$near": [5, 6]}}';
+SELECT document FROM helio_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.b": { "$near": [5, 6]}}';
                                                                        document                                                                       
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] } }
@@ -712,7 +712,7 @@ SELECT document FROM documentdb_api.collection('db', 'near_sphere') WHERE docume
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] } }
 (9 rows)
 
-SELECT document FROM documentdb_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.b": { "$near": [5, 6]}}';
+SELECT document FROM helio_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.b": { "$near": [5, 6]}}';
                                                                        document                                                                       
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] } }
@@ -726,7 +726,7 @@ SELECT document FROM documentdb_api.collection('db', 'near_sphere') WHERE docume
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] } }
 (9 rows)
 
-SELECT document FROM documentdb_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.geo": { "$nearSphere": [5, 6]}}';
+SELECT document FROM helio_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.geo": { "$nearSphere": [5, 6]}}';
                                                                                                                                                                                                                                                         document                                                                                                                                                                                                                                                        
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "11" }, "a" : { "geo" : { "type" : "LineString", "coordinates" : [ [ { "$numberDouble" : "35.359999999999999432" }, { "$numberDouble" : "35.420000000000001705" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberInt" : "30" } ] ] } } }
@@ -737,7 +737,7 @@ SELECT document FROM documentdb_api.collection('db', 'near_sphere') WHERE docume
  { "_id" : { "$numberInt" : "12" }, "a" : { "geo" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberDouble" : "35.729999999999996874" }, { "$numberDouble" : "35.74000000000000199" } ], [ { "$numberDouble" : "38.600000000000001421" }, { "$numberDouble" : "35.299999999999997158" } ], [ { "$numberDouble" : "38.700000000000002842" }, { "$numberDouble" : "39.200000000000002842" } ], [ { "$numberDouble" : "35.729999999999996874" }, { "$numberDouble" : "35.74000000000000199" } ] ] ] } } }
 (6 rows)
 
-SELECT document FROM documentdb_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.geo": { "$nearSphere": {"coordinates": [5, 6]}}}';
+SELECT document FROM helio_api.collection('db', 'near_sphere') WHERE document @@ '{ "a.geo": { "$nearSphere": {"coordinates": [5, 6]}}}';
                                                                                                                                                                                                                                                         document                                                                                                                                                                                                                                                        
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "11" }, "a" : { "geo" : { "type" : "LineString", "coordinates" : [ [ { "$numberDouble" : "35.359999999999999432" }, { "$numberDouble" : "35.420000000000001705" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberInt" : "30" } ] ] } } }
@@ -757,11 +757,11 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_5230_523006 collection WHERE ((documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist" }'::documentdb_core.bson)
+         Query: SELECT document FROM helio_data.documents_5230_523006 collection WHERE ((helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist" }'::helio_core.bson)
          Node: host=localhost port=58070 dbname=regression
-         ->  Index Scan using my_2d_ab_idx on documentdb_data.documents_5230_523006 collection
-               Output: document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist" }'::documentdb_core.bson)
-               Order By: (documentdb_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist" }'::documentdb_core.bson)
+         ->  Index Scan using my_2d_ab_idx on helio_data.documents_5230_523006 collection
+               Output: document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist" }'::helio_core.bson)
+               Order By: (helio_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist" }'::helio_core.bson)
 (10 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$near": [0, 0], "$minDistance": 5, "$maxDistance": 8}}}');
@@ -772,12 +772,12 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_5230_523006 collection WHERE (((documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" } }'::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" }'::documentdb_core.bson)
+         Query: SELECT document FROM helio_data.documents_5230_523006 collection WHERE (((helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" } }'::helio_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" }'::helio_core.bson)
          Node: host=localhost port=58070 dbname=regression
-         ->  Index Scan using my_2d_ab_idx on documentdb_data.documents_5230_523006 collection
-               Output: document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" }'::documentdb_core.bson)
-               Index Cond: (documentdb_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" } }'::documentdb_core.bson)
-               Order By: (documentdb_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" }'::documentdb_core.bson)
+         ->  Index Scan using my_2d_ab_idx on helio_data.documents_5230_523006 collection
+               Output: document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" }'::helio_core.bson)
+               Index Cond: (helio_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" } }'::helio_core.bson)
+               Order By: (helio_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" }'::helio_core.bson)
 (11 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$near": {"type": "Point", "coordinates": [0, 0]}}}}');
@@ -788,11 +788,11 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_5230_523006 collection WHERE ((documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         Query: SELECT document FROM helio_data.documents_5230_523006 collection WHERE ((helio_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
          Node: host=localhost port=58070 dbname=regression
-         ->  Index Scan using my_2ds_ab_idx on documentdb_data.documents_5230_523006 collection
-               Output: document, (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
-               Order By: (documentdb_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         ->  Index Scan using my_2ds_ab_idx on helio_data.documents_5230_523006 collection
+               Output: document, (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
+               Order By: (helio_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
 (10 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$near": {"type": "Point", "coordinates": [0, 0]}, "$minDistance": 500000, "$maxDistance": 1500000}}}');
@@ -803,12 +803,12 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_5230_523006 collection WHERE (((documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL) AND (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         Query: SELECT document FROM helio_data.documents_5230_523006 collection WHERE (((helio_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL) AND (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
          Node: host=localhost port=58070 dbname=regression
-         ->  Index Scan using my_2ds_ab_idx on documentdb_data.documents_5230_523006 collection
-               Output: document, (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
-               Index Cond: (documentdb_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson)
-               Order By: (documentdb_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         ->  Index Scan using my_2ds_ab_idx on helio_data.documents_5230_523006 collection
+               Output: document, (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
+               Index Cond: (helio_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson)
+               Order By: (helio_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
 (11 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$nearSphere": [0, 0]}}}');
@@ -819,11 +819,11 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_5230_523006 collection WHERE ((documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         Query: SELECT document FROM helio_data.documents_5230_523006 collection WHERE ((helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
          Node: host=localhost port=58070 dbname=regression
-         ->  Index Scan using my_2d_ab_idx on documentdb_data.documents_5230_523006 collection
-               Output: document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
-               Order By: (documentdb_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         ->  Index Scan using my_2d_ab_idx on helio_data.documents_5230_523006 collection
+               Output: document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
+               Order By: (helio_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
 (10 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$nearSphere": [0, 0], "$minDistance": 0.8, "$maxDistance": 1}}}');
@@ -834,12 +834,12 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_5230_523006 collection WHERE (((documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         Query: SELECT document FROM helio_data.documents_5230_523006 collection WHERE (((helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
          Node: host=localhost port=58070 dbname=regression
-         ->  Index Scan using my_2d_ab_idx on documentdb_data.documents_5230_523006 collection
-               Output: document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
-               Index Cond: (documentdb_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson)
-               Order By: (documentdb_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         ->  Index Scan using my_2d_ab_idx on helio_data.documents_5230_523006 collection
+               Output: document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
+               Index Cond: (helio_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson)
+               Order By: (helio_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
 (11 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": {"type": "Point", "coordinates": [0, 0]}}}}');
@@ -850,11 +850,11 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_5230_523006 collection WHERE ((documentdb_api_catalog.bson_validate_geography(document, 'a.geo'::text) IS NOT NULL) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (documentdb_api_catalog.bson_validate_geography(document, 'a.geo'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.geo", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         Query: SELECT document FROM helio_data.documents_5230_523006 collection WHERE ((helio_api_catalog.bson_validate_geography(document, 'a.geo'::text) IS NOT NULL) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (helio_api_catalog.bson_validate_geography(document, 'a.geo'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.geo", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
          Node: host=localhost port=58070 dbname=regression
-         ->  Index Scan using my_2ds_ageo_idx on documentdb_data.documents_5230_523006 collection
-               Output: document, (documentdb_api_catalog.bson_validate_geography(document, 'a.geo'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.geo", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
-               Order By: (documentdb_api_catalog.bson_validate_geography(collection.document, 'a.geo'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.geo", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         ->  Index Scan using my_2ds_ageo_idx on helio_data.documents_5230_523006 collection
+               Output: document, (helio_api_catalog.bson_validate_geography(document, 'a.geo'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.geo", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
+               Order By: (helio_api_catalog.bson_validate_geography(collection.document, 'a.geo'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.geo", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
 (10 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$nearSphere": {"$geometry": {"type": "Point", "coordinates": [0, 0]}, "$minDistance": 500000, "$maxDistance": 1500000}}}}');
@@ -865,12 +865,12 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_5230_523006 collection WHERE (((documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL) AND (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         Query: SELECT document FROM helio_data.documents_5230_523006 collection WHERE (((helio_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL) AND (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '5230'::bigint)) ORDER BY (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
          Node: host=localhost port=58070 dbname=regression
-         ->  Index Scan using my_2ds_ab_idx on documentdb_data.documents_5230_523006 collection
-               Output: document, (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
-               Index Cond: (documentdb_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson)
-               Order By: (documentdb_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+         ->  Index Scan using my_2ds_ab_idx on helio_data.documents_5230_523006 collection
+               Output: document, (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
+               Index Cond: (helio_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson)
+               Order By: (helio_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
 (11 rows)
 
 ROLLBACK;
@@ -887,19 +887,19 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filt
 
 -- check update
 BEGIN;
-SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
+SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
                                                                                                                                                                  update                                                                                                                                                                  
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
 (1 row)
 
-SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1.1,1.1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
+SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1.1,1.1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
                                                                                                                                                                  update                                                                                                                                                                  
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
 (1 row)
 
-SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
+SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
                                                                                                                                                                  update                                                                                                                                                                  
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
@@ -907,7 +907,7 @@ SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a
 
 ROLLBACK;
 -- Shard the collection
-SELECT documentdb_api.shard_collection('db', 'near_sphere', '{"_id": "hashed"}', false);
+SELECT helio_api.shard_collection('db', 'near_sphere', '{"_id": "hashed"}', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -1437,10 +1437,10 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
          Task Count: 8
          Tasks Shown: One of 8
          ->  Task
-               Query: SELECT document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist" }'::documentdb_core.bson) AS distance FROM documentdb_data.documents_5230_523016 collection WHERE (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL)
+               Query: SELECT document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist" }'::helio_core.bson) AS distance FROM helio_data.documents_5230_523016 collection WHERE (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL)
                Node: host=localhost port=58070 dbname=regression
-               ->  Index Scan using my_2d_ab_idx on documentdb_data.documents_5230_523016 collection
-                     Output: document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist" }'::documentdb_core.bson)
+               ->  Index Scan using my_2d_ab_idx on helio_data.documents_5230_523016 collection
+                     Output: document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist" }'::helio_core.bson)
 (12 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$near": [0, 0], "$minDistance": 5, "$maxDistance": 8}}}');
@@ -1454,11 +1454,11 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
          Task Count: 8
          Tasks Shown: One of 8
          ->  Task
-               Query: SELECT document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" }'::documentdb_core.bson) AS distance FROM documentdb_data.documents_5230_523016 collection WHERE ((documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" } }'::documentdb_core.bson))
+               Query: SELECT document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" }'::helio_core.bson) AS distance FROM helio_data.documents_5230_523016 collection WHERE ((helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" } }'::helio_core.bson))
                Node: host=localhost port=58070 dbname=regression
-               ->  Index Scan using my_2d_ab_idx on documentdb_data.documents_5230_523016 collection
-                     Output: document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" }'::documentdb_core.bson)
-                     Index Cond: (documentdb_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" } }'::documentdb_core.bson)
+               ->  Index Scan using my_2d_ab_idx on helio_data.documents_5230_523016 collection
+                     Output: document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" }'::helio_core.bson)
+                     Index Cond: (helio_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberInt" : "5" }, "maxDistance" : { "$numberInt" : "8" }, "distanceField" : "dist" } }'::helio_core.bson)
 (13 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$near": {"type": "Point", "coordinates": [0, 0]}}}}');
@@ -1472,10 +1472,10 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
          Task Count: 8
          Tasks Shown: One of 8
          ->  Task
-               Query: SELECT document, (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson) AS distance FROM documentdb_data.documents_5230_523016 collection WHERE (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL)
+               Query: SELECT document, (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson) AS distance FROM helio_data.documents_5230_523016 collection WHERE (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL)
                Node: host=localhost port=58070 dbname=regression
-               ->  Index Scan using my_2ds_ab_idx on documentdb_data.documents_5230_523016 collection
-                     Output: document, (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+               ->  Index Scan using my_2ds_ab_idx on helio_data.documents_5230_523016 collection
+                     Output: document, (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
 (12 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$near": {"type": "Point", "coordinates": [0, 0]}, "$minDistance": 500000, "$maxDistance": 1500000}}}');
@@ -1489,11 +1489,11 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
          Task Count: 8
          Tasks Shown: One of 8
          ->  Task
-               Query: SELECT document, (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson) AS distance FROM documentdb_data.documents_5230_523016 collection WHERE ((documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL) AND (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson))
+               Query: SELECT document, (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson) AS distance FROM helio_data.documents_5230_523016 collection WHERE ((helio_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL) AND (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson))
                Node: host=localhost port=58070 dbname=regression
-               ->  Index Scan using my_2ds_ab_idx on documentdb_data.documents_5230_523016 collection
-                     Output: document, (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
-                     Index Cond: (documentdb_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson)
+               ->  Index Scan using my_2ds_ab_idx on helio_data.documents_5230_523016 collection
+                     Output: document, (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
+                     Index Cond: (helio_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson)
 (13 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$nearSphere": [0, 0]}}}');
@@ -1507,10 +1507,10 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
          Task Count: 8
          Tasks Shown: One of 8
          ->  Task
-               Query: SELECT document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson) AS distance FROM documentdb_data.documents_5230_523016 collection WHERE (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL)
+               Query: SELECT document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist", "spherical" : true }'::helio_core.bson) AS distance FROM helio_data.documents_5230_523016 collection WHERE (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL)
                Node: host=localhost port=58070 dbname=regression
-               ->  Index Scan using my_2d_ab_idx on documentdb_data.documents_5230_523016 collection
-                     Output: document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+               ->  Index Scan using my_2d_ab_idx on helio_data.documents_5230_523016 collection
+                     Output: document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
 (12 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$nearSphere": [0, 0], "$minDistance": 0.8, "$maxDistance": 1}}}');
@@ -1524,11 +1524,11 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
          Task Count: 8
          Tasks Shown: One of 8
          ->  Task
-               Query: SELECT document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson) AS distance FROM documentdb_data.documents_5230_523016 collection WHERE ((documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson))
+               Query: SELECT document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson) AS distance FROM helio_data.documents_5230_523016 collection WHERE ((helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) IS NOT NULL) AND (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson))
                Node: host=localhost port=58070 dbname=regression
-               ->  Index Scan using my_2d_ab_idx on documentdb_data.documents_5230_523016 collection
-                     Output: document, (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
-                     Index Cond: (documentdb_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson)
+               ->  Index Scan using my_2d_ab_idx on helio_data.documents_5230_523016 collection
+                     Output: document, (helio_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
+                     Index Cond: (helio_api_catalog.bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "minDistance" : { "$numberDouble" : "0.80000000000000004441" }, "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson)
 (13 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": {"type": "Point", "coordinates": [0, 0]}}}}');
@@ -1542,10 +1542,10 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
          Task Count: 8
          Tasks Shown: One of 8
          ->  Task
-               Query: SELECT document, (documentdb_api_catalog.bson_validate_geography(document, 'a.geo'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.geo", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson) AS distance FROM documentdb_data.documents_5230_523016 collection WHERE (documentdb_api_catalog.bson_validate_geography(document, 'a.geo'::text) IS NOT NULL)
+               Query: SELECT document, (helio_api_catalog.bson_validate_geography(document, 'a.geo'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.geo", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson) AS distance FROM helio_data.documents_5230_523016 collection WHERE (helio_api_catalog.bson_validate_geography(document, 'a.geo'::text) IS NOT NULL)
                Node: host=localhost port=58070 dbname=regression
-               ->  Index Scan using my_2ds_ageo_idx on documentdb_data.documents_5230_523016 collection
-                     Output: document, (documentdb_api_catalog.bson_validate_geography(document, 'a.geo'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.geo", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
+               ->  Index Scan using my_2ds_ageo_idx on helio_data.documents_5230_523016 collection
+                     Output: document, (helio_api_catalog.bson_validate_geography(document, 'a.geo'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.geo", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
 (12 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$nearSphere": {"$geometry": {"type": "Point", "coordinates": [0, 0]}, "$minDistance": 500000, "$maxDistance": 1500000}}}}');
@@ -1559,17 +1559,17 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
          Task Count: 8
          Tasks Shown: One of 8
          ->  Task
-               Query: SELECT document, (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson) AS distance FROM documentdb_data.documents_5230_523016 collection WHERE ((documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL) AND (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson))
+               Query: SELECT document, (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson) AS distance FROM helio_data.documents_5230_523016 collection WHERE ((helio_api_catalog.bson_validate_geography(document, 'a.b'::text) IS NOT NULL) AND (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson))
                Node: host=localhost port=58070 dbname=regression
-               ->  Index Scan using my_2ds_ab_idx on documentdb_data.documents_5230_523016 collection
-                     Output: document, (documentdb_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::documentdb_core.bson)
-                     Index Cond: (documentdb_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::documentdb_core.bson)
+               ->  Index Scan using my_2ds_ab_idx on helio_data.documents_5230_523016 collection
+                     Output: document, (helio_api_catalog.bson_validate_geography(document, 'a.b'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true }'::helio_core.bson)
+                     Index Cond: (helio_api_catalog.bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(helio_api_internal.@|><|) '{ "a.b" : { "key" : "a.b", "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "minDistance" : { "$numberInt" : "500000" }, "maxDistance" : { "$numberInt" : "1500000" }, "distanceField" : "dist", "spherical" : true } }'::helio_core.bson)
 (13 rows)
 
 ROLLBACK;
 -- update with sharded
 BEGIN;
-SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
+SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
                                                                                                                                                                  update                                                                                                                                                                  
 ---------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
@@ -1577,74 +1577,74 @@ SELECT documentdb_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a
 
 ROLLBACK;
 -- Test near and nearsphere with different sorting features.
-SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 1, "zone": 1, "loc": { "type": "Point", "coordinates": [-20, -20]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 1, "zone": 1, "loc": { "type": "Point", "coordinates": [-20, -20]} }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 2, "zone": 2, "loc": { "type": "Point", "coordinates": [-10, -10]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 2, "zone": 2, "loc": { "type": "Point", "coordinates": [-10, -10]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 3, "zone": 3, "loc": { "type": "Point", "coordinates": [0, 0]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 3, "zone": 3, "loc": { "type": "Point", "coordinates": [0, 0]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 4, "zone": 4, "loc": { "type": "Point", "coordinates": [10, 10]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 4, "zone": 4, "loc": { "type": "Point", "coordinates": [10, 10]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 5, "zone": 5, "loc": { "type": "Point", "coordinates": [20, 20]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 5, "zone": 5, "loc": { "type": "Point", "coordinates": [20, 20]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 6, "zone": 1, "loc": { "type": "Point", "coordinates": [-20, -20]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 6, "zone": 1, "loc": { "type": "Point", "coordinates": [-20, -20]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 7, "zone": 2, "loc": { "type": "Point", "coordinates": [-10, -10]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 7, "zone": 2, "loc": { "type": "Point", "coordinates": [-10, -10]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 8, "zone": 3, "loc": { "type": "Point", "coordinates": [0, 0]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 8, "zone": 3, "loc": { "type": "Point", "coordinates": [0, 0]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 9, "zone": 4, "loc": { "type": "Point", "coordinates": [10, 10]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 9, "zone": 4, "loc": { "type": "Point", "coordinates": [10, 10]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 10, "zone": 5, "loc": { "type": "Point", "coordinates": [20, 20]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 10, "zone": 5, "loc": { "type": "Point", "coordinates": [20, 20]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','near_sphere_distinct','{ "_id": 11, "zone": 6, "loc": { "type": "Point", "coordinates": [30, 30]} }', NULL);
+SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 11, "zone": 6, "loc": { "type": "Point", "coordinates": [30, 30]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere_distinct", "indexes": [{"key": {"loc.coordinates": "2d"}, "name": "my_2d_loccoord_idx" }]}', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere_distinct", "indexes": [{"key": {"loc.coordinates": "2d"}, "name": "my_2d_loccoord_idx" }]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
@@ -1658,12 +1658,12 @@ SELECT document FROM bson_aggregation_distinct('db', '{ "distinct": "near_sphere
 
 -- find and modify fails with geonear
 -- With sort on findAndModify with near, sort takes precedence
-SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [0, 0], "$maxDistance": 1} }, "sort": {"_id": -1}, "update": {"a": 10}, "fields": {"_id": 1}}');
+SELECT helio_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [0, 0], "$maxDistance": 1} }, "sort": {"_id": -1}, "update": {"a": 10}, "fields": {"_id": 1}}');
 ERROR:  $geoNear, $near, and $nearSphere are not allowed in this context
-CONTEXT:  SQL statement "SELECT ctid, object_id, document FROM documentdb_data.documents_5231_523025 WHERE shard_key_value = $1 AND document OPERATOR(documentdb_api_catalog.@@) $2::documentdb_core.bson ORDER BY documentdb_api_catalog.bson_orderby(document, $3::documentdb_core.bson) DESC LIMIT 1 FOR UPDATE"
-SQL statement " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_5231 WHERE shard_key_value = 5231"
+CONTEXT:  SQL statement "SELECT ctid, object_id, document FROM helio_data.documents_5231_523025 WHERE shard_key_value = $1 AND document OPERATOR(helio_api_catalog.@@) $2::helio_core.bson ORDER BY helio_api_catalog.bson_orderby(document, $3::helio_core.bson) DESC LIMIT 1 FOR UPDATE"
+SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_5231 WHERE shard_key_value = 5231"
 -- If no sort clause then near decides the ordering
-SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [30, 30]} }, "update": {"a": 10}, "fields": {"_id": 1}}');
+SELECT helio_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [30, 30]} }, "update": {"a": 10}, "fields": {"_id": 1}}');
 ERROR:  $geoNear, $near, and $nearSphere are not allowed in this context
-CONTEXT:  SQL statement "SELECT ctid, object_id, document FROM documentdb_data.documents_5231_523025 WHERE shard_key_value = $1 AND document OPERATOR(documentdb_api_catalog.@@) $2::documentdb_core.bson LIMIT 1 FOR UPDATE"
-SQL statement " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_5231 WHERE shard_key_value = 5231"
+CONTEXT:  SQL statement "SELECT ctid, object_id, document FROM helio_data.documents_5231_523025 WHERE shard_key_value = $1 AND document OPERATOR(helio_api_catalog.@@) $2::helio_core.bson LIMIT 1 FOR UPDATE"
+SQL statement " SELECT helio_api_internal.update_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM helio_data.documents_5231 WHERE shard_key_value = 5231"

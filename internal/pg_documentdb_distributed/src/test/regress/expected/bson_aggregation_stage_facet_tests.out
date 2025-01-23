@@ -1,82 +1,82 @@
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
 SET citus.next_shard_id TO 9610000;
-SET documentdb.next_collection_id TO 961000;
-SET documentdb.next_collection_index_id TO 961000;
+SET helio_api.next_collection_id TO 961000;
+SET helio_api.next_collection_index_id TO 961000;
 -- Insert data
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+SELECT helio_api.insert_one('db','facet',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
+SELECT helio_api.insert_one('db','facet',' { "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
+SELECT helio_api.insert_one('db','facet',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
+SELECT helio_api.insert_one('db','facet',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 5, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+SELECT helio_api.insert_one('db','facet',' { "_id" : 5, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 6, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
+SELECT helio_api.insert_one('db','facet',' { "_id" : 6, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 7, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
+SELECT helio_api.insert_one('db','facet',' { "_id" : 7, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 8, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
+SELECT helio_api.insert_one('db','facet',' { "_id" : 8, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- Test filter generation empty input
-SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection('db', 'facet1');
+SELECT bson_array_agg(document, 'myarray'::text) FROM helio_api.collection('db', 'facet1');
  bson_array_agg 
 ---------------------------------------------------------------------
  
 (1 row)
 
 -- Test filter generation 
-SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection('db', 'facet');
+SELECT bson_array_agg(document, 'myarray'::text) FROM helio_api.collection('db', 'facet');
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        bson_array_agg                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
 ---------------------------------------------------------------------
  { "myarray" : [ { "_id" : { "$numberInt" : "1" }, "item" : "almonds", "price" : { "$numberInt" : "12" }, "quantity" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "2" }, "item" : "pecans", "price" : { "$numberInt" : "20" }, "quantity" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "3" }, "item" : "bread", "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "4" }, "item" : [ "almonds", "bread", "pecans" ], "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "5" }, "item" : "almonds", "price" : { "$numberInt" : "12" }, "quantity" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "6" }, "item" : "pecans", "price" : { "$numberInt" : "20" }, "quantity" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "7" }, "item" : "bread", "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "8" }, "item" : [ "almonds", "bread", "pecans" ], "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } } ] }
 (1 row)
 
-SELECT bson_object_agg(document, true) FROM documentdb_api.collection('db', 'facet');
+SELECT bson_object_agg(document, true) FROM helio_api.collection('db', 'facet');
 ERROR:  function bson_object_agg(bson, boolean) does not exist
-LINE 1: SELECT bson_object_agg(document, true) FROM documentdb_api.c...
+LINE 1: SELECT bson_object_agg(document, true) FROM helio_api.collec...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- Test full facetSQL sql
 WITH "stage0" as (
   SELECT 
-    documentdb_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
+    helio_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
   FROM 
-    documentdb_api.collection('db', 'facet')
+    helio_api.collection('db', 'facet')
 ), 
 "stage1" as (
   WITH FacetStage AS (
@@ -87,13 +87,13 @@ WITH "stage0" as (
           bson_expression_get(document, '{ "$first" : "$quantity" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet')
+        helio_api.collection('db', 'facet')
       GROUP BY 
         bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
     ), 
     "FacetStage01" as (
       SELECT 
-        documentdb_core.bson_repath_and_build(
+        helio_core.bson_repath_and_build(
           '_id' :: text, "accid", 'first':: text, "acc0"
         ) AS document 
       FROM 
@@ -106,13 +106,13 @@ WITH "stage0" as (
           bson_expression_get(document, '{ "$last" : "$quantity" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet') 
+        helio_api.collection('db', 'facet') 
       GROUP BY 
         bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
     ), 
     "FacetStage11" as (
       SELECT 
-        documentdb_core.bson_repath_and_build(
+        helio_core.bson_repath_and_build(
           '_id' :: text, "accid", 'last':: text, "acc0"
         ) AS document 
       FROM 
@@ -152,9 +152,9 @@ SET JIT To off;
 EXPLAIN(costs off)
 WITH "stage0" as (
   SELECT 
-    documentdb_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
+    helio_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
   FROM 
-    documentdb_api.collection('db', 'facet')
+    helio_api.collection('db', 'facet')
 ), 
 "stage1" as (
   WITH FacetStage AS (
@@ -165,13 +165,13 @@ WITH "stage0" as (
           bson_expression_get(document, '{ "$first" : "$quantity" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet')
+        helio_api.collection('db', 'facet')
       GROUP BY 
         bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
     ), 
     "FacetStage01" as (
       SELECT 
-        documentdb_core.bson_repath_and_build(
+        helio_core.bson_repath_and_build(
           '_id' :: text, "accid", 'first':: text, "acc0"
         ) AS document 
       FROM 
@@ -184,13 +184,13 @@ WITH "stage0" as (
           bson_expression_get(document, '{ "$last" : "$quantity" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet') 
+        helio_api.collection('db', 'facet') 
       GROUP BY 
         bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
     ), 
     "FacetStage11" as (
       SELECT 
-        documentdb_core.bson_repath_and_build(
+        helio_core.bson_repath_and_build(
           '_id' :: text, "accid", 'last':: text, "acc0"
         ) AS document 
       FROM 
@@ -212,7 +212,7 @@ WITH "stage0" as (
     FacetStage
 ) SELECT * from "stage1"
 ROLBACK;
-                                                                                  QUERY PLAN                                                                                   
+                                                                             QUERY PLAN                                                                              
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -225,18 +225,18 @@ ROLBACK;
                      ->  Parallel Append
                            ->  Aggregate
                                  ->  GroupAggregate
-                                       Group Key: (documentdb_api_catalog.bson_expression_get(collection.document, '{ "_id" : "$price" }'::documentdb_core.bson, true))
+                                       Group Key: (helio_api_catalog.bson_expression_get(collection.document, '{ "_id" : "$price" }'::helio_core.bson, true))
                                        ->  Sort
-                                             Sort Key: (documentdb_api_catalog.bson_expression_get(collection.document, '{ "_id" : "$price" }'::documentdb_core.bson, true))
+                                             Sort Key: (helio_api_catalog.bson_expression_get(collection.document, '{ "_id" : "$price" }'::helio_core.bson, true))
                                              ->  Bitmap Heap Scan on documents_961000_9610003 collection
                                                    Recheck Cond: (shard_key_value = '961000'::bigint)
                                                    ->  Bitmap Index Scan on _id_
                                                          Index Cond: (shard_key_value = '961000'::bigint)
                            ->  Aggregate
                                  ->  GroupAggregate
-                                       Group Key: (documentdb_api_catalog.bson_expression_get(collection_1.document, '{ "_id" : "$price" }'::documentdb_core.bson, true))
+                                       Group Key: (helio_api_catalog.bson_expression_get(collection_1.document, '{ "_id" : "$price" }'::helio_core.bson, true))
                                        ->  Sort
-                                             Sort Key: (documentdb_api_catalog.bson_expression_get(collection_1.document, '{ "_id" : "$price" }'::documentdb_core.bson, true))
+                                             Sort Key: (helio_api_catalog.bson_expression_get(collection_1.document, '{ "_id" : "$price" }'::helio_core.bson, true))
                                              ->  Bitmap Heap Scan on documents_961000_9610003 collection_1
                                                    Recheck Cond: (shard_key_value = '961000'::bigint)
                                                    ->  Bitmap Index Scan on _id_

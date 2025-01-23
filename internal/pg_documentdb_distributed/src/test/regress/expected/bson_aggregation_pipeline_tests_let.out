@@ -1,28 +1,28 @@
-SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
 SET citus.next_shard_id TO 413000;
-SET documentdb.next_collection_id TO 4130;
-SET documentdb.next_collection_index_id TO 4130;
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let','{"_id":"1", "int": 10, "a" : { "b" : [ "x", 1, 2.0, true ] } }', NULL);
+SET helio_api.next_collection_id TO 4130;
+SET helio_api.next_collection_index_id TO 4130;
+SELECT helio_api.insert_one('db','aggregation_pipeline_let','{"_id":"1", "int": 10, "a" : { "b" : [ "x", 1, 2.0, true ] } }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let','{"_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let','{"_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let','{"_id":"3", "boolean": false, "a" : "no", "b": "yes", "c": true }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let','{"_id":"3", "boolean": false, "a" : "no", "b": "yes", "c": true }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- fetch all rows
-SELECT shard_key_value, object_id, document FROM documentdb_api.collection('db', 'aggregation_pipeline_let') ORDER BY object_id;
+SELECT shard_key_value, object_id, document FROM helio_api.collection('db', 'aggregation_pipeline_let') ORDER BY object_id;
  shard_key_value |  object_id   |                                                               document                                                               
 ---------------------------------------------------------------------
             4130 | { "" : "1" } | { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
@@ -40,10 +40,10 @@ EXPLAIN (VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find":
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_dollar_project_find(document, '{ "newField" : "$$varRef" }'::documentdb_core.bson, '{ }'::documentdb_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "20" } } }'::documentdb_core.bson) AS document FROM documentdb_data.documents_4130_413001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4130'::bigint)
+         Query: SELECT helio_api_internal.bson_dollar_project_find(document, '{ "newField" : "$$varRef" }'::helio_core.bson, '{ }'::helio_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "20" } } }'::helio_core.bson) AS document FROM helio_data.documents_4130_413001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4130'::bigint)
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documentdb_data.documents_4130_413001 collection  (cost=4.18..12.65 rows=4 width=32)
-               Output: documentdb_api_internal.bson_dollar_project_find(document, '{ "newField" : "$$varRef" }'::documentdb_core.bson, '{ }'::documentdb_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "20" } } }'::documentdb_core.bson)
+         ->  Bitmap Heap Scan on helio_data.documents_4130_413001 collection  (cost=4.18..12.65 rows=4 width=32)
+               Output: helio_api_internal.bson_dollar_project_find(document, '{ "newField" : "$$varRef" }'::helio_core.bson, '{ }'::helio_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "20" } } }'::helio_core.bson)
                Recheck Cond: (collection.shard_key_value = '4130'::bigint)
                ->  Bitmap Index Scan on _id_  (cost=0.00..4.18 rows=4 width=0)
                      Index Cond: (collection.shard_key_value = '4130'::bigint)
@@ -209,10 +209,10 @@ EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline(
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::documentdb_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "1" } } }'::documentdb_core.bson) AS document FROM documentdb_data.documents_4130_413001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4130'::bigint)
+         Query: SELECT helio_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::helio_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "1" } } }'::helio_core.bson) AS document FROM helio_data.documents_4130_413001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4130'::bigint)
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documentdb_data.documents_4130_413001 collection
-               Output: documentdb_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::documentdb_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+         ->  Bitmap Heap Scan on helio_data.documents_4130_413001 collection
+               Output: helio_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::helio_core.bson, '{ "varRef" : { "$literal" : { "$numberInt" : "1" } } }'::helio_core.bson)
                Recheck Cond: (collection.shard_key_value = '4130'::bigint)
                ->  Bitmap Index Scan on _id_
                      Index Cond: (collection.shard_key_value = '4130'::bigint)
@@ -305,38 +305,38 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (1 row)
 
 -- $graphLookup
-SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 1, "name" : "Dev" }');
+SELECT helio_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 1, "name" : "Dev" }');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 2, "name" : "Eliot", "reportsTo" : "Dev" }');
+SELECT helio_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 2, "name" : "Eliot", "reportsTo" : "Dev" }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 3, "name" : "Ron", "reportsTo" : "Eliot" }');
+SELECT helio_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 3, "name" : "Ron", "reportsTo" : "Eliot" }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 4, "name" : "Andrew", "reportsTo" : "Eliot" }');
+SELECT helio_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 4, "name" : "Andrew", "reportsTo" : "Eliot" }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 5, "name" : "Asya", "reportsTo" : "Ron" }');
+SELECT helio_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 5, "name" : "Asya", "reportsTo" : "Ron" }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 6, "name" : "Dan", "reportsTo" : "Andrew" }');
+SELECT helio_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 6, "name" : "Dan", "reportsTo" : "Andrew" }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -354,14 +354,14 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (6 rows)
 
 -- $inverseMatch
-SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_inv', '{ "_id" : 1, "policy" : { "name": "Dev" } }');
+SELECT helio_api.insert_one('db', 'aggregation_pipeline_let_inv', '{ "_id" : 1, "policy" : { "name": "Dev" } }');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_inv', '{ "_id" : 1, "policy" : { "name": "Elliot" } }');
+SELECT helio_api.insert_one('db', 'aggregation_pipeline_let_inv', '{ "_id" : 1, "policy" : { "name": "Elliot" } }');
                                                                                                                        insert_one                                                                                                                        
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] }
@@ -374,26 +374,26 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (1 row)
 
 -- $window operators
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_setWindowFields','{ "_id": 1, "a": "abc", "cost": 10, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_setWindowFields','{ "_id": 1, "a": "abc", "cost": 10, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_setWindowFields','{ "_id": 2, "a": "def", "cost": 8, "quantity": 502, "date": { "$date": { "$numberLong": "1718841605000" } } }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_setWindowFields','{ "_id": 2, "a": "def", "cost": 8, "quantity": 502, "date": { "$date": { "$numberLong": "1718841605000" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_setWindowFields','{ "_id": 3, "a": "ghi", "cost": 4, "quantity": 503, "date": { "$date": { "$numberLong": "1718841610000" } } }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_setWindowFields','{ "_id": 3, "a": "ghi", "cost": 4, "quantity": 503, "date": { "$date": { "$numberLong": "1718841610000" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "aggregation_pipeline_let_setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$concat": ["$a", "$$varRef" ] }, "output": {"total": { "$sum": "$$varRefNum"}}}}], "let": { "varRef": "prefix", "varRefNum": 2 } }');
                                                                                                         document                                                                                                        
 ---------------------------------------------------------------------
@@ -403,46 +403,46 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
 (3 rows)
 
 -- $lookup
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelinefrom',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_pipelinefrom',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelinefrom','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_pipelinefrom','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelineto','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House", "qval": 100 }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_pipelineto','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House", "qval": 100 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelineto','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade", "qval": 120 }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_pipelineto','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade", "qval": 120 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelineto','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda", "qval": 140 }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_pipelineto','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda", "qval": 140 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelinefrom_second',' {"_id": 1, "country": "America", "qq": 100 }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_pipelinefrom_second',' {"_id": 1, "country": "America", "qq": 100 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelinefrom_second','{ "_id": 2, "country": "Canada", "qq": 120 }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_pipelinefrom_second','{ "_id": 2, "country": "Canada", "qq": 120 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -497,7 +497,7 @@ SELECT document from bson_aggregation_pipeline('db',
 (3 rows)
 
 -- multiple variable in lookup let
-SELECT documentdb_api.insert('db', '{"insert":"orderscoll", "documents":[
+SELECT helio_api.insert('db', '{"insert":"orderscoll", "documents":[
   { "_id": 1, "orderId": "A001", "productId": "P001", "quantity": 10 },
   { "_id": 2, "orderId": "A002", "productId": "P002", "quantity": 5 },
   { "_id": 3, "orderId": "A003", "productId": "P001", "quantity": 2 }
@@ -510,7 +510,7 @@ NOTICE:  creating collection
  ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-SELECT documentdb_api.insert('db', '{"insert":"products", "documents":[
+SELECT helio_api.insert('db', '{"insert":"products", "documents":[
   { "_id": "P001", "name": "Product 1", "price": 100 },
   { "_id": "P002", "name": "Product 2", "price": 200 }
 ]
@@ -553,7 +553,7 @@ EXPLAIN (COSTS OFF) SELECT document from bson_aggregation_pipeline('db', '{ "agg
                SubPlan 1
                  ->  Aggregate
                        ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_0
-                             Filter: documentdb_api_internal.bson_dollar_expr(lookup_unwind, '{ "" : { "$eq" : [ "$_id", "$$productId" ] } }'::documentdb_core.bson, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "productId" : "$productId", "hello" : "parag" }'::documentdb_core.bson, '{ }'::documentdb_core.bson))
+                             Filter: helio_api_internal.bson_dollar_expr(lookup_unwind, '{ "" : { "$eq" : [ "$_id", "$$productId" ] } }'::helio_core.bson, helio_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "productId" : "$productId", "hello" : "parag" }'::helio_core.bson, '{ }'::helio_core.bson))
 (21 rows)
 
 -- only part of the pipeline uses let
@@ -582,8 +582,8 @@ EXPLAIN (COSTS OFF) SELECT document from bson_aggregation_pipeline('db', '{ "agg
                      ->  Materialize
                            ->  Aggregate
                                  ->  Index Scan using _id_ on documents_4138_413128 collection_0_1
-                                       Index Cond: ((shard_key_value = '4138'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : "P001" }'::documentdb_core.bson))
-                                       Filter: (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : "P001" }'::documentdb_core.bson)
+                                       Index Cond: ((shard_key_value = '4138'::bigint) AND (object_id OPERATOR(helio_core.>) '{ "" : "P001" }'::helio_core.bson))
+                                       Filter: (document OPERATOR(helio_api_catalog.@>) '{ "_id" : "P001" }'::helio_core.bson)
                SubPlan 1
                  ->  Aggregate
                        ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_0
@@ -638,33 +638,33 @@ ERROR:  Command let Expression tried to access a field, but this is not allowed 
 SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": "$$NOW" } }');
 ERROR:  Variable $$NOW not supported yet
 -- internal, lookup expression eval merge should wrap variables into $literal and if the variable evaluates to empty, should transform into $$REMOVE
-SELECT documentdb_api_internal.bson_dollar_lookup_expression_eval_merge('{"_id": 1, "b": "$someField"}', '{ "local_b" : "$b", "local_a": "$a" }'::documentdb_core.bson, '{}'::documentdb_core.bson);
+SELECT helio_api_internal.bson_dollar_lookup_expression_eval_merge('{"_id": 1, "b": "$someField"}', '{ "local_b" : "$b", "local_a": "$a" }'::helio_core.bson, '{}'::helio_core.bson);
                bson_dollar_lookup_expression_eval_merge                
 ---------------------------------------------------------------------
  { "local_b" : { "$literal" : "$someField" }, "local_a" : "$$REMOVE" }
 (1 row)
 
-SELECT documentdb_api_internal.bson_dollar_lookup_expression_eval_merge('{"_id": 1, "b": "$someField"}', '{ "local_b" : "$b", "local_a": "$a", "local_var1": "$$var1" }'::documentdb_core.bson, '{"var1": {"$literal": "ABC"}}'::documentdb_core.bson);
+SELECT helio_api_internal.bson_dollar_lookup_expression_eval_merge('{"_id": 1, "b": "$someField"}', '{ "local_b" : "$b", "local_a": "$a", "local_var1": "$$var1" }'::helio_core.bson, '{"var1": {"$literal": "ABC"}}'::helio_core.bson);
                                                    bson_dollar_lookup_expression_eval_merge                                                    
 ---------------------------------------------------------------------
  { "var1" : { "$literal" : "ABC" }, "local_b" : { "$literal" : "$someField" }, "local_a" : "$$REMOVE", "local_var1" : { "$literal" : "ABC" } }
 (1 row)
 
 -- lookup with let when a field is missing the path a variable references and when that field is a string in the form of a field expression
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_lookup_missing','{"_id":"1", "a": { } }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_lookup_missing','{"_id":"1", "a": { } }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_lookup_missing','{"_id":"2", "b": 1 }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_lookup_missing','{"_id":"2", "b": 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_lookup_missing','{"_id":"3", "a": "$notAFieldPath" }', NULL);
+SELECT helio_api.insert_one('db','aggregation_pipeline_let_lookup_missing','{"_id":"3", "a": "$notAFieldPath" }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -679,7 +679,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 /* Shard the collections */
-SELECT documentdb_api.shard_collection('db', 'aggregation_pipeline_let', '{ "_id": "hashed" }', false);
+SELECT helio_api.shard_collection('db', 'aggregation_pipeline_let', '{ "_id": "hashed" }', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -845,7 +845,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (1 row)
 
 -- $graphLookup
-SELECT documentdb_api.shard_collection('db', 'aggregation_pipeline_let_gl', '{ "_id": "hashed" }', false);
+SELECT helio_api.shard_collection('db', 'aggregation_pipeline_let_gl', '{ "_id": "hashed" }', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -854,7 +854,7 @@ SELECT documentdb_api.shard_collection('db', 'aggregation_pipeline_let_gl', '{ "
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let_gl", "pipeline": [ { "$graphLookup": { "from": "aggregation_pipeline_let_gl", "startWith": { "$max": [ "$reportsTo", "$$reportsTo" ] }, "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ], "let": { "reportsTo": "Dev" } }');
 ERROR:  $graphLookup with 'from' on a sharded collection is not supported
 -- $inverseMatch
-SELECT documentdb_api.shard_collection('db', 'aggregation_pipeline_let_inv', '{ "_id": "hashed" }', false);
+SELECT helio_api.shard_collection('db', 'aggregation_pipeline_let_inv', '{ "_id": "hashed" }', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -867,7 +867,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (1 row)
 
 -- $window operators
-SELECT documentdb_api.shard_collection('db', 'aggregation_pipeline_let_setWindowFields', '{ "_id": "hashed" }', false);
+SELECT helio_api.shard_collection('db', 'aggregation_pipeline_let_setWindowFields', '{ "_id": "hashed" }', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -883,7 +883,7 @@ SELECT document FROM bson_aggregation_pipeline('db',
 (3 rows)
 
 -- $lookup
-SELECT documentdb_api.shard_collection('db', 'aggregation_pipeline_let_pipelineto', '{ "_id": "hashed" }', false);
+SELECT helio_api.shard_collection('db', 'aggregation_pipeline_let_pipelineto', '{ "_id": "hashed" }', false);
  shard_collection 
 ---------------------------------------------------------------------
  

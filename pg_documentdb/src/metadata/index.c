@@ -1775,7 +1775,6 @@ MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights, bool *isWi
 
 /*
  * Returns the index queue name based on the cluster version.
- * The return value includes the schema name and the queue name.
  */
 char *
 GetIndexQueueName(void)
