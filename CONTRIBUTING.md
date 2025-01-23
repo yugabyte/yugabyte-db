@@ -1,10 +1,10 @@
-# Contibuting to DocumentDB
+# Contributing to DocumentDB
 
 Thank you for your interest in contributing to DocumentDB. There are several ways through which contributions to the project can be made and you can get involved.
 
 ## Asking Questions
 
-[Join us on Discord](https://discord.gg/WXUrVbnt4n) to engage directly with our team and the community with any questions you may have. Our channel inside the Microsoft OSS server is not only a place for immediate assistance but also a hub for discussing project updates, upcoming features, and technical challenges. We host regular meetings where team members and contributors can interact directly to ask questions, share feedback, and discuss their ideas in real time. 
+[Join us on Discord](https://discord.gg/WXUrVbnt4n) to engage directly with our team and the community with any questions you may have. Our channel inside the Microsoft OSS server is not only a place for immediate assistance but also a hub for discussing project updates, upcoming features, and technical challenges. We host regular meetings where team members and contributors can interact directly to ask questions, share feedback, and discuss their ideas in real time.
 
 ## Reporting Issues
 
@@ -20,24 +20,23 @@ The more descriptive the issue is and the more information that can be provided,
 
 For each issue created, please include: 
 
-*  A brief description of the suggestion or issue.
+- A brief description of the suggestion or issue.
 
-*  Relevant details such as the operating system you were using, if applicable.
-    
-*  Clear, step-by-step instructions or context that describe how the issue occurred or how the feature would function.
-    
-*  The expected outcome versus the actual result or behavior observed, if relevant.
+- Relevant details such as the operating system you were using, if applicable.
+
+- Clear, step-by-step instructions or context that describe how the issue occurred or how the feature would function.
+  
+- The expected outcome versus the actual result or behavior observed, if relevant.
 
 ### Code Contributions
 
-For those looking to contribute code, whether for bug fixes or new features, please ensure your issues and pull requests include the following: 
+For those looking to contribute code, whether for bug fixes or new features, please ensure your issues and pull requests include the following:
 
-*  A code snippet that reliably reproduces the issue or demonstrates the new feature. 
-    
-*  An accessible repository link that can be cloned, built, and run, providing a complete environment for testing and verifying the issue or feature. 
-    
-*  Clear documentation or comments in the code explaining the changes made and their purpose. 
+- A code snippet that reliably reproduces the issue or demonstrates the new feature.
 
+- An accessible repository link that can be cloned, built, and run, providing a complete environment for testing and verifying the issue or feature.
+
+- Clear documentation or comments in the code explaining the changes made and their purpose.
 
 ## Pull Requests
 
@@ -51,13 +50,13 @@ Wherever applicable, pull requests should contain tests.
 
 We’re keen to hear your feedback on the future of DocumentDB. Feature Requests can be submitted through the issue tracker. To ensure suggestions are reviewed faster, we do request that the following information be provided for each suggestion:
 
-* Purpose/Motivation for the feature
+- Purpose/Motivation for the feature
 
-* Description of the problem space that will be solved or addressed by this feature
+- Description of the problem space that will be solved or addressed by this feature
 
-* Description of a few scenarios that will help test and validate this feature
+- Description of a few scenarios that will help test and validate this feature
 
-For even quicker engagement and real-time discussions about your feature ideas, join our [Discord channel](https://discord.gg/WXUrVbnt4n). Our team and community members are actively available to provide feedback, answer questions, and collaborate on refining your suggestions before they are formally submitted through the issue tracker. 
+For even quicker engagement and real-time discussions about your feature ideas, join our [Discord channel](https://discord.gg/WXUrVbnt4n). Our team and community members are actively available to provide feedback, answer questions, and collaborate on refining your suggestions before they are formally submitted through the issue tracker.
 
 ## Discussion Etiquette
 
