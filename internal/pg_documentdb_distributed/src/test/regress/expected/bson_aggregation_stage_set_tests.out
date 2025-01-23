@@ -1,28 +1,28 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 360000;
-SET helio_api.next_collection_id TO 3600;
-SET helio_api.next_collection_index_id TO 3600;
-SELECT helio_api.insert_one('db','setOps','{"_id":"1", "int": 10, "a" : { "b" : [ "x", 1, 2.0, true ] } }', NULL);
+SET documentdb.next_collection_id TO 3600;
+SET documentdb.next_collection_index_id TO 3600;
+SELECT documentdb_api.insert_one('db','setOps','{"_id":"1", "int": 10, "a" : { "b" : [ "x", 1, 2.0, true ] } }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','setOps','{"_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
+SELECT documentdb_api.insert_one('db','setOps','{"_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','setOps','{"_id":"3", "boolean": false, "a" : "no", "b": "yes", "c": true }', NULL);
+SELECT documentdb_api.insert_one('db','setOps','{"_id":"3", "boolean": false, "a" : "no", "b": "yes", "c": true }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- fetch all rows
-SELECT shard_key_value, object_id, document FROM helio_api.collection('db', 'setOps') ORDER BY object_id;
+SELECT shard_key_value, object_id, document FROM documentdb_api.collection('db', 'setOps') ORDER BY object_id;
  shard_key_value |  object_id   |                                                               document                                                               
 ---------------------------------------------------------------------
             3600 | { "" : "1" } | { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
@@ -31,7 +31,7 @@ SELECT shard_key_value, object_id, document FROM helio_api.collection('db', 'set
 (3 rows)
 
 -- add newField
-SELECT bson_dollar_set(document, '{ "newField" : "1", "a.y": ["p", "q"]}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "newField" : "1", "a.y": ["p", "q"]}') FROM documentdb_api.collection('db', 'setOps');
                                                                               bson_dollar_set                                                                               
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ], "y" : [ "p", "q" ] }, "newField" : "1" }
@@ -40,7 +40,7 @@ SELECT bson_dollar_set(document, '{ "newField" : "1", "a.y": ["p", "q"]}') FROM 
 (3 rows)
 
 -- add field that evaluates $_id
-SELECT bson_dollar_set(document, '{ "newField" : "3", "a": "$_id"}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "newField" : "3", "a": "$_id"}') FROM documentdb_api.collection('db', 'setOps');
                                      bson_dollar_set                                      
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : "1", "newField" : "3" }
@@ -49,12 +49,12 @@ SELECT bson_dollar_set(document, '{ "newField" : "3", "a": "$_id"}') FROM helio_
 (3 rows)
 
 -- Add integer field (note that, {"field" : 1} is treated as inclusion for $project but add for $set)
-SELECT bson_dollar_set(document, '{ "int" : 1, "doble": 2.0, "bool": false, "a.b": false, "a.b.c": 2.0, "a": "$_id"}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "int" : 1, "doble": 2.0, "bool": false, "a.b": false, "a.b.c": 2.0, "a": "$_id"}') FROM documentdb_api.collection('db', 'setOps');
 ERROR:  Path collision at a.b.c remaining portion b.c
 -- $set array duplication
 -- Expected value of the field "a" of dco(id=1), after the following $set: { "a.b.c": "_"} is:
 -- "a": {"b" : ["c" : "-", "c" : "-","c" : "-","c" : "-",]}
-SELECT bson_dollar_set(document, '{ "a.b.c" : "-"}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "a.b.c" : "-"}') FROM documentdb_api.collection('db', 'setOps');
                                                          bson_dollar_set                                                          
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ { "c" : "-" }, { "c" : "-" }, { "c" : "-" }, { "c" : "-" } ] } }
@@ -63,7 +63,7 @@ SELECT bson_dollar_set(document, '{ "a.b.c" : "-"}') FROM helio_api.collection('
 (3 rows)
 
 -- $set integer in a nested paths
-SELECT bson_dollar_set(document, '{ "a" : {"b" : 1}}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "a" : {"b" : 1}}') FROM documentdb_api.collection('db', 'setOps');
                                            bson_dollar_set                                           
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : { "$numberInt" : "1" } } }
@@ -72,7 +72,7 @@ SELECT bson_dollar_set(document, '{ "a" : {"b" : 1}}') FROM helio_api.collection
 (3 rows)
 
 -- $set integer in a nested paths
-SELECT bson_dollar_set(document, '{ "a" : {"b" : { "d": 2.5}}}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "a" : {"b" : { "d": 2.5}}}') FROM documentdb_api.collection('db', 'setOps');
                                                                                                          bson_dollar_set                                                                                                          
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ { "d" : { "$numberDouble" : "2.5" } }, { "d" : { "$numberDouble" : "2.5" } }, { "d" : { "$numberDouble" : "2.5" } }, { "d" : { "$numberDouble" : "2.5" } } ] } }
@@ -83,7 +83,7 @@ SELECT bson_dollar_set(document, '{ "a" : {"b" : { "d": 2.5}}}') FROM helio_api.
 -- $set to check the a.b field of doc(id=2) changes 
 -- from: {"a" : { "b" : {"c": 3}}
 -- to: "a" : { "b" : {"c": 3, "d": "-"}
-SELECT bson_dollar_set(document, '{ "a.b.d" : "-"}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "a.b.d" : "-"}') FROM documentdb_api.collection('db', 'setOps');
                                                          bson_dollar_set                                                          
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ { "d" : "-" }, { "d" : "-" }, { "d" : "-" }, { "d" : "-" } ] } }
@@ -92,7 +92,7 @@ SELECT bson_dollar_set(document, '{ "a.b.d" : "-"}') FROM helio_api.collection('
 (3 rows)
 
 -- $set: Applying multiple expressions with overlapping field paths
-SELECT bson_dollar_set(document, '{ "a.b.c" : "_c", "a.b.d" : "_d", "a.b.e": "_e"}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "a.b.c" : "_c", "a.b.d" : "_d", "a.b.e": "_e"}') FROM documentdb_api.collection('db', 'setOps');
                                                                                                            bson_dollar_set                                                                                                            
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ { "c" : "_c", "d" : "_d", "e" : "_e" }, { "c" : "_c", "d" : "_d", "e" : "_e" }, { "c" : "_c", "d" : "_d", "e" : "_e" }, { "c" : "_c", "d" : "_d", "e" : "_e" } ] } }
@@ -101,7 +101,7 @@ SELECT bson_dollar_set(document, '{ "a.b.c" : "_c", "a.b.d" : "_d", "a.b.e": "_e
 (3 rows)
 
 -- $set: Applying multiple expressions with overlapping field paths
-SELECT bson_dollar_set(document, '{ "a.b.c" : "$_id", "a.b.d" : "$b", "a.b.e": "_e"}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "a.b.c" : "$_id", "a.b.d" : "$b", "a.b.e": "_e"}') FROM documentdb_api.collection('db', 'setOps');
                                                                                  bson_dollar_set                                                                                  
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ { "c" : "1", "e" : "_e" }, { "c" : "1", "e" : "_e" }, { "c" : "1", "e" : "_e" }, { "c" : "1", "e" : "_e" } ] } }
@@ -110,7 +110,7 @@ SELECT bson_dollar_set(document, '{ "a.b.c" : "$_id", "a.b.d" : "$b", "a.b.e": "
 (3 rows)
 
 -- $set: If matching subpath in a document has an array, remaining path of the $set spec tree is duplicated for all array elelemnts. Remain subpath may need recursion.
-SELECT bson_dollar_set(document, '{ "a.b.c.d.e" : "_c", "a.b.d" : "_d", "a.b.e": "_e"}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "a.b.c.d.e" : "_c", "a.b.d" : "_d", "a.b.e": "_e"}') FROM documentdb_api.collection('db', 'setOps');
                                                                                                                                                    bson_dollar_set                                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ { "c" : { "d" : { "e" : "_c" } }, "d" : "_d", "e" : "_e" }, { "c" : { "d" : { "e" : "_c" } }, "d" : "_d", "e" : "_e" }, { "c" : { "d" : { "e" : "_c" } }, "d" : "_d", "e" : "_e" }, { "c" : { "d" : { "e" : "_c" } }, "d" : "_d", "e" : "_e" } ] } }
@@ -119,7 +119,7 @@ SELECT bson_dollar_set(document, '{ "a.b.c.d.e" : "_c", "a.b.d" : "_d", "a.b.e":
 (3 rows)
 
 -- $set where "$a.b" needs to be evaluated while writing a path
-SELECT bson_dollar_set(document, '{ "a.b.c.d.e" : "$a.b", "a.b.d" : "_d", "a.b.e": "_e"}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "a.b.c.d.e" : "$a.b", "a.b.d" : "_d", "a.b.e": "_e"}') FROM documentdb_api.collection('db', 'setOps');
                                                                                                                                                                                                                                                                                bson_dollar_set                                                                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ { "c" : { "d" : { "e" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }, "d" : "_d", "e" : "_e" }, { "c" : { "d" : { "e" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }, "d" : "_d", "e" : "_e" }, { "c" : { "d" : { "e" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }, "d" : "_d", "e" : "_e" }, { "c" : { "d" : { "e" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }, "d" : "_d", "e" : "_e" } ] } }
@@ -128,7 +128,7 @@ SELECT bson_dollar_set(document, '{ "a.b.c.d.e" : "$a.b", "a.b.d" : "_d", "a.b.e
 (3 rows)
 
 -- Evaluating array expression i.e., <field> : [<expression>, <expression>] is not a documented behavior  
-SELECT bson_dollar_set(document, '{ "newarray" : [{ "$literal": 1.0 }, {"copyId": "$_id"}]}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "newarray" : [{ "$literal": 1.0 }, {"copyId": "$_id"}]}') FROM documentdb_api.collection('db', 'setOps');
                                                                                             bson_dollar_set                                                                                             
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "newarray" : [ { "$numberDouble" : "1.0" }, { "copyId" : "1" } ] }
@@ -137,7 +137,7 @@ SELECT bson_dollar_set(document, '{ "newarray" : [{ "$literal": 1.0 }, {"copyId"
 (3 rows)
 
 -- add newField with concatArrays
-SELECT bson_dollar_set(document, '{ "newField" : "1", "a.b": {"$concatArrays" : [[7]]}}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "newField" : "1", "a.b": {"$concatArrays" : [[7]]}}') FROM documentdb_api.collection('db', 'setOps');
                                                       bson_dollar_set                                                      
 ---------------------------------------------------------------------
  { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ { "$numberInt" : "7" } ] }, "newField" : "1" }
@@ -145,7 +145,7 @@ SELECT bson_dollar_set(document, '{ "newField" : "1", "a.b": {"$concatArrays" : 
  { "_id" : "3", "boolean" : false, "b" : "yes", "c" : true, "newField" : "1", "a" : { "b" : [ { "$numberInt" : "7" } ] } }
 (3 rows)
 
-SELECT bson_dollar_set(document, '{ "_id" : false}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "_id" : false}') FROM documentdb_api.collection('db', 'setOps');
                                                             bson_dollar_set                                                             
 ---------------------------------------------------------------------
  { "_id" : false, "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
@@ -153,7 +153,7 @@ SELECT bson_dollar_set(document, '{ "_id" : false}') FROM helio_api.collection('
  { "_id" : false, "boolean" : false, "a" : "no", "b" : "yes", "c" : true }
 (3 rows)
 
-SELECT bson_dollar_set(document, '{ "_id" : 121}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "_id" : 121}') FROM documentdb_api.collection('db', 'setOps');
                                                                       bson_dollar_set                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "121" }, "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
@@ -161,7 +161,7 @@ SELECT bson_dollar_set(document, '{ "_id" : 121}') FROM helio_api.collection('db
  { "_id" : { "$numberInt" : "121" }, "boolean" : false, "a" : "no", "b" : "yes", "c" : true }
 (3 rows)
 
-SELECT bson_dollar_set(document, '{ "_id" : 212.2}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "_id" : 212.2}') FROM documentdb_api.collection('db', 'setOps');
                                                                                 bson_dollar_set                                                                                 
 ---------------------------------------------------------------------
  { "_id" : { "$numberDouble" : "212.19999999999998863" }, "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
@@ -169,7 +169,7 @@ SELECT bson_dollar_set(document, '{ "_id" : 212.2}') FROM helio_api.collection('
  { "_id" : { "$numberDouble" : "212.19999999999998863" }, "boolean" : false, "a" : "no", "b" : "yes", "c" : true }
 (3 rows)
 
-SELECT bson_dollar_set(document, '{ "_id" : "someString"}') FROM helio_api.collection('db', 'setOps');
+SELECT bson_dollar_set(document, '{ "_id" : "someString"}') FROM documentdb_api.collection('db', 'setOps');
                                                                 bson_dollar_set                                                                
 ---------------------------------------------------------------------
  { "_id" : "someString", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }

@@ -1,10 +1,10 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 1040000;
-SET helio_api.next_collection_id TO 10400;
-SET helio_api.next_collection_index_id TO 10400;
+SET documentdb.next_collection_id TO 10400;
+SET documentdb.next_collection_index_id TO 10400;
 -- Set configs to something reasonable for testing.
-set helio_api.indexTermLimitOverride to 50;
-SET helio_api.enableIndexTermTruncationOnNestedObjects to on;
+set documentdb.indexTermLimitOverride to 50;
+SET documentdb.enableIndexTermTruncationOnNestedObjects to on;
 ---------------------------------------------------------------------
 ---- Nested Array
 ---------------------------------------------------------------------
@@ -16,7 +16,7 @@ SET helio_api.enableIndexTermTruncationOnNestedObjects to on;
 --   		addMetadata bool default false,
 --   		termLength int)
 -- non wild card
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : [["abcdefghijklmonpqrstuvwsyz"]]}', 'ikey', false, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : [["abcdefghijklmonpqrstuvwsyz"]]}', 'ikey', false, true, true, 50) term;
  length |                          term                          
 ---------------------------------------------------------------------
      47 | { "$" : [ [ "abcdefghijklmonpqr" ] ], "t" : true }
@@ -25,7 +25,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (4 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : [[1]]}', 'ikey', false, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : [[1]]}', 'ikey', false, true, true, 50) term;
  length |                         term                          
 ---------------------------------------------------------------------
      28 | { "$" : [ [ { "$numberInt" : "1" } ] ], "t" : false }
@@ -33,7 +33,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       8 | { "" : true, "t" : false }
 (3 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[{ "$numberDecimal" : "1234567891011" }]]}', 'ikey', false, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[{ "$numberDecimal" : "1234567891011" }]]}', 'ikey', false, true, true, 50) term;
  length |                               term                                
 ---------------------------------------------------------------------
      32 | { "$" : [ [ { "$numberLong" : "1234567891011" } ] ], "t" : true }
@@ -42,7 +42,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (4 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[true]]}', 'ikey', false, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[true]]}', 'ikey', false, true, true, 50) term;
  length |                term                 
 ---------------------------------------------------------------------
      25 | { "$" : [ [ true ] ], "t" : false }
@@ -50,7 +50,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       8 | { "" : true, "t" : false }
 (3 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : [["abcdefghijklmonpqrstuvwsyz"]]}', 'ikey', false, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : [["abcdefghijklmonpqrstuvwsyz"]]}', 'ikey', false, true, true, 35) term;
  length |                   term                   
 ---------------------------------------------------------------------
      21 | { "$" : [ [  ] ], "t" : true }
@@ -59,7 +59,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (4 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : [[1]]}', 'ikey', false, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : [[1]]}', 'ikey', false, true, true, 35) term;
  length |                       term                       
 ---------------------------------------------------------------------
      21 | { "$" : [ [  ] ], "t" : true }
@@ -68,7 +68,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (4 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[{ "$numberDecimal" : "1234567891011" }]]}', 'ikey', false, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[{ "$numberDecimal" : "1234567891011" }]]}', 'ikey', false, true, true, 35) term;
  length |                             term                              
 ---------------------------------------------------------------------
      21 | { "$" : [ [  ] ], "t" : true }
@@ -77,7 +77,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (4 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[true]]}', 'ikey', false, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[true]]}', 'ikey', false, true, true, 35) term;
  length |                  term                  
 ---------------------------------------------------------------------
      21 | { "$" : [ [  ] ], "t" : true }
@@ -87,7 +87,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
 (4 rows)
 
 -- wild card
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : [["abcdefghijklmonpqrstuvwsyz"]]}', 'ikey', true, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : [["abcdefghijklmonpqrstuvwsyz"]]}', 'ikey', true, true, true, 50) term;
  length |                          term                           
 ---------------------------------------------------------------------
      47 | { "$" : [ [ "abcdefghijklmonpqr" ] ], "t" : true }
@@ -99,7 +99,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
      12 | { "" : [  ], "t" : false }
 (7 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : [[1]]}', 'ikey', true, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : [[1]]}', 'ikey', true, true, true, 50) term;
  length |                         term                          
 ---------------------------------------------------------------------
      28 | { "$" : [ [ { "$numberInt" : "1" } ] ], "t" : false }
@@ -110,7 +110,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
      12 | { "" : [  ], "t" : false }
 (6 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[{ "$numberDecimal" : "1234567891011" }]]}', 'ikey', true, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[{ "$numberDecimal" : "1234567891011" }]]}', 'ikey', true, true, true, 50) term;
  length |                               term                                
 ---------------------------------------------------------------------
      32 | { "$" : [ [ { "$numberLong" : "1234567891011" } ] ], "t" : true }
@@ -122,7 +122,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
      12 | { "" : [  ], "t" : false }
 (7 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[true]]}', 'ikey', true, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[true]]}', 'ikey', true, true, true, 50) term;
  length |                term                 
 ---------------------------------------------------------------------
      25 | { "$" : [ [ true ] ], "t" : false }
@@ -133,7 +133,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
      12 | { "" : [  ], "t" : false }
 (6 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : [["abcdefghijklmonpqrstuvwsyz"]]}', 'ikey', true, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : [["abcdefghijklmonpqrstuvwsyz"]]}', 'ikey', true, true, true, 35) term;
  length |                      term                      
 ---------------------------------------------------------------------
      21 | { "$" : [ [  ] ], "t" : true }
@@ -145,7 +145,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
      12 | { "" : [  ], "t" : false }
 (7 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : [[1]]}', 'ikey', true, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : [[1]]}', 'ikey', true, true, true, 35) term;
  length |                       term                        
 ---------------------------------------------------------------------
      21 | { "$" : [ [  ] ], "t" : true }
@@ -157,7 +157,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
      12 | { "" : [  ], "t" : false }
 (7 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[{ "$numberDecimal" : "1234567891011" }]]}', 'ikey', true, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[{ "$numberDecimal" : "1234567891011" }]]}', 'ikey', true, true, true, 35) term;
  length |                               term                                
 ---------------------------------------------------------------------
      21 | { "$" : [ [  ] ], "t" : true }
@@ -169,7 +169,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
      12 | { "" : [  ], "t" : false }
 (7 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[true]]}', 'ikey', true, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : [[true]]}', 'ikey', true, true, true, 35) term;
  length |                  term                  
 ---------------------------------------------------------------------
      21 | { "$" : [ [  ] ], "t" : true }
@@ -181,7 +181,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
      12 | { "" : [  ], "t" : false }
 (7 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : [["abcdefghijklmonpqrstuvwsyz"]]}', 'ikey', false, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : [["abcdefghijklmonpqrstuvwsyz"]]}', 'ikey', false, true, true, 50) term;
  length |                          term                          
 ---------------------------------------------------------------------
      47 | { "$" : [ [ "abcdefghijklmonpqr" ] ], "t" : true }
@@ -190,7 +190,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (4 rows)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_tests_nested_array", "indexes": [ { "key": { "ikey": 1 }, "name": "ikey_1", "enableLargeIndexKeys": true } ] }');
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_tests_nested_array", "indexes": [ { "key": { "ikey": 1 }, "name": "ikey_1", "enableLargeIndexKeys": true } ] }');
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
 ---------------------------------------------------------------------
@@ -198,8 +198,8 @@ NOTICE:  creating collection
 (1 row)
 
 -- now we have an index with truncation enabled and 50 chars.
-\d helio_data.documents_10400;
-                     Table "helio_data.documents_10400"
+\d documentdb_data.documents_10400;
+                     Table "documentdb_data.documents_10400"
      Column      |           Type           | Collation | Nullable | Default 
 ---------------------------------------------------------------------
  shard_key_value | bigint                   |           | not null | 
@@ -208,48 +208,48 @@ NOTICE:  creating collection
  creation_time   | timestamp with time zone |           | not null | now()
 Indexes:
     "collection_pk_10400" PRIMARY KEY, btree (shard_key_value, object_id)
-    "documents_rum_index_10401" helio_rum (document bson_rum_single_path_ops (path=ikey, tl='50'))
+    "documents_rum_index_10401" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='50'))
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '10400'::bigint)
 
 -- now insert some documents that does exceed the index term limit.
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 1, "ikey": [["abcdefghijklmonpqrstuvwsyz"]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 1, "ikey": [["abcdefghijklmonpqrstuvwsyz"]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 2, "ikey": [[1]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 2, "ikey": [[1]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 3, "ikey": [[{ "$numberDecimal" : "1234567891011" }]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 3, "ikey": [[{ "$numberDecimal" : "1234567891011" }]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 4, "ikey": [[true]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 4, "ikey": [[true]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 5, "ikey": [[[]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 5, "ikey": [[[]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 6, "ikey": [[{}]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 6, "ikey": [[{}]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[1]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[1]] } }';
                                           document                                           
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : [ [ "abcdefghijklmonpqrstuvwsyz" ] ] }
@@ -259,56 +259,56 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_a
  { "_id" : { "$numberInt" : "6" }, "ikey" : [ [ {  } ] ] }
 (5 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[false]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[false]] } }';
                          document                          
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : [ [ true ] ] }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[[]]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[[]]] } }';
                          document                          
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : [ [ true ] ] }
 (1 row)
 
 -- now insert some documents that does exceed the index term limit.
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 7, "ikey": [[["abcdefghijklmonpqrstuvwsyz"]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 7, "ikey": [[["abcdefghijklmonpqrstuvwsyz"]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 8, "ikey": [[[1]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 8, "ikey": [[[1]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 9, "ikey": [[[{ "$numberDecimal" : "1234567891011" }]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 9, "ikey": [[[{ "$numberDecimal" : "1234567891011" }]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 10, "ikey": [[[true]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 10, "ikey": [[[true]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 11, "ikey": [[[[]]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 11, "ikey": [[[[]]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 12, "ikey": [[[{}]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 12, "ikey": [[[{}]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[[1]]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[[1]]] } }';
                                             document                                             
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : [ [ true ] ] }
@@ -319,7 +319,7 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_a
  { "_id" : { "$numberInt" : "12" }, "ikey" : [ [ [ {  } ] ] ] }
 (6 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[[{ "$numberDecimal" : "1234567891011" }]]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[[{ "$numberDecimal" : "1234567891011" }]]] } }';
                                        document                                        
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : [ [ true ] ] }
@@ -329,74 +329,74 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_a
  { "_id" : { "$numberInt" : "12" }, "ikey" : [ [ [ {  } ] ] ] }
 (5 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[[false]]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[[false]]] } }';
                             document                            
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : [ [ true ] ] }
  { "_id" : { "$numberInt" : "10" }, "ikey" : [ [ [ true ] ] ] }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[[[]]]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [[[[]]]] } }';
                             document                            
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : [ [ true ] ] }
  { "_id" : { "$numberInt" : "10" }, "ikey" : [ [ [ true ] ] ] }
 (2 rows)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 13, "ikey": "abcdefghijklmonpqrstuvwsyz" }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 13, "ikey": "abcdefghijklmonpqrstuvwsyz" }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 14, "ikey": 1 }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 14, "ikey": 1 }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 15, "ikey": { "$numberDecimal" : "1234567891011" } }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 15, "ikey": { "$numberDecimal" : "1234567891011" } }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 16, "ikey": true }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 16, "ikey": true }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 17, "ikey": [] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 17, "ikey": [] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 18, "ikey": {} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_array', '{ "_id": 18, "ikey": {} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": 1 } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": 1 } }';
                                        document                                       
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "15" }, "ikey" : { "$numberDecimal" : "1234567891011" } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": { "$numberDecimal" : "1234567891011" } } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": { "$numberDecimal" : "1234567891011" } } }';
  document 
 ---------------------------------------------------------------------
 (0 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": false } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": false } }';
                       document                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "16" }, "ikey" : true }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$gt": [] } }';
                                             document                                             
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : [ [ "abcdefghijklmonpqrstuvwsyz" ] ] }
@@ -413,14 +413,14 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_a
  { "_id" : { "$numberInt" : "12" }, "ikey" : [ [ [ {  } ] ] ] }
 (12 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$in": [1, true] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$in": [1, true] } }';
                                document                               
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "14" }, "ikey" : { "$numberInt" : "1" } }
  { "_id" : { "$numberInt" : "16" }, "ikey" : true }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$nin": [1, true] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$nin": [1, true] } }';
                                             document                                             
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : [ [ "abcdefghijklmonpqrstuvwsyz" ] ] }
@@ -441,39 +441,39 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_a
  { "_id" : { "$numberInt" : "18" }, "ikey" : {  } }
 (16 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$elemMatch": { "$in": [1, true] } } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$elemMatch": { "$in": [1, true] } } }'; 
  document 
 ---------------------------------------------------------------------
 (0 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$elemMatch": { "$in": [[[1]], [[true]]] } } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$elemMatch": { "$in": [[[1]], [[true]]] } } }'; 
                                     document                                     
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "8" }, "ikey" : [ [ [ { "$numberInt" : "1" } ] ] ] }
  { "_id" : { "$numberInt" : "10" }, "ikey" : [ [ [ true ] ] ] }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$elemMatch": { "$in": [[[1]], [[true]]], "$gt": [[{ "$numberDecimal" : "1234567891011" }]] } } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$elemMatch": { "$in": [[[1]], [[true]]], "$gt": [[{ "$numberDecimal" : "1234567891011" }]] } } }'; 
                             document                            
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "10" }, "ikey" : [ [ [ true ] ] ] }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$all": [[[1]]] } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$all": [[[1]]] } }'; 
                                     document                                     
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "2" }, "ikey" : [ [ { "$numberInt" : "1" } ] ] }
  { "_id" : { "$numberInt" : "8" }, "ikey" : [ [ [ { "$numberInt" : "1" } ] ] ] }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$all": [[[[]]]] } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$all": [[[[]]]] } }'; 
                             document                            
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "5" }, "ikey" : [ [ [  ] ] ] }
  { "_id" : { "$numberInt" : "11" }, "ikey" : [ [ [ [  ] ] ] ] }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$ne": { "$numberDecimal" : "1234567891011" } } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$ne": { "$numberDecimal" : "1234567891011" } } }';
                                             document                                             
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : [ [ "abcdefghijklmonpqrstuvwsyz" ] ] }
@@ -495,7 +495,7 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_a
  { "_id" : { "$numberInt" : "18" }, "ikey" : {  } }
 (17 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$in": [[[1]], [[true]]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$in": [[[1]], [[true]]] } }';
                                     document                                     
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "2" }, "ikey" : [ [ { "$numberInt" : "1" } ] ] }
@@ -504,7 +504,7 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_a
  { "_id" : { "$numberInt" : "10" }, "ikey" : [ [ [ true ] ] ] }
 (4 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$nin": [[[1]], [[true]]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$nin": [[[1]], [[true]]] } }';
                                             document                                             
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : [ [ "abcdefghijklmonpqrstuvwsyz" ] ] }
@@ -523,7 +523,7 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_a
  { "_id" : { "$numberInt" : "18" }, "ikey" : {  } }
 (14 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$ne": [[{ "$numberDecimal" : "1234567891011" }]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_array') WHERE document @@ '{ "ikey": { "$ne": [[{ "$numberDecimal" : "1234567891011" }]] } }';
                                        document                                        
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : [ [ "abcdefghijklmonpqrstuvwsyz" ] ] }
@@ -555,7 +555,7 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_a
 --   		addMetadata bool default false,
 --   		termLength int)
 -- non wild card
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : { "a" : ["abcdefghijklmonpqrstuvwsyz"]}}', 'ikey', false, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : { "a" : ["abcdefghijklmonpqrstuvwsyz"]}}', 'ikey', false, true, true, 50) term;
  length |                          term                           
 ---------------------------------------------------------------------
      46 | { "$" : { "a" : [ "abcdefghijklmonpq" ] }, "t" : true }
@@ -563,7 +563,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (3 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : { "a" : [1]}}', 'ikey', false, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : { "a" : [1]}}', 'ikey', false, true, true, 50) term;
  length |                            term                            
 ---------------------------------------------------------------------
      28 | { "$" : { "a" : [ { "$numberInt" : "1" } ] }, "t" : true }
@@ -571,7 +571,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (3 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [{ "$numberDecimal" : "1234567891011" }]}}', 'ikey', false, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [{ "$numberDecimal" : "1234567891011" }]}}', 'ikey', false, true, true, 50) term;
  length |                                  term                                   
 ---------------------------------------------------------------------
      32 | { "$" : { "a" : [ { "$numberLong" : "1234567891011" } ] }, "t" : true }
@@ -579,14 +579,14 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (3 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [true]}}', 'ikey', false, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [true]}}', 'ikey', false, true, true, 50) term;
  length |                   term                    
 ---------------------------------------------------------------------
      25 | { "$" : { "a" : [ true ] }, "t" : false }
       8 | { "" : true, "t" : false }
 (2 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : { "a" : ["abcdefghijklmonpqrstuvwsyz"]}}', 'ikey', false, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : { "a" : ["abcdefghijklmonpqrstuvwsyz"]}}', 'ikey', false, true, true, 35) term;
  length |                  term                  
 ---------------------------------------------------------------------
      21 | { "$" : { "a" : [  ] }, "t" : true }
@@ -594,7 +594,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (3 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : { "a" : [1]}}', 'ikey', false, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : { "a" : [1]}}', 'ikey', false, true, true, 35) term;
  length |                  term                  
 ---------------------------------------------------------------------
      21 | { "$" : { "a" : [  ] }, "t" : true }
@@ -602,7 +602,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (3 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [{ "$numberDecimal" : "1234567891011" }]}}', 'ikey', false, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [{ "$numberDecimal" : "1234567891011" }]}}', 'ikey', false, true, true, 35) term;
  length |                  term                  
 ---------------------------------------------------------------------
      21 | { "$" : { "a" : [  ] }, "t" : true }
@@ -610,7 +610,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (3 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [true]}}', 'ikey', false, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [true]}}', 'ikey', false, true, true, 35) term;
  length |                  term                  
 ---------------------------------------------------------------------
      21 | { "$" : { "a" : [  ] }, "t" : true }
@@ -619,7 +619,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
 (3 rows)
 
 -- wild card
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : { "a" : ["abcdefghijklmonpqrstuvwsyz"]}}', 'ikey', true, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : { "a" : ["abcdefghijklmonpqrstuvwsyz"]}}', 'ikey', true, true, true, 50) term;
  length |                          term                           
 ---------------------------------------------------------------------
      46 | { "$" : { "a" : [ "abcdefghijklmonpq" ] }, "t" : true }
@@ -630,7 +630,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (6 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : { "a" : [1]}}', 'ikey', true, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : { "a" : [1]}}', 'ikey', true, true, true, 50) term;
  length |                            term                            
 ---------------------------------------------------------------------
      28 | { "$" : { "a" : [ { "$numberInt" : "1" } ] }, "t" : true }
@@ -641,11 +641,11 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (6 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [{ "$numberDecimal" : "1234567891011" }]]}}', 'ikey', true, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [{ "$numberDecimal" : "1234567891011" }]]}}', 'ikey', true, true, true, 50) term;
 ERROR:  invalid input syntax JSON for BSON: Code: '1', Message 'Got parse error at "]", position 68: "BRACKET_MISMATCH"'
 LINE 1: ..._helpers.gin_bson_get_single_path_generated_terms('{"_id": 3...
                                                              ^
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [true]}}', 'ikey', true, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [true]}}', 'ikey', true, true, true, 50) term;
  length |                   term                    
 ---------------------------------------------------------------------
      25 | { "$" : { "a" : [ true ] }, "t" : false }
@@ -655,7 +655,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       8 | { "" : true, "t" : false }
 (5 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : { "a" : ["abcdefghijklmonpqrstuvwsyz"]}}', 'ikey', true, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : { "a" : ["abcdefghijklmonpqrstuvwsyz"]}}', 'ikey', true, true, true, 35) term;
  length |                      term                      
 ---------------------------------------------------------------------
      21 | { "$" : { "a" : [  ] }, "t" : true }
@@ -666,7 +666,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (6 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : { "a" : [1]}}', 'ikey', true, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : { "a" : [1]}}', 'ikey', true, true, true, 35) term;
  length |                       term                        
 ---------------------------------------------------------------------
      21 | { "$" : { "a" : [  ] }, "t" : true }
@@ -677,7 +677,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (6 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [{ "$numberDecimal" : "1234567891011" }]}}', 'ikey', true, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [{ "$numberDecimal" : "1234567891011" }]}}', 'ikey', true, true, true, 35) term;
  length |                               term                                
 ---------------------------------------------------------------------
      21 | { "$" : { "a" : [  ] }, "t" : true }
@@ -688,7 +688,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (6 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [true]}}', 'ikey', true, true, true, 35) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 3, "ikey" : { "a" : [true]}}', 'ikey', true, true, true, 35) term;
  length |                  term                  
 ---------------------------------------------------------------------
      21 | { "$" : { "a" : [  ] }, "t" : true }
@@ -699,7 +699,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (6 rows)
 
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : { "a" : ["abcdefghijklmonpqrstuvwsyz"]}}', 'ikey', false, true, true, 50) term;
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "ikey" : { "a" : ["abcdefghijklmonpqrstuvwsyz"]}}', 'ikey', false, true, true, 50) term;
  length |                          term                           
 ---------------------------------------------------------------------
      46 | { "$" : { "a" : [ "abcdefghijklmonpq" ] }, "t" : true }
@@ -707,7 +707,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (3 rows)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_tests_nested_documents", "indexes": [ { "key": { "ikey": 1 }, "name": "ikey_1", "enableLargeIndexKeys": true } ] }');
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_tests_nested_documents", "indexes": [ { "key": { "ikey": 1 }, "name": "ikey_1", "enableLargeIndexKeys": true } ] }');
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
 ---------------------------------------------------------------------
@@ -715,8 +715,8 @@ NOTICE:  creating collection
 (1 row)
 
 -- now we have an index with truncation enabled and 100 chars.
-\d helio_data.documents_10401;
-                     Table "helio_data.documents_10401"
+\d documentdb_data.documents_10401;
+                     Table "documentdb_data.documents_10401"
      Column      |           Type           | Collation | Nullable | Default 
 ---------------------------------------------------------------------
  shard_key_value | bigint                   |           | not null | 
@@ -725,46 +725,46 @@ NOTICE:  creating collection
  creation_time   | timestamp with time zone |           | not null | now()
 Indexes:
     "collection_pk_10401" PRIMARY KEY, btree (shard_key_value, object_id)
-    "documents_rum_index_10403" helio_rum (document bson_rum_single_path_ops (path=ikey, tl='50'))
+    "documents_rum_index_10403" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='50'))
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '10401'::bigint)
 
 -- now insert some documents that does exceed the index term limit.
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 1, "ikey": { "a" : ["abcdefghijklmonpqrstuvwsyz"]} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 1, "ikey": { "a" : ["abcdefghijklmonpqrstuvwsyz"]} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 2, "ikey": { "a" : [1]} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 2, "ikey": { "a" : [1]} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 3, "ikey": { "a" : [{ "$numberDecimal" : "1234567891011" }]} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 3, "ikey": { "a" : [{ "$numberDecimal" : "1234567891011" }]} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 4, "ikey": { "a" : [true]} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 4, "ikey": { "a" : [true]} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 5, "ikey": { "a" : [[]}] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 5, "ikey": { "a" : [[]}] }');
 ERROR:  invalid input syntax JSON for BSON: Code: '1', Message 'Got parse error at "}", position 31: "BRACKET_MISMATCH"'
 LINE 1: ...('db', 'index_truncation_tests_nested_documents', '{ "_id": ...
                                                              ^
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 6, "ikey": { "a" : [{}]} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 6, "ikey": { "a" : [{}]} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [1] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [1] } }';
                                              document                                              
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : { "a" : [ "abcdefghijklmonpqrstuvwsyz" ] } }
@@ -773,56 +773,56 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
  { "_id" : { "$numberInt" : "6" }, "ikey" : { "a" : [ {  } ] } }
 (4 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [false] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [false] } }';
                             document                             
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : { "a" : [ true ] } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [[]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [[]] } }';
                             document                             
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : { "a" : [ true ] } }
 (1 row)
 
 -- now insert some documents that does exceed the index term limit.
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 7, "ikey": { "a" : [["abcdefghijklmonpqrstuvwsyz"]]} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 7, "ikey": { "a" : [["abcdefghijklmonpqrstuvwsyz"]]} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 8, "ikey": { "a" : [[1]]} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 8, "ikey": { "a" : [[1]]} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 9, "ikey": { "a" : [[{ "$numberDecimal" : "1234567891011" }]]} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 9, "ikey": { "a" : [[{ "$numberDecimal" : "1234567891011" }]]} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 10, "ikey": { "a" : [[true]]} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 10, "ikey": { "a" : [[true]]} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 11, "ikey": { "a" : [[[]]]} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 11, "ikey": { "a" : [[[]]]} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 12, "ikey": { "a" : [[{}]]} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 12, "ikey": { "a" : [[{}]]} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [[1]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [[1]] } }';
                                                document                                                
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : { "a" : [ true ] } }
@@ -833,7 +833,7 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
  { "_id" : { "$numberInt" : "12" }, "ikey" : { "a" : [ [ {  } ] ] } }
 (6 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [[{ "$numberDecimal" : "1234567891011" }]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [[{ "$numberDecimal" : "1234567891011" }]] } }';
                                           document                                           
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : { "a" : [ true ] } }
@@ -843,74 +843,74 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
  { "_id" : { "$numberInt" : "12" }, "ikey" : { "a" : [ [ {  } ] ] } }
 (5 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [[false]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [[false]] } }';
                                document                               
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : { "a" : [ true ] } }
  { "_id" : { "$numberInt" : "10" }, "ikey" : { "a" : [ [ true ] ] } }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [[[]]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [[[]]] } }';
                                document                               
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : { "a" : [ true ] } }
  { "_id" : { "$numberInt" : "10" }, "ikey" : { "a" : [ [ true ] ] } }
 (2 rows)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 13, "ikey": "abcdefghijklmonpqrstuvwsyz" }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 13, "ikey": "abcdefghijklmonpqrstuvwsyz" }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 14, "ikey": 1 }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 14, "ikey": 1 }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 15, "ikey": { "$numberDecimal" : "1234567891011" } }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 15, "ikey": { "$numberDecimal" : "1234567891011" } }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 16, "ikey": true }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 16, "ikey": true }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 17, "ikey": [] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 17, "ikey": [] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 18, "ikey": {} }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_documents', '{ "_id": 18, "ikey": {} }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": 1 } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": 1 } }';
                                              document                                              
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "3" }, "ikey" : { "a" : [ { "$numberDecimal" : "1234567891011" } ] } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": { "$numberDecimal" : "1234567891011" } } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": { "$numberDecimal" : "1234567891011" } } }';
  document 
 ---------------------------------------------------------------------
 (0 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": false } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": false } }';
                             document                             
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "4" }, "ikey" : { "a" : [ true ] } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$gt": [] } }';
                                                document                                                
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : { "a" : [ "abcdefghijklmonpqrstuvwsyz" ] } }
@@ -926,14 +926,14 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
  { "_id" : { "$numberInt" : "12" }, "ikey" : { "a" : [ [ {  } ] ] } }
 (11 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$in": [1, true] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$in": [1, true] } }';
                                      document                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "2" }, "ikey" : { "a" : [ { "$numberInt" : "1" } ] } }
  { "_id" : { "$numberInt" : "4" }, "ikey" : { "a" : [ true ] } }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$nin": [1, true] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$nin": [1, true] } }';
                                                document                                                
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : { "a" : [ "abcdefghijklmonpqrstuvwsyz" ] } }
@@ -953,54 +953,54 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
  { "_id" : { "$numberInt" : "18" }, "ikey" : {  } }
 (15 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$elemMatch": { "$in": [1, true] } } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$elemMatch": { "$in": [1, true] } } }'; 
                                      document                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "2" }, "ikey" : { "a" : [ { "$numberInt" : "1" } ] } }
  { "_id" : { "$numberInt" : "4" }, "ikey" : { "a" : [ true ] } }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$elemMatch": { "$in": [[1], [true]] } } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$elemMatch": { "$in": [[1], [true]] } } }'; 
                                        document                                        
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "8" }, "ikey" : { "a" : [ [ { "$numberInt" : "1" } ] ] } }
  { "_id" : { "$numberInt" : "10" }, "ikey" : { "a" : [ [ true ] ] } }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$elemMatch": { "$in": [1, "abcdefghijklmonpqrstuvwsyz"] } } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$elemMatch": { "$in": [1, "abcdefghijklmonpqrstuvwsyz"] } } }'; 
                                         document                                         
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : { "a" : [ "abcdefghijklmonpqrstuvwsyz" ] } }
  { "_id" : { "$numberInt" : "2" }, "ikey" : { "a" : [ { "$numberInt" : "1" } ] } }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$elemMatch": { "$in": [[1], ["abcdefghijklmonpqrstuvwsyz"]] } } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$elemMatch": { "$in": [[1], ["abcdefghijklmonpqrstuvwsyz"]] } } }'; 
                                           document                                           
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "7" }, "ikey" : { "a" : [ [ "abcdefghijklmonpqrstuvwsyz" ] ] } }
  { "_id" : { "$numberInt" : "8" }, "ikey" : { "a" : [ [ { "$numberInt" : "1" } ] ] } }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$elemMatch": { "$in": [[1], [true]], "$gt": [{ "$numberDecimal" : "1234567891011" }] } } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$elemMatch": { "$in": [[1], [true]], "$gt": [{ "$numberDecimal" : "1234567891011" }] } } }'; 
                                document                               
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "10" }, "ikey" : { "a" : [ [ true ] ] } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$all": [[1]] } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$all": [[1]] } }'; 
                                        document                                        
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "2" }, "ikey" : { "a" : [ { "$numberInt" : "1" } ] } }
  { "_id" : { "$numberInt" : "8" }, "ikey" : { "a" : [ [ { "$numberInt" : "1" } ] ] } }
 (2 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$all": [[[]]] } }'; 
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$all": [[[]]] } }'; 
                                document                               
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "11" }, "ikey" : { "a" : [ [ [  ] ] ] } }
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$ne": { "$numberDecimal" : "1234567891011" } } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$ne": { "$numberDecimal" : "1234567891011" } } }';
                                                document                                                
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : { "a" : [ "abcdefghijklmonpqrstuvwsyz" ] } }
@@ -1021,7 +1021,7 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
  { "_id" : { "$numberInt" : "18" }, "ikey" : {  } }
 (16 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$in": [[1], [true]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$in": [[1], [true]] } }';
                                        document                                        
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "2" }, "ikey" : { "a" : [ { "$numberInt" : "1" } ] } }
@@ -1030,7 +1030,7 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
  { "_id" : { "$numberInt" : "10" }, "ikey" : { "a" : [ [ true ] ] } }
 (4 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$nin": [[1], [true]] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$nin": [[1], [true]] } }';
                                                document                                                
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : { "a" : [ "abcdefghijklmonpqrstuvwsyz" ] } }
@@ -1048,7 +1048,7 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
  { "_id" : { "$numberInt" : "18" }, "ikey" : {  } }
 (13 rows)
 
-SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$ne": [{ "$numberDecimal" : "1234567891011" }] } }';
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nested_documents') WHERE document @@ '{ "ikey.a": { "$ne": [{ "$numberDecimal" : "1234567891011" }] } }';
                                           document                                           
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "ikey" : { "a" : [ "abcdefghijklmonpqrstuvwsyz" ] } }
@@ -1069,52 +1069,52 @@ SELECT document FROM helio_api.collection('db', 'index_truncation_tests_nested_d
 (15 rows)
 
 -- term generation tests
-set helio_api.indexTermLimitOverride to 100;
-SET helio_api.enableIndexTermTruncationOnNestedObjects to on;
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 19, "ikey": [[[[[[[[[[1]]]]]]]]]] }');
+set documentdb.indexTermLimitOverride to 100;
+SET documentdb.enableIndexTermTruncationOnNestedObjects to on;
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 19, "ikey": [[[[[[[[[[1]]]]]]]]]] }');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 20, "ikey": [[[[[[[[[[true]]]]]]]]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 20, "ikey": [[[[[[[[[[true]]]]]]]]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 21, "ikey": [[[[[[[[[[{ "$numberDecimal" : "1234567891011" }]]]]]]]]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 21, "ikey": [[[[[[[[[[{ "$numberDecimal" : "1234567891011" }]]]]]]]]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 22, "ikey": [[[[[[[[[[{ "$maxKey": 1 }]]]]]]]]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 22, "ikey": [[[[[[[[[[{ "$maxKey": 1 }]]]]]]]]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 23, "ikey": [[[[[[[[[[{ "$minKey": 1 }]]]]]]]]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 23, "ikey": [[[[[[[[[[{ "$minKey": 1 }]]]]]]]]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 24, "ikey": [[[[[[[[[[{ "$numberDouble" : "1234567891011" }]]]]]]]]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 24, "ikey": [[[[[[[[[[{ "$numberDouble" : "1234567891011" }]]]]]]]]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 25, "ikey": [[[[[[[[[[ "abcdefghijklmopqrstuvwxyz" ]]]]]]]]]] }');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 25, "ikey": [[[[[[[[[[ "abcdefghijklmopqrstuvwxyz" ]]]]]]]]]] }');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 115) term, document-> '_id' as did from helio_data.documents_10402) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 115) term, document-> '_id' as did from documentdb_data.documents_10402) docs;
                did                | length |                                               term                                                
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "19" } } |     92 | { "$" : [ [ [ [ [ [ [ [ [ [ { "$numberInt" : "1" } ] ] ] ] ] ] ] ] ] ], "t" : true }
@@ -1147,7 +1147,7 @@ SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( 
  { "" : { "$numberInt" : "25" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (28 rows)
 
-SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 120) term, document-> '_id' as did from helio_data.documents_10402) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 120) term, document-> '_id' as did from documentdb_data.documents_10402) docs;
                did                | length |                                               term                                                
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "19" } } |     92 | { "$" : [ [ [ [ [ [ [ [ [ [ { "$numberInt" : "1" } ] ] ] ] ] ] ] ] ] ], "t" : true }
@@ -1177,50 +1177,50 @@ SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( 
  { "" : { "$numberInt" : "25" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (25 rows)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 26, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": 1}}}}}}}}}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 26, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": 1}}}}}}}}}');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 27, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": true}}}}}}}}}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 27, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": true}}}}}}}}}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 28, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$maxKey": 1 }}}}}}}}}}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 28, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$maxKey": 1 }}}}}}}}}}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 29, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$minKey": 1 }}}}}}}}}}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 29, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$minKey": 1 }}}}}}}}}}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 30, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$numberDouble" : "1234567891011" }}}}}}}}}}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 30, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$numberDouble" : "1234567891011" }}}}}}}}}}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 31, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$numberDecimal" : "1234567891011" }}}}}}}}}}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 31, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": { "$numberDecimal" : "1234567891011" }}}}}}}}}}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 32, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": "abcdefghijklmopqrstuvwxyz"}}}}}}}}}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_2', '{ "_id": 32, "ikey": { "a" : {"b" : { "c": { "d": { "e": { "f" : { "g" : { "h": "abcdefghijklmopqrstuvwxyz"}}}}}}}}}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 100) term, document-> '_id' as did from helio_data.documents_10403) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 100) term, document-> '_id' as did from documentdb_data.documents_10403) docs;
                did                | length |                                                                    term                                                                    
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "26" } } |     76 | { "$" : { "a" : { "b" : { "c" : { "d" : { "e" : { "f" : { "g" : { "h" : { "$numberInt" : "1" } } } } } } } } }, "t" : false }
@@ -1240,7 +1240,7 @@ SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( 
  { "" : { "$numberInt" : "32" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (15 rows)
 
-SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 105) term, document-> '_id' as did from helio_data.documents_10403) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 105) term, document-> '_id' as did from documentdb_data.documents_10403) docs;
                did                | length |                                                                    term                                                                    
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "26" } } |     76 | { "$" : { "a" : { "b" : { "c" : { "d" : { "e" : { "f" : { "g" : { "h" : { "$numberInt" : "1" } } } } } } } } }, "t" : false }
@@ -1260,50 +1260,50 @@ SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( 
  { "" : { "$numberInt" : "32" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
 (15 rows)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 33, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": 1}]}]}]}]}]}]}]}]}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 33, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": 1}]}]}]}]}]}]}]}]}');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 34, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": true}]}]}]}]}]}]}]}]}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 34, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": true}]}]}]}]}]}]}]}]}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 35, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$numberDecimal" : "1234567891011" }}]}]}]}]}]}]}]}]}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 35, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$numberDecimal" : "1234567891011" }}]}]}]}]}]}]}]}]}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 36, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$maxKey": 1 }}]}]}]}]}]}]}]}]}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 36, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$maxKey": 1 }}]}]}]}]}]}]}]}]}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 37, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$minKey": 1 }}]}]}]}]}]}]}]}]}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 37, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$minKey": 1 }}]}]}]}]}]}]}]}]}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 38, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$numberDouble" : "1234567891011" }}]}]}]}]}]}]}]}]}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 38, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": { "$numberDouble" : "1234567891011" }}]}]}]}]}]}]}]}]}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 39, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": "abcdefghijklmopqrstuvwxyz"}]}]}]}]}]}]}]}]}');
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects_3', '{ "_id": 39, "ikey": [{ "a" : [{"b" : [{ "c": [{ "d": [{ "e": [{ "f" : [{ "g" : [{ "h": "abcdefghijklmopqrstuvwxyz"}]}]}]}]}]}]}]}]}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 165) term, document-> '_id' as did from helio_data.documents_10404) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 165) term, document-> '_id' as did from documentdb_data.documents_10404) docs;
                did                | length |                                                                                   term                                                                                    
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "33" } } |    140 | { "$" : [ { "a" : [ { "b" : [ { "c" : [ { "d" : [ { "e" : [ { "f" : [ { "g" : [ { "h" : { "$numberInt" : "1" } } ] } ] } ] } ] } ] } ] } ] } ], "t" : true }
@@ -1340,7 +1340,7 @@ SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( 
  { "" : { "$numberInt" : "39" } } |     12 | { "" : [  ], "t" : false }
 (32 rows)
 
-SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 170) term, document-> '_id' as did from helio_data.documents_10404) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 170) term, document-> '_id' as did from documentdb_data.documents_10404) docs;
                did                | length |                                                                                   term                                                                                    
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "33" } } |    140 | { "$" : [ { "a" : [ { "b" : [ { "c" : [ { "d" : [ { "e" : [ { "f" : [ { "g" : [ { "h" : { "$numberInt" : "1" } } ] } ] } ] } ] } ] } ] } ] } ], "t" : false }
@@ -1376,7 +1376,7 @@ SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( 
  { "" : { "$numberInt" : "39" } } |     12 | { "" : [  ], "t" : false }
 (31 rows)
 
-SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', true, true, true, 165) term, document-> '_id' as did from helio_data.documents_10404) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', true, true, true, 165) term, document-> '_id' as did from documentdb_data.documents_10404) docs;
                did                | length |                                                                                   term                                                                                    
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "33" } } |    140 | { "$" : [ { "a" : [ { "b" : [ { "c" : [ { "d" : [ { "e" : [ { "f" : [ { "g" : [ { "h" : { "$numberInt" : "1" } } ] } ] } ] } ] } ] } ] } ] } ], "t" : true }
@@ -8546,7 +8546,7 @@ SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( 
  { "" : { "$numberInt" : "39" } } |     12 | { "" : [  ], "t" : false }
 (7165 rows)
 
-SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', true, true, true, 170) term, document-> '_id' as did from helio_data.documents_10404) docs;
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', true, true, true, 170) term, document-> '_id' as did from documentdb_data.documents_10404) docs;
                did                | length |                                                                                   term                                                                                    
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "33" } } |    140 | { "$" : [ { "a" : [ { "b" : [ { "c" : [ { "d" : [ { "e" : [ { "f" : [ { "g" : [ { "h" : { "$numberInt" : "1" } } ] } ] } ] } ] } ] } ] } ] } ], "t" : false }
@@ -15716,23 +15716,23 @@ SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( 
 (7164 rows)
 
 -- specific tests
-SET helio_api.enableIndexTermTruncationOnNestedObjects to off;
-set helio_api.indexTermLimitOverride to 200;
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_tests_nested", "indexes": [ { "key": { "$**" : 1 }, "name": "wildcardIndex",  "enableLargeIndexKeys": true  } ] }', true);
+SET documentdb.enableIndexTermTruncationOnNestedObjects to off;
+set documentdb.indexTermLimitOverride to 200;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_tests_nested", "indexes": [ { "key": { "$**" : 1 }, "name": "wildcardIndex",  "enableLargeIndexKeys": true  } ] }', true);
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT helio_distributed_test_helpers.drop_primary_key('db', 'index_truncation_tests_nested');
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'index_truncation_tests_nested');
  drop_primary_key 
 ---------------------------------------------------------------------
  
 (1 row)
 
 -- 1. Failes without nested object truncation support
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested','{
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested','{
     "_id" : 1,
     "data": {
         "$binary": {
@@ -15797,9 +15797,9 @@ SELECT helio_api.insert_one('db', 'index_truncation_tests_nested','{
  { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "29" }, "errmsg" : "Truncation size limit specified 200, but index term with type array was larger 354 - isTruncated 0" } ] }
 (1 row)
 
-SET helio_api.enableIndexTermTruncationOnNestedObjects to on;
+SET documentdb.enableIndexTermTruncationOnNestedObjects to on;
 -- 2 a. Terms generated with nested object index term truncation support
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(
   '{
     "_id": 1, 
     "itemData" : [
@@ -15940,7 +15940,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
 (91 rows)
 
 -- 2 b. Terms generated with nested object index term truncation support
-SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(
+SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(
   '{
     "_id": 1, 
     "itemData" : [
@@ -16082,7 +16082,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
 (92 rows)
 
 -- 3. Now insert the document with nested object index term truncation support
-SELECT helio_api.insert_one('db', 'index_truncation_tests_nested', '
+SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested', '
 {
     "_id" : 1,
     "data": {
@@ -16217,10 +16217,10 @@ EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT docu
                      Sort Key: object_id
                      Sort Method: quicksort  Memory: 25kB
                      ->  Bitmap Heap Scan on documents_10405_1040081 collection (actual rows=1 loops=1)
-                           Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "itemData" : { "attribute" : "1234", "cb" : { "$numberInt" : "12431" }, "dx" : "test", "el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "first" : null, "greaterThan" : null, "shortPath" : "aas", "i" : null, "largePathWithObject" : { "option1" : null, "option2" : "small-string1", "option3" : null, "option4" : { "$numberInt" : "123" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "prior" : { "$numberLong" : "123123213213" } } } }'::helio_core.bson)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "itemData" : { "attribute" : "1234", "cb" : { "$numberInt" : "12431" }, "dx" : "test", "el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "first" : null, "greaterThan" : null, "shortPath" : "aas", "i" : null, "largePathWithObject" : { "option1" : null, "option2" : "small-string1", "option3" : null, "option4" : { "$numberInt" : "123" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "prior" : { "$numberLong" : "123123213213" } } } }'::documentdb_core.bson)
                            Heap Blocks: exact=1
                            ->  Bitmap Index Scan on "wildcardIndex" (actual rows=1 loops=1)
-                                 Index Cond: (document OPERATOR(helio_api_catalog.@=) '{ "itemData" : { "attribute" : "1234", "cb" : { "$numberInt" : "12431" }, "dx" : "test", "el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "first" : null, "greaterThan" : null, "shortPath" : "aas", "i" : null, "largePathWithObject" : { "option1" : null, "option2" : "small-string1", "option3" : null, "option4" : { "$numberInt" : "123" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "prior" : { "$numberLong" : "123123213213" } } } }'::helio_core.bson)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "itemData" : { "attribute" : "1234", "cb" : { "$numberInt" : "12431" }, "dx" : "test", "el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "first" : null, "greaterThan" : null, "shortPath" : "aas", "i" : null, "largePathWithObject" : { "option1" : null, "option2" : "small-string1", "option3" : null, "option4" : { "$numberInt" : "123" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "prior" : { "$numberLong" : "123123213213" } } } }'::documentdb_core.bson)
 (16 rows)
 
 SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "itemData.largePathWithObject.option2": { "$eq": 
@@ -16252,10 +16252,10 @@ EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT docu
                      Sort Key: object_id
                      Sort Method: quicksort  Memory: 25kB
                      ->  Bitmap Heap Scan on documents_10405_1040081 collection (actual rows=1 loops=1)
-                           Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "itemData.largePathWithObject.option2" : "small-string1" }'::helio_core.bson)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "itemData.largePathWithObject.option2" : "small-string1" }'::documentdb_core.bson)
                            Heap Blocks: exact=1
                            ->  Bitmap Index Scan on "wildcardIndex" (actual rows=1 loops=1)
-                                 Index Cond: (document OPERATOR(helio_api_catalog.@=) '{ "itemData.largePathWithObject.option2" : "small-string1" }'::helio_core.bson)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "itemData.largePathWithObject.option2" : "small-string1" }'::documentdb_core.bson)
 (16 rows)
 
-SET helio_api.enableIndexTermTruncationOnNestedObjects to off;
+SET documentdb.enableIndexTermTruncationOnNestedObjects to off;

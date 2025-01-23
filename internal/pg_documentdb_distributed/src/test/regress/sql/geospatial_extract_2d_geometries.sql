@@ -1,7 +1,7 @@
-SET search_path TO helio_api_catalog, helio_distributed_test_helpers;
+SET search_path TO documentdb_api_catalog, documentdb_distributed_test_helpers;
 SET citus.next_shard_id TO 6990000;
-SET helio_api.next_collection_id TO 699000;
-SET helio_api.next_collection_index_id TO 699000;
+SET documentdb.next_collection_id TO 699000;
+SET documentdb.next_collection_index_id TO 699000;
 
 -- Case 1: All the below cases are just ignored to have a geodetic type and returns NULL geometry
 -- This a check based on the type of the field at the given path, if it is not array or object or empty array and objects then it will return NULL
@@ -246,14 +246,14 @@ SELECT public.ST_ASTEXT(
     )::public.geography
 );
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "segmentsTest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds" }]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "segmentsTest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds" }]}', true);
 
 --Insert 2 points one out one at the boundary and one inside the original polygon
-SELECT helio_api.insert_one('db','segmentsTest','{ "_id" : 1, "a" : { "type": "Point", "coordinates": [ -167, 48] } }', NULL); -- inside
-SELECT helio_api.insert_one('db','segmentsTest','{ "_id" : 2, "a" : { "type": "Point", "coordinates": [ -180, 40] } }', NULL); -- overlap with a vertex
-SELECT helio_api.insert_one('db','segmentsTest','{ "_id" : 3, "a" : { "type": "Point", "coordinates": [ -142, 49] } }', NULL); -- outside
+SELECT documentdb_api.insert_one('db','segmentsTest','{ "_id" : 1, "a" : { "type": "Point", "coordinates": [ -167, 48] } }', NULL); -- inside
+SELECT documentdb_api.insert_one('db','segmentsTest','{ "_id" : 2, "a" : { "type": "Point", "coordinates": [ -180, 40] } }', NULL); -- overlap with a vertex
+SELECT documentdb_api.insert_one('db','segmentsTest','{ "_id" : 3, "a" : { "type": "Point", "coordinates": [ -142, 49] } }', NULL); -- outside
                                                  
-SELECT document FROM helio_api.collection('db', 'segmentsTest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[-180, 40], [-157.5, 40], [-157.5, 55], [-180, 55], [-180, 40]]]}}}}';
-EXPLAIN SELECT document FROM helio_api.collection('db', 'segmentsTest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[-180, 40], [-157.5, 40], [-157.5, 55], [-180, 55], [-180, 40]]]}}}}'; -- Polygon with points on a great circle of earth
+SELECT document FROM documentdb_api.collection('db', 'segmentsTest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[-180, 40], [-157.5, 40], [-157.5, 55], [-180, 55], [-180, 40]]]}}}}';
+EXPLAIN SELECT document FROM documentdb_api.collection('db', 'segmentsTest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[-180, 40], [-157.5, 40], [-157.5, 55], [-180, 55], [-180, 40]]]}}}}'; -- Polygon with points on a great circle of earth
 
 RESET search_path;

@@ -15,6 +15,7 @@
 
 #include "metadata/metadata_guc.h"
 #include "configs/config_initialization.h"
+#include "commands/commands_common.h"
 
 #define BSON_MAX_ALLOWED_SIZE (16 * 1024 * 1024)
 
@@ -54,6 +55,11 @@ int32_t MaxWorkerCursorSize = DEFAULT_MAX_WORKER_CURSOR_SIZE;
 
 #define DEFAULT_ENABLE_NATIVE_COLOCATION true
 bool EnableNativeColocation = DEFAULT_ENABLE_NATIVE_COLOCATION;
+
+#define DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY 500000
+extern int32 PEC_InternalQueryMaxAllowedDensifyDocs;
+
+extern int32 PEC_InternalDocumentSourceDensifyMaxMemoryBytes;
 
 void
 InitializeTestConfigurations(const char *prefix, const char *newGucPrefix)
@@ -174,4 +180,28 @@ InitializeTestConfigurations(const char *prefix, const char *newGucPrefix)
 			"Determines whether to turn on colocation of tables in a given mongo database (and disabled outside the database)"),
 		NULL, &EnableNativeColocation, DEFAULT_ENABLE_NATIVE_COLOCATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.test.internalQueryMaxAllowedDensifyDocs", newGucPrefix),
+		gettext_noop(
+			"This GUC is for testing only and it is mapped to external.internalQueryMaxAllowedDensifyDocs."
+			"Number of maximum documents that can be generated using $densify stage."),
+		NULL,
+		&PEC_InternalQueryMaxAllowedDensifyDocs,
+		DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY, 0, INT32_MAX,
+		PGC_USERSET,
+		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE,
+		NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.test.internalDocumentSourceDensifyMaxMemoryBytes", newGucPrefix),
+		gettext_noop(
+			"This GUC is for testing only and it is mapped to external.internalDocumentSourceDensifyMaxMemoryBytes."
+			"Maximum memory allowed for the generated documents in $densify stage."),
+		NULL,
+		&PEC_InternalDocumentSourceDensifyMaxMemoryBytes,
+		BSON_MAX_ALLOWED_SIZE_INTERMEDIATE, 0, BSON_MAX_ALLOWED_SIZE_INTERMEDIATE,
+		PGC_USERSET,
+		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE,
+		NULL, NULL, NULL);
 }

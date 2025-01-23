@@ -1,7 +1,7 @@
-SET search_path TO helio_api,helio_api_internal,helio_core;
+SET search_path TO documentdb_api,documentdb_api_internal,documentdb_core;
 SET citus.next_shard_id TO 4700000;
-SET helio_api.next_collection_id TO 4700;
-SET helio_api.next_collection_index_id TO 4700;
+SET documentdb.next_collection_id TO 4700;
+SET documentdb.next_collection_index_id TO 4700;
 
 SELECT '{"a":1,"b":"c"}'::bson->'a';
 SELECT '{"a":1,"b":"c"}'::bson->'b';

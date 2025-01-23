@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION assert_count_regex5(expected_row_count int, query helio_core.bson)
+CREATE OR REPLACE FUNCTION assert_count_regex5(expected_row_count int, query documentdb_core.bson)
  RETURNS void
  LANGUAGE plpgsql
 AS $$
@@ -34,7 +34,7 @@ end
 $$;
 
 -- DROP PRIMARY KEY
-SELECT helio_distributed_test_helpers.drop_primary_key('db', 'regex5');
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'regex5');
 
 -- When x is non-array
 SELECT assert_count_regex5(1, '{"x": {"$in": [{"$regex" : ".*Yc", "$options": "i"}]}}');

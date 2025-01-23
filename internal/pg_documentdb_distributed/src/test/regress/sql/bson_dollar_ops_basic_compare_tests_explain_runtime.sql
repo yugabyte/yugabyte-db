@@ -1,11 +1,11 @@
 
-set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+set search_path to documentdb_core,documentdb_api,documentdb_api_catalog,pg_catalog;
 SET citus.next_shard_id TO 52000;
-SET helio_api.next_collection_id TO 5200;
-SET helio_api.next_collection_index_id TO 5200;
+SET documentdb.next_collection_id TO 5200;
+SET documentdb.next_collection_index_id TO 5200;
 
-SELECT helio_api.drop_collection('db', 'querydollartest');
-SELECT helio_api.create_collection('db', 'querydollartest');
+SELECT documentdb_api.drop_collection('db', 'querydollartest');
+SELECT documentdb_api.create_collection('db', 'querydollartest');
 
 SET client_min_messages=WARNING;
 

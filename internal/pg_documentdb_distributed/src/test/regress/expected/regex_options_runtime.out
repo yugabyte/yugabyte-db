@@ -1,8 +1,8 @@
 CREATE SCHEMA regex_options;
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal,public,regex_options;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal,public,regex_options;
 SET citus.next_shard_id TO 700000;
-SET helio_api.next_collection_id TO 700;
-SET helio_api.next_collection_index_id TO 700;
+SET documentdb.next_collection_id TO 700;
+SET documentdb.next_collection_index_id TO 700;
 SELECT create_collection('db','regex_options');
 NOTICE:  creating collection
  create_collection 
@@ -13,7 +13,7 @@ NOTICE:  creating collection
 BEGIN;
 set local enable_seqscan TO ON;
 \i sql/regex_options_core.sql
-CREATE OR REPLACE FUNCTION assert_count_regex_options(expected_row_count int, query helio_core.bson)
+CREATE OR REPLACE FUNCTION assert_count_regex_options(expected_row_count int, query documentdb_core.bson)
  RETURNS void
  LANGUAGE plpgsql
 AS $$
@@ -91,7 +91,7 @@ begin
 end
 $$;
 -- DROP PRIMARY KEY
-SELECT helio_distributed_test_helpers.drop_primary_key('db', 'regex_options');
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'regex_options');
  drop_primary_key 
 ---------------------------------------------------------------------
  

@@ -1,7 +1,7 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 8500000;
-SET helio_api.next_collection_id TO 8500;
-SET helio_api.next_collection_index_id TO 8500;
+SET documentdb.next_collection_id TO 8500;
+SET documentdb.next_collection_index_id TO 8500;
 
 -- $bsonSize operator
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": {"x":1} }}');
@@ -40,7 +40,7 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": {"$undefine
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "abvd" }}');
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "hello!" }}');
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "abc\\0c" }}');
-SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "I ❤️ Helio" }}');
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "I ❤️ documentdb" }}');
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "🙈" }}');
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "アユシュ・サルージャです"}}');
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": {"$binary": { "base64": "bGlnaHQgdw==", "subType": "01"}}}}');

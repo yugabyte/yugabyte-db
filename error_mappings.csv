@@ -1,4 +1,4 @@
-MongoError,ErrorName
+ErrorMapping,ErrorName
 1,InternalError
 2,BadValue
 5,GraphContainsCycle

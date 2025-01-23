@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION assert_count_regex_options(expected_row_count int, query helio_core.bson)
+CREATE OR REPLACE FUNCTION assert_count_regex_options(expected_row_count int, query documentdb_core.bson)
  RETURNS void
  LANGUAGE plpgsql
 AS $$
@@ -34,7 +34,7 @@ end
 $$;
 
 -- DROP PRIMARY KEY
-SELECT helio_distributed_test_helpers.drop_primary_key('db', 'regex_options');
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'regex_options');
 
 SELECT assert_count_regex_options(8, '{"a": {"$options": "ims", "$regex": "^regeX.New"}}');
 SELECT assert_count_regex_options(5, '{"a": {"$regex": "^regeX.New$", "$options": "mis"}}');

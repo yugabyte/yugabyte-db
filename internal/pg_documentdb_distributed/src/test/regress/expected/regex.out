@@ -1,7 +1,7 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 335000;
-SET helio_api.next_collection_id TO 3350;
-SET helio_api.next_collection_index_id TO 3350;
+SET documentdb.next_collection_id TO 3350;
+SET documentdb.next_collection_index_id TO 3350;
 SELECT create_collection('db','regex');
 NOTICE:  creating collection
  create_collection 
@@ -165,32 +165,32 @@ SELECT document from collection('db', 'regex') where document @@ '{"sku": {"$reg
 ERROR:  invalid input syntax JSON for BSON: Code: '2', Message 'Invalid read of boolean in state IN_BSON_TYPE'
 LINE 1: ... from collection('db', 'regex') where document @@ '{"sku": {...
                                                              ^
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"sku": 1}, "name": "index_on_sku"}]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"sku": 1}, "name": "index_on_sku"}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"x": 1},   "name": "index_on_x"  }]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"x": 1},   "name": "index_on_x"  }]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"F1": 1},  "name": "index_on_F1"  }]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"F1": 1},  "name": "index_on_F1"  }]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"a": 1, "b": 1},  "name": "Compound_index_on_a_and_b"  }]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"a": 1, "b": 1},  "name": "Compound_index_on_a_and_b"  }]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- avoid plans that use the primary key index
-SELECT helio_distributed_test_helpers.drop_primary_key('db','regex');
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','regex');
  drop_primary_key 
 ---------------------------------------------------------------------
  
@@ -334,7 +334,7 @@ SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$rege
 BEGIN;
 /* Make use of Index */
 SET LOCAL enable_seqscan to OFF;
-SET LOCAL helio_api.forceRumIndexScantoBitmapHeapScan TO OFF;
+SET LOCAL documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
 -- 111 117   Multiple regex in a single query. Ensuring multiple regexes, in the same query, are cached as separate entry in the cache
 SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
                                  document                                 
@@ -352,12 +352,12 @@ EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where documen
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using "Compound_index_on_a_and_b" on documents_3350_335000 collection
-               Index Cond: ((document OPERATOR(helio_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::helio_core.bson))
+               Index Cond: ((document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::documentdb_core.bson))
 (7 rows)
 
 ROLLBACK;
 -- shard the collection by "_id"
-select helio_api.shard_collection('db', 'regex', '{"_id": "hashed"}', false);
+select documentdb_api.shard_collection('db', 'regex', '{"_id": "hashed"}', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -365,7 +365,7 @@ select helio_api.shard_collection('db', 'regex', '{"_id": "hashed"}', false);
 
 BEGIN;
 SET LOCAL enable_seqscan to OFF;
-SET LOCAL helio_api.forceRumIndexScantoBitmapHeapScan TO OFF;
+SET LOCAL documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
 -- 111 117   Multiple regex in a single query on sharded collection. Index Path. Ensuring multiple regexes, in the same query, are cached as separate entry in the cache
 SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
                                  document                                 
@@ -383,7 +383,7 @@ EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where documen
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using "Compound_index_on_a_and_b" on documents_3350_335016 documents_3350
-               Index Cond: ((document OPERATOR(helio_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::helio_core.bson))
+               Index Cond: ((document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::documentdb_core.bson))
 (7 rows)
 
 ROLLBACK;
@@ -406,7 +406,7 @@ EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where documen
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Seq Scan on documents_3350_335016 documents_3350
-               Filter: ((document OPERATOR(helio_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::helio_core.bson))
+               Filter: ((document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::documentdb_core.bson))
 (7 rows)
 
 ROLLBACK;
@@ -423,14 +423,14 @@ NOTICE:  creating collection
  t
 (1 row)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"a": 1}, "name": "index_on_a"}]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"a": 1}, "name": "index_on_a"}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- shard the collection by "a"
-select helio_api.shard_collection('db', 'regex', '{"a": "hashed"}', false);
+select documentdb_api.shard_collection('db', 'regex', '{"a": "hashed"}', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -485,16 +485,16 @@ EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where documen
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_3351_335040 documents_3351
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::helio_core.bson)
-               Filter: (document OPERATOR(helio_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson)
+               Filter: (document OPERATOR(documentdb_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_on_a
-                     Index Cond: (document OPERATOR(helio_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson)
 (10 rows)
 
 ROLLBACK;
 BEGIN;
 SET LOCAL enable_seqscan to ON;
-SET LOCAL helio_api.ForceUseIndexIfAvailable to OFF;
+SET LOCAL documentdb.ForceUseIndexIfAvailable to OFF;
 -- 111 117   Multiple regex in a single query on sharded collection, where query is on the shard id column. Seq Scan Path
 SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
                                  document                                 
@@ -512,7 +512,7 @@ EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where documen
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Seq Scan on documents_3351_335040 documents_3351
-               Filter: ((document OPERATOR(helio_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::helio_core.bson))
+               Filter: ((document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::documentdb_core.bson))
 (7 rows)
 
 ROLLBACK;

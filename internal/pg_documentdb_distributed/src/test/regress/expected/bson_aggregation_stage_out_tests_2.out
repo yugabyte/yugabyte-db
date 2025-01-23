@@ -1,9 +1,9 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog;
 SET citus.next_shard_id TO 9830000;
-SET helio_api.next_collection_id TO 9830;
-SET helio_api.next_collection_index_id TO 9830;
+SET documentdb.next_collection_id TO 9830;
+SET documentdb.next_collection_index_id TO 9830;
 -- simplest test case working with db database
-SELECT helio_api.insert('db', '{"insert":"source", "documents":[
+SELECT documentdb_api.insert('db', '{"insert":"source", "documents":[
    { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
    { "_id" : 2, "employee": "Bee", "salary": 120000, "fiscal_year": 2017 },
    { "_id" : 3, "employee": "Ant", "salary": 115000, "fiscal_year": 2018 },
@@ -24,7 +24,7 @@ NOTICE:  creating collection
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'target');
+SELECT document FROM documentdb_api.collection('db', 'target');
                                                                  document                                                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
@@ -42,7 +42,7 @@ NOTICE:  creating collection
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
-SELECT document FROM helio_api.collection('db', 'target2');
+SELECT document FROM documentdb_api.collection('db', 'target2');
                                                                  document                                                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
@@ -53,26 +53,26 @@ SELECT document FROM helio_api.collection('db', 'target2');
  { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
 (6 rows)
 
-SELECT helio_api.drop_collection('db','source');
+SELECT documentdb_api.drop_collection('db','source');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('db','target');
+SELECT documentdb_api.drop_collection('db','target');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('db','target2');
+SELECT documentdb_api.drop_collection('db','target2');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
 -- simplest test case working
-SELECT helio_api.insert('newdb', '{"insert":"source", "documents":[
+SELECT documentdb_api.insert('newdb', '{"insert":"source", "documents":[
    { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
    { "_id" : 2, "employee": "Bee", "salary": 120000, "fiscal_year": 2017 },
    { "_id" : 3, "employee": "Ant", "salary": 115000, "fiscal_year": 2018 },
@@ -93,7 +93,7 @@ NOTICE:  creating collection
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
-SELECT document FROM helio_api.collection('newdb', 'target');
+SELECT document FROM documentdb_api.collection('newdb', 'target');
                                                                  document                                                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
@@ -111,7 +111,7 @@ NOTICE:  creating collection
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
-SELECT document FROM helio_api.collection('newdb', 'target2');
+SELECT document FROM documentdb_api.collection('newdb', 'target2');
                                                                  document                                                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
@@ -122,26 +122,26 @@ SELECT document FROM helio_api.collection('newdb', 'target2');
  { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
 (6 rows)
 
-SELECT helio_api.drop_collection('newdb','source');
+SELECT documentdb_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','target');
+SELECT documentdb_api.drop_collection('newdb','target');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','target2');
+SELECT documentdb_api.drop_collection('newdb','target2');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
 -- when source and target collection are same 
-SELECT helio_api.insert('newdb', '{"insert":"source", "documents":[{ "_id" : 1, "data": "This is source collection"}]}');
+SELECT documentdb_api.insert('newdb', '{"insert":"source", "documents":[{ "_id" : 1, "data": "This is source collection"}]}');
 NOTICE:  creating collection
                                          insert                                         
 ---------------------------------------------------------------------
@@ -150,27 +150,27 @@ NOTICE:  creating collection
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$project" : {"data" : "updating same"} } ,{"$out" : { "db" : "newdb", "coll" : "source" }  } ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  The target collection cannot be the same as the source collection in $out stage.
-SELECT document FROM helio_api.collection('newdb', 'source');
+SELECT document FROM documentdb_api.collection('newdb', 'source');
                                  document                                 
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "data" : "This is source collection" }
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','source');
+SELECT documentdb_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
 -- case where target collection already exist:
-SELECT helio_api.insert('newdb', '{"insert":"source", "documents":[{ "_id" : 1, "data": "This is source collection"}]}');
+SELECT documentdb_api.insert('newdb', '{"insert":"source", "documents":[{ "_id" : 1, "data": "This is source collection"}]}');
 NOTICE:  creating collection
                                          insert                                         
 ---------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-SELECT helio_api.insert('newdb', '{"insert":"target", "documents":[{ "_id" : 1, "data": "This is target collection"}]}');
+SELECT documentdb_api.insert('newdb', '{"insert":"target", "documents":[{ "_id" : 1, "data": "This is target collection"}]}');
 NOTICE:  creating collection
                                          insert                                         
 ---------------------------------------------------------------------
@@ -183,26 +183,26 @@ SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pi
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
-SELECT document FROM helio_api.collection('newdb', 'target');
+SELECT document FROM documentdb_api.collection('newdb', 'target');
                                  document                                 
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "data" : "This is source collection" }
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','source');
+SELECT documentdb_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','target');
+SELECT documentdb_api.drop_collection('newdb','target');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
 -- when target db is different:
-SELECT helio_api.insert('newdb', '{"insert":"source", "documents":[{ "_id" : 1, "data": "This is source collection"}]}');
+SELECT documentdb_api.insert('newdb', '{"insert":"source", "documents":[{ "_id" : 1, "data": "This is source collection"}]}');
 NOTICE:  creating collection
                                          insert                                         
 ---------------------------------------------------------------------
@@ -216,19 +216,19 @@ NOTICE:  creating collection
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
-SELECT document FROM helio_api.collection('db2', 'target');
+SELECT document FROM documentdb_api.collection('db2', 'target');
                                  document                                 
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "data" : "This is source collection" }
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','source');
+SELECT documentdb_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('db2','target');
+SELECT documentdb_api.drop_collection('db2','target');
  drop_collection 
 ---------------------------------------------------------------------
  t
@@ -236,26 +236,26 @@ SELECT helio_api.drop_collection('db2','target');
 
 -- index validation: 
 -- 1. If source and target are same collection, only data will get updated index should remain
-SELECT helio_api.insert('newdb', '{"insert":"src", "documents":[{ "_id" : 1, "data": "This is source collection"}]}');
+SELECT documentdb_api.insert('newdb', '{"insert":"src", "documents":[{ "_id" : 1, "data": "This is source collection"}]}');
 NOTICE:  creating collection
                                          insert                                         
 ---------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('newdb', '{ "createIndexes": "src", "indexes": [{ "key": {"a": 1, "b" : 1, "c" :1}, "name": "index_1" }] }'::helio_core.bson, true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('newdb', '{ "createIndexes": "src", "indexes": [{ "key": {"a": 1, "b" : 1, "c" :1}, "name": "index_1" }] }'::documentdb_core.bson, true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('newdb', '{ "createIndexes": "src", "indexes": [{ "key": {"his is some index" :1}, "name": "index_2" }] }'::helio_core.bson, true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('newdb', '{ "createIndexes": "src", "indexes": [{ "key": {"his is some index" :1}, "name": "index_2" }] }'::documentdb_core.bson, true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "src" }') ORDER BY 1;
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "src" }') ORDER BY 1;
                                                                                                                                   bson_dollar_unwind                                                                                                                                  
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
@@ -265,7 +265,7 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "src", "pipeline": [ {"$project" : {"data" : "updating data"} }, {"$out" : { "db" : "newdb", "coll" : "src" }  } ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  The target collection cannot be the same as the source collection in $out stage.
-SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "src" }') ORDER BY 1;
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "src" }') ORDER BY 1;
                                                                                                                                   bson_dollar_unwind                                                                                                                                  
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
@@ -273,46 +273,46 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "his is some index" : { "$numberInt" : "1" } }, "name" : "index_2" } }, "ok" : { "$numberDouble" : "1.0" } }
 (3 rows)
 
-SELECT document FROM helio_api.collection('newdb', 'src');
+SELECT document FROM documentdb_api.collection('newdb', 'src');
                                  document                                 
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "data" : "This is source collection" }
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','src');
+SELECT documentdb_api.drop_collection('newdb','src');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
 -- 2. if target already exist only data will get updated index should remain
-SELECT helio_api.insert('newdb', '{"insert":"src", "documents":[{ "_id" : 1, "data": "This is source collection"}]}');
+SELECT documentdb_api.insert('newdb', '{"insert":"src", "documents":[{ "_id" : 1, "data": "This is source collection"}]}');
 NOTICE:  creating collection
                                          insert                                         
 ---------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-SELECT helio_api.insert('newdb', '{"insert":"tar", "documents":[{ "_id" : 1, "data": "This is target collection"}]}');
+SELECT documentdb_api.insert('newdb', '{"insert":"tar", "documents":[{ "_id" : 1, "data": "This is target collection"}]}');
 NOTICE:  creating collection
                                          insert                                         
 ---------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('newdb', '{ "createIndexes": "tar", "indexes": [{ "key": {"a": 1, "b" : 1, "c" :1}, "name": "index_1" }] }'::helio_core.bson, true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('newdb', '{ "createIndexes": "tar", "indexes": [{ "key": {"a": 1, "b" : 1, "c" :1}, "name": "index_1" }] }'::documentdb_core.bson, true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('newdb', '{ "createIndexes": "tar", "indexes": [{ "key": {"his is some index" :1}, "name": "index_2" }] }'::helio_core.bson, true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('newdb', '{ "createIndexes": "tar", "indexes": [{ "key": {"his is some index" :1}, "name": "index_2" }] }'::documentdb_core.bson, true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "tar" }') ORDER BY 1;
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "tar" }') ORDER BY 1;
                                                                                                                                   bson_dollar_unwind                                                                                                                                  
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
@@ -326,7 +326,7 @@ SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "src", "pipel
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.src", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
-SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "tar" }') ORDER BY 1;
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "tar" }') ORDER BY 1;
                                                                                                                                   bson_dollar_unwind                                                                                                                                  
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
@@ -334,52 +334,52 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "his is some index" : { "$numberInt" : "1" } }, "name" : "index_2" } }, "ok" : { "$numberDouble" : "1.0" } }
 (3 rows)
 
-SELECT document FROM helio_api.collection('newdb', 'tar');
+SELECT document FROM documentdb_api.collection('newdb', 'tar');
                            document                           
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "data" : "updating data" }
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','src');
+SELECT documentdb_api.drop_collection('newdb','src');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','tar');
+SELECT documentdb_api.drop_collection('newdb','tar');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
 -- complex query with last stage $out:
-SELECT helio_api.insert_one('newdb','source',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
+SELECT documentdb_api.insert_one('newdb','source',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('newdb','source','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
+SELECT documentdb_api.insert_one('newdb','source','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('newdb','target','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House"}', NULL);
+SELECT documentdb_api.insert_one('newdb','target','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('newdb','target','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade"}', NULL);
+SELECT documentdb_api.insert_one('newdb','target','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('newdb','target','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda"}', NULL);
+SELECT documentdb_api.insert_one('newdb','target','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -407,7 +407,7 @@ SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "target",
  { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "newdb.target", "firstBatch" : [ { "_id" : "American Steak House" } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" } } | t                 | 4294967294
 (1 row)
 
-SELECT document FROM helio_api.collection('newdb','target');
+SELECT document FROM documentdb_api.collection('newdb','target');
                                                           document                                                          
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House" }
@@ -415,20 +415,20 @@ SELECT document FROM helio_api.collection('newdb','target');
  { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda" }
 (3 rows)
 
-SELECT helio_api.drop_collection('newdb','source');
+SELECT documentdb_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','target');
+SELECT documentdb_api.drop_collection('newdb','target');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
 -- case when _id is missing from last stage:
-SELECT helio_api.insert_one('newdb','source',' {"_id": 1, "name": "Test Case"}', NULL);
+SELECT documentdb_api.insert_one('newdb','source',' {"_id": 1, "name": "Test Case"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
@@ -442,33 +442,33 @@ NOTICE:  creating collection
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
-SELECT bson_dollar_project(document,'{"_id" : {"$gt" :  ["$_id", null]} }') FROM helio_api.collection('newdb','target');
+SELECT bson_dollar_project(document,'{"_id" : {"$gt" :  ["$_id", null]} }') FROM documentdb_api.collection('newdb','target');
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "_id" : true }
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','source');
+SELECT documentdb_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','target');
+SELECT documentdb_api.drop_collection('newdb','target');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
 -- test when source collection is view
-SELECT helio_api.insert('newdb', '{"insert":"source", "documents":[{ "_id" : 1, "a" : 1, "b" : 1  }]}');
+SELECT documentdb_api.insert('newdb', '{"insert":"source", "documents":[{ "_id" : 1, "a" : 1, "b" : 1  }]}');
 NOTICE:  creating collection
                                          insert                                         
 ---------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-SELECT helio_api.create_collection_view('newdb', '{ "create": "sourceView", "viewOn": "source", "pipeline": [ { "$project": { "_id": 1, "c" : {"$add" : ["$a","$b"]} } } ] }');
+SELECT documentdb_api.create_collection_view('newdb', '{ "create": "sourceView", "viewOn": "source", "pipeline": [ { "$project": { "_id": 1, "c" : {"$add" : ["$a","$b"]} } } ] }');
          create_collection_view         
 ---------------------------------------------------------------------
  { "ok" : { "$numberDouble" : "1.0" } }
@@ -481,33 +481,33 @@ NOTICE:  creating collection
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.sourceView", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
-SELECT document FROM  helio_api.collection('newdb', 'target');
+SELECT document FROM  documentdb_api.collection('newdb', 'target');
                              document                             
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } }
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','source');
+SELECT documentdb_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','target');
+SELECT documentdb_api.drop_collection('newdb','target');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
 -- test when source is sharded:
-SELECT helio_api.insert_one('newdb','source',' {"_id": 1, "name": "Test Case"}', NULL);
+SELECT documentdb_api.insert_one('newdb','source',' {"_id": 1, "name": "Test Case"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.shard_collection('newdb', 'source', '{ "a": "hashed" }', false);
+SELECT documentdb_api.shard_collection('newdb', 'source', '{ "a": "hashed" }', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -520,26 +520,26 @@ NOTICE:  creating collection
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
-SELECT document from helio_api.collection('newdb','target');
+SELECT document from documentdb_api.collection('newdb','target');
                          document                         
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "name" : "Test Case" }
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','source');
+SELECT documentdb_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','target');
+SELECT documentdb_api.drop_collection('newdb','target');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
 -- Negative test cases
-SELECT helio_api.insert_one('newdb','source',' {"_id": 1, "name": "Test Case"}', NULL);
+SELECT documentdb_api.insert_one('newdb','source',' {"_id": 1, "name": "Test Case"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
@@ -561,13 +561,13 @@ ERROR:  wrong type for field (coll) int != string
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$out" : {"db" : 1, "coll" : "a"} } ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  wrong type for field (db) int != string
 -- test when target is view:
-SELECT helio_api.insert('newdb', '{"insert":"source", "documents":[{ "_id" : 1, "a" : 1, "b" : 1  }]}');
+SELECT documentdb_api.insert('newdb', '{"insert":"source", "documents":[{ "_id" : 1, "a" : 1, "b" : 1  }]}');
                                                                                                                                            insert                                                                                                                                            
 ---------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""319029277"" }, ""errmsg"" : ""Duplicate key violation on the requested collection: Index '_id_'"" } ] }",f)
 (1 row)
 
-SELECT helio_api.create_collection_view('newdb', '{ "create": "targetView", "viewOn": "source", "pipeline": [ { "$project": { "_id": 1, "c" : {"$add" : ["$a","$b"]} } } ] }');
+SELECT documentdb_api.create_collection_view('newdb', '{ "create": "targetView", "viewOn": "source", "pipeline": [ { "$project": { "_id": 1, "c" : {"$add" : ["$a","$b"]} } } ] }');
          create_collection_view         
 ---------------------------------------------------------------------
  { "ok" : { "$numberDouble" : "1.0" } }
@@ -575,28 +575,28 @@ SELECT helio_api.create_collection_view('newdb', '{ "create": "targetView", "vie
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [  {"$out" :  "targetView" } ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  Namespace newdb.targetView is a view, not a collection
-SELECT helio_api.drop_collection('newdb','source');
+SELECT documentdb_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
 -- test when target is sharded:
-SELECT helio_api.insert_one('newdb','source',' {"_id": 1, "name": "Test Case"}', NULL);
+SELECT documentdb_api.insert_one('newdb','source',' {"_id": 1, "name": "Test Case"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('newdb','target',' {"_id": 1, "name": "Test Case"}', NULL);
+SELECT documentdb_api.insert_one('newdb','target',' {"_id": 1, "name": "Test Case"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.shard_collection('newdb', 'target', '{ "a": "hashed" }', false);
+SELECT documentdb_api.shard_collection('newdb', 'target', '{ "a": "hashed" }', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -604,13 +604,13 @@ SELECT helio_api.shard_collection('newdb', 'target', '{ "a": "hashed" }', false)
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$out" : "target" } ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  newdb.target cannot be sharded
-SELECT helio_api.drop_collection('newdb','source');
+SELECT documentdb_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.drop_collection('newdb','target');
+SELECT documentdb_api.drop_collection('newdb','target');
  drop_collection 
 ---------------------------------------------------------------------
  t
@@ -618,7 +618,7 @@ SELECT helio_api.drop_collection('newdb','target');
 
 -- let's verify we insert or update proper data in database.
 --try to insert 16 MB Document
-SELECT helio_api.insert_one('newdb','sourceDataValidation','{ "_id": 1, "item": "a" }' , NULL);
+SELECT documentdb_api.insert_one('newdb','sourceDataValidation','{ "_id": 1, "item": "a" }' , NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
@@ -634,7 +634,7 @@ NOTICE:  creating collection
 ERROR:  The '_id' value cannot be of type array
 -- Let's take a look at explain plan
 --1) colocated tables , single shard distributed
-SELECT helio_api.insert_one('newdb','explainsrc',' {"_id": 1, "name": "Test Case"}', NULL);
+SELECT documentdb_api.insert_one('newdb','explainsrc',' {"_id": 1, "name": "Test Case"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
@@ -664,7 +664,7 @@ NOTICE:  creating collection
 (16 rows)
 
 --2) non colocated tables, hash shard distributed
-SELECT helio_api.insert_one('db','explainsrc',' {"_id": 1, "name": "Test Case"}', NULL);
+SELECT documentdb_api.insert_one('db','explainsrc',' {"_id": 1, "name": "Test Case"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
@@ -682,17 +682,17 @@ NOTICE:  creating collection
          Task Count: 1
          Tasks Shown: All
          ->  Task
-               Query: SELECT document, target_shard_key_value, generated_object_id FROM (SELECT collection.document, '9864'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id FROM helio_data.documents_9863_9830125 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9863'::bigint)) citus_insert_select_subquery
+               Query: SELECT document, target_shard_key_value, generated_object_id FROM (SELECT collection.document, '9864'::bigint AS target_shard_key_value, documentdb_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id FROM documentdb_data.documents_9863_9830125 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9863'::bigint)) citus_insert_select_subquery
                Node: host=localhost port=58070 dbname=regression
-               ->  Bitmap Heap Scan on helio_data.documents_9863_9830125 collection
-                     Output: collection.document, '9864'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document)
+               ->  Bitmap Heap Scan on documentdb_data.documents_9863_9830125 collection
+                     Output: collection.document, '9864'::bigint, documentdb_api_internal.bson_dollar_merge_generate_object_id(collection.document)
                      Recheck Cond: (collection.shard_key_value = '9863'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '9863'::bigint)
 (14 rows)
 
 --3) sharded source
-SELECT helio_api.shard_collection('newdb', 'explainsrc', '{ "a": "hashed" }', false);
+SELECT documentdb_api.shard_collection('newdb', 'explainsrc', '{ "a": "hashed" }', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -708,17 +708,17 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
          Task Count: 1
          Tasks Shown: All
          ->  Task
-               Query: SELECT document, target_shard_key_value, generated_object_id FROM (SELECT collection.document, '9864'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id FROM helio_data.documents_9863_9830125 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9863'::bigint)) citus_insert_select_subquery
+               Query: SELECT document, target_shard_key_value, generated_object_id FROM (SELECT collection.document, '9864'::bigint AS target_shard_key_value, documentdb_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id FROM documentdb_data.documents_9863_9830125 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9863'::bigint)) citus_insert_select_subquery
                Node: host=localhost port=58070 dbname=regression
-               ->  Bitmap Heap Scan on helio_data.documents_9863_9830125 collection
-                     Output: collection.document, '9864'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document)
+               ->  Bitmap Heap Scan on documentdb_data.documents_9863_9830125 collection
+                     Output: collection.document, '9864'::bigint, documentdb_api_internal.bson_dollar_merge_generate_object_id(collection.document)
                      Recheck Cond: (collection.shard_key_value = '9863'::bigint)
                      ->  Bitmap Index Scan on _id_
                            Index Cond: (collection.shard_key_value = '9863'::bigint)
 (14 rows)
 
 -- simplest test case working with db database
-SELECT helio_api.insert('db', '{"insert":"source", "documents":[
+SELECT documentdb_api.insert('db', '{"insert":"source", "documents":[
    { "_id" : 11, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 }
 ]}');
 NOTICE:  creating collection

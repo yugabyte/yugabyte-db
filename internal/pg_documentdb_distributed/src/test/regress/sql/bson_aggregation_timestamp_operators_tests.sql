@@ -1,7 +1,7 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 8800000;
-SET helio_api.next_collection_id TO 8800;
-SET helio_api.next_collection_index_id TO 8800;
+SET documentdb.next_collection_id TO 8800;
+SET documentdb.next_collection_index_id TO 8800;
 
 -- $tsSecond operator
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": null }}');
@@ -26,14 +26,14 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": {"$undefin
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": { "$timestamp": { "t": 1234567890, "i": 1 }} }}');
 
 -- Create Collection
-SELECT helio_api.create_collection('db', 'timestampTest');
+SELECT documentdb_api.create_collection('db', 'timestampTest');
 
 -- $tsIncrement/$tsSecond operator , input document tests
-SELECT helio_api.insert_one('db','timestampTest','{ "symbol": "a", "saleTimestamp": { "$timestamp": { "t": 1622731060, "i": 1 }} }', NULL);
-SELECT helio_api.insert_one('db','timestampTest','{ "symbol": "a", "saleTimestamp": { "$timestamp": { "t": 1622731060, "i": 2 }} }', NULL);
-SELECT helio_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124193, "i": 1 }} }', NULL);
-SELECT helio_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124192, "i": 1 }} }', NULL);
-SELECT helio_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124192, "i": 2 }} }', NULL);
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "a", "saleTimestamp": { "$timestamp": { "t": 1622731060, "i": 1 }} }', NULL);
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "a", "saleTimestamp": { "$timestamp": { "t": 1622731060, "i": 2 }} }', NULL);
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124193, "i": 1 }} }', NULL);
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124192, "i": 1 }} }', NULL);
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124192, "i": 2 }} }', NULL);
 
 SELECT document FROM bson_aggregation_pipeline('db', '{"aggregate": "timestampTest", "pipeline": [{ "$project": {"_id": 0, "saleTimestamp": 1, "saleIncrement": {"$tsIncrement": "$saleTimestamp"}, "saleSecond": {"$tsSecond": "$saleTimestamp"}}}  ]}');
 

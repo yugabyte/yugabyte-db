@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 # fail if trying to reference a variable that is not set.

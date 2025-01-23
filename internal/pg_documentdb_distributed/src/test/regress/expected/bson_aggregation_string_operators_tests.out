@@ -1,7 +1,7 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 620000;
-SET helio_api.next_collection_id TO 6200;
-SET helio_api.next_collection_index_id TO 6200;
+SET documentdb.next_collection_id TO 6200;
+SET documentdb.next_collection_index_id TO 6200;
 -- $concat operator: basic test:
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$concat" : []} }');
       bson_dollar_project       
@@ -21,10 +21,10 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$concat" : ["apple"]} 
  { "_id" : "1", "result" : "apple" }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$concat" : "ℹ️ ❤️ Helio"} }');
-           bson_dollar_project           
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$concat" : "ℹ️ ❤️ documentdb"} }');
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : "ℹ️ ❤️ Helio" }
+ { "_id" : "1", "result" : "ℹ️ ❤️ documentdb" }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$concat" : ["a","b"]} }');
@@ -39,10 +39,10 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$concat" : ["apple ","
  { "_id" : "1", "result" : "apple is a fruit ." }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$concat" : ["ℹ️","❤️","Helio"]} }');
-          bson_dollar_project          
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$concat" : ["ℹ️","❤️","documentdb"]} }');
+            bson_dollar_project             
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : "ℹ️❤️Helio" }
+ { "_id" : "1", "result" : "ℹ️❤️documentdb" }
 (1 row)
 
 -- $concat operator: with literals and operators test:
@@ -173,10 +173,10 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$split" : ["mango,bana
  { "_id" : "1", "result" : [ "mango", "banana", "lemon", "grapes" ] }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$split" : ["I❤️Helio","❤️"]} }');
-             bson_dollar_project              
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$split" : ["I❤️documentdb","❤️"]} }');
+                bson_dollar_project                
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : [ "I", "Helio" ] }
+ { "_id" : "1", "result" : [ "I", "documentdb" ] }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$split" : ["1abcd2abcd3abcd4abcd","abcd"]} }');
@@ -386,16 +386,16 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenBytes" : "!@#$%
 (1 row)
 
 -- $strLenBytes operator: Unicode representation and escape sequences  test:
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenBytes" : ["I ❤️ Helio"]} }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenBytes" : ["I ❤️ documentdb"]} }');
                  bson_dollar_project                 
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : { "$numberInt" : "14" } }
+ { "_id" : "1", "result" : { "$numberInt" : "19" } }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenBytes" : "I ❤️ Helio"} }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenBytes" : "I ❤️ documentdb"} }');
                  bson_dollar_project                 
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : { "$numberInt" : "14" } }
+ { "_id" : "1", "result" : { "$numberInt" : "19" } }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenBytes" : "A\u0000B"} }');
@@ -520,16 +520,16 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenCP" : "!@#$%^&*
 (1 row)
 
 -- $strLenCP operator: Unicode representation and escape sequences  test:
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenCP" : ["I ❤️ Helio"]} }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenCP" : ["I ❤️ documentdb"]} }');
                  bson_dollar_project                 
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : { "$numberInt" : "10" } }
+ { "_id" : "1", "result" : { "$numberInt" : "15" } }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenCP" : "I ❤️ Helio"} }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenCP" : "I ❤️ documentdb"} }');
                  bson_dollar_project                 
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : { "$numberInt" : "10" } }
+ { "_id" : "1", "result" : { "$numberInt" : "15" } }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strLenCP" : "A\u0000B"} }');
@@ -733,10 +733,10 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$trim" : {"input": " \
 (1 row)
 
 --$trim operator : Unicode representation and escape sequences test:
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$trim" : {"input": "\n I 💗 Helio \n", "chars" :"\n "}} }');
-           bson_dollar_project            
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$trim" : {"input": "\n I 💗 documentdb \n", "chars" :"\n "}} }');
+              bson_dollar_project              
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : "I 💗 Helio" }
+ { "_id" : "1", "result" : "I 💗 documentdb" }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$trim" : {"input": "😀😀😎😎😋😎😎😁😁", "chars" :"😁😀"}} }');
@@ -969,10 +969,10 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$ltrim" : {"input": " 
 (1 row)
 
 --$ltrim operator : Unicode representation and escape sequences test:
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$ltrim" : {"input": "\n I 💗 Helio \n", "chars" :"\n "}} }');
-             bson_dollar_project             
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$ltrim" : {"input": "\n I 💗 documentdb \n", "chars" :"\n "}} }');
+               bson_dollar_project                
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : "I 💗 Helio \n" }
+ { "_id" : "1", "result" : "I 💗 documentdb \n" }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$ltrim" : {"input": "😀😀😎😎😋😎😎😁😁", "chars" :"😁😀"}} }');
@@ -1205,10 +1205,10 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$rtrim" : {"input": " 
 (1 row)
 
 --$rtrim operator : Unicode representation and escape sequences test:
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$rtrim" : {"input": "\n I 💗 Helio \n", "chars" :"\n "}} }');
-             bson_dollar_project             
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$rtrim" : {"input": "\n I 💗 documentdb \n", "chars" :"\n "}} }');
+               bson_dollar_project                
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : "\n I 💗 Helio" }
+ { "_id" : "1", "result" : "\n I 💗 documentdb" }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$rtrim" : {"input": "😀😀😎😎😋😎😎😁😁", "chars" :"😁😀"}} }');
@@ -1410,7 +1410,7 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$indexOfBytes" : ["\u0
  { "_id" : "1", "result" : { "$numberInt" : "8" } }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$indexOfBytes" : ["I ❤️ Helio ","❤️"]} }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$indexOfBytes" : ["I ❤️ documentdb ","❤️"]} }');
                 bson_dollar_project                 
 ---------------------------------------------------------------------
  { "_id" : "1", "result" : { "$numberInt" : "2" } }
@@ -1597,7 +1597,7 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$indexOfCP" : ["\u0000
  { "_id" : "1", "result" : { "$numberInt" : "-1" } }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$indexOfCP" : ["I ❤️ Helio ","❤️"]} }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$indexOfCP" : ["I ❤️ documentdb ","❤️"]} }');
                 bson_dollar_project                 
 ---------------------------------------------------------------------
  { "_id" : "1", "result" : { "$numberInt" : "2" } }
@@ -1760,16 +1760,16 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toUpper" : "!@#$%^&*(
 (1 row)
 
 -- $toUpper operator: Unicode representation and escape sequences  test:
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toUpper" : ["I ❤️ Helio"]} }');
-           bson_dollar_project           
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toUpper" : ["I ❤️ documentdb"]} }');
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : "I ❤️ HELIO" }
+ { "_id" : "1", "result" : "I ❤️ DOCUMENTDB" }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toUpper" : "I ❤️ Helio"} }');
-           bson_dollar_project           
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toUpper" : "I ❤️ documentdb"} }');
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : "I ❤️ HELIO" }
+ { "_id" : "1", "result" : "I ❤️ DOCUMENTDB" }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toUpper" : "A\u0000B"} }');
@@ -1970,16 +1970,16 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toLower" : "!@#$%^&*(
 (1 row)
 
 -- $toLower operator: Unicode representation and escape sequences  test:
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toLower" : ["I ❤️ Helio"]} }');
-           bson_dollar_project           
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toLower" : ["I ❤️ documentdb"]} }');
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : "i ❤️ helio" }
+ { "_id" : "1", "result" : "i ❤️ documentdb" }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toLower" : "I ❤️ Helio"} }');
-           bson_dollar_project           
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toLower" : "I ❤️ documentdb"} }');
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : "i ❤️ helio" }
+ { "_id" : "1", "result" : "i ❤️ documentdb" }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$toLower" : "A\u0000B"} }');
@@ -2131,7 +2131,7 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [ "\u00
  { "_id" : "1", "result" : { "$numberInt" : "0" } }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [ "I ❤️ Helio", "I ❤️ Helio" ] } }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [ "I ❤️ documentdb", "I ❤️ documentdb" ] } }');
                 bson_dollar_project                 
 ---------------------------------------------------------------------
  { "_id" : "1", "result" : { "$numberInt" : "0" } }
@@ -2368,10 +2368,10 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substr" : [{"$timesta
 (1 row)
 
 -- $substr operator: Unicode representation and escape sequences  test:
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substr" : ["I ❤️ Helio", 1, -1]} }');
-          bson_dollar_project           
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substr" : ["I ❤️ documentdb", 1, -1]} }');
+             bson_dollar_project             
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : " ❤️ Helio" }
+ { "_id" : "1", "result" : " ❤️ documentdb" }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substr" : ["A\u0000B", 1, 2]} }');
@@ -2440,7 +2440,7 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substr" : [{"$oid" : 
 ERROR:  can't convert from BSON type objectId to String
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substr" : [NaN, -1, 1]}}');
 ERROR:  $substrBytes: starting index must be non-negative (got: -1)
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substr" : ["I ❤️ Helio", 2, 4]} }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substr" : ["I ❤️ documentdb", 2, 4]} }');
 ERROR:  $substrBytes: Invalid range, ending index is in the middle of a UTF-8 character.
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substr" : ["\uA000Bcd", 1, 2]} }');
 ERROR:  $substrBytes:  Invalid range, starting index is a UTF-8 continuation byte.
@@ -2600,10 +2600,10 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrBytes" : [{"$ti
 (1 row)
 
 -- $substrBytes operator: Unicode representation and escape sequences  test:
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrBytes" : ["I ❤️ Helio", 1, -1]} }');
-          bson_dollar_project           
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrBytes" : ["I ❤️ documentdb", 1, -1]} }');
+             bson_dollar_project             
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : " ❤️ Helio" }
+ { "_id" : "1", "result" : " ❤️ documentdb" }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrBytes" : ["A\u0000B", 1, 2]} }');
@@ -2672,7 +2672,7 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrBytes" : [{"$oi
 ERROR:  can't convert from BSON type objectId to String
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrBytes" : [NaN, -1, 1]}}');
 ERROR:  $substrBytes: starting index must be non-negative (got: -1)
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrBytes" : ["I ❤️ Helio", 2, 4]} }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrBytes" : ["I ❤️ documentdb", 2, 4]} }');
 ERROR:  $substrBytes: Invalid range, ending index is in the middle of a UTF-8 character.
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrBytes" : ["\uA000Bcd", 1, 2]} }');
 ERROR:  $substrBytes:  Invalid range, starting index is a UTF-8 continuation byte.
@@ -2840,16 +2840,16 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrCP" : [ "寿司
  { "_id" : "1", "result" : "寿司s" }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrCP" : ["I ❤️ Helio", 2, 1]} }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrCP" : ["I ❤️ documentdb", 2, 1]} }');
        bson_dollar_project       
 ---------------------------------------------------------------------
  { "_id" : "1", "result" : "❤" }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrCP" : ["I ❤️ Helio", 1, 5]} }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrCP" : ["I ❤️ documentdb", 1, 5]} }');
         bson_dollar_project         
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : " ❤️ H" }
+ { "_id" : "1", "result" : " ❤️ d" }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrCP" : ["A\u0000B", 1, 2]} }');
@@ -3906,56 +3906,56 @@ NOTICE:  creating collection
 (1 row)
 
 --inserting data
-SELECT helio_api.insert_one('db','regexMultiDocumentTest','{"_id":1, "input" : "apple", "regex" : "apple", "option" : "i"}', NULL);
+SELECT documentdb_api.insert_one('db','regexMultiDocumentTest','{"_id":1, "input" : "apple", "regex" : "apple", "option" : "i"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','regexMultiDocumentTest','{"_id":2, "input" : "apple is sweet", "regex" : "apple", "option" : "i"}', NULL);
+SELECT documentdb_api.insert_one('db','regexMultiDocumentTest','{"_id":2, "input" : "apple is sweet", "regex" : "apple", "option" : "i"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','regexMultiDocumentTest','{"_id":3, "input" : "apple is lime", "regex" : "apple", "option" : "i"}', NULL);
+SELECT documentdb_api.insert_one('db','regexMultiDocumentTest','{"_id":3, "input" : "apple is lime", "regex" : "apple", "option" : "i"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','regexMultiDocumentTest','{"_id":4, "input" : "lime is blue", "regex" : "apple", "option" : "i"}', NULL);
+SELECT documentdb_api.insert_one('db','regexMultiDocumentTest','{"_id":4, "input" : "lime is blue", "regex" : "apple", "option" : "i"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','regexMultiDocumentTest','{"_id":5, "input" : "blue is berry", "regex" : "apple", "option" : "i"}', NULL);
+SELECT documentdb_api.insert_one('db','regexMultiDocumentTest','{"_id":5, "input" : "blue is berry", "regex" : "apple", "option" : "i"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','regexMultiDocumentTest','{"_id":6, "input" : "need apple for nothing", "regex" : "apple", "option" : "i"}', NULL);
+SELECT documentdb_api.insert_one('db','regexMultiDocumentTest','{"_id":6, "input" : "need apple for nothing", "regex" : "apple", "option" : "i"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','regexMultiDocumentTest','{"_id":7, "input" : "One apple a day keeps doctor away", "regex" : "apple", "option" : "i"}', NULL);
+SELECT documentdb_api.insert_one('db','regexMultiDocumentTest','{"_id":7, "input" : "One apple a day keeps doctor away", "regex" : "apple", "option" : "i"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','regexMultiDocumentTest','{"_id":8, "input" : "red apple is red ?", "regex" : "apple", "option" : "i"}', NULL);
+SELECT documentdb_api.insert_one('db','regexMultiDocumentTest','{"_id":8, "input" : "red apple is red ?", "regex" : "apple", "option" : "i"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 --case 1: when regex and options are constant  we compile regex only once
-SELECT bson_dollar_project(document, '{"result" : { "$regexMatch" : {"input" : "$input", "regex": "apple", "options" : "i"} }}') from helio_api.collection('db','regexMultiDocumentTest');
+SELECT bson_dollar_project(document, '{"result" : { "$regexMatch" : {"input" : "$input", "regex": "apple", "options" : "i"} }}') from documentdb_api.collection('db','regexMultiDocumentTest');
                  bson_dollar_project                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "result" : true }
@@ -3968,7 +3968,7 @@ SELECT bson_dollar_project(document, '{"result" : { "$regexMatch" : {"input" : "
  { "_id" : { "$numberInt" : "8" }, "result" : true }
 (8 rows)
 
-SELECT bson_dollar_project(document, '{"result" : { "$regexFind" : {"input" : "$input", "regex": "apple", "options" : "i"} }}') from helio_api.collection('db','regexMultiDocumentTest');
+SELECT bson_dollar_project(document, '{"result" : { "$regexFind" : {"input" : "$input", "regex": "apple", "options" : "i"} }}') from documentdb_api.collection('db','regexMultiDocumentTest');
                                                    bson_dollar_project                                                   
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "result" : { "match" : "apple", "idx" : { "$numberInt" : "0" }, "captures" : [  ] } }
@@ -3981,7 +3981,7 @@ SELECT bson_dollar_project(document, '{"result" : { "$regexFind" : {"input" : "$
  { "_id" : { "$numberInt" : "8" }, "result" : { "match" : "apple", "idx" : { "$numberInt" : "4" }, "captures" : [  ] } }
 (8 rows)
 
-SELECT bson_dollar_project(document, '{"result" : { "$regexFindAll" : {"input" : "$input", "regex": "apple", "options" : "i"} }}') from helio_api.collection('db','regexMultiDocumentTest');
+SELECT bson_dollar_project(document, '{"result" : { "$regexFindAll" : {"input" : "$input", "regex": "apple", "options" : "i"} }}') from documentdb_api.collection('db','regexMultiDocumentTest');
                                                      bson_dollar_project                                                     
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "result" : [ { "match" : "apple", "idx" : { "$numberInt" : "0" }, "captures" : [  ] } ] }
@@ -3995,7 +3995,7 @@ SELECT bson_dollar_project(document, '{"result" : { "$regexFindAll" : {"input" :
 (8 rows)
 
 --case 2: when regex and options are not constant  we compile regex every document
-SELECT bson_dollar_project(document, '{"result" : { "$regexMatch" : {"input" : "$input", "regex": "$regex", "options" : "$option"} }}') from helio_api.collection('db','regexMultiDocumentTest');
+SELECT bson_dollar_project(document, '{"result" : { "$regexMatch" : {"input" : "$input", "regex": "$regex", "options" : "$option"} }}') from documentdb_api.collection('db','regexMultiDocumentTest');
                  bson_dollar_project                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "result" : true }
@@ -4008,7 +4008,7 @@ SELECT bson_dollar_project(document, '{"result" : { "$regexMatch" : {"input" : "
  { "_id" : { "$numberInt" : "8" }, "result" : true }
 (8 rows)
 
-SELECT bson_dollar_project(document, '{"result" : { "$regexFind" : {"input" : "$input", "regex": "$regex", "options" : "$option"} }}') from helio_api.collection('db','regexMultiDocumentTest');
+SELECT bson_dollar_project(document, '{"result" : { "$regexFind" : {"input" : "$input", "regex": "$regex", "options" : "$option"} }}') from documentdb_api.collection('db','regexMultiDocumentTest');
                                                    bson_dollar_project                                                   
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "result" : { "match" : "apple", "idx" : { "$numberInt" : "0" }, "captures" : [  ] } }
@@ -4021,7 +4021,7 @@ SELECT bson_dollar_project(document, '{"result" : { "$regexFind" : {"input" : "$
  { "_id" : { "$numberInt" : "8" }, "result" : { "match" : "apple", "idx" : { "$numberInt" : "4" }, "captures" : [  ] } }
 (8 rows)
 
-SELECT bson_dollar_project(document, '{"result" : { "$regexFindAll" : {"input" : "$input", "regex": "$regex", "options" : "$option"} }}') from helio_api.collection('db','regexMultiDocumentTest');
+SELECT bson_dollar_project(document, '{"result" : { "$regexFindAll" : {"input" : "$input", "regex": "$regex", "options" : "$option"} }}') from documentdb_api.collection('db','regexMultiDocumentTest');
                                                      bson_dollar_project                                                     
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "result" : [ { "match" : "apple", "idx" : { "$numberInt" : "0" }, "captures" : [  ] } ] }
@@ -4234,10 +4234,10 @@ ERROR:  $replaceOne found an unknown argument: newField
 select bson_dollar_project('{"_id":"1", "test": {"nest": "hello"}}', '{"result": {"$replaceOne": {"input": "Present monsieur", "find": "si", "newField": "he"}}}');
 ERROR:  $replaceOne found an unknown argument: newField
 -- $replaceOne operator: special characters and escape sequences test:
-select bson_dollar_project('{"_id":"1"}', '{"result": {"$replaceOne": {"input": "I ❤️ Helio", "find": "❤️", "replacement": "\u0000B"}}}');
-              bson_dollar_project              
+select bson_dollar_project('{"_id":"1"}', '{"result": {"$replaceOne": {"input": "I ❤️ documentdb", "find": "❤️", "replacement": "\u0000B"}}}');
+                bson_dollar_project                 
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : "I \u0000B Helio" }
+ { "_id" : "1", "result" : "I \u0000B documentdb" }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result": {"$replaceOne": {"input": "jalapeño", "find": "peñ", "replacement": "寿司"}}}');
@@ -4477,10 +4477,10 @@ ERROR:  $replaceAll found an unknown argument: newField
 select bson_dollar_project('{"_id":"1", "test": {"nest": "hello"}}', '{"result": {"$replaceAll": {"input": "Present monsieur", "find": "si", "newField": "he"}}}');
 ERROR:  $replaceAll found an unknown argument: newField
 -- $replaceAll operator: special characters and escape sequences test:
-select bson_dollar_project('{"_id":"1"}', '{"result": {"$replaceAll": {"input": "I ❤️ Helio", "find": "❤️", "replacement": "\u0000B"}}}');
-              bson_dollar_project              
+select bson_dollar_project('{"_id":"1"}', '{"result": {"$replaceAll": {"input": "I ❤️ documentdb", "find": "❤️", "replacement": "\u0000B"}}}');
+                bson_dollar_project                 
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : "I \u0000B Helio" }
+ { "_id" : "1", "result" : "I \u0000B documentdb" }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result": {"$replaceAll": {"input": "jalapeño", "find": "peñ", "replacement": "寿司"}}}');

@@ -1,108 +1,108 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 60000;
-SET helio_api.next_collection_id TO 6000;
-SET helio_api.next_collection_index_id TO 6000;
+SET documentdb.next_collection_id TO 6000;
+SET documentdb.next_collection_index_id TO 6000;
 -- Insert data
-SELECT helio_api.insert_one('db','orders',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+SELECT documentdb_api.insert_one('db','orders',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders','{ "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','orders','{ "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','orders',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','orders',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders',' { "_id" : 5}', NULL);
+SELECT documentdb_api.insert_one('db','orders',' { "_id" : 5}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders',' { "_id" : 6, "item" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
+SELECT documentdb_api.insert_one('db','orders',' { "_id" : 6, "item" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders',' { "_id" : 7, "item" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"] }', NULL);
+SELECT documentdb_api.insert_one('db','orders',' { "_id" : 7, "item" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','inventory',' { "_id" : 1, "sku" : "almonds", "description": "product 1", "instock" : 120 }', NULL);
+SELECT documentdb_api.insert_one('db','inventory',' { "_id" : 1, "sku" : "almonds", "description": "product 1", "instock" : 120 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','inventory',' { "_id" : 11, "sku" : "almonds", "description": "product 1", "instock" : 240 }', NULL);
+SELECT documentdb_api.insert_one('db','inventory',' { "_id" : 11, "sku" : "almonds", "description": "product 1", "instock" : 240 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','inventory','{ "_id" : 2, "sku" : "bread", "description": "product 2", "instock" : 80 }', NULL);
+SELECT documentdb_api.insert_one('db','inventory','{ "_id" : 2, "sku" : "bread", "description": "product 2", "instock" : 80 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','inventory','{ "_id" : 3, "sku" : "cashews", "description": "product 3", "instock" : 60 }', NULL);
+SELECT documentdb_api.insert_one('db','inventory','{ "_id" : 3, "sku" : "cashews", "description": "product 3", "instock" : 60 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','inventory','{ "_id" : 4, "sku" : "pecans", "description": "product 4", "instock" : 70 }', NULL);
+SELECT documentdb_api.insert_one('db','inventory','{ "_id" : 4, "sku" : "pecans", "description": "product 4", "instock" : 70 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','inventory','{ "_id" : 5, "sku" : null, "description": "product 4", "instock" : 70 }', NULL);
+SELECT documentdb_api.insert_one('db','inventory','{ "_id" : 5, "sku" : null, "description": "product 4", "instock" : 70 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','inventory','{ "_id" : 6, "sku" :  {"a": "x", "b" : 1, "c" : [1, 2, 3]}, "description": "complex object" }', NULL);
+SELECT documentdb_api.insert_one('db','inventory','{ "_id" : 6, "sku" :  {"a": "x", "b" : 1, "c" : [1, 2, 3]}, "description": "complex object" }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','inventory','{ "_id" : 7, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
+SELECT documentdb_api.insert_one('db','inventory','{ "_id" : 7, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','inventory','{ "_id" : 8, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
+SELECT documentdb_api.insert_one('db','inventory','{ "_id" : 8, "sku" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "description": "complex array" }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- Test filter generation 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') FROM helio_api.collection('db', 'orders');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') FROM documentdb_api.collection('db', 'orders');
                                                             bson_dollar_lookup_extract_filter_expression                                                             
 ---------------------------------------------------------------------
  { "sku" : [ "almonds" ] }
@@ -117,12 +117,12 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}'
 -- Test full lookup sql
 WITH 
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-	AS match FROM helio_api.collection('db', 'orders')) 
+	AS match FROM documentdb_api.collection('db', 'orders')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE (array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'inventory') AS t2
+	SELECT COALESCE (array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'inventory') AS t2
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
                                                                                                                                                                                                                                                                                                                                       bson_dollar_lookup_project                                                                                                                                                                                                                                                                                                                                       
@@ -137,7 +137,7 @@ LEFT JOIN LATERAL (
 (7 rows)
 
 -- Create Index on Inventory
-SELECT helio_api_internal.create_indexes_non_concurrently(
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
   'db',
   '{
      "createIndexes": "inventory",
@@ -153,7 +153,7 @@ SELECT helio_api_internal.create_indexes_non_concurrently(
 (1 row)
 
 -- Test Index pushdown
-SELECT helio_distributed_test_helpers.drop_primary_key('db','inventory');
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','inventory');
  drop_primary_key 
 ---------------------------------------------------------------------
  
@@ -163,12 +163,12 @@ BEGIN;
 set local enable_seqscan TO off;
 EXPLAIN(costs off) WITH                                                                                            
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-AS match, 'mdocs' asname FROM helio_api.collection('db', 'orders')) 
+AS match, 'mdocs' asname FROM documentdb_api.collection('db', 'orders')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-FROM helio_api.collection('db', 'inventory') AS t2 
+SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+FROM documentdb_api.collection('db', 'inventory') AS t2 
 WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
                                                                                                    QUERY PLAN                                                                                                   
@@ -186,51 +186,51 @@ WHERE bson_dollar_in(t2.document, t1.match)
                                  Index Cond: (shard_key_value = '6000'::bigint)
                      ->  Aggregate
                            ->  Seq Scan on documents_6001_60016 t2
-                                 Filter: (document OPERATOR(helio_api_catalog.@*=) helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "sku" : "item" }'::helio_core.bson))
+                                 Filter: (document OPERATOR(documentdb_api_catalog.@*=) documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "sku" : "item" }'::documentdb_core.bson))
 (14 rows)
 
 ROLLBACK;
 -- Insert data into a new collection to be sharded (shard key can't be an array, but can be null or object)
-SELECT helio_api.insert_one('db','orders_sharded',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+SELECT documentdb_api.insert_one('db','orders_sharded',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders_sharded','{ "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','orders_sharded','{ "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders_sharded',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','orders_sharded',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders_sharded',' { "_id" : 4}', NULL);
+SELECT documentdb_api.insert_one('db','orders_sharded',' { "_id" : 4}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders_sharded',' { "_id" : 5, "item" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
+SELECT documentdb_api.insert_one('db','orders_sharded',' { "_id" : 5, "item" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- Shard orders collection on item 
-SELECT helio_api.shard_collection('db','orders_sharded', '{"item":"hashed"}', false);
+SELECT documentdb_api.shard_collection('db','orders_sharded', '{"item":"hashed"}', false);
  shard_collection 
 ---------------------------------------------------------------------
  
 (1 row)
 
 -- Test filter generation on sharded left collection
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') FROM helio_api.collection('db', 'orders_sharded');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') FROM documentdb_api.collection('db', 'orders_sharded');
                                                  bson_dollar_lookup_extract_filter_expression                                                  
 ---------------------------------------------------------------------
  { "sku" : [ "bread" ] }
@@ -244,16 +244,16 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}'
 BEGIN;
 set local enable_seqscan TO off;
 SET JIT To off;
-SELECT helio_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
+SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
 EXPLAIN(costs off) 
 WITH                                                                                            
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-	AS match, 'mdocs' asname FROM helio_api.collection('db', 'orders_sharded')) 
+	AS match, 'mdocs' asname FROM documentdb_api.collection('db', 'orders_sharded')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'inventory') AS t2 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'inventory') AS t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
 $Q$);
@@ -276,11 +276,11 @@ $Q$);
                      ->  Function Scan on read_intermediate_result intermediate_result
                      ->  Aggregate
                            ->  Seq Scan on documents_6001_60016 t2
-                                 Filter: (document OPERATOR(helio_api_catalog.@*=) intermediate_result.match)
+                                 Filter: (document OPERATOR(documentdb_api_catalog.@*=) intermediate_result.match)
 (18 rows)
 
 ROLLBACK;
-SELECT shard_key_value, object_id, document FROM helio_api.collection('db', 'orders_sharded') order by object_id;
+SELECT shard_key_value, object_id, document FROM documentdb_api.collection('db', 'orders_sharded') order by object_id;
    shard_key_value    |            object_id            |                                                                                  document                                                                                  
 ---------------------------------------------------------------------
  -6635625778485026571 | { "" : { "$numberInt" : "1" } } | { "_id" : { "$numberInt" : "1" }, "item" : "almonds", "price" : { "$numberInt" : "12" }, "quantity" : { "$numberInt" : "2" } }
@@ -293,22 +293,22 @@ SELECT shard_key_value, object_id, document FROM helio_api.collection('db', 'ord
 -- Test lookup on sharded left collection
 WITH 
 t1_0 AS(SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-  AS lookup_filters FROM helio_api.collection('db', 'orders_sharded')) 
+  AS lookup_filters FROM documentdb_api.collection('db', 'orders_sharded')) 
 SELECT bson_dollar_lookup_project(t1_0.document, t2_0_agg.matched_array , 'matched_docs'::text) as document 
 FROM t1_0 LEFT JOIN LATERAL ( 
-    WITH "LookupStage_0_0" as (SELECT * FROM helio_api.collection('db', 'inventory') AS t2_0 WHERE bson_dollar_in(t2_0.document, t1_0.lookup_filters) ) 
-    SELECT COALESCE(array_agg("LookupStage_0_0".document::helio_core.bson), '{}'::bson[]) as matched_array FROM "LookupStage_0_0"
+    WITH "LookupStage_0_0" as (SELECT * FROM documentdb_api.collection('db', 'inventory') AS t2_0 WHERE bson_dollar_in(t2_0.document, t1_0.lookup_filters) ) 
+    SELECT COALESCE(array_agg("LookupStage_0_0".document::documentdb_core.bson), '{}'::bson[]) as matched_array FROM "LookupStage_0_0"
 ) t2_0_agg ON TRUE;
 ERROR:  CTEs that refer to other subqueries are not supported in multi-shard queries
 -- Test lookup on sharded left collection (rewrite avoiding the the CTE error)
 WITH                                                                                            
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-	AS match, 'mdocs' asname FROM helio_api.collection('db', 'orders_sharded')) 
+	AS match, 'mdocs' asname FROM documentdb_api.collection('db', 'orders_sharded')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'inventory') AS t2 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'inventory') AS t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
                                                                                                                                                                                           bson_dollar_lookup_project                                                                                                                                                                                          
@@ -327,13 +327,13 @@ WITH simple_lookup as
 (
 WITH                                                                                            
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-	AS match, 'mdocs' asname FROM helio_api.collection('db', 'orders_sharded'))
+	AS match, 'mdocs' asname FROM documentdb_api.collection('db', 'orders_sharded'))
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 -- perform lookup
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'inventory') AS t2 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'inventory') AS t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE
 ) 
@@ -350,14 +350,14 @@ SELECT bson_dollar_add_fields(bson_dollar_lookup_project, '{"matched_docs.hello"
 
 WITH                                                                                            
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-	AS match, 'mdocs' asname FROM helio_api.collection('db', 'orders_sharded')),
+	AS match, 'mdocs' asname FROM documentdb_api.collection('db', 'orders_sharded')),
 -- subpipeline moved up
-t2 as (SELECT bson_dollar_add_fields(document, '{"matched_docs.hello": "newsubpipelinefield"}') as document from helio_api.collection('db', 'inventory'))
+t2 as (SELECT bson_dollar_add_fields(document, '{"matched_docs.hello": "newsubpipelinefield"}') as document from documentdb_api.collection('db', 'inventory'))
 -- now perform lookup
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
 	FROM t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
@@ -376,13 +376,13 @@ WITH lookup_stage as
   -- Create CTE for the left/source collection (say t1)
   WITH                                                                                            
     t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-	  AS match, 'mdocs' asname FROM helio_api.collection('db', 'orders_sharded'))
+	  AS match, 'mdocs' asname FROM documentdb_api.collection('db', 'orders_sharded'))
   SELECT t1.document, t2_agg.document as matched
   FROM t1
   -- perform lateral join on the right collection (aka joined collection)
     LEFT JOIN LATERAL ( 
 	  SELECT document
-	  FROM helio_api.collection('db', 'inventory') AS t2 
+	  FROM documentdb_api.collection('db', 'inventory') AS t2 
 	  WHERE bson_dollar_in(t2.document, t1.match) 
   ) t2_agg ON TRUE
 ),
@@ -390,7 +390,7 @@ WITH lookup_stage as
 subpipeline_stage1 as ( SELECT lookup_stage.document, bson_dollar_add_fields(lookup_stage.matched, '{"new": "field"}') as matched from lookup_stage)
 -- Aggregate the results so, if there multiple matches they are folded in an array
 SELECT bson_dollar_lookup_project(subpipeline_stage1.document, 
-                COALESCE(array_agg(subpipeline_stage1.matched::helio_core.bson), '{}'::bson[]), 'matched_docs'::text) FROM subpipeline_stage1
+                COALESCE(array_agg(subpipeline_stage1.matched::documentdb_core.bson), '{}'::bson[]), 'matched_docs'::text) FROM subpipeline_stage1
 GROUP BY subpipeline_stage1.document;
                                                                                                                                                                                                          bson_dollar_lookup_project                                                                                                                                                                                                         
 ---------------------------------------------------------------------
@@ -405,22 +405,22 @@ set citus.enable_local_execution to off;
 -- Test lookup on sharded left collection
 WITH 
 t1_0 AS(SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-  AS lookup_filters FROM helio_api.collection('db', 'orders_sharded')) 
+  AS lookup_filters FROM documentdb_api.collection('db', 'orders_sharded')) 
 SELECT bson_dollar_lookup_project(t1_0.document, t2_0_agg.matched_array , 'matched_docs'::text) as document 
 FROM t1_0 LEFT JOIN LATERAL ( 
-    WITH "LookupStage_0_0" as (SELECT * FROM helio_api.collection('db', 'inventory') AS t2_0 WHERE bson_dollar_in(t2_0.document, t1_0.lookup_filters) ) 
-    SELECT COALESCE(array_agg("LookupStage_0_0".document::helio_core.bson), '{}'::bson[]) as matched_array FROM "LookupStage_0_0"
+    WITH "LookupStage_0_0" as (SELECT * FROM documentdb_api.collection('db', 'inventory') AS t2_0 WHERE bson_dollar_in(t2_0.document, t1_0.lookup_filters) ) 
+    SELECT COALESCE(array_agg("LookupStage_0_0".document::documentdb_core.bson), '{}'::bson[]) as matched_array FROM "LookupStage_0_0"
 ) t2_0_agg ON TRUE;
 ERROR:  CTEs that refer to other subqueries are not supported in multi-shard queries
 -- Test lookup on sharded left collection (rewrite avoiding the the CTE error)
 WITH                                                                                            
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-	AS match, 'mdocs' asname FROM helio_api.collection('db', 'orders_sharded')) 
+	AS match, 'mdocs' asname FROM documentdb_api.collection('db', 'orders_sharded')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'inventory') AS t2 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'inventory') AS t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
                                                                                                                                                                                           bson_dollar_lookup_project                                                                                                                                                                                          
@@ -439,13 +439,13 @@ WITH simple_lookup as
 (
 WITH                                                                                            
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-	AS match, 'mdocs' asname FROM helio_api.collection('db', 'orders_sharded'))
+	AS match, 'mdocs' asname FROM documentdb_api.collection('db', 'orders_sharded'))
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 -- perform lookup
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'inventory') AS t2 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'inventory') AS t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE
 ) 
@@ -462,14 +462,14 @@ SELECT bson_dollar_add_fields(bson_dollar_lookup_project, '{"matched_docs.hello"
 
 WITH                                                                                            
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-	AS match, 'mdocs' asname FROM helio_api.collection('db', 'orders_sharded')),
+	AS match, 'mdocs' asname FROM documentdb_api.collection('db', 'orders_sharded')),
 -- subpipeline moved up
-t2 as (SELECT bson_dollar_add_fields(document, '{"matched_docs.hello": "newsubpipelinefield"}') as document from helio_api.collection('db', 'inventory'))
+t2 as (SELECT bson_dollar_add_fields(document, '{"matched_docs.hello": "newsubpipelinefield"}') as document from documentdb_api.collection('db', 'inventory'))
 -- now perform lookup
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
 	FROM t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
@@ -488,13 +488,13 @@ WITH lookup_stage as
   -- Create CTE for the left/source collection (say t1)
   WITH                                                                                            
     t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"sku" : "item"}') 
-	  AS match, 'mdocs' asname FROM helio_api.collection('db', 'orders_sharded'))
+	  AS match, 'mdocs' asname FROM documentdb_api.collection('db', 'orders_sharded'))
   SELECT t1.document, t2_agg.document as matched
   FROM t1
   -- perform lateral join on the right collection (aka joined collection)
     LEFT JOIN LATERAL ( 
 	  SELECT document
-	  FROM helio_api.collection('db', 'inventory') AS t2 
+	  FROM documentdb_api.collection('db', 'inventory') AS t2 
 	  WHERE bson_dollar_in(t2.document, t1.match) 
   ) t2_agg ON TRUE
 ),
@@ -502,7 +502,7 @@ WITH lookup_stage as
 subpipeline_stage1 as ( SELECT lookup_stage.document, bson_dollar_add_fields(lookup_stage.matched, '{"new": "field"}') as matched from lookup_stage)
 -- Aggregate the results so, if there multiple matches they are folded in an array
 SELECT bson_dollar_lookup_project(subpipeline_stage1.document, 
-                COALESCE(array_agg(subpipeline_stage1.matched::helio_core.bson), '{}'::bson[]), 'matched_docs'::text) FROM subpipeline_stage1
+                COALESCE(array_agg(subpipeline_stage1.matched::documentdb_core.bson), '{}'::bson[]), 'matched_docs'::text) FROM subpipeline_stage1
 GROUP BY subpipeline_stage1.document;
                                                                                                                                                                                                          bson_dollar_lookup_project                                                                                                                                                                                                         
 ---------------------------------------------------------------------
@@ -515,45 +515,45 @@ GROUP BY subpipeline_stage1.document;
 
 set citus.enable_local_execution to on;
 -- Test coalesce path, return empty array when no match found 
-SELECT helio_api.insert_one('db','coll','{"_id": 0, "a": 1}', NULL);
+SELECT documentdb_api.insert_one('db','coll','{"_id": 0, "a": 1}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','coll','{"_id": 1, "a": null}', NULL);
+SELECT documentdb_api.insert_one('db','coll','{"_id": 1, "a": null}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','coll','{"_id": 2}', NULL);
+SELECT documentdb_api.insert_one('db','coll','{"_id": 2}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','from','{"_id": 0, "b": 1}', NULL);
+SELECT documentdb_api.insert_one('db','from','{"_id": 0, "b": 1}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','from','{"_id": 1, "b": null}', NULL);
+SELECT documentdb_api.insert_one('db','from','{"_id": 1, "b": null}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','from','{"_id": 2}', NULL);
+SELECT documentdb_api.insert_one('db','from','{"_id": 2}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"nonex" : "a"}') FROM helio_api.collection('db', 'coll');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"nonex" : "a"}') FROM documentdb_api.collection('db', 'coll');
  bson_dollar_lookup_extract_filter_expression 
 ---------------------------------------------------------------------
  { "nonex" : [ { "$numberInt" : "1" } ] }
@@ -563,12 +563,12 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"nonex" : "a"}')
 
 WITH 
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"nonex" : "a"}') 
-	AS match FROM helio_api.collection('db', 'coll')) 
+	AS match FROM documentdb_api.collection('db', 'coll')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'from') AS t2 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'from') AS t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
                                                                                                 bson_dollar_lookup_project                                                                                                 
@@ -579,63 +579,63 @@ LEFT JOIN LATERAL (
 (3 rows)
 
 -- Test dotted path
-SELECT helio_api.insert_one('db','coll1','{"_id": 0, "a": 1}', NULL);
+SELECT documentdb_api.insert_one('db','coll1','{"_id": 0, "a": 1}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','coll1','{"_id": 1, "a": null}', NULL);
+SELECT documentdb_api.insert_one('db','coll1','{"_id": 1, "a": null}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','coll1','{"_id": 2}', NULL);
+SELECT documentdb_api.insert_one('db','coll1','{"_id": 2}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','coll1','{"_id": 3, "a": {"c": 1}}', NULL);
+SELECT documentdb_api.insert_one('db','coll1','{"_id": 3, "a": {"c": 1}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','from1','{"_id": 0, "b": 1}', NULL);
+SELECT documentdb_api.insert_one('db','from1','{"_id": 0, "b": 1}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','from1','{"_id": 1, "b": null}', NULL);
+SELECT documentdb_api.insert_one('db','from1','{"_id": 1, "b": null}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','from1','{"_id": 2}', NULL);
+SELECT documentdb_api.insert_one('db','from1','{"_id": 2}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','from1','{"_id": 3, "b": {"c" : 1}}', NULL);
+SELECT documentdb_api.insert_one('db','from1','{"_id": 3, "b": {"c" : 1}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','from1','{"_id": 4, "b": {"c" : 2}}', NULL);
+SELECT documentdb_api.insert_one('db','from1','{"_id": 4, "b": {"c" : 2}}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b.c" : "a.c"}') FROM helio_api.collection('db', 'coll1');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b.c" : "a.c"}') FROM documentdb_api.collection('db', 'coll1');
  bson_dollar_lookup_extract_filter_expression 
 ---------------------------------------------------------------------
  { "b.c" : [ null ] }
@@ -646,12 +646,12 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b.c" : "a.c"}')
 
 WITH 
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"b.c" : "a.c"}') 
-	AS match FROM helio_api.collection('db', 'coll1')) 
+	AS match FROM documentdb_api.collection('db', 'coll1')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'from1') AS t2 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'from1') AS t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
                                                                                                          bson_dollar_lookup_project                                                                                                          
@@ -663,19 +663,19 @@ LEFT JOIN LATERAL (
 (4 rows)
 
 -- Empty from collection tests
-SELECT * FROM helio_api.collection('db', 'from1NonExistent');
+SELECT * FROM documentdb_api.collection('db', 'from1NonExistent');
  shard_key_value | object_id | document | creation_time 
 ---------------------------------------------------------------------
 (0 rows)
 
 WITH 
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"b.c" : "a.c"}') 
-	AS match FROM helio_api.collection('db', 'coll1')) 
+	AS match FROM documentdb_api.collection('db', 'coll1')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'from1NonExistent') AS t2 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'from1NonExistent') AS t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
                                     bson_dollar_lookup_project                                     
@@ -687,27 +687,27 @@ LEFT JOIN LATERAL (
 (4 rows)
 
 -- Dotted path on mathched array name (some.documents)
-SELECT helio_api.insert_one('db','coll2','{"_id": 0, "a": {"b" : 1}}', NULL);
+SELECT documentdb_api.insert_one('db','coll2','{"_id": 0, "a": {"b" : 1}}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','coll2','{"_id": 1}', NULL);
+SELECT documentdb_api.insert_one('db','coll2','{"_id": 1}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','from2','{"_id": 0, "target": 1}', NULL);
+SELECT documentdb_api.insert_one('db','from2','{"_id": 0, "target": 1}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"target" : "a.b"}') FROM helio_api.collection('db', 'coll2');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"target" : "a.b"}') FROM documentdb_api.collection('db', 'coll2');
  bson_dollar_lookup_extract_filter_expression 
 ---------------------------------------------------------------------
  { "target" : [ { "$numberInt" : "1" } ] }
@@ -716,12 +716,12 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"target" : "a.b"
 
 WITH 
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"target" : "a.b"}') 
-	AS match FROM helio_api.collection('db', 'coll2')) 
+	AS match FROM documentdb_api.collection('db', 'coll2')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'same.documents'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'from2') AS t2 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'from2') AS t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
                                                                             bson_dollar_lookup_project                                                                            
@@ -731,53 +731,53 @@ LEFT JOIN LATERAL (
 (2 rows)
 
 -- Dotted path that goes through objects and arrays 
-SELECT helio_api.insert_one('db','dottedObject','{"_id": 0, "a": [{"b": 1}, {"b": 2}]}', NULL);
+SELECT documentdb_api.insert_one('db','dottedObject','{"_id": 0, "a": [{"b": 1}, {"b": 2}]}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','dottedObjectFrom','{"_id": 0}', NULL);
+SELECT documentdb_api.insert_one('db','dottedObjectFrom','{"_id": 0}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','dottedObjectFrom','{"_id": 1}', NULL);
+SELECT documentdb_api.insert_one('db','dottedObjectFrom','{"_id": 1}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','dottedObjectFrom','{"_id": 2}', NULL);
+SELECT documentdb_api.insert_one('db','dottedObjectFrom','{"_id": 2}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"_id" : "a.b"}') FROM helio_api.collection('db', 'dottedObject');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"_id" : "a.b"}') FROM documentdb_api.collection('db', 'dottedObject');
           bson_dollar_lookup_extract_filter_expression          
 ---------------------------------------------------------------------
  { "_id" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
 (1 row)
 
 -- Dotted AS path that is already present in the left document 
-SELECT helio_api.insert_one('db','dottedExistingAs','{"_id": 0, "a": [{"b": 1}, {"b": 2}]}', NULL);
+SELECT documentdb_api.insert_one('db','dottedExistingAs','{"_id": 0, "a": [{"b": 1}, {"b": 2}]}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','dottedExistingAs','{"_id": 1, "c": [{"d": 1}, {"d": 2}]}', NULL);
+SELECT documentdb_api.insert_one('db','dottedExistingAs','{"_id": 1, "c": [{"d": 1}, {"d": 2}]}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"c.d" : "a.b"}') FROM helio_api.collection('db', 'dottedExistingAs');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"c.d" : "a.b"}') FROM documentdb_api.collection('db', 'dottedExistingAs');
           bson_dollar_lookup_extract_filter_expression          
 ---------------------------------------------------------------------
  { "c.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
@@ -786,12 +786,12 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"c.d" : "a.b"}')
 
 WITH 
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"c.d" : "a.b"}') 
-	AS match FROM helio_api.collection('db', 'dottedExistingAs')) 
+	AS match FROM documentdb_api.collection('db', 'dottedExistingAs')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'a.b'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE(array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'dottedExistingAs') AS t2 
+	SELECT COALESCE(array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'dottedExistingAs') AS t2 
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
                                                                                                                                           bson_dollar_lookup_project                                                                                                                                          
@@ -802,33 +802,33 @@ LEFT JOIN LATERAL (
 
 -- (B) Lookup with pipeline support
 -- (B).1 Data Ingestion
-SELECT helio_api.insert_one('db','pipelinefrom',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
+SELECT documentdb_api.insert_one('db','pipelinefrom',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','pipelinefrom','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
+SELECT documentdb_api.insert_one('db','pipelinefrom','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','pipelineto','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House"}', NULL);
+SELECT documentdb_api.insert_one('db','pipelineto','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','pipelineto','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade"}', NULL);
+SELECT documentdb_api.insert_one('db','pipelineto','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','pipelineto','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda"}', NULL);
+SELECT documentdb_api.insert_one('db','pipelineto','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -861,7 +861,7 @@ SELECT document from bson_aggregation_pipeline('db',
 (3 rows)
 
 -- (B).2 Index creation on the from collection
-  SELECT helio_api_internal.create_indexes_non_concurrently(
+  SELECT documentdb_api_internal.create_indexes_non_concurrently(
   'db',
   '{
      "createIndexes": "pipelinefrom",
@@ -896,10 +896,10 @@ EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('db',
                            Index Cond: (shard_key_value = '6013'::bigint)
                ->  Aggregate
                      ->  Bitmap Heap Scan on documents_6012_60207 collection_0_1
-                           Recheck Cond: (document OPERATOR(helio_api_catalog.@>) '{ "quantity" : { "$numberInt" : "110" } }'::helio_core.bson)
-                           Filter: helio_api_internal.bson_dollar_lookup_join_filter(document, helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::helio_core.bson), 'name'::text)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "quantity" : { "$numberInt" : "110" } }'::documentdb_core.bson)
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::documentdb_core.bson), 'name'::text)
                            ->  Bitmap Index Scan on idx_pipelinefrom_quantity
-                                 Index Cond: (document OPERATOR(helio_api_catalog.@>) '{ "quantity" : { "$numberInt" : "110" } }'::helio_core.bson)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "quantity" : { "$numberInt" : "110" } }'::documentdb_core.bson)
 (16 rows)
 
 ROLLBACK;
@@ -923,7 +923,7 @@ EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('db',
                      ->  Sort
                            Sort Key: collection_0_1.object_id
                            ->  Seq Scan on documents_6012_60207 collection_0_1
-                                 Filter: ((document OPERATOR(helio_api_catalog.@>) '{ "quantity" : { "$numberInt" : "110" } }'::helio_core.bson) AND helio_api_internal.bson_dollar_lookup_join_filter(document, helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::helio_core.bson), 'name'::text))
+                                 Filter: ((document OPERATOR(documentdb_api_catalog.@>) '{ "quantity" : { "$numberInt" : "110" } }'::documentdb_core.bson) AND documentdb_api_internal.bson_dollar_lookup_join_filter(document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::documentdb_core.bson), 'name'::text))
 (15 rows)
 
 ROLLBACK;
@@ -959,10 +959,10 @@ EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('db',
                            Index Cond: (shard_key_value = '6013'::bigint)
                ->  Aggregate
                      ->  Bitmap Heap Scan on documents_6012_60207 collection_0_1
-                           Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "name" : "Honest John Pizza" }'::helio_core.bson)
-                           Filter: helio_api_internal.bson_dollar_lookup_join_filter(document, helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::helio_core.bson), 'name'::text)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "name" : "Honest John Pizza" }'::documentdb_core.bson)
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::documentdb_core.bson), 'name'::text)
                            ->  Bitmap Index Scan on idx_pipelinefrom_name
-                                 Index Cond: ((document OPERATOR(helio_api_catalog.@=) '{ "name" : "Honest John Pizza" }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@*=) helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::helio_core.bson)))
+                                 Index Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "name" : "Honest John Pizza" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::documentdb_core.bson)))
 (16 rows)
 
 ROLLBACK;
@@ -984,10 +984,10 @@ EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('db',
                            Index Cond: (shard_key_value = '6013'::bigint)
                ->  Aggregate
                      ->  Bitmap Heap Scan on documents_6012_60207 collection_0_1
-                           Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "name" : "Honest John Pizza" }'::helio_core.bson)
-                           Filter: helio_api_internal.bson_dollar_lookup_join_filter(document, helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::helio_core.bson), 'name'::text)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "name" : "Honest John Pizza" }'::documentdb_core.bson)
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::documentdb_core.bson), 'name'::text)
                            ->  Bitmap Index Scan on idx_pipelinefrom_name
-                                 Index Cond: ((document OPERATOR(helio_api_catalog.@=) '{ "name" : "Honest John Pizza" }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@*=) helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::helio_core.bson)))
+                                 Index Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "name" : "Honest John Pizza" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::documentdb_core.bson)))
 (16 rows)
 
 ROLLBACK;
@@ -1046,12 +1046,12 @@ EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('db',
                            Index Cond: (shard_key_value = '6013'::bigint)
                ->  Aggregate
                      ->  Nested Loop Left Join
-                           Filter: helio_api_internal.bson_dollar_lookup_join_filter(helio_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2)), helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::helio_core.bson), 'name'::text)
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(documentdb_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2)), documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::documentdb_core.bson), 'name'::text)
                            ->  Index Scan using _id_ on documents_6012_60207 collection_0_1
                                  Index Cond: (shard_key_value = '6012'::bigint)
                            ->  Aggregate
                                  ->  Index Scan using _id_ on documents_6012_60207 collection_0_2
-                                       Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(helio_core.=) collection_0_1.object_id))
+                                       Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection_0_1.object_id))
                            SubPlan 2
                              ->  Aggregate
                                    ->  ProjectSet
@@ -1081,7 +1081,7 @@ EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('db',
                            Index Cond: (shard_key_value = '6013'::bigint)
                ->  Aggregate
                      ->  Index Scan using _id_ on documents_6012_60207 collection_0_1
-                           Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(helio_core.=) collection.object_id))
+                           Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection.object_id))
 (13 rows)
 
 ROLLBACK;
@@ -1103,7 +1103,7 @@ EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('db',
                            Index Cond: (shard_key_value = '6013'::bigint)
                ->  Aggregate
                      ->  Index Scan using _id_ on documents_6012_60207 collection_0_1
-                           Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(helio_core.=) collection.object_id))
+                           Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection.object_id))
 (13 rows)
 
 ROLLBACK;
@@ -1125,12 +1125,12 @@ EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('db',
                            Index Cond: (shard_key_value = '6013'::bigint)
                ->  Aggregate
                      ->  Nested Loop Left Join
-                           Filter: helio_api_internal.bson_dollar_lookup_join_filter(helio_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2)), helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::helio_core.bson), 'name'::text)
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(documentdb_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2)), documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::documentdb_core.bson), 'name'::text)
                            ->  Index Scan using _id_ on documents_6012_60207 collection_0_1
                                  Index Cond: (shard_key_value = '6012'::bigint)
                            ->  Aggregate
                                  ->  Index Scan using _id_ on documents_6012_60207 collection_0_2
-                                       Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(helio_core.=) collection_0_1.object_id))
+                                       Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection_0_1.object_id))
                            SubPlan 2
                              ->  Aggregate
                                    ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1_1
@@ -1158,21 +1158,21 @@ EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('db',
                            Index Cond: (shard_key_value = '6013'::bigint)
                ->  Aggregate
                      ->  Nested Loop Left Join
-                           Filter: helio_api_internal.bson_dollar_lookup_join_filter(helio_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2)), helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::helio_core.bson), 'name'::text)
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(documentdb_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2)), documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::documentdb_core.bson), 'name'::text)
                            ->  Index Scan using _id_ on documents_6012_60207 collection_0_1
                                  Index Cond: (shard_key_value = '6012'::bigint)
                            ->  Aggregate
                                  ->  Index Scan using _id_ on documents_6012_60207 collection_0_2
-                                       Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(helio_core.=) collection_0_1.object_id))
+                                       Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection_0_1.object_id))
                            SubPlan 2
                              ->  Aggregate
                                    ->  Sort
-                                         Sort Key: (helio_api_catalog.bson_orderby(lookup_subpipeline_substage_1_1.lookup_unwind, '{ "food" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                                         Sort Key: (documentdb_api_catalog.bson_orderby(lookup_subpipeline_substage_1_1.lookup_unwind, '{ "food" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
                                          ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1_1
                      SubPlan 1
                        ->  Aggregate
                              ->  Sort
-                                   Sort Key: (helio_api_catalog.bson_orderby(lookup_subpipeline_substage_1.lookup_unwind, '{ "food" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                                   Sort Key: (documentdb_api_catalog.bson_orderby(lookup_subpipeline_substage_1.lookup_unwind, '{ "food" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
                                    ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1
 (28 rows)
 
@@ -1195,12 +1195,12 @@ EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('db',
                            Index Cond: (shard_key_value = '6013'::bigint)
                ->  Aggregate
                      ->  Nested Loop Left Join
-                           Filter: helio_api_internal.bson_dollar_lookup_join_filter(helio_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2)), helio_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::helio_core.bson), 'name'::text)
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(documentdb_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2)), documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "name" : "restaurant_name" }'::documentdb_core.bson), 'name'::text)
                            ->  Index Scan using _id_ on documents_6012_60207 collection_0_1
                                  Index Cond: (shard_key_value = '6012'::bigint)
                            ->  Aggregate
                                  ->  Index Scan using _id_ on documents_6012_60207 collection_0_2
-                                       Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(helio_core.=) collection_0_1.object_id))
+                                       Index Cond: ((shard_key_value = '6012'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection_0_1.object_id))
                            SubPlan 2
                              ->  Aggregate
                                    ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1_1
@@ -1211,62 +1211,62 @@ EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('db',
 
 ROLLBACK;
 -- Lookup Tests for array index-based paths
-SELECT helio_api.insert_one('db','orders1',' { "_id" : 1, "a" : [ {"x" : 1}] }', NULL);
+SELECT documentdb_api.insert_one('db','orders1',' { "_id" : 1, "a" : [ {"x" : 1}] }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders1',' { "_id" : 2, "a" : {"x" : 1} }', NULL);
+SELECT documentdb_api.insert_one('db','orders1',' { "_id" : 2, "a" : {"x" : 1} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders1',' { "_id" : 3, "a" : [{"x": 2}, {"x": 1}] }', NULL);
+SELECT documentdb_api.insert_one('db','orders1',' { "_id" : 3, "a" : [{"x": 2}, {"x": 1}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders1',' { "_id" : 4, "a" : [{"y": 1}, {"x": 1}] }', NULL);
+SELECT documentdb_api.insert_one('db','orders1',' { "_id" : 4, "a" : [{"y": 1}, {"x": 1}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders1',' { "_id" : 5, "a" : [2, 3] }', NULL);
+SELECT documentdb_api.insert_one('db','orders1',' { "_id" : 5, "a" : [2, 3] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders1',' { "_id" : 6, "a" : {"x": [1, 2]} }', NULL);
+SELECT documentdb_api.insert_one('db','orders1',' { "_id" : 6, "a" : {"x": [1, 2]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders1',' { "_id" : 7, "a" : [{"x": 1}, {"y": 1}] }', NULL);
+SELECT documentdb_api.insert_one('db','orders1',' { "_id" : 7, "a" : [{"x": 1}, {"y": 1}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders1',' { "_id" : 8, "a" : [{"x": [1, 2]}, {"y": 1}] }', NULL);
+SELECT documentdb_api.insert_one('db','orders1',' { "_id" : 8, "a" : [{"x": [1, 2]}, {"y": 1}] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','orders1',' { "_id" : 9, "a" : [[{"x": [1, 2]}, {"y": 1}]] }', NULL);
+SELECT documentdb_api.insert_one('db','orders1',' { "_id" : 9, "a" : [[{"x": [1, 2]}, {"y": 1}]] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','inventory1',' { "_id" : 1, "b" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','inventory1',' { "_id" : 1, "b" : 1 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
@@ -1274,7 +1274,7 @@ NOTICE:  creating collection
 (1 row)
 
 -- Test filter generation 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.x"}'), document FROM helio_api.collection('db', 'orders1');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.x"}'), document FROM documentdb_api.collection('db', 'orders1');
          bson_dollar_lookup_extract_filter_expression         |                                                                     document                                                                     
 ---------------------------------------------------------------------
  { "b" : [ { "$numberInt" : "1" } ] }                         | { "_id" : { "$numberInt" : "1" }, "a" : [ { "x" : { "$numberInt" : "1" } } ] }
@@ -1288,7 +1288,7 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.x"}'), 
  { "b" : [ null ] }                                           | { "_id" : { "$numberInt" : "9" }, "a" : [ [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "y" : { "$numberInt" : "1" } } ] ] }
 (9 rows)
 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0.x"}'), document FROM helio_api.collection('db', 'orders1');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0.x"}'), document FROM documentdb_api.collection('db', 'orders1');
          bson_dollar_lookup_extract_filter_expression         |                                                                     document                                                                     
 ---------------------------------------------------------------------
  { "b" : [ { "$numberInt" : "1" } ] }                         | { "_id" : { "$numberInt" : "1" }, "a" : [ { "x" : { "$numberInt" : "1" } } ] }
@@ -1302,7 +1302,7 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0.x"}')
  { "b" : [ null ] }                                           | { "_id" : { "$numberInt" : "9" }, "a" : [ [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "y" : { "$numberInt" : "1" } } ] ] }
 (9 rows)
 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.x.0"}'), document FROM helio_api.collection('db', 'orders1');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.x.0"}'), document FROM documentdb_api.collection('db', 'orders1');
  bson_dollar_lookup_extract_filter_expression |                                                                     document                                                                     
 ---------------------------------------------------------------------
  { "b" : [ null ] }                           | { "_id" : { "$numberInt" : "1" }, "a" : [ { "x" : { "$numberInt" : "1" } } ] }
@@ -1316,7 +1316,7 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.x.0"}')
  { "b" : [ null ] }                           | { "_id" : { "$numberInt" : "9" }, "a" : [ [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "y" : { "$numberInt" : "1" } } ] ] }
 (9 rows)
 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0"}'), document FROM helio_api.collection('db', 'orders1');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0"}'), document FROM documentdb_api.collection('db', 'orders1');
                                    bson_dollar_lookup_extract_filter_expression                                   |                                                                     document                                                                     
 ---------------------------------------------------------------------
  { "b" : [ { "x" : { "$numberInt" : "1" } } ] }                                                                   | { "_id" : { "$numberInt" : "1" }, "a" : [ { "x" : { "$numberInt" : "1" } } ] }
@@ -1330,7 +1330,7 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0"}'), 
  { "b" : [ [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "y" : { "$numberInt" : "1" } } ] ] } | { "_id" : { "$numberInt" : "9" }, "a" : [ [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "y" : { "$numberInt" : "1" } } ] ] }
 (9 rows)
 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0.1.y"}'), document FROM helio_api.collection('db', 'orders1');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0.1.y"}'), document FROM documentdb_api.collection('db', 'orders1');
  bson_dollar_lookup_extract_filter_expression |                                                                     document                                                                     
 ---------------------------------------------------------------------
  { "b" : [ null ] }                           | { "_id" : { "$numberInt" : "1" }, "a" : [ { "x" : { "$numberInt" : "1" } } ] }
@@ -1344,7 +1344,7 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0.1.y"}
  { "b" : [ { "$numberInt" : "1" } ] }         | { "_id" : { "$numberInt" : "9" }, "a" : [ [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "y" : { "$numberInt" : "1" } } ] ] }
 (9 rows)
 
-SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0.0.x"}'), document FROM helio_api.collection('db', 'orders1');
+SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0.0.x"}'), document FROM documentdb_api.collection('db', 'orders1');
          bson_dollar_lookup_extract_filter_expression         |                                                                     document                                                                     
 ---------------------------------------------------------------------
  { "b" : [ null ] }                                           | { "_id" : { "$numberInt" : "1" }, "a" : [ { "x" : { "$numberInt" : "1" } } ] }
@@ -1361,12 +1361,12 @@ SELECT bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0.0.x"}
 -- Test full lookup sql
 WITH 
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"b" : "a.0.x"}') 
-	AS match FROM helio_api.collection('db', 'orders1')) 
+	AS match FROM documentdb_api.collection('db', 'orders1')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE (array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'inventory1') AS t2
+	SELECT COALESCE (array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'inventory1') AS t2
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
                                                                                                      bson_dollar_lookup_project                                                                                                      
@@ -1384,12 +1384,12 @@ LEFT JOIN LATERAL (
 
 WITH 
 t1 AS (SELECT document, bson_dollar_lookup_extract_filter_expression(document, '{"a.0.x" : "b"}') 
-	AS match FROM helio_api.collection('db', 'inventory1')) 
+	AS match FROM documentdb_api.collection('db', 'inventory1')) 
 SELECT bson_dollar_lookup_project(t1.document, t2_agg.agg, 'matched_docs'::text)
 FROM t1 
 LEFT JOIN LATERAL ( 
-	SELECT COALESCE (array_agg(t2.document::helio_core.bson), '{}'::bson[]) as agg 
-	FROM helio_api.collection('db', 'orders1') AS t2
+	SELECT COALESCE (array_agg(t2.document::documentdb_core.bson), '{}'::bson[]) as agg 
+	FROM documentdb_api.collection('db', 'orders1') AS t2
 	WHERE bson_dollar_in(t2.document, t1.match)
 ) t2_agg ON TRUE;
                                                                                                                                                                                                                                                                                bson_dollar_lookup_project                                                                                                                                                                                                                                                                                
@@ -1398,14 +1398,14 @@ LEFT JOIN LATERAL (
 (1 row)
 
 -- test lookup with operator type document contents
-SELECT helio_api.insert_one('db', 'lookup_with_operator_left', '{ "_id": 1, "a": 1, "b": { "$isArray": 1, "OtherField": 1 }}');
+SELECT documentdb_api.insert_one('db', 'lookup_with_operator_left', '{ "_id": 1, "a": 1, "b": { "$isArray": 1, "OtherField": 1 }}');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db', 'lookup_with_operator_right', '{ "_id": 1, "a": 1, "b": { "$isArray": 1, "OtherField": 1 }}');
+SELECT documentdb_api.insert_one('db', 'lookup_with_operator_right', '{ "_id": 1, "a": 1, "b": { "$isArray": 1, "OtherField": 1 }}');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
@@ -1439,7 +1439,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
                            Index Cond: (shard_key_value = '6016'::bigint)
                ->  Aggregate
                      ->  Index Scan using _id_ on documents_6017_60286 collection_0_1
-                           Index Cond: ((shard_key_value = '6017'::bigint) AND (object_id OPERATOR(helio_core.=) collection.object_id))
+                           Index Cond: ((shard_key_value = '6017'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection.object_id))
 (13 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "lookup_with_operator_left", "pipeline": [ { "$project": { "_id": "500" }}, { "$lookup": { "from": "lookup_with_operator_right", "localField": "_id", "foreignField": "_id", "as": "myfoo" } }] }');
@@ -1457,91 +1457,91 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
                            Index Cond: (shard_key_value = '6016'::bigint)
                ->  Aggregate
                      ->  Index Scan using _id_ on documents_6017_60286 collection_0_1
-                           Index Cond: ((shard_key_value = '6017'::bigint) AND (object_id OPERATOR(helio_core.=) ANY (helio_api_internal.bson_dollar_lookup_extract_filter_array(helio_api_catalog.bson_dollar_project(collection.document, '{ "_id" : "500" }'::helio_core.bson), '{ "_id" : "_id" }'::helio_core.bson))))
+                           Index Cond: ((shard_key_value = '6017'::bigint) AND (object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(documentdb_api_catalog.bson_dollar_project(collection.document, '{ "_id" : "500" }'::documentdb_core.bson), '{ "_id" : "_id" }'::documentdb_core.bson))))
 (13 rows)
 
 -- Test for Index push down crash when Foreign Field = '_id' and the target collection is sharded 
-SELECT helio_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_orders_pushdown','{ "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders_pushdown','{ "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 5}', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 5}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 6, "item" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 6, "item" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 7, "item" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"] }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_orders_pushdown',' { "_id" : 7, "item" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"] }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_inventory_pushdown',' { "_id" :  "almonds", "description": "product 1", "instock" : 120 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory_pushdown',' { "_id" :  "almonds", "description": "product 1", "instock" : 120 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_inventory_pushdown',' { "_id" :  "peanuts", "description": "product 1", "instock" : 240 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory_pushdown',' { "_id" :  "peanuts", "description": "product 1", "instock" : 240 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_inventory_pushdown','{ "_id" :  "bread", "description": "product 2", "instock" : 80 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory_pushdown','{ "_id" :  "bread", "description": "product 2", "instock" : 80 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_inventory_pushdown','{ "_id" :  "cashews", "description": "product 3", "instock" : 60 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory_pushdown','{ "_id" :  "cashews", "description": "product 3", "instock" : 60 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_inventory_pushdown','{ "_id" :  "pecans", "description": "product 4", "instock" : 70 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory_pushdown','{ "_id" :  "pecans", "description": "product 4", "instock" : 70 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.insert_one('db','agg_pipeline_inventory_pushdown','{ "_id" :  "unknown", "description": "product 4", "instock" : 70 }', NULL);
+SELECT documentdb_api.insert_one('db','agg_pipeline_inventory_pushdown','{ "_id" :  "unknown", "description": "product 4", "instock" : 70 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT helio_api.shard_collection('db','agg_pipeline_inventory_pushdown', '{"_id":"hashed"}', false);
+SELECT documentdb_api.shard_collection('db','agg_pipeline_inventory_pushdown', '{"_id":"hashed"}', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -1576,14 +1576,14 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1.document, "lookupRight_stage_1".document, 'matched_docs'::text) AS document FROM ((SELECT collection.document, helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM helio_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(helio_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1.document, "lookupRight_stage_1".document, 'matched_docs'::text) AS document FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::documentdb_core.bson) AS lookup_filter FROM documentdb_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))
          Node: host=localhost port=58070 dbname=regression
          ->  Nested Loop
-               Output: helio_api_internal.bson_dollar_merge_documents_at_path(collection.document, collection_0_1.document, 'matched_docs'::text)
-               Join Filter: (collection_0_1.object_id OPERATOR(helio_core.=) ANY (helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson)))
-               ->  Seq Scan on helio_data.documents_6001_60016 collection_0_1
+               Output: documentdb_api_internal.bson_dollar_merge_documents_at_path(collection.document, collection_0_1.document, 'matched_docs'::text)
+               Join Filter: (collection_0_1.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::documentdb_core.bson)))
+               ->  Seq Scan on documentdb_data.documents_6001_60016 collection_0_1
                      Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
-               ->  Bitmap Heap Scan on helio_data.documents_6000_60000 collection
+               ->  Bitmap Heap Scan on documentdb_data.documents_6000_60000 collection
                      Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
                      Recheck Cond: (collection.shard_key_value = '6000'::bigint)
                      ->  Bitmap Index Scan on _id_
@@ -1599,77 +1599,77 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_catalog.bson_dollar_unwind(document, '$matched_docs'::text) AS document FROM (SELECT helio_api_internal.bson_dollar_merge_documents(lookup_non_inlined_stage_1."left", (SELECT COALESCE(helio_api_catalog.bson_array_agg(agg_stage_sub_1_2."funcName", 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS "funcName" FROM (SELECT helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson) AS "funcName" FROM helio_api_catalog.bson_lookup_unwind(lookup_non_inlined_stage_1."right", 'matched_docs'::text) lookup_subpipeline_substage_0(lookup_unwind) LIMIT '10'::bigint) agg_stage_sub_1_2)) AS document FROM (SELECT lookup_stage_1.document AS "left", "lookupRight_stage_1".document AS "right" FROM ((SELECT collection.document, helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(helio_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM helio_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(helio_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))) lookup_non_inlined_stage_1) agg_stage_1
+         Query: SELECT documentdb_api_catalog.bson_dollar_unwind(document, '$matched_docs'::text) AS document FROM (SELECT documentdb_api_internal.bson_dollar_merge_documents(lookup_non_inlined_stage_1."left", (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(agg_stage_sub_1_2."funcName", 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson) AS "funcName" FROM (SELECT documentdb_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson) AS "funcName" FROM documentdb_api_catalog.bson_lookup_unwind(lookup_non_inlined_stage_1."right", 'matched_docs'::text) lookup_subpipeline_substage_0(lookup_unwind) LIMIT '10'::bigint) agg_stage_sub_1_2)) AS document FROM (SELECT lookup_stage_1.document AS "left", "lookupRight_stage_1".document AS "right" FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::documentdb_core.bson) AS lookup_filter FROM documentdb_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson) AS document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))) lookup_non_inlined_stage_1) agg_stage_1
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
-               Output: helio_api_catalog.bson_dollar_unwind(helio_api_internal.bson_dollar_merge_documents(collection.document, (SubPlan 1)), '$matched_docs'::text)
+               Output: documentdb_api_catalog.bson_dollar_unwind(documentdb_api_internal.bson_dollar_merge_documents(collection.document, (SubPlan 1)), '$matched_docs'::text)
                ->  Nested Loop Left Join
-                     Output: collection.document, (COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson))
-                     ->  Bitmap Heap Scan on helio_data.documents_6000_60000 collection
+                     Output: collection.document, (COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson))
+                     ->  Bitmap Heap Scan on documentdb_data.documents_6000_60000 collection
                            Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
                            Recheck Cond: (collection.shard_key_value = '6000'::bigint)
                            ->  Bitmap Index Scan on _id_
                                  Index Cond: (collection.shard_key_value = '6000'::bigint)
                      ->  Aggregate
-                           Output: COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)
-                           ->  Seq Scan on helio_data.documents_6001_60016 collection_0_1
+                           Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson)
+                           ->  Seq Scan on documentdb_data.documents_6001_60016 collection_0_1
                                  Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
-                                 Filter: (collection_0_1.object_id OPERATOR(helio_core.=) ANY (helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson)))
+                                 Filter: (collection_0_1.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::documentdb_core.bson)))
                SubPlan 1
                  ->  Aggregate
-                       Output: COALESCE(helio_api_catalog.bson_array_agg((helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson)), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)
+                       Output: COALESCE(documentdb_api_catalog.bson_array_agg((documentdb_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson)), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson)
                        ->  Limit
-                             Output: (helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson))
-                             ->  Function Scan on helio_api_catalog.bson_lookup_unwind lookup_subpipeline_substage_0
-                                   Output: helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson)
-                                   Function Call: helio_api_catalog.bson_lookup_unwind((COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)), 'matched_docs'::text)
+                             Output: (documentdb_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+                             ->  Function Scan on documentdb_api_catalog.bson_lookup_unwind lookup_subpipeline_substage_0
+                                   Output: documentdb_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                                   Function Call: documentdb_api_catalog.bson_lookup_unwind((COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson)), 'matched_docs'::text)
 (29 rows)
 
 -- UDF Unit test for merge documents at path
-SELECT helio_api_internal.bson_dollar_merge_documents_at_path(NULL, NULL, NULL);
+SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path(NULL, NULL, NULL);
  bson_dollar_merge_documents_at_path 
 ---------------------------------------------------------------------
  
 (1 row)
 
-SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{}', 'a');
+SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{}', 'a');
  bson_dollar_merge_documents_at_path 
 ---------------------------------------------------------------------
  { "a" : "text" }
 (1 row)
 
-SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{ "b" : true}', 'a');
+SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{ "b" : true}', 'a');
  bson_dollar_merge_documents_at_path 
 ---------------------------------------------------------------------
  { "a" : { "b" : true } }
 (1 row)
 
-SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{ "b" : true}', 'd');
+SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": "text"}', '{ "b" : true}', 'd');
   bson_dollar_merge_documents_at_path   
 ---------------------------------------------------------------------
  { "a" : "text", "d" : { "b" : true } }
 (1 row)
 
-SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": { "b": "text", "c": true }}', '{ "random" : false }', 'a');
+SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": { "b": "text", "c": true }}', '{ "random" : false }', 'a');
  bson_dollar_merge_documents_at_path 
 ---------------------------------------------------------------------
  { "a" : { "random" : false } }
 (1 row)
 
-SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": { "b": "text", "c": true }}', '{ "random" : false }', 'a.b');
+SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": { "b": "text", "c": true }}', '{ "random" : false }', 'a.b');
          bson_dollar_merge_documents_at_path          
 ---------------------------------------------------------------------
  { "a" : { "b" : { "random" : false }, "c" : true } }
 (1 row)
 
-SELECT helio_api_internal.bson_dollar_merge_documents_at_path('{"a": [{ "b": "text", "c": true }, { "b": "text2", "c": false }]}', '{ "random" : false }', 'a.b');
+SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": [{ "b": "text", "c": true }, { "b": "text2", "c": false }]}', '{ "random" : false }', 'a.b');
    bson_dollar_merge_documents_at_path    
 ---------------------------------------------------------------------
  { "a" : { "b" : { "random" : false } } }
 (1 row)
 
 BEGIN;
-set local helio_api.enableLookupUnwindOptimization to on;
+set local documentdb.enableLookupUnwindOptimization to on;
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
                                                                                                                                                                     document                                                                                                                                                                     
@@ -1686,14 +1686,14 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1.document, "lookupRight_stage_1".document, 'matched_docs'::text) AS document FROM ((SELECT collection.document, helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM helio_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(helio_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1.document, "lookupRight_stage_1".document, 'matched_docs'::text) AS document FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::documentdb_core.bson) AS lookup_filter FROM documentdb_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))
          Node: host=localhost port=58070 dbname=regression
          ->  Nested Loop
-               Output: helio_api_internal.bson_dollar_merge_documents_at_path(collection.document, collection_0_1.document, 'matched_docs'::text)
-               Join Filter: (collection_0_1.object_id OPERATOR(helio_core.=) ANY (helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson)))
-               ->  Seq Scan on helio_data.documents_6001_60016 collection_0_1
+               Output: documentdb_api_internal.bson_dollar_merge_documents_at_path(collection.document, collection_0_1.document, 'matched_docs'::text)
+               Join Filter: (collection_0_1.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::documentdb_core.bson)))
+               ->  Seq Scan on documentdb_data.documents_6001_60016 collection_0_1
                      Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
-               ->  Bitmap Heap Scan on helio_data.documents_6000_60000 collection
+               ->  Bitmap Heap Scan on documentdb_data.documents_6000_60000 collection
                      Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
                      Recheck Cond: (collection.shard_key_value = '6000'::bigint)
                      ->  Bitmap Index Scan on _id_
@@ -1709,30 +1709,30 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_catalog.bson_dollar_unwind(document, '$matched_docs'::text) AS document FROM (SELECT helio_api_internal.bson_dollar_merge_documents(lookup_non_inlined_stage_1."left", (SELECT COALESCE(helio_api_catalog.bson_array_agg(agg_stage_sub_1_2."funcName", 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS "funcName" FROM (SELECT helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson) AS "funcName" FROM helio_api_catalog.bson_lookup_unwind(lookup_non_inlined_stage_1."right", 'matched_docs'::text) lookup_subpipeline_substage_0(lookup_unwind) LIMIT '10'::bigint) agg_stage_sub_1_2)) AS document FROM (SELECT lookup_stage_1.document AS "left", "lookupRight_stage_1".document AS "right" FROM ((SELECT collection.document, helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(helio_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM helio_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(helio_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))) lookup_non_inlined_stage_1) agg_stage_1
+         Query: SELECT documentdb_api_catalog.bson_dollar_unwind(document, '$matched_docs'::text) AS document FROM (SELECT documentdb_api_internal.bson_dollar_merge_documents(lookup_non_inlined_stage_1."left", (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(agg_stage_sub_1_2."funcName", 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson) AS "funcName" FROM (SELECT documentdb_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson) AS "funcName" FROM documentdb_api_catalog.bson_lookup_unwind(lookup_non_inlined_stage_1."right", 'matched_docs'::text) lookup_subpipeline_substage_0(lookup_unwind) LIMIT '10'::bigint) agg_stage_sub_1_2)) AS document FROM (SELECT lookup_stage_1.document AS "left", "lookupRight_stage_1".document AS "right" FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::documentdb_core.bson) AS lookup_filter FROM documentdb_data.documents_6000_60000 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '6000'::bigint)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson) AS document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_6001_60016 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '6001'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))) lookup_non_inlined_stage_1) agg_stage_1
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
-               Output: helio_api_catalog.bson_dollar_unwind(helio_api_internal.bson_dollar_merge_documents(collection.document, (SubPlan 1)), '$matched_docs'::text)
+               Output: documentdb_api_catalog.bson_dollar_unwind(documentdb_api_internal.bson_dollar_merge_documents(collection.document, (SubPlan 1)), '$matched_docs'::text)
                ->  Nested Loop Left Join
-                     Output: collection.document, (COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson))
-                     ->  Bitmap Heap Scan on helio_data.documents_6000_60000 collection
+                     Output: collection.document, (COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson))
+                     ->  Bitmap Heap Scan on documentdb_data.documents_6000_60000 collection
                            Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
                            Recheck Cond: (collection.shard_key_value = '6000'::bigint)
                            ->  Bitmap Index Scan on _id_
                                  Index Cond: (collection.shard_key_value = '6000'::bigint)
                      ->  Aggregate
-                           Output: COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)
-                           ->  Seq Scan on helio_data.documents_6001_60016 collection_0_1
+                           Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson)
+                           ->  Seq Scan on documentdb_data.documents_6001_60016 collection_0_1
                                  Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
-                                 Filter: (collection_0_1.object_id OPERATOR(helio_core.=) ANY (helio_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::helio_core.bson)))
+                                 Filter: (collection_0_1.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item" }'::documentdb_core.bson)))
                SubPlan 1
                  ->  Aggregate
-                       Output: COALESCE(helio_api_catalog.bson_array_agg((helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson)), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)
+                       Output: COALESCE(documentdb_api_catalog.bson_array_agg((documentdb_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson)), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson)
                        ->  Limit
-                             Output: (helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson))
-                             ->  Function Scan on helio_api_catalog.bson_lookup_unwind lookup_subpipeline_substage_0
-                                   Output: helio_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::helio_core.bson)
-                                   Function Call: helio_api_catalog.bson_lookup_unwind((COALESCE(helio_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)), 'matched_docs'::text)
+                             Output: (documentdb_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+                             ->  Function Scan on documentdb_api_catalog.bson_lookup_unwind lookup_subpipeline_substage_0
+                                   Output: documentdb_api_catalog.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                                   Function Call: documentdb_api_catalog.bson_lookup_unwind((COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson)), 'matched_docs'::text)
 (29 rows)
 
 ROLLBACK;

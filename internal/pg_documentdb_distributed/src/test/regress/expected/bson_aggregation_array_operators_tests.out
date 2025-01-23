@@ -1,7 +1,7 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 6900000;
-SET helio_api.next_collection_id TO 6900;
-SET helio_api.next_collection_index_id TO 6900;
+SET documentdb.next_collection_id TO 6900;
+SET documentdb.next_collection_index_id TO 6900;
 -- $in operator
 -- returns expected result
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$in": [1, [1, 2]]}}');
@@ -1542,32 +1542,32 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,
 (1 row)
 
 -- $firstN, operator with docs in db 
-select helio_api.insert_one('db','dollarfirstN','{"a":[1,2,3] , "_id":1}');
+select documentdb_api.insert_one('db','dollarfirstN','{"a":[1,2,3] , "_id":1}');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-select helio_api.insert_one('db','dollarfirstN','{"a":[42,67] , "_id":2}');
+select documentdb_api.insert_one('db','dollarfirstN','{"a":[42,67] , "_id":2}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-select helio_api.insert_one('db','dollarfirstN','{"a":[] , "_id":3}');
+select documentdb_api.insert_one('db','dollarfirstN','{"a":[] , "_id":3}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-select helio_api.insert_one('db','dollarfirstN','{"a":[1,2,3,45,12,null,"asdhkas",12890.8912,{"$numberDecimal": "223.234823904823904823041212233"},{"$date": { "$numberLong" : "0" }},"\ud0008"] , "_id":4}');
+select documentdb_api.insert_one('db','dollarfirstN','{"a":[1,2,3,45,12,null,"asdhkas",12890.8912,{"$numberDecimal": "223.234823904823904823041212233"},{"$date": { "$numberLong" : "0" }},"\ud0008"] , "_id":4}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":3} }}') from helio_api.collection('db','dollarfirstN');
+select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":3} }}') from documentdb_api.collection('db','dollarfirstN');
                                                     bson_dollar_project                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "result" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
@@ -1577,16 +1577,16 @@ select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n
 (4 rows)
 
 -- $firstN , operator with docs in db and invalid path
-select helio_api.insert_one('db','dollarFirstN','{"b":[] , "_id":5}');
+select documentdb_api.insert_one('db','dollarFirstN','{"b":[] , "_id":5}');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":3} }}') from helio_api.collection('db','dollarFirstN');
+select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":3} }}') from documentdb_api.collection('db','dollarFirstN');
 ERROR:  Input must be an array
-select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":"abc"} }}') from helio_api.collection('db','dollarFirstN');
+select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":"abc"} }}') from documentdb_api.collection('db','dollarFirstN');
 ERROR:  Value for 'n' must be of integral type, but found "abc"
 --$firstN, operator invalid input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": true, "n":3} }}');
@@ -1615,32 +1615,32 @@ ERROR:  Value for 'n' must be of integral type, but found 9223372036854775808
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,4], "n": {"$numberDecimal": "0"} } }}');
 ERROR:  'n' must be greater than 0, found 0
 -- $lastN, operator with docs in db 
-select helio_api.insert_one('db','dollarLastN','{"a":[1,2,3] , "_id":1}');
+select documentdb_api.insert_one('db','dollarLastN','{"a":[1,2,3] , "_id":1}');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-select helio_api.insert_one('db','dollarLastN','{"a":[42,67] , "_id":2}');
+select documentdb_api.insert_one('db','dollarLastN','{"a":[42,67] , "_id":2}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-select helio_api.insert_one('db','dollarLastN','{"a":[] , "_id":3}');
+select documentdb_api.insert_one('db','dollarLastN','{"a":[] , "_id":3}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-select helio_api.insert_one('db','dollarLastN','{"a":[1,2,3,45,12,null,"asdhkas",12890.8912,{"$numberDecimal": "223.234823904823904823041212233"},{"$date": { "$numberLong" : "0" }},"\ud0008"] , "_id":4}');
+select documentdb_api.insert_one('db','dollarLastN','{"a":[1,2,3,45,12,null,"asdhkas",12890.8912,{"$numberDecimal": "223.234823904823904823041212233"},{"$date": { "$numberLong" : "0" }},"\ud0008"] , "_id":4}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":3} }}') from helio_api.collection('db','dollarLastN');
+select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":3} }}') from documentdb_api.collection('db','dollarLastN');
                                                                     bson_dollar_project                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "result" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
@@ -1650,15 +1650,15 @@ select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n"
 (4 rows)
 
 -- $lastN , operator with docs in db and invalid path
-select helio_api.insert_one('db','dollarLastN','{"b":[] , "_id":5}');
+select documentdb_api.insert_one('db','dollarLastN','{"b":[] , "_id":5}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":3} }}') from helio_api.collection('db','dollarLastN');
+select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":3} }}') from documentdb_api.collection('db','dollarLastN');
 ERROR:  Input must be an array
-select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":"abc"} }}') from helio_api.collection('db','dollarLastN');
+select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":"abc"} }}') from documentdb_api.collection('db','dollarLastN');
 ERROR:  Value for 'n' must be of integral type, but found "abc"
 --$firstN, operator missing or extra args
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,4]} }}');
@@ -2848,7 +2848,7 @@ select *from bson_dollar_project('{"outerArray": [{"innerArray": [1, 2, 3]},{"in
 (1 row)
 
 -- $map in $addfield stage
-SELECT helio_api.insert_one('db','map_in_addfield','{"_id":"1", "a": [{ "name": "Alice Smith", "country": "USA" },{ "name": "Bob Johnson", "country": "Canada" }]}', NULL);
+SELECT documentdb_api.insert_one('db','map_in_addfield','{"_id":"1", "a": [{ "name": "Alice Smith", "country": "USA" },{ "name": "Bob Johnson", "country": "Canada" }]}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
@@ -2941,7 +2941,7 @@ select *from bson_dollar_project('{"a": [[1, 2], [3, 4], [5, 6]] }','{"uniqueSet
 (1 row)
 
 -- $reduce in $addfield stage
-SELECT helio_api.insert_one('db','reduce_in_addfield','{"_id":"1", "a": ["a", "b", "c"]}', NULL);
+SELECT documentdb_api.insert_one('db','reduce_in_addfield','{"_id":"1", "a": ["a", "b", "c"]}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------

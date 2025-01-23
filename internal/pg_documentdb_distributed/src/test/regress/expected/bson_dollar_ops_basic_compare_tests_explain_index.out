@@ -1,14 +1,14 @@
-set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+set search_path to documentdb_core,documentdb_api,documentdb_api_catalog,pg_catalog;
 SET citus.next_shard_id TO 510000;
-SET helio_api.next_collection_id TO 5100;
-SET helio_api.next_collection_index_id TO 5100;
-SELECT helio_api.drop_collection('db', 'querydollartest') IS NOT NULL;
+SET documentdb.next_collection_id TO 5100;
+SET documentdb.next_collection_index_id TO 5100;
+SELECT documentdb_api.drop_collection('db', 'querydollartest') IS NOT NULL;
  ?column? 
 ---------------------------------------------------------------------
  t
 (1 row)
 
-SELECT helio_api.create_collection('db', 'querydollartest');
+SELECT documentdb_api.create_collection('db', 'querydollartest');
 NOTICE:  creating collection
  create_collection 
 ---------------------------------------------------------------------
@@ -17,10 +17,10 @@ NOTICE:  creating collection
 
 SET client_min_messages=WARNING;
 -- Create a wildcard index by using CREATE INDEX command instead of
--- using helio_api.create_indexes. This is because, we will use
+-- using documentdb_api.create_indexes. This is because, we will use
 -- that index to test whether we can use the index via query operators
 -- other than "@@".
-SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('querydollartest', 'index_2', '{"$**": 1}'), TRUE);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('querydollartest', 'index_2', '{"$**": 1}'), TRUE);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
@@ -29,10 +29,10 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distribute
 BEGIN;
 -- avoid sequential scan (likely to be preferred on small tables)
 set local enable_seqscan to off;
-set local helio_api.forceUseIndexIfAvailable to on;
+set local documentdb.forceUseIndexIfAvailable to on;
 \i sql/bson_dollar_ops_basic_compare_tests_explain_core.sql
 /* validate explain */
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @= '{ "a.b": 1 }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @= '{ "a.b": 1 }';
                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -41,12 +41,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @!= '{ "a.b": 1 }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @!= '{ "a.b": 1 }';
                                                             QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -55,12 +55,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @> '{ "a.b": 1 }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @> '{ "a.b": 1 }';
                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -69,12 +69,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@>) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@>) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @>= '{ "a.b": 1 }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @>= '{ "a.b": 1 }';
                                                             QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -83,12 +83,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @< '{ "a.b": 1 }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @< '{ "a.b": 1 }';
                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -97,12 +97,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@<) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@<) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@<) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@<) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @<= '{ "a.b": 1 }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @<= '{ "a.b": 1 }';
                                                             QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -111,12 +111,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@<=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@<=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @*= '{ "a.b": [ 1, 2, true ]}'::bson;
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @*= '{ "a.b": [ 1, 2, true ]}'::bson;
                                                                              QUERY PLAN                                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -125,13 +125,13 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, true ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, true ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, true ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, true ] }'::documentdb_core.bson)
 (9 rows)
 
 /* validate explain for the individual items as well */
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @> '{ "a": { "b": 1 } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @> '{ "a": { "b": 1 } }';
                                                                QUERY PLAN                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -140,12 +140,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@>) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@>) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @> '{ "a": { "b": [ true, false ] } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @> '{ "a": { "b": [ true, false ] } }';
                                                             QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -154,12 +154,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@>) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@>) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @> '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @> '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
                                                                                            QUERY PLAN                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -168,12 +168,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@>) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@>) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": { "b": 1 } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": { "b": 1 } }';
                                                                 QUERY PLAN                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -182,12 +182,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@>=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@>=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": { "b": [ true, false ] } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": { "b": [ true, false ] } }';
                                                             QUERY PLAN                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -196,12 +196,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@>=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@>=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
                                                                                             QUERY PLAN                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -210,12 +210,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@>=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@>=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @< '{ "a": { "b": 1 } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @< '{ "a": { "b": 1 } }';
                                                                QUERY PLAN                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -224,12 +224,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@<) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@<) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @< '{ "a": { "b": [ true, false ] } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @< '{ "a": { "b": [ true, false ] } }';
                                                             QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -238,12 +238,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@<) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@<) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @< '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @< '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
                                                                                            QUERY PLAN                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -252,12 +252,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@<) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@<) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@<) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@<) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": { "b": 1 } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": { "b": 1 } }';
                                                                 QUERY PLAN                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -266,12 +266,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@<=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@<=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": { "b": [ true, false ] } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": { "b": [ true, false ] } }';
                                                             QUERY PLAN                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -280,12 +280,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@<=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@<=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
                                                                                             QUERY PLAN                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -294,12 +294,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@<=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@<=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @= '{ "a": { "b": 1 } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @= '{ "a": { "b": 1 } }';
                                                                QUERY PLAN                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -308,12 +308,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @= '{ "a": { "b": [ true, false ] } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @= '{ "a": { "b": [ true, false ] } }';
                                                             QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -322,12 +322,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
                                                                                            QUERY PLAN                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -336,12 +336,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": { "b": 1 } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": { "b": 1 } }';
                                                                 QUERY PLAN                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -350,12 +350,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@!=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@!=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": { "b": [ true, false ] } }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": { "b": [ true, false ] } }';
                                                             QUERY PLAN                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -364,12 +364,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@!=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@!=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
                                                                                             QUERY PLAN                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -378,12 +378,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@!=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@!=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @*= '{ "a.b": [ { "b": [ 2, 3, 4 ] }, 2, true ]}';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @*= '{ "a.b": [ { "b": [ 2, 3, 4 ] }, 2, true ]}';
                                                                                                             QUERY PLAN                                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -392,12 +392,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "$numberInt" : "2" }, true ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "$numberInt" : "2" }, true ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "$numberInt" : "2" }, true ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "$numberInt" : "2" }, true ] }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @!*= '{ "a.b": [ { "b": [ 2, 3, 4 ] }, 2, true ]}';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @!*= '{ "a.b": [ { "b": [ 2, 3, 4 ] }, 2, true ]}';
                                                                                                             QUERY PLAN                                                                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -406,12 +406,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@!*=) '{ "a.b" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "$numberInt" : "2" }, true ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@!*=) '{ "a.b" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "$numberInt" : "2" }, true ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@!*=) '{ "a.b" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "$numberInt" : "2" }, true ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@!*=) '{ "a.b" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "$numberInt" : "2" }, true ] }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @? '{ "a.b": 1 }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @? '{ "a.b": 1 }';
                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -420,12 +420,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@?) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@?) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@?) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@?) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @? '{ "a.b": 0 }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @? '{ "a.b": 0 }';
                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -434,12 +434,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@?) '{ "a.b" : { "$numberInt" : "0" } }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@?) '{ "a.b" : { "$numberInt" : "0" } }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@?) '{ "a.b" : { "$numberInt" : "0" } }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@?) '{ "a.b" : { "$numberInt" : "0" } }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [1] }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [1] }';
                                                               QUERY PLAN                                                              
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -448,12 +448,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [ { "$numberInt" : "1" } ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "a.b" : [ { "$numberInt" : "1" } ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [ { "$numberInt" : "1" } ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "a.b" : [ { "$numberInt" : "1" } ] }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [0, 1] }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [0, 1] }';
                                                                           QUERY PLAN                                                                          
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -462,12 +462,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [[0]] }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [[0]] }';
                                                                 QUERY PLAN                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -476,12 +476,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [ [ { "$numberInt" : "0" } ] ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "a.b" : [ [ { "$numberInt" : "0" } ] ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [ [ { "$numberInt" : "0" } ] ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "a.b" : [ [ { "$numberInt" : "0" } ] ] }'::documentdb_core.bson)
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [] }';
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [] }';
                                                    QUERY PLAN                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
@@ -490,9 +490,9 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [  ] }'::helio_core.bson)
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "a.b" : [  ] }'::documentdb_core.bson)
                ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [  ] }'::helio_core.bson)
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "a.b" : [  ] }'::documentdb_core.bson)
 (9 rows)
 
 ROLLBACK;

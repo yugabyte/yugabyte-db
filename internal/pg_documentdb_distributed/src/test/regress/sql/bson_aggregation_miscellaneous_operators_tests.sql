@@ -1,7 +1,7 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 4900000;
-SET helio_api.next_collection_id TO 4900;
-SET helio_api.next_collection_index_id TO 4900;
+SET documentdb.next_collection_id TO 4900;
+SET documentdb.next_collection_index_id TO 4900;
 
 CREATE OR REPLACE FUNCTION generate_random_values(p_doc bson, p_rand_spec bson)
 RETURNS bool

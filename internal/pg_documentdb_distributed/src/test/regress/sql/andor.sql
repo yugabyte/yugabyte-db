@@ -1,12 +1,12 @@
 -- Based on andor.js
 CREATE SCHEMA andor;
 
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal,public,andor;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal,public,andor;
 SET citus.next_shard_id TO 548000;
-SET helio_api.next_collection_id TO 5480;
-SET helio_api.next_collection_index_id TO 5480;
+SET documentdb.next_collection_id TO 5480;
+SET documentdb.next_collection_index_id TO 5480;
 
-CREATE OR REPLACE FUNCTION andor.ok(query helio_core.bson)
+CREATE OR REPLACE FUNCTION andor.ok(query documentdb_core.bson)
  RETURNS void
  LANGUAGE plpgsql
 AS $$
@@ -19,7 +19,7 @@ $$;
 
 SELECT 1 FROM drop_collection('db','andor');
 SELECT 1 FROM insert_one('db','andor','{"a": 1}');
-SELECT helio_distributed_test_helpers.drop_primary_key('db', 'andor');
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'andor');
 
 CREATE OR REPLACE FUNCTION andor.test1()
  RETURNS void
@@ -64,7 +64,7 @@ $$;
 
 SELECT test1();
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('andor', 'index_1', '{"a.$**": 1}'), true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('andor', 'index_1', '{"a.$**": 1}'), true);
 
 BEGIN;
 set local enable_seqscan TO OFF;
@@ -122,7 +122,7 @@ SELECT 1 FROM insert_one('db','andor','{"a": 1}');
 
 SELECT test2();
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('andor', 'index_2', '{"a.$**": 1}'), true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('andor', 'index_2', '{"a.$**": 1}'), true);
 
 BEGIN;
 set local enable_seqscan TO OFF;

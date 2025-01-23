@@ -1,7 +1,7 @@
-SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 SET citus.next_shard_id TO 6900000;
-SET helio_api.next_collection_id TO 6900;
-SET helio_api.next_collection_index_id TO 6900;
+SET documentdb.next_collection_id TO 6900;
+SET documentdb.next_collection_index_id TO 6900;
 
 -- $in operator
 -- returns expected result
@@ -494,15 +494,15 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,4], "n": {"$numberDecimal": "9223372036854775807"} } }}');
 
 -- $firstN, operator with docs in db 
-select helio_api.insert_one('db','dollarfirstN','{"a":[1,2,3] , "_id":1}');
-select helio_api.insert_one('db','dollarfirstN','{"a":[42,67] , "_id":2}');
-select helio_api.insert_one('db','dollarfirstN','{"a":[] , "_id":3}');
-select helio_api.insert_one('db','dollarfirstN','{"a":[1,2,3,45,12,null,"asdhkas",12890.8912,{"$numberDecimal": "223.234823904823904823041212233"},{"$date": { "$numberLong" : "0" }},"\ud0008"] , "_id":4}');
-select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":3} }}') from helio_api.collection('db','dollarfirstN');
+select documentdb_api.insert_one('db','dollarfirstN','{"a":[1,2,3] , "_id":1}');
+select documentdb_api.insert_one('db','dollarfirstN','{"a":[42,67] , "_id":2}');
+select documentdb_api.insert_one('db','dollarfirstN','{"a":[] , "_id":3}');
+select documentdb_api.insert_one('db','dollarfirstN','{"a":[1,2,3,45,12,null,"asdhkas",12890.8912,{"$numberDecimal": "223.234823904823904823041212233"},{"$date": { "$numberLong" : "0" }},"\ud0008"] , "_id":4}');
+select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":3} }}') from documentdb_api.collection('db','dollarfirstN');
 -- $firstN , operator with docs in db and invalid path
-select helio_api.insert_one('db','dollarFirstN','{"b":[] , "_id":5}');
-select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":3} }}') from helio_api.collection('db','dollarFirstN');
-select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":"abc"} }}') from helio_api.collection('db','dollarFirstN');
+select documentdb_api.insert_one('db','dollarFirstN','{"b":[] , "_id":5}');
+select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":3} }}') from documentdb_api.collection('db','dollarFirstN');
+select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":"abc"} }}') from documentdb_api.collection('db','dollarFirstN');
 
 --$firstN, operator invalid input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": true, "n":3} }}');
@@ -522,15 +522,15 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,4], "n": {"$numberDecimal": "0"} } }}');
 
 -- $lastN, operator with docs in db 
-select helio_api.insert_one('db','dollarLastN','{"a":[1,2,3] , "_id":1}');
-select helio_api.insert_one('db','dollarLastN','{"a":[42,67] , "_id":2}');
-select helio_api.insert_one('db','dollarLastN','{"a":[] , "_id":3}');
-select helio_api.insert_one('db','dollarLastN','{"a":[1,2,3,45,12,null,"asdhkas",12890.8912,{"$numberDecimal": "223.234823904823904823041212233"},{"$date": { "$numberLong" : "0" }},"\ud0008"] , "_id":4}');
-select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":3} }}') from helio_api.collection('db','dollarLastN');
+select documentdb_api.insert_one('db','dollarLastN','{"a":[1,2,3] , "_id":1}');
+select documentdb_api.insert_one('db','dollarLastN','{"a":[42,67] , "_id":2}');
+select documentdb_api.insert_one('db','dollarLastN','{"a":[] , "_id":3}');
+select documentdb_api.insert_one('db','dollarLastN','{"a":[1,2,3,45,12,null,"asdhkas",12890.8912,{"$numberDecimal": "223.234823904823904823041212233"},{"$date": { "$numberLong" : "0" }},"\ud0008"] , "_id":4}');
+select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":3} }}') from documentdb_api.collection('db','dollarLastN');
 -- $lastN , operator with docs in db and invalid path
-select helio_api.insert_one('db','dollarLastN','{"b":[] , "_id":5}');
-select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":3} }}') from helio_api.collection('db','dollarLastN');
-select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":"abc"} }}') from helio_api.collection('db','dollarLastN');
+select documentdb_api.insert_one('db','dollarLastN','{"b":[] , "_id":5}');
+select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":3} }}') from documentdb_api.collection('db','dollarLastN');
+select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":"abc"} }}') from documentdb_api.collection('db','dollarLastN');
 
 
 --$firstN, operator missing or extra args
@@ -845,7 +845,7 @@ select *from bson_dollar_project('{"a": [[1, 2], [2, 3], [3, 4]] }', '{"uniqueSe
 select *from bson_dollar_project('{"outerArray": [{"innerArray": [1, 2, 3]},{"innerArray": [4, 5, 6]}]}', '{"result": {"$map": {"input": "$outerArray","as": "outerElement","in": {"$map": {"input": "$$outerElement.innerArray","as": "innerElement","in": { "$multiply": ["$$innerElement", 2] }}}}}}');
 
 -- $map in $addfield stage
-SELECT helio_api.insert_one('db','map_in_addfield','{"_id":"1", "a": [{ "name": "Alice Smith", "country": "USA" },{ "name": "Bob Johnson", "country": "Canada" }]}', NULL);
+SELECT documentdb_api.insert_one('db','map_in_addfield','{"_id":"1", "a": [{ "name": "Alice Smith", "country": "USA" },{ "name": "Bob Johnson", "country": "Canada" }]}', NULL);
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "map_in_addfield", "pipeline": [ { "$addFields": {"newField": { "$map": { "input": "$a", "as": "author", "in": {"name_country": { "$concat": ["$$author.name", " from ", "$$author.country"] }} } } } } ], "cursor": {} }');
 
 -- $map, nested case
@@ -869,7 +869,7 @@ select *from bson_dollar_project('{"a": [{ "a": 1 }, { "b": 2 }, { "a": 2 }, { "
 select *from bson_dollar_project('{"a": [[1, 2], [3, 4], [5, 6]] }','{"uniqueSet":{"$reduce": {"input": "$a","initialValue": 0,"in":{ "$sum": ["$$value",{ "$avg": "$$this" }] }}}}');
 
 -- $reduce in $addfield stage
-SELECT helio_api.insert_one('db','reduce_in_addfield','{"_id":"1", "a": ["a", "b", "c"]}', NULL);
+SELECT documentdb_api.insert_one('db','reduce_in_addfield','{"_id":"1", "a": ["a", "b", "c"]}', NULL);
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "reduce_in_addfield", "pipeline": [ { "$addFields": {"newField": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } } } ], "cursor": {} }');
 
 -- $reduce, negative cases
