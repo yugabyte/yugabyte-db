@@ -6,7 +6,7 @@ description: Use federated authentication for single sign-on.
 headContent: Single sign-on using an identity provider
 menu:
   preview_yugabyte-cloud:
-    identifier: federated-jump
+    identifier: federated-2-jump
     parent: managed-authentication
     weight: 20
 type: docs
@@ -40,6 +40,13 @@ Currently, YugabyteDB Aeon supports IdPs exclusively using the OIDC (OpenID Conn
       JumpCloud
     </a>
   </li>
+
+  <li>
+    <a href="../federated-custom/" class="nav-link">
+      Custom
+    </a>
+  </li>
+
 </ul>
 
 ## Prerequisites

@@ -6,7 +6,7 @@ description: Use federated authentication for single sign-on.
 headContent: Single sign-on using an identity provider
 menu:
   preview_yugabyte-cloud:
-    identifier: federated-custom
+    identifier: federated-5-custom
     parent: managed-authentication
     weight: 20
 type: docs
@@ -51,7 +51,29 @@ Currently, YugabyteDB Aeon supports IdPs exclusively using the OIDC (OpenID Conn
 
 ## Prerequisites
 
-Before configuring federated authentication, be sure to allow pop-up requests from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
+Before configuring federated authentication, be sure to allow pop-up requests from your IdP. While configuring federated authentication, the provider may need to confirm your identity in a new window.
+
+To configure federated authentication in YugabyteDB Aeon, you need the following:
+
+- OIDC environment set up (for example, Google Cloud OIDC).
+- Identity provider configured (for example, Google Workspace).
+- Permissions to create applications on your OIDC provider. You will need the following for your application:
+  - Client ID of the application you registered with your IdP.
+  - Client secret of the application.
+- An OIDC-based web application created on your OIDC provider, configured with the YugabyteDB Okta redirect URL:
+
+  `https://yugabyte-dev.oktapreview.com/oauth2/v1/authorize/callback`
+
+- The following information from your OIDC provider's discovery document:
+  - Issuer URL
+  - Authorization endpoint
+  - Token endpoint
+  - JWKS endpoint
+  - Userinfo endpoint
+
+  The discovery document is a JSON file stored in a well-known location.
+  
+  [Google OIDC discovery endpoint](https://developers.google.com/identity/protocols/oauth2/openid-connect#an-id-tokens-payload) is an example of such file. For most identity providers, `/.well-known/openid-configuration` is appended to the issuer to generate the metadata URL for OIDC specifications.
 
 ## Configure federated authentication
 
@@ -64,13 +86,7 @@ To configure federated authentication using a custom IdP in YugabyteDB Aeon, do 
 
     - In the **Client ID** field, enter the unique identifier that you provided when you manually created the client application in the identity provider.
     - In the **Client Secret** field, enter the password or secret for authenticating your Yugabyte client application with your identity provider.
-    - In the **Issuer URL** field, provide a URL for the .
-
-    - In the **Authorization endpoint** field, provide .
-
-    - If you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Token endpoint** field, enter the URL of the refresh token endpoint.
-    - In the **JKWS endpoint** field, enter .
-    - In the **User info endpoint** field, enter .
+    - In remaining fields, provide the URIs from your provider's discovery document.
 
 1. Click **Enable**.
 
