@@ -925,7 +925,7 @@ Default: `14400` (4 hours)
 
 Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
 
-Default: `false`
+Default: `true`
 
 ##### --enable_truncate_cdcsdk_table
 

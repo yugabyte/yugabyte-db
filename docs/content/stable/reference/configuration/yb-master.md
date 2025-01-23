@@ -945,7 +945,7 @@ Default: `14400` (4 hours)
 
 Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
 
-Default: `false`
+Default: `true`
 
 ##### --enable_truncate_cdcsdk_table
 
@@ -955,7 +955,7 @@ Default: `false`
 
 ##### --enable_tablet_split_of_replication_slot_streamed_tables
 
-Toggle automatic tablet splitting for tables under replication slot. Applicable for [CDC using gRPC protocol](../../../develop/change-data-capture/using-yugabytedb-grpc-replication/) only.
+Toggle automatic tablet splitting for tables under replication slot. Applicable only to CDC using [Logical replication protocol](../../../develop/change-data-capture/using-logical-replication/) only.
 
 Default: `false`
 

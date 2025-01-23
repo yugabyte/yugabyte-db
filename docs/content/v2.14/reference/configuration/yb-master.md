@@ -756,6 +756,12 @@ The number of tablets to use when creating the CDC state table. Used in both xCl
 
 Default: `0` (Use the same default number of tablets as for regular tables.)
 
+##### --enable_tablet_split_of_cdcsdk_streamed_tables
+
+Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
+
+Default: `false`
+
 ##### --cdc_wal_retention_time_secs
 
 WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
