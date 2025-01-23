@@ -61,5 +61,5 @@ WORKDIR /home/runner
 USER runner
 
 LABEL org.opencontainers.image.source=https://github.com/microsoft/documentdb
-LABEL org.opencontainers.image.description="Heliodb ubuntu build image"
+LABEL org.opencontainers.image.description="DocumentDB ubuntu build image"
 LABEL org.opencontainers.image.licenses=MIT

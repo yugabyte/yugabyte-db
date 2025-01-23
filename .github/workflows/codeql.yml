@@ -64,7 +64,7 @@ jobs:
         sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_setup_intel_decimal_math_lib.sh
         sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_citus_indent.sh
 
-    - name: Configure, Build and Install HelioDB
+    - name: Configure, Build and Install DocumentDB
       run: |
         make
         sudo make install
