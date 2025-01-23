@@ -11,7 +11,7 @@ menu:
     weight: 10
 type: docs
 ---
-Advisory locks feature is in {{<tags/feature/tp>}} as of v2.25.1. 
+The advisory locks feature is available in {{<tags/feature/tp>}} as of v2.25.1.
 
 ## Overview
 
