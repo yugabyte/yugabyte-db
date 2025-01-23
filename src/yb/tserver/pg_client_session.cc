@@ -1745,6 +1745,9 @@ Result<PgClientSession::SetupSessionResult> PgClientSession::SetupSession(
         InvalidArgument,
         Format("Expected active_sub_transaction_id to be >= $0", kMinSubTransactionId));
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
+    if (const auto& pg_session_txn = Transaction(PgClientSessionKind::kPgSession); pg_session_txn) {
+      pg_session_txn->SetBackgroundTransaction(session_data.transaction);
+    }
   }
 
   return SetupSessionResult{
@@ -2513,7 +2516,7 @@ Status PgClientSession::AcquireAdvisoryLock(
   if (const auto& background_txn = background_session_data->transaction; background_txn) {
     auto background_txn_meta_res = background_txn->GetMetadata(deadline).get();
     RETURN_NOT_OK(background_txn_meta_res);
-    session.SetBatcherBackgroundTransactionId(background_txn_meta_res->transaction_id);
+    session.SetBatcherBackgroundTransactionMeta(*background_txn_meta_res);
   }
 
   auto& txn = *primary_session_data->transaction;

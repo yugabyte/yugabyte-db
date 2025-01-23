@@ -304,6 +304,39 @@ class TransactionState {
     return retain_until > context_.coordinator_context().clock().Now();
   }
 
+  void UpdateBackgroundTxnMetaIfNecessary(TransactionMetadata&& new_meta) {
+    if (background_transaction_meta_ &&
+        background_transaction_meta_->transaction_id == new_meta.transaction_id &&
+        background_transaction_meta_->status_tablet == new_meta.status_tablet) {
+      return;
+    }
+    forward_probe_to_detector_ = true;
+    background_transaction_meta_ = std::move(new_meta);
+  }
+
+  boost::optional<tserver::UpdateTransactionWaitingForStatusRequestPB> InternalWaitForRequest() {
+    if (!forward_probe_to_detector_) {
+      return boost::none;
+    }
+    forward_probe_to_detector_ = false;
+    tserver::UpdateTransactionWaitingForStatusRequestPB req;
+    req.set_tserver_uuid("<hidden-edge>");
+    req.set_is_full_update(false);
+    auto *txn = req.add_waiting_transactions();
+    txn->set_transaction_id(id().data(), id().size());
+    txn->set_wait_start_time(context_.coordinator_context().clock().Now().ToUint64());
+    if (pg_session_req_version()) {
+      txn->set_pg_session_req_version(*pg_session_req_version());
+    }
+
+    auto* blocking_txn = txn->add_blocking_transaction();
+    blocking_txn->set_transaction_id(background_transaction_meta_->transaction_id.data(),
+                                     background_transaction_meta_->transaction_id.size());
+    blocking_txn->set_status_tablet_id(background_transaction_meta_->status_tablet);
+    SubtxnSet().ToPB(blocking_txn->mutable_subtxn_set()->mutable_set());
+    return req;
+  }
+
   boost::optional<PgSessionRequestVersion> pg_session_req_version() const {
     return pg_session_req_version_;
   }
@@ -756,6 +789,15 @@ class TransactionState {
         first_touch_ = request->request()->start_time();
         request->mutable_request()->clear_tablets();
       }
+      if (state.has_background_transaction_meta()) {
+        auto res = TransactionMetadata::FromPB(state.background_transaction_meta());
+        if (!res.ok()) {
+          status = res.status().CloneAndPrepend("Error decoding background_transaction_meta.");
+        } else {
+          UpdateBackgroundTxnMetaIfNecessary(std::move(*res));
+        }
+        request->mutable_request()->clear_background_transaction_meta();
+      }
     }
     if (!state.host_node_uuid().empty()) {
       if (host_node_uuid_.empty()) {
@@ -1093,6 +1135,13 @@ class TransactionState {
   // txn status receivers shouldn't infer anything when version isn't populated as part of resp.
   boost::optional<TxnReuseVersion> min_active_txn_reuse_version_ = boost::none;
   boost::optional<PgSessionRequestVersion> pg_session_req_version_ = boost::none;
+  // For pg session level transactions, we introduce wait-for dependencies from the session level
+  // transaction to the current active regular transaction, if any. This is necessary for detecting
+  // deadlocks spanning advisory locks and row-level locks.
+  boost::optional<TransactionMetadata> background_transaction_meta_ = boost::none;
+  // Indicates whether the wait-for dependency from session level txn to the regular txn has changed
+  // based on which the coordinator forwards the wait-for probe to the deadlock detector.
+  bool forward_probe_to_detector_ = false;
 };
 
 struct CompleteWithStatusEntry {
@@ -1184,8 +1233,11 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       const TransactionId& transaction_id, const SubtxnSet& subtxn_set) override {
     std::lock_guard lock(managed_mutex_);
     auto it = managed_transactions_.find(transaction_id);
+    // When blocking subtxn set is empty and the transaction is active, treat the probe as active.
+    // This is useful only in the flow where a session level transaction creates a internal wait-for
+    // edge to the regular active txn, and we forward the probe along blockers of the latter.
     if (it == managed_transactions_.end() || !it->IsRunning() ||
-        it->GetAbortedSubtxnInfo()->set().Contains(subtxn_set)) {
+        (!subtxn_set.IsEmpty() && it->GetAbortedSubtxnInfo()->set().Contains(subtxn_set))) {
       return STATUS_FORMAT(
           Aborted, "txn: $0, subtxn_set: $1 is inactive", transaction_id, subtxn_set);
     }
@@ -1579,6 +1631,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     }
 
     PostponedLeaderActions actions;
+    boost::optional<tserver::UpdateTransactionWaitingForStatusRequestPB> opt_probe = boost::none;
     {
       std::unique_lock<std::mutex> lock(managed_mutex_);
       postponed_leader_actions_.leader_term = term;
@@ -1596,13 +1649,24 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         }
       }
 
-      managed_transactions_.modify(it, [&request](TransactionState& state) {
+      managed_transactions_.modify(it, [&request, &opt_probe](TransactionState& state) {
         state.Handle(std::move(request));
+        opt_probe = state.InternalWaitForRequest();
       });
       postponed_leader_actions_.Swap(&actions);
     }
 
     ExecutePostponedLeaderActions(&actions);
+    // Need to trigger the deadlock detector outside the scope of managed_mutex_, else could run
+    // into lock inversion problems. The order should be: detector's mutex -> coodinator's mutex.
+    if (opt_probe) {
+      tserver::UpdateTransactionWaitingForStatusResponsePB resp;
+      ProcessWaitForReport(*opt_probe, &resp, [](Status s) {
+        LOG_IF(WARNING, !s.ok())
+            << "Introducing hidden dependency for virtual txn failed. Deadlock cycles spanning "
+            << "both session advisory locks and row-level locks could go undetected.";
+      });
+    }
   }
 
   int64_t PrepareGC(std::string* details) {
