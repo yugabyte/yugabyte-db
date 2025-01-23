@@ -95,12 +95,9 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
 
   bool IsYsqlMajorVersionUpgrade() const { return is_ysql_major_version_upgrade_; }
 
-  bool IsTestSkipped() const { return test_skipped_; }
-
  private:
   const BuildInfo old_version_info_;
   VersionInfoPB current_version_info_;
-  bool test_skipped_ = false;
 
   std::string old_version_bin_path_, current_version_bin_path_;
   std::string old_version_master_bin_path_, current_version_master_bin_path_;

@@ -225,24 +225,28 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 
 void UpgradeTestBase::SetUp() {
   if (IsSanitizer()) {
-    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported with sanitizers";
   }
 
-  if (old_version_info_.version.empty()) {
-    test_skipped_ = true;
-    CHECK(false) << "Build info for old version not set";
-    return;
+// Disable mac tests in the lab since the lab runs multiple tests in parallel on the mac causing
+// these to timeout.
+#ifdef __APPLE__
+  if (getenv("YB_SPARK_COPY_MODE")) {
+    GTEST_SKIP() << "Upgrade testing not supported on mac spark machines";
+  }
+#endif
+
+  if (GetRelevantUrl(old_version_info_).empty()) {
+    GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
+                 << " for this OS architecture and build type";
   }
 
   if (GetRelevantUrl(old_version_info_).empty()) {
-    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
                  << " for this OS architecture and build type";
   }
 
   if (!IsUpgradeSupported(old_version_info_.version)) {
-    test_skipped_ = true;
     GTEST_SKIP() << "PG15 upgrade not supported from version " << old_version_info_.version;
   }
 

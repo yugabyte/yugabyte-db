@@ -34,7 +34,7 @@ class YsqlMajorUpgradeDdlBlockingTest : public Pg15UpgradeTestBase {
 
   void SetUp() override {
     Pg15UpgradeTestBase::SetUp();
-    if (IsTestSkipped()) {
+    if (Test::IsSkipped()) {
       return;
     }
 

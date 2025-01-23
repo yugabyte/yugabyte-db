@@ -27,7 +27,7 @@ class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
 
   void SetUp() override {
     Pg15UpgradeTestBase::SetUp();
-    if (IsTestSkipped()) {
+    if (Test::IsSkipped()) {
       return;
     }
 
@@ -248,10 +248,6 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MasterCrashDurin
   auto master_leader = cluster_->GetLeaderMaster();
 
   auto state_to_fail_at = master::YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE;
-#ifdef __APPLE__
-  // Mac machines are slow so fail earlier.
-  state_to_fail_at = master::YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB;
-#endif
 
   // Block the upgrade from finishing.
   ASSERT_OK(cluster_->SetFlag(
