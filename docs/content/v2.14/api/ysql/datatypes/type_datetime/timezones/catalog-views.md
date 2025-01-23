@@ -280,7 +280,7 @@ This is the result:
  WET
 ```
 
-You can see that, for example, the string _UCT_ is the _name_ value in _pg_timezone_names_ of a timezone that the _[tz&nbsp;database](https://en.wikipedia.org/wiki/Tz_database)_ marks as _Deprecated_; and that it is the _abbrev_ value of a row in _pg_timezone_abbrevs_. The _utc_offset_ value in these two differtent rows is not guaranteed to be the same.
+You can see that, for example, the string _UCT_ is the _name_ value in _pg_timezone_names_ of a timezone that the _[tz&nbsp;database](https://en.wikipedia.org/wiki/Tz_database)_ marks as _Deprecated_; and that it is the _abbrev_ value of a row in _pg_timezone_abbrevs_. The _utc_offset_ value in these two different rows is not guaranteed to be the same.
 
 ### Distinct [abbrev, utc_offset] tuples from pg_timezone_names not in pg_timezone_abbrevs.
 
