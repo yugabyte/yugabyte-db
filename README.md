@@ -8,8 +8,8 @@
 
 The project comprises of two primary components, which work together to support document operations.
 
-- pg_documentdb_core : PostgreSQL extension introducing BSON datatype support and operations for native Postgres.
-- pg_documentdb : The public API surface for DocumentDB providing CRUD functionality on documents in the store.
+- **pg_documentdb_core :** PostgreSQL extension introducing BSON datatype support and operations for native Postgres.
+- **pg_documentdb :** The public API surface for DocumentDB providing CRUD functionality on documents in the store.
 
 ![Architecture](images/architecture.png)
 
@@ -262,7 +262,7 @@ SELECT cursorpage FROM documentdb_api.aggregate_cursor_first_page('documentdb', 
 - Please refer to page for contributing to our [Roadmap list](https://github.com/orgs/microsoft/projects/1407/views/1).
 - [FerretDB](https://github.com/FerretDB/FerretDB) integration allows using DocumentDB as backend engine.
 
-Contributors and users can join the [Discord Server](https://aka.ms/documentdb_discord) for quick collaboration.
+Contributors and users can join the [DocumentDB Discord channel in the Microsoft OSS server](https://aka.ms/documentdb_discord) for quick collaboration.
 
 ### FAQs
 
