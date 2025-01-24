@@ -13,23 +13,17 @@ use super::PgToArrowAttributeContext;
 // Numeric
 impl PgTypeToArrowArray<AnyNumeric> for Vec<Option<AnyNumeric>> {
     fn to_arrow_array(self, context: &PgToArrowAttributeContext) -> ArrayRef {
-        let precision = context
-            .precision
-            .expect("precision is required in context for numeric");
-        let scale = context
-            .scale
-            .expect("scale is required in context for numeric");
-
         let numerics = self
             .into_iter()
             .map(|numeric| {
-                numeric
-                    .map(|numeric| numeric_to_i128(numeric, context.typmod, context.field.name()))
+                numeric.map(|numeric| {
+                    numeric_to_i128(numeric, context.typmod(), context.field().name())
+                })
             })
             .collect::<Vec<_>>();
 
         let numeric_array = Decimal128Array::from(numerics)
-            .with_precision_and_scale(precision as _, scale as _)
+            .with_precision_and_scale(context.precision() as _, context.scale() as _)
             .unwrap_or_else(|e| panic!("failed to create Decimal128Array: {}", e));
 
         Arc::new(numeric_array)
@@ -38,7 +32,7 @@ impl PgTypeToArrowArray<AnyNumeric> for Vec<Option<AnyNumeric>> {
 
 // Numeric[]
 impl PgTypeToArrowArray<AnyNumeric> for Vec<Option<Vec<Option<AnyNumeric>>>> {
-    fn to_arrow_array(self, context: &PgToArrowAttributeContext) -> ArrayRef {
+    fn to_arrow_array(self, element_context: &PgToArrowAttributeContext) -> ArrayRef {
         let (offsets, nulls) = arrow_array_offsets(&self);
 
         // gets rid of the first level of Option, then flattens the inner Vec<Option<bool>>.
@@ -47,24 +41,25 @@ impl PgTypeToArrowArray<AnyNumeric> for Vec<Option<Vec<Option<AnyNumeric>>>> {
             .flatten()
             .flatten()
             .map(|numeric| {
-                numeric
-                    .map(|numeric| numeric_to_i128(numeric, context.typmod, context.field.name()))
+                numeric.map(|numeric| {
+                    numeric_to_i128(
+                        numeric,
+                        element_context.typmod(),
+                        element_context.field().name(),
+                    )
+                })
             })
             .collect::<Vec<_>>();
 
-        let precision = context
-            .precision
-            .expect("precision is required in context for numeric");
-        let scale = context
-            .scale
-            .expect("scale is required in context for numeric");
+        let precision = element_context.precision();
+        let scale = element_context.scale();
 
         let numeric_array = Decimal128Array::from(pg_array)
             .with_precision_and_scale(precision as _, scale as _)
             .unwrap_or_else(|e| panic!("failed to create Decimal128Array: {}", e));
 
         let list_array = ListArray::new(
-            context.field.clone(),
+            element_context.field(),
             offsets,
             Arc::new(numeric_array),
             Some(nulls),

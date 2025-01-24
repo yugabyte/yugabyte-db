@@ -16,7 +16,7 @@ impl PgTypeToArrowArray<f32> for Vec<Option<f32>> {
 
 // Float32[]
 impl PgTypeToArrowArray<pgrx::Array<'_, f32>> for Vec<Option<Vec<Option<f32>>>> {
-    fn to_arrow_array(self, context: &PgToArrowAttributeContext) -> ArrayRef {
+    fn to_arrow_array(self, element_context: &PgToArrowAttributeContext) -> ArrayRef {
         let (offsets, nulls) = arrow_array_offsets(&self);
 
         // gets rid of the first level of Option, then flattens the inner Vec<Option<bool>>.
@@ -25,7 +25,7 @@ impl PgTypeToArrowArray<pgrx::Array<'_, f32>> for Vec<Option<Vec<Option<f32>>>> 
         let float_array = Float32Array::from(pg_array);
 
         let list_array = ListArray::new(
-            context.field.clone(),
+            element_context.field(),
             offsets,
             Arc::new(float_array),
             Some(nulls),

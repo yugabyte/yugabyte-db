@@ -39,6 +39,12 @@ pub(crate) fn reset_map_context() {
     };
 }
 
+pub(crate) fn reset_map_type_context(map_type_oid: Oid) {
+    get_map_context()
+        .map_type_context
+        .set_current_map_type_oid(map_type_oid);
+}
+
 pub(crate) fn is_map_type(typoid: Oid) -> bool {
     let map_context = get_map_context();
 
@@ -58,7 +64,7 @@ pub(crate) fn is_map_type(typoid: Oid) -> bool {
         return false;
     }
 
-    let found_typoid = unsafe {
+    let map_typoid = unsafe {
         GetSysCacheOid(
             TYPEOID as _,
             Anum_pg_type_oid as _,
@@ -69,15 +75,7 @@ pub(crate) fn is_map_type(typoid: Oid) -> bool {
         )
     };
 
-    let is_map = found_typoid != InvalidOid;
-
-    if is_map {
-        map_context
-            .map_type_context
-            .set_current_map_type_oid(typoid);
-    }
-
-    is_map
+    map_typoid != InvalidOid
 }
 
 #[derive(Debug, PartialEq, Clone)]

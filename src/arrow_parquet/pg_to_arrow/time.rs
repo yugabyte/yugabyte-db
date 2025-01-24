@@ -24,7 +24,7 @@ impl PgTypeToArrowArray<Time> for Vec<Option<Time>> {
 
 // Time[]
 impl PgTypeToArrowArray<Time> for Vec<Option<Vec<Option<Time>>>> {
-    fn to_arrow_array(self, context: &PgToArrowAttributeContext) -> ArrayRef {
+    fn to_arrow_array(self, element_context: &PgToArrowAttributeContext) -> ArrayRef {
         let (offsets, nulls) = arrow_array_offsets(&self);
 
         // gets rid of the first level of Option, then flattens the inner Vec<Option<bool>>.
@@ -38,7 +38,7 @@ impl PgTypeToArrowArray<Time> for Vec<Option<Vec<Option<Time>>>> {
         let time_array = Time64MicrosecondArray::from(pg_array);
 
         let list_array = ListArray::new(
-            context.field.clone(),
+            element_context.field(),
             offsets,
             Arc::new(time_array),
             Some(nulls),

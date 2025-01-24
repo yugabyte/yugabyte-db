@@ -23,7 +23,7 @@ impl PgTypeToArrowArray<FallbackToText> for Vec<Option<FallbackToText>> {
 
 // Text[] representation of any type
 impl PgTypeToArrowArray<FallbackToText> for Vec<Option<Vec<Option<FallbackToText>>>> {
-    fn to_arrow_array(self, context: &PgToArrowAttributeContext) -> ArrayRef {
+    fn to_arrow_array(self, element_context: &PgToArrowAttributeContext) -> ArrayRef {
         let (offsets, nulls) = arrow_array_offsets(&self);
 
         // gets rid of the first level of Option, then flattens the inner Vec<Option<bool>>.
@@ -37,7 +37,7 @@ impl PgTypeToArrowArray<FallbackToText> for Vec<Option<Vec<Option<FallbackToText
         let text_array = StringArray::from(pg_array);
 
         let list_array = ListArray::new(
-            context.field.clone(),
+            element_context.field(),
             offsets,
             Arc::new(text_array),
             Some(nulls),

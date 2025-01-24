@@ -23,7 +23,7 @@ impl PgTypeToArrowArray<Geometry> for Vec<Option<Geometry>> {
 
 // Geometry[]
 impl PgTypeToArrowArray<Geometry> for Vec<Option<Vec<Option<Geometry>>>> {
-    fn to_arrow_array(self, context: &PgToArrowAttributeContext) -> ArrayRef {
+    fn to_arrow_array(self, element_context: &PgToArrowAttributeContext) -> ArrayRef {
         let (offsets, nulls) = arrow_array_offsets(&self);
 
         // gets rid of the first level of Option, then flattens the inner Vec<Option<bool>>.
@@ -37,7 +37,7 @@ impl PgTypeToArrowArray<Geometry> for Vec<Option<Vec<Option<Geometry>>>> {
         let wkb_array = BinaryArray::from(wkbs);
 
         let list_array = ListArray::new(
-            context.field.clone(),
+            element_context.field(),
             offsets,
             Arc::new(wkb_array),
             Some(nulls),

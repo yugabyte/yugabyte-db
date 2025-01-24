@@ -16,7 +16,7 @@ impl PgTypeToArrowArray<bool> for Vec<Option<bool>> {
 
 // Bool[]
 impl PgTypeToArrowArray<bool> for Vec<Option<Vec<Option<bool>>>> {
-    fn to_arrow_array(self, context: &PgToArrowAttributeContext) -> ArrayRef {
+    fn to_arrow_array(self, element_context: &PgToArrowAttributeContext) -> ArrayRef {
         let (offsets, nulls) = arrow_array_offsets(&self);
 
         // gets rid of the first level of Option, then flattens the inner Vec<Option<bool>>.
@@ -25,7 +25,7 @@ impl PgTypeToArrowArray<bool> for Vec<Option<Vec<Option<bool>>>> {
         let bool_array = BooleanArray::from(pg_array);
 
         let list_array = ListArray::new(
-            context.field.clone(),
+            element_context.field(),
             offsets,
             Arc::new(bool_array),
             Some(nulls),

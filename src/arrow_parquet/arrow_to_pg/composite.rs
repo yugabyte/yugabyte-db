@@ -15,24 +15,17 @@ impl<'a> ArrowArrayToPgType<PgHeapTuple<'a, AllocatedByRust>> for StructArray {
 
         let mut datums = vec![];
 
-        for attribute_context in context
-            .attribute_contexts
-            .as_ref()
-            .expect("each attribute of the tuple should have a context")
-        {
+        for attribute_context in context.attribute_contexts() {
             let column_data = self
-                .column_by_name(&attribute_context.name)
-                .unwrap_or_else(|| panic!("column {} not found", &attribute_context.name));
+                .column_by_name(attribute_context.name())
+                .unwrap_or_else(|| panic!("column {} not found", &attribute_context.name()));
 
             let datum = to_pg_datum(column_data.into_data(), attribute_context);
 
             datums.push(datum);
         }
 
-        let tupledesc = context
-            .attribute_tupledesc
-            .as_ref()
-            .expect("Expected attribute tupledesc");
+        let tupledesc = context.tupledesc();
 
         Some(
             unsafe { PgHeapTuple::from_datums(tupledesc.clone(), datums) }.unwrap_or_else(|e| {
@@ -46,7 +39,7 @@ impl<'a> ArrowArrayToPgType<PgHeapTuple<'a, AllocatedByRust>> for StructArray {
 impl<'a> ArrowArrayToPgType<Vec<Option<PgHeapTuple<'a, AllocatedByRust>>>> for StructArray {
     fn to_pg_type(
         self,
-        context: &ArrowToPgAttributeContext,
+        element_context: &ArrowToPgAttributeContext,
     ) -> Option<Vec<Option<PgHeapTuple<'a, AllocatedByRust>>>> {
         let len = self.len();
         let mut values = Vec::with_capacity(len);
@@ -54,7 +47,7 @@ impl<'a> ArrowArrayToPgType<Vec<Option<PgHeapTuple<'a, AllocatedByRust>>>> for S
         for i in 0..len {
             let tuple = self.slice(i, 1);
 
-            let tuple = tuple.to_pg_type(&context.clone());
+            let tuple = tuple.to_pg_type(element_context);
 
             values.push(tuple);
         }

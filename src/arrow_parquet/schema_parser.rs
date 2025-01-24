@@ -15,7 +15,7 @@ use pgrx::{check_for_interrupts, prelude::*, PgTupleDesc};
 
 use crate::{
     pgrx_utils::{
-        array_element_typoid, collect_attributes_for, domain_array_base_elem_typoid, is_array_type,
+        array_element_typoid, collect_attributes_for, domain_array_base_elem_type, is_array_type,
         is_composite_type, is_generated_attribute, tuple_desc, CollectAttributesFor,
     },
     type_compat::{
@@ -55,10 +55,10 @@ pub(crate) fn parse_arrow_schema_from_attributes(attributes: &[FormData_pg_attri
             let attribute_tupledesc = tuple_desc(attribute_typoid, attribute_typmod);
             parse_struct_schema(attribute_tupledesc, attribute_name, &mut field_id)
         } else if is_map_type(attribute_typoid) {
-            let attribute_base_elem_typoid = domain_array_base_elem_typoid(attribute_typoid);
+            let (entries_typoid, entries_typmod) = domain_array_base_elem_type(attribute_typoid);
             parse_map_schema(
-                attribute_base_elem_typoid,
-                attribute_typmod,
+                entries_typoid,
+                entries_typmod,
                 attribute_name,
                 &mut field_id,
             )
@@ -112,13 +112,8 @@ fn parse_struct_schema(tupledesc: PgTupleDesc, elem_name: &str, field_id: &mut i
             let attribute_tupledesc = tuple_desc(attribute_oid, attribute_typmod);
             parse_struct_schema(attribute_tupledesc, attribute_name, field_id)
         } else if is_map_type(attribute_oid) {
-            let attribute_base_elem_typoid = domain_array_base_elem_typoid(attribute_oid);
-            parse_map_schema(
-                attribute_base_elem_typoid,
-                attribute_typmod,
-                attribute_name,
-                field_id,
-            )
+            let (entries_typoid, entries_typmod) = domain_array_base_elem_type(attribute_oid);
+            parse_map_schema(entries_typoid, entries_typmod, attribute_name, field_id)
         } else if is_array_type(attribute_oid) {
             let attribute_element_typoid = array_element_typoid(attribute_oid);
             parse_list_schema(
@@ -161,8 +156,8 @@ fn parse_list_schema(typoid: Oid, typmod: i32, array_name: &str, field_id: &mut 
         let tupledesc = tuple_desc(typoid, typmod);
         parse_struct_schema(tupledesc, element_name, field_id)
     } else if is_map_type(typoid) {
-        let base_elem_typoid = domain_array_base_elem_typoid(typoid);
-        parse_map_schema(base_elem_typoid, typmod, element_name, field_id)
+        let (entries_typoid, entries_typmod) = domain_array_base_elem_type(typoid);
+        parse_map_schema(entries_typoid, entries_typmod, element_name, field_id)
     } else {
         parse_primitive_schema(typoid, typmod, element_name, field_id)
     };
@@ -499,13 +494,13 @@ fn is_coercible(from_type: &DataType, to_type: &DataType, to_typoid: Oid, to_typ
                 return false;
             }
 
-            let entries_typoid = domain_array_base_elem_typoid(to_typoid);
+            let (entries_typoid, entries_typmod) = domain_array_base_elem_type(to_typoid);
 
             is_coercible(
                 from_entries_field.data_type(),
                 to_entries_field.data_type(),
                 entries_typoid,
-                to_typmod,
+                entries_typmod,
             )
         }
         _ => {

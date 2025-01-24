@@ -16,7 +16,7 @@ impl PgTypeToArrowArray<i64> for Vec<Option<i64>> {
 
 // Int64[]
 impl PgTypeToArrowArray<i64> for Vec<Option<Vec<Option<i64>>>> {
-    fn to_arrow_array(self, context: &PgToArrowAttributeContext) -> ArrayRef {
+    fn to_arrow_array(self, element_context: &PgToArrowAttributeContext) -> ArrayRef {
         let (offsets, nulls) = arrow_array_offsets(&self);
 
         // gets rid of the first level of Option, then flattens the inner Vec<Option<bool>>.
@@ -25,7 +25,7 @@ impl PgTypeToArrowArray<i64> for Vec<Option<Vec<Option<i64>>>> {
         let int64_array = Int64Array::from(pg_array);
 
         let list_array = ListArray::new(
-            context.field.clone(),
+            element_context.field(),
             offsets,
             Arc::new(int64_array),
             Some(nulls),

@@ -21,7 +21,7 @@ impl PgTypeToArrowArray<Oid> for Vec<Option<Oid>> {
 
 // Oid[]
 impl PgTypeToArrowArray<Oid> for Vec<Option<Vec<Option<Oid>>>> {
-    fn to_arrow_array(self, context: &PgToArrowAttributeContext) -> ArrayRef {
+    fn to_arrow_array(self, element_context: &PgToArrowAttributeContext) -> ArrayRef {
         let (offsets, nulls) = arrow_array_offsets(&self);
 
         // gets rid of the first level of Option, then flattens the inner Vec<Option<bool>>.
@@ -35,7 +35,7 @@ impl PgTypeToArrowArray<Oid> for Vec<Option<Vec<Option<Oid>>>> {
         let oid_array = UInt32Array::from(pg_array);
 
         let list_array = ListArray::new(
-            context.field.clone(),
+            element_context.field(),
             offsets,
             Arc::new(oid_array),
             Some(nulls),

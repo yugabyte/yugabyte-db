@@ -2,8 +2,9 @@ use std::collections::HashSet;
 
 use pgrx::{
     pg_sys::{
-        getBaseType, get_element_type, get_extension_oid, lookup_rowtype_tupdesc, type_is_array,
-        type_is_rowtype, AsPgCStr, FormData_pg_attribute, InvalidOid, Oid,
+        getBaseType, getBaseTypeAndTypmod, get_element_type, get_extension_oid,
+        lookup_rowtype_tupdesc, type_is_array, type_is_rowtype, AsPgCStr, FormData_pg_attribute,
+        InvalidOid, Oid,
     },
     PgTupleDesc,
 };
@@ -91,13 +92,14 @@ pub(crate) fn array_element_typoid(array_typoid: Oid) -> Oid {
     unsafe { get_element_type(array_typoid) }
 }
 
-pub(crate) fn domain_array_base_elem_typoid(domain_typoid: Oid) -> Oid {
+pub(crate) fn domain_array_base_elem_type(domain_typoid: Oid) -> (Oid, i32) {
     debug_assert!(is_domain_of_array_type(domain_typoid));
 
-    let base_array_typoid = unsafe { getBaseType(domain_typoid) };
+    let mut base_array_typmod = -1;
+    let base_array_typoid = unsafe { getBaseTypeAndTypmod(domain_typoid, &mut base_array_typmod) };
     debug_assert!(is_array_type(base_array_typoid));
 
-    array_element_typoid(base_array_typoid)
+    (array_element_typoid(base_array_typoid), base_array_typmod)
 }
 
 pub(crate) fn extension_exists(extension_name: &str) -> bool {

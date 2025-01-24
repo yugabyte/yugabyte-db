@@ -11,14 +11,11 @@ impl ArrowArrayToPgType<AnyNumeric> for Decimal128Array {
         if self.is_null(0) {
             None
         } else {
-            let precision = context.precision.expect("Expected precision");
-            let scale = context.scale.expect("Expected scale");
-
             Some(i128_to_numeric(
                 self.value(0),
-                precision,
-                scale,
-                context.typmod,
+                context.precision(),
+                context.scale(),
+                context.typmod(),
             ))
         }
     }
@@ -26,13 +23,20 @@ impl ArrowArrayToPgType<AnyNumeric> for Decimal128Array {
 
 // Numeric[]
 impl ArrowArrayToPgType<Vec<Option<AnyNumeric>>> for Decimal128Array {
-    fn to_pg_type(self, context: &ArrowToPgAttributeContext) -> Option<Vec<Option<AnyNumeric>>> {
-        let precision = context.precision.expect("Expected precision");
-        let scale = context.scale.expect("Expected scale");
-
+    fn to_pg_type(
+        self,
+        element_context: &ArrowToPgAttributeContext,
+    ) -> Option<Vec<Option<AnyNumeric>>> {
         let mut vals = vec![];
         for val in self.iter() {
-            let val = val.map(|v| i128_to_numeric(v, precision, scale, context.typmod));
+            let val = val.map(|v| {
+                i128_to_numeric(
+                    v,
+                    element_context.precision(),
+                    element_context.scale(),
+                    element_context.typmod(),
+                )
+            });
             vals.push(val);
         }
         Some(vals)

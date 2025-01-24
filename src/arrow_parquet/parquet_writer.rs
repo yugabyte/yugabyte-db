@@ -13,6 +13,7 @@ use url::Url;
 use crate::{
     arrow_parquet::{
         compression::{PgParquetCompression, PgParquetCompressionWithLevel},
+        pg_to_arrow::context::collect_pg_to_arrow_attribute_contexts,
         schema_parser::{
             parquet_schema_string_from_attributes, parse_arrow_schema_from_attributes,
         },
@@ -26,9 +27,7 @@ use crate::{
     PG_BACKEND_TOKIO_RUNTIME,
 };
 
-use super::pg_to_arrow::{
-    collect_pg_to_arrow_attribute_contexts, to_arrow_array, PgToArrowAttributeContext,
-};
+use super::pg_to_arrow::{context::PgToArrowAttributeContext, to_arrow_array};
 
 pub(crate) const DEFAULT_ROW_GROUP_SIZE: i64 = 122880;
 pub(crate) const DEFAULT_ROW_GROUP_SIZE_BYTES: i64 = DEFAULT_ROW_GROUP_SIZE * 1024;

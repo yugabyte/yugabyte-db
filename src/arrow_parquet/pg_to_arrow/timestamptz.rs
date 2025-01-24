@@ -24,7 +24,7 @@ impl PgTypeToArrowArray<TimestampWithTimeZone> for Vec<Option<TimestampWithTimeZ
 
 // TimestampTz[]
 impl PgTypeToArrowArray<TimestampWithTimeZone> for Vec<Option<Vec<Option<TimestampWithTimeZone>>>> {
-    fn to_arrow_array(self, context: &PgToArrowAttributeContext) -> ArrayRef {
+    fn to_arrow_array(self, element_context: &PgToArrowAttributeContext) -> ArrayRef {
         let (offsets, nulls) = arrow_array_offsets(&self);
 
         // gets rid of the first level of Option, then flattens the inner Vec<Option<bool>>.
@@ -38,7 +38,7 @@ impl PgTypeToArrowArray<TimestampWithTimeZone> for Vec<Option<Vec<Option<Timesta
         let timestamptz_array = TimestampMicrosecondArray::from(pg_array).with_timezone_utc();
 
         let list_array = ListArray::new(
-            context.field.clone(),
+            element_context.field(),
             offsets,
             Arc::new(timestamptz_array),
             Some(nulls),

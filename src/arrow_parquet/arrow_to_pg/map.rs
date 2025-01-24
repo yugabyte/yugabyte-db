@@ -14,7 +14,7 @@ impl<'a> ArrowArrayToPgType<Map<'a>> for MapArray {
             let entries_array = self.value(0);
 
             let entries: Option<Vec<Option<PgHeapTuple<AllocatedByRust>>>> =
-                entries_array.to_pg_type(context);
+                entries_array.to_pg_type(context.entries_context());
 
             if let Some(entries) = entries {
                 let entries_datum = entries.into_datum();
@@ -38,13 +38,16 @@ impl<'a> ArrowArrayToPgType<Map<'a>> for MapArray {
 
 // crunchy_map.key_<type1>_val_<type2>[]
 impl<'a> ArrowArrayToPgType<Vec<Option<Map<'a>>>> for MapArray {
-    fn to_pg_type(self, context: &ArrowToPgAttributeContext) -> Option<Vec<Option<Map<'a>>>> {
+    fn to_pg_type(
+        self,
+        element_context: &ArrowToPgAttributeContext,
+    ) -> Option<Vec<Option<Map<'a>>>> {
         let mut maps = vec![];
 
         for entries_array in self.iter() {
             if let Some(entries_array) = entries_array {
                 let entries: Option<Vec<Option<PgHeapTuple<AllocatedByRust>>>> =
-                    entries_array.to_pg_type(context);
+                    entries_array.to_pg_type(element_context.entries_context());
 
                 if let Some(entries) = entries {
                     let entries_datum = entries.into_datum();

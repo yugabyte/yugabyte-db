@@ -433,6 +433,78 @@ mod tests {
     }
 
     #[pg_test]
+    fn test_table_with_multiple_maps() {
+        // Skip the test if crunchy_map extension is not available
+        if !extension_exists("crunchy_map") {
+            return;
+        }
+
+        Spi::run("DROP EXTENSION IF EXISTS crunchy_map; CREATE EXTENSION crunchy_map;").unwrap();
+
+        Spi::run("SELECT crunchy_map.create('int','text');").unwrap();
+        Spi::run("SELECT crunchy_map.create('varchar','int');").unwrap();
+
+        let create_expected_table = "CREATE TABLE test_expected (a crunchy_map.key_int_val_text, b crunchy_map.key_varchar_val_int);";
+        Spi::run(create_expected_table).unwrap();
+
+        let insert = "INSERT INTO test_expected (a, b) VALUES ('{\"(1,)\",\"(2,myself)\",\"(3,ddd)\"}'::crunchy_map.key_int_val_text, '{\"(a,1)\",\"(b,2)\",\"(c,3)\"}'::crunchy_map.key_varchar_val_int);";
+        Spi::run(insert).unwrap();
+
+        let copy_to = format!("COPY test_expected TO '{LOCAL_TEST_FILE_PATH}'");
+        Spi::run(&copy_to).unwrap();
+
+        let create_result_table = "CREATE TABLE test_result (a crunchy_map.key_int_val_text, b crunchy_map.key_varchar_val_int);";
+        Spi::run(create_result_table).unwrap();
+
+        let copy_from = format!("COPY test_result FROM '{LOCAL_TEST_FILE_PATH}'");
+        Spi::run(&copy_from).unwrap();
+
+        let expected_a = Spi::connect(|client| {
+            let query = "SELECT (crunchy_map.entries(a)).* from test_expected;";
+            let tup_table = client.select(query, None, None).unwrap();
+
+            let mut results = Vec::new();
+
+            for row in tup_table {
+                let key = row["key"].value::<i32>().unwrap().unwrap();
+                let val = row["value"].value::<String>().unwrap();
+                results.push((key, val));
+            }
+
+            results
+        });
+
+        assert_eq!(
+            expected_a,
+            vec![
+                (1, None),
+                (2, Some("myself".into())),
+                (3, Some("ddd".into()))
+            ]
+        );
+
+        let expected_b = Spi::connect(|client| {
+            let query = "SELECT (crunchy_map.entries(b)).* from test_expected;";
+            let tup_table = client.select(query, None, None).unwrap();
+
+            let mut results = Vec::new();
+
+            for row in tup_table {
+                let key = row["key"].value::<String>().unwrap().unwrap();
+                let val = row["value"].value::<i32>().unwrap().unwrap();
+                results.push((key, val));
+            }
+
+            results
+        });
+
+        assert_eq!(
+            expected_b,
+            vec![("a".into(), 1), ("b".into(), 2), ("c".into(), 3)]
+        );
+    }
+
+    #[pg_test]
     #[should_panic(expected = "MapArray entries cannot contain nulls")]
     fn test_map_null_entries() {
         // Skip the test if crunchy_map extension is not available
