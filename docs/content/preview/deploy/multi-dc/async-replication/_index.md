@@ -1,6 +1,6 @@
 ---
 title: xCluster deployments
-headerTitle: xCluster
+headerTitle: xCluster deployment
 linkTitle: xCluster
 description: Deploy unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes
 headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication

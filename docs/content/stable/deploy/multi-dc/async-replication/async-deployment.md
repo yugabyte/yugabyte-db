@@ -1,14 +1,14 @@
 ---
 title: Deploy to two universes with xCluster replication
-headerTitle: xCluster deployment
-linkTitle: xCluster
-description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
-headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
+headerTitle: Non-transactional xCluster
+linkTitle: Non-transactional
+description: Deploy using non-transactional unidirectional (master-follower) or bidirectional (multi-master) replication between universes
+headContent: Non-transactional uni- (master-follower) and bi- (multi-master) directional replication
 menu:
   stable:
     parent: async-replication
     identifier: async-deployment
-    weight: 10
+    weight: 20
 type: docs
 ---
 

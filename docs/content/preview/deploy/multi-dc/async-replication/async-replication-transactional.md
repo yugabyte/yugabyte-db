@@ -1,9 +1,9 @@
 ---
-title: Deploy to two universes with transactional xCluster replication
+title: Deploy transactional xCluster replication
 headerTitle: Transactional xCluster
 linkTitle: Transactional
 description: Deploy using transactional (active-standby) replication between universes
-headContent: Transactional (active-standby) replication
+headContent: Deploy transactional (active-standby) replication
 aliases:
   - /preview/deploy/multi-dc/async-replication-transactional/
 menu:

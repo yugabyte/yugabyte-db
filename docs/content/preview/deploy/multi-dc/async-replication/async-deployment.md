@@ -1,9 +1,9 @@
 ---
-title: Deploy to two universes with xCluster replication
+title: Deploy non-transactional xCluster replication
 headerTitle: Non-transactional xCluster
 linkTitle: Non-transactional
 description: Deploy using non-transactional unidirectional (master-follower) or bidirectional (multi-master) replication between universes
-headContent: Non-transactional uni- (master-follower) and bi- (multi-master) directional replication
+headContent: Deploy non-transactional uni- (master-follower) and bi- (multi-master) directional replication
 aliases:
   - /preview/deploy/multi-dc/2dc-deployment
 menu:
