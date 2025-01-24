@@ -113,29 +113,22 @@ public class NodeAgentComponent implements SupportBundleComponent {
       throws Exception {
     Map<String, Long> res = new HashMap<>();
     if (node.cloudInfo == null || StringUtils.isBlank(node.cloudInfo.private_ip)) {
-      log.info("Skipping node-agent log download as node IP is not available");
+      log.info("Skipping node-agent support-bundle download as node IP is not available");
       return res;
     }
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
     if (!optional.isPresent()) {
-      log.info("Skipping node-agent log download as node-agent is not installed");
+      log.info("Skipping node-agent support-bundle download as node-agent is not installed");
       return res;
     }
-
     Path nodeAgentHome = Paths.get(optional.get().getHome());
-    Path nodeAgentLogDirPath = nodeAgentHome.resolve("logs");
-    if (!nodeUniverseManager.checkNodeIfFileExists(
-        node, universe, nodeAgentLogDirPath.toString())) {
-      log.info("Skipping node-agent log download as {} does not exists", nodeAgentLogDirPath);
-      return res;
-    }
     for (String dir : SOURCE_NODE_FILES) {
       Path dirPath = nodeAgentHome.resolve(dir);
-      if (!nodeUniverseManager.checkNodeIfFileExists(
-          node, universe, nodeAgentLogDirPath.toString())) {
+      if (!nodeUniverseManager.checkNodeIfFileExists(node, universe, dirPath.toString())) {
         log.info("Skipping non-existing node-agent path {}", dirPath);
         continue;
       }
+      log.info("Collecting files from node-agent path {}", dirPath);
       res.putAll(
           nodeUniverseManager.getNodeFilePathAndSizes(
               node, universe, dirPath.toString(), /* maxDepth */ 1, /* fileType */ "f"));
