@@ -60,7 +60,11 @@ To configure federated authentication in YugabyteDB Aeon, you need the following
 - Permissions to create applications on your OIDC provider.
 - An OIDC-based web application created on your OIDC provider, configured with the YugabyteDB Okta redirect URL:
 
-  `https://yugabyte-dev.oktapreview.com/oauth2/v1/authorize/callback`
+  `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback`
+
+  When creating the application, set the allowed scopes to at least openid, profile, and email.
+
+  Optionally, you can restrict access to specific user groups.
 
   You will need the following for your application:
   - Client ID of the application you registered with your IdP.
