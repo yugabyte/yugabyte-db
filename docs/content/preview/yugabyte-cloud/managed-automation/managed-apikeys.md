@@ -46,6 +46,8 @@ To create an API key:
 
     If you are restricting the API key to specific addresses, click **Select IP Allow List** to choose the allow lists.
 
+    {{<tags/feature/ea>}}Restricting API keys to IP addresses is Early Access.
+
 1. Click **Generate Key**.
 
 1. Click the Copy icon to copy the key and store the key in a secure location.
