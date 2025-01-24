@@ -56,7 +56,6 @@ static const char *IgnoredCommonSpecFields[] = {
 	"commitQuorum", /* createIndex command */
 	"db",
 	"dbstats",
-	"expireAfterSeconds",
 	"flags",
 	"indexDetails",
 	"let", /* update, delete command */
