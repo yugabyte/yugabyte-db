@@ -1053,25 +1053,6 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					 errhint("Please report the issue on "
 							 "https://github.com/yugabyte/yugabyte-db/issues."),
 					 parser_errposition(pstate, dencoding->location)));
-
-		if (!(YBIsCollationEnabled() && kTestOnlyUseOSDefaultCollation) && dcollate &&
-			dbcollate && strcmp(dbcollate, "C") != 0)
-			ereport(YBUnsupportedFeatureSignalLevel(),
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("value other than 'C' for lc_collate "
-							"option is not yet supported"),
-					 errhint("Please report the issue on "
-							 "https://github.com/YugaByte/yugabyte-db/issues."),
-					 parser_errposition(pstate, dcollate->location)));
-
-		if (dctype && dbctype && strcmp(dbctype, "en_US.UTF-8") != 0)
-			ereport(YBUnsupportedFeatureSignalLevel(),
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("value other than 'en_US.UTF-8' for lc_ctype "
-							"option is not yet supported"),
-					 errhint("Please report the issue on "
-							 "https://github.com/YugaByte/yugabyte-db/issues."),
-					 parser_errposition(pstate, dctype->location)));
 	}
 
 	if (!get_db_info(dbtemplate, ShareLock,
@@ -1138,11 +1119,13 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("invalid locale name: \"%s\"", dbcollate)));
+	YbCheckUnsupportedLibcLocale(dbcollate);
 	dbcollate = canonname;
 	if (!check_locale(LC_CTYPE, dbctype, &canonname))
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("invalid locale name: \"%s\"", dbctype)));
+	YbCheckUnsupportedLibcLocale(dbctype);
 	dbctype = canonname;
 
 	check_encoding_locale_matches(encoding, dbcollate, dbctype);

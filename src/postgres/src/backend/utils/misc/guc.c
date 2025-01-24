@@ -2684,6 +2684,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_collation", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, inject code to make psql output stable across "
+						 "linux and mac."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_collation,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_force_catalog_update_on_next_ddl", PGC_USERSET,
 			DEVELOPER_OPTIONS,
 			gettext_noop("Make the next DDL update the catalog in force mode "

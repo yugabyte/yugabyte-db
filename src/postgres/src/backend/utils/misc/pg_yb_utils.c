@@ -1935,6 +1935,7 @@ bool		yb_test_fail_table_rewrite_after_creation = false;
 bool		yb_test_stay_in_global_catalog_version_mode = false;
 
 bool		yb_test_table_rewrite_keep_old_table = false;
+bool		yb_test_collation = false;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity
@@ -3367,6 +3368,28 @@ YBIsSupportedLibcLocale(const char *localebuf)
 		return true;
 	return (strcasecmp(localebuf, "en_US.utf8") == 0 ||
 			strcasecmp(localebuf, "en_US.UTF-8") == 0);
+}
+
+void
+YbCheckUnsupportedLibcLocale(const char *localebuf)
+{
+	if (IsYugaByteEnabled() && !YBIsSupportedLibcLocale(localebuf))
+	{
+		char *locale = pstrdup(localebuf);
+		if (yb_test_collation)
+		{
+			/*
+			 * For testing to be stable across linux and mac, normalize
+			 * the locale name.
+			 */
+			char *utf8 = strstr(locale, "UTF-8");
+			if (utf8)
+				strcpy(utf8, "utf8");
+		}
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				errmsg("unsupprted locale name: \"%s\"", locale)));
+	}
 }
 
 static YbcStatus

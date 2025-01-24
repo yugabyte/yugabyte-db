@@ -694,6 +694,11 @@ extern bool yb_test_stay_in_global_catalog_version_mode;
 extern bool yb_test_table_rewrite_keep_old_table;
 
 /*
+ * If set to true, inject code to make psql output stable across linux and mac.
+ */
+extern bool yb_test_collation;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -872,6 +877,11 @@ YbTableDistribution YbGetTableDistribution(Oid relid);
  * Check whether the given libc locale is supported in YugaByte mode.
  */
 bool		YBIsSupportedLibcLocale(const char *localebuf);
+
+/*
+ * Check for unsupported libc locale in YugaByte mode.
+ */
+extern void YbCheckUnsupportedLibcLocale(const char *localebuf);
 
 /* Spin wait while test guc var actual equals expected. */
 extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
