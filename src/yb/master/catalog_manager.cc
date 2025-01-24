@@ -9151,9 +9151,7 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
   // Delete all tables in the database. If we're in a major YSQL upgrade, this will delete
   // only the new version's tables.
   TRACE("Delete all tables in YSQL database");
-  Status s = DeleteYsqlDBTables(
-      database->id(),
-      /*is_for_ysql_major_rollback=*/false, epoch);
+  Status s = DeleteYsqlDBTables(database->id(), DeleteYsqlDBTablesType::kNormal, epoch);
   WARN_NOT_OK(s, "DeleteYsqlDBTables failed");
 
   auto l = database->LockForWrite();
@@ -9225,19 +9223,66 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
   LOG(INFO) << "Successfully deleted YSQL database " << database->ToString();
 }
 
+namespace {
+// Should we delete this table during a YSQL database drop?
+// Handles all ysql major upgrade cases.
+Result<bool> ShouldDeleteTableForYsqlDbDrop(
+    const TableId& table_id, bool is_pg_shared_table, bool is_ysql_major_upgrade,
+    DeleteYsqlDBTablesType delete_type) {
+  switch (delete_type) {
+    case DeleteYsqlDBTablesType::kNormal:
+      if (is_ysql_major_upgrade) {
+        // Initdb pre-creates certain databases like template1 and yugabyte. pg_upgrade needs to
+        // drop and recreate these in order to ensure they have proper properties like collation. We
+        // only need to delete the current version catalog tables during these drops. Previous
+        // version catalog and user tables should be left untouched.
+        // Shared tables are linked to the template1 database. Don't drop these when template1 is
+        // recreated, since such tables are technically global tables and not intended to be
+        // dropped.
+        return !is_pg_shared_table && IsCurrentVersionYsqlCatalogTable(table_id);
+      }
+
+      // In the normal database drop case, delete all tables. We dont ever expect delelte of the
+      // shared tables.
+      RSTATUS_DCHECK(
+          !is_pg_shared_table, IllegalState,
+          "Cannot delete a database that contains shared YSQL tables");
+
+      return true;
+
+    case DeleteYsqlDBTablesType::kMajorUpgradeRollback:
+      // The rollback of a YSQL major upgrade deletes all current version catalog tables in order to
+      // prepare for the next upgrade attempt or rollback to the previous version.
+      return IsCurrentVersionYsqlCatalogTable(table_id);
+
+    case DeleteYsqlDBTablesType::kMajorUpgradeCleanup:
+      // The cleanup after a YSQL major upgrade deletes only the previous version's catalog tables.
+      return IsPriorVersionYsqlCatalogTable(table_id);
+  }
+
+  FATAL_INVALID_ENUM_VALUE(DeleteYsqlDBTablesType, delete_type);
+}
+
+}  // namespace
+
 // IMPORTANT: If modifying, consider updating DeleteTable(), the singular deletion API.
 Status CatalogManager::DeleteYsqlDBTables(
-    const NamespaceId& database_id, const bool is_for_ysql_major_rollback,
-    const LeaderEpoch& epoch) {
+    const NamespaceId& database_id, DeleteYsqlDBTablesType delete_type, const LeaderEpoch& epoch) {
   const auto is_ysql_major_upgrade = ysql_manager_->IsMajorUpgradeInProgress();
-  if (is_for_ysql_major_rollback) {
+  if (delete_type == DeleteYsqlDBTablesType::kMajorUpgradeRollback) {
     // User attempts to delete the table come from a user facing pg backend which is blocked from
     // updating the catalog, so they can never reach here.
     RSTATUS_DCHECK(
         is_ysql_major_upgrade, IllegalState,
-        "DeleteYsqlDBTables called with is_for_ysql_major_upgrade when not in a YSQL major catalog "
+        "Cannot rollback the current version of the YSQL catalog when we are not in a YSQL major "
         "upgrade");
+  } else if (delete_type == DeleteYsqlDBTablesType::kMajorUpgradeCleanup) {
+    RSTATUS_DCHECK(
+        !is_ysql_major_upgrade, IllegalState,
+        "Cannot delete the previous version of the YSQL catalog before the YSQL major upgrade "
+        "completes");
   }
+
   TabletInfoPtr sys_tablet_info;
   vector<pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables_and_locks;
   std::unordered_set<TableId> sys_table_ids;
@@ -9247,43 +9292,23 @@ Status CatalogManager::DeleteYsqlDBTables(
 
     sys_tablet_info = tablet_map_->find(kSysCatalogTabletId)->second;
 
-    vector<pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> colocation_parents;
+    std::vector<std::pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> colocation_parents;
 
     // Populate tables and sys_table_ids.
     for (const auto& table : tables_->GetAllTables()) {
-      // In major YSQL upgrade mode, there are two possibilities:
-      //  * To propagate database-level properties for certain databases in an upgrade, pg_upgrade
-      //    drops those databases and recreates them. We pretend to do so, but only delete the
-      //    current version's catalog tables, so the restore portion doesn't get confused.
-      //  * The rollback deletes all current-version catalog tables in order to prepare for the next
-      //    upgrade attempt.
-      // In both cases, we delete only the current version's catalog tables.
-      if (is_ysql_major_upgrade && !IsCurrentVersionYsqlCatalogTable(table->id())) {
-        continue;
-      }
       if (table->namespace_id() != database_id) {
         continue;
       }
+
       // todo(zdrudi): we're acquiring table locks out of order here.
       auto l = table->LockForWrite();
       if (l->started_deleting()) {
         continue;
       }
 
-      // During the major YSQL upgrade, don't drop shared tables for drop database (see the
-      // comment at the beginning of the for loop), because such tables are technically global
-      // tables, not contained in template1.
-      //
-      // During a major YSQL upgrade rollback, shared tables for the current version hosted in
-      // the template1 namespace must be deleted so that we return to a clean state. This is safe
-      // because DDLs are disabled and there are no current-version tservers connected.
-      if (is_ysql_major_upgrade) {
-        if (l->pb.is_pg_shared_table() && !is_for_ysql_major_rollback) {
-          continue;
-        }
-      } else {
-        RSTATUS_DCHECK(
-            !l->pb.is_pg_shared_table(), Corruption, "Shared table found in database");
+      if (!VERIFY_RESULT(ShouldDeleteTableForYsqlDbDrop(
+              table->id(), l->pb.is_pg_shared_table(), is_ysql_major_upgrade, delete_type))) {
+        continue;
       }
 
       if (table->is_system()) {
@@ -9305,17 +9330,31 @@ Status CatalogManager::DeleteYsqlDBTables(
       }
     }
 
-    if (is_ysql_major_upgrade) {
-      DCHECK(colocation_parents.empty());
+    if (is_ysql_major_upgrade || delete_type == DeleteYsqlDBTablesType::kMajorUpgradeCleanup) {
+      RSTATUS_DCHECK(
+          colocation_parents.empty(), IllegalState,
+          "Unexpected colocation parents found during ysql major upgrade or cleanup");
     }
+
     tables_and_locks.insert(
         tables_and_locks.end(), std::make_move_iterator(colocation_parents.begin()),
         std::make_move_iterator(colocation_parents.end()));
   }
+
+  if (is_ysql_major_upgrade || delete_type == DeleteYsqlDBTablesType::kMajorUpgradeCleanup) {
+    RSTATUS_DCHECK(
+        tables_and_locks.size() == sys_table_ids.size(), IllegalState,
+        "Unexpected non sytem tables found during ysql major upgrade or cleanup");
+  }
+
   if (is_ysql_major_upgrade) {
-    // Delete all rows from the system tables so that initdb after rollback doesn't have conflicts.
+    // We explicitly delete all rows from the sys_catalog tablet instead of lazy cleanup, since
+    // we expect new identical rows to get inserted again soon. If we skip this step, it would
+    // cause conflict errors on those inserts.
+    // For previous version cleanup, this is not needed since these rows will never be accessed and
+    // can be lazily cleaned up by compactions.
     TRACE("Deleting system table rows");
-    vector<TableId> sys_table_ids_vec(sys_table_ids.begin(), sys_table_ids.end());
+    std::vector<TableId> sys_table_ids_vec(sys_table_ids.begin(), sys_table_ids.end());
     RETURN_NOT_OK(
         sys_catalog_->DeleteAllYsqlCatalogTableRows(sys_table_ids_vec, epoch.leader_term));
   }

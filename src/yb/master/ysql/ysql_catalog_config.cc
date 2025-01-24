@@ -159,6 +159,12 @@ Status YsqlCatalogConfig::GetMajorCatalogUpgradePreviousError() const {
   return status;
 }
 
+bool YsqlCatalogConfig::IsPreviousVersionCatalogCleanupRequired() const {
+  auto [l, pb] = LockForRead();
+  return pb.has_ysql_major_catalog_upgrade_info() &&
+         pb.ysql_major_catalog_upgrade_info().previous_version_catalog_cleanup_required();
+}
+
 YsqlCatalogConfig::Updater::Updater(
     YsqlCatalogConfig& ysql_catalog_config, const LeaderEpoch& epoch)
     : ysql_catalog_config_(ysql_catalog_config), epoch_(epoch) {

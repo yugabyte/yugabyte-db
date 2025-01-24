@@ -191,6 +191,17 @@ YB_DEFINE_ENUM(YsqlDdlVerificationState,
 // this table's DocDB schema.
 YB_DEFINE_ENUM(TxnState, (kUnknown)(kCommitted)(kAborted)(kNoChange));
 
+YB_DEFINE_ENUM(
+    DeleteYsqlDBTablesType,
+    (kNormal)                // Reglar DB drop. Can we used during both normal operations and major
+                             // upgrade.
+    (kMajorUpgradeRollback)  // Delete all rows and tables of the current catalog in order to
+                             // rollback a ysql major upgrade. This can only be used during a ysql
+                             // major version upgrade.
+    (kMajorUpgradeCleanup)   // Delete the previous version of the catalog tables after the major
+                             // ysql upgrade has been finalized.
+);
+
 struct YsqlTableDdlTxnState;
 
 // The component of the master which tracks the state and location
@@ -671,8 +682,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Delete all tables in YSQL database.
   Status DeleteYsqlDBTables(
-      const NamespaceId& database_id, const bool is_for_ysql_major_rollback,
-      const LeaderEpoch& epoch);
+      const NamespaceId& database_id, DeleteYsqlDBTablesType delete_type, const LeaderEpoch& epoch);
 
   // List all the current namespaces.
   Status ListNamespaces(const ListNamespacesRequestPB* req,
