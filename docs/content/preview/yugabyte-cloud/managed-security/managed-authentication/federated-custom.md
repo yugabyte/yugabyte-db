@@ -49,6 +49,8 @@ Currently, YugabyteDB Aeon supports IdPs exclusively using the OIDC (OpenID Conn
 
 </ul>
 
+{{<tags/feature/ea>}}Custom federated authentication is Early Access.
+
 ## Prerequisites
 
 Before configuring federated authentication, be sure to allow pop-up requests from your IdP. While configuring federated authentication, the provider may need to confirm your identity in a new window.
