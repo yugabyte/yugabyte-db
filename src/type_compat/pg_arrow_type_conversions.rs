@@ -322,9 +322,19 @@ pub(crate) fn extract_precision_and_scale_from_numeric_typmod(typmod: i32) -> (u
     let mut precision = extract_precision_from_numeric_typmod(typmod);
     let mut scale = extract_scale_from_numeric_typmod(typmod);
 
-    // Even if PG allows negative scale, arrow does not. We adjust precision by adding scale to it.
+    // Even if PG allows negative scale, arrow does not.
+    // We adjust precision by adding scale to it and set scale to 0.
+    // e.g. "123.34::numeric(3,-2)" becomes "100::numeric(5,0)"
     if scale < 0 {
-        adjust_precision_and_scale_if_negative_scale(&mut precision, &mut scale);
+        precision += scale.abs();
+        scale = 0;
+    }
+
+    // Even if PG allows scale to be greater than precision, arrow does not.
+    // We set precision to the same value as scale.
+    // e.g. "0.0023::numeric(2,4)" becomes "0.0023::numeric(4,4)"
+    if scale > precision {
+        precision = scale;
     }
 
     debug_assert!(precision >= 0);
@@ -343,15 +353,6 @@ fn extract_precision_from_numeric_typmod(typmod: i32) -> i32 {
 fn extract_scale_from_numeric_typmod(typmod: i32) -> i32 {
     // taken from PG's numeric.c
     (((typmod - pg_sys::VARHDRSZ as i32) & 0x7ff) ^ 1024) - 1024
-}
-
-// adjust_precision_and_scale_if_negative_scale adjusts precision and scale if scale is negative.
-// Even if PG allows negative scale, arrow does not. We adjust precision by adding scale to it.
-fn adjust_precision_and_scale_if_negative_scale(precision: &mut i32, scale: &mut i32) {
-    if *scale < 0 {
-        *precision += scale.abs();
-        *scale = 0;
-    }
 }
 
 fn is_unbounded_numeric_typmod(typmod: i32) -> bool {

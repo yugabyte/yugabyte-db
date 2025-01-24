@@ -987,6 +987,27 @@ mod tests {
         test_table.assert_expected_and_result_rows();
     }
 
+    #[cfg(feature = "pg14")]
+    #[pg_test]
+    #[should_panic = "NUMERIC scale 8 must be between 0 and precision 5"]
+    fn test_numeric_with_larger_scale() {
+        let test_table = TestTable::<AnyNumeric>::new("numeric(5, 8)".into());
+        test_table.insert(
+            "INSERT INTO test_expected (a) VALUES (0.00012345), (0.00012340), (-0.00012345), (-0.00012340), (null), (0);",
+        );
+        test_table.assert_expected_and_result_rows();
+    }
+
+    #[cfg(not(feature = "pg14"))]
+    #[pg_test]
+    fn test_numeric_with_larger_scale() {
+        let test_table = TestTable::<AnyNumeric>::new("numeric(5, 8)".into());
+        test_table.insert(
+            "INSERT INTO test_expected (a) VALUES (0.00012345), (0.00012340), (-0.00012345), (-0.00012340), (null), (0);",
+        );
+        test_table.assert_expected_and_result_rows();
+    }
+
     #[pg_test]
     #[should_panic = "Special numeric values like NaN, Inf, -Inf are not allowed"]
     fn test_numeric_nan() {
