@@ -536,7 +536,7 @@ However, to add a new index to a table that already has data, the following addi
    table id: 000033e8000030008000000000004028, CDC bootstrap id: c8cba563e39c43feb66689514488591c
    ```
 
-1. Wait for replication log to be 0 on the main table using the replication lag metrics described in [Replication lag](#replication-lag).
+1. Wait for replication lag to be 0 on the main table using the replication lag metrics described in [Replication lag](#replication-lag).
 1. Create the same [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) on the target.
 1. Wait for index backfill to finish. For more details, refer to YugabyteDB tips on [monitor backfill progress](https://yugabytedb.tips/?p=2215).
 1. Add the index to replication with the bootstrap ID from Step 4.
