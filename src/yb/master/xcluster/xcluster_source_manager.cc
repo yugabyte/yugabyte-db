@@ -45,7 +45,6 @@ DEFINE_test_flag(
     bool, simulate_EnsureSequenceUpdatesAreInWal_failure, false,
     "Simulate failure during EnsureSequenceUpdatesAreInWal RPC.");
 
-DECLARE_bool(auto_add_new_index_to_bidirectional_xcluster);
 
 DECLARE_int32(master_yb_client_default_timeout_ms);
 DECLARE_uint32(cdc_wal_retention_time_secs);
@@ -281,24 +280,29 @@ XClusterSourceManager::GetPostTabletCreateTasks(
     }
   }
 
-  if (FLAGS_auto_add_new_index_to_bidirectional_xcluster && table_info->is_index() &&
-      master_.xcluster_manager()->IsTableBiDirectionallyReplicated(
-          table_info->indexed_table_id())) {
-    DCHECK(tasks.empty()) << "BiDirectional table should not have any DB Scoped table tasks";
-    if (!tasks.empty()) {
-      // During a switch over we will have Bi-directional xCluster with DB scoped replication
-      // groups. But we do not expect to receive any DDLs at this time.
-      table_info->SetCreateTableErrorStatus(STATUS_FORMAT(
-          IllegalState,
-          "Index $0 created while its base table $1 is under bi-directional xCluster replication, "
-          "and has DB scoped replication groups",
-          table_info->id(), table_info->indexed_table_id()));
+  if (table_info->is_index() && !table_info->colocated()) {
+    auto indexed_table = catalog_manager_.GetTableById(table_info->indexed_table_id());
+    if (!indexed_table) {
+      table_info->SetCreateTableErrorStatus(indexed_table.status());
       return {};
     }
+    if (master_.xcluster_manager()->ShouldAutoAddIndexesToBiDirectionalXCluster(**indexed_table)) {
+      DCHECK(tasks.empty()) << "BiDirectional table should not have any DB Scoped table tasks";
+      if (!tasks.empty()) {
+        // During a switch over we will have Bi-directional xCluster with DB scoped replication
+        // groups. But we do not expect to receive any DDLs at this time.
+        table_info->SetCreateTableErrorStatus(STATUS_FORMAT(
+            IllegalState,
+            "Index $0 created while its base table $1 is under bi-directional xCluster "
+            "replication, and has DB scoped replication groups",
+            table_info->id(), table_info->indexed_table_id()));
+        return {};
+      }
 
-    tasks.emplace_back(std::make_shared<CreateXClusterStreamForBiDirectionalIndexTask>(
-        std::bind(&XClusterSourceManager::CreateNonTxnStreamForNewTable, this, _1, _2, _3),
-        catalog_manager_, *master_.messenger(), table_info, epoch));
+      tasks.emplace_back(std::make_shared<CreateXClusterStreamForBiDirectionalIndexTask>(
+          std::bind(&XClusterSourceManager::CreateNonTxnStreamForNewTable, this, _1, _2, _3),
+          catalog_manager_, *master_.messenger(), table_info, epoch));
+    }
   }
 
   return tasks;
