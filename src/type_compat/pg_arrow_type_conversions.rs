@@ -173,7 +173,23 @@ pub(crate) fn i64_to_timetz(i64_timetz: i64) -> TimeWithTimeZone {
         .unwrap_or_else(|e| panic!("{}", e))
 }
 
+fn error_if_special_numeric(numeric: AnyNumeric) {
+    if ["NaN", "Infinity", "-Infinity"]
+        .iter()
+        .any(|&s| format!("{}", numeric) == s)
+    {
+        ereport!(
+        pgrx::PgLogLevel::ERROR,
+        pgrx::PgSqlErrorCode::ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+        "Special numeric values like NaN, Inf, -Inf are not allowed for numeric type during copy to parquet",
+        "Use float types instead.",
+    );
+    }
+}
+
 pub(crate) fn numeric_to_i128(numeric: AnyNumeric, typmod: i32, col_name: &str) -> i128 {
+    error_if_special_numeric(numeric.clone());
+
     let numeric_str = if is_unbounded_numeric_typmod(typmod) {
         let rescaled_unbounded_numeric = rescale_unbounded_numeric_or_error(numeric, col_name);
 

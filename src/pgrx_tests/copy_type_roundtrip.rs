@@ -988,6 +988,22 @@ mod tests {
     }
 
     #[pg_test]
+    #[should_panic = "Special numeric values like NaN, Inf, -Inf are not allowed"]
+    fn test_numeric_nan() {
+        let test_table = TestTable::<AnyNumeric>::new("numeric".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES ('NaN');");
+        test_table.assert_expected_and_result_rows();
+    }
+
+    #[pg_test]
+    #[should_panic = "Special numeric values like NaN, Inf, -Inf are not allowed"]
+    fn test_numeric_inf() {
+        let test_table = TestTable::<AnyNumeric>::new("numeric".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES ('-Infinity');");
+        test_table.assert_expected_and_result_rows();
+    }
+
+    #[pg_test]
     fn test_geometry() {
         // Skip the test if postgis extension is not available
         if !extension_exists("postgis") {
