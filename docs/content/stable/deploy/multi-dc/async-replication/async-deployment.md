@@ -555,9 +555,9 @@ However, to add a new index to a table that already has data, the following addi
 
 #### Adding indexes in bidirectional replication
 
-All write traffic should we stopped when adding a new index to a table that is bidirectionally replicated.
-Follow the same steps as described in [Adding indexes in unidirectional replication](#adding-indexes-in-unidirectional-replication), followed by bootstrapping the index on the target universe and adding it to the source universe (steps 4 and 8 in opposite direction).
+Stop all write traffic when adding a new index to a table that is bidirectionally replicated.
 
+Follow the same steps as described in [Adding indexes in unidirectional replication](#adding-indexes-in-unidirectional-replication), followed by bootstrapping the index on the target universe and adding it to the source universe (steps 4 and 8 in the opposite direction).
 
 ### Removing objects
 

@@ -1,9 +1,9 @@
 ---
 title: Deploy to two universes with xCluster replication
 headerTitle: Non-transactional xCluster
-linkTitle: Non-transactional xCluster
-description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
-headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
+linkTitle: Non-transactional
+description: Deploy using non-transactional unidirectional (master-follower) or bidirectional (multi-master) replication between universes
+headContent: Non-transactional uni- (master-follower) and bi- (multi-master) directional replication
 aliases:
   - /preview/deploy/multi-dc/2dc-deployment
 menu:
@@ -504,7 +504,7 @@ To add a new index to an empty table, follow the same steps as described in [Add
 
 However, to add a new index to a table that already has data, the following additional steps are required to ensure that the index has all the updates:
 
-1. Create the [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) - for example, `my_new_index` on the source.
+1. Create the [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) (for example, `my_new_index`) on the source.
 1. Wait for index backfill to finish. For more details, refer to YugabyteDB tips on [monitor backfill progress](https://yugabytedb.tips/?p=2215).
 1. Determine the table ID for `my_new_index`.
 
@@ -557,19 +557,20 @@ However, to add a new index to a table that already has data, the following addi
 
 #### Adding YCQL indexes in bidirectional replication
 
-All write traffic should we stopped when adding a new index to a YCQL table that is bidirectionally replicated.
-Follow the same steps as described in [Adding indexes in unidirectional replication](#adding-indexes-in-unidirectional-replication), followed by bootstrapping the index on the target universe and adding it to the source universe (steps 4 and 8 in opposite direction).
+Stop all write traffic when adding a new index to a YCQL table that is bidirectionally replicated.
+
+Follow the same steps as described in [Adding indexes in unidirectional replication](#adding-indexes-in-unidirectional-replication), followed by bootstrapping the index on the target universe and adding it to the source universe (steps 4 and 8 in the opposite direction).
 
 #### Adding YSQL indexes in bidirectional replication
+
 New YSQL indexes are automatically added to xCluster replication if the YSQL table being indexed is bidirectionally replicated.
 Adding new indexes is supported even if the table being indexed contains data and is actively receiving writes on both the universes.
 
-Create the [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) on both the universes **simultaneously**. xCluster will internally detect and add the new indexes to replication on both directions and ensure all the data is backfilled.
+Create the [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) on both the universes **simultaneously**. xCluster will internally detect and add the new indexes to replication in both directions, and ensure all the data is backfilled.
 
 {{< note title="Note" >}}
-If the create index DDL statement is only issued on one universe it will timeout and fail.
+If the create index DDL statement is only issued on one universe, it will timeout and fail.
 {{< /note >}}
-
 
 ### Removing objects
 
