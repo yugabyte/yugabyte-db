@@ -1608,8 +1608,6 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ## DDL atomicity flags
 
-DDL atomicity flags are {{<tags/feature/tp>}}.
-
 ##### ysql_yb_ddl_rollback_enabled
 
 Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will rollback the changes made to the DocDB system catalog.

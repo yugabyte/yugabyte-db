@@ -1616,8 +1616,6 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ## DDL atomicity flags
 
-DDL atomicity flags are {{<tags/feature/tp>}}.
-
 ##### ysql_yb_ddl_rollback_enabled
 
 Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will rollback the changes made to the DocDB system catalog.
@@ -1876,16 +1874,13 @@ See [transaction isolation levels](../../../architecture/transactions/isolation-
 
 Default: `read committed`
 
-<!--
-DOC-339 - This needs to be added 2024.2.1
-
 ##### yb_skip_redundant_update_ops
 
 Enables skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
 
 This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
 
-Default: true -->
+Default: true
 
 ## Admin UI
 
