@@ -15,7 +15,7 @@ YugabyteDB is a PostgreSQL-compatible, [high-performance](https://docs.yugabyte.
 
 * [Core Features](#core-features)
 * [Get Started](#get-started)
-* [Build Apps](#build-apps)
+* [Build Apps](#build-applications)
 * [Current Roadmap](#current-roadmap)
 * [Recent features](#recently-released-features)
 * [Architecture](#architecture)
@@ -93,9 +93,9 @@ In addition, the Active Session History, which provides real-time and historical
 
 **v2024.2** is the current [stable](https://docs.yugabyte.com/preview/releases/versioning/#stable-releases) release. Stable releases undergo rigorous testing for a longer period of time and are ready for production use. For the full list of features and improvements in this release, see [Release notes - v2024.2](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.2/). Here are some of the prominent features.
 
-#### [Yugabyte Kubernetes Operator](https://docs.yugabyte.com/preview/quick-start/kubernetes/#yugabytedb-kubernetes-operator)
+#### [Yugabyte Kubernetes Operator](https://docs.yugabyte.com/preview/tutorials/quick-start/kubernetes/#yugabytedb-kubernetes-operator)
 
-The [Yugabyte Kubernetes Operator](https://docs.yugabyte.com/preview/quick-start/kubernetes/#yugabytedb-kubernetes-operator) is a powerful tool designed to automate deploying, scaling, and managing YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators. For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.
+The [Yugabyte Kubernetes Operator](https://docs.yugabyte.com/preview/tutorials/quick-start/kubernetes/#yugabytedb-kubernetes-operator) is a powerful tool designed to automate deploying, scaling, and managing YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators. For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator#yugabytedb-kubernetes-operator) GitHub project.
 
 #### [Active session history](https://docs.yugabyte.com/stable/explore/observability/active-session-history/)
 
