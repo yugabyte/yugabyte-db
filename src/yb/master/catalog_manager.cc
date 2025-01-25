@@ -939,6 +939,7 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
       encryption_manager_(new EncryptionManager()),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false) {
+  RWCLock::SetConflictingMutex(&mutex_);
   InitMasterFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
                .set_max_threads(1)
@@ -2257,7 +2258,7 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(const TableInf
 }
 
 std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() const {
-  SharedLock lock(tablespace_mutex_);
+  yb::SharedLock lock(tablespace_mutex_);
   return tablespace_manager_;
 }
 
@@ -3900,13 +3901,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   NamespaceId namespace_id;
   NamespaceName namespace_name;
   {
-    auto ns_lock = ns->LockForRead();
-    if (ns->database_type() != GetDatabaseTypeForTable(req.table_type())) {
-      Status s = STATUS(NotFound, "Namespace not found");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    {
+      auto ns_lock = ns->LockForRead();
+      if (ns->database_type() != GetDatabaseTypeForTable(req.table_type())) {
+        Status s = STATUS(NotFound, "Namespace not found");
+        return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+      }
+      namespace_id = ns->id();
+      namespace_name = ns->name();
     }
-    namespace_id = ns->id();
-    namespace_name = ns->name();
     SharedLock lock(mutex_);
     is_colocated_via_database =
         (IsColocatedDbParentTableId(req.table_id()) ||
@@ -5201,71 +5204,79 @@ TableIdentifierPB GetMetricsSnapshotsTableId() {
 }  // namespace
 
 Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
-  TRACE("Locking table");
-  auto l = table->LockForRead();
-  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l));
-  const auto& pb = l->pb;
+  bool is_transactional;
+  TableId indexed_table_id;
+  {
+    TRACE("Locking table");
+    auto l = table->LockForRead();
+    RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l));
+    const auto& pb = l->pb;
 
-  TRACE("Verify if the table creation is in progress for $0", table->ToString());
-  VLOG_WITH_FUNC(1) << table->ToString();
-  if (table->IsCreateInProgress()) {
-    // Set any current errors, if we are experiencing issues creating the table. This will be
-    // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
-    // MasterErrorPB::UNKNOWN_ERROR.
-    // For master only tests running with TEST_create_table_in_running_state and we expect errors
-    // since tablets cannot be assigned, so ignore those.
-    if (!FLAGS_TEST_create_table_in_running_state) {
-      auto status = table->GetCreateTableErrorStatus();
-      if (!status.ok()) {
-        return IsOperationDoneResult::Done(std::move(status));
-      }
-    }
-    return IsOperationDoneResult::NotDone();
-  }
-
-  // If this is an index, we are not done until the index is in the indexed table's schema.  An
-  // exception is YSQL system table indexes, which don't get added to their indexed tables' schemas.
-  if (IsIndex(pb)) {
-    auto& indexed_table_id = GetIndexedTableId(pb);
-    // For user indexes (which add index info to indexed table's schema),
-    // - if this index is created without backfill,
-    //   - waiting for the index to be in the indexed table's schema is sufficient, and, by that
-    //     point, things are fully created.
-    // - if this index is created with backfill
-    //   - and it's YCQL,
-    //     - waiting for the index to be in the indexed table's schema means waiting for the
-    //       DELETE_ONLY index permission, and it's fine to return to the client before the index
-    //       gets the rest of the permissions because the expectation is that backfill will be
-    //       completed asynchronously.
-    //   - and it's YSQL,
-    //     - waiting for the index to be in the indexed table's schema means just that (DocDB index
-    //       permissions don't really matter for YSQL besides being used for backfill purposes), and
-    //       it's a signal for postgres to continue the index backfill process, activating index
-    //       state flags then later triggering backfill and so on.
-    // For YSQL system indexes (which don't add index info to indexed table's schema),
-    // - there's nothing additional to wait on.
-    // Therefore, the only thing needed here is to check whether the index info is in the indexed
-    // table's schema for user indexes.
-    if (pb.table_type() == YQL_TABLE_TYPE ||
-        (pb.table_type() == PGSQL_TABLE_TYPE && table->IsUserCreated(l))) {
-      GetTableSchemaRequestPB get_schema_req;
-      GetTableSchemaResponsePB get_schema_resp;
-      get_schema_req.mutable_table()->set_table_id(indexed_table_id);
-      RETURN_NOT_OK(GetTableSchemaInternal(
-          &get_schema_req, &get_schema_resp, /* always_get_fully_applied_indexes= */ true));
-
-      bool done = false;
-      for (const auto& index : get_schema_resp.indexes()) {
-        if (index.has_table_id() && index.table_id() == table->id()) {
-          done = true;
-          break;
+    TRACE("Verify if the table creation is in progress for $0", table->ToString());
+    VLOG_WITH_FUNC(1) << table->ToString();
+    if (table->IsCreateInProgress()) {
+      // Set any current errors, if we are experiencing issues creating the table. This will be
+      // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
+      // MasterErrorPB::UNKNOWN_ERROR.
+      // For master only tests running with TEST_create_table_in_running_state and we expect errors
+      // since tablets cannot be assigned, so ignore those.
+      if (!FLAGS_TEST_create_table_in_running_state) {
+        auto status = table->GetCreateTableErrorStatus();
+        if (!status.ok()) {
+          return IsOperationDoneResult::Done(std::move(status));
         }
       }
-
-      if (!done) {
-        VLOG(1) << "Indexed table is not yet updated";
-        return IsOperationDoneResult::NotDone();
+      return IsOperationDoneResult::NotDone();
+    }
+    // If this is an index, we are not done until the index is in the indexed table's schema. An
+    // exception is YSQL system table indexes, which don't get added to their indexed tables'
+    // schemas.
+    if (IsIndex(pb)) {
+      // For user indexes (which add index info to indexed table's schema),
+      // - if this index is created without backfill,
+      //   - waiting for the index to be in the indexed table's schema is sufficient, and, by that
+      //     point, things are fully created.
+      // - if this index is created with backfill
+      //   - and it's YCQL,
+      //     - waiting for the index to be in the indexed table's schema means waiting for the
+      //       DELETE_ONLY index permission, and it's fine to return to the client before the index
+      //       gets the rest of the permissions because the expectation is that backfill will be
+      //       completed asynchronously.
+      //   - and it's YSQL,
+      //     - waiting for the index to be in the indexed table's schema means just that (DocDB
+      //       index permissions don't really matter for YSQL besides being used for backfill
+      //       purposes), and it's a signal for postgres to continue the index backfill process,
+      //       activating index state flags then later triggering backfill and so on.
+      // For YSQL system indexes (which don't add index info to indexed table's schema),
+      // - there's nothing additional to wait on.
+      // Therefore, the only thing needed here is to check whether the index info is in the indexed
+      // table's schema for user indexes.
+      if (pb.table_type() == YQL_TABLE_TYPE ||
+          (pb.table_type() == PGSQL_TABLE_TYPE && table->IsUserCreated(l))) {
+        indexed_table_id = GetIndexedTableId(pb);
       }
+    }
+    is_transactional = pb.schema().table_properties().is_transactional();
+  }
+
+  if (!indexed_table_id.empty()) {
+    GetTableSchemaRequestPB get_schema_req;
+    GetTableSchemaResponsePB get_schema_resp;
+    get_schema_req.mutable_table()->set_table_id(indexed_table_id);
+    RETURN_NOT_OK(GetTableSchemaInternal(
+        &get_schema_req, &get_schema_resp, /* always_get_fully_applied_indexes= */ true));
+
+    bool done = false;
+    for (const auto& index : get_schema_resp.indexes()) {
+      if (index.has_table_id() && index.table_id() == table->id()) {
+        done = true;
+        break;
+      }
+    }
+
+    if (!done) {
+      VLOG(1) << "Indexed table is not yet updated";
+      return IsOperationDoneResult::NotDone();
     }
   }
 
@@ -5293,8 +5304,7 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
   // If this is a transactional table we are not done until the transaction status table is created.
   // However, if we are currently initializing the system catalog snapshot, we don't create the
   // transactions table.
-  if (!FLAGS_create_initial_sys_catalog_snapshot &&
-      pb.schema().table_properties().is_transactional()) {
+  if (!FLAGS_create_initial_sys_catalog_snapshot && is_transactional) {
     auto txn_status_table = VERIFY_RESULT(FindTable(GetTransactionStatusTableId()));
     auto is_create_done = VERIFY_RESULT(IsCreateTableDone(txn_status_table));
     if (!is_create_done) {
@@ -5802,8 +5812,8 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   }
 
   TRACE(Substitute("Locking object with id $0", table_id));
-  auto l = table->LockForRead();
-  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(
+      table->LockForRead(), resp));
 
   // Truncate on a colocated table should not hit master because it should be handled by a write
   // DML that creates a table-level tombstone.
@@ -5859,10 +5869,19 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   // YBCTruncateTable, so don't handle it here.  Also, it would be incorrect to handle it here in
   // case the index is part of a tablegroup.
   if (table->GetTableType() != PGSQL_TABLE_TYPE) {
-    const bool is_index = IsIndex(l->pb);
-    DCHECK(!is_index || l->pb.indexes().empty()) << "indexes should be empty for index table";
-    for (const auto& index_info : l->pb.indexes()) {
-      RETURN_NOT_OK(TruncateTable(index_info.table_id(), resp, rpc, epoch));
+    std::vector<TableId> index_ids;
+    {
+      auto table_lock = table->LockForRead();
+      const bool is_index = IsIndex(table_lock->pb);
+      DCHECK(!is_index || table_lock->pb.indexes().empty())
+          << "Indexes should be empty for index table";
+      index_ids.reserve(table_lock->pb.indexes().size());
+      for (const auto& index_info : table_lock->pb.indexes()) {
+        index_ids.push_back(index_info.table_id());
+      }
+    }
+    for (const auto& index_id : index_ids) {
+      RETURN_NOT_OK(TruncateTable(index_id, resp, rpc, epoch));
     }
   }
 
@@ -5942,8 +5961,7 @@ Status CatalogManager::BackfillIndex(
   // Collect indexed_table.
   scoped_refptr<TableInfo> indexed_table;
   {
-    auto l = index_table->LockForRead();
-    TableId indexed_table_id = GetIndexedTableId(l->pb);
+    TableId indexed_table_id = GetIndexedTableId(index_table->LockForRead()->pb);
     resp->mutable_table_identifier()->set_table_id(indexed_table_id);
     indexed_table = GetTableInfo(indexed_table_id);
   }
@@ -6010,32 +6028,40 @@ void CatalogManager::GetBackfillStatus(
   }
 
   const bool filter_by_index = !indexes.empty();
-  auto indexed_table_lock = indexed_table->LockForRead();
-  for (const auto& index_info_pb : indexed_table_lock->pb.indexes()) {
-    if (filter_by_index) {
-      if (indexes.empty()) {
-        break; // Iterated through all the requested indexes, no need to continue.
+  std::vector<std::pair<TableId, IndexStatusPB::BackfillStatus>> indexes_for_callback;
+  {
+    auto indexed_table_lock = indexed_table->LockForRead();
+    for (const auto& index_info_pb : indexed_table_lock->pb.indexes()) {
+      if (filter_by_index) {
+        if (indexes.empty()) {
+          break; // Iterated through all the requested indexes, no need to continue.
+        }
+
+        auto index_it = indexes.find(index_info_pb.table_id());
+        if (index_it == indexes.cend()) {
+          continue; // Not interested in the current index.
+        }
+
+        // Need to erase from the map to be able to track not found indexes.
+        indexes.erase(index_it);
       }
 
-      auto index_it = indexes.find(index_info_pb.table_id());
-      if (index_it == indexes.cend()) {
-        continue; // Not interested in the current index.
-      }
+      VLOG_WITH_PREFIX_AND_FUNC(1) << Format(
+          "Index table $0 permissions: [$1]",
+          index_info_pb.table_id(),
+          index_info_pb.has_index_permissions() ?
+              IndexPermissions_Name(index_info_pb.index_permissions()) : "-");
 
-      // Need to erase from the map to be able to track not found indexes.
-      indexes.erase(index_it);
+      indexes_for_callback.emplace_back(
+          index_info_pb.table_id(), master::GetBackfillStatus(index_info_pb));
     }
-
-    VLOG_WITH_PREFIX_AND_FUNC(1) << Format(
-        "Index table $0 permissions: [$1]",
-        index_info_pb.table_id(),
-        index_info_pb.has_index_permissions() ?
-            IndexPermissions_Name(index_info_pb.index_permissions()) : "-");
-
-    callback(Status::OK(), index_info_pb.table_id(), master::GetBackfillStatus(index_info_pb));
   }
 
-  // Nofify the caller with the remaining indexes. There's a chance some of the indexes
+  for (const auto& [index_id, backfill_status] : indexes_for_callback) {
+    callback(Status::OK(), index_id, backfill_status);
+  }
+
+  // Notify the caller with the remaining indexes. There's a chance some of the indexes
   // have been removed right before locking the indexed table.
   if (!indexes.empty()) {
     callback_failure(STATUS(NotFound, "Index table is not found"));
@@ -6678,9 +6704,8 @@ Status CatalogManager::DeleteTableInMemoryAcquireLocks(
     std::map<TableId, DeletingTableData>* data_map) {
   data_map->emplace(table->id(), DeletingTableData(table));
   {
-    auto l = table->LockForRead();
     if (is_index_table) {
-      auto indexed_table_id = GetIndexedTableId(l->pb);
+      auto indexed_table_id = GetIndexedTableId(table->LockForRead()->pb);
       auto indexed_table = GetTableInfo(indexed_table_id);
       if (indexed_table && update_indexed_table) {
         // We only need to lock indexed_table when we need to update it to
@@ -6690,7 +6715,7 @@ Status CatalogManager::DeleteTableInMemoryAcquireLocks(
     } else {
       // For regular table, we need to lock all of its indexes.
       TableIdentifierPB index_identifier;
-      for (const auto& index : l->pb.indexes()) {
+      for (const auto& index : table->LockForRead()->pb.indexes()) {
         index_identifier.set_table_id(index.table_id());
         auto index_result = FindTable(index_identifier);
         if (VERIFY_RESULT(DoesTableExist(index_result))) {
@@ -7008,32 +7033,45 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   }
 
   TRACE("Locking table");
-  auto l = table->LockForRead();
-
-  if (l->is_index() && l->table_type() != PGSQL_TABLE_TYPE) {
-    if (IsIndexBackfillEnabled(
-            l->table_type(), l->schema().table_properties().is_transactional())) {
-      auto indexed_table = GetTableInfo(GetIndexedTableId(l->pb));
-      if (indexed_table != nullptr &&
-          indexed_table->AttachedYCQLIndexDeletionInProgress(req->table_id())) {
-        LOG(INFO) << "Servicing IsDeleteTableDone request for index id " << req->table_id()
-                  << " with backfill: deleting in state " << l->state_name();
-        resp->set_done(l->is_deleted() || l->is_hidden());
-        return Status::OK();
-      }
+  bool deleted;
+  bool started_deleting;
+  bool hidden;
+  std::string indexed_table_id;
+  {
+    auto table_lock = table->LockForRead();
+    hidden = table_lock->is_hidden();
+    deleted = table_lock->is_deleted() || hidden;
+    started_deleting = table_lock->started_deleting() || table_lock->started_hiding();
+    auto table_type = table_lock->table_type();
+    if (table_lock->is_index() && table_type != PGSQL_TABLE_TYPE &&
+        IsIndexBackfillEnabled(
+              table_type, table_lock->schema().table_properties().is_transactional())) {
+      indexed_table_id = GetIndexedTableId(table_lock->pb);
     }
   }
 
-  if (!l->started_deleting() && !l->started_hiding()) {
+  if (!indexed_table_id.empty()) {
+    auto indexed_table = GetTableInfo(indexed_table_id);
+    if (indexed_table != nullptr &&
+        indexed_table->AttachedYCQLIndexDeletionInProgress(req->table_id())) {
+      LOG(INFO) << "Servicing IsDeleteTableDone request for index id " << req->table_id()
+                << " with backfill, deleted: " << deleted;
+      resp->set_done(deleted);
+      return Status::OK();
+    }
+  }
+
+  if (!started_deleting) {
+    auto table_lock = table->LockForRead();
     LOG(WARNING) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
-                 << ": NOT deleted in state " << l->state_name();
-    Status s = STATUS(IllegalState, "The object was NOT deleted", l->pb.state_msg());
+                 << ": NOT deleted in state " << table_lock->state_name();
+    Status s = STATUS(IllegalState, "The object was NOT deleted", table_lock->pb.state_msg());
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
 
-  if (l->is_deleted() || l->is_hidden()) {
+  if (deleted) {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id "
-              << req->table_id() << ": totally " << (l->is_hidden() ? "hidden" : "deleted");
+              << req->table_id() << ": totally " << (hidden ? "hidden" : "deleted");
     resp->set_done(true);
   } else {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
@@ -7658,94 +7696,94 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
   auto get_fully_applied_indexes =
       always_get_fully_applied_indexes || table->GetTableType() != TableType::YQL_TABLE_TYPE;
 
-  TRACE("Locking table");
-  auto l = table->LockForRead();
-  if (req->include_hidden()) {
-    // Do not return the schema of a deleted table even if include_hidden is set to true
-    SCHECK_EC_FORMAT(
-        l->is_running(), NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
-        "The object '$0.$1' is not running", l->namespace_id(), l->name());
-  } else {
-    RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
-  }
-  if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
-    // An AlterTable is in progress; fully_applied_schema is the last
-    // schema that has reached every TS.
-    DCHECK(l->pb.state() == SysTablesEntryPB::ALTERING);
-    resp->mutable_schema()->CopyFrom(l->pb.fully_applied_schema());
-  } else {
-    // Case 1: There's no AlterTable, the regular schema is "fully applied".
-    // Case 2: get_fully_applied_indexes == false (for YCQL). Always return the latest schema.
-    resp->mutable_schema()->CopyFrom(l->pb.schema());
-  }
-
-  // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
-  // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
-  if (l->table_type() == TableType::PGSQL_TABLE_TYPE && resp->schema().pgschema_name().empty() &&
-      !table->is_system() && !table->IsSequencesSystemTable() &&
-      !table->IsColocationParentTable()) {
-    SharedLock lock(mutex_);
-    TRACE("Acquired catalog manager lock for schema name lookup");
-
-    auto pgschema_name = GetPgSchemaName(table->id(), l.data());
-    if (!pgschema_name.ok() || pgschema_name->empty()) {
-      LOG(WARNING) << Format(
-          "Unable to find schema name for YSQL table $0.$1 due to error: $2",
-          table->namespace_name(), table->name(), pgschema_name.ToString());
+  {
+    TRACE("Locking table");
+    auto l = table->LockForRead();
+    if (req->include_hidden()) {
+      // Do not return the schema of a deleted table even if include_hidden is set to true
+      SCHECK_EC_FORMAT(
+          l->is_running(), NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
+          "The object '$0.$1' is not running", l->namespace_id(), l->name());
     } else {
-      resp->mutable_schema()->set_pgschema_name(*pgschema_name);
+      RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
     }
-  }
-
-  if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
-    resp->set_version(l->pb.fully_applied_schema_version());
-    resp->mutable_indexes()->CopyFrom(l->pb.fully_applied_indexes());
-    if (l->pb.has_fully_applied_index_info()) {
-      resp->set_obsolete_indexed_table_id(GetIndexedTableId(l->pb));
-      *resp->mutable_index_info() = l->pb.fully_applied_index_info();
+    if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
+      // An AlterTable is in progress; fully_applied_schema is the last
+      // schema that has reached every TS.
+      DCHECK(l->pb.state() == SysTablesEntryPB::ALTERING);
+      resp->mutable_schema()->CopyFrom(l->pb.fully_applied_schema());
+    } else {
+      // Case 1: There's no AlterTable, the regular schema is "fully applied".
+      // Case 2: get_fully_applied_indexes == false (for YCQL). Always return the latest schema.
+      resp->mutable_schema()->CopyFrom(l->pb.schema());
     }
-    VLOG(1) << "Returning"
-            << "\nfully_applied_schema with version "
-            << l->pb.fully_applied_schema_version()
-            << ":\n"
-            << yb::ToString(l->pb.fully_applied_indexes())
-            << "\ninstead of schema with version "
-            << l->pb.version()
-            << ":\n"
-            << yb::ToString(l->pb.indexes());
-  } else {
-    resp->set_version(l->pb.version());
-    resp->mutable_indexes()->CopyFrom(l->pb.indexes());
-    if (l->pb.has_index_info()) {
-      resp->set_obsolete_indexed_table_id(GetIndexedTableId(l->pb));
-      *resp->mutable_index_info() = l->pb.index_info();
+
+    // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
+    // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
+    if (l->table_type() == TableType::PGSQL_TABLE_TYPE && resp->schema().pgschema_name().empty() &&
+        !table->is_system() && !table->IsSequencesSystemTable() &&
+        !table->IsColocationParentTable()) {
+      TRACE("Acquired catalog manager lock for schema name lookup");
+
+      auto pgschema_name = GetPgSchemaName(table->id(), l.data());
+      if (!pgschema_name.ok() || pgschema_name->empty()) {
+        LOG(WARNING) << Format(
+            "Unable to find schema name for YSQL table $0.$1 due to error: $2",
+            table->namespace_name(), table->name(), pgschema_name.ToString());
+      } else {
+        resp->mutable_schema()->set_pgschema_name(*pgschema_name);
+      }
     }
-    VLOG(3) << "Returning"
-            << "\nschema with version "
-            << l->pb.version()
-            << ":\n"
-            << yb::ToString(l->pb.indexes());
-  }
 
-  resp->set_is_backfilling(table->IsBackfilling());
+    if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
+      resp->set_version(l->pb.fully_applied_schema_version());
+      resp->mutable_indexes()->CopyFrom(l->pb.fully_applied_indexes());
+      if (l->pb.has_fully_applied_index_info()) {
+        resp->set_obsolete_indexed_table_id(GetIndexedTableId(l->pb));
+        *resp->mutable_index_info() = l->pb.fully_applied_index_info();
+      }
+      VLOG(1) << "Returning"
+              << "\nfully_applied_schema with version "
+              << l->pb.fully_applied_schema_version()
+              << ":\n"
+              << yb::ToString(l->pb.fully_applied_indexes())
+              << "\ninstead of schema with version "
+              << l->pb.version()
+              << ":\n"
+              << yb::ToString(l->pb.indexes());
+    } else {
+      resp->set_version(l->pb.version());
+      resp->mutable_indexes()->CopyFrom(l->pb.indexes());
+      if (l->pb.has_index_info()) {
+        resp->set_obsolete_indexed_table_id(GetIndexedTableId(l->pb));
+        *resp->mutable_index_info() = l->pb.index_info();
+      }
+      VLOG(3) << "Returning"
+              << "\nschema with version "
+              << l->pb.version()
+              << ":\n"
+              << yb::ToString(l->pb.indexes());
+    }
 
-  resp->set_is_compatible_with_previous_version(l->pb.updates_only_index_permissions());
-  resp->mutable_partition_schema()->CopyFrom(l->pb.partition_schema());
-  if (IsReplicationInfoSet(l->pb.replication_info())) {
-    resp->mutable_replication_info()->CopyFrom(l->pb.replication_info());
-  }
-  resp->set_create_table_done(!table->IsCreateInProgress());
-  resp->set_table_type(table->metadata().state().pb.table_type());
-  resp->mutable_identifier()->set_table_name(l->pb.name());
-  resp->mutable_identifier()->set_table_id(table->id());
-  resp->mutable_identifier()->mutable_namespace_()->set_id(table->namespace_id());
-  auto nsinfo = FindNamespaceById(table->namespace_id());
-  if (nsinfo.ok()) {
-    resp->mutable_identifier()->mutable_namespace_()->set_name((**nsinfo).name());
-  }
+    resp->set_is_backfilling(table->IsBackfilling());
 
-  if (l->pb.has_wal_retention_secs()) {
-    resp->set_wal_retention_secs(l->pb.wal_retention_secs());
+    resp->set_is_compatible_with_previous_version(l->pb.updates_only_index_permissions());
+    resp->mutable_partition_schema()->CopyFrom(l->pb.partition_schema());
+    if (IsReplicationInfoSet(l->pb.replication_info())) {
+      resp->mutable_replication_info()->CopyFrom(l->pb.replication_info());
+    }
+    resp->set_create_table_done(!table->IsCreateInProgress());
+    resp->set_table_type(table->metadata().state().pb.table_type());
+    resp->mutable_identifier()->set_table_name(l->pb.name());
+    resp->mutable_identifier()->set_table_id(table->id());
+    resp->mutable_identifier()->mutable_namespace_()->set_id(table->namespace_id());
+
+    if (l->pb.has_wal_retention_secs()) {
+      resp->set_wal_retention_secs(l->pb.wal_retention_secs());
+    }
+    if (l->has_ysql_ddl_txn_verifier_state()) {
+      resp->add_ysql_ddl_txn_verifier_state()->CopyFrom(l->ysql_ddl_txn_verifier_state());
+    }
   }
 
   // Get namespace name by id.
@@ -7774,10 +7812,6 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   if (!table->pg_table_id().empty()) {
     resp->set_pg_table_id(table->pg_table_id());
-  }
-
-  if (l->has_ysql_ddl_txn_verifier_state()) {
-    resp->add_ysql_ddl_txn_verifier_state()->CopyFrom(l->ysql_ddl_txn_verifier_state());
   }
 
   VLOG(1) << "Serviced GetTableSchema request for " << req->ShortDebugString() << " with "
@@ -8829,6 +8863,7 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
         IsCreateTableDoneResponsePB table_resp;
         const auto parent_table_id = GetColocatedDbParentTableId(ns->id());
         table_req.mutable_table()->set_table_id(parent_table_id);
+        l.Unlock();
         auto s = IsCreateTableDone(&table_req, &table_resp);
         resp->set_done(table_resp.done());
         if (!s.ok()) {
@@ -11775,11 +11810,15 @@ Status CatalogManager::GetTableLocations(
   // Don't return TabletLocations for deleted tables as they may not exist.
   // However, do return the TabletLocations for hidden tables as those are
   // needed for supporting SELECT AS-OF, DB-Clone, XCluster, PITR.
-  auto l = table->LockForRead();
-  if (l->started_deleting()) {
-      return STATUS_EC_FORMAT(
-          NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
-          "The object '$0.$1' does not exist", l->namespace_id(), l->name());
+  {
+    auto table_lock = table->LockForRead();
+    if (table_lock->started_deleting()) {
+        return STATUS_EC_FORMAT(
+            NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
+            "The object '$0.$1' does not exist", table_lock->namespace_id(), table_lock->name());
+    }
+    resp->set_table_type(table_lock->pb.table_type());
+    resp->set_partition_list_version(table_lock->pb.partition_list_version());
   }
 
   std::vector<TabletInfoPtr> tablets = VERIFY_RESULT(table->GetTabletsInRange(req));
@@ -11805,9 +11844,6 @@ Status CatalogManager::GetTableLocations(
       resp->mutable_tablet_locations()->RemoveLast();
     }
   }
-
-  resp->set_table_type(l->pb.table_type());
-  resp->set_partition_list_version(l->pb.partition_list_version());
 
   return Status::OK();
 }
@@ -12139,9 +12175,8 @@ Status CatalogManager::GetExpectedNumberOfReplicasForTablet(
 
 void CatalogManager::GetExpectedNumberOfReplicasForTable(
     const scoped_refptr<TableInfo>& table, int* num_live_replicas, int* num_read_replicas) {
-  auto l = ClusterConfig()->LockForRead();
   auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
-      table, GetTablespaceManager(), l->pb.replication_info());
+      table, GetTablespaceManager(), ClusterConfig()->LockForRead()->pb.replication_info());
   *num_live_replicas = GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
   for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
     *num_read_replicas += read_replica_placement_info.num_replicas();
@@ -12278,21 +12313,40 @@ Status CatalogManager::CollectTable(
     CollectFlags flags,
     std::vector<TableDescription>* all_tables,
     std::unordered_set<TableId>* parent_colocated_table_ids) {
-  auto lock = table_description.table_info->LockForRead();
-  if (lock->started_hiding()) {
-    VLOG_WITH_PREFIX_AND_FUNC(4)
-        << "Rejected hidden table: " << AsString(table_description.table_info);
-    return Status::OK();
+  bool colocated;
+  bool is_vector_index;
+  bool is_ysql_table;
+  std::string indexed_table_id;
+  std::vector<std::string> indexes;
+  {
+    auto lock = table_description.table_info->LockForRead();
+    if (lock->started_hiding()) {
+      VLOG_WITH_PREFIX_AND_FUNC(4)
+          << "Rejected hidden table: " << AsString(table_description.table_info);
+      return Status::OK();
+    }
+    if (lock->started_deleting()) {
+      VLOG_WITH_PREFIX_AND_FUNC(4)
+          << "Rejected deleted table: " << AsString(table_description.table_info);
+      return Status::OK();
+    }
+    colocated = lock->pb.colocated();
+    indexed_table_id = lock->indexed_table_id();
+    is_vector_index = lock->is_vector_index();
+    is_ysql_table = lock->table_type() == PGSQL_TABLE_TYPE;
+    if (flags.Test(CollectFlag::kAddIndexes)) {
+      indexes.reserve(lock->pb.indexes().size());
+      for (const auto& index_info : lock->pb.indexes()) {
+        LOG_IF(DFATAL, table_description.table_info->id() != index_info.indexed_table_id())
+                << "Wrong indexed table id in index descriptor";
+        indexes.push_back(index_info.table_id());
+      }
+    }
   }
-  if (lock->started_deleting()) {
-    VLOG_WITH_PREFIX_AND_FUNC(4)
-        << "Rejected deleted table: " << AsString(table_description.table_info);
-    return Status::OK();
-  }
-  if (flags.Test(CollectFlag::kIncludeParentColocatedTable) && lock->pb.colocated()) {
+  if (flags.Test(CollectFlag::kIncludeParentColocatedTable) && colocated) {
     bool add_parent = !IsColocationParentTableId(table_description.table_info->id());
-    if (add_parent && lock->is_vector_index()) {
-      auto indexed_table = VERIFY_RESULT(FindTableById(lock->indexed_table_id()));
+    if (add_parent && is_vector_index) {
+      auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
       add_parent = indexed_table->LockForRead()->pb.colocated();
     }
     if (add_parent) {
@@ -12319,13 +12373,13 @@ Status CatalogManager::CollectTable(
   if (flags.Test(CollectFlag::kAddIndexes)) {
     TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
 
-    if (lock->is_index()) {
+    if (!indexed_table_id.empty()) {
       return STATUS(InvalidArgument, "Expected table, but found index",
                     table_description.table_info->id(),
                     MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
     }
 
-    if (lock->table_type() == PGSQL_TABLE_TYPE) {
+    if (is_ysql_table) {
       return STATUS(InvalidArgument, "Getting indexes for YSQL table is not supported",
                     table_description.table_info->id(),
                     MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
@@ -12334,11 +12388,9 @@ Status CatalogManager::CollectTable(
     auto collect_index_flags = flags;
     // Don't need to collect indexes for index.
     collect_index_flags.Reset(CollectFlag::kAddIndexes);
-    for (const auto& index_info : lock->pb.indexes()) {
-      LOG_IF(DFATAL, table_description.table_info->id() != index_info.indexed_table_id())
-              << "Wrong indexed table id in index descriptor";
+    for (const auto& index_table_id : indexes) {
       TableIdentifierPB index_id_pb;
-      index_id_pb.set_table_id(index_info.table_id());
+      index_id_pb.set_table_id(index_table_id);
       index_id_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
       auto index_description = VERIFY_RESULT(DescribeTable(
           index_id_pb, flags.Test(CollectFlag::kSucceedIfCreateInProgress)));
@@ -12994,9 +13046,7 @@ void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
 void CatalogManager::SchedulePostTabletCreationTasks(
     const TableInfoPtr& table_info, const LeaderEpoch& epoch,
     const std::set<TabletId>& new_running_tablets) {
-  auto table_lock = table_info->LockForRead();
-
-  if (!table_lock->IsPreparing()) {
+  if (!table_info->LockForRead()->IsPreparing()) {
     return;
   }
   auto tablets_running_result = table_info->AreAllTabletsRunning(new_running_tablets);

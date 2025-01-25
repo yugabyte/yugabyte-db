@@ -1060,7 +1060,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
   Result<std::string> GetPgSchemaName(
-      const TableId& table_id, const PersistentTableInfo& table_info) REQUIRES_SHARED(mutex_);
+      const TableId& table_id, const PersistentTableInfo& table_info);
 
   Result<std::unordered_map<std::string, uint32_t>> GetPgAttNameTypidMap(
       const TableId& table_id, const PersistentTableInfo& table_info);
