@@ -1630,4 +1630,10 @@ Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
       .Connect();
 }
 
+Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) {
+  auto pg_client_service = pg_client_service_.lock();
+  RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
+  return pg_client_service->impl.GetLocalPgTxnSnapshot(snapshot_id);
+}
+
 }  // namespace yb::tserver

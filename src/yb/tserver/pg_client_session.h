@@ -201,6 +201,11 @@ class PgClientSession final {
   void StartShutdown();
   void CompleteShutdown();
 
+  Result<ReadHybridTime> GetTxnSnapshotReadTime(
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline);
+
+  Status SetTxnSnapshotReadTime(const PgPerformOptionsPB& options, CoarseTimePoint deadline);
+
  private:
   struct SetupSessionResult {
     SessionData session_data;

@@ -24,7 +24,10 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.util.PSQLException;
 import java.sql.BatchUpdateException;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +39,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.master.MasterDdlOuterClass.AlterTableRequestPB.StepOrBuilder;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgBatch extends BasePgSQLTest {
@@ -425,5 +429,64 @@ public class TestPgBatch extends BasePgSQLTest {
     testMultipleStatementsPerQueryHelper(true, false, RC);
     testMultipleStatementsPerQueryHelper(true, false, RR);
     testMultipleStatementsPerQueryHelper(true, false, SR);
+  }
+
+  protected void SetupTxnSnapshotTest(IsolationLevel isolationLevel) throws Throwable {
+    String enable_pg_export_snapshot_gFlag = "ysql_enable_pg_export_snapshot";
+    Map<String, String> extra_tserver_flags = new HashMap<String, String>();
+    extra_tserver_flags.put("allowed_preview_flags_csv", enable_pg_export_snapshot_gFlag);
+    extra_tserver_flags.put(enable_pg_export_snapshot_gFlag, "true");
+    restartClusterWithFlags(Collections.emptyMap(), extra_tserver_flags);
+
+    setUpTable(11, isolationLevel);
+  }
+
+  @Test
+  public void testExportTxnSnapshot() throws Throwable {
+    IsolationLevel isolationLevel = RR;
+    SetupTxnSnapshotTest(isolationLevel);
+
+    try (Connection c1 = getConnectionBuilder().connect(); Statement s1 = c1.createStatement();
+        Connection c = getConnectionBuilder().connect(); Statement s = c.createStatement()) {
+      s.execute("BEGIN TRANSACTION ISOLATION LEVEL " + isolationLevel.sql);
+      s.addBatch("SELECT pg_export_snapshot()");
+      for (int i = 1; i < 5; i++) {
+        s.addBatch(String.format("UPDATE t SET v=2 WHERE k=%d", i));
+      }
+      s.addBatch("UPDATE t SET v=2 WHERE k IN (5,6,7,8)");
+      for (int i = 9; i < 12; i++) {
+        s.addBatch(String.format("UPDATE t SET v=2 WHERE k=%d", i));
+      }
+      assertThrows("cannot export/import a snapshot in Batch Execution.",
+          BatchUpdateException.class, () -> s.executeBatch());
+    }
+  }
+
+  @Test
+  public void testImportTxnSnapshot() throws Throwable {
+    IsolationLevel isolationLevel = RR;
+    SetupTxnSnapshotTest(isolationLevel);
+
+    try (Connection c1 = getConnectionBuilder().connect(); Statement s1 = c1.createStatement();
+        Connection c = getConnectionBuilder().connect(); Statement s = c.createStatement()) {
+      s1.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+
+      ResultSet rs = s1.executeQuery("SELECT pg_export_snapshot()");
+      assertTrue(rs.next());
+      String snapshotId = rs.getString(1);
+      LOG.info(String.format("Snapshot Exported: %s", snapshotId));
+
+      s.execute("BEGIN TRANSACTION ISOLATION LEVEL " + isolationLevel.sql);
+      s.addBatch(String.format("SET TRANSACTION SNAPSHOT '%s'", snapshotId));
+      for (int i = 1; i < 5; i++) {
+        s.addBatch(String.format("UPDATE t SET v=2 WHERE k=%d", i));
+      }
+      s.addBatch("UPDATE t SET v=2 WHERE k IN (5,6,7,8)");
+      for (int i = 9; i < 12; i++) {
+        s.addBatch(String.format("UPDATE t SET v=2 WHERE k=%d", i));
+      }
+      assertThrows("cannot export/import a snapshot in Batch Execution.",
+          BatchUpdateException.class, () -> s.executeBatch());
+    }
   }
 }
