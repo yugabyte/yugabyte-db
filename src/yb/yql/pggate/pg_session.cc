@@ -913,7 +913,10 @@ void PgSession::ClearInsertOnConflictBuffer(void* plan) {
       });
 
   DCHECK(iter != insert_on_conflict_buffers_.end());
-  // Only clear the global intents cache if this is the final buffer. */
+  // This should only be called in case the keys_ map was manually cleared beforehand.  Otherwise,
+  // we could run into memory leaks of the slots in that map.
+  DCHECK_EQ(iter->second.GetNumIndexKeys(), 0);
+  // Only clear the global intents cache if this is the final buffer.
   iter->second.Clear(insert_on_conflict_buffers_.size() == 1 /* clear_intents */);
   insert_on_conflict_buffers_.erase(iter);
 }
