@@ -15,7 +15,7 @@
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/version_info.pb.h"
+#include "yb/common/version_info.pb.h"
 
 namespace yb {
 

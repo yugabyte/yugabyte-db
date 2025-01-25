@@ -362,8 +362,6 @@
 #include "yb/util/unique_lock.h"
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
-#include "yb/util/version_info.h"
-#include "yb/util/version_info.pb.h"
 #include "yb/util/version_tracker.h"
 #include "yb/util/web_callback_registry.h"
 #include "yb/util/write_buffer.h"

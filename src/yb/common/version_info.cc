@@ -30,7 +30,7 @@
 // under the License.
 //
 
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 #include <fstream>
 #include <string>

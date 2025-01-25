@@ -94,8 +94,7 @@
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"
-#include "yb/util/version_info.h"
-#include "yb/util/version_info.pb.h"
+#include "yb/common/version_info.h"
 
 DEFINE_RUNTIME_int32(
     hide_dead_node_threshold_mins, 60 * 24,

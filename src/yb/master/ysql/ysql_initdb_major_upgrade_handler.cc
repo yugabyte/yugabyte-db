@@ -26,7 +26,7 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
