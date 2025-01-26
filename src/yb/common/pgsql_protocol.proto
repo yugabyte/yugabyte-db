@@ -674,3 +674,9 @@ message PgsqlResponsePB {
   // Metrics changes as a result of processing the request.
   optional PgsqlRequestMetricsPB metrics = 17;
 }
+
+message PgTxnSnapshotPB {
+  optional uint32 db_oid = 1;
+  optional uint32 isolation_level = 2;
+  optional bool read_only = 3;
+}

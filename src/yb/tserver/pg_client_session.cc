@@ -51,6 +51,7 @@
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
+#include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -999,6 +1000,22 @@ Status PgClientSession::DropReplicationSlot(
   return client().DeleteCDCStream(ReplicationSlotName(req.replication_slot_name()));
 }
 
+Result<ReadHybridTime> PgClientSession::GetTxnSnapshotReadTime(
+    const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
+  auto setup_session_result = VERIFY_RESULT(SetupSession(options, deadline, HybridTime()));
+  RSTATUS_DCHECK(setup_session_result.is_plain, IllegalState, "Unexpected session is prepared");
+  return setup_session_result.session_data.session->read_point()->GetReadTime();
+}
+
+Status PgClientSession::SetTxnSnapshotReadTime(
+    const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
+  SCHECK(options.has_read_time(), InvalidArgument, "Snapshot Read Time not provided");
+  SCHECK(
+      txn_serial_no_ != options.txn_serial_no(), IllegalState,
+      "Snapshot read time can only be set at the very beginning of transaction.");
+  return ResultToStatus(SetupSession(options, deadline, HybridTime()));
+}
+
 Status PgClientSession::WaitForBackendsCatalogVersion(
     const PgWaitForBackendsCatalogVersionRequestPB& req,
     PgWaitForBackendsCatalogVersionResponsePB* resp,
@@ -1342,7 +1359,8 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
 
   const auto in_txn_limit = GetInTxnLimit(options, clock_.get());
   VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
-  auto setup_session_result = VERIFY_RESULT(SetupSession(data->req, deadline, in_txn_limit));
+  auto setup_session_result =
+      VERIFY_RESULT(SetupSession(data->req.options(), deadline, in_txn_limit));
   auto* session = setup_session_result.session_data.session.get();
   auto& transaction = setup_session_result.session_data.transaction;
 
@@ -1468,8 +1486,7 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
 }
 
 Result<PgClientSession::SetupSessionResult> PgClientSession::SetupSession(
-    const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit) {
-  const auto& options = req.options();
+    const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit) {
   const auto txn_serial_no = options.txn_serial_no();
   const auto read_time_serial_no = options.read_time_serial_no();
   auto kind = PgClientSessionKind::kPlain;
@@ -1568,8 +1585,8 @@ Result<PgClientSession::SetupSessionResult> PgClientSession::SetupSession(
       session.SetInTxnLimit(in_txn_limit);
     }
 
-    if (options.clamp_uncertainty_window()
-        && !session.read_point()->GetReadTime()) {
+    if (options.clamp_uncertainty_window() &&
+        !session.read_point()->GetReadTime()) {
       RSTATUS_DCHECK(
         !(transaction && transaction->isolation() == SERIALIZABLE_ISOLATION),
         IllegalState, "Clamping does not apply to SERIALIZABLE txns.");

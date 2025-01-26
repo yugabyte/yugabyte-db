@@ -38,6 +38,7 @@ option java_package = "org.yb.tserver";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/pgsql_protocol.proto";
 import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/rpc/service.proto";
@@ -139,6 +140,9 @@ service TabletServerService {
 
   rpc AdminExecutePgsql(AdminExecutePgsqlRequestPB)
       returns (AdminExecutePgsqlResponsePB);
+
+  rpc GetLocalPgTxnSnapshot(GetLocalPgTxnSnapshotRequestPB)
+      returns (GetLocalPgTxnSnapshotResponsePB);
 
   rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
 }
@@ -564,4 +568,14 @@ message AdminExecutePgsqlRequestPB {
 
 message AdminExecutePgsqlResponsePB {
   optional TabletServerErrorPB error = 1;
+}
+
+message GetLocalPgTxnSnapshotRequestPB {
+  required bytes snapshot_id = 1;
+}
+
+message GetLocalPgTxnSnapshotResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional PgTxnSnapshotPB snapshot = 2;
+  optional ReadHybridTimePB snapshot_read_time = 3;
 }

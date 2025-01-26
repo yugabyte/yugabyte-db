@@ -124,6 +124,12 @@ service PgClientService {
 
   rpc CronGetLastMinute(PgCronGetLastMinuteRequestPB)
   returns (PgCronGetLastMinuteResponsePB);
+
+  rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
+      returns (PgExportTxnSnapshotResponsePB);
+
+  rpc ImportTxnSnapshot(PgImportTxnSnapshotRequestPB)
+      returns (PgImportTxnSnapshotResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -1098,4 +1104,28 @@ message PgDatabaseCloneInfoPB {
   string state = 5;
   fixed64 as_of_time = 6;
   string failure_reason = 7;
+}
+
+message PgExportTxnSnapshotRequestPB {
+  uint64 session_id = 1;
+  PgTxnSnapshotPB snapshot = 2;
+  PgPerformOptionsPB options = 3;
+  AshMetadataPB ash_metadata = 4;
+}
+
+message PgExportTxnSnapshotResponsePB {
+  AppStatusPB status = 1;
+  string snapshot_id = 2;
+}
+
+message PgImportTxnSnapshotRequestPB {
+  uint64 session_id = 1;
+  string snapshot_id = 2;
+  PgPerformOptionsPB options = 3;
+  AshMetadataPB ash_metadata = 4;
+}
+
+message PgImportTxnSnapshotResponsePB {
+  AppStatusPB status = 1;
+  PgTxnSnapshotPB snapshot = 2;
 }

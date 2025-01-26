@@ -699,7 +699,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
     options.set_use_catalog_session(true);
   } else {
-    pg_txn_manager_->SetupPerformOptions(&options, ops_options.ensure_read_time_is_set);
+    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(
+        &options, ops_options.ensure_read_time_is_set));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -968,7 +969,7 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
   tserver::PgPerformOptionsPB options;
-  pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
+  RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options));
   auto status = pg_client_.RollbackToSubTransaction(id, &options);
   VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
   return status;

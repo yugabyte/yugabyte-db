@@ -157,6 +157,11 @@ DEFINE_RUNTIME_PREVIEW_bool(
     "If ysql_conn_mgr_version_matching is enabled is enabled, then connect to higher version "
     "server if this flag is set to true");
 
+DEFINE_RUNTIME_PREVIEW_bool(
+    ysql_enable_pg_export_snapshot, false,
+    "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
+    "and SET TRANSACTION SNAPSHOT");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 
@@ -2106,6 +2111,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
+      .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
   };
   // clang-format on
   return &accessor;
@@ -2893,6 +2899,17 @@ uint64_t YBCGetCurrentHybridTimeLsn() {
   return (HybridTime::FromMicros(GetCurrentTimeMicros()).ToUint64());
 }
 
-}  // extern "C"
+YBCStatus YBCPgExportSnapshot(const YbcPgTxnSnapshot* snapshot, char** snapshot_id) {
+  return ExtractValueFromResult(
+      pgapi->ExportSnapshot(*snapshot),
+      [snapshot_id](auto value) { *snapshot_id = YBCPAllocStdString(value); });
+}
+
+YBCStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot) {
+  return ExtractValueFromResult(
+      pgapi->ImportSnapshot(snapshot_id), [snapshot](auto value) { *snapshot = value; });
+}
+
+} // extern "C"
 
 } // namespace yb::pggate

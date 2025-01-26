@@ -179,6 +179,11 @@ class PgClientSession {
   virtual void StartShutdown();
   virtual void CompleteShutdown();
 
+  Result<ReadHybridTime> GetTxnSnapshotReadTime(
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline);
+
+  Status SetTxnSnapshotReadTime(const PgPerformOptionsPB& options, CoarseTimePoint deadline);
+
  private:
   struct SetupSessionResult {
     SessionData session_data;
@@ -199,7 +204,7 @@ class PgClientSession {
       client::YBSession* session, client::YBTransaction* transaction);
 
   Result<SetupSessionResult> SetupSession(
-      const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit);
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit);
   Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);

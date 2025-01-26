@@ -64,7 +64,6 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/util/callsite_profiling.h"
 
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/ql_rowblock.h"
@@ -98,11 +97,13 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/crc.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -128,6 +129,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
+#include "yb/util/uuid.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/ysql_binary_runner.h"
 
@@ -281,8 +283,9 @@ METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader
 
 double TEST_delay_create_transaction_probability = 0;
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
+
+YB_STRONGLY_TYPED_HEX_UUID_IMPL(PgTxnSnapshotLocalId);
 
 using consensus::ChangeConfigRequestPB;
 using consensus::ChangeConfigResponsePB;
@@ -382,6 +385,12 @@ void PerformAtLeader(
       SetupErrorAndRespond(resp->mutable_error(), status, context);
     }
   }
+}
+
+Result<PgTxnSnapshot> GetLocalPgTxnSnapshotImpl(
+    TabletServerIf& server, const std::string& snapshot_id_uuid) {
+  return server.GetLocalPgTxnSnapshot(VERIFY_RESULT(
+      FullyDecodePgTxnSnapshotLocalId(snapshot_id_uuid)));
 }
 
 } // namespace
@@ -3436,6 +3445,20 @@ void TabletServiceImpl::AdminExecutePgsql(
   }
 }
 
+void TabletServiceImpl::GetLocalPgTxnSnapshot(
+    const GetLocalPgTxnSnapshotRequestPB* req, GetLocalPgTxnSnapshotResponsePB* resp,
+    rpc::RpcContext context) {
+  const auto result = GetLocalPgTxnSnapshotImpl(*server_, req->snapshot_id());
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), &context);
+    return;
+  }
+  const auto& snapshot = *result;
+  snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
+  snapshot.read_time.ToPB(resp->mutable_snapshot_read_time());
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::TestRetry(
     const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {
@@ -3454,5 +3477,4 @@ void TabletServiceAdminImpl::TestRetry(
 void TabletServiceImpl::Shutdown() {
 }
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

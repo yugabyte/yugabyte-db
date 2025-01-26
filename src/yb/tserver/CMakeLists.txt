@@ -243,6 +243,7 @@ set(TSERVER_SRCS
   pg_shared_mem_pool.cc
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
+  pg_txn_snapshot_manager.cc
   tserver_xcluster_context.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc

@@ -414,6 +414,7 @@ typedef struct PgGFlagsAccessor {
   const char*     ysql_conn_mgr_sequence_support_mode;
   const int32_t*  ysql_conn_mgr_max_query_size;
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
+  const bool*     ysql_enable_pg_export_snapshot;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -885,6 +886,12 @@ typedef struct {
   void* pg_regex_locale; // struct pg_locale_t
   YBCPgOid pg_regex_collation;
 } YBCPgThreadLocalRegexpMetadata;
+
+typedef struct {
+  YBCPgOid db_id;
+  int iso_level;
+  bool read_only;
+} YbcPgTxnSnapshot;
 
 #ifdef __cplusplus
 }  // extern "C"

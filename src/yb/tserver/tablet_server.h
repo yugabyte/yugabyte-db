@@ -383,6 +383,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
 
+  Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) override;
+
   void TEST_SetIsCronLeader(bool is_cron_leader);
 
   struct PgClientServiceHolder {

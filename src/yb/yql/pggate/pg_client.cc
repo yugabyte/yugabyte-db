@@ -1192,6 +1192,31 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req) {
+    tserver::PgExportTxnSnapshotResponsePB resp;
+    req->set_session_id(session_id_);
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::ExportTxnSnapshot, *req, resp,
+        ash::PggateRPC::kExportTxnSnapshot));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.snapshot_id();
+  }
+
+  Result<tserver::PgImportTxnSnapshotResponsePB> ImportTxnSnapshot(
+      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
+    tserver::PgImportTxnSnapshotRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_snapshot_id(snapshot_id.data(), snapshot_id.length());
+    *req.mutable_options() = std::move(options);
+
+    tserver::PgImportTxnSnapshotResponsePB resp;
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::ImportTxnSnapshot, req, resp,
+        ash::PggateRPC::kImportTxnSnapshot));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory() {
     tserver::PgActiveSessionHistoryRequestPB req;
     req.set_fetch_tserver_states(true);
@@ -1658,6 +1683,15 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots
 Result<tserver::PgGetReplicationSlotResponsePB> PgClient::GetReplicationSlot(
     const ReplicationSlotName& slot_name) {
   return impl_->GetReplicationSlot(slot_name);
+}
+
+Result<std::string> PgClient::ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req) {
+  return impl_->ExportTxnSnapshot(req);
+}
+
+Result<tserver::PgImportTxnSnapshotResponsePB> PgClient::ImportTxnSnapshot(
+    std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
+  return impl_->ImportTxnSnapshot(snapshot_id, std::move(options));
 }
 
 Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory() {

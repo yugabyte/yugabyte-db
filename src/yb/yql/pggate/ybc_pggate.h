@@ -945,6 +945,9 @@ void YBCForceAllowCatalogModifications(bool allowed);
 
 uint64_t YBCGetCurrentHybridTimeLsn();
 
+YBCStatus YBCPgExportSnapshot(const YbcPgTxnSnapshot* snapshot, char** snapshot_id);
+YBCStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
