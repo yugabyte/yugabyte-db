@@ -36,7 +36,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 DECLARE_bool(TEST_auto_flags_initialized);
 DECLARE_bool(TEST_auto_flags_new_install);

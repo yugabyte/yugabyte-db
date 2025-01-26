@@ -342,10 +342,10 @@ Status CloneStateManager::StartTabletsCloning(
   }
 
   // Export snapshot info.
+  HybridTime restore_ht(clone_state->LockForRead()->pb.restore_time());
   auto [snapshot_info, not_snapshotted_tablets] = VERIFY_RESULT(
       external_funcs_->GenerateSnapshotInfoFromScheduleForClone(
-          snapshot_schedule_id, HybridTime(clone_state->LockForRead()->pb.restore_time()),
-          deadline));
+          snapshot_schedule_id, restore_ht, deadline));
   auto source_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot_info.id()));
   VLOG(2) << Format(
       "The generated SnapshotInfoPB as of time: $0, snapshot_info: $1 ",

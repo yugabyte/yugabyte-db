@@ -23,7 +23,7 @@
 #include "yb/util/debug.h"
 #include "yb/util/env_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include "yb/server/server_base.pb.h"

@@ -64,7 +64,8 @@ public class YbcManagerTest extends FakeDBApplication {
             mockNodeManager,
             mockKubernetesManagerFactory,
             mockFileHelperService,
-            mockStorageUtilFactory);
+            mockStorageUtilFactory,
+            mockGFlagsValidation);
     spyYbcManager = spy(ybcManager);
     testCustomer = ModelFactory.testCustomer();
     testUniverse = ModelFactory.createUniverse(testCustomer.getId());
