@@ -110,7 +110,7 @@ SELECT documentdb_api.create_collection('documentdb','patient');
 
 #### Insert documents
 
-The [documentdb_api.insertOne()](https://github.com/microsoft/documentdb/wiki/Functions#insert_one) command is used to add a single document into a collection.
+The [documentdb_api.insert_one](https://github.com/microsoft/documentdb/wiki/Functions#insert_one) command is used to add a single document into a collection.
 
 ```sql
 select documentdb_api.insert_one('documentdb','patient', '{ "patient_id": "P001", "name": "Alice Smith", "age": 30, "phone_number": "555-0123", "registration_year": "2023","conditions": ["Diabetes", "Hypertension"]}');
