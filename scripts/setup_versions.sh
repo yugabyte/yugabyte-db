@@ -8,9 +8,9 @@ set -e
 # declare all the versions of dependencies
 LIBBSON_VERSION=1.28.0
 # This maps to REL_16_2:b78fa8547d02fc72ace679fb4d5289dccdbfc781
-POSTGRE_16_REF="REL_16_2"
+POSTGRES_16_REF="REL_16_2"
 # This maps to REL15_3:8382864eb5c9f9ebe962ac20b3392be5ae304d23
-POSTGRE_15_REF="REL_15_3"
+POSTGRES_15_REF="REL_15_3"
 # This is commit c44682a7d0641748c7fb3427fdb90ea2ae465a47
 CITUS_VERSION=v12.1.6
 # This is commit e6facb10caa1fb41faa8139f2116c282a6dfdde9
@@ -28,9 +28,9 @@ function GetPostgresSourceRef()
 {
   local pgVersion=$1
   if [ "$pgVersion" == "16" ]; then
-    echo $POSTGRE_16_REF
+    echo $POSTGRES_16_REF
   elif [ "$pgVersion" == "15" ]; then
-    echo $POSTGRE_15_REF
+    echo $POSTGRES_15_REF
   else
     echo "Invalid PG Version specified $pgVersion";
     exit 1;

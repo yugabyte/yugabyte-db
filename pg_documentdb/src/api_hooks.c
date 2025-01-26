@@ -155,7 +155,7 @@ RunQueryWithSequentialModification(const char *query, int expectedSPIOK, bool *i
 
 
 /*
- * Whether or not the the base tables have sharding with distribution (true if DistributePostgreTable
+ * Whether or not the the base tables have sharding with distribution (true if DistributePostgresTable
  * is run).
  * the documents table name and the substring where the collectionId was found is provided as an input.
  */
