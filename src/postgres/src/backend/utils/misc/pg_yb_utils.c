@@ -2433,21 +2433,23 @@ CheckAlterDatabaseDdl(PlannedStmt *pstmt)
 		{
 			const RenameStmt *const stmt = castNode(RenameStmt, parsetree);
 			if (stmt->renameType == OBJECT_DATABASE)
-			{
-				/*
-				 * At this point, old database name is already renamed to newname
-				 * in the current DDL transaction, so we will not be able to find
-				 * the database oid using the old name.
-				 */
-				dbname = stmt->newname;
-			}
+				/* ALTER DATABASE RENAME needs to have global impact. */
+				Assert(ddl_transaction_state.is_global_ddl);
 			break;
 		}
 		case T_AlterOwnerStmt:
 		{
 			const AlterOwnerStmt *const stmt = castNode(AlterOwnerStmt, parsetree);
+
+			/*
+			 * ALTER DATABASE OWNER needs to have global impact, however we
+			 * may have a no-op ALTER DATABASE OWNER when the new owner is the
+			 * same as the old owner and there is no write made to pg_database
+			 * to turn on is_global_ddl is not set.
+			 */
 			if (stmt->objectType == OBJECT_DATABASE)
-				dbname = strVal(stmt->object);
+				Assert(ddl_transaction_state.is_global_ddl ||
+					   !YBCPgHasWriteOperationsInDdlTxnMode());
 			break;
 		}
 		default:
@@ -2456,9 +2458,9 @@ CheckAlterDatabaseDdl(PlannedStmt *pstmt)
 	if (dbname)
 	{
 		/*
-		 * Alter database does not need to be a global impact DDL, it only needs
-		 * to increment the catalog version of the database that is altered,
-		 * which may not be the same as MyDatabaseId.
+		 * Some ALTER DATABASE statements do not need to be a global impact DDL,
+		 * they only need to increment the catalog version of the database that
+		 * is altered, which may not be the same as MyDatabaseId.
 		 */
 		ddl_transaction_state.database_oid = get_database_oid(dbname, false);
 		ddl_transaction_state.is_global_ddl = false;
