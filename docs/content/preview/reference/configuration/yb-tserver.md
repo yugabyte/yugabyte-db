@@ -1638,15 +1638,17 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
-## Advisory locks flags
+## Advisory lock flags
 
-Support for Advisory locks is in {{<tags/feature/tp>}}
+Support for advisory locks is {{<tags/feature/tp>}}.
 
-To learn about the Advisory locks feature, see [Advisory locks in YugabyteDB](../../../architecture/advisory-locks) in the architecture section.
+To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
 
-Advisory locks feature is enabled when this gflag is set to true on master and tserver nodes.
+Enables advisory locking.
+
+This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 
 Default: false
 
