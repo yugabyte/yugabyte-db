@@ -17,48 +17,6 @@ COMMENT ON FUNCTION __API_SCHEMA_INTERNAL_V2__.check_build_index_status(__CORE_S
     IS 'Calls check_build_index_status_internal using run_command_on_coordinator.';
 
 -- TODO: DROP the __API_SCHEMA__.create_indexes_background
-/**
- * @ingroup index_mgmt
- * @brief Creates indexes on a collection in the background.
- *
- * @details This function processes the MongoDB `createIndexes` command asynchronously. It allows you to create one or more indexes on a specified collection without blocking other database operations. The indexes are created in the background by queueing the index builds, which are then processed by background workers.
- *
- * **Usage Examples:**
- * - Create a single index on a collection:
- *   ```sql
- *   SELECT * FROM documentdb_api.create_indexes_background('db', '{"createIndexes": "mycollection", "indexes": [{"key": {"field1": 1}, "name": "index1"}]}');
- *   ```
- * - Create multiple indexes on a collection:
- *   ```sql
- *   SELECT * FROM documentdb_api.create_indexes_background('db', '{"createIndexes": "mycollection", "indexes": [{"key": {"field1": 1}, "name": "index1"}, {"key": {"field2": -1}, "name": "index2"}]}');
- *   ```
- *
-
- * @param[in] p_database_name The name of the database where the indexes will be created. Must not be NULL.
- * @param[in] p_command A BSON document representing the `createIndexes` command, which includes:
- *   - `"createIndexes"`: The name of the collection on which to create the indexes. Must be a string.
- *   - `"indexes"`: An array of index specifications. Each specification must include:
- *     - `"key"`: An object specifying the fields to index and their sort order (`1` for ascending, `-1` for descending).
- *     - `"name"`: The name of the index.
- *     - Optional fields like `"unique"`, `"background"`, etc.
- *
- * @return A record containing:
- * - `retval` (documentdb_core.bson): A BSON document with the result of the operation, including any error messages.
- * - `ok` (boolean): Indicates whether the command was successful (`true`) or if an error occurred (`false`).
- * - `requests` (documentdb_core.bson): Details of the index build requests that have been queued.
- *
- * **Notes:**
- * - **Asynchronous Operation:** Index creation is performed asynchronously. The function returns immediately after queuing the index build requests.
- * - **Index Build Monitoring:** Use other system functions or views to monitor the progress of background index builds.
- * - **Limitations:**
- *   - The function does not block, so subsequent queries might not see the new indexes until they are built.
- *   - Index names must be unique within the collection.
- * - **Transaction Support:** This function does not support transactions since index creation is a schema-changing operation.
- *
- * **Related Functions:**
- * - `documentdb_api.create_indexes`: For creating indexes synchronously.
- * - `documentdb_api.list_indexes`: To list existing indexes on a collection.
- */
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.create_indexes_background(
     p_database_name text, 
     p_index_spec __CORE_SCHEMA__.bson, 

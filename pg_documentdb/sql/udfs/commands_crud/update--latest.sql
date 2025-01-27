@@ -2,44 +2,6 @@
 /*
  * __API_SCHEMA_V2__.update processes a Mongo update wire-protocol command.
  */
-/**
- * @ingroup commands_crud
- * @brief Updates documents in a DocumentDB collection.
- *
- * @details Performs an update operation on a specified collection within the DocumentDB database.
- *          Optionally inserts new documents if specified and associates the operation with a transaction.
- *
- * **Usage Examples:**
- * - Update documents without inserting new ones:
- *   ```sql
- *   SELECT documentdb_api.update(
- *       'my_database',
- *       '{"filter": { "status": "inactive" }, "update": { "$set": { "status": "active" } }}');
- *   -- Returns: { "ok" : 1.0, "nModified": 10, "n": 10 }
- *   ```
- *
- * - Update documents and insert new ones within a transaction:
- *   ```sql
- *   SELECT documentdb_api.update(
- *       'my_database',
- *       '{"filter": { "status": "inactive" }, "update": { "$set": { "status": "active" } }}',
- *       '[{ "name": "New Document", "status": "active" }]',
- *       'transaction_12345');
- *   -- Returns: { "ok" : 1.0, "nModified": 10, "n": 10 }
- *   ```
- *
-
- * @param[in] p_database_name The name of the target database. Must not be NULL.
- * @param[in] p_update BSON object specifying the update criteria and modifications. Must include "filter" and "update" fields.
- * @param[in] p_insert_documents (Optional) BSON sequence of documents to insert if applicable. Defaults to NULL.
- * @param[in] p_transaction_id (Optional) Transaction ID to associate with the update operation. Defaults to NULL.
- * @param[out] p_result BSON object containing the result of the update operation.
- * @param[out] p_success Boolean indicating the success status of the update operation.
- *
- * @return A record containing:
- * - `p_result`: BSON object with details of the update operation result.
- * - `p_success`: Boolean indicating whether the update operation was successful.
- */
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.update(
     p_database_name text,
     p_update __CORE_SCHEMA_V2__.bson,

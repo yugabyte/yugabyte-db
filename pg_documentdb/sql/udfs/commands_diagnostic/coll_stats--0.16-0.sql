@@ -1,14 +1,4 @@
-/**
- * @ingroup commands_diagnostic
- * @brief Returns a variety of storage statistics for a given collection.
- *
- * @details The `coll_stats` function provides detailed storage statistics for a specified collection.
- *
- * @param[in] p_database_name Name of the target database. Must not be NULL.
- * @param[in] p_collection_name Name of the collection for which storage statistics are to be retrieved. Must not be NULL.
- * @param[in] p_scale (Optional) Scale factor to adjust output values. Defaults to 1.
- * @returns A BSON object containing the storage statistics for the collection.
- */
+
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.coll_stats(
     IN p_database_name text,
     IN p_collection_name text,
