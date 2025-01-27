@@ -5231,10 +5231,10 @@ DeparseSimpleExprForDocument(uint64 collectionId, Expr *expr)
 	 * Reset search_path so that deparse_expression builds fully
 	 * qualified names.
 	 */
-	OverrideSearchPath *overridePath = GetOverrideSearchPath(CurrentMemoryContext);
-	overridePath->schemas = NIL;
-	overridePath->addCatalog = true;
-	PushOverrideSearchPath(overridePath);
+	int saveNestLevel = NewGUCNestLevel();
+	(void) set_config_option("search_path", "pg_catalog",
+							 PGC_USERSET, PGC_S_SESSION,
+							 GUC_ACTION_SAVE, true, 0, false);
 
 	bool useTableNamePrefix = false;
 	bool showImplicitCast = false;
@@ -5244,7 +5244,7 @@ DeparseSimpleExprForDocument(uint64 collectionId, Expr *expr)
 								   useTableNamePrefix, showImplicitCast);
 
 	/* restore search_path */
-	PopOverrideSearchPath();
+	AtEOXact_GUC(true, saveNestLevel);
 
 	return str;
 }

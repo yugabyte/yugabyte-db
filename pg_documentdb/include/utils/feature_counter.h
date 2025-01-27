@@ -11,7 +11,11 @@
 #ifndef FEATURE_COUNTER_H
 #define FEATURE_COUNTER_H
 
+#if PG_VERSION_NUM >= 170000
+#include <storage/proc.h>
+#else
 #include <storage/backendid.h>
+#endif
 #include <port/atomics.h>
 
 #define MAX_FEATURE_NAME_LENGTH 255
@@ -323,7 +327,11 @@ static inline void
 ReportFeatureUsage(int featureId)
 {
 	pg_write_barrier();
+#if PG_VERSION_NUM >= 170000
+	FeatureCounterBackendArray[MyProcNumber][featureId]++;
+#else
 	FeatureCounterBackendArray[MyBackendId - 1][featureId]++;
+#endif
 }
 
 

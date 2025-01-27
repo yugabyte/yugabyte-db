@@ -672,7 +672,11 @@ static MergeAction *
 MakeActionWhenMatched(WhenMatchedAction whenMatched, Var *sourceDocVar, Var *targetDocVar)
 {
 	MergeAction *action = makeNode(MergeAction);
+#if PG_VERSION_NUM >= 170000
+	action->matchKind = MERGE_WHEN_MATCHED;
+#else
 	action->matched = true;
+#endif
 
 	if (whenMatched == WhenMatched_KEEPEXISTING)
 	{
@@ -714,7 +718,11 @@ MakeActionWhenNotMatched(WhenNotMatchedAction whenNotMatched, Var *sourceDocVar,
 						 Var *sourceShardKeyVar, MongoCollection *targetCollection)
 {
 	MergeAction *action = makeNode(MergeAction);
+#if PG_VERSION_NUM >= 170000
+	action->matchKind = MERGE_WHEN_NOT_MATCHED_BY_TARGET;
+#else
 	action->matched = false;
+#endif
 
 	if (whenNotMatched == WhenNotMatched_DISCARD)
 	{
