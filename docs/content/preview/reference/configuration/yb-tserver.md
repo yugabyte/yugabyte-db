@@ -246,7 +246,7 @@ The memory division flags have multiple sets of defaults; which set of defaults 
 
 If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
-Default: `false`
+Default: `true`
 
 If this flag is true then the memory division flag defaults change to provide much more memory for Postgres; furthermore, they optimize for the node size.
 
@@ -799,9 +799,9 @@ Default: `false`
 
 ##### --pg_client_use_shared_memory
 
-{{<tags/feature/ea>}} Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
+Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
 
-Default: `false`
+Default: `true`
 
 ##### --ysql_disable_index_backfill
 
