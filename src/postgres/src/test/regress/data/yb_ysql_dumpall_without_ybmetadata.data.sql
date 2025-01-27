@@ -11,6 +11,8 @@ SET standard_conforming_strings = on;
 -- Roles
 --
 
+CREATE ROLE "User_""_WITH_""""_different'_'quotes' and spaces";
+ALTER ROLE "User_""_WITH_""""_different'_'quotes' and spaces" WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 CREATE ROLE postgres;
 ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
 CREATE ROLE yb_db_admin;
