@@ -68,20 +68,6 @@ ADD_YB_LIBRARY(pb_util_proto
   DEPS protobuf
   NONLINK_DEPS ${PB_UTIL_PROTO_TGTS})
 
-#######################################
-# version_info_proto
-#######################################
-
-PROTOBUF_GENERATE_CPP(
-  VERSION_INFO_PROTO_SRCS VERSION_INFO_PROTO_HDRS VERSION_INFO_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES version_info.proto)
-ADD_YB_LIBRARY(version_info_proto
-  SRCS ${VERSION_INFO_PROTO_SRCS}
-  DEPS protobuf
-  NONLINK_DEPS ${VERSION_INFO_PROTO_TGTS})
-
 ############################################################
 # Version stamp
 ############################################################
@@ -166,7 +152,6 @@ set(UTIL_SRCS
   flags/flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
-  init.cc
   jsonreader.cc
   jsonwriter.cc
   jwt_util.cc
@@ -253,7 +238,6 @@ set(UTIL_SRCS
   user.cc
   uuid.cc
   varint.cc
-  version_info.cc
   write_buffer.cc
   yb_partition.cc
   ysql_binary_runner.cc
@@ -278,7 +262,6 @@ set(UTIL_LIBS
   libev
   pb_util_proto
   protobuf
-  version_info_proto
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
   ${OPENSSL_SSL_LIBRARY})

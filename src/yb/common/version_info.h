@@ -31,29 +31,58 @@
 //
 #pragma once
 
+#include <mutex>
 #include <string>
 
+#include "yb/gutil/macros.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/common/version_info.pb.h"
 
 namespace yb {
 
-extern const char* kTopLevelDataDirName;
+struct VersionData {
+  VersionInfoPB pb;
+  std::string json;
+};
 
-// Return a NotSupported Status if the current CPU does not support the CPU flags
-// required for YB.
-Status CheckCPUFlags();
+// Static functions related to fetching information about the current build.
+class VersionInfo {
+ public:
+  // Get a short version string ("yb 1.2.3 (rev abcdef...)")
+  static std::string GetShortVersionString();
 
-// Returns an IllegalState Status if we cannot create the dir structure for logging.
-Status SetupLogDir(const std::string& server_type);
+  // Get a multi-line string including version info, build time, etc.
+  static std::string GetAllVersionInfo();
 
-void SetGLogHeader(const std::string& server_info = "");
+  // Get a json object string including version info, build time, etc.
+  static std::string GetAllVersionInfoJson();
 
-// Installs signal handler. Safe to call before glog is initialized. This is not thread safe.
-Status InstallSignalHandler(int signum, void (*handler)(int));
+  // Set the version info in 'pb'.
+  static void GetVersionInfoPB(VersionInfoPB* pb);
 
-// Initialize YB, checking that the platform we are running on is supported, etc.
-// Issues a FATAL log message if we fail to init.
-// argv0 is passed to InitGoogleLoggingSafe.
-Status InitYB(const std::string &server_type, const char* argv0);
+  // Init version data.
+  static Status Init();
+
+  static uint32 YsqlMajorVersion();
+
+ private:
+  // Get the git hash for this build. If the working directory was dirty when
+  // YB was built, also appends "-dirty".
+  static std::string GetGitHash();
+
+  static std::shared_ptr<const VersionData> GetVersionData();
+  static Status ReadVersionDataFromFile();
+
+  // Performs the initialization and stores its status into the given variable.
+  static void InitInternal(Status* status);
+
+  // Use this for lazy initialization.
+  static std::once_flag init_once_;
+
+  static std::shared_ptr<const VersionData> version_data_;
+
+  DISALLOW_IMPLICIT_CONSTRUCTORS(VersionInfo);
+};
 
 } // namespace yb

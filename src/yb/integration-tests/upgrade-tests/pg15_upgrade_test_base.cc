@@ -28,7 +28,7 @@ namespace yb {
 
 void Pg15UpgradeTestBase::SetUp() {
   UpgradeTestBase::SetUp();
-  if (IsTestSkipped()) {
+  if (Test::IsSkipped()) {
     return;
   }
   CHECK_OK_PREPEND(StartClusterInOldVersion(), "Failed to start cluster in old version");

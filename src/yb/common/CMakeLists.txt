@@ -47,6 +47,7 @@ YRPC_GENERATE(
       ql_protocol.proto
       transaction.proto
       value.proto
+      version_info.proto
       wire_protocol.proto
   )
 ADD_YB_LIBRARY(yb_common_proto
@@ -88,6 +89,7 @@ set(COMMON_SRCS
   hybrid_time.cc
   doc_hybrid_time.cc # must be after hybrid_time.cc
   id_mapping.cc
+  init.cc
   key_encoder.cc
   opid.cc
   pgsql_error.cc
@@ -107,6 +109,7 @@ set(COMMON_SRCS
   transaction_error.cc
   wire_protocol.cc
   llvm_profile_dumper.cc
+  version_info.cc
   xcluster_util.cc
   ysql_utils.cc
   )

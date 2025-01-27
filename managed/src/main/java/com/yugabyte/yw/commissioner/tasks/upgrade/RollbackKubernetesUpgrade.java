@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -78,6 +79,8 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             createRollbackAutoFlagTask(taskParams().getUniverseUUID(), autoFlagConfigVersion);
           }
 
+          String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
+
           // Create Kubernetes Upgrade Task
           createUpgradeTask(
               getUniverse(),
@@ -85,7 +88,7 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               true,
               true,
               taskParams().isEnableYbc(),
-              taskParams().getYbcSoftwareVersion(),
+              stableYbcVersion,
               getRollbackUpgradeContext(newVersion));
 
           // Update Software version

@@ -52,6 +52,7 @@
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
+#include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
@@ -1126,6 +1127,22 @@ Status PgClientSession::DropReplicationSlot(
   return client_.DeleteCDCStream(ReplicationSlotName(req.replication_slot_name()));
 }
 
+Result<ReadHybridTime> PgClientSession::GetTxnSnapshotReadTime(
+    const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
+  auto setup_session_result = VERIFY_RESULT(SetupSession(options, deadline, HybridTime()));
+  RSTATUS_DCHECK(setup_session_result.is_plain, IllegalState, "Unexpected session is prepared");
+  return setup_session_result.session_data.session->read_point()->GetReadTime();
+}
+
+Status PgClientSession::SetTxnSnapshotReadTime(
+    const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
+  SCHECK(options.has_read_time(), InvalidArgument, "Snapshot Read Time not provided");
+  SCHECK(
+      txn_serial_no_ != options.txn_serial_no(), IllegalState,
+      "Snapshot read time can only be set at the very beginning of transaction.");
+  return ResultToStatus(SetupSession(options, deadline, HybridTime()));
+}
+
 Status PgClientSession::WaitForBackendsCatalogVersion(
     const PgWaitForBackendsCatalogVersionRequestPB& req,
     PgWaitForBackendsCatalogVersionResponsePB* resp,
@@ -1721,8 +1738,8 @@ Result<PgClientSession::SetupSessionResult> PgClientSession::SetupSession(
       session.SetInTxnLimit(in_txn_limit);
     }
 
-    if (options.clamp_uncertainty_window()
-        && !session.read_point()->GetReadTime()) {
+    if (options.clamp_uncertainty_window() &&
+        !session.read_point()->GetReadTime()) {
       RSTATUS_DCHECK(
         !(transaction && transaction->isolation() == SERIALIZABLE_ISOLATION),
         IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
@@ -1745,6 +1762,9 @@ Result<PgClientSession::SetupSessionResult> PgClientSession::SetupSession(
         InvalidArgument,
         Format("Expected active_sub_transaction_id to be >= $0", kMinSubTransactionId));
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
+    if (const auto& pg_session_txn = Transaction(PgClientSessionKind::kPgSession); pg_session_txn) {
+      pg_session_txn->SetBackgroundTransaction(session_data.transaction);
+    }
   }
 
   return SetupSessionResult{
@@ -2513,7 +2533,7 @@ Status PgClientSession::AcquireAdvisoryLock(
   if (const auto& background_txn = background_session_data->transaction; background_txn) {
     auto background_txn_meta_res = background_txn->GetMetadata(deadline).get();
     RETURN_NOT_OK(background_txn_meta_res);
-    session.SetBatcherBackgroundTransactionId(background_txn_meta_res->transaction_id);
+    session.SetBatcherBackgroundTransactionMeta(*background_txn_meta_res);
   }
 
   auto& txn = *primary_session_data->transaction;

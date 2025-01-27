@@ -91,6 +91,7 @@ message KeyValueWriteBatchPB {
   // - For transaction-level advisory lock requests: background_transaction_id points to
   //   the session-level transaction, if exists.
   optional bytes background_transaction_id = 14;
+  optional string background_txn_status_tablet = 16;
 
   // Only relevant when the write op was launched for a session advisory lock request. Used by the
   // wait-queue to resume deadlocked requests.

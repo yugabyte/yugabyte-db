@@ -148,6 +148,18 @@ class ConflictResolverContext {
     return boost::none;
   }
 
+  virtual TransactionId background_txn_id() const {
+    return TransactionId::Nil();
+  }
+
+  virtual TabletId background_txn_status_tablet() const {
+    return TabletId();
+  }
+
+  virtual bool ShouldWaitAsBackgroundTxn() const {
+    return false;
+  }
+
   std::string LogPrefix() const {
     return ToString() + ": ";
   }
@@ -690,9 +702,12 @@ class WaitOnConflictResolver : public ConflictResolver {
   }
 
   void TryPreWait() {
-    DCHECK(!status_tablet_id_.empty());
+    const auto& waiter_txn = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_id() : context_->transaction_id();
+    const auto& waiter_status_tablet = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_status_tablet() : status_tablet_id_;
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
-        context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
+        waiter_txn, context_->subtransaction_id(), lock_batch_, waiter_status_tablet,
         serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_,
         context_->PgSessionRequestVersion(), deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
@@ -712,9 +727,13 @@ class WaitOnConflictResolver : public ConflictResolver {
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
+    const auto& waiter_txn = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_id() : context_->transaction_id();
+    const auto& waiter_status_tablet = context_->ShouldWaitAsBackgroundTxn()
+        ? context_->background_txn_status_tablet() : status_tablet_id_;
     RETURN_NOT_OK(wait_queue_->WaitOn(
-        context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
-        ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
+        waiter_txn, context_->subtransaction_id(), lock_batch_,
+        ConsumeTransactionDataAndReset(), waiter_status_tablet, serial_no_,
         context_->GetTxnStartUs(), request_start_us_, request_id_,
         context_->PgSessionRequestVersion(), deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
@@ -1127,8 +1146,23 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     if (write_batch_.has_background_transaction_id()) {
       background_transaction_id_ =
           VERIFY_RESULT(FullyDecodeTransactionId(write_batch_.background_transaction_id()));
+      std::string_view status_tablet_string(write_batch_.background_txn_status_tablet());
+      background_txn_status_tablet_.emplace(status_tablet_string);
+      should_wait_as_background_txn_ = PgSessionRequestVersion().value_or(false);
     }
     return Status::OK();
+  }
+
+  TransactionId background_txn_id() const override {
+    return *background_transaction_id_;
+  }
+
+  TabletId background_txn_status_tablet() const override {
+    return *background_txn_status_tablet_;
+  }
+
+  bool ShouldWaitAsBackgroundTxn() const override {
+    return should_wait_as_background_txn_;
   }
 
  private:
@@ -1298,6 +1332,15 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   // - For transaction-level advisory lock requests: the below points to
   //   the session-level transaction, if exists.
   boost::optional<TransactionId> background_transaction_id_ = boost::none;
+  boost::optional<TabletId> background_txn_status_tablet_ = boost::none;
+
+  // When set, indicates that we need to wait as background transaction. Currently, this is used
+  // in the following path alone,
+  // - When a session advisory lock request is issued in an explicit transaction block, we wait
+  //   as the regular/plain transaction as opposed to entering the wait queue with the session
+  //   level transaction. This is necessary for breaking any potential deadlocks spanning session
+  //   advisory locks, transaction advisory locks, and row level locks.
+  bool should_wait_as_background_txn_ = false;
 
   TransactionMetadata metadata_;
 

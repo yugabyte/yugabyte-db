@@ -51,7 +51,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 using namespace std::literals;
 

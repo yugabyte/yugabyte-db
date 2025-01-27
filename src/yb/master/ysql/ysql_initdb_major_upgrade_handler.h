@@ -74,6 +74,11 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // During the upgrade only is_forced_update operations are allowed.
   bool IsWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
 
+  // Delete the previous ysql major version catalog after the upgrade to the new version has
+  // completed.
+  Status CleanupPreviousYsqlMajorCatalog(const LeaderEpoch& epoch);
+  void ScheduleCleanupPreviousYsqlMajorCatalog(const LeaderEpoch& epoch);
+
  private:
   using DbNameToOidList = std::vector<std::pair<std::string, YbcPgOid>>;
 

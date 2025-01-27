@@ -2299,12 +2299,16 @@ void MasterSnapshotCoordinator::Impl::ScheduleOperation<TabletRestoreOperation>(
     task->SetMetadata(tablet_info->table()->LockForRead()->pb);
     // Populate metadata for colocated tables.
     if (tablet_info->colocated()) {
-      auto lock = tablet_info->LockForRead();
-      if (lock->pb.hosted_tables_mapped_by_parent_id()) {
-        SetTaskMetadataForColocatedTable(tablet_info->GetTableIds(), task.get());
-      } else {
-        SetTaskMetadataForColocatedTable(lock->pb.table_ids(), task.get());
+      std::vector<TableId> table_ids;
+      {
+        auto lock = tablet_info->LockForRead();
+        if (lock->pb.hosted_tables_mapped_by_parent_id()) {
+          table_ids = tablet_info->GetTableIds();
+        } else {
+          table_ids.assign(lock->pb.table_ids().begin(), lock->pb.table_ids().end());
+        }
       }
+      SetTaskMetadataForColocatedTable(table_ids, task.get());
     }
   }
   // For sequences_data_table, we should set partial restore and db_oid.

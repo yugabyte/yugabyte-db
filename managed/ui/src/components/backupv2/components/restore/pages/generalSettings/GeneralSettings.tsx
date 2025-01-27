@@ -125,7 +125,7 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
   }, [targetUniverseUUID]);
 
   // send the preflight api request , when the user choses the universe
-  const { isFetching, isSuccess } = useQuery(
+  const { isFetching, isSuccess, isError } = useQuery(
     ['backup', 'preflight', backupDetails!.commonBackupInfo.backupUUID, targetUniverseUUID],
     () =>
       getPreflightCheck({
@@ -140,10 +140,6 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
         savePreflightResponse(data);
         setDisableSubmit(false);
       },
-      onError: () => {
-        toast.error('Preflight check failed!.');
-        setDisableSubmit(true);
-      },
       onSettled: () => {
         setisSubmitting(false);
       }
@@ -157,7 +153,7 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
     isSuccess &&
     isDefinedNotNull(preflightResponse);
 
-  useQuery(
+  const { isFetching: isTablesFetching, isError: isTableFetchingError } = useQuery(
     ['tables', targetUniverseUUID, preflightResponse],
     () => fetchTablesInUniverse(targetUniverseUUID),
     {
@@ -181,12 +177,17 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
 
 
   useEffect(() => {
-    if (isFetching) {
+    if (isFetching || isTablesFetching) {
       setDisableSubmit(true);
       setisSubmitting(true);
       setSubmitLabel(t('newRestoreModal.generalSettings.verifying'));
     }
-  }, [isFetching]);
+    // enable the submit button, when the preflight check and tables fetching is finished.
+    if (!isFetching && !isTablesFetching) {
+      setDisableSubmit(false);
+      setisSubmitting(false);
+    }
+  }, [isFetching, isTablesFetching]);
 
   const renameKeyspace = watch('renameKeyspace');
   const tableSelectionType = watch('tableSelectionType');
@@ -194,13 +195,22 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
   // if the user chooses rename keyspaces, or "subset of tables",
   // change the modal's submit button to 'Next'
   useEffect(() => {
-    if (isFetching) return;
+    if (isFetching || isTablesFetching) return;
     if (renameKeyspace || tableSelectionType === 'SUBSET_OF_TABLES') {
       setSubmitLabel(t('newRestoreModal.generalSettings.next'));
     } else {
       setSubmitLabel(t('newRestoreModal.generalSettings.restore'));
     }
-  }, [renameKeyspace, setSubmitLabel, tableSelectionType, t, isFetching]);
+  }, [renameKeyspace, setSubmitLabel, tableSelectionType, t, isFetching, isTablesFetching]);
+
+  useEffect(() => {
+    // if the preflight check and table fetch fails, show the error message.
+
+    if (isError || isTableFetchingError) {
+      toast.error(isError ? 'Preflight check failed!.' : 'Table fetch failed!.');
+      setDisableSubmit(true);
+    }
+  }, [isError, isTableFetchingError]);
 
   return (
     <div className={classes.root}>

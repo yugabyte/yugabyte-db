@@ -15,10 +15,12 @@
 
 #include <sys/wait.h>
 
+#include <atomic>
 #include <mutex>
 #include <queue>
-#include <unordered_map>
+#include <regex>
 #include <unordered_set>
+#include <vector>
 
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
@@ -60,12 +62,13 @@
 
 #include "yb/server/server_base.h"
 
-#include "yb/tserver/pg_client_session.h"
+#include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
+#include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -87,7 +90,6 @@
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
-
 
 using namespace std::literals;
 
@@ -128,6 +130,7 @@ TAG_FLAG(ysql_cdc_active_replication_slot_window_ms, advanced);
 
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
+DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 DEFINE_RUNTIME_int32(
     check_pg_object_id_allocators_interval_secs, 3600 * 3,
@@ -436,7 +439,16 @@ class PgClientServiceImpl::Impl {
             .shared_mem_pool = shared_mem_pool_,
             .stats_exchange_response_size = stats_exchange_response_size_
         },
-        cdc_state_table_(client_future_) {
+        cdc_state_table_(client_future_),
+        txn_snapshot_manager_(
+            instance_id_,
+            [this](const auto& ts_uuid) -> Result<std::shared_ptr<TabletServerServiceProxy>> {
+              auto servers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers({ts_uuid}));
+              SCHECK_EQ(servers.size(), 1, NotFound, "Failed to find single ts");
+              auto& ts = *servers.front();
+              RETURN_NOT_OK(ts.InitProxy(&client()));
+              return ts.proxy();
+            }) {
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
     if (FLAGS_pg_client_use_shared_memory) {
@@ -1360,6 +1372,35 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status ExportTxnSnapshot(
+      const PgExportTxnSnapshotRequestPB& req, PgExportTxnSnapshotResponsePB* resp,
+      rpc::RpcContext* context) {
+    VLOG(1) << "ExportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
+    auto session = VERIFY_RESULT(GetSession(req.session_id()));
+    const auto snapshot = PgTxnSnapshot::Make(
+        req.snapshot(), VERIFY_RESULT(session->GetTxnSnapshotReadTime(
+                            req.options(), context->GetClientDeadline())));
+    resp->set_snapshot_id(VERIFY_RESULT(txn_snapshot_manager_.Register(session->id(), snapshot)));
+    return Status::OK();
+  }
+
+  Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) {
+    return txn_snapshot_manager_.Get(snapshot_id);
+  }
+
+  Status ImportTxnSnapshot(
+      const PgImportTxnSnapshotRequestPB& req, PgImportTxnSnapshotResponsePB* resp,
+      rpc::RpcContext* context) {
+    VLOG(1) << "ImportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
+    auto snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
+    auto options = req.options();
+    snapshot.read_time.ToPB(options.mutable_read_time());
+    RETURN_NOT_OK(VERIFY_RESULT(GetSession(req.session_id()))->SetTxnSnapshotReadTime(
+        options, context->GetClientDeadline()));
+    snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
+    return Status::OK();
+  }
+
   Status GetIndexBackfillProgress(
       const PgGetIndexBackfillProgressRequestPB& req, PgGetIndexBackfillProgressResponsePB* resp,
       rpc::RpcContext* context) {
@@ -1955,6 +1996,7 @@ class PgClientServiceImpl::Impl {
     }
     for (const auto& session : expired_sessions) {
       session->session().StartShutdown();
+      txn_snapshot_manager_.UnregisterAll(session->id());
     }
     std::vector<SessionInfoPtr> not_ready_sessions;
     for (const auto& session : ready_sessions) {
@@ -2107,6 +2149,7 @@ class PgClientServiceImpl::Impl {
   std::vector<SessionInfoPtr> stopping_sessions_ GUARDED_BY(mutex_);
 
   std::optional<cdc::CDCStateTable> cdc_state_table_;
+  PgTxnSnapshotManager txn_snapshot_manager_;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
@@ -2139,6 +2182,11 @@ void PgClientServiceImpl::InvalidateTableCache(
     const std::unordered_set<uint32_t>& db_oids_updated,
     const std::unordered_set<uint32_t>& db_oids_deleted) {
   impl_->InvalidateTableCache(db_oids_updated, db_oids_deleted);
+}
+
+Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
+    const PgTxnSnapshotLocalId& snapshot_id) {
+  return impl_->GetLocalPgTxnSnapshot(snapshot_id);
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() {

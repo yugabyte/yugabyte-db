@@ -26,7 +26,7 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
@@ -48,6 +48,9 @@ DEFINE_RUNTIME_string(ysql_major_upgrade_user, "yugabyte_upgrade",
     " no yb-tserver process running on the yb-master nodes. "
     "This user should have superuser privileges and the password must be placed in the `.pgpass` "
     "file on all yb-master nodes.");
+
+DEFINE_test_flag(bool, ysql_fail_cleanup_previous_version_catalog, false,
+    "Fail the cleanup of the previous version ysql catalog");
 
 using yb::pgwrapper::PgWrapper;
 
@@ -119,6 +122,10 @@ void YsqlInitDBAndMajorUpgradeHandler::SysCatalogLoaded(const LeaderEpoch& epoch
             STATUS(InternalError, "yb-master restarted during ysql major catalog upgrade")),
         "Failed to set major version upgrade state to FAILED");
     restarted_during_major_upgrade_ = false;
+  }
+
+  if (ysql_catalog_config_.IsPreviousVersionCatalogCleanupRequired()) {
+    ScheduleCleanupPreviousYsqlMajorCatalog(epoch);
   }
 }
 
@@ -424,8 +431,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::RollbackMajorVersionCatalogImpl(const L
   for (const auto& ns_info : ysql_namespaces) {
     LOG(INFO) << "Deleting ysql major catalog tables for namespace " << ns_info->name();
     RETURN_NOT_OK(catalog_manager_.DeleteYsqlDBTables(
-        ns_info->id(),
-        /*is_for_ysql_major_rollback=*/true, epoch));
+        ns_info->id(), DeleteYsqlDBTablesType::kMajorUpgradeRollback, epoch));
   }
 
   // Reset state machines for all YSQL namespaces.
@@ -508,6 +514,11 @@ Status YsqlInitDBAndMajorUpgradeHandler::TransitionMajorCatalogUpgradeState(
 
   auto* ysql_major_catalog_upgrade_info = pb.mutable_ysql_major_catalog_upgrade_info();
 
+  SCHECK(
+      !ysql_major_catalog_upgrade_info->previous_version_catalog_cleanup_required(), IllegalState,
+      "Previous version catalog cleanup has not completed yet. Cannot start a new major catalog "
+      "upgrade.");
+
   const auto current_state = ysql_major_catalog_upgrade_info->state();
   SCHECK_NE(
       current_state, new_state, IllegalState,
@@ -529,6 +540,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::TransitionMajorCatalogUpgradeState(
   if (current_state == YsqlMajorCatalogUpgradeInfoPB::MONITORING &&
       new_state == YsqlMajorCatalogUpgradeInfoPB::DONE) {
     ysql_major_catalog_upgrade_info->set_catalog_version(VersionInfo::YsqlMajorVersion());
+    ysql_major_catalog_upgrade_info->set_previous_version_catalog_cleanup_required(true);
     ysql_major_upgrade_done = true;
   }
 
@@ -547,6 +559,74 @@ Status YsqlInitDBAndMajorUpgradeHandler::TransitionMajorCatalogUpgradeState(
 
   if (ysql_major_upgrade_done) {
     ysql_major_upgrade_in_progress_ = false;
+    ScheduleCleanupPreviousYsqlMajorCatalog(epoch);
+  }
+
+  return Status::OK();
+}
+
+void YsqlInitDBAndMajorUpgradeHandler::ScheduleCleanupPreviousYsqlMajorCatalog(
+    const LeaderEpoch& epoch) {
+  // We do not expect the scheduling itself to fail. But in the rare case it does, the yb-master
+  // leader will have to ben bounced. This is most likely to happen anyway if scheduling is failing,
+  // so we do not need more complex code to handle it.
+  ERROR_NOT_OK(
+      RunOperationAsync([this, epoch]() mutable {
+        while (true) {
+          auto is_leader = catalog_manager_.CheckIsLeaderAndReady();
+          if (!is_leader.ok()) {
+            LOG(INFO) << "No longer the leader. New leader will retry the cleanup of the previous "
+                         "YSQL major version catalog: "
+                      << is_leader;
+            return;
+          }
+
+          auto status = CleanupPreviousYsqlMajorCatalog(epoch);
+          if (status.ok()) {
+            return;
+          }
+          LOG(WARNING) << "Failed to cleanup previous version ysql major catalog. Retrying: "
+                       << status;
+        }
+      }),
+      "Failed to schedule cleanup of previous version ysql major catalog");
+}
+
+Status YsqlInitDBAndMajorUpgradeHandler::CleanupPreviousYsqlMajorCatalog(const LeaderEpoch& epoch) {
+  if (!ysql_catalog_config_.IsPreviousVersionCatalogCleanupRequired()) {
+    VLOG(1) << "Previous version catalog cleanup not required.";
+    return Status::OK();
+  }
+
+  SCHECK(
+      !FLAGS_TEST_ysql_fail_cleanup_previous_version_catalog, IllegalState,
+      "Failed due to FLAGS_TEST_ysql_fail_cleanup_previous_version_catalog");
+
+  std::vector<scoped_refptr<NamespaceInfo>> ysql_namespaces;
+  {
+    std::vector<scoped_refptr<NamespaceInfo>> all_namespaces;
+    catalog_manager_.GetAllNamespaces(&all_namespaces);
+    for (const auto& ns_info : all_namespaces) {
+      NamespaceInfo::ReadLock ns_l = ns_info->LockForRead();
+      if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
+        continue;
+      }
+      ysql_namespaces.push_back(ns_info);
+    }
+  }
+
+  for (const auto& ns_info : ysql_namespaces) {
+    LOG(INFO) << "Deleting previous ysql major catalog tables for namespace "
+              << ns_info->ToString();
+    RETURN_NOT_OK(catalog_manager_.DeleteYsqlDBTables(
+        ns_info->id(), DeleteYsqlDBTablesType::kMajorUpgradeCleanup, epoch));
+  }
+
+  {
+    auto [l, pb] = ysql_catalog_config_.LockForWrite(epoch);
+    pb.mutable_ysql_major_catalog_upgrade_info()->set_previous_version_catalog_cleanup_required(
+        false);
+    RETURN_NOT_OK(l.UpsertAndCommit());
   }
 
   return Status::OK();

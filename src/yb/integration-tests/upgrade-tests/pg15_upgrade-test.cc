@@ -105,8 +105,8 @@ TEST_F(Pg15UpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTab
 TEST_F(Pg15UpgradeTest, SimpleTableRollback) {
   ASSERT_OK(TestRollbackWithSimpleTable());
 
-// Disabled the re-upgrade step on debug builds and MacOS because it times out.
-#if !defined(__APPLE__) && defined(NDEBUG)
+// Disabled the re-upgrade step on debug builds because it times out.
+#if defined(NDEBUG)
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
@@ -1063,8 +1063,8 @@ TEST_F(Pg15UpgradeTest, NoTserverOnMasterNode) {
 // If there is no tserver on the master node make sure the upgrade fails unless the yugabyte_upgrade
 // user is created.
 TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
-// Disabled the rollback step on debug builds and MacOS because it times out.
-#if !defined(__APPLE__) && defined(NDEBUG)
+// Disabled the rollback step on debug builds because it times out.
+#if defined(NDEBUG)
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
   {
@@ -1279,7 +1279,7 @@ class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
 
   void SetUp() override {
     Pg15UpgradeTest::SetUp();
-    if (IsTestSkipped()) {
+    if (Test::IsSkipped()) {
       return;
     }
 

@@ -131,6 +131,12 @@ service PgClientService {
       returns (PgAcquireAdvisoryLockResponsePB);
   rpc ReleaseAdvisoryLock(PgReleaseAdvisoryLockRequestPB)
       returns (PgReleaseAdvisoryLockResponsePB);
+
+  rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
+      returns (PgExportTxnSnapshotResponsePB);
+
+  rpc ImportTxnSnapshot(PgImportTxnSnapshotRequestPB)
+      returns (PgImportTxnSnapshotResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -1152,4 +1158,28 @@ message PgReleaseAdvisoryLockRequestPB {
 
 message PgReleaseAdvisoryLockResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgExportTxnSnapshotRequestPB {
+  uint64 session_id = 1;
+  PgTxnSnapshotPB snapshot = 2;
+  PgPerformOptionsPB options = 3;
+  AshMetadataPB ash_metadata = 4;
+}
+
+message PgExportTxnSnapshotResponsePB {
+  AppStatusPB status = 1;
+  string snapshot_id = 2;
+}
+
+message PgImportTxnSnapshotRequestPB {
+  uint64 session_id = 1;
+  string snapshot_id = 2;
+  PgPerformOptionsPB options = 3;
+  AshMetadataPB ash_metadata = 4;
+}
+
+message PgImportTxnSnapshotResponsePB {
+  AppStatusPB status = 1;
+  PgTxnSnapshotPB snapshot = 2;
 }

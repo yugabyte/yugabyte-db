@@ -77,7 +77,7 @@ struct InFlightOpsTransactionMetadata {
   // This field is only relevant when dealing with session/transaction advisory lock requests.
   // It's used to prevent conflicts between session and transaction level advisory locks
   // within the same session.
-  boost::optional<TransactionId> background_transaction_id;
+  boost::optional<TransactionMetadata> background_transaction_meta;
   // When acquiring a session advisory lock, we need the below to release waiting requests
   // involved in a deadlock.
   boost::optional<PgSessionRequestVersion> pg_session_req_version;
@@ -303,8 +303,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
     return ops_info_.metadata.subtransaction_pb;
   }
 
-  void SetBackgroundTransactionId(const TransactionId& background_transaction_id) {
-    background_transaction_id_ = background_transaction_id;
+  void SetBackgroundTransactionMeta(const TransactionMetadata& background_transaction_meta) {
+    background_transaction_meta_ = background_transaction_meta;
   }
 
  private:
@@ -418,7 +418,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   //   the in-progress DocDB transaction, if any.
   // - For a transaction advisory lock request: the below points to
   //   the session-level transaction, if exists.
-  boost::optional<TransactionId> background_transaction_id_ = boost::none;
+  boost::optional<TransactionMetadata> background_transaction_meta_ = boost::none;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

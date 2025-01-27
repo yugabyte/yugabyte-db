@@ -200,6 +200,13 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // at pg_client_session.
   void SetCurrentReuseVersion(TxnReuseVersion reuse_version);
 
+  // For transactions of kind PgClientSessionKind::kPgSession, we record the background txn,
+  // if any. This info is propagated to the status tablet, which then creates an internal wait-for
+  // probe from the session level waiter -> active transaction if any which is necessary for
+  // detection of deadlocks spanning advisory locks and row-level locks (same would apply for
+  // detection of deadlocks spanning object locks, advisory locks and row locks in future).
+  void SetBackgroundTransaction(const YBTransactionPtr& background_transaction);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
