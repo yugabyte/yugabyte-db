@@ -69,3 +69,23 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "maxDepth": 2 } } ]}');
+
+-- Construct random numeric relationship between 1000 people and 5 hobbies
+DO $$
+DECLARE i int;
+BEGIN
+FOR i IN 1..1000 LOOP
+PERFORM documentdb_api.insert_one('db', 'people', FORMAT('{ "_id": %s, "name": %s, "friends": [ %s, %s, %s ], "hobbies": [ %s, %s, %s ] }',  i, i, FLOOR(RANDOM() * 10) + 1 , FLOOR(RANDOM() * 10) + 1, FLOOR(RANDOM() * 10) + 1, FLOOR(RANDOM() * 5) + 1, FLOOR(RANDOM() * 5) + 1, FLOOR(RANDOM() * 5) + 1 )::documentdb_core.bson);
+END LOOP;
+END;
+$$;
+
+-- $graphlookup with restrictSearchWithMatch
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "people", "indexes": [{"key": {"name": 1, "hobbies": 1}, "name": "name_1_hobbies_1" }]}', true);
+\d+ documentdb_data.documents_9123;
+ANALYZE documentdb_data.documents_9123;
+BEGIN;
+SET enable_seqscan TO off;
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "people", "pipeline": [ { "$match": { "name": { "$lte": 50 } } }, { "$graphLookup": { "from": "people", "startWith": "$friends", "connectFromField": "friends", "connectToField": "name", "as": "golfers", "restrictSearchWithMatch": { "hobbies" : { "$lte": 3 } } } }]}');
+ROLLBACK;

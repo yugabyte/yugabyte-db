@@ -3256,9 +3256,12 @@ GenerateBaseCaseQuery(AggregationPipelineBuildContext *parentContext,
 
 	/* Match the Var of the top level input query: We're one level deeper (Since this is inside the SetOP) */
 	Var *rightVar = makeVar(1, 2, BsonTypeId(), -1, InvalidOid, baseCteLevelsUp);
-
-	FuncExpr *initialMatchFunc = makeFuncExpr(BsonInMatchFunctionId(), BOOLOID,
-											  list_make2(firstEntry->expr, rightVar),
+	Const *textConst = MakeTextConst(args->connectToField.string,
+									 args->connectToField.length);
+	FuncExpr *initialMatchFunc = makeFuncExpr(BsonDollarLookupJoinFilterFunctionOid(),
+											  BOOLOID,
+											  list_make3(firstEntry->expr, rightVar,
+														 textConst),
 											  InvalidOid, InvalidOid,
 											  COERCE_EXPLICIT_CALL);
 
@@ -3355,8 +3358,12 @@ GenerateRecursiveCaseQuery(AggregationPipelineBuildContext *parentContext,
 													   &args->connectFromFieldExpression,
 													   parentContext);
 
-	FuncExpr *initialMatchFunc = makeFuncExpr(BsonInMatchFunctionId(), BOOLOID,
-											  list_make2(firstEntry->expr, inputExpr),
+	Const *textConst = MakeTextConst(args->connectToField.string,
+									 args->connectToField.length);
+	FuncExpr *initialMatchFunc = makeFuncExpr(BsonDollarLookupJoinFilterFunctionOid(),
+											  BOOLOID,
+											  list_make3(firstEntry->expr, inputExpr,
+														 textConst),
 											  InvalidOid, InvalidOid,
 											  COERCE_EXPLICIT_CALL);
 
