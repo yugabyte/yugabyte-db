@@ -107,6 +107,6 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 - Currently, you can't apply custom configurations to individual pools. The YSQL Connection Manager configuration applies to all pools.
 - When YSQL Connection Manager is enabled, the backend PID stored using JDBC drivers may not be accurate. This does not affect backend-specific functionalities (for example, cancel queries), but this PID should not be used to identify the backend process.
 - By default, `currval` and `nextval` functions do not work when YSQL Connection Manager is enabled. They can be supported with the help of the `ysql_conn_mgr_sequence_support_mode` flag.
-- Queries that use the extended query protocol may exhibit unexpected behavior. [#24898](https://github.com/yugabyte/yugabyte-db/issues/24898)
+- Queries using the extended query protocol may exhibit unexpected behavior with certain drivers (e.g., libpq (C), Npgsql (C#), lib/pq (Go)), though extensive testing shows compatibility with the JDBC and psycopg/psycopg2 drivers.[#24898](https://github.com/yugabyte/yugabyte-db/issues/24898)
 - YSQL Connection Manager does not yet support IPv6 connections. [#24765](https://github.com/yugabyte/yugabyte-db/issues/24765)
 - Certificate-based TLS authentication is currently not supported with YSQL Connection Manager [#20658](https://github.com/yugabyte/yugabyte-db/issues/20658)
