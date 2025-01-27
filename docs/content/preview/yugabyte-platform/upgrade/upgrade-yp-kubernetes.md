@@ -47,7 +47,7 @@ helm repo update
 To upgrade to a specific version while preserving overrides you might have applied to your initial YugabyteDB Anywhere installation or previous upgrades, execute the following command:
 
 ```sh
-helm upgrade yw-test yugabytedb/yugaware --version 2.15.2 -n yb-platform --reuse-values --set image.tag=2.15.2.0-b87 --wait
+helm upgrade yw-test yugabytedb/yugaware --version 2.15.2 -n yb-platform --reset-then-reuse-values --set image.tag=2.15.2.0-b87 --wait
 ```
 
 To obtain the value for `--set image.tag`, execute the following command:
