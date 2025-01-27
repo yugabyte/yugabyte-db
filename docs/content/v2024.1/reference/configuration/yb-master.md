@@ -617,7 +617,7 @@ Default: `false`
 
 Enables/disables blocking of requests which would bring the total number of tablets in the system over a limit. For more information, see [Tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
 
-Default: `false`. No limits will be enforced if this is false.
+Default: `false`. No limits are enforced if this is false.
 
 ##### split_respects_tablet_replica_limits
 

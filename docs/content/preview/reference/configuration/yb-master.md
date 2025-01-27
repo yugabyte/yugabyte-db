@@ -292,7 +292,7 @@ The memory division flags have multiple sets of defaults; which set of defaults 
 
 If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
-Default: `true` when using yugabyted or YugabyteDB Anywhere to create a universe.
+Default: `true`
 
 If this flag is true then the memory division flag defaults change to provide much more memory for Postgres; furthermore, they optimize for the node size.
 
@@ -629,7 +629,7 @@ Default: `false`
 
 Enables/disables blocking of requests which would bring the total number of tablets in the system over a limit. For more information, see [Tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
 
-Default: `true`. No limits will be enforced if this is false.
+Default: `true`. No limits are enforced if this is false.
 
 ##### split_respects_tablet_replica_limits
 
