@@ -51,7 +51,7 @@ Currently, YugabyteDB Aeon supports IdPs exclusively using the OIDC (OpenID Conn
 
 ## Prerequisites
 
-Before configuring federated authentication, be sure to allow pop-up requests from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
+Before configuring federated authentication, be sure to allow pop-up requests from your IdP; the provider may need to confirm your identity in a new window.
 
 ## Register an application with Microsoft identity platform
 
@@ -88,4 +88,4 @@ To configure federated authentication in YugabyteDB Aeon, do the following:
 1. Enter your Entra application client ID and secret.
 1. Click **Enable**.
 
-You are redirected to sign in to your IdP to test the connection. Once test connection is successful, federated authentication is enabled.
+At this point, you will be redirected to sign in to your IdP to test the connection. If the test connection is successful, federated authentication is enabled.

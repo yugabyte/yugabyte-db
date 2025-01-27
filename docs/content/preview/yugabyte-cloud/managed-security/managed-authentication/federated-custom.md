@@ -53,7 +53,7 @@ Currently, YugabyteDB Aeon supports IdPs exclusively using the OIDC (OpenID Conn
 
 ## Prerequisites
 
-Before configuring federated authentication, be sure to allow pop-up requests from your IdP. While configuring federated authentication, the provider may need to confirm your identity in a new window.
+Before configuring federated authentication, be sure to allow pop-up requests from your IdP; the provider may need to confirm your identity in a new window.
 
 To configure federated authentication in YugabyteDB Aeon, you need the following:
 
@@ -99,4 +99,4 @@ To configure federated authentication using a custom IdP in YugabyteDB Aeon, do 
 
 1. Click **Enable**.
 
-You are redirected to sign in to your IdP to test the connection. After the test connection is successful, federated authentication is enabled.
+At this point, you will be redirected to sign in to your IdP to test the connection. If the test connection is successful, federated authentication is enabled.
