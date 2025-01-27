@@ -533,6 +533,20 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  public String formatPGId(String str) {
+    // For all details - see PG function: fmtId()
+    String result = "\"";
+    for (int i = 0; i < str.length(); ++i) {
+      // Quote: " -> ""
+      if (str.charAt(i) == '\"')
+        result += '\"';
+
+      result += str.charAt(i);
+    }
+    result += '\"';
+    return result;
+  }
+
   /** Drop entities owned by non-system roles, and drop custom roles. */
   private void cleanUpCustomEntities() throws Exception {
     LOG.info("Cleaning up roles");
@@ -550,7 +564,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           for (String role : roles) {
             boolean isPersistent = persistentUsers.contains(role);
             LOG.info("Cleaning up role {} (persistent? {})", role, isPersistent);
-            stmt.execute("DROP OWNED BY " + role + " CASCADE");
+            stmt.execute("DROP OWNED BY " + formatPGId(role) + " CASCADE");
           }
 
           // Documentation for DROP OWNED BY explicitly states that databases and tablespaces
@@ -572,7 +586,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
             boolean isPersistent = persistentUsers.contains(role);
             if (!isPersistent) {
               LOG.info("Dropping role {}", role);
-              stmt.execute("DROP ROLE " + role);
+              stmt.execute("DROP ROLE " + formatPGId(role));
             }
           }
         } catch (Exception e) {
