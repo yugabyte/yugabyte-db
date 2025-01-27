@@ -130,4 +130,4 @@ To check the state of the database and run the migration, execute the following 
 
 ## Learn more
 
-Refer to the [Flyway documentation](https://documentation.red-gate.com/flyway/flyway-cli-and-api/usage) for more details on using Flyway.
+Refer to the [Flyway documentation](https://documentation.red-gate.com/flyway) for more details on using Flyway.
