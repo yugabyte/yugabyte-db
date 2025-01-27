@@ -1366,7 +1366,9 @@ Default: `3600`
 
 ##### --cdc_stream_records_threshold_size_bytes
 
-Max size (in bytes) of changes from a tablet sent from CDC Service to gRPC connector in gRPC Protocol. Max size (in bytes) of changes sent from [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) to Walsender process in PostgreSQL Protocol. 
+Maximum size (in bytes) of changes from a tablet sent from the CDC service to the gRPC connector when using the gRPC replication protocol.
+
+Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol. 
 
 Default: `4MB`
 
