@@ -1,3 +1,5 @@
+CREATE ROLE "User_""_WITH_""""_different'_'quotes' and spaces";
+
 CREATE TABLESPACE tsp1 LOCATION '/data';
 CREATE TABLESPACE tsp2 WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
 CREATE TABLESPACE tsp_dropped WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');

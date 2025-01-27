@@ -889,15 +889,19 @@ dumpRoles(PGconn *conn)
 				 strcmp(PQgetvalue(res, i, i_is_current_user), "f") == 0)
 		{
 			if (include_yb_metadata)
+			{
 				appendPQExpBuffer(buf,
 								  "\\set role_exists false\n"
 								  "\\if :ignore_existing_roles\n"
-								  "    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = '%s')"
-								  " AS role_exists \\gset\n"
+								  "    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ");
+				appendStringLiteralConn(buf, rolename, conn);
+				appendPQExpBuffer(buf,
+								  ") AS role_exists \\gset\n"
 								  "\\endif\n"
 								  "\\if :role_exists\n"
-								  "    \\echo 'Role %s already exists.'\n"
-								  "\\else\n    ", yb_frolename, yb_frolename);
+								  "    \\echo 'Role already exists:' %s\n"
+								  "\\else\n    ", yb_frolename);
+			}
 
 			appendPQExpBuffer(buf, "CREATE ROLE %s;\n", yb_frolename);
 
