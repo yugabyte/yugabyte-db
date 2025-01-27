@@ -964,7 +964,7 @@ pg_advisory_lock_int4(PG_FUNCTION_ARGS)
 	LOCKTAG		tag;
 
 	SET_LOCKTAG_INT32(tag, key1, key2);
-	ReleaseYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE);
+	AcquireYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE, /* session_level= */ true);
 
 	(void) LockAcquire(&tag, ExclusiveLock, true, false);
 
