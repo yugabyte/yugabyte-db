@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.CiphertrustEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.CiphertrustEARServiceUtil.CipherTrustKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.CiphertrustManagerClient.AuthType;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
@@ -70,6 +71,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -83,11 +85,16 @@ import play.mvc.Result;
 public class EncryptionAtRestController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
 
-  // All these fields must be kept the same from the old authConfig (if it has)
+  // Below KMS fields must be kept the same from the old authConfig (if it has)
   public static final List<String> awsKmsNonEditableFields =
       AwsKmsAuthConfigField.getNonEditableFields();
-  // Below AWS fields can be editable. If no new field is specified, use the same old one.
+  public static final List<String> cipherTrustKmsNonEditableFields =
+      CipherTrustKmsAuthConfigField.getNonEditableFields();
+
+  // Below KMS fields can be editable. If no new field is specified, use the same old one.
   public static final List<String> awsKmsEditableFields = AwsKmsAuthConfigField.getEditableFields();
+  public static final List<String> editableFieldsCipherTrust =
+      CipherTrustKmsAuthConfigField.getEditableFields();
 
   private static Set<String> API_URL =
       ImmutableSet.of("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io");
@@ -204,7 +211,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
               ciphertrustEARServiceUtil.getConfigFieldValue(
                   formData, CipherTrustKmsAuthConfigField.KEY_NAME.fieldName));
         } catch (Exception e) {
-          LOG.warn("Could not finish validating Ciphertrust provider config form data.");
+          LOG.error(
+              "Could not finish validating Ciphertrust provider config form data. Error: {}",
+              e.toString());
           throw new PlatformServiceException(BAD_REQUEST, e.toString());
         }
         break;
@@ -294,7 +303,27 @@ public class EncryptionAtRestController extends AuthenticatedController {
         LOG.info("Verified that all the fields in the AZU edit request are editable");
         break;
       case CIPHERTRUST:
-        // TO BE ADDED.
+        for (String field : cipherTrustKmsNonEditableFields) {
+          if (formData.has(field)) {
+            if (!authconfig.has(field)
+                || (authconfig.has(field) && !authconfig.get(field).equals(formData.get(field)))) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format("CIPHERTRUST KmsConfig field '%s' cannot be changed.", field));
+            }
+          }
+        }
+        // Check that auth type is present and valid.
+        if (!formData.has(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName)
+            || StringUtils.isBlank(
+                formData.get(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName).asText())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "CIPHERTRUST KmsConfig field '%s' is required.",
+                  CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName));
+        }
+        LOG.info("Verified that all the fields in the CIPHERTRUST edit request are editable.");
         break;
       default:
         throw new PlatformServiceException(
@@ -407,6 +436,41 @@ public class EncryptionAtRestController extends AuthenticatedController {
         for (String field : editableFieldsAzu) {
           if (!formData.has(field) && authConfig.has(field)) {
             formData.set(field, authConfig.get(field));
+          }
+        }
+        break;
+      case CIPHERTRUST:
+        // Copy all the non-editable fields from the authConfig to the formData.
+        for (String field : cipherTrustKmsNonEditableFields) {
+          if (authConfig.has(field)) {
+            formData.set(field, authConfig.get(field));
+          }
+        }
+        AuthType authTypeEnum =
+            AuthType.valueOf(
+                authConfig.path(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName).asText());
+        if (AuthType.REFRESH_TOKEN.equals(authTypeEnum)) {
+          if (!formData.has(CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName)
+              && authConfig.has(CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName)) {
+            // If the refresh token is not present in the formData, add it from the authConfig.
+            formData.set(
+                CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName,
+                authConfig.get(CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName));
+          }
+        } else if (AuthType.PASSWORD.equals(authTypeEnum)) {
+          if (!formData.has(CipherTrustKmsAuthConfigField.USERNAME.fieldName)
+              && authConfig.has(CipherTrustKmsAuthConfigField.USERNAME.fieldName)) {
+            // If the username is not present in the formData, add it from the authConfig.
+            formData.set(
+                CipherTrustKmsAuthConfigField.USERNAME.fieldName,
+                authConfig.get(CipherTrustKmsAuthConfigField.USERNAME.fieldName));
+          }
+          if (!formData.has(CipherTrustKmsAuthConfigField.PASSWORD.fieldName)
+              && authConfig.has(CipherTrustKmsAuthConfigField.PASSWORD.fieldName)) {
+            // If the password is not present in the formData, add it from the authConfig.
+            formData.set(
+                CipherTrustKmsAuthConfigField.PASSWORD.fieldName,
+                authConfig.get(CipherTrustKmsAuthConfigField.PASSWORD.fieldName));
           }
         }
         break;

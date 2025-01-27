@@ -28,8 +28,16 @@ public class CiphertrustManagerClient {
   public static final Map<String, String> keyLabelsToAdd =
       ImmutableMap.of("created_by_yugabyte", "true");
 
+  public enum AuthType {
+    REFRESH_TOKEN,
+    PASSWORD
+  }
+
   public String baseUrl;
+  public AuthType authType;
   public String refreshToken;
+  public String username;
+  public String password;
   public KeyStore ybaAndJavaKeyStore;
   public String keyName;
   public String jwt;
@@ -38,13 +46,19 @@ public class CiphertrustManagerClient {
 
   public CiphertrustManagerClient(
       String baseUrl,
+      AuthType authType,
       String refreshToken,
+      String username,
+      String password,
       KeyStore ybaAndJavaKeyStore,
       String keyName,
       String keyAlgorithm,
       int keySize) {
     this.baseUrl = baseUrl;
+    this.authType = authType;
     this.refreshToken = refreshToken;
+    this.username = username;
+    this.password = password;
     this.ybaAndJavaKeyStore = ybaAndJavaKeyStore;
     this.keyName = keyName;
     this.jwt = getJwt();
@@ -171,8 +185,15 @@ public class CiphertrustManagerClient {
     try {
       // Prepare the request body
       Map<String, Object> requestBodyMap = new HashMap<>();
-      requestBodyMap.put("grant_type", "refresh_token");
-      requestBodyMap.put("refresh_token", refreshToken);
+      if (AuthType.REFRESH_TOKEN.equals(authType)) {
+        requestBodyMap.put("grant_type", "refresh_token");
+        requestBodyMap.put("refresh_token", refreshToken);
+      } else {
+        // We don't specify the grant_type for password authentication as it is the default.
+        // If we specify it, it will also return a refresh token which we don't need.
+        requestBodyMap.put("username", username);
+        requestBodyMap.put("password", password);
+      }
 
       // Send the request and get the response body
       Map<String, Object> responseBody =
