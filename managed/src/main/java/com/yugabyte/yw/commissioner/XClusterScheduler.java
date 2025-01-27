@@ -316,7 +316,7 @@ public class XClusterScheduler {
     XClusterTableConfig.Status tableStatus = xClusterTableConfig.getStatus();
     if (xClusterTableConfig.getStatus().equals(XClusterTableConfig.Status.Running)) {
       if (!xClusterTableConfig.getReplicationStatusErrors().isEmpty()) {
-        tableStatus = XClusterTableConfig.Status.ReplicationError;
+        tableStatus = XClusterTableConfig.Status.Error;
       }
     }
 
