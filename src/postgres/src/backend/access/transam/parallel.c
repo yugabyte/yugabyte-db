@@ -225,6 +225,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	FixedParallelState *fps;
 	dsm_handle	session_dsm_handle = DSM_HANDLE_INVALID;
 	Snapshot	transaction_snapshot;
+
 	/*
 	 * Postgres unconditionally takes the snapshot, however Yugabyte has
 	 * undesired side effect if transaction isolation is READ COMMITTED: it

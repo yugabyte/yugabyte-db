@@ -52,7 +52,7 @@
 #include "utils/snapmgr.h"
 
 /*  YB includes. */
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 
 typedef struct

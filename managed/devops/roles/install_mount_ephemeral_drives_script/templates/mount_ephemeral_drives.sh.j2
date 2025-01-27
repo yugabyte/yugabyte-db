@@ -116,15 +116,18 @@ get_ephemeral_drives() {
 
   # Take into account xvdb or sdb
   root_drive=$(lsblk | awk '$7 == "/" {print $1}' | tr -cd '[:alnum:]/')
-
-  if [[ "$root_drive" =~ .*xvd.* ]]; then
-    echo "Detected 'xvd' drive naming scheme (root: $root_drive)"
+  root_parent=$(lsblk -ndo pkname "/dev/${root_drive}")
+  if [[ -z "${root_parent}" ]]; then
+    root_parent=root_drive
+  fi
+  if [[ "$root_parent" =~ .*xvd.* ]]; then
+    echo "Detected 'xvd' drive naming scheme (root: $root_parent)"
     DRIVE_SCHEME='xvd'
-  elif [[ "$root_drive" =~ .*nvme.* ]]; then
-    echo "Detected 'nvme' drive naming scheme (root: $root_drive)"
+  elif [[ "$root_parent" =~ .*nvme.* ]]; then
+    echo "Detected 'nvme' drive naming scheme (root: $root_parent)"
     DRIVE_SCHEME='nvme'
   else
-    echo "Detected 'sd' drive naming scheme (root: $root_drive)"
+    echo "Detected 'sd' drive naming scheme (root: $root_parent)"
     DRIVE_SCHEME='sd'
   fi
 
@@ -166,10 +169,13 @@ get_ephemeral_drives() {
     fs_opts="defaults,noatime,nofail,allocsize=4m"
     e=${ephemerals[eph_idx]}
     echo "Probing $e ..."
-    # Some instance types (C5, M5 etc) have EBS volume mounted as nvme
-    # In which case we want to make the device path to match that
-    # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-ebs-volumes.html
-    if [[ "$DRIVE_SCHEME" == "nvme" ]]; then
+    if [[ $CLOUD_TYPE == "gcp" ]]; then
+        # For gcp we are using by-id links, so just need to resolve them
+        device_path=$(readlink -eq "/dev/$e")
+    elif [[ "$DRIVE_SCHEME" == "nvme" ]]; then
+        # Some instance types (C5, M5 etc) have EBS volume mounted as nvme
+        # In which case we want to make the device path to match that
+        # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-ebs-volumes.html
         device_idx=$((i))
         device_path="/dev/nvme${device_idx}n1"
     else

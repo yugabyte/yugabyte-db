@@ -587,9 +587,9 @@ DefineIndex(Oid relationId,
 	/* Yugabyte variables */
 	Oid			databaseId;
 	bool		relIsShared;
-	Oid tablegroupId = InvalidOid;
-	Oid colocation_id = InvalidOid;
-	bool is_colocated = false;
+	Oid			tablegroupId = InvalidOid;
+	Oid			colocation_id = InvalidOid;
+	bool		is_colocated = false;
 
 	root_save_nestlevel = NewGUCNestLevel();
 
@@ -706,7 +706,7 @@ DefineIndex(Oid relationId,
 	 */
 	GetUserIdAndSecContext(&root_save_userid, &root_save_sec_context);
 	SetUserIdAndSecContext(rel->rd_rel->relowner,
-							root_save_sec_context | SECURITY_RESTRICTED_OPERATION);
+						   root_save_sec_context | SECURITY_RESTRICTED_OPERATION);
 
 	if (IsYugaByteEnabled())
 	{
@@ -715,7 +715,8 @@ DefineIndex(Oid relationId,
 			PROGRESS_CREATEIDX_TUPLES_TOTAL,
 			PROGRESS_CREATEIDX_TUPLES_DONE,
 		};
-		int64	values[3];
+		int64		values[3];
+
 		values[0] = YB_PROGRESS_CREATEIDX_INITIALIZING;
 		if (IsYBRelation(rel))
 		{
@@ -769,7 +770,7 @@ DefineIndex(Oid relationId,
 			if (stmt->concurrent == YB_CONCURRENCY_EXPLICIT_ENABLED)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("CREATE INDEX CONCURRENTLY is currently not "
+						 errmsg("CREATE INDEX CONCURRENTLY is currently not "
 								"supported for system catalog")));
 			else
 				concurrent = false;
@@ -960,13 +961,14 @@ DefineIndex(Oid relationId,
 		 */
 		if (stmt->tableSpace)
 		{
-			Oid stmtTablespace = get_tablespace_oid(stmt->tableSpace, false);
+			Oid			stmtTablespace = get_tablespace_oid(stmt->tableSpace, false);
+
 			if (stmtTablespace != tablespaceId)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						errmsg("tablespace for a primary key index must "
-							   " always match the tablespace of the "
-							   " indexed table")));
+						 errmsg("tablespace for a primary key index must "
+								" always match the tablespace of the "
+								" indexed table")));
 		}
 	}
 	else if (stmt->tableSpace)
@@ -1015,9 +1017,9 @@ DefineIndex(Oid relationId,
 			YbGetTableProperties(rel)->tablegroup_oid :
 			InvalidOid;
 
-		bool is_colocated_via_database = is_colocated && MyDatabaseColocated;
-		bool is_colocated_tables_with_tablespace_enabled =
-			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
+		bool		is_colocated_tables_with_tablespace_enabled =
+		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 
 		/*
 		 * For colocated index tables in a colocation database, the implicit
@@ -1027,7 +1029,7 @@ DefineIndex(Oid relationId,
 		if (is_colocated_tables_with_tablespace_enabled &&
 			is_colocated_via_database && !MyColocatedDatabaseLegacy)
 		{
-			char *tablegroup_name = NULL;
+			char	   *tablegroup_name = NULL;
 
 			if (OidIsValid(tablespaceId))
 			{
@@ -1077,8 +1079,9 @@ DefineIndex(Oid relationId,
 				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
 			}
 
-			char *tablespace_name = OidIsValid(tablespaceId) ? get_tablespace_name(tablespaceId) :
-				NULL;
+			char	   *tablespace_name = (OidIsValid(tablespaceId) ?
+										   get_tablespace_name(tablespaceId) :
+										   NULL);
 
 			/* Tablegroup doesn't exist, so create it. */
 			if (!OidIsValid(tablegroupId))
@@ -1087,11 +1090,13 @@ DefineIndex(Oid relationId,
 				 * Regardless of the current user, let postgres be the owner of the
 				 * implicit tablegroup in a colocated database.
 				 */
-				RoleSpec *spec = makeNode(RoleSpec);
+				RoleSpec   *spec = makeNode(RoleSpec);
+
 				spec->roletype = ROLESPEC_CSTRING;
 				spec->rolename = pstrdup("postgres");
 
 				YbCreateTableGroupStmt *tablegroup_stmt = makeNode(YbCreateTableGroupStmt);
+
 				tablegroup_stmt->tablegroupname = tablegroup_name;
 				tablegroup_stmt->tablespacename = tablespace_name;
 				tablegroup_stmt->implicit = true;
@@ -1113,11 +1118,11 @@ DefineIndex(Oid relationId,
 			if (MyDatabaseColocated && is_colocated)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						errmsg("cannot create colocated index with split option")));
+						 errmsg("cannot create colocated index with split option")));
 			else if (OidIsValid(tablegroupId))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						errmsg("cannot use TABLEGROUP with SPLIT")));
+						 errmsg("cannot use TABLEGROUP with SPLIT")));
 		}
 
 		colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
@@ -1134,7 +1139,7 @@ DefineIndex(Oid relationId,
 		if (OidIsValid(tablespaceId) && is_colocated && !MyDatabaseColocated)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
+					 errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
 
 		/*
 		 * YB: Check permissions for tablegroup. To create an index within a
@@ -1149,7 +1154,7 @@ DefineIndex(Oid relationId,
 		if (!MyDatabaseColocated && !IsBinaryUpgrade &&
 			OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
 		{
-			AclResult  aclresult;
+			AclResult	aclresult;
 
 			aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
 			if (aclresult != ACLCHECK_OK)
@@ -1733,7 +1738,7 @@ DefineIndex(Oid relationId,
 				attmap =
 					build_attrmap_by_name(RelationGetDescr(childrel),
 										  parentDesc,
-										  false /* yb_ignore_type_mismatch */);
+										  false /* yb_ignore_type_mismatch */ );
 
 				foreach(cell, childidxs)
 				{
@@ -2137,7 +2142,7 @@ DefineIndex(Oid relationId,
 		 * The index is now visible, so we can report the OID.
 		 */
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
-									indexRelationId);
+									 indexRelationId);
 
 		/* Delay after committing pg_index update. */
 		pg_usleep(yb_index_state_flags_update_delay * 1000);
@@ -2184,12 +2189,16 @@ DefineIndex(Oid relationId,
 		YbWaitForBackendsCatalogVersion();
 
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
-											YB_PROGRESS_CREATEIDX_BACKFILLING);
+									 YB_PROGRESS_CREATEIDX_BACKFILLING);
 
 		/* TODO(jason): handle exclusion constraints, possibly not here. */
 
 		/* Do backfill. */
-		/* YB: Do backfill if this is a separate DocDB table from the main table. */
+
+		/*
+		 * YB: Do backfill if this is a separate DocDB table from the main
+		 * table.
+		 */
 		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
 
 		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
@@ -2292,12 +2301,12 @@ CheckPredicate(Expr *predicate)
 static void
 YbCheckCollationRestrictions(Oid attcollation, Oid opclassoid)
 {
-	HeapTuple classtup;
+	HeapTuple	classtup;
 	Form_pg_opclass classform;
-	char *opclassname;
-	HeapTuple collationtup;
+	char	   *opclassname;
+	HeapTuple	collationtup;
 	Form_pg_collation collform;
-	char *collname;
+	char	   *collname;
 
 	classtup = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclassoid));
 	if (!HeapTupleIsValid(classtup))
@@ -2382,18 +2391,20 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	 *
 	 * Also get whether the index is part of a tablegroup.
 	 */
-	Oid tablegroupId = InvalidOid;
+	Oid			tablegroupId = InvalidOid;
+
 	if (IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() &&
 		!YbIsConnectedToTemplateDb())
 	{
-		Relation rel = RelationIdGetRelation(relId);
+		Relation	rel = RelationIdGetRelation(relId);
+
 		if (IsYBRelation(rel))
 		{
 			YbcTableProperties yb_props = YbGetTableProperties(rel);
 
-			is_colocated    = yb_props->is_colocated;
-			tablegroupId    = yb_props->tablegroup_oid;
+			is_colocated = yb_props->is_colocated;
+			tablegroupId = yb_props->tablegroup_oid;
 			use_yb_ordering = !IsSystemRelation(rel);
 		}
 		RelationClose(rel);
@@ -2402,7 +2413,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	/*
 	 * process attributeList
 	 */
-	bool	range_index = false;
+	bool		range_index = false;
 
 	attn = 0;
 	foreach(lc, attList)
@@ -2411,14 +2422,14 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		Oid			atttype;
 		Oid			attcollation;
 
-		SortByDir   yb_ordering = attribute->ordering;
+		SortByDir	yb_ordering = attribute->ordering;
 
 		if (use_yb_ordering)
 		{
 			yb_ordering =
 				YbSortOrdering(attribute->ordering, is_colocated,
-							   OidIsValid(tablegroupId) /* is_tablegroup */,
-							   (attn == 0) /* is_first_key */);
+							   OidIsValid(tablegroupId) /* is_tablegroup */ ,
+							   (attn == 0) /* is_first_key */ );
 
 			if (yb_ordering == SORTBY_DESC || yb_ordering == SORTBY_ASC)
 			{
@@ -2745,15 +2756,15 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		{
 			/* index AM does not support ordering */
 			if (attribute->ordering != SORTBY_DEFAULT)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("access method \"%s\" does not support ASC/DESC/HASH options",
-									accessMethodName)));
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("access method \"%s\" does not support ASC/DESC/HASH options",
+								accessMethodName)));
 			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("access method \"%s\" does not support NULLS FIRST/LAST options",
-									accessMethodName)));
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("access method \"%s\" does not support NULLS FIRST/LAST options",
+								accessMethodName)));
 		}
 
 		/* Set up the per-column opclass options (attoptions field). */
@@ -3392,8 +3403,8 @@ ReindexIndex(RangeVar *indexRelation, ReindexParams *params, bool isTopLevel)
 
 		newparams.options |= REINDEXOPT_REPORT_PROGRESS;
 		reindex_index(indOid, false, persistence, &newparams,
-					  false /* is_yb_table_rewrite */,
-					  true /* yb_copy_split_options */);
+					  false /* is_yb_table_rewrite */ ,
+					  true /* yb_copy_split_options */ );
 	}
 }
 
@@ -3513,8 +3524,8 @@ ReindexTable(RangeVar *relation, ReindexParams *params, bool isTopLevel)
 								  REINDEX_REL_PROCESS_TOAST |
 								  REINDEX_REL_CHECK_CONSTRAINTS,
 								  &newparams,
-								  false /* is_yb_table_rewrite */,
-								  true /* yb_copy_split_options */);
+								  false /* is_yb_table_rewrite */ ,
+								  true /* yb_copy_split_options */ );
 		if (!result)
 			ereport(NOTICE,
 					(errmsg("table \"%s\" has no indexes to reindex",
@@ -3924,8 +3935,8 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 			newparams.options |=
 				REINDEXOPT_REPORT_PROGRESS | REINDEXOPT_MISSING_OK;
 			reindex_index(relid, false, relpersistence, &newparams,
-						  false /* is_yb_table_rewrite */,
-						  true /* yb_copy_split_options */);
+						  false /* is_yb_table_rewrite */ ,
+						  true /* yb_copy_split_options */ );
 			PopActiveSnapshot();
 			/* reindex_index() does the verbose output */
 		}
@@ -3940,8 +3951,8 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 									  REINDEX_REL_PROCESS_TOAST |
 									  REINDEX_REL_CHECK_CONSTRAINTS,
 									  &newparams,
-									  false /* is_yb_table_rewrite */,
-									  true /* yb_copy_split_options */);
+									  false /* is_yb_table_rewrite */ ,
+									  true /* yb_copy_split_options */ );
 
 			if (result && (params->options & REINDEXOPT_VERBOSE) != 0)
 				ereport(INFO,
@@ -5026,12 +5037,14 @@ YbWaitForBackendsCatalogVersion()
 	 * are waiting on may be higher than necessary in case other DDLs finished
 	 * before we collect the version.
 	 */
-	uint64_t catalog_version = YbGetMasterCatalogVersion();
+	uint64_t	catalog_version = YbGetMasterCatalogVersion();
+
 	Assert(catalog_version >= YbGetCatalogCacheVersion());
 
-	int num_lagging_backends = -1;
-	int retries_left = 10;
+	int			num_lagging_backends = -1;
+	int			retries_left = 10;
 	const TimestampTz start = GetCurrentTimestamp();
+
 	while (num_lagging_backends != 0)
 	{
 		if (yb_wait_for_backends_catalog_version_timeout > 0 &&
@@ -5068,12 +5081,12 @@ YbWaitForBackendsCatalogVersion()
 			}
 		}
 
-		YbcStatus s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
-														 catalog_version,
-														 MyProcPid,
-														 &num_lagging_backends);
+		YbcStatus	s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
+														   catalog_version,
+														   MyProcPid,
+														   &num_lagging_backends);
 
-		if (!s)		/* ok */
+		if (!s)					/* ok */
 			continue;
 		if (YBCStatusIsTryAgain(s))
 		{
@@ -5086,6 +5099,7 @@ YbWaitForBackendsCatalogVersion()
 		 * short-lived, so there only needs to be a few retries.
 		 */
 		const char *msg = YBCStatusMessageBegin(s);
+
 		if (strstr(msg, "Requested catalog version is too high"))
 		{
 			elog((retries_left > 3 ? DEBUG1 : NOTICE),

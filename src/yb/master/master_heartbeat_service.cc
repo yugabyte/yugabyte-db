@@ -323,13 +323,15 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     return;
   }
   TSDescriptorPtr ts_desc;
-  ClientOperationLeaseUpdate lease_update;
   ts_desc = std::move(desc_result->desc);
   if (desc_result->lease_update) {
     *resp->mutable_op_lease_update() = desc_result->lease_update->ToPB();
-    server_->catalog_manager_impl()->ExportObjectLockInfo(
-        req->common().ts_instance().permanent_uuid(),
-        resp->mutable_op_lease_update()->mutable_ddl_lock_entries());
+    if (desc_result->lease_update->new_lease) {
+      *resp->mutable_op_lease_update()->mutable_ddl_lock_entries() =
+          server_->catalog_manager_impl()->object_lock_info_manager()->ExportObjectLockInfo();
+      server_->catalog_manager_impl()->object_lock_info_manager()->UpdateTabletServerLeaseEpoch(
+          ts_desc->id(), desc_result->lease_update->lease_epoch);
+    }
   }
 
   resp->set_tablet_report_limit(FLAGS_tablet_report_limit);

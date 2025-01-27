@@ -97,7 +97,7 @@
 
 /* YB includes. */
 #include "pg_yb_utils.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "replication/yb_virtual_wal_client.h"
 
 /*
@@ -211,7 +211,8 @@ static LogicalDecodingContext *logical_decoding_ctx = NULL;
  * 4. Processing time of the output plugin
  * 5. Sending the data to the client including the socket time
  */
-uint64_t YbWalSndTotalTimeInYBDecodeMicros = 0;
+uint64_t	YbWalSndTotalTimeInYBDecodeMicros = 0;
+
 /*
  * Total time spent in the reorderbuffer steps in a batch of changes. This
  * includes the time spent in:
@@ -222,9 +223,10 @@ uint64_t YbWalSndTotalTimeInYBDecodeMicros = 0;
  *
  * A subset of the yb_decode time.
  */
-uint64_t YbWalSndTotalTimeInReorderBufferMicros = 0;
+uint64_t	YbWalSndTotalTimeInReorderBufferMicros = 0;
+
 /* Total time spent in the WalSndWriteData function in a batch of changes. */
-uint64_t YbWalSndTotalTimeInSendingMicros = 0;
+uint64_t	YbWalSndTotalTimeInSendingMicros = 0;
 
 /* A sample associating a WAL location with the time it was written. */
 typedef struct
@@ -1013,7 +1015,7 @@ reportErrorIfLsnTypeNotEnabled()
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("LSN type parameter not allowed when "
-					"ysql_yb_allow_replication_slot_lsn_types is disabled")));
+						"ysql_yb_allow_replication_slot_lsn_types is disabled")));
 }
 
 /*
@@ -1089,7 +1091,7 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 			if (lsn_type_given || cmd->kind != REPLICATION_KIND_LOGICAL)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("conflicting or redundant lsn_type options")));
+						 errmsg("conflicting or redundant lsn_type options")));
 
 			action = defGetString(defel);
 			lsn_type_given = true;
@@ -1267,15 +1269,16 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			 * of errors.
 			 */
 			if (cmd->plugin == NULL)
-					elog(ERROR, "cannot initialize logical decoding without a specified plugin");
+				elog(ERROR, "cannot initialize logical decoding without a specified plugin");
 
 			YBValidateOutputPlugin(cmd->plugin);
 
 			/*
 			 * 23 digits is an upper bound for the decimal representation of a uint64
 			 */
-			char consistent_snapshot_time_string[24];
-			uint64_t consistent_snapshot_time;
+			char		consistent_snapshot_time_string[24];
+			uint64_t	consistent_snapshot_time;
+
 			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT,
 								  two_phase,
 								  cmd->plugin, snapshot_action,
@@ -1423,8 +1426,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	do_tup_output(tstate, values, nulls);
 	end_tup_output(tstate);
 
-if (!IsYugaByteEnabled())
-	ReplicationSlotRelease();
+	if (!IsYugaByteEnabled())
+		ReplicationSlotRelease();
 }
 
 /*
@@ -3273,7 +3276,7 @@ XLogSendLogical(void)
 	XLogRecord *record;
 	char	   *errm;
 
-	YBCPgVirtualWalRecord *yb_record;
+	YbVirtualWalRecord *yb_record;
 
 	/*
 	 * We'll use the current flush point to determine whether we've caught up.
@@ -3330,11 +3333,11 @@ XLogSendLogical(void)
 	 * we only need to update flushPtr if EndRecPtr is past it.
 	 */
 	if (flushPtr == InvalidXLogRecPtr)
-		flushPtr = IsYugaByteEnabled() ? YBCGetFlushRecPtr() :
-										 GetFlushRecPtr(NULL);
+		flushPtr =
+			IsYugaByteEnabled() ? YBCGetFlushRecPtr() : GetFlushRecPtr(NULL);
 	else if (logical_decoding_ctx->reader->EndRecPtr >= flushPtr)
-		flushPtr = IsYugaByteEnabled() ? YBCGetFlushRecPtr() :
-										 GetFlushRecPtr(NULL);
+		flushPtr =
+			IsYugaByteEnabled() ? YBCGetFlushRecPtr() : GetFlushRecPtr(NULL);
 
 	/* If EndRecPtr is still past our flushPtr, it means we caught up. */
 	if (logical_decoding_ctx->reader->EndRecPtr >= flushPtr)

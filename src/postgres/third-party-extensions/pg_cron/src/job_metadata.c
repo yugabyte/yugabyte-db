@@ -58,7 +58,7 @@
 #include "catalog/pg_authid.h"
 
 /* YB includes */
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 
 #if (PG_VERSION_NUM < 120000)

@@ -34,7 +34,19 @@ static void check_for_new_tablespace_dir(ClusterInfo *new_cluster);
 static void check_for_user_defined_encoding_conversions(ClusterInfo *cluster);
 static char *get_canonical_locale_name(int category, const char *locale);
 
-static void yb_check_pushdown_is_disabled(ClusterInfo *cluster);
+/* Yugabyte-specific checks */
+
+static void yb_check_pushdown_is_disabled(PGconn *old_cluster_conn);
+
+static void yb_check_system_databases_exist(PGconn *old_cluster_conn);
+
+static void yb_check_user_attributes(PGconn *old_cluster_conn,
+									 const char *user_name,
+									 const char **role_attrs);
+
+static void yb_check_yugabyte_user(PGconn *old_cluster_conn);
+
+static void yb_check_old_cluster_user(PGconn *old_cluster_conn);
 
 /*
  * fix_path_separator
@@ -178,13 +190,27 @@ check_and_dump_old_cluster(bool live_check)
 	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
 		old_9_3_check_for_line_data_type_usage(&old_cluster);
 
-	/*
-	 * Yugabyte does not support expression pushdown during major upgrades.
-	 * Only check this when we are ready to actually upgrade the cluster,
-	 * because users may want to run this check long before the upgrade.
-	 */
-	if (is_yugabyte_enabled() && !user_opts.check)
-		yb_check_pushdown_is_disabled(&old_cluster);
+	if (is_yugabyte_enabled())
+	{
+		PGconn	   *old_cluster_conn = connectToServer(&old_cluster, "template1");
+
+		/*
+		 * Yugabyte does not support expression pushdown during major upgrades.
+		 * Only check this when we are ready to actually upgrade the cluster,
+		 * because users may want to run this check long before the upgrade.
+		 */
+		if (!user_opts.check)
+		{
+			yb_check_pushdown_is_disabled(old_cluster_conn);
+			yb_check_old_cluster_user(old_cluster_conn);
+		}
+
+		yb_check_yugabyte_user(old_cluster_conn);
+		yb_check_system_databases_exist(old_cluster_conn);
+
+		PQfinish(old_cluster_conn);
+		check_ok();
+	}
 
 	/*
 	 * While not a check option, we do this now because this is the only time
@@ -1558,14 +1584,13 @@ get_canonical_locale_name(int category, const char *locale)
  *	has no other users.
  */
 static void
-yb_check_pushdown_is_disabled(ClusterInfo *cluster)
+yb_check_pushdown_is_disabled(PGconn *old_cluster_conn)
 {
 	PGresult   *res;
-	PGconn	   *conn = connectToServer(cluster, "template1");
 
 	prep_status("Checking expression pushdown is disabled");
 
-	res = executeQueryOrDie(conn, "SHOW yb_enable_expression_pushdown");
+	res = executeQueryOrDie(old_cluster_conn, "SHOW yb_enable_expression_pushdown");
 
 	if (strncmp(PQgetvalue(res, 0, 0), "off", 3))
 		pg_fatal("Expression pushdown (ysql_yb_enable_expression_pushdown) must "
@@ -1573,7 +1598,111 @@ yb_check_pushdown_is_disabled(ClusterInfo *cluster)
 
 	PQclear(res);
 
-	PQfinish(conn);
+	check_ok();
+}
+
+/*
+ * yb_check_system_databases_exist()
+ *
+ *	All the 3 system database should exist before upgrading
+ */
+static void
+yb_check_system_databases_exist(PGconn *old_cluster_conn)
+{
+	PGresult   *res;
+
+	prep_status("Checking for all 3 system databases");
+
+	res = executeQueryOrDie(old_cluster_conn,
+							"VALUES ('template0'), ('template1'), ('yugabyte') EXCEPT SELECT datname FROM pg_database;");
+
+	if (PQntuples(res) != 0)
+		pg_fatal("Missing system database %s\n", PQgetvalue(res, 0, 0));
+
+	PQclear(res);
 
 	check_ok();
+}
+
+/*
+ * yb_check_user_attributes()
+ *
+ *	Make sure the user have the required attributes.
+ */
+static void
+yb_check_user_attributes(PGconn *old_cluster_conn, const char *user_name,
+						 const char **role_attrs)
+{
+	PQExpBufferData buf;
+	PGresult   *res;
+	const char **role_attr;
+	bool		first_attribute = true;
+
+	prep_status("Checking '%s' user attibutes", user_name);
+
+	initPQExpBuffer(&buf);
+	for (role_attr = role_attrs; *role_attr != NULL; role_attr++)
+	{
+		if (!first_attribute)
+			appendPQExpBufferStr(&buf, ", ");
+		first_attribute = false;
+		appendPQExpBufferStr(&buf, *role_attr);
+	}
+
+	res = executeQueryOrDie(old_cluster_conn,
+							"SELECT %s FROM pg_catalog.pg_roles WHERE rolname = '%s'",
+							buf.data, user_name);
+
+	if (PQntuples(res) != 1)
+		pg_fatal("The '%s' user is missing\n", user_name);
+
+	for (role_attr = role_attrs; *role_attr != NULL; role_attr++)
+	{
+		if (strcmp(PQgetvalue(res, 0, PQfnumber(res, *role_attr)), "f") == 0)
+			pg_fatal("The '%s' user is missing the '%s' attribute\n", user_name,
+					 *role_attr);
+	}
+
+	termPQExpBuffer(&buf);
+	PQclear(res);
+	check_ok();
+}
+
+/*
+ * yb_check_yugabyte_user()
+ *
+ *	Make sure yugabyte user has the required attributes.
+ */
+static void
+yb_check_yugabyte_user(PGconn *old_cluster_conn)
+{
+	static const char *role_attrs[] = {
+		"rolsuper",
+		"rolinherit",
+		"rolcreaterole",
+		"rolcreatedb",
+		"rolcanlogin",
+		"rolreplication",
+		"rolbypassrls",
+		NULL,
+	};
+
+	yb_check_user_attributes(old_cluster_conn, "yugabyte", role_attrs);
+}
+
+/*
+ * yb_check_old_cluster_user()
+ *
+ *	Make sure user used to dump the old cluster has required attributes.
+ */
+static void
+yb_check_old_cluster_user(PGconn *old_cluster_conn)
+{
+	prep_status("Checking attributes of the user used to access the old "
+				"cluster");
+
+	static const char *role_attributes[] = {"rolsuper", "rolcanlogin", NULL};
+
+	yb_check_user_attributes(old_cluster_conn, old_cluster.yb_user,
+							 role_attributes);
 }

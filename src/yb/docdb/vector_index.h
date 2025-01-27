@@ -54,10 +54,7 @@ class VectorIndex {
   virtual const std::string& path() const = 0;
 
   virtual Status Insert(
-      const VectorIndexInsertEntries& entries,
-      const rocksdb::UserFrontiers* frontiers,
-      rocksdb::DirectWriteHandler* handler,
-      DocHybridTime write_time) = 0;
+      const VectorIndexInsertEntries& entries, const rocksdb::UserFrontiers* frontiers) = 0;
   virtual Result<VectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
@@ -76,8 +73,6 @@ Result<VectorIndexPtr> CreateVectorIndex(
     Slice indexed_table_key_prefix,
     const qlexpr::IndexInfo& index_info,
     const DocDB& doc_db);
-
-KeyBuffer VectorIdKey(vector_index::VectorId vector_id);
 
 extern const std::string kVectorIndexDirPrefix;
 

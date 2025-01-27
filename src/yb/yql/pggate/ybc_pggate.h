@@ -708,8 +708,9 @@ YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
 
 // System validation -------------------------------------------------------------------------------
-// Validate placement information
-YbcStatus YBCPgValidatePlacement(const char *placement_info);
+// Validate whether placement information is theoretically valid. If check_satisfiable is true,
+// also check whether the current set of tservers can satisfy the requested placement.
+YbcStatus YBCPgValidatePlacement(const char *placement_info, bool check_satisfiable);
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.
@@ -949,6 +950,9 @@ YbcStatus YBCAcquireAdvisoryLock(
     YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);
 YbcStatus YBCReleaseAdvisoryLock(YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode mode);
 YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid);
+
+YbcStatus YBCPgExportSnapshot(const YbcPgTxnSnapshot *snapshot, char** snapshot_id);
+YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot *snapshot);
 
 #ifdef __cplusplus
 }  // extern "C"

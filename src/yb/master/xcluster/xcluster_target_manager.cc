@@ -583,8 +583,9 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
   SCHECK_FORMAT(replication_info, NotFound, "Replication group $0 not found", replication_group_id);
 
   const auto cluster_config = VERIFY_RESULT(catalog_manager_.GetClusterConfig());
-  auto l = replication_info->LockForRead();
-  return GetUniverseReplicationInfo(l->pb, cluster_config);
+  // Make pb copy to avoid potential deadlock while calling GetUniverseReplicationInfo.
+  auto pb = replication_info->LockForRead()->pb;
+  return GetUniverseReplicationInfo(pb, cluster_config);
 }
 
 Status XClusterTargetManager::ClearXClusterSourceTableId(

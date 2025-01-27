@@ -22,8 +22,8 @@
  */
 typedef enum YbLogicalClientVersionType
 {
-	LOGICAL_CLIENT_VERSION_UNSET,           /* Not yet set. */
-	LOGICAL_CLIENT_VERSION_CATALOG_TABLE,   /* New table-based version. */
+	LOGICAL_CLIENT_VERSION_UNSET,	/* Not yet set. */
+	LOGICAL_CLIENT_VERSION_CATALOG_TABLE,	/* New table-based version. */
 } YbLogicalClientVersionType;
 
 extern YbLogicalClientVersionType yb_logical_client_version_type;

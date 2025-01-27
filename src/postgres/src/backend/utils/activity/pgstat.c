@@ -177,7 +177,7 @@ static void pgstat_build_snapshot_fixed(PgStat_Kind kind);
 
 static inline bool pgstat_is_kind_valid(int ikind);
 
-uint64_t *yb_new_conn = NULL;
+uint64_t   *yb_new_conn = NULL;
 
 /* ----------
  * GUC parameters
@@ -199,7 +199,7 @@ PgStat_LocalState pgStatLocal;
  * Used in YB to indicate whether the statuses for ongoing concurrent
  * indexes have been retrieved in this transaction.
  */
-bool yb_retrieved_concurrent_index_progress = false;
+bool		yb_retrieved_concurrent_index_progress = false;
 
 /* ----------
  * Local data
@@ -432,7 +432,7 @@ pgstat_discard_stats(void)
 		ereport(DEBUG2,
 				(errcode_for_file_access(),
 				 errmsg_internal("unlinked permanent statistics file \"%s\"",
-						PGSTAT_STAT_PERMANENT_FILENAME)));
+								 PGSTAT_STAT_PERMANENT_FILENAME)));
 	}
 
 	/*
@@ -592,11 +592,13 @@ pgstat_report_stat(bool force)
 		!pgstat_have_pending_wal())
 	{
 #ifdef YB_TODO
-		/* This assertion fails intermittently during drop table operation. The
-		 * test TestPgRegressDistinctPushdown#testPgRegressDistinctPushdown
+		/*
+		 * This assertion fails intermittently during drop table operation.
+		 * The test
+		 * TestPgRegressDistinctPushdown#testPgRegressDistinctPushdown
 		 * reproduces this issue consistently. Temporarily disable this
-		 * assertion as a workaround. The root cause is unknown and needs to be
-		 * investigated.
+		 * assertion as a workaround. The root cause is unknown and needs to
+		 * be investigated.
 		 */
 		Assert(pending_since == 0);
 #endif

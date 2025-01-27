@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -739,7 +740,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // System Validation.
-  Status ValidatePlacement(const char *placement_info);
+  Status ValidatePlacement(const char *placement_info, bool check_satisfiable);
 
   Result<bool> CheckIfPitrActive();
 
@@ -797,6 +798,9 @@ class PgApiImpl {
   Status NewDropReplicationSlot(const char *slot_name,
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
+
+  Result<std::string> ExportSnapshot(const YbcPgTxnSnapshot& snapshot);
+  Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();

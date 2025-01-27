@@ -73,7 +73,7 @@
 
 /* Yugabyte includes */
 #include "pg_yb_utils.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "access/yb_scan.h"
 #include "utils/builtins.h"
 
@@ -133,7 +133,7 @@ static const struct
 	int			updstatus;
 }
 
-tupleLockExtraInfo[MaxLockTupleMode + 1] =
+			tupleLockExtraInfo[MaxLockTupleMode + 1] =
 {
 	{							/* LockTupleKeyShare */
 		AccessShareLock,
@@ -1152,7 +1152,10 @@ heap_beginscan(Relation relation, Snapshot snapshot,
 {
 	HeapScanDesc scan;
 
-	/* YB scan methods should only be used for tables that are handled by YugaByte. */
+	/*
+	 * YB scan methods should only be used for tables that are handled by
+	 * YugaByte.
+	 */
 	if (IsYBRelation(relation))
 	{
 		return ybc_heap_beginscan(relation, snapshot, nkeys, key, flags);
@@ -1370,13 +1373,14 @@ heap_getnextslot(TableScanDesc sscan, ScanDirection direction, TupleTableSlot *s
 {
 	if (IsYBRelation(sscan->rs_rd))
 	{
-		HeapTuple tuple = ybc_heap_getnext(sscan);
+		HeapTuple	tuple = ybc_heap_getnext(sscan);
+
 		if (!tuple)
 		{
 			ExecClearTuple(slot);
 			return false;
 		}
-		ExecStoreHeapTuple(tuple, slot, false /* shouldFree */);
+		ExecStoreHeapTuple(tuple, slot, false /* shouldFree */ );
 		return true;
 	}
 
@@ -2737,7 +2741,7 @@ heap_delete(Relation relation, ItemPointer tid,
 	{
 		YBC_LOG_WARNING("Ignoring unsupported tuple delete for rel %s",
 						RelationGetRelationName(relation));
-		return TM_Ok; /* HeapTupleMayBeUpdated; */
+		return TM_Ok;			/* HeapTupleMayBeUpdated; */
 	}
 
 	Assert(ItemPointerIsValid(tid));
@@ -6090,15 +6094,16 @@ heap_inplace_update(Relation relation, HeapTuple tuple, bool yb_shared_update)
 
 			YB_FOR_EACH_DB(pg_db_tuple)
 			{
-				Oid dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
+				Oid			dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
+
 				/* YB doesn't use PG locks so it's okay not to take them. */
-				YBCUpdateSysCatalogTupleForDb(dboid, relation, NULL /* oldtuple */, tuple);
+				YBCUpdateSysCatalogTupleForDb(dboid, relation, NULL /* oldtuple */ , tuple);
 			}
 			YB_FOR_EACH_DB_END;
 		}
 		else
 		{
-			YBCUpdateSysCatalogTuple(relation, NULL /* oldtuple */, tuple);
+			YBCUpdateSysCatalogTuple(relation, NULL /* oldtuple */ , tuple);
 		}
 		return;
 	}
@@ -7930,9 +7935,11 @@ index_delete_sort(TM_IndexDeleteOp *delstate)
 
 	/* Think carefully before changing anything here -- keep swaps cheap */
 #ifdef NEIL
-	/* NEIL: Revisit this to have a permanent fix.
+	/*
+	 * NEIL: Revisit this to have a permanent fix.
 	 * - ItemPointer is part of TM_IndexDelete.
-	 * - yb_item is added to ItemPointer and increase the size of TM_IndexDelete.
+	 * - yb_item is added to ItemPointer and increase the size of
+	 *   TM_IndexDelete.
 	 */
 	StaticAssertStmt(sizeof(TM_IndexDelete) <= 8,
 					 "element size exceeds 8 bytes");

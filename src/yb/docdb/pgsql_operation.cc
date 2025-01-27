@@ -919,7 +919,7 @@ class PgsqlVectorFilter {
   }
 
   bool operator()(const vector_index::VectorId& vector_id) {
-    auto key = VectorIdKey(vector_id);
+    auto key = dockv::VectorIdKey(vector_id);
     // TODO(vector_index) handle failure
     auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key.AsSlice()));
     if (ybctid.empty()) {
@@ -1072,8 +1072,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
-      BloomFilterMode::USE_BLOOM_FILTER,
-      encoded_doc_key_.as_slice(),
+      BloomFilterOptions::Fixed(encoded_doc_key_.as_slice()),
       rocksdb::kDefaultQueryId,
       txn_op_context_,
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
@@ -2943,8 +2942,7 @@ Result<bool> PgsqlLockOperation::LockExists(const DocOperationApplyData& data) {
   auto reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
   auto iter = CreateRocksDBIterator(
       data.doc_write_batch->doc_db().intents, &KeyBounds::kNoBounds,
-      BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      rocksdb::kDefaultQueryId, nullptr, &reverse_index_upperbound,
+      BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId, nullptr, &reverse_index_upperbound,
       rocksdb::CacheRestartBlockKeys::kFalse);
   Slice key_prefix = txn_reverse_index_prefix.AsSlice();
   key_prefix.remove_suffix(1);

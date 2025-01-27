@@ -103,6 +103,7 @@
 | "Whether YBA supports transactional xCluster configs" | "yb.xcluster.transactional.enabled" | "GLOBAL" | "It indicates whether YBA should support transactional xCluster configs" | "Boolean" |
 | "Enable disaster recovery" | "yb.xcluster.dr.enabled" | "GLOBAL" | "It indicates whether creating disaster recovery configs are enabled" | "Boolean" |
 | "Enable xcluster/DR auto flag validation" | "yb.xcluster.enable_auto_flag_validation" | "GLOBAL" | "Enables checks for xcluster/disaster recovery validations for autoflags for xcluster/DR operations" | "Boolean" |
+| "Whether to log information about gathering table statuses in xCluster" | "yb.xcluster.table_status_logging_enabled" | "GLOBAL" | "Whether to log information about gathering bad table statuses in xCluster; the logs can be huge and this gives you a leverage to disable it" | "Boolean" |
 | "Enable YBC for xCluster" | "yb.xcluster.use_ybc" | "GLOBAL" | "Enable YBC to take backup and restore during xClsuter bootstrap" | "Boolean" |
 | "Whether installation of YugabyteDB version higher than YBA version is allowed" | "yb.allow_db_version_more_than_yba_version" | "GLOBAL" | "It indicates whether the installation of YugabyteDB with a version higher than YBA version is allowed on universe nodes" | "Boolean" |
 | "Skip DB / YBA version comparison checks" | "yb.skip_version_checks" | "GLOBAL" | "Whether we should skip DB / YBA version comparison checks during upgrades, etc. Gives more flexibilty, but user should be careful when enabling this." | "Boolean" |

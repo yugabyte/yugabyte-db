@@ -1125,6 +1125,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     pg_session_req_version_ = 1;
   }
 
+  void SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
+    background_transaction_ = background_transaction;
+  }
+
  private:
   void CompleteConstruction() {
     LOG_IF(FATAL, !IsAcceptableAtomicImpl(log_prefix_.tag));
@@ -1215,7 +1219,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       CoarseTimePoint deadline, const internal::RemoteTabletPtr& status_tablet,
       TransactionStatus status, UpdateTransactionCallback callback, TxnReuseVersion reuse_version,
       std::optional<SubtxnSet> aborted_set_for_rollback_heartbeat = std::nullopt,
-      const TabletStates& tablets_with_locks = {}) {
+      const TabletStates& tablets_with_locks = {},
+      const boost::optional<TransactionMetadata>& background_transaction = boost::none) {
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
@@ -1249,6 +1254,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     if (pg_session_req_version_) {
       state.set_pg_session_req_version(pg_session_req_version_);
+    }
+
+    if (background_transaction) {
+      background_transaction->ToPB(state.mutable_background_transaction_meta());
     }
 
     return UpdateTransaction(
@@ -1840,11 +1849,23 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       } else {
         status_tablet = status_tablet_;
       }
+      boost::optional<TransactionMetadata> background_transaction = boost::none;
+      if (auto shared_bg_txn = background_transaction_.lock(); shared_bg_txn) {
+        LOG_IF_WITH_PREFIX(DFATAL, !pg_session_req_version_)
+            << "Expected this path to be triggered only for PgSessionTransactions "
+            << "for which pg_session_req_version_ should be >= 1";
+        auto meta_future = shared_bg_txn->GetMetadata(CoarseMonoClock::now() + 1ms);
+        if (meta_future.wait_for(0ms) == std::future_status::ready) {
+          if (auto res = meta_future.get(); res.ok()) {
+            background_transaction = *res;
+          }
+        }
+      }
       rpc = PrepareHeartbeatRPC(
           CoarseMonoClock::now() + timeout, status_tablet, status,
           std::bind(
               &Impl::HeartbeatDone, this, _1, _2, _3, status, transaction, send_to_new_tablet),
-          reuse_version_, std::nullopt, tablets_);
+          reuse_version_, std::nullopt, tablets_, background_transaction);
     }
 
     auto& handle = send_to_new_tablet ? new_heartbeat_handle_ : heartbeat_handle_;
@@ -2419,6 +2440,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // the txn's status tablet. The same is embedded into session advisory lock requests and is used
   // by the wait-queue to resume deadlocked requests.
   std::atomic<PgSessionRequestVersion> pg_session_req_version_{0};
+
+  // The below is populated only for pg session level transactions (created on session advisory lock
+  // requests). When a regular docdb transaction is created in the ysql session, the field is set to
+  // that transaction and is passed on to the session level txn's status tablet, which creates a
+  // wait-on-dependency from session level transaction -> regular transaction. This is necessary to
+  // detect deadlocks involving advisory locks and row-level locks (and object locks in future).
+  std::weak_ptr<YBTransaction> background_transaction_;
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -2610,6 +2638,10 @@ void YBTransaction::SetCurrentReuseVersion(TxnReuseVersion reuse_version) {
 
 void YBTransaction::InitPgSessionRequestVersion() {
   return impl_->InitPgSessionRequestVersion();
+}
+
+void YBTransaction::SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
+  return impl_->SetBackgroundTransaction(background_transaction);
 }
 
 } // namespace client

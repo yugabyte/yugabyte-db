@@ -47,6 +47,7 @@ YRPC_GENERATE(
       ql_protocol.proto
       transaction.proto
       value.proto
+      version_info.proto
       wire_protocol.proto
   )
 ADD_YB_LIBRARY(yb_common_proto
@@ -88,10 +89,10 @@ set(COMMON_SRCS
   hybrid_time.cc
   doc_hybrid_time.cc # must be after hybrid_time.cc
   id_mapping.cc
+  init.cc
   key_encoder.cc
   opid.cc
   pgsql_error.cc
-  placement_info.cc
   pg_types.cc
   ql_protocol_util.cc
   retryable_request.cc
@@ -102,11 +103,13 @@ set(COMMON_SRCS
   schema_pbutil.cc
   snapshot.cc
   tablet_limits.cc
+  tablespace_parser.cc
   termination_monitor.cc
   transaction.cc
   transaction_error.cc
   wire_protocol.cc
   llvm_profile_dumper.cc
+  version_info.cc
   xcluster_util.cc
   ysql_utils.cc
   )
@@ -136,9 +139,9 @@ ADD_YB_TEST_LIBRARY(yb_common_test_util
 set(YB_TEST_LINK_LIBS yb_common yb_common_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)
-ADD_YB_TEST(placement_info-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(subtxn_set_and_pb-test)
+ADD_YB_TEST(tablespace_parser-test)
 ADD_YB_TEST(tablet_limits_test)
 ADD_YB_TEST(types-test)
 ADD_YB_TEST(wire_protocol-test)

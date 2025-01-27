@@ -578,7 +578,6 @@ Status ObjectLockLoader::Visit(const std::string& host_uuid, const SysObjectLock
     info->Load(pb);
     catalog_manager_->object_lock_info_manager_->UpdateObjectLocks(host_uuid, info);
   }
-
   LOG(INFO) << "Loaded metadata for type " << info->ToString();
   VLOG(1) << "Metadata for type " << info->ToString() << ": " << pb.ShortDebugString();
   return Status::OK();

@@ -46,12 +46,6 @@ public class GFlagsValidationTest extends FakeDBApplication {
     connectionPoolingGflags.put("ysql_conn_mgr_stats_interval", "20");
     gFlagsValidation.validateConnectionPoolingGflags(universe, connectionPoolingGflags);
 
-    // Throw error for invalid gflag at the old version.
-    connectionPoolingGflags.put("ysql_conn_mgr_log_rotate_interval", "3600");
-    assertThrows(
-        PlatformServiceException.class,
-        () -> gFlagsValidation.validateConnectionPoolingGflags(universe, connectionPoolingGflags));
-
     // Should not throw error for correct new version.
     TestHelper.updateUniverseVersion(universe, "2.25.0.0-b1");
     gFlagsValidation.validateConnectionPoolingGflags(universe, connectionPoolingGflags);
@@ -61,5 +55,11 @@ public class GFlagsValidationTest extends FakeDBApplication {
     assertThrows(
         PlatformServiceException.class,
         () -> gFlagsValidation.validateConnectionPoolingGflags(universe, connectionPoolingGflags));
+
+    // Should not throw error for some gflag that starts with prefix "ysql_conn_mgr".
+    // Mostly for future cases where DB might add new CP gflags without updating YBA metadata.
+    connectionPoolingGflags.remove("random_key");
+    connectionPoolingGflags.put("ysql_conn_mgr_future_key", "100");
+    gFlagsValidation.validateConnectionPoolingGflags(universe, connectionPoolingGflags);
   }
 }

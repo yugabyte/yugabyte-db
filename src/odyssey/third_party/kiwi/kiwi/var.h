@@ -65,6 +65,24 @@ struct kiwi_vars {
 #endif
 };
 
+/*
+ * YB: avoid_enquote_guc_list lists the guc variables on which enquoting ('E') should be avoided in
+ * the deploy phase of connection manager.
+ * List is formed if any guc variable present in guc.c file full-fills all below requirements.
+ * 1. GUC_LIST_INPUT, GUC_LIST_QUOTE flags are enabled.
+ * 2. Can be set by the user without making connection sticky.
+ * 3. Receives a PARAMETER_STATUS packet on setting it on server and are replayed in deploy phase.
+ * Therefore update the list on adding new guc var in guc.c file with above conditions.
+ */
+
+static const char *avoid_enquote_guc_list[] = {
+	"session_preload_libraries",
+	"local_preload_libraries",
+	"search_path"
+};
+
+static const int avoid_enquote_guc_list_sz = sizeof(avoid_enquote_guc_list)/sizeof(char *);
+
 static inline char* yb_lowercase_str(const char *str)
 {
 	if (str == NULL)
@@ -389,6 +407,16 @@ static inline int kiwi_enquote(char *src, char *dst, int dst_len)
 	return (int)(pos - dst);
 }
 
+static bool yb_is_avoid_enquoting_guc_var(char *name)
+{
+	for (int i = 0; i < avoid_enquote_guc_list_sz; i++)
+	{
+		if (strcmp (avoid_enquote_guc_list[i], name) == 0)
+			return true;
+	}
+	return false;
+}
+
 __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 						     kiwi_vars_t *server,
 						     char *query, int query_len)
@@ -432,11 +460,26 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 		memcpy(query + pos, "=", 1);
 		pos += 1;
 
-		if (strcmp(var->name, "search_path") == 0)
+		if (yb_is_avoid_enquoting_guc_var(var->name))
 		{
-			int copy_len = var->value_len - 1;
-			memcpy(query + pos, var->value, copy_len);
-			pos += copy_len;
+			/*
+			 * YB: To avoid below deploy query string, replace the value of guc variable
+			 * with '' (empty single quotes) which is accepted in the postgres via SET stmt.
+			 * 1. var_name=; - It would lead to failure of deploy query.
+			 * 2. var_name=""; - PG will throw ERROR msg:
+			 * 			zero-length delimited identifier at or near """".
+			*/
+			if (strlen(var->value) == 0 || strcmp(var->value, "\"\"") == 0)
+			{
+				memcpy(query + pos, "\'\'", 2);
+				pos += 2;
+			}
+			else
+			{
+				int copy_len = var->value_len - 1;
+				memcpy(query + pos, var->value, copy_len);
+				pos += copy_len;
+			}
 		}
 		else
 		{

@@ -1,6 +1,3 @@
--- Fail the script on the first error
-\set ON_ERROR_STOP on
-
 -- Create AGGREGATE
 CREATE AGGREGATE my_sum(integer) (
     SFUNC = int4pl,

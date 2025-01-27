@@ -90,8 +90,8 @@ class VectorLSMInsertTask :
  public:
   using Types = VectorLSMTypes<Vector, DistanceResult>;
   using InsertRegistry = typename Types::InsertRegistry;
-  using VertexWithDistance = typename Types::VertexWithDistance;
-  using SearchHeap = std::priority_queue<VertexWithDistance>;
+  using VectorWithDistance = typename Types::VectorWithDistance;
+  using SearchHeap = std::priority_queue<VectorWithDistance>;
   using LSM = VectorLSM<Vector, DistanceResult>;
   using MutableChunk = typename LSM::MutableChunk;
 
@@ -125,7 +125,7 @@ class VectorLSMInsertTask :
         continue;
       }
       auto distance = chunk_->index->Distance(query_vector, vector);
-      VertexWithDistance vertex(id, distance);
+      VectorWithDistance vertex(id, distance);
       if (heap.size() < options.max_num_results) {
         heap.push(vertex);
       } else if (heap.top() > vertex) {
@@ -151,7 +151,7 @@ class VectorLSMInsertRegistry {
   using Types = VectorLSMTypes<Vector, DistanceResult>;
   using LSM = VectorLSM<Vector, DistanceResult>;
   using VectorIndex = typename Types::VectorIndex;
-  using VertexWithDistance = typename Types::VertexWithDistance;
+  using VectorWithDistance = typename Types::VectorWithDistance;
   using InsertTask = VectorLSMInsertTask<Vector, DistanceResult>;
   using InsertTaskList = boost::intrusive::list<InsertTask>;
   using InsertTaskPtr = std::unique_ptr<InsertTask>;
@@ -490,16 +490,13 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
   auto tasks = insert_registry_->AllocateTasks(*this, chunk, num_tasks);
   auto tasks_it = tasks.begin();
   size_t index_in_task = 0;
-  BaseTableKeysBatch keys_batch;
-  for (auto& [vertex_id, base_table_key, v] : entries) {
+  for (auto& [vertex_id, v] : entries) {
     if (index_in_task++ >= entries_per_task) {
       ++tasks_it;
       index_in_task = 0;
     }
     tasks_it->Add(vertex_id, std::move(v));
-    keys_batch.emplace_back(vertex_id, base_table_key.AsSlice());
   }
-  RETURN_NOT_OK(options_.key_value_storage->StoreBaseTableKeys(keys_batch, context));
   insert_registry_->ExecuteTasks(tasks);
 
   return Status::OK();
@@ -512,8 +509,8 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
 // Expects that results_with_chunk and chunk_results already ordered by distance.
 template<ValidDistanceResultType DistanceResult>
 void MergeChunkResults(
-    std::vector<VertexWithDistance<DistanceResult>>& combined_results,
-    std::vector<VertexWithDistance<DistanceResult>>& chunk_results,
+    std::vector<VectorWithDistance<DistanceResult>>& combined_results,
+    std::vector<VectorWithDistance<DistanceResult>>& chunk_results,
     size_t max_num_results) {
   // Store the current size of the existing results.
   auto old_size = std::min(combined_results.size(), max_num_results);
@@ -529,7 +526,7 @@ void MergeChunkResults(
       while (it != end) {
         if (entry > *it) {
           ++it;
-        } else if (entry.vertex_id == it->vertex_id) {
+        } else if (entry.vector_id == it->vector_id) {
           return true;
         } else {
           break;
@@ -618,17 +615,7 @@ auto VectorLSM<Vector, DistanceResult>::Search(
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
 
-  SearchResults final_results;
-  final_results.reserve(intermediate_results.size());
-  for (const auto& [vertex_id, distance] : intermediate_results) {
-    auto base_table_key = VERIFY_RESULT(options_.key_value_storage->ReadBaseTableKey(vertex_id));
-    final_results.push_back({
-      .distance = distance,
-      .base_table_key = std::move(base_table_key)
-    });
-  }
-
-  return final_results;
+  return intermediate_results;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -878,8 +865,8 @@ Status VectorLSM<Vector, DistanceResult>::RemoveUpdateQueueEntry(size_t order_no
 YB_INSTANTIATE_TEMPLATE_FOR_ALL_VECTOR_AND_DISTANCE_RESULT_TYPES(VectorLSM);
 
 template void MergeChunkResults<float>(
-    std::vector<VertexWithDistance<float>>& combined_results,
-    std::vector<VertexWithDistance<float>>& chunk_results,
+    std::vector<VectorWithDistance<float>>& combined_results,
+    std::vector<VectorWithDistance<float>>& chunk_results,
     size_t max_num_results);
 
 }  // namespace yb::vector_index

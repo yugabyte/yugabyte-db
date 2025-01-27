@@ -346,8 +346,16 @@ public class SwaggerGenTest extends FakeDBApplication {
 
   public static void main(String[] args)
       throws IOException, NoSuchFieldException, IllegalAccessException {
-    String expectedSwagger = getCurrentSpec(args[0]);
     excludeDeprecated(args);
+    excludeInternal(args);
+    // Not checking swagger has changed for swagger-all.json
+    Boolean checkSwaggerHasChanged = true;
+    if (PlatformModelConverter.excludeYbaInternalOption != null) {
+      if (PlatformModelConverter.excludeYbaInternalOption.length() != 0
+          && PlatformModelConverter.excludeYbaInternalOption.toLowerCase().equals("none")) {
+        checkSwaggerHasChanged = false;
+      }
+    }
     SwaggerGenTest swaggerGenTest = new SwaggerGenTest();
     try {
       swaggerGenTest.startServer();
@@ -364,10 +372,13 @@ public class SwaggerGenTest extends FakeDBApplication {
       }
       System.out.println("Generating swagger spec:" + Arrays.toString(args));
       String swaggerSpec = swaggerGenTest.getSwaggerSpec();
-      if (expectedSwagger.length() == swaggerSpec.length()) {
-        // TODO: Fix this: Only length comparison because the json ordering change
-        System.out.println("Swagger Specs have not changed");
-        return;
+      if (checkSwaggerHasChanged) {
+        String expectedSwagger = getCurrentSpec(args[0]);
+        if (expectedSwagger.length() == swaggerSpec.length()) {
+          // TODO: Fix this: Only length comparison because the json ordering change
+          System.out.println("Swagger Specs have not changed");
+          return;
+        }
       }
       try (FileWriter fileWriter = new FileWriter(new File(args[0]))) {
         // todo only generate on change
@@ -393,6 +404,17 @@ public class SwaggerGenTest extends FakeDBApplication {
     PlatformModelConverter.excludeYbaDeprecatedOption = "";
     if (args.length > 2 && args[1].equalsIgnoreCase("--exclude_deprecated")) {
       PlatformModelConverter.excludeYbaDeprecatedOption = args[2];
+    } else if (args.length > 4 && args[3].equalsIgnoreCase("--exclude_deprecated")) {
+      PlatformModelConverter.excludeYbaDeprecatedOption = args[4];
+    }
+  }
+
+  private static void excludeInternal(String[] args) {
+    PlatformModelConverter.excludeYbaInternalOption = "";
+    if (args.length > 2 && args[1].equalsIgnoreCase("--exclude_internal")) {
+      PlatformModelConverter.excludeYbaInternalOption = args[2];
+    } else if (args.length > 4 && args[3].equalsIgnoreCase("--exclude_internal")) {
+      PlatformModelConverter.excludeYbaInternalOption = args[4];
     }
   }
 }

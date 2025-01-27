@@ -88,7 +88,8 @@ class TServerMetricsPB;
 struct ClientOperationLeaseUpdate {
   ClientOperationLeaseUpdate() :
     lease_deadline(HybridTime()),
-    new_lease(false) {}
+    new_lease(false),
+    lease_epoch(0) {}
 
   HybridTime lease_deadline;
   bool new_lease;
@@ -345,7 +346,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
-  std::pair<std::optional<TSDescriptor::WriteLock>, std::optional<uint64_t>> MaybeUpdateLiveness(
+  std::optional<std::pair<TSDescriptor::WriteLock, std::optional<uint64_t>>> MaybeUpdateLiveness(
       MonoTime mono_time, HybridTime hybrid_time) EXCLUDES(mutex_);
 
   bool HasLiveClientOperationLease() const;

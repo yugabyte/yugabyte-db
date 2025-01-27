@@ -213,20 +213,22 @@ typedef struct TransactionStateData
 	bool		topXidLogged;	/* for a subxact: is top-level XID logged? */
 	struct TransactionStateData *parent;	/* back link to parent */
 
-	bool		ybDataSent;		/* Whether some tuples have been transmitted to
-								 * frontend as part of this execution */
-	bool		ybDataSentForCurrQuery;	/* Whether any data has been sent to
+	bool		ybDataSent;		/* Whether some tuples have been transmitted
+								 * to frontend as part of this execution */
+	bool		ybDataSentForCurrQuery; /* Whether any data has been sent to
 										 * frontend as part of current query's
 										 * execution */
-	bool		isYBTxnWithPostgresRel;	/* does the current transaction
+	bool		isYBTxnWithPostgresRel; /* does the current transaction
 										 * operate on a postgres table? */
 	List	   *YBPostponedDdlOps;	/* We postpone execution of non-revertable
-									 * DocDB operations (e.g. drop table/index)
-									 * until the rest of the txn succeeds */
-	int			ybUncommittedStickyObjectCount;	/* Count of objects that require
-												 * stickiness within a certain
-												 * transaction (e.g. TEMP
-												 * TABLES/WITH HOLD CURSORS) */
+									 * DocDB operations (e.g. drop
+									 * table/index) until the rest of the txn
+									 * succeeds */
+	int			ybUncommittedStickyObjectCount; /* Count of objects that
+												 * require stickiness within a
+												 * certain transaction (e.g.
+												 * TEMP TABLES/WITH HOLD
+												 * CURSORS) */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -1163,6 +1165,7 @@ void
 YBMarkDataSent(void)
 {
 	TransactionState s = CurrentTransactionState;
+
 	s->ybDataSent = true;
 	s->ybDataSentForCurrQuery = true;
 }
@@ -1174,6 +1177,7 @@ void
 YBMarkDataNotSent(void)
 {
 	TransactionState s = CurrentTransactionState;
+
 	s->ybDataSent = false;
 }
 
@@ -1181,6 +1185,7 @@ void
 YBMarkDataNotSentForCurrQuery(void)
 {
 	TransactionState s = CurrentTransactionState;
+
 	s->ybDataSentForCurrQuery = false;
 }
 
@@ -1190,11 +1195,16 @@ YBMarkDataNotSentForCurrQuery(void)
 bool
 YBIsDataSent(void)
 {
-	/* Note: we don't support nested transactions (savepoints) yet,
-	 * but once we do - we have to make sure this works as intended. */
+	/*
+	 * Note: we don't support nested transactions (savepoints) yet, but once
+	 * we do - we have to make sure this works as intended.
+	 */
 	TransactionState s = CurrentTransactionState;
-	/* Ignoring "idle" transaction state, a leftover from a previous
-	 * transaction */
+
+	/*
+	 * Ignoring "idle" transaction state, a leftover from a previous
+	 * transaction
+	 */
 	return s->blockState != TBLOCK_DEFAULT && s->ybDataSent;
 }
 
@@ -1205,6 +1215,7 @@ bool
 YBIsDataSentForCurrQuery(void)
 {
 	TransactionState s = CurrentTransactionState;
+
 	return s->ybDataSentForCurrQuery;
 }
 
@@ -2076,9 +2087,9 @@ YBStartTransaction(TransactionState s)
 {
 	elog(DEBUG2, "YBStartTransaction");
 	s->isYBTxnWithPostgresRel = !IsYugaByteEnabled();
-	s->ybDataSent             = false;
+	s->ybDataSent = false;
 	s->ybDataSentForCurrQuery = false;
-	s->YBPostponedDdlOps      = NULL;
+	s->YBPostponedDdlOps = NULL;
 
 	if (IsYugaByteEnabled())
 	{
@@ -2094,7 +2105,7 @@ YBStartTransaction(TransactionState s)
 int
 YBGetEffectivePggateIsolationLevel()
 {
-	int mapped_pg_isolation_level = XactIsoLevel;
+	int			mapped_pg_isolation_level = XactIsoLevel;
 
 	/*
 	 * For the txn manager, logic for XACT_READ_UNCOMMITTED is same as
@@ -2108,7 +2119,7 @@ YBGetEffectivePggateIsolationLevel()
 	 * XACT_REPEATABLE_READ.
 	 */
 	if ((mapped_pg_isolation_level == XACT_READ_COMMITTED) &&
-			!IsYBReadCommitted())
+		!IsYBReadCommitted())
 		mapped_pg_isolation_level = XACT_REPEATABLE_READ;
 
 	return mapped_pg_isolation_level;
@@ -2307,13 +2318,13 @@ YBCRestartWriteTransaction()
 	 */
 	PopAllActiveSnapshots();
 
-	AtEOXact_SPI(false /* isCommit */);
+	AtEOXact_SPI(false /* isCommit */ );
 
 	/*
 	 * Recreate the global state present for triggers that would have changed
 	 * during the execution of the failed write.
 	 */
-	AfterTriggerEndXact(false /* isCommit */);
+	AfterTriggerEndXact(false /* isCommit */ );
 	AfterTriggerBeginXact();
 }
 
@@ -3251,7 +3262,7 @@ void
 StartTransactionCommand(void)
 {
 	elog(DEBUG2, "StartTransactionCommand");
-	YBStartTransactionCommandInternal(false /* yb_skip_read_committed_internal_savepoint */);
+	YBStartTransactionCommandInternal(false /* yb_skip_read_committed_internal_savepoint */ );
 }
 
 /*
@@ -3282,6 +3293,7 @@ void
 SetTxnWithPGRel(void)
 {
 	TransactionState s = CurrentTransactionState;
+
 	/*
 	 * YB doesn't support subtransactions for now and only top level transaction is committed.
 	 * So the isYBTxnWithPostgresRel flag must be set on current and all top level transactions.
@@ -3598,10 +3610,13 @@ CommitTransactionCommand(void)
 		 */
 		switch (prevState)
 		{
-			case TBLOCK_END:	 /* COMMIT received */
-			case TBLOCK_STARTED: /* running single-query transaction */
-				/* Copy the session parameter from the local memory to the
-				 * shared memory */
+			case TBLOCK_END:	/* COMMIT received */
+			case TBLOCK_STARTED:	/* running single-query transaction */
+
+				/*
+				 * Copy the session parameter from the local memory to the
+				 * shared memory
+				 */
 				YbUpdateSharedMemory();
 
 				YbCleanChangedSessionParameters();
@@ -3610,8 +3625,11 @@ CommitTransactionCommand(void)
 				YbCleanChangedSessionParameters();
 				break;
 			default:
-				/* do nothing for sub transaction, process changed session
-				 * parameters only at the end of the transaction. */
+
+				/*
+				 * do nothing for sub transaction, process changed session
+				 * parameters only at the end of the transaction.
+				 */
 				break;
 		}
 	}
@@ -4554,7 +4572,7 @@ DefineSavepoint(const char *name)
 			PushTransaction();
 			s = CurrentTransactionState;	/* changed by push */
 			elog(DEBUG2, "new sub txn created by savepoint, subtxn_id: %d",
-					 s->subTransactionId);
+				 s->subTransactionId);
 
 			/*
 			 * Savepoint names, like the TransactionState block itself, live
@@ -4893,7 +4911,7 @@ BeginInternalSubTransaction(const char *name)
 			PushTransaction();
 			s = CurrentTransactionState;	/* changed by push */
 			elog(DEBUG2, "new sub txn created internally, subtxn_id: %d",
-					 s->subTransactionId);
+				 s->subTransactionId);
 
 			/*
 			 * Savepoint names, like the TransactionState block itself, live
@@ -4925,7 +4943,7 @@ BeginInternalSubTransaction(const char *name)
 
 	CommitTransactionCommand();
 
-	YBStartTransactionCommandInternal(true /* yb_skip_read_committed_internal_savepoint */);
+	YBStartTransactionCommandInternal(true /* yb_skip_read_committed_internal_savepoint */ );
 }
 
 /*
@@ -4946,13 +4964,13 @@ YbBeginInternalSubTransactionForReadCommittedStatement()
 	TransactionState s = CurrentTransactionState;
 
 	Assert(s->blockState == TBLOCK_SUBINPROGRESS ||
-				 s->blockState == TBLOCK_IMPLICIT_INPROGRESS ||
-				 s->blockState == TBLOCK_INPROGRESS);
+		   s->blockState == TBLOCK_IMPLICIT_INPROGRESS ||
+		   s->blockState == TBLOCK_INPROGRESS);
 
 	if (IsInParallelMode())
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
-				errmsg("cannot start subtransactions during a parallel operation")));
+				 errmsg("cannot start subtransactions during a parallel operation")));
 
 	/* Normal subtransaction start */
 	PushTransaction();
@@ -5226,9 +5244,9 @@ TransactionBlockStatusCode(void)
 	{
 		case TBLOCK_DEFAULT:
 		case TBLOCK_STARTED:
-			return ((YbIsClientYsqlConnMgr() && \
-					YbIsStickyConnection(&(s->ybUncommittedStickyObjectCount)))
-				? 'i' : 'I');			/* idle --- not in transaction */
+			return ((YbIsClientYsqlConnMgr() &&
+					 YbIsStickyConnection(&(s->ybUncommittedStickyObjectCount)))
+					? 'i' : 'I');	/* idle --- not in transaction */
 		case TBLOCK_BEGIN:
 		case TBLOCK_SUBBEGIN:
 		case TBLOCK_INPROGRESS:
@@ -5637,7 +5655,7 @@ static void
 PushTransaction(void)
 {
 	elog(DEBUG2, "PushTransaction increment sub-txn id from %d -> %d",
-			 currentSubTransactionId, currentSubTransactionId+1);
+		 currentSubTransactionId, currentSubTransactionId + 1);
 	TransactionState p = CurrentTransactionState;
 	TransactionState s;
 
@@ -5715,8 +5733,8 @@ PopTransaction(void)
 
 	/* Propagate the data sent information to the parent. */
 	s->parent->ybDataSent = s->parent->ybDataSent || s->ybDataSent;
-	s->parent->ybDataSentForCurrQuery = s->parent->ybDataSentForCurrQuery ||
-										s->ybDataSentForCurrQuery;
+	s->parent->ybDataSentForCurrQuery = (s->parent->ybDataSentForCurrQuery ||
+										 s->ybDataSentForCurrQuery);
 
 	CurrentTransactionState = s->parent;
 	YBUpdateActiveSubTransaction(CurrentTransactionState);
@@ -6706,6 +6724,7 @@ void
 YbClearParallelContexts()
 {
 	TransactionState s = CurrentTransactionState;
+
 	Assert(IsInParallelMode());
 	if (s->subTransactionId == InvalidSubTransactionId)
 		AtEOXact_Parallel(false);

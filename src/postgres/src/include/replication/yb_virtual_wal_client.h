@@ -32,9 +32,9 @@
 extern void YBCInitVirtualWal(List *yb_publication_names);
 extern void YBCDestroyVirtualWal();
 
-extern YBCPgVirtualWalRecord *YBCReadRecord(XLogReaderState *state,
-											List *publication_names,
-											char **errormsg);
+extern YbVirtualWalRecord *YBCReadRecord(XLogReaderState *state,
+										 List *publication_names,
+										 char **errormsg);
 extern XLogRecPtr YBCGetFlushRecPtr(void);
 
 extern XLogRecPtr YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush);

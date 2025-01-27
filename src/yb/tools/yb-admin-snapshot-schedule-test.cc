@@ -911,7 +911,6 @@ TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
 
   // Absolute timestamp format. Should have the first set of rows.
   auto target_namespace_name = "absolute_time_namespace";
-  ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
   ASSERT_OK(CloneAndWait(
       kSourceNamespace, target_namespace_name, 30s /* timeout */,
@@ -959,7 +958,6 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteRowsFromCloneYcql) {
   ASSERT_OK(conn.ExecuteQueryFormat("DELETE FROM $0 WHERE key=1", kTableName));
 
   const auto kTargetNamespace = "cloned";
-  ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
   ASSERT_OK(CloneAndWait(
       kSourceNamespace, kTargetNamespace, 30s /* timeout */,
@@ -1196,7 +1194,6 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
 
   virtual std::vector<std::string> ExtraMasterFlags() override {
     auto flags = YbAdminSnapshotScheduleTestWithYsql::ExtraMasterFlags();
-    flags.push_back("--allowed_preview_flags_csv=enable_db_clone");
     flags.push_back("--enable_db_clone=true");
     return flags;
   }
@@ -1764,6 +1761,25 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlRenameTab
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'new value')"));
 }
 
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBackfillingIndex) {
+  // Test restoring to a point in time when the index is backfilling.
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "3000"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table "
+      "SELECT generate_series(1, 100), md5(random()::text)"));
+
+  // Clone to half way through the backfill.
+  auto t1 = ASSERT_RESULT(GetCurrentTime());
+  ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
+  auto t2 = ASSERT_RESULT(GetCurrentTime());
+  auto restore_time = Timestamp((t1.ToInt64() + t2.ToInt64()) / 2);
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, restore_time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
+}
+
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlRenameColumn) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -1801,6 +1817,44 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlRenameCol
   ASSERT_FALSE(insert_res.ok());
   ASSERT_STR_CONTAINS(insert_res.ToString(), "does not exist");
 
+  ASSERT_OK(conn.Execute("INSERT INTO test_table(key, value) VALUES (2, 'new_value')"));
+}
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlRenameColumnWithIndex) {
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT);"
+                   "INSERT INTO test_table VALUES (1, 'before');"
+                   "CREATE INDEX test_table_idx ON test_table (value)"));
+
+  const auto time = ASSERT_RESULT(GetCurrentTime());
+  LOG(INFO) << "Time to restore back: " << time;
+
+  LOG(INFO) << "Alter table 'test_table' -> Rename 'value' column to 'value2'";
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME COLUMN value TO value2"));
+  const std::string query = "SELECT value FROM test_table";
+  ASSERT_NOK_STR_CONTAINS(conn.FetchRow<std::string>(query), "does not exist");
+
+  auto select_res = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value2 FROM test_table"));
+  ASSERT_EQ(select_res, "before");
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
+
+  LOG(INFO) << "Select data from table after restore";
+  // There might be a transient period when we get stale data before
+  // the new catalog version gets propagated to all tservers via heartbeats.
+  ASSERT_OK(WaitForSelectQueryToMatchExpectation(query, "before", &conn));
+
+  LOG(INFO) << "Insert data to table after restore";
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("INSERT INTO test_table(key, value2) VALUES (2, 'new_value')"),
+      "does not exist");
+  const auto is_index_scan =
+      ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM test_table where value = 'before'"));
+  ASSERT_TRUE(is_index_scan);
   ASSERT_OK(conn.Execute("INSERT INTO test_table(key, value) VALUES (2, 'new_value')"));
 }
 

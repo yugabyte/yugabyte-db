@@ -19,14 +19,14 @@
 
 struct PlannedStmt;				/* avoid including plannodes.h here */
 
-enum yb_pg_batch_detection_mechanism_options
+enum YbPgBatchDetection
 {
-  DETECT_BY_PEEKING = 0,
-  ASSUME_ALL_BATCH_EXECUTIONS,
-  IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL
+	DETECT_BY_PEEKING = 0,
+	ASSUME_ALL_BATCH_EXECUTIONS,
+	IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL,
 };
 
-extern int yb_pg_batch_detection_mechanism;
+extern int	yb_pg_batch_detection_mechanism;
 
 extern PGDLLIMPORT Portal ActivePortal;
 

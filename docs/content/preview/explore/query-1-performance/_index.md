@@ -73,3 +73,11 @@ Ensure that the threshold is high enough so that you don't flood the `postgres*l
 {{<lead link="/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs">}}
 Learn more about [YB-TServer logs](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs).
 {{</lead>}}
+
+## Export query diagnostics
+
+Capture and export detailed query diagnostic information across multiple dimensions to help identify and resolve database query problems.
+
+{{<lead link="./query-diagnostics/">}}
+To learn more, see [Query diagnostics](./query-diagnostics/).
+{{</lead>}}

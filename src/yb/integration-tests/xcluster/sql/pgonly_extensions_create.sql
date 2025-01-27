@@ -1,6 +1,3 @@
--- Fail the script on the first error
-\set ON_ERROR_STOP on
-
 -- Preinstalled extensions that don't need to be created explicitly
 -- CREATE EXTENSION plpgsql;
 -- CREATE EXTENSION pg_stat_statements;
@@ -46,5 +43,3 @@ CREATE EXTENSION vector;
 -- CREATE EXTENSION pg_hint_plan;
 
 -- CREATE EXTENSION pg_partman;
-
-

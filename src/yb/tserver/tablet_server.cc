@@ -755,6 +755,8 @@ void TabletServer::Shutdown() {
 Status TabletServer::BootstrapDdlObjectLocks(
     const master::ClientOperationLeaseUpdatePB& lease_update) {
   VLOG(2) << __func__;
+  // todo(zdrudi):
+  // Need to track the lease. Process the other fields of ClientOperationLeaseUpdatePB.
   if (!lease_update.has_ddl_lock_entries() || !ts_local_lock_manager_) {
     return Status::OK();
   }
@@ -1626,6 +1628,12 @@ Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
   return pgwrapper::CreateInternalPGConnBuilder(
              pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(), deadline)
       .Connect();
+}
+
+Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) {
+  auto pg_client_service = pg_client_service_.lock();
+  RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
+  return pg_client_service->impl.GetLocalPgTxnSnapshot(snapshot_id);
 }
 
 }  // namespace yb::tserver

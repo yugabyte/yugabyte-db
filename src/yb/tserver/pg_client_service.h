@@ -28,8 +28,9 @@
 
 #include "yb/server/server_base_options.h"
 
-#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_client.service.h"
+#include "yb/tserver/pg_txn_snapshot_manager.h"
 
 namespace yb {
 
@@ -97,6 +98,8 @@ class TserverXClusterContextIf;
     (CronGetLastMinute) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
+    (ExportTxnSnapshot) \
+    (ImportTxnSnapshot) \
     /**/
 
 // Forwards call to corresponding PgClientSession async method (see
@@ -125,6 +128,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
   void InvalidateTableCache();
   void InvalidateTableCache(const std::unordered_set<uint32_t>& db_oids_updated,
                             const std::unordered_set<uint32_t>& db_oids_deleted);
+  Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 
   size_t TEST_SessionsCount();
 

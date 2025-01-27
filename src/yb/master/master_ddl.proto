@@ -762,6 +762,8 @@ message AcquireObjectLocksGlobalRequestPB {
   optional uint32 subtxn_id = 3;
   optional bytes session_host_uuid = 4;
   repeated docdb.ObjectLockPB object_locks = 5;
+  // The lease epoch of the requesting tserver.
+  optional uint64 lease_epoch = 6;
 }
 
 message AcquireObjectLocksGlobalResponsePB {
@@ -776,6 +778,8 @@ message ReleaseObjectLocksGlobalRequestPB {
   repeated docdb.ObjectLockPB object_locks = 5;
   // When set, releases locks on all objects held against the given session id.
   optional bool release_all_locks = 6;
+  // The lease epoch of the requesting tserver.
+  optional uint64 lease_epoch = 7;
 }
 
 message ReleaseObjectLocksGlobalResponsePB {

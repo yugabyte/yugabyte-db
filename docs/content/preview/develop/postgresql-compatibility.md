@@ -23,7 +23,7 @@ To test and take advantage of features developed for enhanced PostgreSQL compati
 | :--- | :--- | :--- | :--- |
 | [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | |
 | [Wait-on-conflict](#wait-on-conflict-concurrency) | [enable_wait_queues](../../reference/configuration/yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1">}} |
-| [Cost-based optimizer](#cost-based-optimizer) | [yb_enable_base_scans_cost_model](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | {{<release "2024.1">}} | |
+| [Cost based optimizer](#cost-based-optimizer) | [yb_enable_base_scans_cost_model](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | {{<release "2024.1">}} | |
 | [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../../reference/configuration/yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
 | [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
 | [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2024.2">}} |
@@ -59,20 +59,24 @@ Read Committed isolation level handles serialization errors and avoids the need 
 To learn about read committed isolation, see [Read Committed](../../architecture/transactions/read-committed/).
 {{</lead>}}
 
-### Cost-based optimizer
+### Cost based optimizer
 
 Configuration parameter: `yb_enable_base_scans_cost_model=true`
 
-Cost-based optimizer (CBO) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
+[Cost based optimizer (CBO)](../../architecture/query-layer/planner-optimizer/) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
 
 {{<note>}}
-When enabling this parameter, you must run `ANALYZE` on user tables to maintain up-to-date statistics.
+When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
 When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
 
 {{</note>}}
 
-### Wait-on-conflict concurrency
+{{<lead link="../../architecture/query-layer/planner-optimizer/">}}
+To learn how CBO works, see [Query Planner / CBO](../../architecture/query-layer/planner-optimizer/)
+{{</lead>}}
+
+#### Wait-on-conflict concurrency
 
 Flag: `enable_wait_queues=true`
 
@@ -120,7 +124,7 @@ The following features are planned for EPCM in future releases.
 
 ### Parallel query
 
-Enables the use of PostgreSQL [parallel queries](https://www.postgresql.org/docs/11/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Parallel query provides feature compatibility and improved performance parity.
+Enables the use of PostgreSQL [parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Parallel query provides feature compatibility and improved performance parity.
 
 ## Enable EPCM
 

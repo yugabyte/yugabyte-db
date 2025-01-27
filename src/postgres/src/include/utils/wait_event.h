@@ -52,7 +52,7 @@ typedef enum
 	WAIT_EVENT_YB_QUERY_DIAGNOSTICS_MAIN,
 	WAIT_EVENT_YB_ASH_MAIN,
 
-	WAIT_EVENT_YB_ACTIVITY_END /* This should be the last value */
+	WAIT_EVENT_YB_ACTIVITY_END	/* This should be the last value */
 } WaitEventActivity;
 
 /* ----------
@@ -74,7 +74,7 @@ typedef enum
 	WAIT_EVENT_WAL_SENDER_WAIT_WAL,
 	WAIT_EVENT_WAL_SENDER_WRITE_DATA,
 
-	WAIT_EVENT_YB_CLIENT_END /* This should be the last value */
+	WAIT_EVENT_YB_CLIENT_END	/* This should be the last value */
 } WaitEventClient;
 
 /* ----------
@@ -139,7 +139,7 @@ typedef enum
 	WAIT_EVENT_XACT_GROUP_UPDATE,
 	WAIT_EVENT_YB_PARALLEL_SCAN_EMPTY,
 
-	WAIT_EVENT_YB_IPC_END /* This should be the last value */
+	WAIT_EVENT_YB_IPC_END		/* This should be the last value */
 } WaitEventIPC;
 
 /* ----------
@@ -160,7 +160,7 @@ typedef enum
 	WAIT_EVENT_VACUUM_TRUNCATE,
 	WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF,
 
-	WAIT_EVENT_YB_TIMEOUT_END /* This should be the last value */
+	WAIT_EVENT_YB_TIMEOUT_END	/* This should be the last value */
 } WaitEventTimeout;
 
 /* ----------
@@ -247,7 +247,7 @@ typedef enum
 	WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ,
 	WAIT_EVENT_YB_COPY_COMMAND_STREAM_WRITE,
 
-	WAIT_EVENT_YB_IO_END /* This should be the last value */
+	WAIT_EVENT_YB_IO_END		/* This should be the last value */
 } WaitEventIO;
 
 
@@ -329,9 +329,11 @@ yb_pgstat_report_wait_start(YbcWaitEventInfo info)
 		 * The reader copy_pgproc_sample_fields() is aware if it's reading
 		 * inconsistent data and will retry to read the values.
 		 */
-		prev_wait_event_info = (YbcWaitEventInfo){
+		prev_wait_event_info = (YbcWaitEventInfo)
+		{
 			*yb_my_wait_event_info.wait_event,
-			*yb_my_wait_event_info.rpc_code };
+				*yb_my_wait_event_info.rpc_code
+		};
 
 		*(volatile uint32 *) yb_my_wait_event_info.wait_event = info.wait_event;
 		*(volatile uint16 *) yb_my_wait_event_info.rpc_code = info.rpc_code;

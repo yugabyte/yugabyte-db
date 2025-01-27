@@ -23,8 +23,6 @@
 
 #include "yb/qlexpr/index.h"
 
-#include "yb/rocksdb/write_batch.h"
-
 #include "yb/util/decimal.h"
 #include "yb/util/endian_util.h"
 #include "yb/util/path_util.h"
@@ -119,8 +117,7 @@ Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
 
   auto encoded = dockv::EncodedDocVectorValue::FromSlice(entry.value.AsSlice());
   return vector_index::VectorLSMInsertEntry<Vector> {
-    .vertex_id = VERIFY_RESULT(encoded.DecodeId()),
-    .base_table_key = entry.key,
+    .vector_id = VERIFY_RESULT(encoded.DecodeId()),
     .vector = VERIFY_RESULT(VectorFromBinary<Vector>(encoded.data)),
   };
 }
@@ -129,14 +126,9 @@ size_t EncodeDistance(float distance) {
   return bit_cast<uint32_t>(util::CanonicalizeFloat(distance));
 }
 
-struct VectorIndexInsertContext : public vector_index::VectorLSMInsertContext {
-  rocksdb::DirectWriteHandler* handler;
-  DocHybridTime write_time;
-};
-
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
-class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyValueStorage {
+class VectorIndexImpl : public VectorIndex {
  public:
   VectorIndexImpl(
       const TableId& table_id, Slice indexed_table_key_prefix, ColumnId column_id,
@@ -167,7 +159,6 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
           idx_options.idx_type(), idx_options.dimensions()))),
       .points_per_chunk = FLAGS_vector_index_initial_chunk_size,
-      .key_value_storage = this,
       .thread_pool = &thread_pool,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
     };
@@ -175,19 +166,15 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
   }
 
   Status Insert(
-      const VectorIndexInsertEntries& entries,
-      const rocksdb::UserFrontiers* frontiers,
-      rocksdb::DirectWriteHandler* handler,
-      DocHybridTime write_time) override {
+      const VectorIndexInsertEntries& entries, const rocksdb::UserFrontiers* frontiers) override {
     typename LSM::InsertEntries lsm_entries;
     lsm_entries.reserve(entries.size());
     for (const auto& entry : entries) {
       lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry)));
     }
-    VectorIndexInsertContext context;
-    context.frontiers = frontiers;
-    context.handler = handler;
-    context.write_time = write_time;
+    vector_index::VectorLSMInsertContext context {
+      .frontiers = frontiers,
+    };
     return lsm_.Insert(lsm_entries, context);
   }
 
@@ -195,12 +182,22 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
       Slice vector, const vector_index::SearchOptions& options) override {
     auto entries = VERIFY_RESULT(lsm_.Search(
         VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
+
+    // TODO(vector-index): check if ReadOptions are required.
+    docdb::BoundedRocksDbIterator iter(doc_db_.regular, {}, doc_db_.key_bounds);
+
     VectorIndexSearchResult result;
     result.reserve(entries.size());
     for (auto& entry : entries) {
+      auto key = dockv::VectorIdKey(entry.vector_id);
+      const auto& db_entry = iter.Seek(key.AsSlice());
+      if (!db_entry.Valid() || !db_entry.key.starts_with(key.AsSlice())) {
+        return STATUS_FORMAT(NotFound, "Vector not found: $0", entry.vector_id);
+      }
+
       result.push_back(VectorIndexSearchResultEntry {
         .encoded_distance = EncodeDistance(entry.distance),
-        .key = entry.base_table_key,
+        .key = KeyBuffer(db_entry.value),
       });
     }
     return result;
@@ -237,38 +234,6 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
   }
 
  private:
-  Status StoreBaseTableKeys(
-      const vector_index::BaseTableKeysBatch& batch,
-      const vector_index::VectorLSMInsertContext& insert_context) override {
-    const auto& context = static_cast<const VectorIndexInsertContext&>(insert_context);
-    for (const auto& [vector_id, base_table_key] : batch) {
-      DocHybridTimeBuffer ht_buf;
-      auto kb = VectorIdKey(vector_id);
-      kb.Append(ht_buf.EncodeWithValueType(context.write_time));
-      auto kbs = kb.AsSlice();
-
-      ValueBuffer vb;
-      vb.Append(base_table_key);
-      auto vbs = vb.AsSlice();
-      context.handler->Put({&kbs, 1}, {&vbs, 1});
-    }
-
-    return Status::OK();
-  }
-
-  Result<KeyBuffer> ReadBaseTableKey(vector_index::VectorId vector_id) override {
-    // TODO(vector-index) check if ReadOptions are required.
-    docdb::BoundedRocksDbIterator iter(doc_db_.regular, {}, doc_db_.key_bounds);
-
-    auto key = VectorIdKey(vector_id);
-    const auto& entry = iter.Seek(key.AsSlice());
-    if (!entry.Valid()) {
-      return STATUS_FORMAT(NotFound, "Vector not found: $0", vector_id);
-    }
-
-    return KeyBuffer { entry.value };
-  }
-
   std::string DirName() const {
     return kVectorIndexDirPrefix + table_id_;
   }
@@ -297,14 +262,6 @@ Result<VectorIndexPtr> CreateVectorIndex(
       index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), doc_db);
   RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool, options));
   return result;
-}
-
-KeyBuffer VectorIdKey(vector_index::VectorId vector_id) {
-  KeyBuffer key;
-  key.PushBack(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata);
-  key.PushBack(dockv::KeyEntryTypeAsChar::kVectorId);
-  key.Append(vector_id.AsSlice());
-  return key;
 }
 
 }  // namespace yb::docdb

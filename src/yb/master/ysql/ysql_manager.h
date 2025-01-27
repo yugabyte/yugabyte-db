@@ -57,7 +57,7 @@ class YsqlManager : public YsqlManagerIf {
 
   Status SetInitDbDone(const LeaderEpoch& epoch);
 
-  bool IsYsqlMajorCatalogUpgradeInProgress() const;
+  bool IsMajorUpgradeInProgress() const;
 
   void HandleNewTableId(const TableId& table_id);
 

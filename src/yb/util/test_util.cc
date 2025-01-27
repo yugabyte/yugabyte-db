@@ -46,6 +46,7 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/util/crash_point.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -438,6 +439,14 @@ Status ForkAndRunToCompletion(const std::function<void(void)>& child,
     }
     return Status::OK();
   }
+}
+
+Status ForkAndRunToCrashPoint(const std::function<void(void)>& f, std::string_view crash_point) {
+  return ForkAndRunToCompletion([&f, crash_point] {
+    SetTestCrashPoint(crash_point);
+    f();
+    FAIL() << "Child process did not reach crash point";
+  });
 }
 
 } // namespace yb

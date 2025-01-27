@@ -234,7 +234,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   void SetLeaderTerm(int64_t leader_term) { batcher_config_.leader_term = leader_term; }
 
-  void SetBatcherBackgroundTransactionId(const TransactionId& background_transaction_id);
+  void SetBatcherBackgroundTransactionMeta(const TransactionMetadata& background_transaction_meta);
 
   struct BatcherConfig {
     std::weak_ptr<YBSession> session;

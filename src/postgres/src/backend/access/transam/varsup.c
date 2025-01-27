@@ -36,7 +36,7 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_namespace.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "utils/fmgroids.h"
 #include "pg_yb_utils.h"
 
@@ -54,7 +54,7 @@
 VariableCache ShmemVariableCache = NULL;
 
 /* next OID to assign during YSQL upgrade */
-Oid ysql_upgrade_next_oid = InvalidOid;
+Oid			ysql_upgrade_next_oid = InvalidOid;
 
 
 /*
@@ -544,24 +544,24 @@ ForceTransactionIdLimitUpdate(void)
 static Oid
 YbGetMaxAllocatedSystemOid()
 {
-	Oid				result = InvalidOid;
+	Oid			result = InvalidOid;
 
-	Relation		pg_class,
-					pg_attribute,
-					sys_rel;
+	Relation	pg_class,
+				pg_attribute,
+				sys_rel;
 
-	ScanKeyData		key[2];
-	TableScanDesc	scan;
-	HeapTuple		tuple;
+	ScanKeyData key[2];
+	TableScanDesc scan;
+	HeapTuple	tuple;
 
-	List		   *sys_rel_oids = NIL;
-	ListCell	   *lc,
-				   *lc2;
-	List		   *attrelids = NIL;
-	List		   *attnums = NIL;
-	ArrayType	   *oids_array_type;
-	SysScanDesc  	sys_scan;
-	bool 			is_null;
+	List	   *sys_rel_oids = NIL;
+	ListCell   *lc,
+			   *lc2;
+	List	   *attrelids = NIL;
+	List	   *attnums = NIL;
+	ArrayType  *oids_array_type;
+	SysScanDesc sys_scan;
+	bool		is_null;
 
 	pg_class = table_open(RelationRelationId, AccessShareLock);
 
@@ -592,8 +592,9 @@ YbGetMaxAllocatedSystemOid()
 	 * SELECT attrelid, attnum FROM pg_attribute WHERE attrelid in
 	 * <sys_rel_oids> AND attname = 'oid';
 	 */
-	Datum oids_datum_array[list_length(sys_rel_oids)];
-	int num_oids = 0;
+	Datum		oids_datum_array[list_length(sys_rel_oids)];
+	int			num_oids = 0;
+
 	foreach(lc, sys_rel_oids)
 		oids_datum_array[num_oids++] = ObjectIdGetDatum(lfirst_oid(lc));
 
@@ -619,6 +620,7 @@ YbGetMaxAllocatedSystemOid()
 	while (HeapTupleIsValid(tuple = systable_getnext(sys_scan)))
 	{
 		Form_pg_attribute pg_att = (Form_pg_attribute) GETSTRUCT(tuple);
+
 		attrelids = lappend_oid(attrelids, pg_att->attrelid);
 		attnums = lappend_int(attnums, pg_att->attnum);
 	}
@@ -628,7 +630,8 @@ YbGetMaxAllocatedSystemOid()
 
 	forboth(lc, attrelids, lc2, attnums)
 	{
-		int attnum = lfirst_int(lc2);
+		int			attnum = lfirst_int(lc2);
+
 		/* SELECT * FROM x WHERE oid >= 12000 AND oid < 16384 */
 		ScanKeyInit(&key[0],
 					attnum,
@@ -644,9 +647,10 @@ YbGetMaxAllocatedSystemOid()
 
 		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 		{
-			Oid oid = DatumGetObjectId(heap_getattr(tuple, attnum,
-													RelationGetDescr(sys_rel),
-													&is_null));
+			Oid			oid = DatumGetObjectId(heap_getattr(tuple, attnum,
+															RelationGetDescr(sys_rel),
+															&is_null));
+
 			Assert(!is_null);
 
 			if (result < oid)
@@ -697,8 +701,8 @@ GetNewObjectId(void)
 		return result;
 	}
 
-	const bool ysql_enable_pg_per_database_oid_allocator =
-		*YBCGetGFlags()->ysql_enable_pg_per_database_oid_allocator;
+	const bool	ysql_enable_pg_per_database_oid_allocator =
+	*YBCGetGFlags()->ysql_enable_pg_per_database_oid_allocator;
 
 	if (ysql_enable_pg_per_database_oid_allocator &&
 		IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())
@@ -707,8 +711,9 @@ GetNewObjectId(void)
 		 * As of 2023-10-16, docdb does not allow OID wraparound so we do not
 		 * need to handle OID wraparound here.
 		 */
-		YbcStatus status = YBCGetNewObjectId(YbDatabaseIdForNewObjectId,
-											 &result);
+		YbcStatus	status = YBCGetNewObjectId(YbDatabaseIdForNewObjectId,
+											   &result);
+
 		if (*YBCGetGFlags()->TEST_ysql_log_perdb_allocated_new_objectid)
 			YBC_LOG_INFO("allocated new object id %u in database %u",
 						 result, YbDatabaseIdForNewObjectId);
@@ -757,15 +762,15 @@ GetNewObjectId(void)
 		if (IsYugaByteEnabled() &&
 			!ysql_enable_pg_per_database_oid_allocator)
 		{
-			Oid begin_oid = InvalidOid;
-			Oid end_oid   = InvalidOid;
+			Oid			begin_oid = InvalidOid;
+			Oid			end_oid = InvalidOid;
 
 			YBCReserveOids(MyDatabaseId,
 						   ShmemVariableCache->nextOid,
 						   YB_OID_PREFETCH,
 						   &begin_oid,
 						   &end_oid);
-			ShmemVariableCache->nextOid  = begin_oid;
+			ShmemVariableCache->nextOid = begin_oid;
 			ShmemVariableCache->oidCount = end_oid - begin_oid;
 		}
 		else

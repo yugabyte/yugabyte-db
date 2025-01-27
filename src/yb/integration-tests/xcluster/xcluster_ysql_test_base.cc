@@ -14,6 +14,7 @@
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/client/client.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
@@ -1112,4 +1113,16 @@ Status XClusterYsqlTestBase::VerifyDDLExtensionTablesDeletion(
   });
 }
 
+Status XClusterYsqlTestBase::EnablePITROnClusters() {
+  return RunOnBothClusters([this](Cluster* cluster) -> Status {
+    client::SnapshotTestUtil snapshot_util;
+    snapshot_util.SetProxy(&cluster->client_->proxy_cache());
+    snapshot_util.SetCluster(cluster->mini_cluster_.get());
+
+    RETURN_NOT_OK(snapshot_util.CreateSchedule(
+        nullptr, YQL_DATABASE_PGSQL, namespace_name, client::WaitSnapshot::kTrue,
+        2s * kTimeMultiplier, 20h));
+    return Status::OK();
+  });
+}
 }  // namespace yb

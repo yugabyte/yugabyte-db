@@ -251,13 +251,13 @@ typedef struct YbPgStat_MsgQueryTermination
 {
 	YbPgStat_MsgHdr m_hdr;
 
-	Oid m_st_userid;
-	Oid m_databaseoid;
-	int32 backend_pid;
+	Oid			m_st_userid;
+	Oid			m_databaseoid;
+	int32		backend_pid;
 	TimestampTz activity_start_timestamp;
 	TimestampTz activity_end_timestamp;
-	char query_string[QUERY_TEXT_SIZE];
-	char termination_reason[QUERY_TERMINATION_SIZE];
+	char		query_string[QUERY_TEXT_SIZE];
+	char		termination_reason[QUERY_TERMINATION_SIZE];
 } YbPgStat_MsgQueryTermination;
 typedef union YbPgStat_Msg
 {
@@ -271,15 +271,15 @@ typedef struct PgStat_YBStatQueryEntry
 	 * represents its location in the array that stores the
 	 * terminated queries modulo TERMINATED_QUERIES_SIZE.
 	 */
-	Oid query_oid;
+	Oid			query_oid;
 
 	/*
 	 * We need to store the owner ID of the database for
 	 * security validation when the queries are fetched by the user.
 	 */
-	Oid st_userid;
-	Oid database_oid;
-	int32 backend_pid;
+	Oid			st_userid;
+	Oid			database_oid;
+	int32		backend_pid;
 	TimestampTz activity_start_timestamp;
 	TimestampTz activity_end_timestamp;
 
@@ -288,16 +288,16 @@ typedef struct PgStat_YBStatQueryEntry
 	 * so that when writing this string to file, we only write
 	 * that many characters.
 	 */
-	size_t query_string_size;
-	char query_string[QUERY_TEXT_SIZE];
+	size_t		query_string_size;
+	char		query_string[QUERY_TEXT_SIZE];
 
 	/*
 	 * termination_reason_size: records the length of the string
 	 * so that when writing this string to file, we only write
 	 * that many characters.
 	 */
-	size_t termination_reason_size;
-	char termination_reason[QUERY_TERMINATION_SIZE];
+	size_t		termination_reason_size;
+	char		termination_reason[QUERY_TERMINATION_SIZE];
 } PgStat_YBStatQueryEntry;
 
 #endif
@@ -485,9 +485,9 @@ typedef enum ProgressCommandType
 typedef struct YbPgBackendCatalogVersionStatus
 {
 	bool		has_version;	/* whether the backend is using the following
-								   version */
+								 * version */
 	uint64_t	version;		/* if has_version, catalog version that the
-								   backend is on */
+								 * backend is on */
 } YbPgBackendCatalogVersionStatus;
 
 
@@ -541,7 +541,7 @@ typedef struct PgBackendStatus
 	Oid			st_userid;
 	SockAddr	st_clientaddr;
 	char	   *st_clienthostname;	/* MUST be null-terminated */
-	char 		*st_databasename; /* Used in YB Mode */
+	char	   *st_databasename;	/* Used in YB Mode */
 
 	/* Information about SSL connection */
 	bool		st_ssl;
@@ -579,7 +579,7 @@ typedef struct PgBackendStatus
 	 * Memory usage of backend from TCMalloc, including PostgreSQL memory usage
 	 * + pggate memory usage + cached memory - memory that was freed but not recycled
 	 */
-	int64_t yb_st_allocated_mem_bytes;
+	int64_t		yb_st_allocated_mem_bytes;
 
 	/* YB catalog version */
 	YbPgBackendCatalogVersionStatus yb_st_catalog_version;
@@ -614,7 +614,7 @@ typedef struct LocalPgBackendStatus
 	TransactionId backend_xmin;
 
 	/* Backend's RSS memory usage */
-	int64_t yb_backend_rss_mem_bytes;
+	int64_t		yb_backend_rss_mem_bytes;
 } LocalPgBackendStatus;
 
 #endif
@@ -728,6 +728,7 @@ struct FunctionCallInfoBaseData;
 
 extern void pgstat_init_function_usage_org(struct FunctionCallInfoBaseData *fcinfo,
 										   PgStat_FunctionCallUsage *fcu);
+
 /* YB_TODO(neil) Need to remove Ted's call structure */
 extern void pgstat_init_function_usage(struct FunctionCallInfoBaseData *fcinfo,
 									   PgStat_FunctionCallUsage *fcu);
@@ -950,7 +951,7 @@ extern void yb_pgstat_set_has_catalog_version(bool has_catalog_version);
 
 #ifdef YB_TODO
 /* These functions need new implementation to match with Postgres 15. */
-extern PgStat_YBStatQueryEntry *pgstat_fetch_ybstat_queries(Oid db_oid, size_t* num_queries);
+extern PgStat_YBStatQueryEntry *pgstat_fetch_ybstat_queries(Oid db_oid, size_t *num_queries);
 #endif
 
 #endif							/* PGSTAT_H */

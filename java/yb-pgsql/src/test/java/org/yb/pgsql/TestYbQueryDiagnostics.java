@@ -1903,4 +1903,13 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                     generatedConstants.toArray(new String[0]));
         }
     }
+
+    @Test
+    public void testInterruptsHandling() throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("CREATE DATABASE db1");
+            statement.execute("ALTER DATABASE db1 RENAME TO db2");
+            statement.execute("DROP DATABASE db2");
+        }
+    }
 }

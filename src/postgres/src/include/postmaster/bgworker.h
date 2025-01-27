@@ -98,7 +98,7 @@ typedef struct BackgroundWorker
 	Datum		bgw_main_arg;
 	char		bgw_extra[BGW_EXTRALEN];
 	pid_t		bgw_notify_pid; /* SIGUSR1 this backend on start/stop */
-	char		bgw_oom_score_adj[BGW_MAXLEN]; /* ignored if empty */
+	char		bgw_oom_score_adj[BGW_MAXLEN];	/* ignored if empty */
 } BackgroundWorker;
 
 typedef enum BgwHandleStatus
@@ -149,7 +149,7 @@ extern void BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, ui
 
 /* Just like the above, but specifying session to share with main backend. */
 extern void YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
-											uint64_t *session_id, uint32 flags);
+														uint64_t *session_id, uint32 flags);
 
 /*
  * Flags to BackgroundWorkerInitializeConnection et al

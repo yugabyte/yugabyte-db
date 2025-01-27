@@ -42,39 +42,39 @@
 #include "utils/tuplesort.h"
 
 
-bool yb_bnl_enable_hashing = true;
+bool		yb_bnl_enable_hashing = true;
 
 /* Methods to help keep track of outer tuple batches */
-bool CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
-int GetMaxBatchSize(YbBatchedNestLoop *plan);
-int GetCurrentBatchSize(YbBatchedNestLoopState *bnlstate);
+static bool CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
+static int	GetMaxBatchSize(YbBatchedNestLoop *plan);
+static int	GetCurrentBatchSize(YbBatchedNestLoopState *bnlstate);
 
 /* Local join methods that use the tuplestore batching strategy */
-bool FlushTupleTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
-bool GetNewOuterTupleTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
-void ResetBatchTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
-void RegisterOuterMatchTS(YbBatchedNestLoopState *bnlstate,
-						  ExprContext *econtext);
-void AddTupleToOuterBatchTS(YbBatchedNestLoopState *bnlstate,
-							TupleTableSlot *slot);
-void FreeBatchTS(YbBatchedNestLoopState *bnlstate);
-void EndTS(YbBatchedNestLoopState *bnlstate);
+static bool FlushTupleTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
+static bool GetNewOuterTupleTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
+static void ResetBatchTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
+static void RegisterOuterMatchTS(YbBatchedNestLoopState *bnlstate,
+								 ExprContext *econtext);
+static void AddTupleToOuterBatchTS(YbBatchedNestLoopState *bnlstate,
+								   TupleTableSlot *slot);
+static void FreeBatchTS(YbBatchedNestLoopState *bnlstate);
+static void EndTS(YbBatchedNestLoopState *bnlstate);
 
 /* Local join methods that use the hash table batching strategy */
-bool FlushTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
-bool GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
-void ResetBatchHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
-void RegisterOuterMatchHash(YbBatchedNestLoopState *bnlstate,
-							ExprContext *econtext);
-void AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
-							  TupleTableSlot *slot);
-void FreeBatchHash(YbBatchedNestLoopState *bnlstate);
-void EndHash(YbBatchedNestLoopState *bnlstate);
+static bool FlushTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
+static bool GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
+static void ResetBatchHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
+static void RegisterOuterMatchHash(YbBatchedNestLoopState *bnlstate,
+								   ExprContext *econtext);
+static void AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
+									 TupleTableSlot *slot);
+static void FreeBatchHash(YbBatchedNestLoopState *bnlstate);
+static void EndHash(YbBatchedNestLoopState *bnlstate);
 static TupleTableSlot *ProcessSorting(YbBatchedNestLoopState *bnlstate);
 static void EndSorting(YbBatchedNestLoopState *bnlstate);
 
-static bool
-PutSorting(YbBatchedNestLoopState *bnlstate, TupleTableSlot *slot);
+static bool PutSorting(YbBatchedNestLoopState *bnlstate, TupleTableSlot *slot);
+
 /* Wrappers for invoking local join methods with the correct strategy */
 #define REGISTER_LOCAL_JOIN_FN(fn, strategy) bnlstate->fn##Impl = &fn##strategy
 #define LOCAL_JOIN_FN(fn, node, ...) (*node->fn##Impl)(node, ## __VA_ARGS__)
@@ -122,7 +122,7 @@ static TupleTableSlot *
 ExecYbBatchedNestLoop(PlanState *pstate)
 {
 	YbBatchedNestLoopState *bnlstate = castNode(YbBatchedNestLoopState, pstate);
-	YbBatchedNestLoop   *batchnl;
+	YbBatchedNestLoop *batchnl;
 	PlanState  *innerPlan;
 	TupleTableSlot *innerTupleSlot;
 	ExprState  *joinqual;
@@ -157,7 +157,8 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 
 	if (!pstate->state->yb_exec_params.limit_use_default)
 	{
-		uint32_t limit = pstate->state->yb_exec_params.limit_count;
+		uint32_t	limit = pstate->state->yb_exec_params.limit_count;
+
 		limit = ceil(limit * batchnl->first_batch_factor);
 		if (limit > 0 && limit < GetMaxBatchSize(batchnl))
 		{
@@ -184,6 +185,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 				if (bnlstate->bnl_needs_sorting)
 				{
 					TupleTableSlot *result = ProcessSorting(bnlstate);
+
 					if (result)
 						return result;
 				}
@@ -285,6 +287,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 				 */
 				elog(DEBUG2, "qualification succeeded, projecting tuple");
 				TupleTableSlot *slot = ExecProject(bnlstate->js.ps.ps_ProjInfo);
+
 				if (PutSorting(bnlstate, slot))
 					continue;
 
@@ -332,6 +335,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 				elog(DEBUG2, "qualification succeeded, projecting tuple");
 
 				TupleTableSlot *slot = ExecProject(bnlstate->js.ps.ps_ProjInfo);
+
 				if (PutSorting(bnlstate, slot))
 					continue;
 
@@ -359,6 +363,7 @@ EndSorting(YbBatchedNestLoopState *bnlstate)
 		return;
 
 	Tuplesortstate *sorter = bnlstate->bnl_tuple_sort;
+
 	bnlstate->bnl_is_sorted = false;
 	if (sorter)
 	{
@@ -389,11 +394,12 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 {
 	TupleTableSlot *result_slot = bnlstate->js.ps.ps_ResultTupleSlot;
 	Tuplesortstate *sorter = bnlstate->bnl_tuple_sort;
+
 	if (!bnlstate->bnl_needs_sorting)
 		return NULL;
 
-	YbBatchedNestLoop *batchnl_plan =
-		(YbBatchedNestLoop *) bnlstate->js.ps.plan;
+	YbBatchedNestLoop *batchnl_plan = (YbBatchedNestLoop *) bnlstate->js.ps.plan;
+
 	if (sorter)
 	{
 		if (!bnlstate->bnl_is_sorted)
@@ -402,8 +408,9 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 		bnlstate->bnl_is_sorted = true;
 
 		/* Flush sorter. */
-		bool result = tuplesort_gettupleslot(sorter, true, false, result_slot,
-											 NULL);
+		bool		result = tuplesort_gettupleslot(sorter, true, false, result_slot,
+													NULL);
+
 		Assert(!result || !TTS_EMPTY(result_slot));
 		if (result)
 			return result_slot;
@@ -414,8 +421,8 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 
 	if (!bnlstate->bnl_tuple_sort)
 	{
-		TupleDesc result_desc =
-			result_slot->tts_tupleDescriptor;
+		TupleDesc	result_desc = result_slot->tts_tupleDescriptor;
+
 		sorter = tuplesort_begin_heap(result_desc,
 									  batchnl_plan->numSortCols,
 									  batchnl_plan->sortColIdx,
@@ -451,41 +458,44 @@ UseHash(YbBatchedNestLoop *plan, YbBatchedNestLoopState *nl)
 static void
 InitHash(YbBatchedNestLoopState *bnlstate)
 {
-	EState *estate = bnlstate->js.ps.state;
-	YbBatchedNestLoop *plan = (YbBatchedNestLoop*) bnlstate->js.ps.plan;
+	EState	   *estate = bnlstate->js.ps.state;
+	YbBatchedNestLoop *plan = (YbBatchedNestLoop *) bnlstate->js.ps.plan;
 	ExprContext *econtext = CreateExprContext(estate);
-	TupleDesc outer_tdesc = outerPlanState(bnlstate)->ps_ResultTupleDesc;
+	TupleDesc	outer_tdesc = outerPlanState(bnlstate)->ps_ResultTupleDesc;
 
-	const TupleTableSlotOps * innerops = bnlstate->js.ps.innerops;
-	bool inneropsfixed = bnlstate->js.ps.inneropsfixed;
-	bool inneropsset = bnlstate->js.ps.inneropsset;
+	const TupleTableSlotOps *innerops = bnlstate->js.ps.innerops;
+	bool		inneropsfixed = bnlstate->js.ps.inneropsfixed;
+	bool		inneropsset = bnlstate->js.ps.inneropsset;
 
 	Assert(UseHash(plan, bnlstate));
 
-	int num_hashClauseInfos = plan->num_hashClauseInfos;
-	Oid *eqops = palloc(num_hashClauseInfos * (sizeof(Oid)));
+	int			num_hashClauseInfos = plan->num_hashClauseInfos;
+	Oid		   *eqops = palloc(num_hashClauseInfos * (sizeof(Oid)));
 
 	bnlstate->numLookupAttrs = num_hashClauseInfos;
 	bnlstate->innerAttrs =
 		palloc(num_hashClauseInfos * sizeof(AttrNumber));
-	ExprState **keyexprs = palloc(num_hashClauseInfos * (sizeof(ExprState*)));
-	List *outerParamExprs = NULL;
-	List *hashExprs = NULL;
+	ExprState **keyexprs = palloc(num_hashClauseInfos * (sizeof(ExprState *)));
+	List	   *outerParamExprs = NULL;
+	List	   *hashExprs = NULL;
 	YbBNLHashClauseInfo *current_hinfo = plan->hashClauseInfos;
 
 	for (int i = 0; i < num_hashClauseInfos; i++)
 	{
-		Oid eqop = current_hinfo->hashOp;
+		Oid			eqop = current_hinfo->hashOp;
+
 		Assert(OidIsValid(eqop));
 		eqops[i] = eqop;
 		bnlstate->innerAttrs[i] = current_hinfo->innerHashAttNo;
-		Expr *outerExpr = current_hinfo->outerParamExpr;
+		Expr	   *outerExpr = current_hinfo->outerParamExpr;
+
 		keyexprs[i] = ExecInitExpr(outerExpr, (PlanState *) bnlstate);
 		outerParamExprs = lappend(outerParamExprs, outerExpr);
 		hashExprs = lappend(hashExprs, current_hinfo->orig_expr);
 		current_hinfo++;
 	}
-	Oid *eqFuncOids;
+	Oid		   *eqFuncOids;
+
 	execTuplesHashPrepare(num_hashClauseInfos, eqops, &eqFuncOids,
 						  &bnlstate->innerHashFunctions,
 						  &bnlstate->outerHashFunctions);
@@ -503,10 +513,9 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bnlstate->js.ps.inneropsfixed = true;
 	bnlstate->js.ps.inneropsset = true;
 
-	ExprState *tab_eq_fn =
-		ybPrepareOuterExprsEqualFn(outerParamExprs,
-								   eqops,
-								   (PlanState *) bnlstate);
+	ExprState  *tab_eq_fn = ybPrepareOuterExprsEqualFn(outerParamExprs,
+													   eqops,
+													   (PlanState *) bnlstate);
 
 	/* revert to original innerops */
 	bnlstate->js.ps.innerops = innerops;
@@ -514,10 +523,9 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bnlstate->js.ps.inneropsset = inneropsset;
 
 	/* Per batch memory context for the hash table to work with */
-	MemoryContext tablecxt =
-		AllocSetContextCreate(GetCurrentMemoryContext(),
-							  "BNL_HASHTABLE",
-							  ALLOCSET_DEFAULT_SIZES);
+	MemoryContext tablecxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+												   "BNL_HASHTABLE",
+												   ALLOCSET_DEFAULT_SIZES);
 
 	bnlstate->hashtable =
 		YbBuildTupleHashTableExt(&bnlstate->js.ps, outer_tdesc,
@@ -546,14 +554,17 @@ FlushTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 
 	/* Find the current/next bucket that we'll be using */
 	TupleHashEntry entry = bnlstate->current_hash_entry;
+
 	if (entry == NULL)
 		entry = ScanTupleHashTable(bnlstate->hashtable, &bnlstate->hashiter);
 	while (entry != NULL)
 	{
 		YbNLBucketInfo *binfo = entry->additional;
+
 		while (binfo->current != NULL)
 		{
 			YbBucketTupleInfo *btinfo = lfirst(binfo->current);
+
 			binfo->current = lnext(binfo->tuples, binfo->current);
 
 			while (btinfo != NULL && !(btinfo->matched))
@@ -580,9 +591,10 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 {
 	TupleTableSlot *inner = econtext->ecxt_innertuple;
 	TupleHashTable ht = bnlstate->hashtable;
-	ExprState *eq = bnlstate->ht_lookup_fn;
+	ExprState  *eq = bnlstate->ht_lookup_fn;
 
 	TupleHashEntry data;
+
 	data = FindTupleHashEntry(ht,
 							  inner,
 							  eq,
@@ -595,10 +607,12 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		return false;
 	}
 
-	YbNLBucketInfo *binfo = (YbNLBucketInfo*) data->additional;
+	YbNLBucketInfo *binfo = (YbNLBucketInfo *) data->additional;
+
 	while (binfo->current != NULL)
 	{
 		YbBucketTupleInfo *curr_btinfo = lfirst(binfo->current);
+
 		/* Change the bucket's state for the next invocation of this method */
 		binfo->current = lnext(binfo->tuples, binfo->current);
 
@@ -665,14 +679,16 @@ AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
 						 TupleTableSlot *slot)
 {
 	TupleHashTable ht = bnlstate->hashtable;
-	bool isnew = false;
+	bool		isnew = false;
 
 	Assert(!TupIsNull(slot));
 	TupleHashEntry orig_data = LookupTupleHashEntry(ht, slot, &isnew, NULL);
+
 	Assert(orig_data != NULL);
 	Assert(orig_data->firstTuple != NULL);
 	MemoryContext cxt = MemoryContextSwitchTo(ht->tablecxt);
 	MinimalTuple tuple;
+
 	if (isnew)
 	{
 		/* We must create a new bucket. */
@@ -680,7 +696,8 @@ AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
 		tuple = orig_data->firstTuple;
 	}
 	YbNLBucketInfo *binfo = (YbNLBucketInfo *) orig_data->additional;
-	List *tl = binfo->tuples;
+	List	   *tl = binfo->tuples;
+
 	if (!isnew)
 	{
 		/* Bucket already exists. */
@@ -688,6 +705,7 @@ AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
 	}
 
 	YbBucketTupleInfo *tupinfo = palloc0(sizeof(YbBucketTupleInfo));
+
 	tupinfo->tuple = tuple;
 	tupinfo->matched = false;
 
@@ -716,7 +734,7 @@ FreeBatchHash(YbBatchedNestLoopState *bnlstate)
 void
 EndHash(YbBatchedNestLoopState *bnlstate)
 {
-	(void)bnlstate;
+	(void) bnlstate;
 	MemoryContextDelete(bnlstate->hashtable->tablecxt);
 	return;
 }
@@ -746,8 +764,9 @@ FlushTupleTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	Assert(bnlstate->bnl_tupleStoreState != NULL);
 	while (bnlstate->bnl_batchTupNo < tuplestore_tuple_count(bnlstate->bnl_tupleStoreState))
 	{
-		ListCell *lc = list_nth_cell(bnlstate->bnl_batchMatchedInfo,
-									 bnlstate->bnl_batchTupNo);
+		ListCell   *lc = list_nth_cell(bnlstate->bnl_batchMatchedInfo,
+									   bnlstate->bnl_batchTupNo);
+
 		if (lfirst_int(lc) == 0)
 		{
 			GetNewOuterTupleTS(bnlstate, econtext);
@@ -764,8 +783,9 @@ RegisterOuterMatchTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 {
 	Assert(bnlstate->bnl_tupleStoreState != NULL);
 	(void) econtext;
-	ListCell *lc = list_nth_cell(bnlstate->bnl_batchMatchedInfo,
-								 bnlstate->bnl_batchTupNo - 1);
+	ListCell   *lc = list_nth_cell(bnlstate->bnl_batchMatchedInfo,
+								   bnlstate->bnl_batchTupNo - 1);
+
 	lfirst_int(lc) = 1;
 	return;
 }
@@ -774,14 +794,16 @@ bool
 GetNewOuterTupleTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 {
 	Tuplestorestate *outertuples = bnlstate->bnl_tupleStoreState;
+
 	while (!tuplestore_ateof(outertuples)
-		&& tuplestore_tuple_count(outertuples) > 0
-		&& tuplestore_gettupleslot(outertuples,
-								   true,
-								   false,
-								   econtext->ecxt_outertuple))
+		   && tuplestore_tuple_count(outertuples) > 0
+		   && tuplestore_gettupleslot(outertuples,
+									  true,
+									  false,
+									  econtext->ecxt_outertuple))
 	{
-		int current_tup_no = bnlstate->bnl_batchTupNo;
+		int			current_tup_no = bnlstate->bnl_batchTupNo;
+
 		bnlstate->bnl_batchTupNo++;
 
 		/*
@@ -790,8 +812,9 @@ GetNewOuterTupleTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		 */
 		if (bnlstate->js.single_match)
 		{
-			ListCell *lc = list_nth_cell(bnlstate->bnl_batchMatchedInfo,
-										 current_tup_no);
+			ListCell   *lc = list_nth_cell(bnlstate->bnl_batchMatchedInfo,
+										   current_tup_no);
+
 			if (lfirst_int(lc) > 0)
 			{
 				continue;
@@ -806,6 +829,7 @@ void
 ResetBatchTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 {
 	Tuplestorestate *outertuples = bnlstate->bnl_tupleStoreState;
+
 	Assert(outertuples != NULL);
 	tuplestore_rescan(outertuples);
 	bnlstate->bnl_batchTupNo = 0;
@@ -815,6 +839,7 @@ void
 FreeBatchTS(YbBatchedNestLoopState *bnlstate)
 {
 	Tuplestorestate *outertuples = bnlstate->bnl_tupleStoreState;
+
 	if (!outertuples)
 	{
 		return;
@@ -839,15 +864,17 @@ EndTS(YbBatchedNestLoopState *bnlstate)
 bool
 CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 {
-	YbBatchedNestLoop   *batchnl = (YbBatchedNestLoop *) bnlstate->js.ps.plan;
+	YbBatchedNestLoop *batchnl = (YbBatchedNestLoop *) bnlstate->js.ps.plan;
 	TupleTableSlot *outerTupleSlot = NULL;
 	PlanState  *outerPlan = outerPlanState(bnlstate);
 	PlanState  *innerPlan = innerPlanState(bnlstate);
+
 	LOCAL_JOIN_FN(FreeBatch, bnlstate);
 
 	for (int batchno = 0; batchno < GetMaxBatchSize(batchnl); batchno++)
 	{
-		bool have_outer_tuple = false;
+		bool		have_outer_tuple = false;
+
 		elog(DEBUG2, "getting new outer tuple");
 		if (batchno < GetCurrentBatchSize(bnlstate) &&
 			!bnlstate->bnl_outerdone)
@@ -898,11 +925,12 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		 * fetch the values of any outer Vars that must be passed to the
 		 * inner scan, and store them in the appropriate PARAM_EXEC slots.
 		 */
-		ListCell *lc;
+		ListCell   *lc;
+
 		foreach(lc, batchnl->nl.nestParams)
 		{
 			NestLoopParam *nlp = (NestLoopParam *) lfirst(lc);
-			int paramno = nlp->paramno + batchno;
+			int			paramno = nlp->paramno + batchno;
 			ParamExecData *prm;
 
 			prm = &(econtext->ecxt_param_exec_vals[paramno]);
@@ -941,8 +969,8 @@ int
 GetMaxBatchSize(YbBatchedNestLoop *plan)
 {
 	Assert(list_length(plan->nl.nestParams) > 0);
-	NestLoopParam *nlp =
-		(NestLoopParam *) linitial(plan->nl.nestParams);
+	NestLoopParam *nlp = (NestLoopParam *) linitial(plan->nl.nestParams);
+
 	Assert(nlp->yb_batch_size > 1);
 	return nlp->yb_batch_size;
 }
@@ -995,7 +1023,8 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 		eflags &= ~EXEC_FLAG_REWIND;
 	innerPlanState(bnlstate) = ExecInitNode(innerPlan(plan), estate, eflags);
 
-	PlanState *outerPlan = outerPlanState(bnlstate);
+	PlanState  *outerPlan = outerPlanState(bnlstate);
+
 	if (outerPlan->resultopsset && outerPlan->resultops != &TTSOpsMinimalTuple)
 	{
 		/* the outer tuple always has to be a minimal tuple */
@@ -1027,7 +1056,7 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 	 * detect whether we need only consider the first matching inner tuple
 	 */
 	bnlstate->js.single_match = (plan->nl.join.inner_unique ||
-								plan->nl.join.jointype == JOIN_SEMI);
+								 plan->nl.join.jointype == JOIN_SEMI);
 
 	bnlstate->is_first_batch_done = false;
 

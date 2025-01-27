@@ -36,7 +36,7 @@
 #include "utils/ruleutils.h"
 
 /* YB includes. */
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 
 
@@ -525,10 +525,11 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 	 * during YBExecUpdateAct(). The actual nominalRelation value needs to be
 	 * passed on in order to correctly fetch the entry.
 	 */
-	int resultRelationIndex =
-			(!IsYBRelation(firstResultRel) ||
-			 partrel->rd_rel->relkind == RELKIND_FOREIGN_TABLE) ? 0 :
-			(node ? node->nominalRelation : 1);
+	int			resultRelationIndex = ((!IsYBRelation(firstResultRel) ||
+										partrel->rd_rel->relkind == RELKIND_FOREIGN_TABLE) ?
+									   0 :
+									   (node ? node->nominalRelation : 1));
+
 	leaf_part_rri = makeNode(ResultRelInfo);
 	InitResultRelInfo(leaf_part_rri,
 					  partrel,
@@ -597,7 +598,7 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 		part_attmap =
 			build_attrmap_by_name(RelationGetDescr(partrel),
 								  RelationGetDescr(firstResultRel),
-								  false /* yb_ignore_type_mismatch */);
+								  false /* yb_ignore_type_mismatch */ );
 		wcoList = (List *)
 			map_variable_attnos((Node *) wcoList,
 								firstVarno, 0,
@@ -655,7 +656,7 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 			part_attmap =
 				build_attrmap_by_name(RelationGetDescr(partrel),
 									  RelationGetDescr(firstResultRel),
-									  false /* yb_ignore_type_mismatch */);
+									  false /* yb_ignore_type_mismatch */ );
 		returningList = (List *)
 			map_variable_attnos((Node *) returningList,
 								firstVarno, 0,
@@ -799,7 +800,7 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 					part_attmap =
 						build_attrmap_by_name(RelationGetDescr(partrel),
 											  RelationGetDescr(firstResultRel),
-											  false /* yb_ignore_type_mismatch */);
+											  false /* yb_ignore_type_mismatch */ );
 				onconflset = (List *)
 					map_variable_attnos((Node *) onconflset,
 										INNER_VAR, 0,
@@ -898,7 +899,7 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 			part_attmap =
 				build_attrmap_by_name(RelationGetDescr(partrel),
 									  RelationGetDescr(firstResultRel),
-									  false /* yb_ignore_type_mismatch */);
+									  false /* yb_ignore_type_mismatch */ );
 
 		if (unlikely(!leaf_part_rri->ri_projectNewInfoValid))
 			ExecInitMergeTupleSlots(mtstate, leaf_part_rri);

@@ -95,7 +95,7 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
   - `txid_current`
   - `pg_stat_replication`
 
-  Additionally, the functions responsible for pulling changes instead of the server streaming it are unsupported as well. They are described in [Replication Functions](https://www.postgresql.org/docs/11/functions-admin.html#FUNCTIONS-REPLICATION) in the PostgreSQL documentation.
+  Additionally, the functions responsible for pulling changes instead of the server streaming it are unsupported as well. They are described in [Replication Functions](https://www.postgresql.org/docs/15/functions-admin.html#FUNCTIONS-REPLICATION) in the PostgreSQL documentation.
 
 - Restriction on DDLs
 

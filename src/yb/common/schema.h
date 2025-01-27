@@ -234,11 +234,6 @@ class ColumnSchema {
 
   bool is_vector() const;
 
-  // TODO(vector-index) temp solution while DataType::VECTOR is not yet introduced.
-  void MarkAsVector() {
-    is_vector_ = true;
-  }
-
   int32_t order() const {
     return order_;
   }
@@ -347,7 +342,6 @@ class ColumnSchema {
   int32_t pg_typmod_ = 0;
   bool marked_for_deletion_;
   QLValuePB missing_value_;
-  bool is_vector_ = false;
 };
 
 class ContiguousRow;
@@ -1055,9 +1049,6 @@ class Schema : public MissingValueProvider {
 
   // Get a column's missing default value.
   Result<const QLValuePB&> GetMissingValueByColumnId(ColumnId id) const final;
-
-  // TODO(vector-index) temp solution while DataType::VECTOR is not yet introduced.
-  void SetVectorColumns(const std::vector<ColumnId>& ids);
 
   // Should account for every field in Schema.
   // TODO: Some of them should be in Equals too?

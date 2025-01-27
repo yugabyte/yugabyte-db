@@ -2144,10 +2144,10 @@ lookup_hash_entries(AggState *aggstate)
 static void
 yb_agg_pushdown_supported(AggState *aggstate)
 {
-	ScanState *ss;
-	ListCell *lc_agg;
-	ListCell *lc_arg;
-	bool check_outer_plan;
+	ScanState  *ss;
+	ListCell   *lc_agg;
+	ListCell   *lc_arg;
+	bool		check_outer_plan;
 
 	/* Initially set pushdown supported to false. */
 	aggstate->yb_pushdown_supported = false;
@@ -2188,12 +2188,14 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			return;
 
 		IndexScanState *iss = castNode(IndexScanState, ss);
+
 		if (iss->yb_iss_might_recheck)
 			return;
 	}
 	else if (IsA(ss, IndexOnlyScanState))
 	{
 		IndexOnlyScanState *ioss = castNode(IndexOnlyScanState, ss);
+
 		if (ioss->yb_ioss_might_recheck)
 			return;
 	}
@@ -2221,8 +2223,8 @@ yb_agg_pushdown_supported(AggState *aggstate)
 
 	foreach(lc_agg, aggstate->aggs)
 	{
-		Aggref *aggref = (Aggref *) lfirst(lc_agg);
-		char *func_name = get_func_name(aggref->aggfnoid);
+		Aggref	   *aggref = (Aggref *) lfirst(lc_agg);
+		char	   *func_name = get_func_name(aggref->aggfnoid);
 
 		/* Only support COUNT/MIN/MAX/SUM. */
 		if (strcmp(func_name, "count") != 0 &&
@@ -2261,7 +2263,10 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			return;
 
 
-		/* Aggtranstype is a supported YB key type and is not INTERNAL or NUMERIC. */
+		/*
+		 * Aggtranstype is a supported YB key type and is not INTERNAL or
+		 * NUMERIC.
+		 */
 		if (!YbDataTypeIsValidForKey(aggref->aggtranstype) ||
 			aggref->aggtranstype == INTERNALOID ||
 			aggref->aggtranstype == NUMERICOID)
@@ -2271,7 +2276,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			 * that we support.
 			 */
 			if (!(strcmp(func_name, "avg") == 0 &&
-				aggref->aggtranstype == INT8ARRAYOID))
+				  aggref->aggtranstype == INT8ARRAYOID))
 				return;
 		}
 
@@ -2295,8 +2300,12 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, lc_arg);
 
-			/* Only support simple column expressions until DocDB can eval PG exprs. */
-			Oid type = InvalidOid;
+			/*
+			 * Only support simple column expressions until DocDB can eval PG
+			 * exprs.
+			 */
+			Oid			type = InvalidOid;
+
 			if (IsA(tle->expr, Var))
 			{
 				check_outer_plan = true;
@@ -2304,7 +2313,8 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			}
 			else if (IsA(tle->expr, Const))
 			{
-				Const* const_node = castNode(Const, tle->expr);
+				Const	   *const_node = castNode(Const, tle->expr);
+
 				if (const_node->constisnull)
 					/* NULL has a type UNKNOWNOID which isn't very helpful. */
 					type = aggref->aggtranstype;
@@ -2344,6 +2354,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		 * improved.
 		 */
 		ListCell   *t;
+
 		foreach(t, outerPlanState(aggstate)->plan->targetlist)
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, t);
@@ -2371,13 +2382,13 @@ yb_agg_pushdown(AggState *aggstate)
 
 	for (int aggno = 0; aggno < aggstate->numaggs; ++aggno)
 	{
-		Aggref *aggref = aggstate->peragg[aggno].aggref;
+		Aggref	   *aggref = aggstate->peragg[aggno].aggref;
 		const char *func_name = get_func_name(aggref->aggfnoid);
 
 		if (strcmp(func_name, "avg") == 0)
 		{
-			Aggref *count_aggref = makeNode(Aggref);
-			Aggref *sum_aggref = makeNode(Aggref);
+			Aggref	   *count_aggref = makeNode(Aggref);
+			Aggref	   *sum_aggref = makeNode(Aggref);
 
 			count_aggref->aggfnoid = 2147;
 			count_aggref->aggtranstype = INT8OID;
@@ -2399,7 +2410,11 @@ yb_agg_pushdown(AggState *aggstate)
 			*aggrefs = lappend(*aggrefs, aggref);
 		}
 	}
-	/* Disable projection for tuples produced by pushed down aggregate operators. */
+
+	/*
+	 * Disable projection for tuples produced by pushed down aggregate
+	 * operators.
+	 */
 	ps->ps_ProjInfo = NULL;
 }
 
@@ -2655,22 +2670,22 @@ agg_retrieve_direct(AggState *aggstate)
 				 * index into the input values is no longer aligned
 				 * with aggno. So, we keep track of it separately
 				 */
-				int valno = 0;
+				int			valno = 0;
 
 				for (aggno = 0; aggno < aggstate->numaggs; aggno++)
 				{
 					MemoryContext oldContext;
-					int transno = peragg[aggno].transno;
-					Aggref *aggref = aggstate->peragg[aggno].aggref;
-					char *func_name = get_func_name(aggref->aggfnoid);
+					int			transno = peragg[aggno].transno;
+					Aggref	   *aggref = aggstate->peragg[aggno].aggref;
+					char	   *func_name = get_func_name(aggref->aggfnoid);
 					AggStatePerGroup pergroup = pergroups[currentSet];
 					AggStatePerGroup pergroupstate = &pergroup[transno];
 					AggStatePerTrans pertrans = &aggstate->pertrans[transno];
 					FunctionCallInfo fcinfo = pertrans->transfn_fcinfo;
 
 					Assert(valno < outerslot->tts_nvalid);
-					Datum value = outerslot->tts_values[valno];
-					bool isnull = outerslot->tts_isnull[valno];
+					Datum		value = outerslot->tts_values[valno];
+					bool		isnull = outerslot->tts_isnull[valno];
 
 					if (strcmp(func_name, "count") == 0)
 					{
@@ -2686,8 +2701,8 @@ agg_retrieve_direct(AggState *aggstate)
 					{
 						++valno;
 						Assert(valno < outerslot->tts_nvalid);
-						Datum count_value = outerslot->tts_values[valno];
-						bool count_isnull = outerslot->tts_isnull[valno];
+						Datum		count_value = outerslot->tts_values[valno];
+						bool		count_isnull = outerslot->tts_isnull[valno];
 
 						if (isnull || count_isnull)
 							continue;
@@ -2700,7 +2715,7 @@ agg_retrieve_direct(AggState *aggstate)
 						 */
 						oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
 						Int8TransTypeData *transdata;
-						ArrayType *transarray = (ArrayType *)(pergroupstate->transValue);
+						ArrayType  *transarray = (ArrayType *) (pergroupstate->transValue);
 
 						if (ARR_HASNULL(transarray) ||
 							ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) +
@@ -2716,7 +2731,10 @@ agg_retrieve_direct(AggState *aggstate)
 					}
 					else
 					{
-						/* Set slot result as argument, then advance the transition function. */
+						/*
+						 * Set slot result as argument, then advance the
+						 * transition function.
+						 */
 						fcinfo->args[1].value = value;
 						fcinfo->args[1].isnull = isnull;
 						advance_transition_function(aggstate, pertrans, pergroupstate);
@@ -3693,7 +3711,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	 * relation is opened in the child node.  So set the flag
 	 * in all cases, and move the YB-relation check down there.
 	 */
-	int yb_eflags = 0;
+	int			yb_eflags = 0;
+
 	if (IsYugaByteEnabled() &&
 		(IsA(outerPlan, IndexScan) || IsA(outerPlan, IndexOnlyScan) ||
 		 IsA(outerPlan, YbBitmapTableScan)))
@@ -4203,7 +4222,10 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		 */
 		if (aggstate->yb_pushdown_supported && !aggref->aggstar)
 		{
-			/* We currently only support single argument aggregates for YB pushdown. */
+			/*
+			 * We currently only support single argument aggregates for YB
+			 * pushdown.
+			 */
 			numAggTransFnArgs = 1;
 			Assert(list_length(aggref->aggargtypes) == numAggTransFnArgs);
 			aggTransFnInputTypes[0] = aggref->aggtranstype;

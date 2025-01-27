@@ -16,10 +16,10 @@ type: docs
 
 ## Synopsis
 
-Use the `EXPLAIN` statement to show the execution plan for a statement. If the `ANALYZE` option is used, the statement will be executed, rather than just planned. In that case, execution information (rather than just the planner's estimates) is added to the `EXPLAIN` result.
+Use the EXPLAIN statement to show the execution plan for a statement. If the ANALYZE option is used, the statement will be executed, rather than just planned. In that case, execution information (rather than just the planner's estimates) is added to the EXPLAIN result.
 
 {{< warning title="DML vs DDL" >}}
-The `EXPLAIN` statement is designed to work primarily for DML statements (for example, `SELECT`, `INSERT`, and so on). DDL statements are _not_ explainable and in cases where DDL and DML are combined, the EXPLAIN statement shows only an approximation. For example, `EXPLAIN` on `SELECT * FROM <TABLE-1> INTO <TABLE-2>` provides only an approximation as `INTO` is a DDL statement.
+The EXPLAIN statement is designed to work primarily for DML statements (for example, SELECT, INSERT, and so on). DDL statements are _not_ explainable and in cases where DDL and DML are combined, the EXPLAIN statement shows only an approximation. For example, EXPLAIN on `SELECT * FROM <TABLE-1> INTO <TABLE-2>` provides only an approximation as INTO is a DDL statement.
 {{</ warning >}}
 
 ## Syntax
@@ -67,22 +67,22 @@ Display the overall timing and counters of the various execution nodes in the qu
 
 ## Examples
 
-Create a sample table.
+Create a sample table:
 
 ```sql
-yugabyte=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
+CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
-Add some data to the above table.
+Add some data to the table:
 
 ```sql
-yugabyte=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
+INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 #### Simple select
 
 ```sql
-yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 1;
+EXPLAIN SELECT * FROM sample WHERE k1 = 1;
 ```
 
 ```yaml{.nocopy}
@@ -95,7 +95,7 @@ yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 1;
 #### Select with complex condition
 
 ```sql
-yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
+EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ```
 
 ```yaml{.nocopy}
@@ -106,10 +106,10 @@ yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
    Filter: (floor(((k2)::numeric + 1.5)) = (v1)::numeric)
 ```
 
-#### Check execution with `ANALYZE` option
+#### Check execution with ANALYZE
 
 ```sql
-yugabyte=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
+EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ```
 
 ```yaml{.nocopy}
@@ -125,7 +125,7 @@ yugabyte=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5)
 
 #### Storage layer statistics
 
-To view the request statistics, you can run with with `DIST` option as follows:
+To view the request statistics, you can run with the DIST option as follows:
 
 ```sql
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT * FROM sample WHERE k1 = 1;
@@ -141,9 +141,9 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT * FROM sample WHERE k1 = 
    Storage Table Rows Scanned: 1
 ```
 
-#### Internal rocksdb metrics
+#### Internal RocksDB metrics
 
-To view the internal metrics, you can run with with `DEBUG` option as follows:
+To view the internal metrics, you can run with the DEBUG option as follows:
 
 ```sql
 EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF) SELECT * FROM sample WHERE k1 = 1;

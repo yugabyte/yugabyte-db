@@ -839,14 +839,14 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 	/* Must have authenticated already, else can't make permission check */
 	AssertState(OidIsValid(AuthenticatedUserId));
 
+	/*
+	 * For YB Managed case, throw an error if:
+	 * 1. Caller is not a yb_db_admin member
+	 * 2. Caller is trying to set itself as yb_db_admin member or superuser.
+	 */
 	if ((userid != AuthenticatedUserId && !AuthenticatedUserIsSuperuser) &&
-		/*
-		* For YB Managed case, throw an error if:
-		* 1. Caller is not a yb_db_admin member
-		* 2. Caller is trying to set itself as yb_db_admin member or superuser.
-		*/
 		(!IsYbDbAdminUserNosuper(AuthenticatedUserId) ||
-		(IsYbDbAdminUserNosuper(AuthenticatedUserId) && superuser_arg(userid))))
+		 (IsYbDbAdminUserNosuper(AuthenticatedUserId) && superuser_arg(userid))))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to set session authorization")));
@@ -1742,7 +1742,9 @@ pg_bindtextdomain(const char *domain)
 #endif
 }
 
-void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname){
+void
+YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname)
+{
 	/* change the auth user */
 	AuthenticatedUserId = roleid;
 	AuthenticatedUserIsSuperuser = is_superuser;

@@ -48,8 +48,8 @@
 
 /* YB includes. */
 #include "commands/dbcommands.h"
-#include "commands/ybccmds.h"
-#include "executor/ybcModifyTable.h"
+#include "commands/yb_cmds.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 
 typedef struct
@@ -305,7 +305,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	OIDNewHeap = make_new_heap(matviewOid, tableSpace,
 							   matviewRel->rd_rel->relam,
 							   relpersistence, ExclusiveLock,
-							   false /* yb_copy_split_options */);
+							   false /* yb_copy_split_options */ );
 	LockRelationOid(OIDNewHeap, AccessExclusiveLock);
 	dest = CreateTransientRelDestReceiver(OIDNewHeap);
 
@@ -686,10 +686,10 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	if (IsYugaByteEnabled())
 	{
 		appendStringInfo(&querybuf,
-						"CREATE TEMP TABLE %s AS "
-						"SELECT mv.*::%s AS mv, newdata.*::%s AS newdata "
-						"FROM %s mv FULL JOIN %s newdata ON (",
-						diffname, matviewname, tempname, matviewname, tempname);
+						 "CREATE TEMP TABLE %s AS "
+						 "SELECT mv.*::%s AS mv, newdata.*::%s AS newdata "
+						 "FROM %s mv FULL JOIN %s newdata ON (",
+						 diffname, matviewname, tempname, matviewname, tempname);
 	}
 	else
 	{
@@ -863,12 +863,13 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	{
 		resetStringInfo(&querybuf);
 		appendStringInfo(&querybuf, "SELECT newdata, mv FROM %s WHERE ", diffname);
-		TupleDesc tuple_desc = RelationGetDescr(matviewRel);
+		TupleDesc	tuple_desc = RelationGetDescr(matviewRel);
 
 		for (int i = 1; i <= tuple_desc->natts; i++)
 		{
 			Form_pg_attribute attribute = TupleDescAttr(tuple_desc, i - 1);
 			const char *attribute_name = quote_identifier(NameStr(attribute->attname));
+
 			appendStringInfo(&querybuf, "(newdata).%s IS NULL AND (mv).%s IS NULL ",
 							 attribute_name, attribute_name);
 			if (i < tuple_desc->natts)
@@ -898,11 +899,13 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 						 "DELETE FROM %s mv WHERE mv.*::%s OPERATOR(pg_catalog.=) ANY "
 						 "(SELECT mv FROM %s diff WHERE (",
 						 matviewname, matviewname, diffname);
-		TupleDesc tuple_desc = RelationGetDescr(matviewRel);
+		TupleDesc	tuple_desc = RelationGetDescr(matviewRel);
 
-		for (int i = 1; i <= tuple_desc->natts; i++) {
+		for (int i = 1; i <= tuple_desc->natts; i++)
+		{
 			Form_pg_attribute attribute = TupleDescAttr(tuple_desc, i - 1);
 			const char *attribute_name = quote_identifier(NameStr(attribute->attname));
+
 			appendStringInfo(&querybuf, "(diff.mv).%s IS NOT NULL ", attribute_name);
 			if (i < tuple_desc->natts)
 				appendStringInfo(&querybuf, "OR ");
@@ -969,7 +972,7 @@ refresh_by_heap_swap(Oid matviewOid, Oid OIDNewHeap, char relpersistence)
 {
 	finish_heap_swap(matviewOid, OIDNewHeap, false, false, true, true,
 					 RecentXmin, ReadNextMultiXactId(), relpersistence,
-					 false /* yb_copy_split_options */);
+					 false /* yb_copy_split_options */ );
 }
 
 /*

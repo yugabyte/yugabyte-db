@@ -55,8 +55,8 @@
 
 /* GUC variables */
 extern bool yb_enable_query_diagnostics;
-extern int yb_query_diagnostics_bg_worker_interval_ms;
-extern int yb_query_diagnostics_circular_buffer_size;
+extern int	yb_query_diagnostics_bg_worker_interval_ms;
+extern int	yb_query_diagnostics_circular_buffer_size;
 
 typedef struct YbCounters
 {
@@ -83,7 +83,7 @@ typedef struct YbCounters
 
 typedef struct YbQueryDiagnosticsPgss
 {
-	YbCounters  counters;		/* the statistics for this query */
+	YbCounters	counters;		/* the statistics for this query */
 	Size		query_offset;	/* query text offset in external file */
 	int			query_len;		/* # of valid bytes in query string, or -1 */
 } YbQueryDiagnosticsPgss;
@@ -108,7 +108,10 @@ typedef struct YbQueryDiagnosticsParams
 	/* Whether to run EXPLAIN (DEBUG) on the query */
 	bool		explain_debug;
 
-	/* Minimum duration for a query to be considered for bundling bind variables */
+	/*
+	 * Minimum duration for a query to be considered for bundling bind
+	 * variables
+	 */
 	int			bind_var_query_min_duration_ms;
 } YbQueryDiagnosticsParams;
 
@@ -124,7 +127,7 @@ typedef struct YbQueryDiagnosticsMetadata
 	char		path[MAXPGPATH];
 
 	/* Time when the query diagnostics bundle started */
-	TimestampTz	start_time;
+	TimestampTz start_time;
 
 	/* Whether the directory has been created */
 	bool		directory_created;
@@ -156,11 +159,11 @@ typedef struct YbQueryDiagnosticsEntry
 
 extern TimestampTz *yb_pgss_last_reset_time;
 
-typedef int (*YbGetNormalizedQueryFuncPtr)(Size query_offset, int pgss_query_len,
-										   char *normalized_query);
+typedef int (*YbGetNormalizedQueryFuncPtr) (Size query_offset, int pgss_query_len,
+											char *normalized_query);
 extern YbGetNormalizedQueryFuncPtr yb_get_normalized_query;
 
-typedef void (*YbPgssFillInConstantLengths)(JumbleState *jstate, const char *query, int query_loc);
+typedef void (*YbPgssFillInConstantLengths) (JumbleState *jstate, const char *query, int query_loc);
 extern YbPgssFillInConstantLengths yb_qd_fill_in_constant_lengths;
 
 extern void YbQueryDiagnosticsInstallHook(void);
@@ -169,6 +172,6 @@ extern void YbQueryDiagnosticsShmemInit(void);
 extern void YbQueryDiagnosticsBgWorkerRegister(void);
 extern void YbQueryDiagnosticsMain(Datum main_arg);
 extern void YbSetPgssNormalizedQueryText(int64 query_id, const Size query_offset, int query_len);
-extern void YbQueryDiagnosticsAppendToDescription(char *description, const char *format, ...);
+extern void YbQueryDiagnosticsAppendToDescription(char *description, const char *format,...);
 
-#endif                            /* YB_QUERY_DIAGNOSTICS_H */
+#endif							/* YB_QUERY_DIAGNOSTICS_H */

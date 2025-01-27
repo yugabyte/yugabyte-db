@@ -23,7 +23,7 @@
 #include "yb/util/debug.h"
 #include "yb/util/env_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include "yb/server/server_base.pb.h"
@@ -215,6 +215,8 @@ bool IsUpgradeSupported(const std::string& from_version) {
 
 }  // namespace
 
+const MonoDelta UpgradeTestBase::kNoDelayBetweenNodes = 0s;
+
 UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
     : old_version_info_(CHECK_RESULT(GetBuildInfoForVersion(from_version))) {
   LOG(INFO) << "Old version: " << old_version_info_.version << ": "
@@ -223,24 +225,28 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 
 void UpgradeTestBase::SetUp() {
   if (IsSanitizer()) {
-    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported with sanitizers";
   }
 
-  if (old_version_info_.version.empty()) {
-    test_skipped_ = true;
-    CHECK(false) << "Build info for old version not set";
-    return;
+// Disable mac tests in the lab since the lab runs multiple tests in parallel on the mac causing
+// these to timeout.
+#ifdef __APPLE__
+  if (getenv("YB_SPARK_COPY_MODE")) {
+    GTEST_SKIP() << "Upgrade testing not supported on mac spark machines";
+  }
+#endif
+
+  if (GetRelevantUrl(old_version_info_).empty()) {
+    GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
+                 << " for this OS architecture and build type";
   }
 
   if (GetRelevantUrl(old_version_info_).empty()) {
-    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
                  << " for this OS architecture and build type";
   }
 
   if (!IsUpgradeSupported(old_version_info_.version)) {
-    test_skipped_ = true;
     GTEST_SKIP() << "PG15 upgrade not supported from version " << old_version_info_.version;
   }
 

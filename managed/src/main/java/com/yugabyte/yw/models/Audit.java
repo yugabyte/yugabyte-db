@@ -239,6 +239,9 @@ public class Audit extends Model {
     @EnumValue("Retry")
     Retry,
 
+    @EnumValue("Rollback")
+    Rollback,
+
     @EnumValue("Restore")
     Restore,
 

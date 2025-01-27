@@ -21,12 +21,6 @@ type: indexpage
     icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
   {{<index/item
-    title="Inspect logs"
-    body="Diagnose issues by inspecting the YugabyteDB logs."
-    href="check-logs/"
-    icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
-
-  {{<index/item
     title="Get system statistics"
     body="Get state information and metrics for YugabyteDB processes."
     href="check-stats/"

@@ -2052,8 +2052,8 @@ Status PgApiImpl::GetIndexBackfillProgress(std::vector<PgObjectId> oids,
   return pg_session_->GetIndexBackfillProgress(oids, backfill_statuses);
 }
 
-Status PgApiImpl::ValidatePlacement(const char *placement_info) {
-  return pg_session_->ValidatePlacement(placement_info);
+Status PgApiImpl::ValidatePlacement(const char *placement_info, bool check_satisfiable) {
+  return pg_session_->ValidatePlacement(placement_info, check_satisfiable);
 }
 
 void PgApiImpl::StartSysTablePrefetching(const PrefetcherOptions& options) {
@@ -2133,6 +2133,14 @@ Status PgApiImpl::NewCreateReplicationSlot(
 Result<tserver::PgCreateReplicationSlotResponsePB> PgApiImpl::ExecCreateReplicationSlot(
     PgStatement* handle) {
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateReplicationSlot>(handle)).Exec();
+}
+
+Result<std::string> PgApiImpl::ExportSnapshot(const YbcPgTxnSnapshot& snapshot) {
+  return pg_txn_manager_->ExportSnapshot(snapshot);
+}
+
+Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id) {
+  return pg_txn_manager_->ImportSnapshot(snapshot_id);
 }
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {

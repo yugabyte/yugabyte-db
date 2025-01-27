@@ -35,6 +35,7 @@
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master.h"
@@ -3542,39 +3543,45 @@ Status CatalogManager::BootstrapProducer(
   LOG(INFO) << "Servicing BootstrapProducer request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
 
-  const bool pg_database_type = req->db_type() == YQL_DATABASE_PGSQL;
-  SCHECK(
-      pg_database_type || req->db_type() == YQL_DATABASE_CQL, InvalidArgument,
-      "Invalid database type");
-  SCHECK(
-      req->has_namespace_name() && !req->namespace_name().empty(), InvalidArgument,
-      "No namespace specified");
+  SCHECK_EQ(req->db_type(), YQL_DATABASE_PGSQL, InvalidArgument, "Invalid database type");
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, namespace_name);
   SCHECK_GT(req->table_name_size(), 0, InvalidArgument, "No tables specified");
-  if (pg_database_type) {
-    SCHECK_EQ(
-        req->pg_schema_name_size(), req->table_name_size(), InvalidArgument,
-        "Number of tables and number of pg schemas must match");
-  } else {
-    SCHECK_EQ(
-        req->pg_schema_name_size(), 0, InvalidArgument,
-        "Pg Schema does not apply to CQL databases");
-  }
+  SCHECK_EQ(
+      req->pg_schema_name_size(), req->table_name_size(), InvalidArgument,
+      "Number of tables and number of pg schemas must match");
+
+  NamespaceIdentifierPB ns_id;
+  ns_id.set_database_type(req->db_type());
+  ns_id.set_name(req->namespace_name());
+  auto ns = VERIFY_RESULT(FindNamespace(ns_id));
+  // We can skip sequence data, since that is only used in db scoped xCluster which does not call
+  // this function.
+  auto all_tables = VERIFY_RESULT(
+      GetTablesEligibleForXClusterReplication(*this, ns->id(), /*include_sequences_data= */ false));
 
   cdc::BootstrapProducerRequestPB bootstrap_req;
   master::TSDescriptorPtr ts = nullptr;
   for (int i = 0; i < req->table_name_size(); i++) {
-    string pg_schema_name = pg_database_type ? req->pg_schema_name(i) : "";
-    auto table_info = GetTableInfoFromNamespaceNameAndTableName(
-        req->db_type(), req->namespace_name(), req->table_name(i), pg_schema_name);
-    SCHECK(
-        table_info, NotFound, Format("Table $0.$1$2 not found"), req->namespace_name(),
-        (pg_schema_name.empty() ? "" : pg_schema_name + "."), req->table_name(i));
+    auto& pg_schema_name = req->pg_schema_name(i);
 
-    bootstrap_req.add_table_ids(table_info->id());
-    resp->add_table_ids(table_info->id());
+    auto table_designator = std::find_if(
+        all_tables.begin(), all_tables.end(),
+        [&table_name = req->table_name(i),
+         &pg_schema_name = req->pg_schema_name(i)](const TableDesignator& table_designator) {
+          return table_designator.name() == table_name &&
+                 table_designator.pgschema_name() == pg_schema_name;
+        });
+    SCHECK(
+        table_designator != all_tables.end(), NotFound, Format("Table $0.$1$2 not found"),
+        req->namespace_name(), (pg_schema_name.empty() ? "" : pg_schema_name + "."),
+        req->table_name(i));
+
+    bootstrap_req.add_table_ids(table_designator->id);
+    resp->add_table_ids(table_designator->id);
 
     // Pick a valid tserver to bootstrap from.
     if (!ts) {
+      auto table_info = VERIFY_RESULT(FindTableById(table_designator->id));
       ts = VERIFY_RESULT(VERIFY_RESULT(table_info->GetTablets()).front()->GetLeader());
     }
   }

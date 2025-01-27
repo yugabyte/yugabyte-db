@@ -10,6 +10,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,11 +33,15 @@ public class NodeInstanceTest extends FakeDBApplication {
   }
 
   private NodeInstance createNode() {
+    return createNode("default_instance_type");
+  }
+
+  private NodeInstance createNode(String instanceType) {
     NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
     nodeData.ip = "fake_ip";
     nodeData.region = region.getCode();
     nodeData.zone = zone.getCode();
-    nodeData.instanceType = "default_instance_type";
+    nodeData.instanceType = instanceType;
     return NodeInstance.create(zone.getUuid(), nodeData);
   }
 
@@ -174,5 +179,33 @@ public class NodeInstanceTest extends FakeDBApplication {
     assertThrows(
         RuntimeException.class,
         () -> NodeInstance.reserveNodes(cluserUuid1, azNodeNames, node.getInstanceTypeCode()));
+  }
+
+  @Test
+  public void testReserveMultipleInstanceTypes() {
+    UUID cluserUuid = UUID.randomUUID();
+    String universeNodeName = "fake-name";
+    String universeNodeName2 = "fake-name2";
+    NodeInstance node = createNode();
+    NodeInstance node2 = createNode("instance_type_2");
+    Map<String, NodeInstance> reservedInstances =
+        NodeInstance.reserveNodes(
+            cluserUuid,
+            Collections.singletonMap(zone.getUuid(), Sets.newHashSet(universeNodeName)),
+            node.getInstanceTypeCode());
+    assertEquals(1, reservedInstances.size());
+    assertTrue(reservedInstances.containsKey(universeNodeName));
+    NodeInstance reservedInstance = reservedInstances.get(universeNodeName);
+    assertEquals(node.getNodeUuid(), reservedInstance.getNodeUuid());
+    reservedInstances =
+        NodeInstance.reserveNodes(
+            cluserUuid,
+            Collections.singletonMap(zone.getUuid(), Sets.newHashSet(universeNodeName2)),
+            node2.getInstanceTypeCode(),
+            false);
+    assertEquals(1, reservedInstances.size());
+    assertTrue(reservedInstances.containsKey(universeNodeName2));
+    reservedInstance = reservedInstances.get(universeNodeName2);
+    assertEquals(node2.getNodeUuid(), reservedInstance.getNodeUuid());
   }
 }

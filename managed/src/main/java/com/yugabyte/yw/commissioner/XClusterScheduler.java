@@ -361,7 +361,12 @@ public class XClusterScheduler {
     }
 
     XClusterConfigTaskBase.updateReplicationDetailsFromDB(
-        xClusterUniverseService, ybClientService, tableHandler, xClusterConfig, dbSyncTimeoutMs);
+        xClusterUniverseService,
+        ybClientService,
+        tableHandler,
+        xClusterConfig,
+        dbSyncTimeoutMs,
+        this.confGetter);
     Set<XClusterTableConfig> xClusterTableConfigs = xClusterConfig.getTableDetails();
     xClusterTableConfigs.forEach(
         tableConfig -> metricsList.add(buildMetricTemplate(xClusterConfig, tableConfig)));

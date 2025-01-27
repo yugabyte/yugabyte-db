@@ -37,9 +37,9 @@ static bool describeOneTableDetails(const char *schemaname,
 static void add_tablespace_footer(printTableContent *const cont, char relkind,
 								  Oid tablespace, const bool newline);
 static void add_tablegroup_footer(printTableContent *const cont, char relkind,
-					  const char* grpname, const bool newline);
+								  const char *grpname, const bool newline);
 static void add_colocation_footer(printTableContent *const cont, char relkind,
-					  bool colocation, const bool newline);
+								  bool colocation, const bool newline);
 static void add_role_attribute(PQExpBuffer buf, const char *const str);
 static bool listTSParsersVerbose(const char *pattern);
 static bool describeOneTSParser(const char *oid, const char *nspname,
@@ -1157,8 +1157,8 @@ permissionsList(const char *pattern)
 	return true;
 
 error_return:
-		termPQExpBuffer(&buf);
-		return false;
+	termPQExpBuffer(&buf);
+	return false;
 }
 
 
@@ -2527,7 +2527,8 @@ describeOneTableDetails(const char *schemaname,
 									  PQgetvalue(result, i, 0));
 
 					tgres = PSQLexec(tablegroupbuf.data);
-					char* idx_grpname;
+					char	   *idx_grpname;
+
 					if (tgres && PQntuples(tgres) > 0 &&
 						strcmp(PQgetvalue(tgres, 0, 0), "") != 0)
 					{
@@ -2541,7 +2542,10 @@ describeOneTableDetails(const char *schemaname,
 
 					if (database_colocated)
 					{
-						/* Table and its indexes are always part of the same colocation */
+						/*
+						 * Table and its indexes are always part of the same
+						 * colocation
+						 */
 						add_colocation_footer(&cont, RELKIND_INDEX, tableinfo.colocation, false);
 					}
 					else
@@ -3720,7 +3724,7 @@ add_tablespace_footer(printTableContent *const cont, char relkind,
  */
 static void
 add_tablegroup_footer(printTableContent *const cont, char relkind,
-					  const char* grpname, const bool newline)
+					  const char *grpname, const bool newline)
 {
 	/* relkinds for which we support tablegroups */
 	if ((relkind == RELKIND_RELATION ||
@@ -3730,6 +3734,7 @@ add_tablegroup_footer(printTableContent *const cont, char relkind,
 		grpname)
 	{
 		PQExpBufferData buf;
+
 		initPQExpBuffer(&buf);
 		if (newline)
 		{
@@ -3773,6 +3778,7 @@ add_colocation_footer(printTableContent *const cont, char relkind,
 		colocation)
 	{
 		PQExpBufferData buf;
+
 		initPQExpBuffer(&buf);
 		if (newline)
 		{
@@ -5289,16 +5295,16 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 
 	initPQExpBuffer(&buf);
 
-	// Show relations is true when '\dgrt' or '\dgrt+' is used.
+	/* Show relations is true when '\dgrt' or '\dgrt+' is used. */
 	if (showRelations)
 	{
 		printfPQExpBuffer(&buf,
-					  "SELECT grpname AS \"%s\",\n"
-					  "  pg_catalog.pg_get_userbyid(grpowner) AS \"%s\", \n",
-					  gettext_noop("Group Name"),
-					  gettext_noop("Group Owner"));
+						  "SELECT grpname AS \"%s\",\n"
+						  "  pg_catalog.pg_get_userbyid(grpowner) AS \"%s\", \n",
+						  gettext_noop("Group Name"),
+						  gettext_noop("Group Owner"));
 
-		// If '+' is included, add the tablegroup's description and options
+		/* If '+' is included, add the tablegroup's description and options */
 		if (verbose)
 		{
 			printACLColumn(&buf, "g.grpacl");
@@ -5313,35 +5319,35 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 							  gettext_noop("Group Options"));
 		}
 
-		// Get info about the table from pg_class
+		/* Get info about the table from pg_class */
 		appendPQExpBuffer(&buf,
-					  "  c.relname AS \"%s\", \n"
-					  "  CASE c.relkind"
-					  " WHEN " CppAsString2(RELKIND_RELATION) " THEN '%s'"
-					  " WHEN " CppAsString2(RELKIND_VIEW) " THEN '%s'"
-					  " WHEN " CppAsString2(RELKIND_MATVIEW) " THEN '%s'"
-					  " WHEN " CppAsString2(RELKIND_INDEX) " THEN '%s'"
-					  " WHEN " CppAsString2(RELKIND_SEQUENCE) " THEN '%s'"
-					  " WHEN 's' THEN '%s'"
-					  " WHEN " CppAsString2(RELKIND_FOREIGN_TABLE) " THEN '%s'"
-					  " WHEN " CppAsString2(RELKIND_PARTITIONED_TABLE) " THEN '%s'"
-					  " WHEN " CppAsString2(RELKIND_PARTITIONED_INDEX) " THEN '%s'"
-					  " END as \"%s\",\n"
-					  "  pg_catalog.pg_get_userbyid(c.relowner) AS \"%s\"",
-					  gettext_noop("Name"),
-					  gettext_noop("table"),
-					  gettext_noop("view"),
-					  gettext_noop("materialized view"),
-					  gettext_noop("index"),
-					  gettext_noop("sequence"),
-					  gettext_noop("special"),
-					  gettext_noop("foreign table"),
-					  gettext_noop("table"),	/* partitioned table */
-					  gettext_noop("index"),	/* partitioned index */
-					  gettext_noop("Type"),
-					  gettext_noop("Owner"));
+						  "  c.relname AS \"%s\", \n"
+						  "  CASE c.relkind"
+						  " WHEN " CppAsString2(RELKIND_RELATION) " THEN '%s'"
+						  " WHEN " CppAsString2(RELKIND_VIEW) " THEN '%s'"
+						  " WHEN " CppAsString2(RELKIND_MATVIEW) " THEN '%s'"
+						  " WHEN " CppAsString2(RELKIND_INDEX) " THEN '%s'"
+						  " WHEN " CppAsString2(RELKIND_SEQUENCE) " THEN '%s'"
+						  " WHEN 's' THEN '%s'"
+						  " WHEN " CppAsString2(RELKIND_FOREIGN_TABLE) " THEN '%s'"
+						  " WHEN " CppAsString2(RELKIND_PARTITIONED_TABLE) " THEN '%s'"
+						  " WHEN " CppAsString2(RELKIND_PARTITIONED_INDEX) " THEN '%s'"
+						  " END as \"%s\",\n"
+						  "  pg_catalog.pg_get_userbyid(c.relowner) AS \"%s\"",
+						  gettext_noop("Name"),
+						  gettext_noop("table"),
+						  gettext_noop("view"),
+						  gettext_noop("materialized view"),
+						  gettext_noop("index"),
+						  gettext_noop("sequence"),
+						  gettext_noop("special"),
+						  gettext_noop("foreign table"),
+						  gettext_noop("table"),	/* partitioned table */
+						  gettext_noop("index"),	/* partitioned index */
+						  gettext_noop("Type"),
+						  gettext_noop("Owner"));
 
-		// If '+' is included, add the table's size and description
+		/* If '+' is included, add the table's size and description */
 		if (verbose)
 		{
 			appendPQExpBuffer(&buf,
@@ -5355,12 +5361,12 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 	else
 	{
 		printfPQExpBuffer(&buf,
-					  "SELECT g.grpname AS \"%s\",\n"
-					  "  pg_catalog.pg_get_userbyid(g.grpowner) AS \"%s\"",
-					  gettext_noop("Name"),
-					  gettext_noop("Owner"));
+						  "SELECT g.grpname AS \"%s\",\n"
+						  "  pg_catalog.pg_get_userbyid(g.grpowner) AS \"%s\"",
+						  gettext_noop("Name"),
+						  gettext_noop("Owner"));
 
-		// If '+' is included, add the tablegroup's description and options
+		/* If '+' is included, add the tablegroup's description and options */
 		if (verbose)
 		{
 			appendPQExpBufferStr(&buf, ",\n  ");
@@ -5384,7 +5390,7 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 		appendPQExpBufferStr(&buf,
 							 "\nLEFT JOIN pg_catalog.pg_tablespace ts ON ts.oid = g.grptablespace\n");
 
-	// If 't' is included, need to do the join based on pg_class reloptions
+	/* If 't' is included, need to do the join based on pg_class reloptions */
 	if (showRelations)
 	{
 		appendPQExpBufferStr(&buf,

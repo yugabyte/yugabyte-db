@@ -259,9 +259,11 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
 
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
-  Status ProcessVectorIndexes(Slice key, Slice value);
+  Status ProcessVectorIndexes(rocksdb::DirectWriteHandler* handler, Slice key, Slice value);
   template <class Decoder>
-  Status ProcessVectorIndexesForPackedRow(size_t prefix_size, Slice key, Slice value);
+  Status ProcessVectorIndexesForPackedRow(
+      rocksdb::DirectWriteHandler* handler, size_t prefix_size, Slice key, Slice value);
+  void AddVectorIndexReverseEntry(rocksdb::DirectWriteHandler* handler, Slice ybctid, Slice value);
 
   bool ApplyToRegularDB() const {
     return apply_to_storages_.TestRegularDB();

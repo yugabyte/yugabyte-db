@@ -47,7 +47,7 @@
 
 /*  YB includes. */
 #include "pg_yb_utils.h"
-#include "executor/ybc_fdw.h"
+#include "executor/yb_fdw.h"
 
 /*
  * GetForeignDataWrapper -	look up the foreign-data wrapper by OID.
@@ -461,10 +461,13 @@ GetFdwRoutineForRelation(Relation relation, bool makecopy)
 
 	if (relation->rd_fdwroutine == NULL)
 	{
-		if (IsYBRelation(relation)) {
+		if (IsYBRelation(relation))
+		{
 			/* Get the custom YB FDW directly */
-			fdwroutine = (FdwRoutine *) ybc_fdw_handler();
-		} else {
+			fdwroutine = (FdwRoutine *) yb_fdw_handler();
+		}
+		else
+		{
 			/* Get the info by consulting the catalogs and the FDW code */
 			fdwroutine = GetFdwRoutineByRelId(RelationGetRelid(relation));
 		}

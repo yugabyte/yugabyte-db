@@ -72,7 +72,7 @@ Configuring the on-premises provider consists of a number of steps.
 
 You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, click either **Add Configuration** or **Edit Provider**, and then complete the fields of the **Provider Info** form shown in the following illustration:
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-1.png)
+![Configure On-Premises Provider Configuration](/images/ee/onprem/configure-onprem-1.png)
 
 - In the **Provider Name** field, supply the provider name, which is an internal tag that helps with organizing your providers, so you know where you want to deploy your YugabyteDB universes.
 
@@ -112,7 +112,7 @@ You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, 
 
 Complete the **Instance Types** fields, as per the following illustration, to provide node hardware configuration (CPU, memory, and volume information):
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-2.png)
+![Configure On-Premises Provider Configuration](/images/ee/onprem/configure-onprem-2.png)
 
 - Use the **Machine Type** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
 - Use the **Num Cores** field to define the number of cores to be assigned to a node.
@@ -124,7 +124,7 @@ Complete the **Instance Types** fields, as per the following illustration, to pr
 
 Complete the **Regions and Zones** fields, as per the following illustration, to provide the location of YugabyteDB nodes:
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
+![Configure On-Premises Provider Configuration](/images/ee/onprem/configure-onprem-3.png)
 
 YugabyteDB Anywhere will use these values during the universe creation.
 
@@ -132,11 +132,11 @@ YugabyteDB Anywhere will use these values during the universe creation.
 
 After finishing the provider configuration, click **Manage Instances** to provision as many nodes as your application requires.
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-4.png)
+![Configure On-Premises Provider Configuration](/images/ee/onprem/configure-onprem-4.png)
 
 For each node you want to add, click **Add Instances** to add a YugabyteDB node. You can use DNS names or IP addresses when adding instances (instance ID is an optional user-defined identifier).
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-5.png)
+![Configure On-Premises Provider Configuration](/images/ee/onprem/configure-onprem-5.png)
 
 Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` flag enabled.
 
@@ -144,7 +144,7 @@ Note that if you provide a hostname, the universe might experience issues commun
 
 To provision your nodes manually, you have the following two options:
 
-1. If the SSH user you provided has sudo privileges but requires a password, you can [run the preprovisioning script](#running-the-preprovisioning-script).
+1. If the SSH user you provided has sudo privileges but requires a password, you can [run the pre-provisioning script](#running-the-preprovisioning-script).
 2. If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#setting-up-database-nodes-manually).
 
 #### Running the preprovisioning script

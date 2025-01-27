@@ -73,25 +73,21 @@ Refer to [roadmap tracker](https://github.com/yugabyte/yugabyte-db/issues?q=is:i
 
 # Recently released features
 
-## v2.23 (Preview) - Sep, 2024
+## v2.25 (Preview) - Jan, 2025
 
-**v2.23** is the current [Preview](https://docs.yugabyte.com/preview/releases/versioning/#preview-releases) release. This includes features under active development and is recommended for development and testing only. For the full list of features and improvements in this release, see [Release notes - v2.23](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/). Here are some of the prominent features.
+**v2.25** is the current [Preview](https://docs.yugabyte.com/preview/releases/versioning/#preview-releases) release. This includes features under active development and is recommended for development and testing only. For the full list of features and improvements in this release, see [Release notes - v2.25](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.25/). Here are some of the prominent features.
 
-#### [Instant database cloning](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/#highlights:~:text=and%20improving%20performance.-,Instant%20database%20cloning)
+### [PostgreSQL 15 Support](https://docs.yugabyte.com/preview/develop/pg15-features/)
 
-Quickly create independent copies of your database for data recovery, development, and testing.
+As part of this release, we have upgraded our PostgreSQL fork from version 11.2 to 15.0, enabling you to leverage the many key capabilities introduced in PostgreSQL between these two versions. This upgrade brings YSQL API support for numerous features, including stored generated columns, foreign keys on partitioned tables, and non-distinct NULLs in unique indexes. It also introduces query execution optimizations like incremental sort and memoization, along with various observability and security enhancements.
 
-#### [pg_cron extension](https://docs.yugabyte.com/preview/explore/ysql-language-features/pg-extensions/extension-pgcron/)
+### [Query Diagnostics](https://docs.yugabyte.com/preview/explore/query-1-performance/query-diagnostics/)
 
-Use pg_cron to schedule YSQL commands using familiar cron syntax, including jobs on intervals as fine as seconds.
+This feature significantly simplifies tuning poorly performing SQL queries by allowing you to capture and export detailed diagnostic information, including bind variables and constants, pg_stat_statements statistics, schema details, active session history, and execution plans.
 
-#### [Semi-automatic xCluster replication](https://docs.yugabyte.com/preview/deploy/multi-dc/async-replication/async-transactional-setup-dblevel/)
+### [Active session history](https://docs.yugabyte.com/preview/explore/observability/active-session-history/)
 
-Simplified management of YSQL transactional xCluster replication by operating at the database level instead of the table level.
-
-#### [Improvement to backward scans](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/#highlights:~:text=improvement%20to%20backward%20scans,-TP)
-
-Improvements to backward scan performance now allows such queries to be 10X faster out of the box!
+In addition, the Active Session History, which provides real-time and historical views of system activity, is now enabled by default.
 
 ## v2024.2 (Stable) - Dec, 2024
 

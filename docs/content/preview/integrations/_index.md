@@ -120,6 +120,7 @@ Version refers to the latest tested version of the integration.
 | Tool        | Tutorial |
 | :------     | :------- |
 | Nutanix AHV | [Nutanix AHV](nutanix-ahv/) |
+| Cohesity    | [Cohesity](cohesity/) |
 | Commvault   | [Commvault](commvault/) |
 | Delphix     | [Delphix](delphix/) |
 

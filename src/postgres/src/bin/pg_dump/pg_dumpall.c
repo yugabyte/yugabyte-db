@@ -102,9 +102,11 @@ static char *masterHosts = NULL;
 
 #define exit_nicely(code) exit(code)
 
-static int	include_yb_metadata = 0;	/* In this mode DDL statements include YB specific
-										 * metadata such as tablet partitions. */
-static int	dump_single_database = 0;	/* Dump only one DB specified by '--database' argument. */
+static int	include_yb_metadata = 0;	/* In this mode DDL statements include
+										 * YB specific metadata such as tablet
+										 * partitions. */
+static int	dump_single_database = 0;	/* Dump only one DB specified by
+										 * '--database' argument. */
 
 static bool IsYugabyteEnabled = true;
 
@@ -265,7 +267,7 @@ main(int argc, char *argv[])
 				pgdb = pg_strdup(optarg);
 				break;
 
-			case 'm':           /* DEPRECATED and NOT USED: YB master hosts */
+			case 'm':			/* DEPRECATED and NOT USED: YB master hosts */
 				masterHosts = pg_strdup(optarg);
 				break;
 
@@ -819,11 +821,12 @@ dumpRoles(PGconn *conn)
 		fprintf(OPF, "--\n-- Roles\n--\n\n");
 
 		if (include_yb_metadata)
-			fprintf(OPF, "-- Set variable ignore_existing_roles (if not already set)\n"
-						 "\\if :{?ignore_existing_roles}\n"
-						 "\\else\n"
-						 "\\set ignore_existing_roles false\n"
-						 "\\endif\n\n");
+			fprintf(OPF,
+					"-- Set variable ignore_existing_roles (if not already set)\n"
+					"\\if :{?ignore_existing_roles}\n"
+					"\\else\n"
+					"\\set ignore_existing_roles false\n"
+					"\\endif\n\n");
 	}
 
 	for (i = 0; i < PQntuples(res); i++)
@@ -843,8 +846,8 @@ dumpRoles(PGconn *conn)
 		}
 
 		/*
-		 * In Yugabyte, there are additional roles created by initdb that emit
-		 * an error if re-created.
+		 * In Yugabyte major upgrade, there are additional roles already created
+		 * by initdb.
 		 */
 		if (IsYugabyteEnabled && binary_upgrade &&
 			strncmp(rolename, "yb_", 3) == 0)
@@ -876,34 +879,25 @@ dumpRoles(PGconn *conn)
 		if (IsYugabyteEnabled && binary_upgrade)
 		{
 			/*
-			 * In Yugabyte, the restore can be run by a different user than the
-			 * one running the dump, so create all users with an if-exists
-			 * check.
+			 * In Yugabyte major upgrade, initdb always creates the yugabyte
+			 * and postgres users.
 			 */
-			appendPQExpBuffer(buf,
-					"\\set role_exists false\n"
-					"SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = '%s')"
-					" AS role_exists \\gset\n"
-					"\\if :role_exists\n"
-					"    \\echo 'Role %s already exists.'\n"
-					"\\else\n"
-					"    CREATE ROLE %s;\n"
-					"\\endif\n",
-					rolename, yb_frolename, rolename);
+			if (strcmp(rolename, "yugabyte") != 0 && strcmp(rolename, "postgres") != 0)
+				appendPQExpBuffer(buf, "CREATE ROLE %s;\n", yb_frolename);
 		}
 		else if (!binary_upgrade ||
 				 strcmp(PQgetvalue(res, i, i_is_current_user), "f") == 0)
 		{
 			if (include_yb_metadata)
 				appendPQExpBuffer(buf,
-					"\\set role_exists false\n"
-					"\\if :ignore_existing_roles\n"
-					"    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = '%s')"
-					" AS role_exists \\gset\n"
-					"\\endif\n"
-					"\\if :role_exists\n"
-					"    \\echo 'Role %s already exists.'\n"
-					"\\else\n    ", yb_frolename, yb_frolename);
+								  "\\set role_exists false\n"
+								  "\\if :ignore_existing_roles\n"
+								  "    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = '%s')"
+								  " AS role_exists \\gset\n"
+								  "\\endif\n"
+								  "\\if :role_exists\n"
+								  "    \\echo 'Role %s already exists.'\n"
+								  "\\else\n    ", yb_frolename, yb_frolename);
 
 			appendPQExpBuffer(buf, "CREATE ROLE %s;\n", yb_frolename);
 
@@ -1184,11 +1178,12 @@ dumpTablespaces(PGconn *conn)
 		fprintf(OPF, "--\n-- Tablespaces\n--\n\n");
 
 		if (include_yb_metadata)
-			fprintf(OPF, "-- Set variable ignore_existing_tablespaces (if not already set)\n"
-						 "\\if :{?ignore_existing_tablespaces}\n"
-						 "\\else\n"
-						 "\\set ignore_existing_tablespaces false\n"
-						 "\\endif\n\n");
+			fprintf(OPF,
+					"-- Set variable ignore_existing_tablespaces (if not already set)\n"
+					"\\if :{?ignore_existing_tablespaces}\n"
+					"\\else\n"
+					"\\set ignore_existing_tablespaces false\n"
+					"\\endif\n\n");
 	}
 
 	for (i = 0; i < PQntuples(res); i++)
@@ -1215,14 +1210,14 @@ dumpTablespaces(PGconn *conn)
 
 		if (include_yb_metadata)
 			appendPQExpBuffer(buf,
-				"\\set tablespace_exists false\n"
-				"\\if :ignore_existing_tablespaces\n"
-				"    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = '%s')"
-				" AS tablespace_exists \\gset\n"
-				"\\endif\n"
-				"\\if :tablespace_exists\n"
-				"    \\echo 'Tablespace %s already exists.'\n"
-				"\\else\n    ", fspcname, fspcname);
+							  "\\set tablespace_exists false\n"
+							  "\\if :ignore_existing_tablespaces\n"
+							  "    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = '%s')"
+							  " AS tablespace_exists \\gset\n"
+							  "\\endif\n"
+							  "\\if :tablespace_exists\n"
+							  "    \\echo 'Tablespace %s already exists.'\n"
+							  "\\else\n    ", fspcname, fspcname);
 
 		appendPQExpBuffer(buf, "CREATE TABLESPACE %s", fspcname);
 		appendPQExpBuffer(buf, " OWNER %s", fmtId(spcowner));
@@ -1287,9 +1282,10 @@ dumpTablespaces(PGconn *conn)
 static void
 ybProcessTablespaceSpcOptions(PGconn *conn, PQExpBuffer *buf, char *spcoptions)
 {
-	int encoding = PQclientEncoding(conn);
-	bool std_strings = PQparameterStatus(conn, "standard_conforming_strings");
-	bool res = appendReloptionsArray(*buf, spcoptions, "", encoding, std_strings);
+	int			encoding = PQclientEncoding(conn);
+	bool		std_strings = PQparameterStatus(conn, "standard_conforming_strings");
+	bool		res = appendReloptionsArray(*buf, spcoptions, "", encoding, std_strings);
+
 	if (!res)
 	{
 		fprintf(stderr, "WARNING: could not parse reloptions array\n");

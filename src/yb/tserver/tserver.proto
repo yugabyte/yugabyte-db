@@ -418,6 +418,8 @@ message AcquireObjectLockRequestPB {
   // The field is used only on the master side. Master remembers which tserver requested the
   // exclusive lock(s) so that it can issue a cleanup when the tserver looses its lease.
   optional bytes session_host_uuid = 5;
+  // The lease epoch of the requesting tserver.
+  optional uint64 lease_epoch = 6;
 }
 
 message AcquireObjectLockResponsePB {
@@ -435,6 +437,8 @@ message ReleaseObjectLockRequestPB {
   // When set, releases locks on all objects owned by <<txn_id, reuse_version>, subtxn_id>.
   optional bool release_all_locks = 5;
   optional bytes session_host_uuid = 6;
+  // The lease epoch of the requesting tserver.
+  optional uint64 lease_epoch = 7;
 }
 
 message ReleaseObjectLockResponsePB {

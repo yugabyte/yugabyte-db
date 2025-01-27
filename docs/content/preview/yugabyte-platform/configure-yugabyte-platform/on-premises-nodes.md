@@ -86,4 +86,4 @@ After the instances are available in the **Instances** list, validate them by pe
 
 YugabyteDB Anywhere runs the check and displays the status in the **Preflight Check** column. Click in the column to view details; you can also view the results under **Tasks**.
 
-If all your instances successfully pass the preflight check, your on-premises cloud provider configuration is ready, and you can begin [deploying universes](../../create-deployments/).
+If all your instances successfully pass the preflight check, your on-premises provider configuration is ready, and you can begin [deploying universes](../../create-deployments/).

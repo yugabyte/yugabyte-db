@@ -15,7 +15,7 @@
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/version_info.pb.h"
+#include "yb/common/version_info.pb.h"
 
 namespace yb {
 
@@ -39,6 +39,7 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   void SetUp() override;
 
  protected:
+  static const MonoDelta kNoDelayBetweenNodes;
   void SetUpOptions(ExternalMiniClusterOptions& opts) override;
   Status StartClusterInOldVersion();
   Status StartClusterInOldVersion(const ExternalMiniClusterOptions& options);
@@ -94,12 +95,9 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
 
   bool IsYsqlMajorVersionUpgrade() const { return is_ysql_major_version_upgrade_; }
 
-  bool IsTestSkipped() const { return test_skipped_; }
-
  private:
   const BuildInfo old_version_info_;
   VersionInfoPB current_version_info_;
-  bool test_skipped_ = false;
 
   std::string old_version_bin_path_, current_version_bin_path_;
   std::string old_version_master_bin_path_, current_version_master_bin_path_;

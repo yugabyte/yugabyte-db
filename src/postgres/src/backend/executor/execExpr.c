@@ -1995,8 +1995,8 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				ListCell   *lc;
 				int			off;
 
-				FunctionCallInfo *fcinfos =
-					palloc0(sizeof(FunctionCallInfo) * nopers);
+				FunctionCallInfo *fcinfos = palloc0(sizeof(FunctionCallInfo) *
+													nopers);
 				PGFunction *fn_addrs = palloc0(sizeof(PGFunction) * nopers);
 
 				/*
@@ -2008,8 +2008,8 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				Assert(list_length(rcexpr->opfamilies) == nopers);
 				Assert(list_length(rcexpr->inputcollids) == nopers);
 
-				bool yb_is_for_row_in =
-					IsYugaByteEnabled() && rcexpr->rctype == ROWCOMPARE_EQ;
+				bool		yb_is_for_row_in = (IsYugaByteEnabled() &&
+												rcexpr->rctype == ROWCOMPARE_EQ);
 
 				if (yb_is_for_row_in)
 					Assert(IsA(rcexpr->rargs, ArrayExpr));
@@ -2037,8 +2037,9 @@ ExecInitExprRec(Expr *node, ExprState *state,
 					 l_inputcollid = lnext(rcexpr->inputcollids, l_inputcollid))
 				{
 					Expr	   *left_expr = (Expr *) lfirst(l_left_expr);
-					Expr	   *right_expr = (Expr *)
-						yb_is_for_row_in ? NULL : lfirst(l_right_expr);
+					Expr	   *right_expr = (Expr *) (yb_is_for_row_in ?
+													   NULL :
+													   lfirst(l_right_expr));
 					Oid			opno = lfirst_oid(l_opno);
 					Oid			opfamily = lfirst_oid(l_opfamily);
 					Oid			inputcollid = lfirst_oid(l_inputcollid);
@@ -2103,7 +2104,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 						ExprEvalPushStep(state, &scratch);
 						adjust_jumps = lappend_int(adjust_jumps,
-												state->steps_len - 1);
+												   state->steps_len - 1);
 					}
 				}
 

@@ -432,13 +432,14 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
     std::vector<TSDescriptor*> updated_descs;
     std::vector<TSDescriptor::WriteLock> cow_locks;
     for (const auto& [id, desc] : servers_by_id_) {
-      auto [maybe_lock, expired_lease] = desc->MaybeUpdateLiveness(mono_time, hybrid_time);
-      if (expired_lease) {
-        uuid_to_expired_lease_epoch[id] = *expired_lease;
-      }
-      if (maybe_lock) {
+      auto update_opt = desc->MaybeUpdateLiveness(mono_time, hybrid_time);
+      if (update_opt)  {
+        auto [lock, expired_lease_opt] = std::move(update_opt).value();
         updated_descs.push_back(desc.get());
-        cow_locks.push_back(std::move(maybe_lock).value());
+        cow_locks.push_back(std::move(lock));
+        if (expired_lease_opt) {
+          uuid_to_expired_lease_epoch[id] = *expired_lease_opt;
+        }
       }
     }
     RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, updated_descs));
@@ -455,10 +456,8 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
     local_lease_expired_callback = lease_expired_callback_;
   }
   for (const auto& [uuid, lease_epoch] : uuid_to_expired_lease_epoch) {
-    // TODO(zdrudi): we should pass the lease_epoch here instead of hardcoding 0.
-    // Also need to handle failures.
-    (void)lease_epoch;
-    local_lease_expired_callback(uuid, 0, epoch);
+    // TODO(zdrudi): We should spawn a task here instead of making a one-off call.
+    local_lease_expired_callback(uuid, lease_epoch, epoch);
   }
   return Status::OK();
 }

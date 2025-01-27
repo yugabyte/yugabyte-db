@@ -719,3 +719,9 @@ message PgsqlLockRequestPB {
   optional bytes partition_key = 6;
   optional uint32 hash_code = 7;
 }
+
+message PgTxnSnapshotPB {
+  optional uint32 db_oid = 1;
+  optional uint32 isolation_level = 2;
+  optional bool read_only = 3;
+}

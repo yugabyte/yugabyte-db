@@ -471,7 +471,7 @@ _copySeqScan(const SeqScan *from)
 static YbSeqScan *
 _copyYbSeqScan(const YbSeqScan *from)
 {
-	YbSeqScan    *newnode = makeNode(YbSeqScan);
+	YbSeqScan  *newnode = makeNode(YbSeqScan);
 
 	/*
 	 * copy node superclass fields
@@ -988,7 +988,7 @@ _copyNestLoop(const NestLoop *from)
 static YbBatchedNestLoop *
 _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 {
-	YbBatchedNestLoop   *newnode = makeNode(YbBatchedNestLoop);
+	YbBatchedNestLoop *newnode = makeNode(YbBatchedNestLoop);
 
 	/*
 	 * copy node superclass fields
@@ -5324,6 +5324,7 @@ static YbBatchedExpr *
 _copyYbBatchedExpr(const YbBatchedExpr *from)
 {
 	YbBatchedExpr *newnode = makeNode(YbBatchedExpr);
+
 	COPY_NODE_FIELD(orig_expr);
 
 	return newnode;

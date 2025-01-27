@@ -790,8 +790,8 @@ extern Datum Float8GetDatum(float8 X);
  * the the keyword "PASSWORD" exists in the text, redact the portion following it.
  * The logic is refactored from the LOGSTMT_DDL statement case of pgaudit extension.
  */
-const char* YbRedactPasswordIfExists(const char* queryStr, CommandTag commandTag);
-CommandTag YbParseCommandTag(const char *query_string);
+const char *YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag);
+CommandTag	YbParseCommandTag(const char *query_string);
 
 /*
  * Int64GetDatumFast

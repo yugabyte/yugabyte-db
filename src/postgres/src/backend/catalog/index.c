@@ -88,7 +88,7 @@
 /*  YB includes. */
 #include "commands/defrem.h"
 #include "commands/progress.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "parser/parse_utilcmd.h"
 #include "pgstat.h"
 #include "pg_yb_utils.h"
@@ -947,7 +947,8 @@ index_create(Relation heapRelation,
 	 */
 	if (!OidIsValid(indexRelationId))
 	{
-		bool index_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore;
+		bool		index_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore;
+
 		if (yb_binary_restore && !yb_ignore_pg_class_oids)
 			index_pg_class_oids_supplied = true;
 		/* Use binary-upgrade override for pg_class.oid and relfilenode */
@@ -1039,7 +1040,7 @@ index_create(Relation heapRelation,
 					   colocationId,
 					   tableSpaceId,
 					   YbGetRelfileNodeId(indexRelation),
-					   InvalidOid /* oldRelfileNodeId */);
+					   InvalidOid /* oldRelfileNodeId */ );
 	}
 
 	/*
@@ -1518,11 +1519,10 @@ index_concurrently_create_copy(Relation heapRelation, Oid oldIndexId,
 	 * (either via database or a tablegroup).
 	 * If the indexed table is colocated, then this index is colocated as well.
 	 */
-	bool is_colocated =
-		IsYBRelation(heapRelation) &&
-		!IsBootstrapProcessingMode() &&
-		!YbIsConnectedToTemplateDb() &&
-		YbGetTableProperties(heapRelation)->is_colocated;
+	bool		is_colocated = (IsYBRelation(heapRelation) &&
+								!IsBootstrapProcessingMode() &&
+								!YbIsConnectedToTemplateDb() &&
+								YbGetTableProperties(heapRelation)->is_colocated);
 
 	/*
 	 * Now create the new index.
@@ -1551,10 +1551,14 @@ index_concurrently_create_copy(Relation heapRelation, Oid oldIndexId,
 							  false,	/* is_internal? */
 							  NULL,
 							  NULL,
-							  true /* skip_index_backfill */,
+							  true, /* skip_index_backfill */
 							  is_colocated,
-							  InvalidOid /* tablegroupId, TODO: fill this appropriately when adding support for reindex */,
-							  InvalidOid /* colocationId, TODO: fill this appropriately when adding support for reindex */);
+							  InvalidOid,	/* tablegroupId, TODO: fill this
+											 * appropriately when adding
+											 * support for reindex */
+							  InvalidOid);	/* colocationId, TODO: fill this
+											 * appropriately when adding
+											 * support for reindex */
 
 	/* Close the relations used and clean up */
 	index_close(indexRelation, NoLock);
@@ -3138,11 +3142,11 @@ index_build(Relation heapRelation,
 						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 	save_nestlevel = NewGUCNestLevel();
 
+	/* Set up initial progress report status */
 	if (IsYugaByteEnabled())
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 									 YB_PROGRESS_CREATEIDX_BACKFILLING);
 	else
-	/* Set up initial progress report status */
 	{
 		const int	progress_index[] = {
 			PROGRESS_CREATEIDX_PHASE,
@@ -3373,14 +3377,14 @@ IndexBackfillHeapRangeScan(Relation table_rel,
 	return table_rel->rd_tableam->index_build_range_scan(table_rel,
 														 index_rel,
 														 index_info,
-														 true /* allow_sync */,
-														 false /* any_visible */,
-														 false /* progress */,
-														 0 /* start_blockno */,
-														 InvalidBlockNumber /* num_blocks */,
+														 true /* allow_sync */ ,
+														 false /* any_visible */ ,
+														 false /* progress */ ,
+														 0 /* start_blockno */ ,
+														 InvalidBlockNumber /* num_blocks */ ,
 														 NULL,
 														 callback_state,
-														 NULL, /* scan */
+														 NULL,	/* scan */
 														 bfinfo,
 														 bfresult,
 														 ybcallback);
@@ -4094,7 +4098,7 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	 * build on them (like PG), so we shouldn't update their pg_index entries.
 	 */
 	if (!skipped_constraint && !(IsYBRelation(iRel) &&
-		iRel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX))
+								 iRel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX))
 	{
 		Relation	pg_index;
 		HeapTuple	indexTuple;
@@ -4274,7 +4278,8 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 		Oid			indexNamespaceId = get_rel_namespace(indexOid);
 
 		/* TODO(fizaa): add YB prefix to iRel. */
-		Relation iRel = index_open(indexOid, AccessExclusiveLock);
+		Relation	iRel = index_open(indexOid, AccessExclusiveLock);
+
 		if (IsYBRelation(iRel))
 		{
 			if (!is_yb_table_rewrite && !iRel->rd_index->indisprimary)
@@ -4347,7 +4352,7 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 		newparams.options &= ~(REINDEXOPT_MISSING_OK);
 		newparams.tablespaceOid = InvalidOid;
 		result |= reindex_relation(toast_relid, flags, &newparams,
-								   false /* is_yb_table_rewrite */,
+								   false /* is_yb_table_rewrite */ ,
 								   yb_copy_split_options);
 	}
 
