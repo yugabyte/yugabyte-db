@@ -1233,8 +1233,11 @@ class NodeChecker():
                 return e.fill_and_return_entry(['Unexpected response received from TServer'],
                                                has_error=True)
             for connection in response_json["connections"]:
-                if connection["backend_type"] == "client backend":
-                    client_backends += 1
+                if (
+                    connection["backend_type"] == "client backend"
+                    or connection["backend_type"].startswith("yb-conn-mgr")
+                ):
+                        client_backends += 1
         except Exception as ex:
             message = str(ex)
             return e.fill_and_return_entry([message], has_error=True)
