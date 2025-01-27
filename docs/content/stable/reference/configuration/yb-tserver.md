@@ -1378,7 +1378,7 @@ Maximum size (in bytes) of changes from a tablet sent from the CDC service to th
 
 Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol. 
 
-Default: `4194304 (4MB)`
+Default: `4194304` (4MB)
 
 ##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
 
