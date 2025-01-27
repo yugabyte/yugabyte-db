@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -102,9 +103,15 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           createDownloadTasks(toOrderedSet(nodes.asPair()), newVersion);
 
           boolean ysqlMajorVersionUpgrade = false;
+          boolean requireAdditionalSuperUserForCatalogUpgrade = false;
           if (prevYBSoftwareConfig != null) {
             ysqlMajorVersionUpgrade =
                 gFlagsValidation.ysqlMajorVersionUpgrade(
+                    prevYBSoftwareConfig.getSoftwareVersion(),
+                    universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+            requireAdditionalSuperUserForCatalogUpgrade =
+                isSuperUserRequiredForCatalogUpgrade(
+                    universe,
                     prevYBSoftwareConfig.getSoftwareVersion(),
                     universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
           }
@@ -150,6 +157,10 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
                 universe, getNodesToEnableExpressionPushdown(universe), true /* flagValue */);
             createServerConfUpdateTaskForYsqlMajorUpgrade(
                 universe, universe.getTServers(), YsqlMajorVersionUpgradeState.ROLLBACK_COMPLETE);
+
+            if (requireAdditionalSuperUserForCatalogUpgrade) {
+              createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
+            }
           }
 
           // Check software version on each node.

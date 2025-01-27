@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
@@ -73,17 +74,18 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
   @Override
   public void run() {
+    Universe universe = getUniverse();
+    String newVersion = taskParams().ybSoftwareVersion;
+    String currentVersion =
+        getUniverse().getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     runUpgrade(
         () -> {
           MastersAndTservers nodesToApply = getNodesToBeRestarted();
           Set<NodeDetails> allNodes = toOrderedSet(fetchNodes(taskParams().upgradeOption).asPair());
-          Universe universe = getUniverse();
-          String newVersion = taskParams().ybSoftwareVersion;
-          String currentVersion =
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
           boolean requireYsqlMajorVersionUpgrade =
-              gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, newVersion)
-                  && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+              isYsqlMajorVersionUpgrade(universe, currentVersion, newVersion);
+          boolean requireAdditionalSuperUserForCatalogUpgrade =
+              isSuperUserRequiredForCatalogUpgrade(universe, currentVersion, newVersion);
 
           createUpdateUniverseSoftwareUpgradeStateTask(
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
@@ -102,14 +104,20 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
           // If any master has been updated to new version, then this step would have been
           // completed and we don't need to do it again.
-          if (requireYsqlMajorVersionUpgrade
-              && nodesToApply.mastersList.size() == universe.getMasters().size()) {
-            // Set ysql_yb_enable_expression_pushdown to false for tservers for ysql major upgrade.
-            createGFlagsUpgradeTaskForYSQLMajorUpgrade(
-                universe, YsqlMajorVersionUpgradeState.IN_PROGRESS);
+          if (requireYsqlMajorVersionUpgrade) {
+            if (nodesToApply.mastersList.size() == universe.getMasters().size()) {
+              // Set ysql_yb_enable_expression_pushdown to false for tservers for ysql major
+              // upgrade.
+              createGFlagsUpgradeTaskForYSQLMajorUpgrade(
+                  universe, YsqlMajorVersionUpgradeState.IN_PROGRESS);
+              // Run this pre-check after downloading software as it require pg_upgrade binary.
+              createPGUpgradeTServerCheckTask(newVersion);
+            }
 
-            // Run this pre-check after downloading software as it require pg_upgrade binary.
-            createPGUpgradeTServerCheckTask(newVersion);
+            if (requireAdditionalSuperUserForCatalogUpgrade) {
+              // Create a superuser for ysql catalog upgrade.
+              createManageCatalogUpgradeSuperUserTask(Action.CREATE_USER);
+            }
           }
 
           if (nodesToApply.mastersList.size() > 0) {
@@ -130,15 +138,22 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 true /* activeRole */);
           }
 
-          if (nodesToApply.tserversList.size() > 0) {
+          if (nodesToApply.tserversList.size() == universe.getTServers().size()) {
             // If any tservers is upgraded, then we can assume pg upgrade is completed.
             if (requireYsqlMajorVersionUpgrade
                 && nodesToApply.tserversList.size() == universe.getTServers().size()) {
               createPGUpgradeTServerCheckTask(newVersion);
 
               createRunYsqlMajorVersionCatalogUpgradeTask();
-            }
 
+              if (requireAdditionalSuperUserForCatalogUpgrade) {
+                // Delete the pg_pass file after catalog upgrade.
+                createManageCatalogUpgradeSuperUserTask(Action.DELETE_PG_PASS_FILE);
+              }
+            }
+          }
+
+          if (nodesToApply.tserversList.size() > 0) {
             createTServerUpgradeFlowTasks(
                 universe,
                 nodesToApply.tserversList,
@@ -193,6 +208,12 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
                   true /* isSoftwareRollbackAllowed */);
             }
+          }
+        },
+        null /* firstRunTxnCallback */,
+        () -> {
+          if (isSuperUserRequiredForCatalogUpgrade(universe, currentVersion, newVersion)) {
+            createManageCatalogUpgradeSuperUserTask(Action.DELETE_PG_PASS_FILE);
           }
         });
   }

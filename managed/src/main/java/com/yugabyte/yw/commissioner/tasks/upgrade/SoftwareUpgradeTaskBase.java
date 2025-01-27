@@ -4,12 +4,13 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -37,7 +38,6 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
-import play.mvc.Http.Status;
 
 @Slf4j
 public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
@@ -346,21 +346,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
   protected void createPrecheckTasks(Universe universe, String newVersion) {
     super.createPrecheckTasks(universe);
 
-    boolean ysqlMajorVersionUpgrade =
-        gFlagsValidation.ysqlMajorVersionUpgrade(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-                newVersion)
-            && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
-
-    if (ysqlMajorVersionUpgrade) {
-
-      // This is a temp check and it will be removed once we have solution from DB team.
-      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes) {
-        throw new PlatformServiceException(
-            Status.INTERNAL_SERVER_ERROR, "Dedicated nodes is not supported with PG15 upgrade");
-      }
-    }
-
     MastersAndTservers nodes = fetchNodes(taskParams().upgradeOption);
     Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
 
@@ -548,10 +533,35 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
         .orElse(null);
   }
 
+  protected boolean isYsqlMajorVersionUpgrade(
+      Universe universe, String currentVersion, String newVersion) {
+    return gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, newVersion)
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+  }
+
+  protected boolean isSuperUserRequiredForCatalogUpgrade(
+      Universe universe, String currentVersion, String newVersion) {
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    return isYsqlMajorVersionUpgrade(universe, currentVersion, newVersion)
+        && primaryCluster.userIntent.enableYSQLAuth
+        && (primaryCluster.userIntent.dedicatedNodes
+            || primaryCluster.userIntent.providerType.equals(CloudType.kubernetes));
+  }
+
   protected Runnable getFinalizeYSQLMajorUpgradeTask(Universe universe) {
     return () -> {
       createGFlagsUpgradeTaskForYSQLMajorUpgrade(
           universe, YsqlMajorVersionUpgradeState.FINALIZE_IN_PROGRESS);
+
+      if (universe.getUniverseDetails().prevYBSoftwareConfig != null) {
+        String currentVersion =
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+        String oldVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+        if (isSuperUserRequiredForCatalogUpgrade(universe, oldVersion, currentVersion)) {
+          createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
+        }
+      }
     };
   }
 }
