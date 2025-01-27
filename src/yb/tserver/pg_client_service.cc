@@ -1207,6 +1207,7 @@ class PgClientServiceImpl::Impl {
           IllegalState, "Received invalid stream_id: $0 from ListCDCSDKStreams", stream.stream_id);
 
       auto replication_slot = resp->mutable_replication_slots()->Add();
+      replication_slot->set_yb_lsn_type(stream.replication_slot_lsn_type);
       stream.ToPB(replication_slot);
       auto is_stream_active =
           current_time - stream_to_latest_active_time[*stream_id] <=

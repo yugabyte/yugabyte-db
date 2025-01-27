@@ -277,7 +277,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 {
 #define PG_GET_REPLICATION_SLOTS_COLS 11
 /* YB specific fields in pg_get_replication_slots */
-#define YB_PG_GET_REPLICATION_SLOTS_COLS 2
+#define YB_PG_GET_REPLICATION_SLOTS_COLS 3
 
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	TupleDesc	tupdesc;
@@ -361,6 +361,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		const char	*yb_stream_id;
 		bool		yb_stream_active;
 		uint64      yb_restart_commit_ht;
+		const char	*yb_lsn_type;
 
 		if (IsYugaByteEnabled())
 		{
@@ -371,6 +372,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			namestrcpy(&plugin, slot->output_plugin);
 			yb_stream_id = slot->stream_id;
 			yb_stream_active = slot->active;
+			yb_lsn_type = slot->yb_lsn_type;
 
 			restart_lsn = slot->restart_lsn;
 			confirmed_flush_lsn = slot->confirmed_flush;
@@ -462,9 +464,11 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		{
 			values[i++] = CStringGetTextDatum(yb_stream_id);
 			values[i++] = Int64GetDatum(yb_restart_commit_ht);
+			values[i++] = CStringGetTextDatum(yb_lsn_type);
 		}
 		else
 		{
+			nulls[i++] = true;
 			nulls[i++] = true;
 			nulls[i++] = true;
 		}

@@ -2997,11 +2997,26 @@ Status CatalogManager::GetCDCStream(
         stream_lock->pb.cdcsdk_disable_dynamic_table_addition());
   }
 
-  if (FLAGS_ysql_yb_allow_replication_slot_lsn_types &&
-      stream_lock->pb.has_cdcsdk_ysql_replication_slot_lsn_type()) {
+  // We need to ensure that we do not check the lsn type option when we are
+  // dealing with a gRPC stream. Adding a check to only access the lsn type values
+  // when we have a slot name present which essentially indicates that we are in
+  // the context of logical replication.
+  if (stream_lock->pb.has_cdcsdk_ysql_replication_slot_name()) {
     auto cdc_stream_info_options = stream_info->mutable_cdc_stream_info_options();
-    cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_lsn_type(
-        stream_lock->pb.cdcsdk_ysql_replication_slot_lsn_type());
+
+    auto replication_slot_lsn_type = ReplicationSlotLsnType::ReplicationSlotLsnType_SEQUENCE;
+
+    if (FLAGS_ysql_yb_allow_replication_slot_lsn_types &&
+        stream_lock->pb.has_cdcsdk_ysql_replication_slot_lsn_type()) {
+      replication_slot_lsn_type = stream_lock->pb.cdcsdk_ysql_replication_slot_lsn_type();
+    } else {
+      VLOG(2) << "No cdcsdk_ysql_replication_slot_lsn_type found for stream: " << stream->id()
+              << " and slot " << stream_lock->pb.cdcsdk_ysql_replication_slot_name()
+              << " with flag value: " << FLAGS_ysql_yb_allow_replication_slot_lsn_types
+              << ". Keeping default value of 'SEQUENCE'.";
+    }
+
+    cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_lsn_type(replication_slot_lsn_type);
   }
 
   auto replica_identity_map = stream_lock->pb.replica_identity_map();
