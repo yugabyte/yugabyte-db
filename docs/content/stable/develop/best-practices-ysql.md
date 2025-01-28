@@ -201,11 +201,13 @@ For more details, see [Prepared statements in PL/pgSQL](https://dev.to/aws-heroe
 
 {{<warning title="Avoid explicit PREPARE or EXECUTE">}}
 
-When using server-side pooling, avoid explicit PREPARE and EXECUTE calls and use protocol-level prepared statements instead. Explicit prepare/execute calls can make connections sticky, which prevents you from realizing the benefits of using YSQL Connection Manager and server-side pooling.
+Depending on your driver, you may have to set some parameters to leverage prepared statements. For example, Npgsql supports automatic preparation using the Max Auto Prepare and Auto Prepare Min Usages connection parameters, which you add to your connection string as follows:
 
-For example, with the Npgsql driver, add the following to your connection string:
+```sh
+Max Auto Prepare=100;Auto Prepare Min Usages=5;
+```
 
-`Max Auto Prepare=100;Auto Prepare Min Usages=5;`.
+Consult your driver documentation.
 
 Note: YSQL Connection Manager  is currently in Technical Preview {{<tags/feature/tp>}}.
 
