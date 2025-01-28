@@ -309,14 +309,16 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
 (3 rows)
 
 -- shard the collection on a, should sort on object_id only when there is a shard filter.
-SELECT documentdb_api.shard_collection('sort_pushdown', 'coll', '{"a": "hashed"}', false);
+SELECT documentdb_api.shard_collection('{ "shardCollection": "sort_pushdown.coll", "key": { "a": "hashed" }, "numInitialChunks": 2 }');
  shard_collection 
 ---------------------------------------------------------------------
  
 (1 row)
 
+SET citus.explain_all_tasks to on;
+SET citus.max_adaptive_executor_pool_size to 1;
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
-                                                                                           QUERY PLAN                                                                                           
+                                                                                                QUERY PLAN                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
    Task Count: 1
@@ -329,9 +331,9 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
                ->  Sort (actual rows=20 loops=1)
                      Sort Key: object_id
                      Sort Method: top-N heapsort  Memory: 26kB
-                     ->  Bitmap Heap Scan on documents_964001_9640005 collection (actual rows=3334 loops=1)
+                     ->  Bitmap Heap Scan on documents_964001_9640004 collection (actual rows=3334 loops=1)
                            Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson) AND (shard_key_value = '3904677705083871083'::bigint))
-                           Heap Blocks: exact=69
+                           Heap Blocks: exact=104
                            ->  BitmapAnd (actual rows=0 loops=1)
                                  ->  Bitmap Index Scan on a_id (actual rows=3334 loops=1)
                                        Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
@@ -340,16 +342,16 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
 (19 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$gt": 14}}, "sort": {"_id": 1}, "limit": 20 }');
-                                                                       QUERY PLAN                                                                        
+                                                                            QUERY PLAN                                                                             
 ---------------------------------------------------------------------
  Limit (actual rows=20 loops=1)
    ->  Sort (actual rows=20 loops=1)
          Sort Key: remote_scan."?sort?" NULLS FIRST
          Sort Method: quicksort  Memory: 26kB
          ->  Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
-               Task Count: 8
+               Task Count: 2
                Tuple data received from nodes: 700 bytes
-               Tasks Shown: One of 8
+               Tasks Shown: All
                ->  Task
                      Tuple data received from node: 700 bytes
                      Node: host=localhost port=58070 dbname=regression
@@ -359,23 +361,34 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
                                  Sort Method: top-N heapsort  Memory: 26kB
                                  ->  Bitmap Heap Scan on documents_964001_9640004 collection (actual rows=3333 loops=1)
                                        Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
-                                       Heap Blocks: exact=35
+                                       Heap Blocks: exact=104
                                        ->  Bitmap Index Scan on a_id (actual rows=3333 loops=1)
                                              Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
-(20 rows)
+               ->  Task
+                     Tuple data received from node: 0 bytes
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Limit (actual rows=0 loops=1)
+                           ->  Sort (actual rows=0 loops=1)
+                                 Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                                 Sort Method: quicksort  Memory: 25kB
+                                 ->  Bitmap Heap Scan on documents_964001_9640005 collection (actual rows=0 loops=1)
+                                       Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+                                       ->  Bitmap Index Scan on a_id (actual rows=0 loops=1)
+                                             Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+(31 rows)
 
 -- no filter on sharded collection should not sort on object_id
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": 1}, "limit": 20 }');
-                                                                       QUERY PLAN                                                                        
+                                                                            QUERY PLAN                                                                             
 ---------------------------------------------------------------------
  Limit (actual rows=20 loops=1)
    ->  Sort (actual rows=20 loops=1)
          Sort Key: remote_scan."?sort?" NULLS FIRST
-         Sort Method: quicksort  Memory: 28kB
-         ->  Custom Scan (Citus Adaptive) (actual rows=40 loops=1)
-               Task Count: 8
-               Tuple data received from nodes: 1400 bytes
-               Tasks Shown: One of 8
+         Sort Method: quicksort  Memory: 26kB
+         ->  Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
+               Task Count: 2
+               Tuple data received from nodes: 700 bytes
+               Tasks Shown: All
                ->  Task
                      Tuple data received from node: 700 bytes
                      Node: host=localhost port=58070 dbname=regression
@@ -383,8 +396,16 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
                            ->  Sort (actual rows=20 loops=1)
                                  Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
                                  Sort Method: top-N heapsort  Memory: 26kB
-                                 ->  Seq Scan on documents_964001_9640005 collection (actual rows=6667 loops=1)
-(16 rows)
+                                 ->  Seq Scan on documents_964001_9640004 collection (actual rows=10000 loops=1)
+               ->  Task
+                     Tuple data received from node: 0 bytes
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Limit (actual rows=0 loops=1)
+                           ->  Sort (actual rows=0 loops=1)
+                                 Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                                 Sort Method: quicksort  Memory: 25kB
+                                 ->  Seq Scan on documents_964001_9640005 collection (actual rows=0 loops=1)
+(24 rows)
 
 -- drop compound index, should use the _id index
 CALL documentdb_api.drop_indexes('sort_pushdown', '{ "dropIndexes": "coll", "index": "a_id"}');
@@ -395,7 +416,7 @@ CALL documentdb_api.drop_indexes('sort_pushdown', '{ "dropIndexes": "coll", "ind
 
 ANALYZE documentdb_data.documents_964001;
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
-                                                         QUERY PLAN                                                         
+                                                              QUERY PLAN                                                              
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
    Task Count: 1
@@ -405,32 +426,30 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
          Tuple data received from node: 420 bytes
          Node: host=localhost port=58070 dbname=regression
          ->  Limit (actual rows=20 loops=1)
-               ->  Index Scan using _id_ on documents_964001_9640005 collection (actual rows=20 loops=1)
+               ->  Index Scan using _id_ on documents_964001_9640004 collection (actual rows=20 loops=1)
                      Index Cond: (shard_key_value = '3904677705083871083'::bigint)
                      Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
 (11 rows)
 
 -- or should push down to the shards and use object_id
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"$or": [{"a": {"$eq": 14}}, {"a": {"$eq": 22}}]}, "sort": {"_id": 1}, "limit": 20 }');
-                                                                                                                                         QUERY PLAN                                                                                                                                         
+                                                                                                                                        QUERY PLAN                                                                                                                                        
 ---------------------------------------------------------------------
- Limit (actual rows=20 loops=1)
-   ->  Sort (actual rows=20 loops=1)
-         Sort Key: remote_scan."?sort?"
-         Sort Method: quicksort  Memory: 28kB
-         ->  Custom Scan (Citus Adaptive) (actual rows=40 loops=1)
-               Task Count: 2
-               Tuple data received from nodes: 1280 bytes
-               Tasks Shown: One of 2
-               ->  Task
-                     Tuple data received from node: 640 bytes
-                     Node: host=localhost port=58070 dbname=regression
-                     ->  Limit (actual rows=20 loops=1)
-                           ->  Sort (actual rows=20 loops=1)
-                                 Sort Key: object_id
-                                 Sort Method: top-N heapsort  Memory: 26kB
-                                 ->  Seq Scan on documents_964001_9640005 collection (actual rows=3334 loops=1)
-                                       Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "14" }, { "$numberInt" : "22" } ] }'::documentdb_core.bson) AND ((shard_key_value = '3904677705083871083'::bigint) OR (shard_key_value = '-8641956760761651950'::bigint)))
-                                       Rows Removed by Filter: 3333
-(18 rows)
+ Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 420 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 420 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit (actual rows=20 loops=1)
+               ->  Sort (actual rows=20 loops=1)
+                     Sort Key: object_id
+                     Sort Method: top-N heapsort  Memory: 26kB
+                     ->  Seq Scan on documents_964001_9640004 collection (actual rows=6667 loops=1)
+                           Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "14" }, { "$numberInt" : "22" } ] }'::documentdb_core.bson) AND ((shard_key_value = '3904677705083871083'::bigint) OR (shard_key_value = '-8641956760761651950'::bigint)))
+                           Rows Removed by Filter: 3333
+(14 rows)
 
+RESET citus.explain_all_tasks;
+RESET citus.max_adaptive_executor_pool_size;

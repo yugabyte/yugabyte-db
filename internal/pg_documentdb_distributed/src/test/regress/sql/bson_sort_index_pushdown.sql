@@ -62,7 +62,11 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": 1}, "limit": 20 }');
 
 -- shard the collection on a, should sort on object_id only when there is a shard filter.
-SELECT documentdb_api.shard_collection('sort_pushdown', 'coll', '{"a": "hashed"}', false);
+SELECT documentdb_api.shard_collection('{ "shardCollection": "sort_pushdown.coll", "key": { "a": "hashed" }, "numInitialChunks": 2 }');
+
+SET citus.explain_all_tasks to on;
+SET citus.max_adaptive_executor_pool_size to 1;
+
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$gt": 14}}, "sort": {"_id": 1}, "limit": 20 }');
 
@@ -78,3 +82,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
 
 -- or should push down to the shards and use object_id
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"$or": [{"a": {"$eq": 14}}, {"a": {"$eq": 22}}]}, "sort": {"_id": 1}, "limit": 20 }');
+
+RESET citus.explain_all_tasks;
+RESET citus.max_adaptive_executor_pool_size;
