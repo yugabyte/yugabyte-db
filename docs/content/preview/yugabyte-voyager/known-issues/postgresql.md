@@ -1063,7 +1063,7 @@ CREATE TABLE public.locations (
 
 **Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`.
 
-For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column: HSTORE, `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`.
+For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column: `HSTORE`, `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`.
 
 **Workaround**: None.
 
@@ -1335,7 +1335,7 @@ CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
 
 **Description**: If any of these PostgreSQL features for version 12 and later are present in the source schema, the import schema step on the target YugabyteDB will fail as YugabyteDB is currently PG11 compatible.
 
-- JSON Constructor [functions](https://www.postgresql.org/about/featurematrix/detail/395/) - `JSON_ARRAY_AGG`, `JSON_ARRAY`, `JSON_OBJECT`, `JSON_OBJECT_AGG`.
+- [JSON Constructor functions](https://www.postgresql.org/about/featurematrix/detail/395/) - `JSON_ARRAY_AGG`, `JSON_ARRAY`, `JSON_OBJECT`, `JSON_OBJECT_AGG`.
 - JSON query [functions](https://www.postgresql.org/docs/17/functions-json.html#FUNCTIONS-SQLJSON-TABLE) - `JSON_QUERY`, `JSON_VALUE`, `JSON_EXISTS`, `JSON_TABLE`.
 - IS JSON predicate [clause](https://www.postgresql.org/about/featurematrix/detail/396/).
 - Any Value Aggregate [function](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `any_value`

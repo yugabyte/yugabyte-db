@@ -17,14 +17,14 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ### Enhancements
 
-- **Air-gapped Installation:** The air-gapped installation method has been improved to no longer require `gcc` on the client machine running `yb-voyager`.
+- **Air-gapped Installation:** Improved air-gapped installation to no longer require `gcc` on the client machine running `yb-voyager`.
 - **Enhanced Assessment and Schema Analysis reports:**
-  - The **Assessment Report** has been enhanced with a single section summarizing all issues in a table format. Each issue includes a summary and an expandable section for more details. Users can now sort issues based on criteria such as category, type, or impact.
+  - Enhanced the **Assessment Report** with a single section summarizing all issues in a table. Each issue includes a summary and an expandable section for more details. You can now sort issues based on criteria such as category, type, or impact.
   - Detects the following unsupported features from PostgreSQL -
     - SQL Body in Create Function
-    - Common Table Expressions (With queries) with MATERIAZED clause.
+    - Common table expressions (WITH queries) that have MATERIAZED clause.
     - Non-decimal integer literals
-  - When assess-migration/analyze-schema is run against YugabyteDB {{<release "2.25.0.0">}}, do not report the following issues in assessment and schema analysis reports, as they have been fixed:
+  - When running assess-migration/analyze-schema against YugabyteDB {{<release "2.25.0.0">}} and later, the following issues are no longer reported, as they are fixed:
     - Stored generated columns
     - Before Row triggers on partitioned tables
     - Multi-range datatypes
@@ -38,7 +38,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
     - JSONB subscripting
     - Copy FROM .. WHERE
     - CTE with Materialized clause
-- **YugabyteD control plane:** Enhanced the information sent to the YugabyteD for migration assessment phase to also include the Migration Complexity Explanation.
+- **yugabyted control plane:** Enhanced the information sent to yugabyted for the migration assessment phase to also include the Migration Complexity Explanation.
 
 ### Bug fixes
 
