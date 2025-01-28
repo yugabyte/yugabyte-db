@@ -166,6 +166,7 @@ static TupleTableSlot *YbExecInsertAct(ModifyTableContext *context,
 									   bool canSetTag);
 
 static void YbFreeInsertOnConflictBatchState(YbInsertOnConflictBatchState *state);
+static void YbDropInsertOnConflictReadSlots(YbInsertOnConflictBatchState *state);
 
 /*
  * Verify that the tuples to be produced by INSERT or UPDATE match the
@@ -3635,15 +3636,7 @@ ExecEndModifyTable(ModifyTableState *node)
 	 * CONFLICT batching happens.
 	 */
 	if (node->yb_ioc_state)
-	{
-		/*
-		 * First, free up the key cache (and intents cache if possible)
-		 * corresponding to this state.
-		 */
-		YBCPgClearInsertOnConflictCache(node->yb_ioc_state);
-
 		YbFreeInsertOnConflictBatchState(node->yb_ioc_state);
-	}
 
 	/*
 	 * Allow any FDWs to shut down
@@ -3807,11 +3800,56 @@ static void
 YbFreeInsertOnConflictBatchState(YbInsertOnConflictBatchState *state)
 {
 	Assert(state);
-	Assert(state->pending_relids == NIL);
+
+	/*
+	 * Drop input slots and read slots (this should only be the case when
+	 * ExecutePlan numberTuples is nonzero and reached).
+	 */
+	list_free(state->pending_relids);
+	for (int i = 0; i < state->num_slots; ++i)
+	{
+		if (state->slots[i])
+		{
+			ExecDropSingleTupleTableSlot(state->slots[i]);
+			Assert(state->planSlots[i]);
+			ExecDropSingleTupleTableSlot(state->planSlots[i]);
+		}
+	}
 	pfree(state->slots);
 	pfree(state->planSlots);
 	pfree(state->tableOids);
+	YbDropInsertOnConflictReadSlots(state);
+
+	/*
+	 * Remove map from maps.
+	 */
+	YBCPgClearInsertOnConflictCache(state);
+
+	/*
+	 * Free state.
+	 */
 	pfree(state);
+}
+
+static void
+YbDropInsertOnConflictReadSlots(YbInsertOnConflictBatchState *state)
+{
+	/*
+	 * Drop the slots stored by the batch-read operation one by one. Doing
+	 * this here (rather than in pggate) keeps all the slot management code
+	 * in one place: slots are allocated in execIndexing and deallocated in
+	 * this function.
+	 */
+	YBCPgInsertOnConflictKeyInfo info = {NULL};
+	const uint64_t key_count = YBCPgGetInsertOnConflictKeyCount(state);
+	for (uint64_t i = 0; i < key_count; i++)
+	{
+		HandleYBStatus(YBCPgDeleteNextInsertOnConflictKey(state,
+														  &info));
+		if (info.slot)
+			ExecDropSingleTupleTableSlot(info.slot);
+	}
+	Assert(YBCPgGetInsertOnConflictKeyCount(state) == 0);
 }
 
 /*
@@ -3994,23 +4032,7 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 		estate->es_result_relation_info = saved_resultRelInfo;
 	}
 
-	/*
-	 * Drop the slots stored by the batch-read operation one by one. Doing
-	 * this here (rather than in pggate) keeps all the slot management code
-	 * in one place: slots are allocated in execIndexing and deallocated in
-	 * this function.
-	 */
-	YBCPgInsertOnConflictKeyInfo info = {NULL};
-	const uint64_t key_count = YBCPgGetInsertOnConflictKeyCount(state);
-	for (uint64_t i = 0; i < key_count; i++)
-	{
-		HandleYBStatus(YBCPgDeleteNextInsertOnConflictKey(state,
-														  &info));
-		if (info.slot)
-			ExecDropSingleTupleTableSlot(info.slot);
-	}
-	Assert(YBCPgGetInsertOnConflictKeyCount(state) == 0);
-
+	YbDropInsertOnConflictReadSlots(state);
 	state->num_slots = 0;
 	Assert(!state->flush_idx);
 	Assert(state->pending_relids == NIL);
