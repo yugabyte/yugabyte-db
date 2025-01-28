@@ -501,7 +501,7 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, true,
     "When set, it enables automatic tablet splitting for tables that are part of a "
     "CDCSDK stream");
 
-DEFINE_RUNTIME_bool(enable_tablet_split_of_replication_slot_streamed_tables, false,
+DEFINE_RUNTIME_bool(enable_tablet_split_of_replication_slot_streamed_tables, true,
     "When set, it enables automatic tablet splitting for tables that are part of replication "
     "slot's stream metadata");
 

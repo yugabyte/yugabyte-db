@@ -2240,6 +2240,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     TableId table_id_;
     std::string parent_tablet_id_;
     std::array<TabletId, kNumSplitParts> split_tablets_;
+    HybridTime hide_time_;
   };
   std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_cdcsdk_
       GUARDED_BY(mutex_);
@@ -2802,7 +2803,20 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       CoarseTimePoint deadline,
       bool* const bootstrap_required);
 
-  std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const;
+  std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const
+      REQUIRES_SHARED(mutex_);
+
+  // Reads the slot entries for all the stream_ids provided and returns the minimum restart time
+  // across them.
+  Result<HybridTime> GetMinRestartTimeAcrossSlots(
+      const std::unordered_set<xrepl::StreamId>& stream_ids) REQUIRES_SHARED(mutex_);
+
+  Result<std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>>
+  GetCDCSDKStreamCreationTimeMap(const std::unordered_set<xrepl::StreamId>& stream_ids)
+      REQUIRES_SHARED(mutex_);
+
+  bool IsCDCSDKTabletExpiredOrNotOfInterest(
+      HybridTime last_active_time, std::optional<HybridTime> stream_creation_time);
 
   Status AddNamespaceEntriesToPB(
       const std::vector<TableDescription>& tables,
