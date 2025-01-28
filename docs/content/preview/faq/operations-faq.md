@@ -50,9 +50,9 @@ Also, the following yb-tserver configuration flag is a factor in the size of eac
 
 - [`--log_segment_size_mb`](../../reference/configuration/yb-tserver/#log-segment-size-mb) – default is `64`.
 
-## How to determize the size of a YSQL database?
+## How do I determize the size of a YSQL database?
 
-Due to the lack of `pg_database_size` function, a custom function around `pg_table_size` needs to be used to calculate the size of the database.
+YugabyteDB doesn't currently support the `pg_database_size` function. Instead, use a custom function based on `pg_table_size` to calculate the size of the database.
 
 ```sql
 CREATE OR REPLACE FUNCTION yb_pg_database_size()
@@ -93,7 +93,7 @@ Now, when you run,
 SELECT yb_pg_database_size() as size_bytes, yb_pg_database_size()/1048576 as size_mb;
 ```
 
-you should get something like:
+You should see output like the following:
 
 ```caddyfile{.nocopy}
  size_bytes | size_mb
