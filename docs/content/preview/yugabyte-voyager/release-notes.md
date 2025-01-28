@@ -47,7 +47,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ## v1.8.9.1 - January 20, 2025
 
-- Fixed a [regression](https://github.com/yugabyte/yb-voyager/issues/2204) introduced in v1.8.8, for password authentication in the `import data` command, where the command fails with error `failed to connect to &lt;target-host> server error (FATAL: password authentication failed for user (SQLSTATE 28P01))`.
+- Fixed a [regression](https://github.com/yugabyte/yb-voyager/issues/2204) introduced in v1.8.8, for password authentication in the `import data` command, where the command fails with error `failed to connect to target-host server error (FATAL: password authentication failed for user (SQLSTATE 28P01)`.
 
 ## v1.8.9 - January 14, 2025
 
@@ -59,18 +59,18 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 ### Enhancements
 
 - Enhanced Assessment and Schema Analysis Reports to detect unsupported PostgreSQL features from PG 12 up to PG 17, including:
-  - Regexp functions (regexp_count, regexp_instr, regexp_like)
-  - Security Invoker Views
-  - JSON constructor and JSON Query functions
-  - IS_JSON predicate clauses (IS_JSON, IS JSON SCALAR, IS JSON OBJECT, IS JSON ARRAY)
-  - Aggregate functions, such as anyvalue, range_agg, range_intersect_agg
-  - COPY command syntax, such as COPY FROM ... WHERE and COPY ... ON_ERROR
-  - Multirange datatypes, like int4multirange, int8multirange, datemultirange, and so on
-  - FETCH FIRST … WITH TIES subclause in SELECT statement
-  - Foreign Key referencing a partitioned table
-  - JSONB subscripting in DML, DDL, or PL/PGSQL
-  - UNIQUE NULLS NOT DISTINCT in CREATE/ALTER TABLE statement
-  - The deterministic attribute in CREATE COLLATION
+  - Regexp functions (regexp_count, regexp_instr, regexp_like).
+  - Security Invoker Views.
+  - JSON constructor and JSON Query functions.
+  - IS_JSON predicate clauses (IS_JSON, IS JSON SCALAR, IS JSON OBJECT, IS JSON ARRAY).
+  - Aggregate functions, such as anyvalue, range_agg, range_intersect_agg.
+  - COPY command syntax, such as COPY FROM ... WHERE and COPY ... ON_ERROR.
+  - Multirange datatypes, like int4multirange, int8multirange, datemultirange, and so on.
+  - FETCH FIRST … WITH TIES subclause in SELECT statement.
+  - Foreign Key referencing a partitioned table.
+  - JSONB subscripting in DML, DDL, or PL/PGSQL.
+  - UNIQUE NULLS NOT DISTINCT in CREATE/ALTER TABLE statement.
+  - The deterministic attribute in CREATE COLLATION.
   - MERGE statements.
 
 ### Bug fixes

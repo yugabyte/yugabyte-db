@@ -1336,26 +1336,26 @@ CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
 **Description**: If any of these PostgreSQL features for version 12 and later are present in the source schema, the import schema step on the target YugabyteDB will fail as YugabyteDB is currently PG11 compatible.
 
 - [JSON Constructor functions](https://www.postgresql.org/about/featurematrix/detail/395/) - `JSON_ARRAY_AGG`, `JSON_ARRAY`, `JSON_OBJECT`, `JSON_OBJECT_AGG`.
-- JSON query [functions](https://www.postgresql.org/docs/17/functions-json.html#FUNCTIONS-SQLJSON-TABLE) - `JSON_QUERY`, `JSON_VALUE`, `JSON_EXISTS`, `JSON_TABLE`.
-- IS JSON predicate [clause](https://www.postgresql.org/about/featurematrix/detail/396/).
-- Any Value Aggregate [function](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `any_value`
-- COPY FROM command with ON_ERROR [option](https://www.postgresql.org/about/featurematrix/detail/433/).
-- Non-decimal integer [literals](https://www.postgresql.org/about/featurematrix/detail/407/)
-- Non-deterministic collations
+- [JSON query functions](https://www.postgresql.org/docs/17/functions-json.html#FUNCTIONS-SQLJSON-TABLE) - `JSON_QUERY`, `JSON_VALUE`, `JSON_EXISTS`, `JSON_TABLE`.
+- [IS JSON predicate clause](https://www.postgresql.org/about/featurematrix/detail/396/).
+- Any Value [Aggregate function](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `any_value`.
+- [COPY FROM command with ON_ERROR](https://www.postgresql.org/about/featurematrix/detail/433/) option.
+- [Non-decimal integer literals](https://www.postgresql.org/about/featurematrix/detail/407/).
+- Non-deterministic collations.
 
-Apart from these, the following issues are supported in the YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25) release (preview release where YugabyteDB now supports PostgreSQL 15)
+Apart from these, the following issues are supported in the YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25) release (preview release where YugabyteDB now supports PostgreSQL 15).
 
-- Multirange [datatypes](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-BUILTIN).
-- UNIQUE NULLS NOT DISTINCT [clause](https://www.postgresql.org/about/featurematrix/detail/392/) in constraint and index.
-- Range Aggregate [functions](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `range_agg`, `range_intersect_agg`.
-- FETCH FIRST … WITH TIES in select [statement](https://www.postgresql.org/docs/13/sql-select.html#SQL-LIMIT).
-- Regex [functions](https://www.postgresql.org/about/featurematrix/detail/367/) - `regexp_count`, `regexp_instr`, `regexp_like`
-- Foreign key [references](https://www.postgresql.org/about/featurematrix/detail/319/) to partitioned table.
-- Security invoker [views](https://www.postgresql.org/about/featurematrix/detail/389/).
+- [Multirange datatypes](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-BUILTIN).
+- [UNIQUE NULLS NOT DISTINCT clause](https://www.postgresql.org/about/featurematrix/detail/392/) in constraint and index.
+- [Range Aggregate functions](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `range_agg`, `range_intersect_agg`.
+- [FETCH FIRST … WITH TIES in select](https://www.postgresql.org/docs/13/sql-select.html#SQL-LIMIT) statement.
+- [Regex functions](https://www.postgresql.org/about/featurematrix/detail/367/) - `regexp_count`, `regexp_instr`, `regexp_like`.
+- [Foreign key references](https://www.postgresql.org/about/featurematrix/detail/319/) to partitioned table.
+- [Security invoker views](https://www.postgresql.org/about/featurematrix/detail/389/).
 - COPY FROM command with WHERE [clause](https://www.postgresql.org/about/featurematrix/detail/330/).
-- Deterministic [attribute](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC) in COLLATION objects.
-- SQL Body in Create [function](https://www.postgresql.org/docs/15/sql-createfunction.html#:~:text=a%20new%20session.-,sql_body,-The%20body%20of)
-- Common Table Expressions (With queries) with MATERIALIZED [clause](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-CTE-MATERIALIZATION)
+- [Deterministic attribute](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC) in COLLATION objects.
+- [SQL Body in Create function](https://www.postgresql.org/docs/15/sql-createfunction.html#:~:text=a%20new%20session.-,sql_body,-The%20body%20of).
+- [Common Table Expressions (With queries) with MATERIALIZED clause](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-CTE-MATERIALIZATION).
 
 ### MERGE command
 
