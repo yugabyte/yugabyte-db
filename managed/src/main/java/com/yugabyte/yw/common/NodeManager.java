@@ -2226,10 +2226,6 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");
           }
-          if (taskParam.nodeUuid != null) {
-            commandArgs.add("--node_uuid");
-            commandArgs.add(taskParam.nodeUuid.toString());
-          }
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -2641,6 +2637,10 @@ public class NodeManager extends DevopsBase {
         commandArgs.add(sensitiveData.get("--gflags"));
       }
       return localNodeManager.nodeCommand(type, nodeTaskParam, commandArgs);
+    }
+    if (nodeTaskParam.nodeUuid != null) {
+      commandArgs.add("--node_uuid");
+      commandArgs.add(nodeTaskParam.nodeUuid.toString());
     }
     commandArgs.add(nodeTaskParam.nodeName);
     try {
