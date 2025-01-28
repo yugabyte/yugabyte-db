@@ -1,5 +1,5 @@
 comment = 'Multi-Node API surface for DocumentDB'
-default_version = '0.100-0'
+default_version = '0.101-0'
 module_pathname = '$libdir/pg_documentdb_distributed'
 relocatable = false
 superuser = true
