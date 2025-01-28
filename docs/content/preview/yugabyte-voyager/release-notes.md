@@ -22,7 +22,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
   - Enhanced the **Assessment Report** with a single section summarizing all issues in a table. Each issue includes a summary and an expandable section for more details. You can now sort issues based on criteria such as category, type, or impact.
   - Detects the following unsupported features from PostgreSQL -
     - SQL Body in Create Function
-    - Common table expressions (WITH queries) that have MATERIAZED clause.
+    - Common table expressions (WITH queries) that have MATERIALIZED clause.
     - Non-decimal integer literals
   - When running assess-migration/analyze-schema against YugabyteDB {{<release "2.25.0.0">}} and later, the following issues are no longer reported, as they are fixed:
     - Stored generated columns
