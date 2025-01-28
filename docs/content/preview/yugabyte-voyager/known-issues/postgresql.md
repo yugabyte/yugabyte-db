@@ -1341,7 +1341,7 @@ CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
 - Any Value [Aggregate function](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `any_value`.
 - [COPY FROM command with ON_ERROR](https://www.postgresql.org/about/featurematrix/detail/433/) option.
 - [Non-decimal integer literals](https://www.postgresql.org/about/featurematrix/detail/407/).
-- Non-deterministic collations.
+- [Non-deterministic collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC).
 
 Apart from these, the following issues are supported in the YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25) release (preview release where YugabyteDB now supports PostgreSQL 15).
 
