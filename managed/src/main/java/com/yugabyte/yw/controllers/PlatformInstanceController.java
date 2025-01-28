@@ -38,7 +38,6 @@ import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.data.Form;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -63,39 +62,33 @@ public class PlatformInstanceController extends AuthenticatedController {
   public Result createInstance(UUID configUUID, Http.Request request) {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
-    Form<PlatformInstanceFormData> formData =
-        formFactory.getFormDataOrBadRequest(request, PlatformInstanceFormData.class);
-
+    PlatformInstanceFormData formData =
+        parseJsonAndValidate(request, PlatformInstanceFormData.class);
     // Cannot create a remote instance before creating a local instance.
-    if (!formData.get().is_local && !config.get().getLocal().isPresent()) {
+    if (!formData.is_local && !config.get().getLocal().isPresent()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot create a remote platform instance before creating local platform instance");
       // Cannot create a remote instance if local instance is follower.
-    } else if (!formData.get().is_local && !config.get().isLocalLeader()) {
+    } else if (!formData.is_local && !config.get().isLocalLeader()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create a remote platform instance on a follower platform instance");
       // Cannot create multiple local platform instances.
-    } else if (formData.get().is_local && config.get().getLocal().isPresent()) {
+    } else if (formData.is_local && config.get().getLocal().isPresent()) {
       throw new PlatformServiceException(BAD_REQUEST, "Local platform instance already exists");
       // Cannot create multiple leader platform instances.
-    } else if (formData.get().is_leader && config.get().isLocalLeader()) {
+    } else if (formData.is_leader && config.get().isLocalLeader()) {
       throw new PlatformServiceException(BAD_REQUEST, "Leader platform instance already exists");
-    } else if (!formData.get().is_local
+    } else if (!formData.is_local
         && !replicationManager.testConnection(
-            config.get(),
-            formData.get().getCleanAddress(),
-            config.get().getAcceptAnyCertificate())) {
+            config.get(), formData.getCleanAddress(), config.get().getAcceptAnyCertificate())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Standby YBA instance is unreachable or hasn't been configured yet");
     }
 
     PlatformInstance instance =
         PlatformInstance.create(
-            config.get(),
-            formData.get().getCleanAddress(),
-            formData.get().is_leader,
-            formData.get().is_local);
+            config.get(), formData.getCleanAddress(), formData.is_leader, formData.is_local);
 
     // Mark this instance as "failed over to" initially since it is a leader instance.
     if (instance.getIsLeader()) {
@@ -185,7 +178,7 @@ public class PlatformInstanceController extends AuthenticatedController {
                 action = Action.SUPER_ADMIN_ACTIONS),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  public Result promoteInstance(
+  public synchronized Result promoteInstance(
       UUID configUUID, UUID instanceUUID, String curLeaderAddr, boolean force, Http.Request request)
       throws java.net.MalformedURLException {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
@@ -208,8 +201,8 @@ public class PlatformInstanceController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot promote a leader platform instance");
     }
 
-    Form<RestorePlatformBackupFormData> formData =
-        formFactory.getFormDataOrBadRequest(request, RestorePlatformBackupFormData.class);
+    RestorePlatformBackupFormData formData =
+        parseJsonAndValidate(request, RestorePlatformBackupFormData.class);
 
     if (StringUtils.isBlank(curLeaderAddr)) {
       Optional<PlatformInstance> leaderInstance = config.get().getLeader();
@@ -232,7 +225,7 @@ public class PlatformInstanceController extends AuthenticatedController {
     // Make sure the backup file provided exists.
     Optional<File> backup =
         replicationManager.listBackups(new URL(curLeaderAddr)).stream()
-            .filter(f -> f.getName().equals(formData.get().backup_file))
+            .filter(f -> f.getName().equals(formData.backup_file))
             .findFirst();
     if (!backup.isPresent()) {
       throw new PlatformServiceException(BAD_REQUEST, "Could not find backup file");
@@ -241,8 +234,13 @@ public class PlatformInstanceController extends AuthenticatedController {
     // Cache local instance address before restore so we can query to new corresponding model.
     String localInstanceAddr = instance.get().getAddress();
 
+    // Save the local HA config before it is wiped out.
+    replicationManager.saveLocalHighAvailabilityConfig(config.get());
+
     // Restore the backup.
-    backup.ifPresent(replicationManager::restoreBackup);
+    if (!replicationManager.restoreBackup(backup.get())) {
+      throw new PlatformServiceException(BAD_REQUEST, "Could not restore backup");
+    }
 
     // Handle any incomplete tasks that may be leftover from the backup that was restored.
     taskManager.handleAllPendingTasks();
@@ -251,19 +249,12 @@ public class PlatformInstanceController extends AuthenticatedController {
     PlatformInstance.getByAddress(localInstanceAddr)
         .ifPresent(replicationManager::promoteLocalInstance);
 
-    // Start the new backup schedule.
-    replicationManager.start();
-
-    // Finally, switch the prometheus configuration to read from swamper targets directly.
-    replicationManager.switchPrometheusToStandalone();
     auditService()
         .createAuditEntry(
             request,
             Audit.TargetType.PlatformInstance,
             instanceUUID.toString(),
             Audit.ActionType.Promote);
-
-    replicationManager.oneOffSync();
 
     if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.haShutdownLevel) > 0) {
       Util.shutdownYbaProcess(5);

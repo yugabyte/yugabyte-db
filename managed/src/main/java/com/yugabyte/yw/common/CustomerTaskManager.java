@@ -347,7 +347,6 @@ public class CustomerTaskManager {
                 CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
                 handlePendingTask(customerTask, taskInfo);
               });
-
       for (Customer customer : Customer.getAll()) {
         // Change the DeleteInProgress backups state to QueuedForDeletion
         Backup.findAllBackupWithState(

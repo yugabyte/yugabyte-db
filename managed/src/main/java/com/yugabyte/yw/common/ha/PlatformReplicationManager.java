@@ -18,6 +18,8 @@ import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.PrometheusConfigHelper;
@@ -26,6 +28,8 @@ import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import io.ebean.DB;
+import io.ebean.annotation.Transactional;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
 import java.io.File;
@@ -36,12 +40,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -68,14 +74,14 @@ public class PlatformReplicationManager {
 
   private final PrometheusConfigHelper prometheusConfigHelper;
 
+  private final ConfigHelper configHelper;
+
   private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
 
   public static final Gauge HA_LAST_BACKUP_TIME =
       Gauge.build("yba_ha_last_backup_seconds", "Last backup time for remote instances")
           .labelNames(INSTANCE_ADDRESS_LABEL)
           .register(CollectorRegistry.defaultRegistry);
-
-  private static final String BACKUP_SIZE_LABEL = "last_backup_size";
 
   public static final Gauge HA_LAST_BACKUP_SIZE =
       Gauge.build("yba_ha_last_backup_size_mb", "Last backup size for remote instances")
@@ -86,19 +92,21 @@ public class PlatformReplicationManager {
       PlatformScheduler platformScheduler,
       PlatformReplicationHelper replicationHelper,
       FileDataService fileDataService,
-      PrometheusConfigHelper prometheusConfigHelper) {
+      PrometheusConfigHelper prometheusConfigHelper,
+      ConfigHelper configHelper) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.fileDataService = fileDataService;
     this.prometheusConfigHelper = prometheusConfigHelper;
-    this.schedule = new AtomicReference<>(null);
+    this.configHelper = configHelper;
+    this.schedule = new AtomicReference<>();
   }
 
   private Cancellable getSchedule() {
     return this.schedule.get();
   }
 
-  public void start() {
+  public synchronized void start() {
     if (replicationHelper.isBackupScheduleRunning(this.getSchedule())) {
       log.warn("Platform backup schedule is already started");
       return;
@@ -116,7 +124,7 @@ public class PlatformReplicationManager {
     }
   }
 
-  public void stop() {
+  public synchronized void stop() {
     if (!replicationHelper.isBackupScheduleRunning(this.getSchedule())) {
       log.debug("Platform backup schedule is already stopped");
       return;
@@ -125,6 +133,7 @@ public class PlatformReplicationManager {
     if (!this.getSchedule().cancel()) {
       log.warn("Unknown error occurred stopping platform backup schedule");
     }
+    deleteLocalHighAvailabilityConfig();
   }
 
   public void init() {
@@ -179,63 +188,172 @@ public class PlatformReplicationManager {
         replicationHelper.isBackupScheduleRunning(this.getSchedule()));
   }
 
-  public void demoteLocalInstance(PlatformInstance localInstance, String leaderAddr)
+  /** Validates that the request coming from the remote host to change the leader is not stale. */
+  public void validateSwitchLeaderRequestForStaleness(
+      HighAvailabilityConfig config, String requestLeaderAddr, Date requestLastFailover) {
+    Date localLastFailover = config.getLastFailover();
+    if (localLastFailover == null) {
+      log.debug("No failover has happened because last failover timestamp is not set");
+      return;
+    }
+    log.debug(
+        "Local last failover time='{}' and request failover time='{}' from remote host='{}'",
+        localLastFailover,
+        requestLastFailover,
+        requestLeaderAddr);
+    int result = localLastFailover.compareTo(requestLastFailover);
+    if (result < 0) {
+      return;
+    }
+    if (result == 0) {
+      // Ensure the request originates from the same leader if the timestamp is the same.
+      PlatformInstance localLeader = config.getLeader().orElse(null);
+      if (localLeader == null || localLeader.getAddress().equals(requestLeaderAddr)) {
+        return;
+      }
+    }
+    log.error(
+        "Rejecting request time={} from {} due to more recent last failover time={}",
+        requestLastFailover,
+        requestLeaderAddr,
+        localLastFailover);
+    throw new PlatformServiceException(
+        BAD_REQUEST, "Cannot accept request from stale leader " + requestLeaderAddr);
+  }
+
+  /** Demote the local instance that is invoked by a remote peer. */
+  @Transactional
+  public synchronized void demoteLocalInstance(
+      HighAvailabilityConfig config,
+      PlatformInstance localInstance,
+      String requestLeaderAddr,
+      Date requestLastFailover)
       throws MalformedURLException {
-    log.info("Demoting local instance.");
+    log.info(
+        "Demoting local instance {} in favor of leader {}",
+        localInstance.getAddress(),
+        requestLeaderAddr);
     if (!localInstance.getIsLocal()) {
       throw new RuntimeException("Cannot perform this action on a remote instance");
     }
+    validateSwitchLeaderRequestForStaleness(config, requestLeaderAddr, requestLastFailover);
+
+    if (localInstance.getAddress().equals(requestLeaderAddr)) {
+      log.warn("Detected partial promotion failure after backup restoration");
+      if (!updateLocalInstanceAfterRestore(config)) {
+        throw new RuntimeException(
+            String.format(
+                "Remote address %s is same as the local address %s. It cannot be fixed",
+                localInstance.getAddress(), requestLeaderAddr));
+      }
+      localInstance = config.getLocal().get();
+    }
+
+    config.updateLastFailover(requestLastFailover);
 
     // Stop the old backup schedule.
-    this.stopAndDisable();
+    stopAndDisable();
 
     // Demote the local instance to follower.
     localInstance.demote();
 
-    // Try switching local prometheus to read from the reported leader.
-    replicationHelper.switchPrometheusToFederated(new URL(leaderAddr));
-  }
-
-  public void promoteLocalInstance(PlatformInstance newLeader) {
-    log.info("Promoting local instance to active.");
-    HighAvailabilityConfig config = newLeader.getConfig();
-    Optional<PlatformInstance> previousLocal = config.getLocal();
-
-    if (!previousLocal.isPresent()) {
-      throw new RuntimeException("No local instance associated with backup being restored");
-    }
-
-    // Update which instance should be local.
-    previousLocal.get().updateIsLocal(false);
-    config
-        .getInstances()
-        .forEach(
+    // Set the leader locally.
+    PlatformInstance.getByAddress(requestLeaderAddr)
+        .ifPresent(
             i -> {
-              i.updateIsLocal(i.getUuid().equals(newLeader.getUuid()));
-              try {
-                // Clear out any old backups.
-                log.info("Cleaning up received backups.");
-                replicationHelper.cleanupReceivedBackups(new URL(i.getAddress()), 0);
-              } catch (MalformedURLException ignored) {
-              }
+              i.setIsLeader(true);
+              i.update();
             });
 
-    // Mark the failover timestamp.
-    config.updateLastFailover();
+    // Try switching local prometheus to read from the reported leader.
+    replicationHelper.switchPrometheusToFederated(new URL(requestLeaderAddr));
+
+    String version =
+        configHelper
+            .getConfig(ConfigType.YugawareMetadata)
+            .getOrDefault("version", "UNKNOWN")
+            .toString();
+    localInstance.setYbaVersion(version);
+    localInstance.update();
+  }
+
+  @VisibleForTesting
+  public boolean updateLocalInstanceAfterRestore(HighAvailabilityConfig config) {
+    AtomicBoolean updated = new AtomicBoolean();
+    Optional<HighAvailabilityConfig> localConfig = maybeGetLocalHighAvailabilityConfig();
+    PlatformInstance localInstance =
+        localConfig.isPresent() ? localConfig.get().getLocal().orElse(null) : null;
+    if (localInstance != null) {
+      config.getInstances().stream()
+          .sorted(Comparator.comparing(PlatformInstance::getIsLocal).reversed())
+          .forEach(
+              i -> {
+                log.debug(
+                    "Updating instance {}(uuid={}, isLocal={}, isLeader={})",
+                    i.getAddress(),
+                    i.getUuid(),
+                    i.getIsLocal(),
+                    i.getIsLeader());
+                boolean isLocal = i.getAddress().equals(localInstance.getAddress());
+                i.updateIsLocal(isLocal);
+                if (isLocal) {
+                  updated.set(isLocal);
+                }
+                try {
+                  // Clear out any old backups.
+                  log.info("Cleaning up received backups.");
+                  replicationHelper.cleanupReceivedBackups(new URL(i.getAddress()), 0);
+                } catch (MalformedURLException ignored) {
+                }
+              });
+    }
+    return updated.get();
+  }
+
+  public synchronized void promoteLocalInstance(PlatformInstance newLeader) {
+    log.info("Promoting local instance {} to active.", newLeader.getAddress());
+    HighAvailabilityConfig config = newLeader.getConfig();
+    // Update is_local after the backup is restored.
+    if (!config.getLocal().isPresent() || !updateLocalInstanceAfterRestore(config)) {
+      // It must update a local instance.
+      throw new RuntimeException("No local instance associated with backup being restored");
+    }
+    // Promote the new local leader first because the remote demotion response is ignored for
+    // eventual consistency. Otherwise, all of them be in standby if local promotion is done later.
+    persistLocalInstancePromotion(config, newLeader);
     // Attempt to ensure all remote instances are in follower state.
     // Remotely demote any instance reporting to be a leader.
     config
         .getRemoteInstances()
         .forEach(
             instance -> {
-              log.info("Demoting remote instance {}", instance.getAddress());
-              replicationHelper.demoteRemoteInstance(instance, true);
+              log.info(
+                  "Demoting remote instance {} in favor of {}",
+                  instance.getAddress(),
+                  newLeader.getAddress());
+              // As the error is not propagated, there can be split brain due to communication
+              // failure that will be fixed ultimately when the communication is restored due to
+              // background sync.
+              if (!replicationHelper.demoteRemoteInstance(instance, true)) {
+                log.warn("Could not demote remote instance {}", instance.getAddress());
+              }
             });
-    // Promote the new local leader.
-    // we need to refresh because i.setIsLocalAndUpdate updated the underlying db bypassing
-    // newLeader bean.
-    newLeader.refresh();
-    newLeader.promote();
+  }
+
+  @Transactional
+  private synchronized void persistLocalInstancePromotion(
+      HighAvailabilityConfig config, PlatformInstance localInstance) {
+    // Mark the failover timestamp.
+    config.updateLastFailover();
+    // Only one leader can be at a time. Demote the remote record first.
+    config.getRemoteInstances().forEach(PlatformInstance::demote);
+    localInstance.refresh();
+    localInstance.promote();
+    // Start the new backup schedule.
+    start();
+    // Finally, switch the prometheus configuration to read from swamper targets directly.
+    switchPrometheusToStandalone();
+    oneOffSync();
   }
 
   /**
@@ -246,8 +364,11 @@ public class PlatformReplicationManager {
    * @param config the local HA Config model
    * @param newInstances the JSON payload received from the leader instance
    */
-  public Set<PlatformInstance> importPlatformInstances(
-      HighAvailabilityConfig config, List<PlatformInstance> newInstances) {
+  @Transactional
+  public synchronized Set<PlatformInstance> importPlatformInstances(
+      HighAvailabilityConfig config,
+      List<PlatformInstance> newInstances,
+      Date requestLastFailover) {
     String localAddress = config.getLocal().get().getAddress();
 
     // Get list of request payload addresses.
@@ -261,7 +382,21 @@ public class PlatformReplicationManager {
               "Current instance (%s) not found in Sync request %s", localAddress, newAddrs));
     }
 
+    // Get the leader instance. It must be present as the leader sends the request.
+    PlatformInstance leaderInstance =
+        newInstances.stream()
+            .filter(PlatformInstance::getIsLeader)
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        BAD_REQUEST, "Leader must be included by the sender"));
+
+    validateSwitchLeaderRequestForStaleness(
+        config, leaderInstance.getAddress(), requestLastFailover);
+
     List<PlatformInstance> existingInstances = config.getInstances();
+
     // Get list of existing addresses.
     Set<String> existingAddrs =
         existingInstances.stream().map(PlatformInstance::getAddress).collect(Collectors.toSet());
@@ -274,10 +409,40 @@ public class PlatformReplicationManager {
 
     // Import the new instances, or update existing ones.
     return newInstances.stream()
-        .map(replicationHelper::processImportedInstance)
+        .map(this::processImportedInstance)
         .filter(Optional::isPresent)
         .map(Optional::get)
         .collect(Collectors.toSet());
+  }
+
+  @Transactional
+  private synchronized Optional<PlatformInstance> processImportedInstance(PlatformInstance i) {
+    Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
+    if (config.isPresent()) {
+      // Ensure the previous leader is marked as a follower to avoid uniqueness violation.
+      if (i.getIsLeader()) {
+        Optional<PlatformInstance> existingLeader = config.get().getLeader();
+        if (existingLeader.isPresent()
+            && !existingLeader.get().getAddress().equals(i.getAddress())) {
+          existingLeader.get().demote();
+        }
+      }
+      Optional<PlatformInstance> existingInstance = PlatformInstance.getByAddress(i.getAddress());
+      if (existingInstance.isPresent()) {
+        // Since we sync instances after sending backups, the leader instance has the source of
+        // truth as to when the last backup has been successfully sent to followers.
+        existingInstance.get().setLastBackup(i.getLastBackup());
+        existingInstance.get().setIsLeader(i.getIsLeader());
+        existingInstance.get().update();
+        i = existingInstance.get();
+      } else {
+        i.setIsLocal(false);
+        i.setConfig(config.get());
+        i.save();
+      }
+      return Optional.of(i);
+    }
+    return Optional.empty();
   }
 
   public boolean testConnection(
@@ -286,7 +451,7 @@ public class PlatformReplicationManager {
         replicationHelper.testConnection(
             config, config.getClusterKey(), address, acceptAnyCertificate);
     if (!result) {
-      log.error("Error testing connection to " + address);
+      log.error("Error testing connection to {}", address);
     }
     return result;
   }
@@ -306,7 +471,7 @@ public class PlatformReplicationManager {
                 })
             .orElse(false);
     if (!result) {
-      log.error("Error sending platform backup to " + remoteInstance.getAddress());
+      log.error("Error sending platform backup to {}", remoteInstance.getAddress());
       // Clear version mismatch metric
       replicationHelper.clearMetrics(config, remoteInstance.getAddress());
     }
@@ -320,68 +485,87 @@ public class PlatformReplicationManager {
     }
   }
 
+  private boolean precheckSyncCondition(HighAvailabilityConfig config) {
+    Optional<PlatformInstance> localInstance = config.getLocal();
+    if (!localInstance.isPresent()) {
+      log.error(NO_LOCAL_INSTANCE_MSG);
+      return false;
+    }
+    // No point in taking a backup if there is no one to send it to.
+    if (config.getRemoteInstances().isEmpty()) {
+      log.debug("Skipping HA cluster sync...");
+      return false;
+    }
+    Optional<PlatformInstance> leader = config.getLeader();
+    if (!leader.isPresent()) {
+      log.warn("No leader is found");
+      return false;
+    }
+    if (!leader.get().getUuid().equals(localInstance.get().getUuid())) {
+      log.debug("Skipping sync because the local instance is not the leader");
+      return false;
+    }
+    return true;
+  }
+
   private synchronized void sync() {
     try {
       HighAvailabilityConfig.get()
           .ifPresent(
               config -> {
                 try {
-                  if (!config.getLocal().isPresent()) {
-                    log.error(NO_LOCAL_INSTANCE_MSG);
+                  if (!precheckSyncCondition(config)) {
                     return;
                   }
-
+                  Optional<PlatformInstance> localInstance = config.getLocal();
                   List<PlatformInstance> remoteInstances = config.getRemoteInstances();
-                  // No point in taking a backup if there is no one to send it to.
-                  if (remoteInstances.isEmpty()) {
-                    log.debug("Skipping HA cluster sync...");
-
-                    return;
+                  AtomicBoolean backupCreated = new AtomicBoolean();
+                  try {
+                    // Create the platform backup.
+                    if (createBackup()) {
+                      backupCreated.set(true);
+                      // Update local last backup time since creating the backup succeeded.
+                      localInstance.get().updateLastBackup();
+                    } else {
+                      log.error("Error creating platform backup");
+                    }
+                  } catch (Exception e) {
+                    log.error("Error creating platform backup", e);
                   }
-
-                  // Create the platform backup.
-                  if (!this.createBackup()) {
-                    log.error("Error creating platform backup");
-
-                    return;
-                  }
-
-                  config
-                      .getLocal()
-                      .ifPresent(
-                          localInstance -> {
-                            // Update local last backup time since creating the backup succeeded.
-                            localInstance.updateLastBackup();
-                            remoteInstances.forEach(
-                                instance -> {
-                                  try {
-                                    Date lastLastBackup = instance.getLastBackup();
-                                    instance.updateLastBackup(localInstance.getLastBackup());
-                                    if (!sendBackup(instance)) {
-                                      instance.updateLastBackup(lastLastBackup);
-                                    }
-                                  } catch (Exception e) {
-                                    log.error(
-                                        "Exception {} sending backup to instance {}",
-                                        e.getMessage(),
-                                        instance.getAddress());
-                                  }
-                                  try {
-                                    if (!replicationHelper.syncToRemoteInstance(instance)) {
-                                      replicationHelper.clearMetrics(config, instance.getAddress());
-                                      log.error(
-                                          "Error syncing config to remote instance {}",
-                                          instance.getAddress());
-                                    }
-                                  } catch (Exception e) {
-                                    log.error(
-                                        "Exception {} syncing config to remote instance {}",
-                                        e.getMessage(),
-                                        instance.getAddress());
-                                  }
-                                });
-                          });
-                  // Export metric on last backup
+                  remoteInstances.forEach(
+                      instance -> {
+                        try {
+                          // Sync first before taking the backup to propagate the config faster.
+                          // TODO Put this on a different schedule to sync faster?
+                          if (replicationHelper.syncToRemoteInstance(instance)) {
+                            if (backupCreated.get()) {
+                              try {
+                                Date lastLastBackup = instance.getLastBackup();
+                                instance.updateLastBackup(localInstance.get().getLastBackup());
+                                if (!sendBackup(instance)) {
+                                  instance.updateLastBackup(lastLastBackup);
+                                }
+                              } catch (Exception e) {
+                                log.error(
+                                    "Exception {} sending backup to instance {}",
+                                    e.getMessage(),
+                                    instance.getAddress());
+                              }
+                            }
+                          } else {
+                            replicationHelper.clearMetrics(config, instance.getAddress());
+                            log.error(
+                                "Error syncing config to remote instance {}",
+                                instance.getAddress());
+                          }
+                        } catch (Exception e) {
+                          log.error(
+                              "Exception {} syncing config to remote instance {}",
+                              e.getMessage(),
+                              instance.getAddress());
+                        }
+                      });
+                  // Export metric on last backup.
                   remoteInstances.stream()
                       .forEach(
                           instance -> {
@@ -591,7 +775,7 @@ public class PlatformReplicationManager {
     ShellResponse response = replicationHelper.runCommand(new CreatePlatformBackupParams());
 
     if (response.code != 0) {
-      log.error("Backup failed: " + response.message);
+      log.error("Backup failed: {}", response.message);
     }
 
     return response.code == 0;
@@ -605,15 +789,44 @@ public class PlatformReplicationManager {
    */
   public boolean restoreBackup(File input) {
     log.info("Restoring platform backup...");
-
     ShellResponse response = replicationHelper.runCommand(new RestorePlatformBackupParams(input));
     if (response.code != 0) {
-      log.error("Restore failed: " + response.message);
+      log.error("Restore failed: {}", response.message);
     } else {
+      log.info("Platform backup restored successfully");
+      DB.cacheManager().clearAll();
       // Sync the files stored in DB to FS in case restore is successful.
       fileDataService.syncFileData(AppConfigHelper.getStoragePath(), true);
     }
 
     return response.code == 0;
+  }
+
+  /**
+   * Save the HA config to a local JSON file generally before a restore of the DB.
+   *
+   * @param config the current local HA config.
+   * @return the path to the file.
+   */
+  public synchronized Path saveLocalHighAvailabilityConfig(HighAvailabilityConfig config) {
+    return replicationHelper.saveLocalHighAvailabilityConfig(config);
+  }
+
+  /**
+   * Reads the HA config from the local JSON file that was saved earlier.
+   *
+   * @return the HA config.
+   */
+  public synchronized Optional<HighAvailabilityConfig> maybeGetLocalHighAvailabilityConfig() {
+    return replicationHelper.maybeGetLocalHighAvailabilityConfig();
+  }
+
+  /**
+   * Deletes the local HA config file that was saved earlier.
+   *
+   * @return true if deleted, else false.
+   */
+  public synchronized boolean deleteLocalHighAvailabilityConfig() {
+    return replicationHelper.deleteLocalHighAvailabilityConfig();
   }
 }
