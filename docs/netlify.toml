@@ -1392,6 +1392,27 @@
             https://www.google-analytics.com/
             https://www.yugabyte.com
             https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
+            https://via.intercom.io
+            https://api.intercom.io
+            https://api.au.intercom.io
+            https://api.eu.intercom.io
+            https://api-iam.intercom.io
+            https://api-iam.eu.intercom.io
+            https://api-iam.au.intercom.io
+            https://api-ping.intercom.io
+            https://nexus-websocket-a.intercom.io
+            wss://nexus-websocket-a.intercom.io
+            https://nexus-websocket-b.intercom.io
+            wss://nexus-websocket-b.intercom.io
+            https://nexus-europe-websocket.intercom.io
+            wss://nexus-europe-websocket.intercom.io
+            https://nexus-australia-websocket.intercom.io
+            wss://nexus-australia-websocket.intercom.io
+            https://uploads.intercomcdn.com
+            https://uploads.intercomcdn.eu
+            https://uploads.au.intercomcdn.com
+            https://uploads.eu.intercomcdn.com
+            https://uploads.intercomusercontent.com
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
@@ -1419,6 +1440,9 @@
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
             https://x.clearbitjs.com/
+            https://app.intercom.io
+            https://widget.intercom.io
+            https://js.intercomcdn.com
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1439,6 +1463,8 @@
             https://fonts.gstatic.com
             https://ka-f.fontawesome.com/releases/
             https://use.fontawesome.com
+            https://js.intercomcdn.com
+            https://fonts.intercomcdn.com
         ;
 
         object-src 'none'
@@ -1453,6 +1479,30 @@
             https://www.yugabyte.com
             https://www.gstatic.com
             https://www.google.com/s2/favicons
+            https://js.intercomcdn.com
+            https://static.intercomassets.com
+            https://downloads.intercomcdn.com
+            https://downloads.intercomcdn.eu
+            https://downloads.au.intercomcdn.com
+            https://uploads.intercomusercontent.com
+            https://gifs.intercomcdn.com
+            https://video-messages.intercomcdn.com
+            https://messenger-apps.intercom.io
+            https://messenger-apps.eu.intercom.io
+            https://messenger-apps.au.intercom.io
+            https://*.intercom-attachments-1.com
+            https://*.intercom-attachments.eu
+            https://*.au.intercom-attachments.com
+            https://*.intercom-attachments-2.com
+            https://*.intercom-attachments-3.com
+            https://*.intercom-attachments-4.com
+            https://*.intercom-attachments-5.com
+            https://*.intercom-attachments-6.com
+            https://*.intercom-attachments-7.com
+            https://*.intercom-attachments-8.com
+            https://*.intercom-attachments-9.com
+            https://static.intercomassets.eu
+            https://static.au.intercomassets.com
         ;
 
         child-src 'self' 'unsafe-inline'
@@ -1460,6 +1510,8 @@
             https://app.supademo.com/
             https://www.google.com/
             https://www.youtube.com/
+            https://intercom-sheets.com
+            https://www.intercom-reporting.com
         ;
 
         frame-ancestors 'self'
