@@ -109,4 +109,4 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 - By default, `currval` and `nextval` functions do not work when YSQL Connection Manager is enabled. They can be supported with the help of the `ysql_conn_mgr_sequence_support_mode` flag.
 - Queries using the extended query protocol may exhibit unexpected behavior with certain drivers (including libpq (C), Npgsql (C#), lib/pq (Go)), though extensive testing shows compatibility with the JDBC and psycopg/psycopg2 drivers. [#24898](https://github.com/yugabyte/yugabyte-db/issues/24898)
 - YSQL Connection Manager does not yet support IPv6 connections. [#24765](https://github.com/yugabyte/yugabyte-db/issues/24765)
-- YSQL Connection Manager does not currently support certificate-based TLS authentication. [#20658](https://github.com/yugabyte/yugabyte-db/issues/20658)
+- YSQL Connection Manager does not currently support certificate-based TLS encryption. [#20658](https://github.com/yugabyte/yugabyte-db/issues/20658)
