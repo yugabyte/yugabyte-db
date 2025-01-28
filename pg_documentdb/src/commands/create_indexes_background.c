@@ -1015,7 +1015,6 @@ IsSkippableError(int targetErrorCode, char *errMsg)
 	if (targetErrorCode != -1)
 	{
 		if (EreportCodeIsDocumentDBError(targetErrorCode) &&
-			targetErrorCode != ERRCODE_DOCUMENTDB_INTERNALERROR &&
 			targetErrorCode != ERRCODE_DOCUMENTDB_INTERNALERROR)
 		{
 			/* Mongo errors that are not internal errors are skippable */
