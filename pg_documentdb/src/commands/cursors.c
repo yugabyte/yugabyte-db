@@ -42,6 +42,8 @@
  */
 extern int32_t MaxWorkerCursorSize;
 
+static char LastOpenPortalName[NAMEDATALEN] = { 0 };
+
 /*
  * Reason why the current page execution yielded.
  */
@@ -101,7 +103,7 @@ static void UpdateTailableCursorInContinuationMapCore(bson_iter_t *iter,
 													  HTAB *cursorMap);
 
 static Portal PlanStreamingQuery(Query *query, Datum parameter, HTAB *cursorMap);
-
+static void CleanupPortalState(Portal portal);
 static TerminationReason FetchCursorAndWriteUntilPageOrSize(Portal portal, int32_t
 															batchSize,
 															pgbson_array_writer *writer,
@@ -322,12 +324,26 @@ CreateAndDrainPersistedQuery(const char *cursorName, Query *query,
 							 bool closeCursor)
 {
 	/* If there's a new with-hold cursor, clean up any old state */
-	if (isHoldCursor)
+
+	/* We may be tempted to reuse the same cursorName so that CreatePortal
+	 * drops the cursor for us but we also need to validate that the cursorId matches the
+	 * getMore - so that a query like
+	 * startQuery -> getMore(cursor1) -> getMore(cursor2) does not accidentally return
+	 * cursor1's results.
+	 */
+	if (LastOpenPortalName[0] != '\0')
 	{
-		if (!ThereAreNoReadyPortals())
+		elog(NOTICE, "There are open held portals. Closing them");
+		Portal lastPortal = GetPortalByName(LastOpenPortalName);
+		if (lastPortal != NULL)
 		{
-			elog(NOTICE, "There are open held portals. Closing them");
-			PortalHashTableDeleteAll();
+			elog(LOG, "Dropping %s portal: Closing forcefully", lastPortal->name);
+			PortalDrop(lastPortal, false);
+		}
+		else
+		{
+			elog(LOG, "portal %s was not found", LastOpenPortalName);
+			LastOpenPortalName[0] = '\0';
 		}
 	}
 
@@ -363,7 +379,6 @@ CreateAndDrainPersistedQuery(const char *cursorName, Query *query,
 	queryPortal->visible = true;
 	queryPortal->cursorOptions = cursorOptions;
 
-
 	if (query->commandType == CMD_MERGE)
 	{
 		/* In order to use a portal & SPI in Merge Command we need to set it to true */
@@ -385,6 +400,20 @@ CreateAndDrainPersistedQuery(const char *cursorName, Query *query,
 
 	/* Start execution */
 	PortalStart(queryPortal, paramList, 0, GetActiveSnapshot());
+
+	if (!closeCursor)
+	{
+		/* Copy the cursor name to the last opened cursor */
+		strcpy(LastOpenPortalName, queryPortal->name);
+
+		/* Add a copy hook */
+		if (queryPortal->cleanup != &PortalCleanup)
+		{
+			ereport(ERROR, (errmsg("cleanup is overridden. This is unsupported")));
+		}
+
+		queryPortal->cleanup = CleanupPortalState;
+	}
 
 	if (!closeCursor && isHoldCursor)
 	{
@@ -560,6 +589,15 @@ PlanStreamingQuery(Query *query, Datum parameter, HTAB *cursorMap)
 		}
 	}
 	return queryPortal;
+}
+
+
+static void
+CleanupPortalState(Portal portal)
+{
+	LastOpenPortalName[0] = '\0';
+	portal->cleanup = PortalCleanup;
+	PortalCleanup(portal);
 }
 
 

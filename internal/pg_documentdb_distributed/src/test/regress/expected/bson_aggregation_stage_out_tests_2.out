@@ -437,6 +437,7 @@ NOTICE:  creating collection
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$project" : {"_id" : 0} } ,{"$out" : "target"  } ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
+NOTICE:  There are open held portals. Closing them
                                                             cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
@@ -673,7 +674,7 @@ NOTICE:  creating collection
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "explainsrc", "pipeline": [{"$out" :  "target"} ] }');
 NOTICE:  creating collection
-                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                         
+                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                              
 ---------------------------------------------------------------------
  Custom Scan (Citus MERGE INTO ...)
    MERGE INTO documents_9864 method: pull to coordinator
@@ -699,7 +700,7 @@ SELECT documentdb_api.shard_collection('newdb', 'explainsrc', '{ "a": "hashed" }
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "explainsrc", "pipeline": [{"$out" :  "target"} ] }');
-                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                         
+                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                              
 ---------------------------------------------------------------------
  Custom Scan (Citus MERGE INTO ...)
    MERGE INTO documents_9864 method: pull to coordinator

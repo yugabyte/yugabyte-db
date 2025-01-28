@@ -928,3 +928,21 @@ SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.movies", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
+-- testing with batchSize that doesn't drain
+-- first drain one time with a batchSize of 2 - this leaves a cursor state around
+SELECT * FROM aggregation_cursor_test.drain_aggregation_query(loopCount => 1, pageSize => 1, pipeline => '{ "": [{ "$skip": 2 }]}');
+                                                                                                    filtereddoc                                                                                                     | docsize |                                                                   continuationfiltered                                                                   | persistconnection 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+----------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------
+ { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "db.get_aggregation_cursor_test" }, "ok" : { "$numberDouble" : "1.0" }, "batchCount" : { "$numberInt" : "1" }, "ids" : [ { "$numberInt" : "3" } ] } | 5654033 | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" } } | t
+ { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "db.get_aggregation_cursor_test" }, "ok" : { "$numberDouble" : "1.0" }, "batchCount" : { "$numberInt" : "1" }, "ids" : [ { "$numberInt" : "4" } ] } | 5654032 | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" } } | f
+(2 rows)
+
+-- now run a new query - this should close the cursor above, and continue with a fresh query
+SELECT * FROM aggregation_cursor_test.drain_aggregation_query(loopCount => 1, pageSize => 1, pipeline => '{ "": [{ "$skip": 2 }]}');
+NOTICE:  There are open held portals. Closing them
+                                                                                                    filtereddoc                                                                                                     | docsize |                                                                   continuationfiltered                                                                   | persistconnection 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+----------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------
+ { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "db.get_aggregation_cursor_test" }, "ok" : { "$numberDouble" : "1.0" }, "batchCount" : { "$numberInt" : "1" }, "ids" : [ { "$numberInt" : "3" } ] } | 5654033 | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" } } | t
+ { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "db.get_aggregation_cursor_test" }, "ok" : { "$numberDouble" : "1.0" }, "batchCount" : { "$numberInt" : "1" }, "ids" : [ { "$numberInt" : "4" } ] } | 5654032 | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" } } | f
+(2 rows)
+
