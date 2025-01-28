@@ -6943,25 +6943,41 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
   return all_tablets_done || table->is_system() || table->IsColocatedUserTable();
 }
 
-TableInfo::WriteLock CatalogManager::PrepareTableDeletion(const TableInfoPtr& table) {
+std::pair<TableInfo::WriteLock, TransactionId> CatalogManager::PrepareTableDeletion(
+    const TableInfoPtr& table) {
   auto lock = table->LockForWrite();
   if (lock->is_hiding()) {
     LOG(INFO) << "Marking table as HIDDEN: " << table->ToString();
     lock.mutable_data()->pb.set_hide_state(SysTablesEntryPB::HIDDEN);
     lock.mutable_data()->pb.set_hide_hybrid_time(master_->clock()->Now().ToUint64());
     // Don't erase hidden tablets from partitions_ as they are needed for CLONE, PITR, SELECT AS-OF.
-    return lock;
-  }
-  if (lock->is_deleting()) {
+  } else if (lock->is_deleting()) {
     // Update the metadata for the on-disk state.
     LOG(INFO) << "Marking table as DELETED: " << table->ToString();
     lock.mutable_data()->set_state(SysTablesEntryPB::DELETED,
         Substitute("Deleted with tablets at $0", LocalTimeAsString()));
     // Erase all the tablets from tablets_ and partitions_ structures.
     table->ClearTabletMaps();
-    return lock;
+  } else {
+    return {TableInfo::WriteLock(), TransactionId::Nil()};
   }
-  return TableInfo::WriteLock();
+
+  auto transaction_id_res = lock->GetCurrentDdlTransactionId();
+  TransactionId transaction_id;
+  if (transaction_id_res.ok()) {
+    transaction_id = *transaction_id_res;
+  } else {
+    LOG(INFO) << "Failed to get current DDL transaction for table " + table->ToString() << ": "
+              << transaction_id_res.status();
+    transaction_id = TransactionId::Nil();
+  }
+  if (transaction_id != TransactionId::Nil()) {
+    VLOG(3) << "Check table deleted " << table->id();
+    lock.mutable_data()->pb.clear_ysql_ddl_txn_verifier_state();
+    lock.mutable_data()->pb.clear_transaction();
+  }
+
+  return {std::move(lock), transaction_id};
 }
 
 void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
@@ -6977,13 +6993,13 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
   }
   std::sort(tables.begin(), tables.end(), IdLess());
   // Mark the tables as DELETED and remove them from the in-memory maps.
-  vector<TableInfo*> tables_to_update_on_disk;
-  vector<TableInfo::WriteLock> table_locks;
+  std::vector<TableInfo*> tables_to_update_on_disk;
+  std::vector<std::pair<TableInfo::WriteLock, TransactionId>> table_lock_and_transaction_ids;
   for (const auto& table : tables) {
     if (ShouldDeleteTable(table)) {
-      auto lock = PrepareTableDeletion(table);
-      if (lock.locked()) {
-        table_locks.push_back(std::move(lock));
+      auto lock_and_transaction_id = PrepareTableDeletion(table);
+      if (lock_and_transaction_id.first.locked()) {
+        table_lock_and_transaction_ids.push_back(std::move(lock_and_transaction_id));
         tables_to_update_on_disk.push_back(table.get());
       }
     }
@@ -6995,19 +7011,19 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
       return;
     }
     // Update the table in-memory info as DELETED after we've removed them from the maps.
-    for (auto& lock : table_locks) {
+    for (auto& [lock, _] : table_lock_and_transaction_ids) {
       lock.Commit();
     }
+    size_t i = 0;
     for (auto table : tables_to_update_on_disk) {
+      auto transaction_id = table_lock_and_transaction_ids[i].second;
+      ++i;
       // Clean up any DDL verification state that is waiting for this table to start deleting.
-      auto res = table->LockForRead()->GetCurrentDdlTransactionId();
-      WARN_NOT_OK(
-          res, Format("Failed to get current DDL transaction for table $0", table->ToString()));
-      if (!res.ok() || res.get() == TransactionId::Nil()) {
+      if (transaction_id.IsNil()) {
         continue;
       }
       VLOG(3) << "Cleanup deleted table " << table->id();
-      RemoveDdlTransactionState(table->id(), {res.get()});
+      RemoveDdlTransactionState(table->id(), {transaction_id});
     }
     // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
     // TODO: SysCatalog::DeleteItem() if we've DELETED all user tables in a DELETING namespace.
@@ -7516,6 +7532,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       }
     } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE) {
       if (!l->has_ysql_ddl_txn_verifier_state()) {
+        LOG_WITH_FUNC(INFO) << "Add ysql_ddl_txn_verifier_state to " << table->id();
         table_pb.mutable_transaction()->CopyFrom(req->transaction());
         auto *ddl_state = table_pb.add_ysql_ddl_txn_verifier_state();
         SchemaToPB(previous_schema, ddl_state->mutable_previous_schema());
@@ -12604,16 +12621,12 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
     if (table->is_index()) {
       indexed_table = GetTableInfo(table->indexed_table_id());
     }
-    auto lock = PrepareTableDeletion(table);
+    auto [lock, transaction_id] = PrepareTableDeletion(table);
     if (!lock.locked()) {
       return;
     }
     // Clean up any DDL verification state that is waiting for this table to be deleted.
-    auto res = lock->GetCurrentDdlTransactionId();
-    WARN_NOT_OK(
-        res, "Failed to get current DDL transaction for table " + table->ToString());
-    bool need_remove_ddl_state = false;
-    if (res.ok() && res.get() != TransactionId::Nil()) {
+    if (!transaction_id.IsNil()) {
       // When deleting an index, we also need to update the indexed table
       // to remove this index from it. Updating the indexed table involves
       // setting up a fully_applied_schema and incrementing its schema version.
@@ -12641,10 +12654,6 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
               1.0 /* delay_multiplier */),
           Format("Fully_applied_schema of $0 fail to clear", *indexed_table));
       }
-      VLOG(3) << "Check table deleted " << table->id();
-      need_remove_ddl_state = true;
-      lock.mutable_data()->pb.clear_ysql_ddl_txn_verifier_state();
-      lock.mutable_data()->pb.clear_transaction();
     }
     Status s = sys_catalog_->Upsert(epoch, table);
     if (!s.ok()) {
@@ -12654,8 +12663,8 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
       return;
     }
     lock.Commit();
-    if (need_remove_ddl_state) {
-      RemoveDdlTransactionState(table->id(), {res.get()});
+    if (!transaction_id.IsNil()) {
+      RemoveDdlTransactionState(table->id(), {transaction_id});
     }
   }), "Failed to submit update table task");
 }

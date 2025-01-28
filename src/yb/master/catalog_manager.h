@@ -883,7 +883,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   //
   // If all conditions are met, returns a locked write lock on this table.
   // Otherwise lock is default constructed, i.e. not locked.
-  TableInfo::WriteLock PrepareTableDeletion(const TableInfoPtr& table);
+  std::pair<TableInfo::WriteLock, TransactionId> PrepareTableDeletion(const TableInfoPtr& table);
   bool ShouldDeleteTable(const TableInfoPtr& table);
 
   // Used by ConsensusService to retrieve the TabletPeer for a system
