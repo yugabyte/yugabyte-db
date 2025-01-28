@@ -1411,4 +1411,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable option for creating backup schedules that support off-cluster PITR",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> certManagerCommonNameRequired =
+      new ConfKeyInfo<>(
+          "yb.tls.cert_manager.common_name_required",
+          ScopeType.UNIVERSE,
+          "Common Name Required for Certificates",
+          "If true, YBA will add commonName to the CertificateRequest sent to cert manager.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
