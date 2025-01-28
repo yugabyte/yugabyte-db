@@ -187,11 +187,13 @@ Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data
 
 XClusterDDLQueueHandler::XClusterDDLQueueHandler(
     client::YBClient* local_client, const NamespaceName& namespace_name,
-    const NamespaceId& namespace_id, const std::string& log_prefix,
-    TserverXClusterContextIf& xcluster_context, ConnectToPostgresFunc connect_to_pg_func)
+    const NamespaceId& source_namespace_id, const NamespaceId& target_namespace_id,
+    const std::string& log_prefix, TserverXClusterContextIf& xcluster_context,
+    ConnectToPostgresFunc connect_to_pg_func)
     : local_client_(local_client),
       namespace_name_(namespace_name),
-      namespace_id_(namespace_id),
+      source_namespace_id_(source_namespace_id),
+      target_namespace_id_(target_namespace_id),
       log_prefix_(log_prefix),
       xcluster_context_(xcluster_context),
       connect_to_pg_func_(std::move(connect_to_pg_func)) {}
@@ -226,7 +228,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
   HybridTime safe_time_ht = VERIFY_RESULT(GetXClusterSafeTimeForNamespace());
   SCHECK(
       !safe_time_ht.is_special(), InternalError, "Found invalid safe time $0 for namespace $1",
-      safe_time_ht, namespace_id_);
+      safe_time_ht, target_namespace_id_);
   SCHECK_GE(
       safe_time_ht, target_safe_ht, TryAgain, "Waiting for other pollers to catch up to safe time");
 
@@ -314,7 +316,7 @@ Status XClusterDDLQueueHandler::ProcessNewRelations(
     for (const auto& new_rel : *new_rel_map) {
       VALIDATE_MEMBER(new_rel, kDDLJsonRelFileOid, Int);
       VALIDATE_MEMBER(new_rel, kDDLJsonRelName, String);
-      const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id_));
+      const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id_));
       const auto relfile_oid = new_rel[kDDLJsonRelFileOid].GetInt();
       const auto rel_name = new_rel[kDDLJsonRelName].GetString();
       RETURN_NOT_OK(xcluster_context_.SetSourceTableMappingForCreateTable(
@@ -406,7 +408,7 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
 
 Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
   return local_client_->GetXClusterSafeTimeForNamespace(
-      namespace_id_, master::XClusterSafeTimeFilter::DDL_QUEUE);
+      target_namespace_id_, master::XClusterSafeTimeFilter::DDL_QUEUE);
 }
 
 Result<std::vector<std::tuple<int64, int64, std::string>>>

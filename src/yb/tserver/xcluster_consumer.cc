@@ -27,6 +27,7 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
+#include "yb/common/ysql_utils.h"
 
 #include "yb/gutil/map-util.h"
 
@@ -529,9 +530,16 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             entry.disable_stream);
 
         if (ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
+          auto source_namespace_id = GetNamespaceIdFromYsqlTableId(producer_tablet_info.table_id);
+          if (!source_namespace_id.ok()) {
+            LOG(WARNING) << "Could not get source namespace id for table "
+                         << producer_tablet_info.table_id << ": "
+                         << source_namespace_id.status().ToString();
+            continue;  // Don't finish creation.  Try again on the next RunThread().
+          }
           xcluster_poller->InitDDLQueuePoller(
-              use_local_tserver, rate_limiter_.get(), consumer_namespace_name, xcluster_context_,
-              connect_to_pg_func_);
+              use_local_tserver, rate_limiter_.get(), consumer_namespace_name, *source_namespace_id,
+              xcluster_context_, connect_to_pg_func_);
         } else {
           xcluster_poller->Init(use_local_tserver, rate_limiter_.get());
         }

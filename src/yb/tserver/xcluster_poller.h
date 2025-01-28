@@ -68,8 +68,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
   void InitDDLQueuePoller(
       bool use_local_tserver, rocksdb::RateLimiter* rate_limiter,
-      const NamespaceName& namespace_name, TserverXClusterContextIf& xcluster_context,
-      ConnectToPostgresFunc connect_to_pg_func);
+      const NamespaceId& source_namespace_id, const NamespaceName& target_namespace_name,
+      TserverXClusterContextIf& xcluster_context, ConnectToPostgresFunc connect_to_pg_func);
 
   void StartShutdown() override;
   void CompleteShutdown() override;
