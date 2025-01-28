@@ -1,9 +1,9 @@
 ---
 title: YugabyteDB Quick start for Linux
 headerTitle: Quick start
-linkTitle: Linux
-description: Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
-headcontent: Create a local cluster on a single host
+linkTitle: Quick start
+headcontent: Get started in less than 5 minutes in the cloud or on your desktop
+description: Get started using YugabyteDB in less than five minutes on Linux.
 aliases:
   - /quick-start/linux/
   - /preview/quick-start/linux/

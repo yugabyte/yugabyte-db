@@ -2,7 +2,7 @@
 title: YugabyteDB Quick start for macOS
 headerTitle: Quick start
 linkTitle: Quick start
-headcontent: Create a local cluster on a single host
+headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
   - /preview/quick-start/create-local-cluster/
