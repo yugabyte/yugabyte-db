@@ -607,10 +607,29 @@ SELECT document FROM bson_aggregation_pipeline('db',
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
 
+SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id", "pipeline": [ { "$addFields": { "myBar": 1 } }, { "$limit": 10 }] } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
+
+SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs" } } ], "cursor": {} }');
+
+SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "includeArrayIndex": "idx" } } ], "cursor": {} }'); -- this will not inline
+
+SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "preserveNullAndEmptyArrays" : true } } ], "cursor": {} }'); -- should inline and use LEFT JOIN
+
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id", "pipeline": [ { "$addFields": { "myBar": 1 } }, { "$limit": 10 }] } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs" } } ], "cursor": {} }');
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "includeArrayIndex": "idx" } } ], "cursor": {} }'); -- this will not inline
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "preserveNullAndEmptyArrays" : true } } ], "cursor": {} }'); -- should inline and use LEFT JOIN
+
 
 
 -- UDF Unit test for merge documents at path
@@ -623,13 +642,33 @@ SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": { "b":
 SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path('{"a": [{ "b": "text", "c": true }, { "b": "text2", "c": false }]}', '{ "random" : false }', 'a.b');
 
 BEGIN;
-set local documentdb.enableLookupUnwindOptimization to on;
+-- Disable optimization and test as this enabled by default now
+set local documentdb.enableLookupUnwindOptimization to off;
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
+
+SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs" } } ], "cursor": {} }');
+
+SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "includeArrayIndex": "idx" } } ], "cursor": {} }'); -- this will not inline
+
+SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "preserveNullAndEmptyArrays" : true } } ], "cursor": {} }'); -- should inline and use LEFT JOIN
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id", "pipeline": [ { "$addFields": { "myBar": 1 } }, { "$limit": 10 }] } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs" } } ], "cursor": {} }');
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "includeArrayIndex": "idx" } } ], "cursor": {} }'); -- this will not inline
+	
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "orders", "pipeline": [ { "$lookup": { "from": "inventory", "as": "matched_docs", "localField": "item", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "preserveNullAndEmptyArrays" : true } } ], "cursor": {} }'); -- should inline and use LEFT JOIN
+
 ROLLBACK;

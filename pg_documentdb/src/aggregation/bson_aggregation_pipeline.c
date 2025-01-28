@@ -1174,6 +1174,7 @@ MutateQueryWithPipeline(Query *query, List *aggregationStages,
 
 		query = definition->mutateFunc(&stage->stageValue, query,
 									   context);
+
 		context->requiresPersistentCursor =
 			context->requiresPersistentCursor ||
 			definition->requiresPersistentCursor(&stage->stageValue);
@@ -7087,12 +7088,23 @@ TryOptimizeAggregationPipelines(List **aggregationStages,
 					 * This is because $lookup followed by $unwind is a common pattern and can be optimized to a single stage,
 					 * if $unwind is requested on the same field which is the "as" field in lookup stage.
 					 */
+					bool preserveEmptyArrays = false;
 					if (CanInlineLookupWithUnwind(&stage->stageValue,
-												  &nextStage->stageValue))
+												  &nextStage->stageValue,
+												  &preserveEmptyArrays))
 					{
 						*aggregationStages = foreach_delete_current(stagesList, cell);
 						AggregationStage *lookupUnwindStage = nextStage;
-						lookupUnwindStage->stageValue = stage->stageValue;
+
+						/* merge preserve empty arrays and the lookup spec */
+						pgbson_writer writer;
+						PgbsonWriterInit(&writer);
+						PgbsonWriterAppendBool(&writer, "preserveNullAndEmptyArrays", 26,
+											   preserveEmptyArrays);
+						PgbsonWriterAppendValue(&writer, "lookup", 6, &stage->stageValue);
+
+						lookupUnwindStage->stageValue = ConvertPgbsonToBsonValue(
+							PgbsonWriterGetPgbson(&writer));
 						lookupUnwindStage->stageDefinition =
 							(AggregationStageDefinition *) &LookupUnwindStageDefinition;
 					}

@@ -31,6 +31,7 @@ typedef enum ParentStageName
 	ParentStageName_INVERSEMATCH,
 } ParentStageName;
 
+
 /*
  * Shared context during aggregation pipeline build phase.
  */
@@ -194,7 +195,8 @@ bool CanInlineLookupStageLookup(const bson_value_t *lookupStage,
 								const StringView *lookupPath,
 								bool hasLet);
 bool CanInlineLookupWithUnwind(const bson_value_t *lookUpStageValue,
-							   const bson_value_t *unwindStageValue);
+							   const bson_value_t *unwindStageValue,
+							   bool *isPreserveNullAndEmptyArrays);
 
 /* vector search related aggregation stages */
 Query * HandleSearch(const bson_value_t *existingValue, Query *query,

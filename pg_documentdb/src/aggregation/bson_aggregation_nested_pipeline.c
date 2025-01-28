@@ -90,12 +90,13 @@ typedef struct
 	 * has a join (foreign/local field).
 	 */
 	bool hasLookupMatch;
-
-	/*
-	 * Internal flag to indicate if the lookup is a lookup unwind.
-	 */
-	bool isLookupUnwind;
 } LookupArgs;
+
+typedef struct
+{
+	bool isLookupUnwind;
+	bool useInnerJoin;
+} LookupContext;
 
 typedef struct LookupOptimizationArgs
 {
@@ -243,7 +244,8 @@ static Query * CreateCteSelectQuery(CommonTableExpr *baseCte, const char *prefix
 									int stageNum, int levelsUp);
 static Query * ProcessLookupCoreWithLet(Query *query,
 										AggregationPipelineBuildContext *context,
-										LookupArgs *lookupArgs);
+										LookupArgs *lookupArgs,
+										LookupContext *lookupContext);
 static void ValidatePipelineForShardedLookupWithLet(const bson_value_t *pipeline);
 static Query * ProcessGraphLookupCore(Query *query,
 									  AggregationPipelineBuildContext *context,
@@ -265,13 +267,14 @@ static void WalkQueryAndSetLevelsUp(Query *query, Var *varToCheck,
 static void WalkQueryAndSetCteLevelsUp(Query *query, const char *cteName,
 									   int varLevelsUpBase);
 static Query * HandleLookupCore(const bson_value_t *existingValue, Query *query,
-								AggregationPipelineBuildContext *context, bool
-								isLookupUnwind);
+								AggregationPipelineBuildContext *context,
+								LookupContext *lookupContext);
 static Query * AddLookupRightQueryExpressionOrArrayAgg(Query *rightQuery,
 													   AggregationPipelineBuildContext *
 													   context,
 													   ParseState *parseState,
 													   LookupArgs *lookupArgs,
+													   LookupContext *lookupContext,
 													   bool requiresSubQuery);
 
 /*
@@ -375,8 +378,12 @@ HandleLookup(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_LOOKUP);
 
-	bool isLookupUnwind = false;
-	return HandleLookupCore(existingValue, query, context, isLookupUnwind);
+	LookupContext lookupContext = {
+		.isLookupUnwind = false,
+		.useInnerJoin = false
+	};
+
+	return HandleLookupCore(existingValue, query, context, &lookupContext);
 }
 
 
@@ -390,39 +397,113 @@ HandleLookupUnwind(const bson_value_t *existingValue, Query *query,
 	ReportFeatureUsage(FEATURE_STAGE_LOOKUP);
 	ReportFeatureUsage(FEATURE_STAGE_UNWIND);
 
-	bool isLookupUnwind = true;
-	return HandleLookupCore(existingValue, query, context, isLookupUnwind);
+	/* The spec for lookup unwind has 2 fields, `lookup` spec and `preserveNullAndEmptyArrays` from inlined unwind */
+	bson_value_t lookupSpec;
+	bool preserveNullAndEmptyArrays = false;
+
+	bson_iter_t iter;
+	BsonValueInitIterator(existingValue, &iter);
+	while (bson_iter_next(&iter))
+	{
+		const char *key = bson_iter_key(&iter);
+		if (strcmp(key, "lookup") == 0)
+		{
+			lookupSpec = *bson_iter_value(&iter);
+		}
+		else if (strcmp(key, "preserveNullAndEmptyArrays") == 0)
+		{
+			preserveNullAndEmptyArrays = bson_iter_as_bool(&iter);
+		}
+	}
+
+	LookupContext lookupContext = {
+		.isLookupUnwind = true,
+
+		/* Use INNER JOIN if we don't want to preserve empty array */
+		.useInnerJoin = !preserveNullAndEmptyArrays
+	};
+	return HandleLookupCore(&lookupSpec, query, context, &lookupContext);
 }
 
 
+/*
+ * CanInlineLookupWithUnwind checks if the lookup stage can be inlined with the unwind stage.
+ * Iff the lookup stage is a simple lookup with no pipeline and the aggregated field of lookup is same
+ * as unwinding path, then we can inline the lookup stage with the unwind stage.
+ */
 bool
 CanInlineLookupWithUnwind(const bson_value_t *lookUpStageValue,
-						  const bson_value_t *unwindStageValue)
+						  const bson_value_t *unwindStageValue,
+						  bool *isPreserveEmptyAndNullArrays)
 {
 	LookupArgs lookupArgs;
 	memset(&lookupArgs, 0, sizeof(LookupArgs));
 	ParseLookupStage(lookUpStageValue, &lookupArgs);
-
-	/* TODO: If the lookup has a pipeline, check various combinatin and then decide if we can optimize or not */
-	if (lookupArgs.pipeline.value_type != BSON_TYPE_EOD)
-	{
-		return false;
-	}
 
 	if (lookupArgs.lookupAs.length == 0)
 	{
 		return false;
 	}
 
-	/* If the unwind has options don't inline */
-	if (unwindStageValue->value_type != BSON_TYPE_UTF8)
+	if (lookupArgs.pipeline.value_type != BSON_TYPE_EOD)
 	{
+		/*
+		 * We can't inline the lookup stage with unwind stage if the lookup stage has a pipeline.
+		 * because today we run the pipeline against all the documents that are matched post JOIN
+		 * which requires us to aggregate the matched docs anywat, so inlining for this case is tricky plus
+		 * calls for a lookup rewrite so better drop the inlining
+		 */
 		return false;
 	}
 
 	StringView unwindPath = { 0 };
-	unwindPath.string = unwindStageValue->value.v_utf8.str;
-	unwindPath.length = unwindStageValue->value.v_utf8.len;
+
+	/* If the unwind has options don't inline */
+	if (unwindStageValue->value_type == BSON_TYPE_DOCUMENT ||
+		unwindStageValue->value_type == BSON_TYPE_UTF8)
+	{
+		if (unwindStageValue->value_type == BSON_TYPE_DOCUMENT)
+		{
+			bson_iter_t iter;
+			BsonValueInitIterator(unwindStageValue, &iter);
+			while (bson_iter_next(&iter))
+			{
+				const char *key = bson_iter_key(&iter);
+				if (strcmp(key, "includeArrayIndex") == 0)
+				{
+					/* We can't inline the documents need to be rewritten with the array index */
+					return false;
+				}
+				else if (strcmp("preserveNullAndEmptyArrays", key) == 0)
+				{
+					if (BSON_ITER_HOLDS_BOOL(&iter))
+					{
+						*isPreserveEmptyAndNullArrays = bson_iter_as_bool(&iter);
+					}
+					else
+					{
+						/* Don't inline so that invalid specs are caught and error is thrown */
+						return false;
+					}
+				}
+				else if (strcmp(key, "path") == 0 && BSON_ITER_HOLDS_UTF8(&iter))
+				{
+					unwindPath.string = bson_iter_utf8(&iter, &unwindPath.length);
+				}
+			}
+		}
+		else
+		{
+			unwindPath.string = unwindStageValue->value.v_utf8.str;
+			unwindPath.length = unwindStageValue->value.v_utf8.len;
+			*isPreserveEmptyAndNullArrays = false;
+		}
+	}
+	else
+	{
+		/* Any other unwind value is invalid */
+		return false;
+	}
 
 	if (unwindPath.length > 1 && StringViewStartsWith(&unwindPath, '$') &&
 		strcmp(unwindPath.string + 1, lookupArgs.lookupAs.string) == 0)
@@ -1331,6 +1412,28 @@ GetArrayAggCoalesce(Expr *innerExpr, const char *fieldPath, uint32_t fieldPathLe
 
 
 /*
+ * Creates the COALESCE(Expr, '{ }'::bson)
+ * Expression for an arbitrary expression.
+ */
+static Expr *
+GetEmptyBsonCoalesce(Expr *innerExpr)
+{
+	pgbson_writer defaultValueWriter;
+	PgbsonWriterInit(&defaultValueWriter);
+
+	pgbson *emptyBson = PgbsonWriterGetPgbson(&defaultValueWriter);
+
+	/* Add COALESCE operator */
+	CoalesceExpr *coalesce = makeNode(CoalesceExpr);
+	coalesce->coalescetype = BsonTypeId();
+	coalesce->coalescecollid = InvalidOid;
+	coalesce->args = list_make2(innerExpr, MakeBsonConst(emptyBson));
+
+	return (Expr *) coalesce;
+}
+
+
+/*
  * Adds either the BSON_ARRAY_AGG or bson_expression_get function to a given lookup right query.
  * Also migrates the existing query to a subquery if required.
  */
@@ -1338,13 +1441,14 @@ static Query *
 AddLookupRightQueryExpressionOrArrayAgg(Query *rightQuery,
 										AggregationPipelineBuildContext *context,
 										ParseState *parseState, LookupArgs *lookupArgs,
+										LookupContext *lookupContext,
 										bool requiresSubQuery)
 {
 	Query *modifiedQuery = requiresSubQuery ? MigrateQueryToSubQuery(rightQuery,
 																	 context) :
 						   rightQuery;
 	requiresSubQuery = false;
-	if (lookupArgs->isLookupUnwind)
+	if (lookupContext->isLookupUnwind)
 	{
 		/* Don't aggregate the documents inside array for lookUp + Unwind, later we use an specialized
 		 * merge operation to add the right document into the left docuement under the lookupAs field.
@@ -2069,7 +2173,7 @@ OptimizeLookup(LookupArgs *lookupArgs,
  */
 static Query *
 ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
-						 LookupArgs *lookupArgs)
+						 LookupArgs *lookupArgs, LookupContext *lookupContext)
 {
 	if (list_length(query->targetList) > 1)
 	{
@@ -2295,6 +2399,7 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 															 rightQueryContext,
 															 parseState,
 															 lookupArgs,
+															 lookupContext,
 															 requiresSubQuery);
 		rightQuery->cteList = list_make1(rightTableExpr);
 	}
@@ -2308,6 +2413,7 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 															 rightQueryContext,
 															 parseState,
 															 lookupArgs,
+															 lookupContext,
 															 migrateToSubQuery);
 	}
 
@@ -2345,10 +2451,9 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 	MakeBsonJoinVarsFromQuery(rightQueryRteIndex, rightQuery, &outputVars,
 							  &outputColNames, &rightJoinCols);
 
-	/* TODO: for lookupUnwind if `PreserveNullandEmptyArrays` is true we will need to use LEFT JOIN again here */
-	bool useInnerJoin = lookupArgs->isLookupUnwind;
 	RangeTblEntry *joinRte = MakeLookupJoinRte(outputVars, outputColNames, leftJoinCols,
-											   rightJoinCols, useInnerJoin);
+											   rightJoinCols,
+											   lookupContext->useInnerJoin);
 
 
 	lookupQuery->rtable = list_make3(leftTree, rightTree, joinRte);
@@ -2525,8 +2630,19 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 
 	List *mergeDocumentsArgs = list_make2(leftOutput, rightOutput);
 	Oid mergeDocumentsOid = BsonDollaMergeDocumentsFunctionOid();
-	if (lookupArgs->isLookupUnwind)
+	if (lookupContext->isLookupUnwind)
 	{
+		/*
+		 * If we are processing a lookup unwind with `preserveNullAndEmptyArrays: true`
+		 * that means we are performing a LEFT JOIN but if the left documnets don't match with anything
+		 * on the right we still need to write the left documents. So we will need to replace the rightOutput
+		 * expression to a coalesce(rightOutput, {}) expression.
+		 */
+		if (!lookupContext->useInnerJoin)
+		{
+			Expr *coalesceExpr = GetEmptyBsonCoalesce(lsecond(mergeDocumentsArgs));
+			list_nth_cell(mergeDocumentsArgs, 1)->ptr_value = coalesceExpr;
+		}
 		mergeDocumentsArgs = lappend(mergeDocumentsArgs,
 									 MakeTextConst(lookupArgs->lookupAs.string,
 												   lookupArgs->lookupAs.length));
@@ -3691,7 +3807,8 @@ BuildRecursiveGraphLookupQuery(QuerySource parentSource, GraphLookupArgs *args,
 
 static Query *
 HandleLookupCore(const bson_value_t *existingValue, Query *query,
-				 AggregationPipelineBuildContext *context, bool isLookupUnwind)
+				 AggregationPipelineBuildContext *context,
+				 LookupContext *lookupContext)
 {
 	LookupArgs lookupArgs;
 	memset(&lookupArgs, 0, sizeof(LookupArgs));
@@ -3705,10 +3822,9 @@ HandleLookupCore(const bson_value_t *existingValue, Query *query,
 	}
 
 	ParseLookupStage(existingValue, &lookupArgs);
-	lookupArgs.isLookupUnwind = isLookupUnwind;
 
 	/* Now build the base query for the lookup */
-	return ProcessLookupCoreWithLet(query, context, &lookupArgs);
+	return ProcessLookupCoreWithLet(query, context, &lookupArgs, lookupContext);
 }
 
 
