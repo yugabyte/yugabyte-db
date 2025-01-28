@@ -15,7 +15,28 @@
 
 #include "yb/util/prometheus_metric_filter.h"
 
+#include <boost/regex.hpp>
+
 namespace yb {
+
+namespace {
+
+class PrometheusMetricFilterV1 : public PrometheusMetricFilter {
+ public:
+  explicit PrometheusMetricFilterV1(const MetricPrometheusOptions& opts);
+
+  AggregationLevels GetAggregationLevels(
+      const std::string& metric_name, AggregationLevels default_aggregation_levels) override;
+
+  std::string Version() const override;
+
+ private:
+  bool ShouldCollectMetric(const std::string& metric_name) const;
+
+  const boost::regex priority_regex_;
+
+  const std::optional<std::vector<std::string>> general_metrics_allowlist_;
+};
 
 PrometheusMetricFilterV1::PrometheusMetricFilterV1(const MetricPrometheusOptions& opts)
     : priority_regex_(opts.priority_regex_string),
@@ -63,6 +84,21 @@ std::string PrometheusMetricFilterV1::Version() const {
   return kFilterVersionOne;
 }
 
+class PrometheusMetricFilterV2 : public PrometheusMetricFilter {
+ public:
+  explicit PrometheusMetricFilterV2(const MetricPrometheusOptions& opts);
+
+  AggregationLevels GetAggregationLevels(
+      const std::string& metric_name, AggregationLevels default_aggregation_levels) override;
+
+  std::string Version() const override;
+
+ private:
+  const boost::regex table_allowlist_;
+  const boost::regex table_blocklist_;
+  const boost::regex server_allowlist_;
+  const boost::regex server_blocklist_;
+};
 
 PrometheusMetricFilterV2::PrometheusMetricFilterV2(const MetricPrometheusOptions& opts)
     : table_allowlist_(opts.table_allowlist_string),
@@ -94,6 +130,8 @@ AggregationLevels PrometheusMetricFilterV2::GetAggregationLevels(
 std::string PrometheusMetricFilterV2::Version() const {
   return kFilterVersionTwo;
 }
+
+} // namespace
 
 std::unique_ptr<PrometheusMetricFilter> CreatePrometheusMetricFilter(
     const MetricPrometheusOptions& opts) {
