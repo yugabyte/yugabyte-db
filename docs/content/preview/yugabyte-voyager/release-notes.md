@@ -47,7 +47,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ## v1.8.9.1 - January 20, 2025
 
-- Fixed a [regression](https://github.com/yugabyte/yb-voyager/issues/2204) introduced in 1.8.8, for password authentication in `import data` command where command fails with error `failed to connect to &lt;target-host> server error (FATAL: password authentication failed for user (SQLSTATE 28P01))`.
+- Fixed a [regression](https://github.com/yugabyte/yb-voyager/issues/2204) introduced in v1.8.8, for password authentication in the `import data` command, where the command fails with error `failed to connect to &lt;target-host> server error (FATAL: password authentication failed for user (SQLSTATE 28P01))`.
 
 ## v1.8.9 - January 14, 2025
 
