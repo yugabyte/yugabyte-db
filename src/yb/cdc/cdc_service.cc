@@ -2541,7 +2541,8 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
     if (!status.ok()) {
       // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
       // such entries to the expired_tables_map.
-      if (expired_tables_map && checkpoint != OpId::Max()) {
+      if (expired_tables_map && checkpoint != OpId::Max() &&
+          !IsReplicationSlotStream(stream_metadata)) {
         AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
       }
 
@@ -2558,7 +2559,8 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
     if (!status.ok()) {
       // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
       // such entries to the expired_tables_map.
-      if (expired_tables_map && checkpoint != OpId::Max()) {
+      if (expired_tables_map && checkpoint != OpId::Max() &&
+          !IsReplicationSlotStream(stream_metadata)) {
         AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
       }
 
