@@ -1474,4 +1474,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Wait time for a queued task before the running task can be evicted forcefully.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> certManagerCommonNameRequired =
+      new ConfKeyInfo<>(
+          "yb.tls.cert_manager.common_name_required",
+          ScopeType.UNIVERSE,
+          "Common Name Required for Certificates",
+          "If true, YBA will add commonName to the CertificateRequest sent to cert manager.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

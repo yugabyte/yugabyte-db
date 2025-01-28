@@ -10522,10 +10522,13 @@
     },
     "KubernetesRegionInfo" : {
       "properties" : {
-        "certManagerClusterIssuer" : {
+        "certManagerIssuerGroup" : {
           "type" : "string"
         },
-        "certManagerIssuer" : {
+        "certManagerIssuerKind" : {
+          "type" : "string"
+        },
+        "certManagerIssuerName" : {
           "type" : "string"
         },
         "isKubernetesOperatorControlled" : {
