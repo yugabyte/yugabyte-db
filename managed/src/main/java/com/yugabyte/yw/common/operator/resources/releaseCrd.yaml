@@ -79,8 +79,20 @@ spec:
                               description: S3 access key
                               type: string
                             secretAccessKey:
-                              description: S3 secret key
+                              description: S3 secret key. Deprecated, use secretAccessKeySecret
                               type: string
+                            secretAccessKeySecret:
+                              description: S3 secret key secret. Overrides secretAccessKey
+                              type: object
+                              properties:
+                                name:
+                                  description: Name of the secret
+                                  type: string
+                                namespace:
+                                  description: Namespace of the secret
+                                  type: string
+                              required:
+                              - name
                             paths:
                               description: S3 paths to download the release from
                               type: object
@@ -117,7 +129,19 @@ spec:
                                   description: Optional checksum for Helm chart package
                             credentialsJson:
                               type: string
-                              description: GCS service key JSON
+                              description: |
+                                GCS service key JSON. Deprecated, use credentialsJsonSecret instead.
+                            credentialsJsonSecret:
+                              type: object
+                              properties:
+                                name:
+                                  description: Name of the secret
+                                  type: string
+                                namespace:
+                                  description: Namespace of the secret
+                                  type: string
+                              required:
+                              - name
                         http:
                           type: object
                           properties:
