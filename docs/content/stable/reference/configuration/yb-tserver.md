@@ -1368,9 +1368,9 @@ Default: `CHANGE`
 
 ##### --cdcsdk_enable_dynamic_table_support
 
-Tables created after the creation of a replication slot are referred as Dynamic tables. This preview flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
+Tables created after the creation of a replication slot are referred as Dynamic tables. This flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
 
-Default: `false`
+Default: `true`
 
 ##### --cdcsdk_publication_list_refresh_interval_secs
 

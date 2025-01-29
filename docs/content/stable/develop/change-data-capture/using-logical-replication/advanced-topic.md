@@ -130,20 +130,6 @@ The value of this flag can be changed at run time, but the change becomes effect
 
 To enable dynamic table addition, perform the following steps:
 
-1. Set the [cdcsdk_enable_dynamic_table_support](../../../../reference/configuration/yb-tserver/#cdcsdk-enable-dynamic-table-support) to true.
-
-    Because it is a preview flag, first add it to the `allowed_preview_flags_csv` list.
-
-    ```sh
-    ./yb-ts-cli --server_address=<tserverIpAddress:tserverPort> set_flag allowed_preview_flags_csv cdcsdk_enable_dynamic_table_support
-    ```
-
-    Then set the `cdcsdk_enable_dynamic_table_support` flag to true.
-
-    ```sh
-    ./yb-ts-cli --server_address=<tserverIpAddress:tserverPort> set_flag cdcsdk_enable_dynamic_table_support true
-    ```
-
 1. Set the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag to a lower value, such as 60 or 120 seconds. Note that the effect of this setting takes place after the upcoming publication refresh is performed.
 
     ```sh
