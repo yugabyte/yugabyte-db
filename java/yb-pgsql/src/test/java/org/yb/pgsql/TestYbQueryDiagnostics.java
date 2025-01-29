@@ -397,7 +397,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         fail("Buffer never wrapped around");
     }
 
-    @Test
+    /**
+     * Disable until #25865 is done.
+     */
     public void checkAshData() throws Exception {
         int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(

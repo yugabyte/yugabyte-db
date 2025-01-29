@@ -1572,4 +1572,6 @@ extern void yb_pgstat_set_catalog_version(uint64_t catalog_version);
 extern void yb_pgstat_set_has_catalog_version(bool has_catalog_version);
 extern void yb_pgstat_add_session_info(uint64_t session_id);
 
+extern bool YbIsIdleWaitEvent(uint32 wait_event_info);
+
 #endif							/* PGSTAT_H */

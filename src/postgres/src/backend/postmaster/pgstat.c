@@ -7116,3 +7116,15 @@ yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt) {
 			 (beentry)->st_procpid, attempt);
 	return true;
 }
+
+
+bool
+YbIsIdleWaitEvent(uint32 wait_event_info)
+{
+	uint32		classId = wait_event_info & 0xFF000000;
+
+	if (classId == PG_WAIT_ACTIVITY || classId == PG_WAIT_EXTENSION)
+		return true;
+
+	return false;
+}

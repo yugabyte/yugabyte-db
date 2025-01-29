@@ -544,7 +544,7 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
   static constexpr auto kColocatedDB = "cdb";
   static constexpr auto kTableName = "test";
   static const auto kInsertQuery =
-      Format("INSERT INTO $0 VALUES (generate_series(1, 100))", kTableName);
+      Format("INSERT INTO $0 VALUES (generate_series(1, 10))", kTableName);
   std::unordered_set<std::string> bg_workers = {
       "pg_cron",
       "pg_cron launcher",
@@ -594,6 +594,25 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
     auto pid_count = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM yb_active_session_history WHERE pid = $0", pid)));
     ASSERT_GE(pid_count, 1);
+  }
+}
+
+TEST_F(PgBgWorkersTest, ValidateIdleWaitEventsNotPresent) {
+  std::unordered_set<std::string> pg_idle_wait_events = {
+      "Extension",
+      "QueryDiagnosticsMain"};
+
+  // start pg cron launcher process
+  ASSERT_OK(conn_->Execute("CREATE EXTENSION pg_cron"));
+
+  // Let the ASH collector collect some wait events
+  SleepFor(1min);
+
+  const auto wait_events = ASSERT_RESULT(conn_->FetchRows<std::string>(
+      "SELECT DISTINCT(wait_event) FROM yb_active_session_history"));
+
+  for (const auto& wait_event : wait_events) {
+    ASSERT_EQ(pg_idle_wait_events.contains(wait_event), false);
   }
 }
 

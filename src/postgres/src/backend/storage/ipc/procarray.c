@@ -4154,7 +4154,8 @@ YbStorePgAshSamples(TimestampTz sample_time)
 		PGPROC 	   *proc = &allProcs[pgprocno];
 
 		/* Don't sample if ASH metadata is not set */
-		if (!proc->yb_is_ash_metadata_set)
+		if (!proc->yb_is_ash_metadata_set ||
+			YbIsIdleWaitEvent(proc->wait_event_info))
 			continue;
 
 		YbAshMaybeIncludeSample(proc, arrayP->numProcs, sample_time,
