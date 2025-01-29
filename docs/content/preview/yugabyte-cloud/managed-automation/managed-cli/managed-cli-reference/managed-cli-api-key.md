@@ -51,7 +51,7 @@ Create an API key.
 | --unit | Required. The time unit for the duration for which the API Key will be valid. `Hours`, `Days`, or `Months`. |
 | &#8209;&#8209;description | Description for the API key. |
 | --role-name | The name of the role to assign to the API Key. If not provided, the Admin role is assigned. |
-| --network-allow-lists | Provide comma separated names of network allow list. |
+| --network-allow-lists | To restrict use of the API key to specific IP addresses, provide comma-separated names of [network allow lists](../managed-cli-network-allow-list). |
 
 ### list
 
