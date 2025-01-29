@@ -87,6 +87,17 @@
     - yb-prebuilt-ami
     - systemd_upgrade
 
+- name: Configure | Find current yb_metrics_dir
+  shell: "systemctl show node_exporter | grep -oE \"collector.textfile.directory={{ yb_metrics_dir_old }}\" | if [ $(wc -c) -eq \"0\" ]; then echo {{ yb_metrics_dir_new }}; else echo {{ yb_metrics_dir_old }}; fi"
+  register: yb_metrics_dir_out
+  tags:
+    - yb-prebuilt-ami
+    - systemd_upgrade
+
+- set_fact:
+    yb_metrics_dir: "{{ yb_metrics_dir_out.stdout }}"
+  tags: yb-prebuilt-ami
+
 - name: Configure | Add collect metrics wrapper script
   template:
     src: collect_metrics_wrapper.sh.j2
