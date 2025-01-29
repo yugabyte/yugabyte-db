@@ -29,7 +29,7 @@
 #include "access/reloptions.h"
 #include "c.h"
 #include "nodes/execnodes.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "nodes/nodes.h"
 #include "utils/index_selfuncs.h"
 
@@ -101,7 +101,7 @@ ybginvalidate(Oid opclassoid)
 }
 
 void
-ybginbindschema(YBCPgStatement handle,
+ybginbindschema(YbcPgStatement handle,
 				struct IndexInfo *indexInfo,
 				TupleDesc indexTupleDesc,
 				int16 *coloptions)

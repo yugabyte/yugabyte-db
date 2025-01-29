@@ -28,16 +28,16 @@ namespace pggate {
 /*
  * Convert a PgValue to a Datum given its type entity.
  */
-Status PgValueToDatum(const YBCPgTypeEntity *type_entity,
-                      YBCPgTypeAttrs type_attrs,
+Status PgValueToDatum(const YbcPgTypeEntity *type_entity,
+                      YbcPgTypeAttrs type_attrs,
                       const dockv::PgValue& ql_value,
                       uint64_t* datum);
 
 /*
  * Convert a QLValue to a Datum given its type entity.
  */
-Status PBToDatum(const YBCPgTypeEntity *type_entity,
-                 YBCPgTypeAttrs type_attrs,
+Status PBToDatum(const YbcPgTypeEntity *type_entity,
+                 YbcPgTypeAttrs type_attrs,
                  const QLValuePB& ql_value,
                  uint64_t* datum,
                  bool* is_null);
@@ -45,7 +45,7 @@ Status PBToDatum(const YBCPgTypeEntity *type_entity,
 /*
  * Convert a Datum to QLValue given its type entity.
  */
-Status PgValueToPB(const YBCPgTypeEntity *type_entity,
+Status PgValueToPB(const YbcPgTypeEntity *type_entity,
                    uint64_t datum,
                    bool is_null,
                    QLValuePB* ql_value);

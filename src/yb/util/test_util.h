@@ -35,6 +35,7 @@
 #include <dirent.h>
 
 #include <atomic>
+#include <functional>
 #include <future>
 #include <string>
 #include <type_traits>
@@ -272,6 +273,18 @@ YB_DEFINE_ENUM(CorruptionType, (kZero)(kXor55));
 Status CorruptFile(
     const std::string& file_path, int64_t offset, size_t bytes_to_corrupt,
     CorruptionType corruption_type);
+
+Status ForkAndRunToCompletion(const std::function<void(void)>& child,
+                              const std::function<void(void)>& parent = {});
+
+Status ForkAndRunToCrashPoint(const std::function<void(void)>& child,
+                              const std::function<void(void)>& parent,
+                              std::string_view crash_point);
+
+inline Status ForkAndRunToCrashPoint(const std::function<void(void)>& f,
+                                     std::string_view crash_point) {
+  return ForkAndRunToCrashPoint(f, {} /* parent */, crash_point);
+}
 
 } // namespace yb
 

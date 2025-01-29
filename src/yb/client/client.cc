@@ -64,18 +64,20 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/dockv/partition.h"
+#include "yb/common/init.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-#include "yb/common/schema_pbutil.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -104,7 +106,6 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/logging_callback.h"
 #include "yb/util/mem_tracker.h"
@@ -123,6 +124,7 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 using namespace std::literals;
 
@@ -893,7 +895,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const TransactionMetadata* txn,
                                  const bool colocated,
                                  CoarseTimePoint deadline,
-                                 std::optional<YbCloneInfo> yb_clone_info) {
+                                 std::optional<YbcCloneInfo> yb_clone_info) {
   if (yb_clone_info) {
     RETURN_NOT_OK(CloneNamespace(
         namespace_name, database_type ? database_type.value() : YQL_DATABASE_PGSQL,
@@ -936,7 +938,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
 
 Status YBClient::CloneNamespace(const std::string& target_namespace_name,
                                 const YQLDatabase& database_type,
-                                YbCloneInfo& yb_clone_info) {
+                                YbcCloneInfo& yb_clone_info) {
   LOG(INFO) << Format(
       "Creating database $0 as clone of database $1",
       target_namespace_name, yb_clone_info.src_db_name);

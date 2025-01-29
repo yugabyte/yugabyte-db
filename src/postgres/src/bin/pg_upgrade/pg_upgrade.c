@@ -146,8 +146,10 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * This checks for global state information initialized
-	 * during initdb and is not relevant for YB currently.
+	 * This checks for global state information initialized during initdb and is
+	 * not relevant for YB. The storage doesn't change between versions, and YB
+	 * controls the creation of the new cluster, so we don't need to be as
+	 * meticulous about checking the state.
 	 */
 	if (!is_yugabyte_enabled())
 		check_cluster_compatibility(live_check);
@@ -159,7 +161,11 @@ main(int argc, char **argv)
 	if (!is_yugabyte_enabled())
 		start_postmaster(&new_cluster, true);
 
-	check_new_cluster();
+	/*
+	 * YB: If this is run as a preflight check, the new cluster is not yet started.
+	 */
+	if (!is_yugabyte_enabled() || !user_opts.check)
+		check_new_cluster();
 
 	report_clusters_compatible();
 
@@ -355,10 +361,12 @@ setup(char *argv0, bool *live_check)
 	 * make sure the user has a clean environment, otherwise, we may confuse
 	 * libpq when we connect to one (or both) of the servers.
 	 */
-#ifdef YB_TODO
-	/* Investigate/implement this check */
-	check_pghost_envvar();
-#endif
+	if (!is_yugabyte_enabled())
+		/*
+		 * YB: New cluster creation is controlled by Yugabyte, but the IP
+		 * addresses don't match the expected values of this check.
+		 */
+		check_pghost_envvar();
 
 	/*
 	 * In case the user hasn't specified the directory for the new binaries
@@ -509,7 +517,7 @@ create_new_objects(void)
 				  true,
 				  true,
 				  "\"%s/pg_restore\" %s %s --exit-on-error --verbose "
-				  "--dbname postgres \"%s/%s\"",
+				  "--dbname yugabyte \"%s/%s\"",
 				  new_cluster.bindir,
 				  cluster_conn_opts(&new_cluster),
 				  create_opts,
@@ -535,15 +543,11 @@ create_new_objects(void)
 		snprintf(log_file_name, sizeof(log_file_name), DB_DUMP_LOG_FILE_MASK, old_db->db_oid);
 
 		/*
-		 * postgres database will already exist in the target installation, so
+		 * yugabyte database will already exist in the target installation, so
 		 * tell pg_restore to drop and recreate it; otherwise we would fail to
 		 * propagate its database-level properties.
 		 */
-		if (strcmp(old_db->db_name, "postgres") == 0)
-			create_opts = "--clean --create";
-		else if (strcmp(old_db->db_name, "yugabyte") == 0)
-			create_opts = "--clean --create";
-		else if (strcmp(old_db->db_name, "system_platform") == 0)
+		if (strcmp(old_db->db_name, "yugabyte") == 0)
 			create_opts = "--clean --create";
 		else
 			create_opts = "--create";

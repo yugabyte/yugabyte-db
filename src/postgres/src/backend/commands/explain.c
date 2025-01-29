@@ -19,7 +19,7 @@
 #include "commands/defrem.h"
 #include "commands/prepare.h"
 #include "executor/nodeHash.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "foreign/fdwapi.h"
 #include "jit/jit.h"
 #include "nodes/extensible.h"
@@ -162,15 +162,14 @@ static void ExplainJSONLineEnding(ExplainState *es);
 static void ExplainYAMLLineStarting(ExplainState *es);
 static void escape_yaml(StringInfo buf, const char *str);
 static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
-static void
-YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
-									 const YbInstrumentation *instr);
+static void YbAggregateExplainableRPCRequestStat(ExplainState *es,
+												 const YbInstrumentation *instr);
 static void YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 									   int yb_distinct_prefixlen,
 									   ExplainState *es, List *ancestors);
 static void show_ybtidbitmap_info(YbBitmapTableScanState *planstate,
 								  ExplainState *es);
-static Node* yb_fix_indexpr_mutator(Node *node, int *newvarno);
+static Node *yb_fix_indexpr_mutator(Node *node, int *newvarno);
 
 typedef enum YbStatLabel
 {
@@ -203,13 +202,13 @@ typedef struct YbStatLabelData
 	const char *execution_time;
 
 	/* Indicates if field can vary between runs of the same query */
-	const bool is_non_deterministic;
+	const bool	is_non_deterministic;
 } YbStatLabelData;
 
 typedef struct YbExplainState
 {
 	ExplainState *es;
-	bool		  display_zero;
+	bool		display_zero;
 } YbExplainState;
 
 #define BUILD_STAT_LABEL_DATA(NAME, IS_NON_DETERMINISTIC) \
@@ -233,469 +232,469 @@ typedef struct YbExplainState
 
 const YbStatLabelData yb_stat_label_data[] = {
 	[YB_STAT_LABEL_CATALOG_READ] =
-		BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Read"),
+	BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Read"),
 	[YB_STAT_LABEL_CATALOG_WRITE] =
-		BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Write"),
+	BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Write"),
 
 	[YB_STAT_LABEL_STORAGE_READ] =
-		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Read"),
+	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Read"),
 	[YB_STAT_LABEL_STORAGE_WRITE] =
-		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Write"),
+	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Write"),
 	[YB_STAT_LABEL_STORAGE_ROWS_SCANNED] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Rows Scanned"),
+	BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Rows Scanned"),
 
 	[YB_STAT_LABEL_STORAGE_TABLE_READ] =
-		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Read"),
+	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Read"),
 	[YB_STAT_LABEL_STORAGE_TABLE_WRITE] =
-		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Write"),
+	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Write"),
 	[YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Rows Scanned"),
+	BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Rows Scanned"),
 
 	[YB_STAT_LABEL_STORAGE_INDEX_READ] =
-		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Read"),
+	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Read"),
 	[YB_STAT_LABEL_STORAGE_INDEX_WRITE] =
-		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Write"),
+	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Write"),
 	[YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Rows Scanned"),
+	BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Rows Scanned"),
 
 	[YB_STAT_LABEL_STORAGE_FLUSH] =
-		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Flush"),
+	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Flush"),
 };
 
 #undef BUILD_STAT_LABEL_DATA
 
 #define BUILD_METRIC_LABEL(NAME) ("Metric " NAME)
 
-// These labels are identical to exported metric names.
+/*  These labels are identical to exported metric names. */
 const char *yb_metric_gauge_label[] = {
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MISS] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_miss"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_HIT] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_hit"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_ADD] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_add"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_add"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_ADD_FAILURES] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_add_failures"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_add_failures"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_INDEX_MISS] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_index_miss"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_index_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_INDEX_HIT] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_index_hit"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_index_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_FILTER_MISS] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_filter_miss"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_filter_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_FILTER_HIT] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_filter_hit"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_filter_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_DATA_MISS] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_data_miss"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_data_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_DATA_HIT] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_data_hit"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_data_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_BYTES_READ] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_bytes_read"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_BYTES_WRITE] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_bytes_write"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_bytes_write"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOOM_FILTER_USEFUL] =
-		BUILD_METRIC_LABEL("rocksdb_bloom_filter_useful"),
+	BUILD_METRIC_LABEL("rocksdb_bloom_filter_useful"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOOM_FILTER_CHECKED] =
-		BUILD_METRIC_LABEL("rocksdb_bloom_filter_checked"),
+	BUILD_METRIC_LABEL("rocksdb_bloom_filter_checked"),
 	[YB_STORAGE_GAUGE_REGULARDB_MEMTABLE_HIT] =
-		BUILD_METRIC_LABEL("rocksdb_memtable_hit"),
+	BUILD_METRIC_LABEL("rocksdb_memtable_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_MEMTABLE_MISS] =
-		BUILD_METRIC_LABEL("rocksdb_memtable_miss"),
+	BUILD_METRIC_LABEL("rocksdb_memtable_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_GET_HIT_L0] =
-		BUILD_METRIC_LABEL("rocksdb_get_hit_l0"),
+	BUILD_METRIC_LABEL("rocksdb_get_hit_l0"),
 	[YB_STORAGE_GAUGE_REGULARDB_GET_HIT_L1] =
-		BUILD_METRIC_LABEL("rocksdb_get_hit_l1"),
+	BUILD_METRIC_LABEL("rocksdb_get_hit_l1"),
 	[YB_STORAGE_GAUGE_REGULARDB_GET_HIT_L2_AND_UP] =
-		BUILD_METRIC_LABEL("rocksdb_get_hit_l2_and_up"),
+	BUILD_METRIC_LABEL("rocksdb_get_hit_l2_and_up"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_KEYS_WRITTEN] =
-		BUILD_METRIC_LABEL("rocksdb_number_keys_written"),
+	BUILD_METRIC_LABEL("rocksdb_number_keys_written"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_KEYS_READ] =
-		BUILD_METRIC_LABEL("rocksdb_number_keys_read"),
+	BUILD_METRIC_LABEL("rocksdb_number_keys_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_KEYS_UPDATED] =
-		BUILD_METRIC_LABEL("rocksdb_number_keys_updated"),
+	BUILD_METRIC_LABEL("rocksdb_number_keys_updated"),
 	[YB_STORAGE_GAUGE_REGULARDB_BYTES_WRITTEN] =
-		BUILD_METRIC_LABEL("rocksdb_bytes_written"),
+	BUILD_METRIC_LABEL("rocksdb_bytes_written"),
 	[YB_STORAGE_GAUGE_REGULARDB_BYTES_READ] =
-		BUILD_METRIC_LABEL("rocksdb_bytes_read"),
+	BUILD_METRIC_LABEL("rocksdb_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK] =
-		BUILD_METRIC_LABEL("rocksdb_number_db_seek"),
+	BUILD_METRIC_LABEL("rocksdb_number_db_seek"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT] =
-		BUILD_METRIC_LABEL("rocksdb_number_db_next"),
+	BUILD_METRIC_LABEL("rocksdb_number_db_next"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV] =
-		BUILD_METRIC_LABEL("rocksdb_number_db_prev"),
+	BUILD_METRIC_LABEL("rocksdb_number_db_prev"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK_FOUND] =
-		BUILD_METRIC_LABEL("rocksdb_number_db_seek_found"),
+	BUILD_METRIC_LABEL("rocksdb_number_db_seek_found"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT_FOUND] =
-		BUILD_METRIC_LABEL("rocksdb_number_db_next_found"),
+	BUILD_METRIC_LABEL("rocksdb_number_db_next_found"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV_FOUND] =
-		BUILD_METRIC_LABEL("rocksdb_number_db_prev_found"),
+	BUILD_METRIC_LABEL("rocksdb_number_db_prev_found"),
 	[YB_STORAGE_GAUGE_REGULARDB_ITER_BYTES_READ] =
-		BUILD_METRIC_LABEL("rocksdb_iter_bytes_read"),
+	BUILD_METRIC_LABEL("rocksdb_iter_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_NO_FILE_CLOSES] =
-		BUILD_METRIC_LABEL("rocksdb_no_file_closes"),
+	BUILD_METRIC_LABEL("rocksdb_no_file_closes"),
 	[YB_STORAGE_GAUGE_REGULARDB_NO_FILE_OPENS] =
-		BUILD_METRIC_LABEL("rocksdb_no_file_opens"),
+	BUILD_METRIC_LABEL("rocksdb_no_file_opens"),
 	[YB_STORAGE_GAUGE_REGULARDB_NO_FILE_ERRORS] =
-		BUILD_METRIC_LABEL("rocksdb_no_file_errors"),
+	BUILD_METRIC_LABEL("rocksdb_no_file_errors"),
 	[YB_STORAGE_GAUGE_REGULARDB_STALL_L0_SLOWDOWN_MICROS] =
-		BUILD_METRIC_LABEL("rocksdb_stall_l0_slowdown_micros"),
+	BUILD_METRIC_LABEL("rocksdb_stall_l0_slowdown_micros"),
 	[YB_STORAGE_GAUGE_REGULARDB_STALL_MEMTABLE_COMPACTION_MICROS] =
-		BUILD_METRIC_LABEL("rocksdb_stall_memtable_compaction_micros"),
+	BUILD_METRIC_LABEL("rocksdb_stall_memtable_compaction_micros"),
 	[YB_STORAGE_GAUGE_REGULARDB_STALL_L0_NUM_FILES_MICROS] =
-		BUILD_METRIC_LABEL("rocksdb_stall_l0_num_files_micros"),
+	BUILD_METRIC_LABEL("rocksdb_stall_l0_num_files_micros"),
 	[YB_STORAGE_GAUGE_REGULARDB_STALL_MICROS] =
-		BUILD_METRIC_LABEL("rocksdb_stall_micros"),
+	BUILD_METRIC_LABEL("rocksdb_stall_micros"),
 	[YB_STORAGE_GAUGE_REGULARDB_DB_MUTEX_WAIT_MICROS] =
-		BUILD_METRIC_LABEL("rocksdb_db_mutex_wait_micros"),
+	BUILD_METRIC_LABEL("rocksdb_db_mutex_wait_micros"),
 	[YB_STORAGE_GAUGE_REGULARDB_RATE_LIMIT_DELAY_MILLIS] =
-		BUILD_METRIC_LABEL("rocksdb_rate_limit_delay_millis"),
+	BUILD_METRIC_LABEL("rocksdb_rate_limit_delay_millis"),
 	[YB_STORAGE_GAUGE_REGULARDB_NO_ITERATORS] =
-		BUILD_METRIC_LABEL("rocksdb_no_iterators"),
+	BUILD_METRIC_LABEL("rocksdb_no_iterators"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_MULTIGET_CALLS] =
-		BUILD_METRIC_LABEL("rocksdb_number_multiget_calls"),
+	BUILD_METRIC_LABEL("rocksdb_number_multiget_calls"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_MULTIGET_KEYS_READ] =
-		BUILD_METRIC_LABEL("rocksdb_number_multiget_keys_read"),
+	BUILD_METRIC_LABEL("rocksdb_number_multiget_keys_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_MULTIGET_BYTES_READ] =
-		BUILD_METRIC_LABEL("rocksdb_number_multiget_bytes_read"),
+	BUILD_METRIC_LABEL("rocksdb_number_multiget_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_FILTERED_DELETES] =
-		BUILD_METRIC_LABEL("rocksdb_number_filtered_deletes"),
+	BUILD_METRIC_LABEL("rocksdb_number_filtered_deletes"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_MERGE_FAILURES] =
-		BUILD_METRIC_LABEL("rocksdb_number_merge_failures"),
+	BUILD_METRIC_LABEL("rocksdb_number_merge_failures"),
 	[YB_STORAGE_GAUGE_REGULARDB_SEQUENCE_NUMBER] =
-		BUILD_METRIC_LABEL("rocksdb_sequence_number"),
+	BUILD_METRIC_LABEL("rocksdb_sequence_number"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOOM_FILTER_PREFIX_CHECKED] =
-		BUILD_METRIC_LABEL("rocksdb_bloom_filter_prefix_checked"),
+	BUILD_METRIC_LABEL("rocksdb_bloom_filter_prefix_checked"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOOM_FILTER_PREFIX_USEFUL] =
-		BUILD_METRIC_LABEL("rocksdb_bloom_filter_prefix_useful"),
+	BUILD_METRIC_LABEL("rocksdb_bloom_filter_prefix_useful"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_OF_RESEEKS_IN_ITERATION] =
-		BUILD_METRIC_LABEL("rocksdb_number_of_reseeks_in_iteration"),
+	BUILD_METRIC_LABEL("rocksdb_number_of_reseeks_in_iteration"),
 	[YB_STORAGE_GAUGE_REGULARDB_GET_UPDATES_SINCE_CALLS] =
-		BUILD_METRIC_LABEL("rocksdb_get_updates_since_calls"),
+	BUILD_METRIC_LABEL("rocksdb_get_updates_since_calls"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_COMPRESSED_MISS] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_compressed_miss"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_compressed_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_COMPRESSED_HIT] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_compressed_hit"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_compressed_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_COMPRESSED_ADD] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_compressed_add"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_compressed_add"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_COMPRESSED_ADD_FAILURES] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_compressed_add_failures"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_compressed_add_failures"),
 	[YB_STORAGE_GAUGE_REGULARDB_WAL_FILE_SYNCED] =
-		BUILD_METRIC_LABEL("rocksdb_wal_file_synced"),
+	BUILD_METRIC_LABEL("rocksdb_wal_file_synced"),
 	[YB_STORAGE_GAUGE_REGULARDB_WAL_FILE_BYTES] =
-		BUILD_METRIC_LABEL("rocksdb_wal_file_bytes"),
+	BUILD_METRIC_LABEL("rocksdb_wal_file_bytes"),
 	[YB_STORAGE_GAUGE_REGULARDB_WRITE_DONE_BY_SELF] =
-		BUILD_METRIC_LABEL("rocksdb_write_done_by_self"),
+	BUILD_METRIC_LABEL("rocksdb_write_done_by_self"),
 	[YB_STORAGE_GAUGE_REGULARDB_WRITE_DONE_BY_OTHER] =
-		BUILD_METRIC_LABEL("rocksdb_write_done_by_other"),
+	BUILD_METRIC_LABEL("rocksdb_write_done_by_other"),
 	[YB_STORAGE_GAUGE_REGULARDB_WRITE_WITH_WAL] =
-		BUILD_METRIC_LABEL("rocksdb_write_with_wal"),
+	BUILD_METRIC_LABEL("rocksdb_write_with_wal"),
 	[YB_STORAGE_GAUGE_REGULARDB_COMPACT_READ_BYTES] =
-		BUILD_METRIC_LABEL("rocksdb_compact_read_bytes"),
+	BUILD_METRIC_LABEL("rocksdb_compact_read_bytes"),
 	[YB_STORAGE_GAUGE_REGULARDB_COMPACT_WRITE_BYTES] =
-		BUILD_METRIC_LABEL("rocksdb_compact_write_bytes"),
+	BUILD_METRIC_LABEL("rocksdb_compact_write_bytes"),
 	[YB_STORAGE_GAUGE_REGULARDB_FLUSH_WRITE_BYTES] =
-		BUILD_METRIC_LABEL("rocksdb_flush_write_bytes"),
+	BUILD_METRIC_LABEL("rocksdb_flush_write_bytes"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DIRECT_LOAD_TABLE_PROPERTIES] =
-		BUILD_METRIC_LABEL("rocksdb_number_direct_load_table_properties"),
+	BUILD_METRIC_LABEL("rocksdb_number_direct_load_table_properties"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_SUPERVERSION_ACQUIRES] =
-		BUILD_METRIC_LABEL("rocksdb_number_superversion_acquires"),
+	BUILD_METRIC_LABEL("rocksdb_number_superversion_acquires"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_SUPERVERSION_RELEASES] =
-		BUILD_METRIC_LABEL("rocksdb_number_superversion_releases"),
+	BUILD_METRIC_LABEL("rocksdb_number_superversion_releases"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_SUPERVERSION_CLEANUPS] =
-		BUILD_METRIC_LABEL("rocksdb_number_superversion_cleanups"),
+	BUILD_METRIC_LABEL("rocksdb_number_superversion_cleanups"),
 	[YB_STORAGE_GAUGE_REGULARDB_NUMBER_BLOCK_NOT_COMPRESSED] =
-		BUILD_METRIC_LABEL("rocksdb_number_block_not_compressed"),
+	BUILD_METRIC_LABEL("rocksdb_number_block_not_compressed"),
 	[YB_STORAGE_GAUGE_REGULARDB_MERGE_OPERATION_TOTAL_TIME] =
-		BUILD_METRIC_LABEL("rocksdb_merge_operation_total_time"),
+	BUILD_METRIC_LABEL("rocksdb_merge_operation_total_time"),
 	[YB_STORAGE_GAUGE_REGULARDB_FILTER_OPERATION_TOTAL_TIME] =
-		BUILD_METRIC_LABEL("rocksdb_filter_operation_total_time"),
+	BUILD_METRIC_LABEL("rocksdb_filter_operation_total_time"),
 	[YB_STORAGE_GAUGE_REGULARDB_ROW_CACHE_HIT] =
-		BUILD_METRIC_LABEL("rocksdb_row_cache_hit"),
+	BUILD_METRIC_LABEL("rocksdb_row_cache_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_ROW_CACHE_MISS] =
-		BUILD_METRIC_LABEL("rocksdb_row_cache_miss"),
+	BUILD_METRIC_LABEL("rocksdb_row_cache_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_NO_TABLE_CACHE_ITERATORS] =
-		BUILD_METRIC_LABEL("rocksdb_no_table_cache_iterators"),
+	BUILD_METRIC_LABEL("rocksdb_no_table_cache_iterators"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_HIT] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_hit"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_add"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_add"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_read"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_write"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_hit"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_add"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_add"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_READ] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_read"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_write"),
+	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MISS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_miss"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_HIT] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_hit"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_ADD] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_add"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_add"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_ADD_FAILURES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_add_failures"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_add_failures"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_INDEX_MISS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_index_miss"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_index_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_INDEX_HIT] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_index_hit"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_index_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_FILTER_MISS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_filter_miss"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_filter_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_FILTER_HIT] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_filter_hit"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_filter_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_DATA_MISS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_data_miss"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_data_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_DATA_HIT] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_data_hit"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_data_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_BYTES_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_bytes_read"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_BYTES_WRITE] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_bytes_write"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOOM_FILTER_USEFUL] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_bloom_filter_useful"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_bloom_filter_useful"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOOM_FILTER_CHECKED] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_bloom_filter_checked"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_bloom_filter_checked"),
 	[YB_STORAGE_GAUGE_INTENTSDB_MEMTABLE_HIT] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_memtable_hit"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_memtable_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_MEMTABLE_MISS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_memtable_miss"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_memtable_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_GET_HIT_L0] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_get_hit_l0"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_get_hit_l0"),
 	[YB_STORAGE_GAUGE_INTENTSDB_GET_HIT_L1] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_get_hit_l1"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_get_hit_l1"),
 	[YB_STORAGE_GAUGE_INTENTSDB_GET_HIT_L2_AND_UP] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_get_hit_l2_and_up"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_get_hit_l2_and_up"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_KEYS_WRITTEN] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_keys_written"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_keys_written"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_KEYS_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_keys_read"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_keys_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_KEYS_UPDATED] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_keys_updated"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_keys_updated"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BYTES_WRITTEN] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_written"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_written"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BYTES_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_read"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_DB_SEEK] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_seek"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_seek"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_DB_NEXT] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_next"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_next"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_DB_PREV] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_prev"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_prev"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_DB_SEEK_FOUND] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_seek_found"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_seek_found"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_DB_NEXT_FOUND] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_next_found"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_next_found"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_DB_PREV_FOUND] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_prev_found"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_db_prev_found"),
 	[YB_STORAGE_GAUGE_INTENTSDB_ITER_BYTES_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_iter_bytes_read"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_iter_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NO_FILE_CLOSES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_no_file_closes"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_no_file_closes"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NO_FILE_OPENS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_no_file_opens"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_no_file_opens"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NO_FILE_ERRORS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_no_file_errors"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_no_file_errors"),
 	[YB_STORAGE_GAUGE_INTENTSDB_STALL_L0_SLOWDOWN_MICROS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_stall_l0_slowdown_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_stall_l0_slowdown_micros"),
 	[YB_STORAGE_GAUGE_INTENTSDB_STALL_MEMTABLE_COMPACTION_MICROS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_stall_memtable_compaction_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_stall_memtable_compaction_micros"),
 	[YB_STORAGE_GAUGE_INTENTSDB_STALL_L0_NUM_FILES_MICROS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_stall_l0_num_files_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_stall_l0_num_files_micros"),
 	[YB_STORAGE_GAUGE_INTENTSDB_STALL_MICROS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_stall_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_stall_micros"),
 	[YB_STORAGE_GAUGE_INTENTSDB_DB_MUTEX_WAIT_MICROS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_db_mutex_wait_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_db_mutex_wait_micros"),
 	[YB_STORAGE_GAUGE_INTENTSDB_RATE_LIMIT_DELAY_MILLIS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_rate_limit_delay_millis"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_rate_limit_delay_millis"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NO_ITERATORS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_no_iterators"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_no_iterators"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_MULTIGET_CALLS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_multiget_calls"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_multiget_calls"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_MULTIGET_KEYS_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_multiget_keys_read"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_multiget_keys_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_MULTIGET_BYTES_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_multiget_bytes_read"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_multiget_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_FILTERED_DELETES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_filtered_deletes"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_filtered_deletes"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_MERGE_FAILURES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_merge_failures"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_merge_failures"),
 	[YB_STORAGE_GAUGE_INTENTSDB_SEQUENCE_NUMBER] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_sequence_number"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_sequence_number"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOOM_FILTER_PREFIX_CHECKED] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_bloom_filter_prefix_checked"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_bloom_filter_prefix_checked"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOOM_FILTER_PREFIX_USEFUL] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_bloom_filter_prefix_useful"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_bloom_filter_prefix_useful"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_OF_RESEEKS_IN_ITERATION] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_of_reseeks_in_iteration"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_of_reseeks_in_iteration"),
 	[YB_STORAGE_GAUGE_INTENTSDB_GET_UPDATES_SINCE_CALLS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_get_updates_since_calls"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_get_updates_since_calls"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_COMPRESSED_MISS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_compressed_miss"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_compressed_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_COMPRESSED_HIT] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_compressed_hit"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_compressed_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_COMPRESSED_ADD] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_compressed_add"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_compressed_add"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_COMPRESSED_ADD_FAILURES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_compressed_add_failures"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_compressed_add_failures"),
 	[YB_STORAGE_GAUGE_INTENTSDB_WAL_FILE_SYNCED] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_wal_file_synced"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_wal_file_synced"),
 	[YB_STORAGE_GAUGE_INTENTSDB_WAL_FILE_BYTES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_wal_file_bytes"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_wal_file_bytes"),
 	[YB_STORAGE_GAUGE_INTENTSDB_WRITE_DONE_BY_SELF] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_write_done_by_self"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_write_done_by_self"),
 	[YB_STORAGE_GAUGE_INTENTSDB_WRITE_DONE_BY_OTHER] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_write_done_by_other"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_write_done_by_other"),
 	[YB_STORAGE_GAUGE_INTENTSDB_WRITE_WITH_WAL] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_write_with_wal"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_write_with_wal"),
 	[YB_STORAGE_GAUGE_INTENTSDB_COMPACT_READ_BYTES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_compact_read_bytes"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_compact_read_bytes"),
 	[YB_STORAGE_GAUGE_INTENTSDB_COMPACT_WRITE_BYTES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_compact_write_bytes"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_compact_write_bytes"),
 	[YB_STORAGE_GAUGE_INTENTSDB_FLUSH_WRITE_BYTES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_flush_write_bytes"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_flush_write_bytes"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_DIRECT_LOAD_TABLE_PROPERTIES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_direct_load_table_properties"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_direct_load_table_properties"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_SUPERVERSION_ACQUIRES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_superversion_acquires"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_superversion_acquires"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_SUPERVERSION_RELEASES] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_superversion_releases"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_superversion_releases"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_SUPERVERSION_CLEANUPS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_superversion_cleanups"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_superversion_cleanups"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NUMBER_BLOCK_NOT_COMPRESSED] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_number_block_not_compressed"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_number_block_not_compressed"),
 	[YB_STORAGE_GAUGE_INTENTSDB_MERGE_OPERATION_TOTAL_TIME] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_merge_operation_total_time"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_merge_operation_total_time"),
 	[YB_STORAGE_GAUGE_INTENTSDB_FILTER_OPERATION_TOTAL_TIME] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_filter_operation_total_time"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_filter_operation_total_time"),
 	[YB_STORAGE_GAUGE_INTENTSDB_ROW_CACHE_HIT] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_row_cache_hit"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_row_cache_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_ROW_CACHE_MISS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_row_cache_miss"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_row_cache_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NO_TABLE_CACHE_ITERATORS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_no_table_cache_iterators"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_no_table_cache_iterators"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_HIT] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_hit"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_add"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_add"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_read"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_write"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_hit"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_add"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_add"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_read"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_write"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_ACTIVE_WRITE_QUERY_OBJECTS] =
-		BUILD_METRIC_LABEL("active_write_query_objects"),
+	BUILD_METRIC_LABEL("active_write_query_objects"),
 };
 
 const char *yb_metric_counter_label[] = {
 	[YB_STORAGE_COUNTER_NOT_LEADER_REJECTIONS] =
-		BUILD_METRIC_LABEL("not_leader_rejections"),
+	BUILD_METRIC_LABEL("not_leader_rejections"),
 	[YB_STORAGE_COUNTER_LEADER_MEMORY_PRESSURE_REJECTIONS] =
-		BUILD_METRIC_LABEL("leader_memory_pressure_rejections"),
+	BUILD_METRIC_LABEL("leader_memory_pressure_rejections"),
 	[YB_STORAGE_COUNTER_MAJORITY_SST_FILES_REJECTIONS] =
-		BUILD_METRIC_LABEL("majority_sst_file_rejections"),
+	BUILD_METRIC_LABEL("majority_sst_file_rejections"),
 	[YB_STORAGE_COUNTER_TRANSACTION_CONFLICTS] =
-		BUILD_METRIC_LABEL("transaction_conflicts"),
+	BUILD_METRIC_LABEL("transaction_conflicts"),
 	[YB_STORAGE_COUNTER_EXPIRED_TRANSACTIONS] =
-		BUILD_METRIC_LABEL("expired_transactions"),
+	BUILD_METRIC_LABEL("expired_transactions"),
 	[YB_STORAGE_COUNTER_RESTART_READ_REQUESTS] =
-		BUILD_METRIC_LABEL("restart_read_requests"),
+	BUILD_METRIC_LABEL("restart_read_requests"),
 	[YB_STORAGE_COUNTER_CONSISTENT_PREFIX_READ_REQUESTS] =
-		BUILD_METRIC_LABEL("consistent_prefix_read_requests"),
+	BUILD_METRIC_LABEL("consistent_prefix_read_requests"),
 	[YB_STORAGE_COUNTER_PGSQL_CONSISTENT_PREFIX_READ_ROWS] =
-		BUILD_METRIC_LABEL("pgsql_consistent_prefix_read_rows"),
+	BUILD_METRIC_LABEL("pgsql_consistent_prefix_read_rows"),
 	[YB_STORAGE_COUNTER_TABLET_DATA_CORRUPTIONS] =
-		BUILD_METRIC_LABEL("tablet_data_corruptions"),
+	BUILD_METRIC_LABEL("tablet_data_corruptions"),
 	[YB_STORAGE_COUNTER_ROWS_INSERTED] =
-		BUILD_METRIC_LABEL("rows_inserted"),
+	BUILD_METRIC_LABEL("rows_inserted"),
 	[YB_STORAGE_COUNTER_FAILED_BATCH_LOCK] =
-		BUILD_METRIC_LABEL("failed_batch_lock"),
+	BUILD_METRIC_LABEL("failed_batch_lock"),
 	[YB_STORAGE_COUNTER_DOCDB_KEYS_FOUND] =
-		BUILD_METRIC_LABEL("docdb_keys_found"),
+	BUILD_METRIC_LABEL("docdb_keys_found"),
 	[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND] =
-		BUILD_METRIC_LABEL("docdb_obsolete_keys_found"),
+	BUILD_METRIC_LABEL("docdb_obsolete_keys_found"),
 	[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND_PAST_CUTOFF] =
-		BUILD_METRIC_LABEL("docdb_obsolete_keys_found_past_cutoff"),
+	BUILD_METRIC_LABEL("docdb_obsolete_keys_found_past_cutoff"),
 };
 
 const char *yb_metric_event_label[] = {
 	[YB_STORAGE_EVENT_REGULARDB_DB_GET] =
-		BUILD_METRIC_LABEL("rocksdb_db_get_micros"),
+	BUILD_METRIC_LABEL("rocksdb_db_get_micros"),
 	[YB_STORAGE_EVENT_REGULARDB_DB_WRITE] =
-		BUILD_METRIC_LABEL("rocksdb_db_write_micros"),
+	BUILD_METRIC_LABEL("rocksdb_db_write_micros"),
 	[YB_STORAGE_EVENT_REGULARDB_COMPACTION_TIME] =
-		BUILD_METRIC_LABEL("rocksdb_compaction_times_micros"),
+	BUILD_METRIC_LABEL("rocksdb_compaction_times_micros"),
 	[YB_STORAGE_EVENT_REGULARDB_WAL_FILE_SYNC_MICROS] =
-		BUILD_METRIC_LABEL("rocksdb_wal_file_sync_micros"),
+	BUILD_METRIC_LABEL("rocksdb_wal_file_sync_micros"),
 	[YB_STORAGE_EVENT_REGULARDB_DB_MULTIGET] =
-		BUILD_METRIC_LABEL("rocksdb_db_multiget_micros"),
+	BUILD_METRIC_LABEL("rocksdb_db_multiget_micros"),
 	[YB_STORAGE_EVENT_REGULARDB_READ_BLOCK_COMPACTION_MICROS] =
-		BUILD_METRIC_LABEL("rocksdb_read_block_compaction_micros"),
+	BUILD_METRIC_LABEL("rocksdb_read_block_compaction_micros"),
 	[YB_STORAGE_EVENT_REGULARDB_READ_BLOCK_GET_MICROS] =
-		BUILD_METRIC_LABEL("rocksdb_read_block_get_micros"),
+	BUILD_METRIC_LABEL("rocksdb_read_block_get_micros"),
 	[YB_STORAGE_EVENT_REGULARDB_WRITE_RAW_BLOCK_MICROS] =
-		BUILD_METRIC_LABEL("rocksdb_write_raw_block_micros"),
+	BUILD_METRIC_LABEL("rocksdb_write_raw_block_micros"),
 	[YB_STORAGE_EVENT_REGULARDB_NUM_FILES_IN_SINGLE_COMPACTION] =
-		BUILD_METRIC_LABEL("rocksdb_num_files_in_singlecompaction"),
+	BUILD_METRIC_LABEL("rocksdb_num_files_in_singlecompaction"),
 	[YB_STORAGE_EVENT_REGULARDB_DB_SEEK] =
-		BUILD_METRIC_LABEL("rocksdb_db_seek_micros"),
+	BUILD_METRIC_LABEL("rocksdb_db_seek_micros"),
 	[YB_STORAGE_EVENT_REGULARDB_SST_READ_MICROS] =
-		BUILD_METRIC_LABEL("rocksdb_sst_read_micros"),
+	BUILD_METRIC_LABEL("rocksdb_sst_read_micros"),
 	[YB_STORAGE_EVENT_REGULARDB_BYTES_PER_READ] =
-		BUILD_METRIC_LABEL("rocksdb_bytes_per_read"),
+	BUILD_METRIC_LABEL("rocksdb_bytes_per_read"),
 	[YB_STORAGE_EVENT_REGULARDB_BYTES_PER_WRITE] =
-		BUILD_METRIC_LABEL("rocksdb_bytes_per_write"),
+	BUILD_METRIC_LABEL("rocksdb_bytes_per_write"),
 	[YB_STORAGE_EVENT_REGULARDB_BYTES_PER_MULTIGET] =
-		BUILD_METRIC_LABEL("rocksdb_bytes_per_multiget"),
+	BUILD_METRIC_LABEL("rocksdb_bytes_per_multiget"),
 	[YB_STORAGE_EVENT_INTENTSDB_DB_GET] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_db_get_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_db_get_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_DB_WRITE] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_db_write_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_db_write_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_COMPACTION_TIME] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_compaction_times_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_compaction_times_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_WAL_FILE_SYNC_MICROS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_wal_file_sync_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_wal_file_sync_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_DB_MULTIGET] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_db_multiget_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_db_multiget_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_READ_BLOCK_COMPACTION_MICROS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_read_block_compaction_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_read_block_compaction_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_READ_BLOCK_GET_MICROS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_read_block_get_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_read_block_get_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_WRITE_RAW_BLOCK_MICROS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_write_raw_block_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_write_raw_block_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_NUM_FILES_IN_SINGLE_COMPACTION] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_num_files_in_singlecompaction"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_num_files_in_singlecompaction"),
 	[YB_STORAGE_EVENT_INTENTSDB_DB_SEEK] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_db_seek_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_db_seek_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_SST_READ_MICROS] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_sst_read_micros"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_sst_read_micros"),
 	[YB_STORAGE_EVENT_INTENTSDB_BYTES_PER_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_read"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_read"),
 	[YB_STORAGE_EVENT_INTENTSDB_BYTES_PER_WRITE] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_write"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_write"),
 	[YB_STORAGE_EVENT_INTENTSDB_BYTES_PER_MULTIGET] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_multiget"),
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_multiget"),
 	[YB_STORAGE_EVENT_SNAPSHOT_READ_INFLIGHT_WAIT_DURATION] =
-		BUILD_METRIC_LABEL("snapshot_read_inflight_wait_duration"),
+	BUILD_METRIC_LABEL("snapshot_read_inflight_wait_duration"),
 	[YB_STORAGE_EVENT_QL_READ_LATENCY] =
-		BUILD_METRIC_LABEL("ql_read_latency"),
+	BUILD_METRIC_LABEL("ql_read_latency"),
 	[YB_STORAGE_EVENT_WRITE_LOCK_LATENCY] =
-		BUILD_METRIC_LABEL("write_lock_latency"),
+	BUILD_METRIC_LABEL("write_lock_latency"),
 	[YB_STORAGE_EVENT_QL_WRITE_LATENCY] =
-		BUILD_METRIC_LABEL("ql_write_latency"),
+	BUILD_METRIC_LABEL("ql_write_latency"),
 	[YB_STORAGE_EVENT_READ_TIME_WAIT] =
-		BUILD_METRIC_LABEL("read_time_wait"),
+	BUILD_METRIC_LABEL("read_time_wait"),
 	[YB_STORAGE_EVENT_TOTAL_WAIT_QUEUE_TIME] =
-		BUILD_METRIC_LABEL("total_wait_queue_time"),
+	BUILD_METRIC_LABEL("total_wait_queue_time"),
 };
 
 #undef BUILD_METRIC_LABEL
@@ -711,7 +710,8 @@ YbExplainStatWithoutTiming(YbExplainState *yb_es, YbStatLabel label,
 		return;
 
 	const YbStatLabelData *label_data = &yb_stat_label_data[label];
-	ExplainState		  *es = yb_es->es;
+	ExplainState *es = yb_es->es;
+
 	ExplainPropertyFloat(label_data->requests, NULL, count, 0, es);
 }
 
@@ -726,53 +726,62 @@ YbExplainRpcRequestStat(YbExplainState *yb_es, YbStatLabel label, double count,
 		return;
 
 	const YbStatLabelData *label_data = &yb_stat_label_data[label];
-	ExplainState   *es = yb_es->es;
+	ExplainState *es = yb_es->es;
+
 	ExplainPropertyFloat(label_data->requests, NULL, count, 0, es);
 
-	/* Display timing info only when there is at least 1 RPC request. This
-	 * enables the output to be concise. */
+	/*
+	 * Display timing info only when there is at least 1 RPC request. This
+	 * enables the output to be concise.
+	 */
 	if (yb_es->es->timing && count > 0)
 		ExplainPropertyFloat(label_data->execution_time, "ms",
 							 timing / 1000000.0, 3, yb_es->es);
 }
 
 static void
-YbExplainRpcRequestNumericMetric(YbExplainState *yb_es, const char* label, double value,
-								 bool is_mean) {
+YbExplainRpcRequestNumericMetric(YbExplainState *yb_es, const char *label, double value,
+								 bool is_mean)
+{
 	if (value == 0)
 		return;
 
-	ExplainState   *es = yb_es->es;
+	ExplainState *es = yb_es->es;
+
 	ExplainPropertyFloat(label, NULL, value, is_mean ? 3 : 0, es);
 }
 
 /* Explains a single RPC gauge metric */
 static void
 YbExplainRpcRequestGauge(YbExplainState *yb_es, YbPgGaugeMetrics metric, double value,
-						 bool is_mean) {
+						 bool is_mean)
+{
 	YbExplainRpcRequestNumericMetric(yb_es, yb_metric_gauge_label[metric], value, is_mean);
 }
 
 /* Explains a single RPC counter metric */
 static void
 YbExplainRpcRequestCounter(YbExplainState *yb_es, YbPgCounterMetrics metric, double value,
-						   bool is_mean) {
+						   bool is_mean)
+{
 	YbExplainRpcRequestNumericMetric(yb_es, yb_metric_counter_label[metric], value, is_mean);
 }
 
 /* Explains a single RPC event metric */
 static void
 YbExplainRpcRequestEvent(YbExplainState *yb_es, YbPgEventMetrics metric,
-						 const YbPgEventMetric* value, double nloops, bool is_mean) {
+						 const YbPgEventMetric *value, double nloops, bool is_mean)
+{
 	if (value->count == 0)
 		return;
 
-	const char  *label = yb_metric_event_label[metric];
-	ExplainState   *es = yb_es->es;
+	const char *label = yb_metric_event_label[metric];
+	ExplainState *es = yb_es->es;
 
-	int ndigits = is_mean ? 3 : 0;
+	int			ndigits = is_mean ? 3 : 0;
 
-	char *buf;
+	char	   *buf;
+
 	buf = psprintf("sum: %.*f, count: %.*f",
 				   ndigits, value->sum / nloops, ndigits, value->count / nloops);
 	ExplainProperty(label, NULL, buf, false, es);
@@ -814,6 +823,7 @@ YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
 	foreach(l, es->pstmt->rowMarks)
 	{
 		PlanRowMark *erm = (PlanRowMark *) lfirst(l);
+
 		if (erm->markType != ROW_MARK_REFERENCE &&
 			erm->markType != ROW_MARK_COPY)
 		{
@@ -949,7 +959,10 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("EXPLAIN option WAL requires ANALYZE")));
 
-	/* if hiding of non-deterministic fields is requested, turn off debug and verbose modes */
+	/*
+	 * if hiding of non-deterministic fields is requested, turn off debug and
+	 * verbose modes
+	 */
 	if (yb_explain_hide_non_deterministic_fields)
 	{
 		if (es->yb_debug)
@@ -990,7 +1003,8 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 
 	/* Turn on timing of RPC requests in accordance to the flags passed */
 	YbToggleSessionStatsTimer(es->timing);
-	if (es->yb_debug) {
+	if (es->yb_debug)
+	{
 		YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_ALL);
 	}
 
@@ -1051,8 +1065,10 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 		do_text_output_oneline(tstate, es->str->data);
 	end_tup_output(tstate);
 
-	/* Turn off timing RPC requests and metrics capture so that future queries are not timed
-	 * and metrics are not sent by default */
+	/*
+	 * Turn off timing RPC requests and metrics capture so that future queries
+	 * are not timed and metrics are not sent by default
+	 */
 	YbToggleSessionStatsTimer(false);
 	YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
 	pfree(es->str->data);
@@ -1333,7 +1349,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	/* call ExecutorStart to prepare the plan for execution */
 	ExecutorStart(queryDesc, eflags);
 
-	int64 peakMem = 0;
+	int64		peakMem = 0;
 
 	/* Execute the plan for statistics if asked for */
 	if (es->analyze)
@@ -1365,11 +1381,14 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		/* run cleanup too */
 		ExecutorFinish(queryDesc);
 
-		/* Fetch stats collected at the query level (ie. not corresponding to
-		 * any execution node) */
+		/*
+		 * Fetch stats collected at the query level (ie. not corresponding to
+		 * any execution node)
+		 */
 		if (es->rpc)
 		{
 			YbInstrumentation *yb_instr = &queryDesc->yb_query_stats->yb_instr;
+
 			YbUpdateSessionStats(yb_instr);
 			YbAggregateExplainableRPCRequestStat(es, yb_instr);
 		}
@@ -1462,7 +1481,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			/*
 			 * Total RPC wait time is the sum of Read waits, Flush waits and Catalog waits.
 			 */
-			double total_rpc_wait = 0.0;
+			double		total_rpc_wait = 0.0;
+
 			if (es->yb_stats.read.count > 0.0)
 				total_rpc_wait += es->yb_stats.read.wait_time;
 
@@ -1473,6 +1493,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 				total_rpc_wait += es->yb_stats.catalog_read.wait_time;
 
 			YbExplainState yb_es = {es, true};
+
 			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_READ,
 									es->yb_stats.read.count,
 									es->yb_stats.read.wait_time);
@@ -1490,19 +1511,23 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 									es->yb_stats.flush.count,
 									es->yb_stats.flush.wait_time);
 
-			if (es->yb_debug) {
-				for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+			if (es->yb_debug)
+			{
+				for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
+				{
 					YbExplainRpcRequestGauge(&yb_es, i, es->yb_stats.storage_gauge_metrics[i],
-											 false /* is_mean */);
+											 false /* is_mean */ );
 				}
-				for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+				for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
+				{
 					YbExplainRpcRequestCounter(&yb_es, i, es->yb_stats.storage_counter_metrics[i],
-											   false /* is_mean */);
+											   false /* is_mean */ );
 				}
-				for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+				for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
+				{
 					YbExplainRpcRequestEvent(&yb_es, i,
 											 &es->yb_stats.storage_event_metrics[i],
-											 1.0 /* nloops */, false /* is_mean */);
+											 1.0 /* nloops */ , false /* is_mean */ );
 				}
 			}
 
@@ -2142,7 +2167,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			{
 				case CMD_SELECT:
 					/* Don't need to expose implementation details */
-					if (IsYBRelation(((ScanState*) planstate)->ss_currentRelation))
+					if (IsYBRelation(((ScanState *) planstate)->ss_currentRelation))
 						sname = pname = "YB Foreign Scan";
 					else
 						pname = "Foreign Scan";
@@ -2219,7 +2244,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 				if (DO_AGGSPLIT_SKIPFINAL(agg->aggsplit))
 				{
-					if (((AggState*) planstate)->yb_pushdown_supported)
+					if (((AggState *) planstate)->yb_pushdown_supported)
 						/*
 						 * If partial aggregate is pushed down, it does not
 						 * really do anything, since entire operation is
@@ -2231,7 +2256,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					pname = psprintf("%s %s", partialmode, pname);
 				}
 				else if (DO_AGGSPLIT_COMBINE(agg->aggsplit) ||
-						 ((AggState*) planstate)->yb_pushdown_supported)
+						 ((AggState *) planstate)->yb_pushdown_supported)
 				{
 					partialmode = "Finalize";
 					pname = psprintf("%s %s", partialmode, pname);
@@ -2625,10 +2650,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			break;
 	}
 
-	const bool is_yb_rpc_stats_required = es->rpc && es->analyze &&
-										  planstate->instrument->nloops > 0;
-	const bool is_yb_planning_stats_required = es->yb_debug &&
-											   yb_enable_base_scans_cost_model;
+	const bool	is_yb_rpc_stats_required = (es->rpc && es->analyze &&
+											planstate->instrument->nloops > 0);
+	const bool	is_yb_planning_stats_required = (es->yb_debug &&
+												 yb_enable_base_scans_cost_model);
 
 	/* quals, sort keys, etc */
 	switch (nodeTag(plan))
@@ -2729,46 +2754,49 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_tidbitmap_info((BitmapHeapScanState *) planstate, es);
 			break;
 		case T_YbBitmapTableScan:
-		{
-			YbBitmapTableScanState *bitmapscanstate =
-				(YbBitmapTableScanState *) planstate;
-			YbBitmapTableScan *bitmapplan = (YbBitmapTableScan *) plan;
-			List *storage_filter = bitmapscanstate->work_mem_exceeded
-				? bitmapplan->fallback_pushdown.quals
-				: bitmapplan->rel_pushdown.quals;
-			List *local_filter = bitmapscanstate->work_mem_exceeded
-				? bitmapplan->fallback_local_quals
-				: plan->qual;
-
-			/* Storage filters are applied first, so they are output first. */
-			if (bitmapscanstate->recheck_required)
-				show_scan_qual(bitmapplan->recheck_pushdown.quals,
-							   "Storage Recheck Cond", planstate, ancestors,
-							   es);
-			show_scan_qual(storage_filter, "Storage Filter", planstate,
-						   ancestors, es);
-
-			if (bitmapscanstate->recheck_required)
 			{
-				show_scan_qual(bitmapplan->recheck_local_quals, "Recheck Cond",
-							   planstate, ancestors, es);
-				if (bitmapplan->recheck_local_quals)
-					show_instrumentation_count("Rows Removed by Index Recheck",
-											   2, planstate, es);
-			}
+				YbBitmapTableScanState *bitmapscanstate =
+				(YbBitmapTableScanState *) planstate;
+				YbBitmapTableScan *bitmapplan = (YbBitmapTableScan *) plan;
+				List	   *storage_filter = (bitmapscanstate->work_mem_exceeded ?
+											  bitmapplan->fallback_pushdown.quals :
+											  bitmapplan->rel_pushdown.quals);
+				List	   *local_filter = (bitmapscanstate->work_mem_exceeded ?
+											bitmapplan->fallback_local_quals :
+											plan->qual);
 
-			show_scan_qual(local_filter, "Filter", planstate, ancestors, es);
-			if (local_filter)
-				show_instrumentation_count("Rows Removed by Filter", 1,
-										   planstate, es);
-			if (es->rpc && es->analyze)
-				show_yb_rpc_stats(planstate, es);
-			if (es->analyze)
-				show_ybtidbitmap_info(bitmapscanstate, es);
-			if (is_yb_planning_stats_required)
-				show_yb_planning_stats(&bitmapplan->yb_plan_info, es);
-			break;
-		}
+				/*
+				 * Storage filters are applied first, so they are output
+				 * first.
+				 */
+				if (bitmapscanstate->recheck_required)
+					show_scan_qual(bitmapplan->recheck_pushdown.quals,
+								   "Storage Recheck Cond", planstate, ancestors,
+								   es);
+				show_scan_qual(storage_filter, "Storage Filter", planstate,
+							   ancestors, es);
+
+				if (bitmapscanstate->recheck_required)
+				{
+					show_scan_qual(bitmapplan->recheck_local_quals, "Recheck Cond",
+								   planstate, ancestors, es);
+					if (bitmapplan->recheck_local_quals)
+						show_instrumentation_count("Rows Removed by Index Recheck",
+												   2, planstate, es);
+				}
+
+				show_scan_qual(local_filter, "Filter", planstate, ancestors, es);
+				if (local_filter)
+					show_instrumentation_count("Rows Removed by Filter", 1,
+											   planstate, es);
+				if (es->rpc && es->analyze)
+					show_yb_rpc_stats(planstate, es);
+				if (es->analyze)
+					show_ybtidbitmap_info(bitmapscanstate, es);
+				if (is_yb_planning_stats_required)
+					show_yb_planning_stats(&bitmapplan->yb_plan_info, es);
+				break;
+			}
 		case T_SampleScan:
 			show_tablesample(((SampleScan *) plan)->tablesample,
 							 planstate, ancestors, es);
@@ -2958,6 +2986,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (IsA(plan, YbBatchedNestLoop))
 			{
 				YbBatchedNestLoop *bnl = (YbBatchedNestLoop *) plan;
+
 				if (bnl->numSortCols > 0)
 					show_sort_group_keys(planstate, "Sort Keys",
 										 bnl->numSortCols, 0, bnl->sortColIdx,
@@ -3064,7 +3093,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	/* YB aggregate pushdown */
 	if (IsYugaByteEnabled())
 	{
-		List **aggrefs = YbPlanStateTryGetAggrefs(planstate);
+		List	  **aggrefs = YbPlanStateTryGetAggrefs(planstate);
+
 		if (aggrefs && *aggrefs != NIL)
 			ExplainPropertyBool("Partial Aggregate", true, es);
 	}
@@ -4123,8 +4153,8 @@ show_hash_info(HashState *hashstate, ExplainState *es)
 		 * - Hash Batches and Memory Usage depend on the size of each tuple,
 		 *   which may vary slightly.
 		 */
-		bool		show_variable_fields = !IsYugaByteEnabled() ||
-						!yb_explain_hide_non_deterministic_fields;
+		bool		show_variable_fields = (!IsYugaByteEnabled() ||
+											!yb_explain_hide_non_deterministic_fields);
 
 		if (es->format != EXPLAIN_FORMAT_TEXT)
 		{
@@ -4804,21 +4834,21 @@ static void
 show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 {
 	YbInstrumentation *yb_instr = &planstate->instrument->yb_instr;
-	double nloops = planstate->instrument->nloops;
+	double		nloops = planstate->instrument->nloops;
 
 	/* Read stats */
-	double table_reads = yb_instr->tbl_reads.count / nloops;
-	double table_read_wait = yb_instr->tbl_reads.wait_time / nloops;
-	double index_reads = yb_instr->index_reads.count / nloops;
-	double index_read_wait = yb_instr->index_reads.wait_time / nloops;
-	double table_rows_scanned = yb_instr->tbl_reads.rows_scanned / nloops;
-	double index_rows_scanned = yb_instr->index_reads.rows_scanned / nloops ;
+	double		table_reads = yb_instr->tbl_reads.count / nloops;
+	double		table_read_wait = yb_instr->tbl_reads.wait_time / nloops;
+	double		index_reads = yb_instr->index_reads.count / nloops;
+	double		index_read_wait = yb_instr->index_reads.wait_time / nloops;
+	double		table_rows_scanned = yb_instr->tbl_reads.rows_scanned / nloops;
+	double		index_rows_scanned = yb_instr->index_reads.rows_scanned / nloops;
 
 	/* Write stats */
-	double table_writes = yb_instr->tbl_writes / nloops;
-	double index_writes = yb_instr->index_writes / nloops;
-	double flushes = yb_instr->write_flushes.count / nloops;
-	double flushes_wait = yb_instr->write_flushes.wait_time / nloops;
+	double		table_writes = yb_instr->tbl_writes / nloops;
+	double		index_writes = yb_instr->index_writes / nloops;
+	double		flushes = yb_instr->write_flushes.count / nloops;
+	double		flushes_wait = yb_instr->write_flushes.wait_time / nloops;
 
 	YbExplainState yb_es = {es, false};
 
@@ -4838,18 +4868,22 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_FLUSH, flushes,
 							flushes_wait);
 
-	if (es->yb_debug) {
-		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+	if (es->yb_debug)
+	{
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
+		{
 			YbExplainRpcRequestGauge(&yb_es, i, yb_instr->storage_gauge_metrics[i] / nloops,
-									 true /* is_mean */);
+									 true /* is_mean */ );
 		}
-		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
+		{
 			YbExplainRpcRequestCounter(&yb_es, i, yb_instr->storage_counter_metrics[i] / nloops,
-									   true /* is_mean */);
+									   true /* is_mean */ );
 		}
-		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
+		{
 			YbExplainRpcRequestEvent(&yb_es, i, &yb_instr->storage_event_metrics[i],
-									 nloops, true /* is_mean */);
+									 nloops, true /* is_mean */ );
 		}
 	}
 }
@@ -6185,49 +6219,55 @@ escape_yaml(StringInfo buf, const char *str)
 static void
 YbAppendPgMemInfo(ExplainState *es, const Size peakMem)
 {
-	Size peakMemKb = CEILING_K(peakMem);
+	Size		peakMemKb = CEILING_K(peakMem);
+
 	ExplainPropertyInteger("Peak Memory Usage", "kB", peakMemKb, es);
 }
 
 static void
-YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
+YbAggregateExplainableRPCRequestStat(ExplainState *es,
 									 const YbInstrumentation *yb_instr)
 {
-	// Storage Reads
+	/* Storage Reads */
 	es->yb_stats.read.count +=
 		yb_instr->tbl_reads.count + yb_instr->index_reads.count;
 	es->yb_stats.read.wait_time +=
 		yb_instr->tbl_reads.wait_time + yb_instr->index_reads.wait_time;
 
-	// Storage Writes
+	/* Storage Writes */
 	es->yb_stats.write_count += yb_instr->tbl_writes + yb_instr->index_writes;
 
-	// Catalog Reads
+	/* Catalog Reads */
 	es->yb_stats.catalog_read.count += yb_instr->catalog_reads.count;
 	es->yb_stats.catalog_read.wait_time += yb_instr->catalog_reads.wait_time;
 
-	// Catalog Writes
+	/* Catalog Writes */
 	es->yb_stats.catalog_write_count += yb_instr->catalog_writes;
 
-	// Storage Flushes
+	/* Storage Flushes */
 	es->yb_stats.flush.count += yb_instr->write_flushes.count;
 	es->yb_stats.flush.wait_time += yb_instr->write_flushes.wait_time;
 
-	// Rows Scanned
+	/* Rows Scanned */
 	es->yb_stats.read.rows_scanned +=
 		yb_instr->tbl_reads.rows_scanned + yb_instr->index_reads.rows_scanned;
 
-	// RPC Storage Metrics
-	if (es->yb_debug) {
-		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+	/* RPC Storage Metrics */
+	if (es->yb_debug)
+	{
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
+		{
 			es->yb_stats.storage_gauge_metrics[i] += yb_instr->storage_gauge_metrics[i];
 		}
-		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
+		{
 			es->yb_stats.storage_counter_metrics[i] += yb_instr->storage_counter_metrics[i];
 		}
-		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
-			YbPgEventMetric* agg = &es->yb_stats.storage_event_metrics[i];
-			const YbPgEventMetric* val = &yb_instr->storage_event_metrics[i];
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
+		{
+			YbPgEventMetric *agg = &es->yb_stats.storage_event_metrics[i];
+			const YbPgEventMetric *val = &yb_instr->storage_event_metrics[i];
+
 			agg->sum += val->sum;
 			agg->count += val->count;
 		}
@@ -6253,13 +6293,13 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 	if (yb_distinct_prefixlen > 0)
 	{
 		/* Print distinct prefix keys. */
-		List		   *context;
-		List		   *result = NIL;
-		StringInfoData	distinct_prefix_key_buf;
-		bool			useprefix;
-		int				keyno;
-		ListCell	   *tlelc;
-		Index			scanrelid;
+		List	   *context;
+		List	   *result = NIL;
+		StringInfoData distinct_prefix_key_buf;
+		bool		useprefix;
+		int			keyno;
+		ListCell   *tlelc;
+		Index		scanrelid;
 
 		initStringInfo(&distinct_prefix_key_buf);
 
@@ -6273,9 +6313,9 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 		keyno = 0;
 		foreach(tlelc, indextlist)
 		{
-			TargetEntry	*indextle;
-			Node		*indexpr;
-			char 		*exprstr;
+			TargetEntry *indextle;
+			Node	   *indexpr;
+			char	   *exprstr;
 
 			if (keyno >= yb_distinct_prefixlen)
 				break;
@@ -6307,7 +6347,7 @@ yb_fix_indexpr_mutator(Node *node, int *newvarno)
 
 	if (nodeTag(node) == T_Var)
 	{
-		Var *var = palloc(sizeof(Var));
+		Var		   *var = palloc(sizeof(Var));
 
 		/* Copy old var into a new one and adjust varno */
 		*var = *((Var *) node);

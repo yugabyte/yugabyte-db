@@ -791,7 +791,7 @@ acldefault(ObjectType objtype, Oid ownerId)
 			owner_default = ACL_ALL_RIGHTS_TABLESPACE;
 			break;
 		case OBJECT_YBTABLEGROUP:
-			// TODO: implement GRANT/REVOKE
+			/* TODO: implement GRANT/REVOKE */
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_TABLEGROUP;
 			break;

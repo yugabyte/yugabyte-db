@@ -152,6 +152,7 @@ var setGflagsUniverseCmd = &cobra.Command{
 			clusterType := clusters[i].GetClusterType()
 			clusterUUID := clusters[i].GetUuid()
 			for _, gflags := range cliSpecificGFlags {
+				isClusterInRequestBodyWIthValidUUID := false
 				if strings.Compare(strings.ToUpper(clusterType), strings.ToUpper(gflags.ClusterType)) == 0 {
 					if strings.Compare(clusterUUID, gflags.ClusterUUID) == 0 {
 						logrus.Debugf(
@@ -160,7 +161,16 @@ var setGflagsUniverseCmd = &cobra.Command{
 							clusterType)
 						clusterUserIntent.SetSpecificGFlags(specificGFlags[i])
 						clusters[i].SetUserIntent(clusterUserIntent)
+						isClusterInRequestBodyWIthValidUUID = true
 					}
+				}
+				if !isClusterInRequestBodyWIthValidUUID {
+					logrus.Fatal(
+						formatter.Colorize(
+							"Cluster "+gflags.ClusterUUID+" ("+gflags.ClusterType+
+								")"+" not found in universe\n",
+							formatter.RedColor,
+						))
 				}
 			}
 		}
@@ -213,7 +223,7 @@ func init() {
 			"[Optional] Specific gflags to be set. "+
 				"Use the modified output of \"yba universe upgrade gflags get\" command "+
 				"as the flag value. Quote the string with single quotes. %s",
-			formatter.Colorize("Provider either specific-gflags or specific-gflags-file-path",
+			formatter.Colorize("Provide either specific-gflags or specific-gflags-file-path",
 				formatter.GreenColor)))
 
 	setGflagsUniverseCmd.Flags().String("specific-gflags-file-path", "",
@@ -221,7 +231,7 @@ func init() {
 			"[Optional] Path to modified json output file of"+
 				" \"yba universe upgrade gflags get\" command. %s",
 			formatter.Colorize(
-				"Provider either specific-gflags or specific-gflags-file-path",
+				"Provide either specific-gflags or specific-gflags-file-path",
 				formatter.GreenColor),
 		))
 

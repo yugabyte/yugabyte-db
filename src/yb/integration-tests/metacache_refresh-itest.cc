@@ -90,8 +90,8 @@ class MetacacheRefreshITest : public MiniClusterTestWithClient<ExternalMiniClust
 
   Result<pgwrapper::PGConn> ConnectToDB(
       const std::string& dbname, bool simple_query_protocol = false) {
-    return pgwrapper::PGConnBuilder({.host = cluster_->pgsql_hostport(0).host(),
-                                     .port = cluster_->pgsql_hostport(0).port(),
+    return pgwrapper::PGConnBuilder({.host = cluster_->ysql_hostport(0).host(),
+                                     .port = cluster_->ysql_hostport(0).port(),
                                      .dbname = dbname})
         .Connect(simple_query_protocol);
   }

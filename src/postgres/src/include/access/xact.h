@@ -455,11 +455,11 @@ extern TimestampTz GetCurrentStatementStartTimestamp(void);
 extern TimestampTz GetCurrentTransactionStopTimestamp(void);
 extern void SetCurrentStatementStartTimestamp(void);
 extern int	GetCurrentTransactionNestLevel(void);
-extern const char* GetCurrentTransactionName(void);
+extern const char *GetCurrentTransactionName(void);
 extern bool TransactionIdIsCurrentTransactionId(TransactionId xid);
 extern void CommandCounterIncrement(void);
 extern void ForceSyncCommit(void);
-extern int YBGetEffectivePggateIsolationLevel();
+extern int	YBGetEffectivePggateIsolationLevel();
 extern void YBInitializeTransaction(void);
 extern void YBResetTransactionReadPoint(void);
 extern void YBRestartReadPoint(void);
@@ -561,8 +561,8 @@ extern bool YBIsDataSentForCurrQuery(void);
  *       manager) background-cleanup job. This would eventually also roll back
  *       failed (online) alter operations (#3979).
  */
-extern void YBSaveDdlHandle(YBCPgStatement handle);
-extern List* YBGetDdlHandles(void);
+extern void YBSaveDdlHandle(YbcPgStatement handle);
+extern List *YBGetDdlHandles(void);
 extern void YBClearDdlHandles(void);
 
 /*

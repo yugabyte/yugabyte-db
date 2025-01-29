@@ -47,7 +47,7 @@ using util::SetColumnArrayValue;
 //--------------------------------------------------------------------------------------------------
 
 Status PgFunctionParams::AddParam(
-    const std::string& name, const YBCPgTypeEntity* type_entity, uint64_t datum, bool is_null) {
+    const std::string& name, const YbcPgTypeEntity* type_entity, uint64_t datum, bool is_null) {
   auto value = std::make_shared<QLValuePB>();
   RETURN_NOT_OK(PgValueToPB(type_entity, datum, is_null, value.get()));
   params_by_name_.emplace(name, std::make_pair(value, type_entity));
@@ -60,7 +60,7 @@ Result<ParamAndIsNullPair<T>> PgFunctionParams::GetParamValue(const std::string&
   return GetValue<T>(*value, type);
 }
 
-Result<std::pair<std::shared_ptr<const QLValuePB>, const YBCPgTypeEntity*>>
+Result<std::pair<std::shared_ptr<const QLValuePB>, const YbcPgTypeEntity*>>
 PgFunctionParams::GetValueAndType(const std::string& name) const {
   auto it = params_by_name_.find(name);
   if (it == params_by_name_.end()) {
@@ -74,12 +74,12 @@ PgFunctionParams::GetValueAndType(const std::string& name) const {
 //--------------------------------------------------------------------------------------------------
 
 Status PgFunction::AddParam(
-    const std::string& name, const YBCPgTypeEntity* type_entity, uint64_t datum, bool is_null) {
+    const std::string& name, const YbcPgTypeEntity* type_entity, uint64_t datum, bool is_null) {
   return params_.AddParam(name, type_entity, datum, is_null);
 }
 
 Status PgFunction::AddTarget(
-    const std::string& name, const YBCPgTypeEntity* type_entity, const YBCPgTypeAttrs type_attrs) {
+    const std::string& name, const YbcPgTypeEntity* type_entity, const YbcPgTypeAttrs type_attrs) {
   RETURN_NOT_OK(schema_builder_.AddColumn(name, ToLW(PersistentDataType(type_entity->yb_type))));
   RETURN_NOT_OK(schema_builder_.SetColumnPGType(name, type_entity->type_oid));
   return schema_builder_.SetColumnPGTypmod(name, type_attrs.typmod);
@@ -108,8 +108,8 @@ Status PgFunction::WritePgTuple(const PgTableRow& table_row, uint64_t* values, b
     const ColumnSchema column = schema_.column(index);
 
     uint32_t oid = column.pg_type_oid();
-    const PgTypeEntity* type_entity = YBCPgFindTypeEntity(oid);
-    const YBCPgTypeAttrs type_attrs = {.typmod = column.pg_typmod()};
+    const YbcPgTypeEntity* type_entity = YBCPgFindTypeEntity(oid);
+    const YbcPgTypeAttrs type_attrs = {.typmod = column.pg_typmod()};
 
     is_nulls[index] = false;
     RETURN_NOT_OK(PgValueToDatum(type_entity, type_attrs, *val, &values[index]));

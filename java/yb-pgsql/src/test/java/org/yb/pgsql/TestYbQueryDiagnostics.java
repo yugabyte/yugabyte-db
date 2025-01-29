@@ -35,8 +35,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Scanner;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -250,7 +255,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      *
      * NULL values are displayed as "NULL" in the output.
      */
-    private void printQueryResults(Statement statement, String query) throws SQLException {
+    private void printQueryOutput(Statement statement, String query) throws SQLException {
         LOG.info("Printing query results for: " + query);
         try (ResultSet rs = statement.executeQuery(query)) {
             // Get result set metadata
@@ -660,16 +665,47 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                        Math.abs(Float.parseFloat(tokens[6]) - expectedMeanTimeMs), epsilonMs);
     }
 
-    private void validateConstantsOrBindVarData(Path bindVarPath, String... expectedData)
-            throws Exception {
-        List<String> bindVarLines = Files.readAllLines(bindVarPath);
-        assertEquals("Number of lines in constants_and_bind_variables.csv is not as expected",
-                bindVarLines.size(), expectedData.length);
+    private void validateConstantsOrBindVarData(Path bindVarPath, int noOfConstantsPerLine,
+            String... expectedData) throws Exception {
+        // Load the file lines
+        List<String> fileLines = Files.readAllLines(bindVarPath);
 
+        LOG.info("Printing constants_and_bind_variables.csv file:");
+
+        // Validate format of each line in the file
+        for (String line : fileLines) {
+            LOG.info(line);
+
+            assertTrue("Line should end with ' ms': " + line,
+                    line.trim().endsWith(" ms"));
+
+            assertFalse("Line should not have empty constants",
+                    line.contains(",,"));
+
+            // Check if number of constants is within limit
+            long commaCount = line.chars().filter(ch -> ch == ',').count();
+            assertTrue("Line should not have more than " + noOfConstantsPerLine +
+                    " constants: " + line,
+                    commaCount <= noOfConstantsPerLine);
+        }
+
+        assertEquals("No of lines in constants_and_bind_variables.csv is not as expected",
+                expectedData.length, fileLines.size());
+
+        // Verify each expected constant exists somewhere in the file,
+        // since the order of constants in the file cannot not guaranteed
+        // in multi-threaded environment
         for (int i = 0; i < expectedData.length; i++) {
-            LOG.info("Checking line: " + bindVarLines.get(i));
-            assertTrue("constants_and_bind_variables.csv does not contain expected data",
-                    bindVarLines.get(i).contains(expectedData[i]));
+            boolean found = false;
+            LOG.info("Checking expected line: " + expectedData[i]);
+            for (String line : fileLines) {
+                if (line.contains(expectedData[i])) {
+                    found = true;
+                    break;
+                }
+            }
+            assertTrue("constants_and_bind_variables.csv does not contain expected data: "
+                    + expectedData[i], found);
         }
     }
 
@@ -695,6 +731,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     }
 
     private void validateAgainstFile(String expectedFilePath, String actualData) throws Exception{
+
+        Files.write(Paths.get(expectedFilePath), actualData.getBytes());
+
         Path expectedOutputPath = Paths.get(expectedFilePath);
         String expectedOutput = new String(Files.readAllBytes(expectedOutputPath),
                                            StandardCharsets.UTF_8);
@@ -843,6 +882,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             true /* explainDist */,
             false /* explainDebug */,
             0 /* bindVarQueryMinDuration */);
+        int noOfConstantsPerLine = 3;
 
         try (Statement statement = connection.createStatement()) {
             /* Run query diagnostics on the prepared stmt */
@@ -859,7 +899,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             Path bindVarPath = getFilePathFromBaseDir(bundleDataPath,
                                                         "constants_and_bind_variables.csv");
 
-            validateConstantsOrBindVarData(bindVarPath, "'var1',1,1.1", "'var2',2,2.2");
+            validateConstantsOrBindVarData(bindVarPath, noOfConstantsPerLine,
+                                           "'var1',1,1.1", "'var2',2,2.2");
 
             Path pgssPath = getFilePathFromBaseDir(bundleDataPath,
                                                     "pg_stat_statements.csv");
@@ -1076,7 +1117,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             waitForBundleCompletion(errorQueryId, statement, diagnosticsInterval);
 
             /* Print the query results for debugging */
-            printQueryResults(statement, "SELECT * FROM yb_query_diagnostics_status");
+            printQueryOutput(statement, "SELECT * FROM yb_query_diagnostics_status");
 
             /* Assert that the Error bundle is present in the view */
             QueryDiagnosticsStatus errorBundleViewEntry = getViewData(statement, errorQueryId,
@@ -1633,6 +1674,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 true /* explainDist */,
                 false /* explainDebug */,
                 0 /* bindVarQueryMinDuration */);
+        int noOfConstantsPerLine = 10;
 
         try (Statement statement = connection.createStatement()) {
             setUpComplexTable();
@@ -1658,7 +1700,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             Path pgssPath = getFilePathFromBaseDir(bundleDataPath,
                     "pg_stat_statements.csv");
 
-            validateConstantsOrBindVarData(bindVariablesPath,
+            validateConstantsOrBindVarData(bindVariablesPath, noOfConstantsPerLine,
                     "1,1,3,'1 year',100,1,100");
 
             validateExplainPlan(explainPlanPath,
@@ -1688,6 +1730,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 true /* explainDist */,
                 false /* explainDebug */,
                 0 /* bindVarQueryMinDuration */);
+        int noOfConstantsPerLine = 5000;
 
         try (Statement statement = connection.createStatement()) {
 
@@ -1726,7 +1769,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             LOG.info("Concatenated constants: " + concatenatedConstants);
 
-            validateConstantsOrBindVarData(bindVariablesPath, concatenatedConstants);
+            validateConstantsOrBindVarData(bindVariablesPath, noOfConstantsPerLine,
+                                           concatenatedConstants);
             validateExplainPlan(explainPlanPath,
                 "src/test/resources/expected/long_query_explain_plan.out");
             validateAgainstFile("src/test/resources/expected/long_query_schema_details.out",
@@ -1761,6 +1805,111 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             runInvalidQuery(statement, query,
                     "explain_dist cannot be true without explain_analyze");
+        }
+    }
+
+    /**
+     * Tests query diagnostics for constants collection in a multi-threaded environment.
+     * Spawns multiple threads that concurrently insert random data into a table,
+     * then validates if all constants are correctly formatted in the diagnostics output.
+     */
+    @Test
+    public void testConstantsForMultiThreadedQueryDiagnostics() throws Exception {
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+        final int numThreads = 10;
+        final int noOfConstantsPerLine = 3;
+        final int maxIterations = 10;
+        final long timeoutMs = TimeUnit.MINUTES.toMillis(5); // 5 minutes timeout
+        Random random = new Random();
+
+        try (Statement statement = connection.createStatement()) {
+            // Initial setup - insert test data and get query ID
+            statement.execute("INSERT INTO test_table1 VALUES ('a', 1, 1.1)");
+            printQueryOutput(statement, "SELECT * FROM test_table1"); // For debugging
+
+            String queryId = getQueryIdFromPgStatStatements(statement, "INSERT%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
+
+            // Track generated constants for validation
+            List<String> generatedConstants = new ArrayList<>();
+            ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+            List<Future<?>> futures = new ArrayList<>();
+
+            // Spawn threads to execute concurrent inserts with random data
+            for (int i = 0; i < numThreads; i++) {
+                futures.add(executor.submit(() -> {
+                    try {
+                        Statement threadStatement = connection.createStatement();
+                        int iterations = 0;
+
+                        while (iterations++ < maxIterations) {
+                            // Generate random data for the insert query
+                            String randomA = UUID.randomUUID().toString();
+                            int randomB = random.nextInt(1000);
+                            String randomC = String.format("%.2f", random.nextDouble());
+
+                            String query = String.format(
+                                "INSERT INTO test_table1 VALUES ('%s', %d, %s)",
+                                randomA, randomB, randomC);
+
+                            // Store generated constants as a single string
+                            threadStatement.execute(query);
+                            generatedConstants.add(String.format("'%s',%d,%s",
+                                    randomA, randomB, randomC));
+
+                            // Ensure that bg worker flushes internal buffer in case it is full.
+                            Thread.sleep(BG_WORKER_INTERVAL_MS);
+                        }
+                        threadStatement.close();
+                    } catch (Exception e) {
+                        fail("Error executing queries" + e.getMessage());
+                    }
+                }));
+            }
+
+            int i = 0;
+
+            try {
+                LOG.info("Waiting for all tasks to complete or timeout");
+                // Wait for all tasks to complete or timeout
+                for (; i < futures.size(); i++) {
+                    Future<?> future = futures.get(i);
+                    future.get(timeoutMs, TimeUnit.MILLISECONDS);
+                }
+            } catch (Exception e) {
+                futures.get(i).cancel(true);
+                fail("Error caught in future.get() " + e.getMessage());
+            } finally {
+                executor.shutdownNow();
+                if (!executor.awaitTermination(1, TimeUnit.MINUTES)) {
+                    fail("Executor service failed to terminate");
+                }
+            }
+
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+
+            Path constantsPath = getFilePathFromBaseDir(bundleDataPath,
+                    "constants_and_bind_variables.csv");
+
+            // Validate that all queries executed are present in the output file
+            validateConstantsOrBindVarData(constantsPath, noOfConstantsPerLine,
+                    generatedConstants.toArray(new String[0]));
+        }
+    }
+
+    @Test
+    public void testInterruptsHandling() throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("CREATE DATABASE db1");
+            statement.execute("ALTER DATABASE db1 RENAME TO db2");
+            statement.execute("DROP DATABASE db2");
         }
     }
 }

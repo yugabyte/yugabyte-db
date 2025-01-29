@@ -106,8 +106,8 @@ Status YsqlManager::SetInitDbDone(const LeaderEpoch& epoch) {
   return ysql_catalog_config_.SetInitDbDone(Status::OK(), epoch);
 }
 
-bool YsqlManager::IsYsqlMajorCatalogUpgradeInProgress() const {
-  return ysql_initdb_and_major_upgrade_helper_->IsYsqlMajorCatalogUpgradeInProgress();
+bool YsqlManager::IsMajorUpgradeInProgress() const {
+  return ysql_initdb_and_major_upgrade_helper_->IsMajorUpgradeInProgress();
 }
 
 uint64_t YsqlManager::GetYsqlCatalogVersion() const { return ysql_catalog_config_.GetVersion(); }
@@ -155,7 +155,7 @@ Result<TableId> YsqlManager::GetVersionSpecificCatalogTableId(
 
   // Use the current version of the catalog if it is updatable, since if the current version is
   // available in the MONITORING phase, it can be deleted by a Rollback.
-  if (!ysql_initdb_and_major_upgrade_helper_->IsYsqlMajorUpgradeInProgress()) {
+  if (!IsMajorUpgradeInProgress()) {
     return current_table_id;
   }
 
@@ -182,6 +182,15 @@ Status YsqlManager::RollbackYsqlMajorCatalogVersion(
   RETURN_NOT_OK(ysql_initdb_and_major_upgrade_helper_->RollbackYsqlMajorCatalogVersion(epoch));
 
   LOG(INFO) << "YSQL major catalog upgrade rollback completed";
+  return Status::OK();
+}
+
+Status YsqlManager::GetYsqlMajorCatalogUpgradeState(
+    const GetYsqlMajorCatalogUpgradeStateRequestPB* req,
+    GetYsqlMajorCatalogUpgradeStateResponsePB* resp, rpc::RpcContext* rpc) {
+  auto state =
+      VERIFY_RESULT(ysql_initdb_and_major_upgrade_helper_->GetYsqlMajorCatalogUpgradeState());
+  resp->set_state(state);
   return Status::OK();
 }
 

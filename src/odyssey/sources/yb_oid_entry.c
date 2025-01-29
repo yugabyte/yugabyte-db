@@ -27,6 +27,7 @@
 #include <kiwi.h>
 #include <machinarium.h>
 #include <odyssey.h>
+#include <pthread.h>
 #include "yb_oid_entry.h"
 
 /* TODO(janand): GH#21436 Use hash map instead of list */
@@ -38,6 +39,9 @@ yb_oid_entry_t database_entry_list[MAX_DATABASES];
 yb_oid_entry_t user_entry_list[MAX_USERS];
 od_atomic_u64_t database_count = 0;
 od_atomic_u64_t user_count = 0;
+
+pthread_rwlock_t database_rwlock = PTHREAD_RWLOCK_INITIALIZER;
+pthread_rwlock_t user_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 static inline void set_oid_obj_name(yb_oid_entry_t *entry, const char *name)
 {
@@ -53,32 +57,40 @@ static inline int add_oid_obj_entry(int obj_type, int oid, const char *name,
 	od_atomic_u64_t *oid_obj_count;
 	uint64_t max_oid_obj_count;
 	yb_oid_entry_t *oid_obj_entry_list;
+	pthread_rwlock_t *lock;
 
 	if (obj_type == YB_DATABASE) {
 		oid_obj_count = &database_count;
 		max_oid_obj_count = MAX_DATABASES;
 		oid_obj_entry_list = database_entry_list;
+		lock = &database_rwlock;
 	} else {
 		oid_obj_count = &user_count;
 		max_oid_obj_count = MAX_USERS;
 		oid_obj_entry_list = user_entry_list;
+		lock = &user_rwlock;
 	}
+
+	pthread_rwlock_wrlock(lock);
 
 	/* TODO(janand): GH#21437 Add tests for too many db pools */
-	if (*oid_obj_count >= max_oid_obj_count)
+	if (*oid_obj_count >= max_oid_obj_count) {
+		pthread_rwlock_unlock(lock);
 		return -1;
-
-	const int newOidObjEntryIdx = od_atomic_u32_inc(oid_obj_count);
-	if (newOidObjEntryIdx >= (int) max_oid_obj_count)
-		return -1;
-
-	for (int i = 0; i < newOidObjEntryIdx; ++i) {
-		assert(oid_obj_entry_list[i].oid != oid);
 	}
 
+	for (int i = 0; i < (int) *oid_obj_count; ++i) {
+		if (oid_obj_entry_list[i].oid == oid) {
+            pthread_rwlock_unlock(lock);
+			assert(oid_obj_entry_list[i].oid != oid);
+        }
+	}
+
+	const int newOidObjEntryIdx = od_atomic_u32_inc(oid_obj_count);
 	set_oid_obj_name(oid_obj_entry_list + newOidObjEntryIdx, name);
 	oid_obj_entry_list[newOidObjEntryIdx].oid = oid;
 	oid_obj_entry_list[newOidObjEntryIdx].status = YB_OID_ACTIVE;
+	pthread_rwlock_unlock(lock);
 	if (obj_type == YB_DATABASE)
 		od_debug(
 			&instance->logger, "yb db oid", NULL, NULL,
@@ -101,11 +113,16 @@ static inline int yb_add_or_update_oid_obj_entry(const int obj_type,
 {
 	uint64_t oid_obj_count;
 	yb_oid_entry_t *oid_obj_entry_list;
+	pthread_rwlock_t *lock;
 
 	if (obj_type == YB_DATABASE) {
+		lock = &database_rwlock;
+		pthread_rwlock_wrlock(lock);
 		oid_obj_count = database_count;
 		oid_obj_entry_list = database_entry_list;
 	} else if (obj_type == YB_USER) {
+		lock = &user_rwlock;
+		pthread_rwlock_wrlock(lock);
 		oid_obj_count = user_count;
 		oid_obj_entry_list = user_entry_list;
 	}
@@ -115,9 +132,12 @@ static inline int yb_add_or_update_oid_obj_entry(const int obj_type,
 		if (oid_obj_entry_list[i].oid == yb_obj_oid) {
 			set_oid_obj_name(oid_obj_entry_list + i, obj_name);
 			oid_obj_entry_list[i].status = YB_OID_ACTIVE;
+			pthread_rwlock_unlock(lock);
 			return 0;
 		}
 	}
+
+	pthread_rwlock_unlock(lock);
 
 	if (add_oid_obj_entry(obj_type, yb_obj_oid, obj_name, instance) < 0)
 		return -1;
@@ -131,23 +151,35 @@ yb_oid_entry_t *yb_get_oid_obj_entry(const int obj_type, const int yb_obj_oid)
 
 	yb_oid_entry_t *oid_obj_entry_list;
 	od_atomic_u64_t oid_obj_count;
+	pthread_rwlock_t *lock;
 
 	if (obj_type == YB_DATABASE) {
+		lock = &database_rwlock;
+		pthread_rwlock_rdlock(lock);
 		oid_obj_entry_list = database_entry_list;
 		oid_obj_count = database_count;
 	} else if (obj_type == YB_USER) {
+		lock = &user_rwlock;
+		pthread_rwlock_rdlock(lock);
 		oid_obj_entry_list = user_entry_list;
 		oid_obj_count = user_count;
 	}
 
 	/* control connection user/db are stored at start of the list */
-	if (yb_obj_oid == YB_CTRL_CONN_OID)
+	if (yb_obj_oid == YB_CTRL_CONN_OID) {
+		pthread_rwlock_unlock(lock);
 		return oid_obj_entry_list;
+	}
 
-	for (uint64_t i = 1; i < oid_obj_count; ++i)
-		if (oid_obj_entry_list[i].oid == yb_obj_oid)
+	for (uint64_t i = 1; i < oid_obj_count; ++i) {
+		if (oid_obj_entry_list[i].oid == yb_obj_oid) {
+			pthread_rwlock_unlock(lock);
 			return oid_obj_entry_list + i;
+		}
+	}
+			
 
+	pthread_rwlock_unlock(lock);
 	return NULL;
 }
 

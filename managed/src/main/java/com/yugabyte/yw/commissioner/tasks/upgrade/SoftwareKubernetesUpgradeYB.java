@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -84,6 +85,8 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                 Status.BAD_REQUEST, "Cannot upgrade to this version with PG15 upgrade enabled");
           }
 
+          String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
+
           // Create Kubernetes Upgrade Task
           createUpgradeTask(
               getUniverse(),
@@ -91,7 +94,7 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
               true,
               true,
               taskParams().isEnableYbc(),
-              taskParams().getYbcSoftwareVersion());
+              stableYbcVersion);
 
           createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID());
 

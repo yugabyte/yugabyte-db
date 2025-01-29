@@ -323,13 +323,15 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     return;
   }
   TSDescriptorPtr ts_desc;
-  ClientOperationLeaseUpdate lease_update;
   ts_desc = std::move(desc_result->desc);
   if (desc_result->lease_update) {
     *resp->mutable_op_lease_update() = desc_result->lease_update->ToPB();
-    server_->catalog_manager_impl()->ExportObjectLockInfo(
-        req->common().ts_instance().permanent_uuid(),
-        resp->mutable_op_lease_update()->mutable_ddl_lock_entries());
+    if (desc_result->lease_update->new_lease) {
+      *resp->mutable_op_lease_update()->mutable_ddl_lock_entries() =
+          server_->catalog_manager_impl()->object_lock_info_manager()->ExportObjectLockInfo();
+      server_->catalog_manager_impl()->object_lock_info_manager()->UpdateTabletServerLeaseEpoch(
+          ts_desc->id(), desc_result->lease_update->lease_epoch);
+    }
   }
 
   resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
@@ -847,15 +849,9 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     }
   }
 
-  // Update the table state if all its tablets are now running.
-  for (auto& [table_id, tablets] : new_running_tablets) {
-    catalog_manager_->SchedulePostTabletCreationTasks(table_info_map[table_id], epoch, tablets);
-  }
-
   // Filter the mutated tablets to find which tablets were modified. Need to actually commit the
   // state of the tablets before updating the system.partitions table, so get this first.
-  std::vector<TabletInfoPtr> yql_partitions_mutated_tablets = VERIFY_RESULT(
-      catalog_manager_->GetYqlPartitionsVtable().FilterRelevantTablets(mutated_tablets));
+  auto yql_partitions_mutated_tablets = YQLPartitionsVTable::FilterRelevantTablets(mutated_tablets);
 
   // Publish the in-memory tablet mutations and release the locks.
   for (auto& l : tablet_write_locks) {
@@ -868,6 +864,11 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     l.second.Commit();
   }
   table_write_locks.clear();
+
+  // Update the table state if all its tablets are now running.
+  for (auto& [table_id, tablets] : new_running_tablets) {
+    catalog_manager_->SchedulePostTabletCreationTasks(table_info_map[table_id], epoch, tablets);
+  }
 
   // Update the relevant tablet entries in system.partitions.
   if (!yql_partitions_mutated_tablets.empty()) {

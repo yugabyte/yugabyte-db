@@ -197,6 +197,12 @@ Enables the YSQL API when value is `true`.
 
 Default: `true`
 
+##### --enable_pg_cron
+
+Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
+
+Default: `false`
+
 ## Logging flags
 
 ##### --colorlogtostderr
@@ -286,7 +292,7 @@ The memory division flags have multiple sets of defaults; which set of defaults 
 
 If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
-Default: `false`
+Default: `true`
 
 If this flag is true then the memory division flag defaults change to provide much more memory for Postgres; furthermore, they optimize for the node size.
 
@@ -631,13 +637,13 @@ Default: `false`
 
 Enables/disables blocking of requests which would bring the total number of tablets in the system over a limit. For more information, see [Tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
 
-Default: `false`. No limits will be enforced if this is false.
+Default: `true`. No limits are enforced if this is false.
 
 ##### split_respects_tablet_replica_limits
 
 If set, tablets will not be split if the total number of tablet replicas in the cluster after the split would exceed the limit after the split.
 
-Default: `false`
+Default: `true`
 
 ##### tablet_replicas_per_core_limit
 
@@ -939,6 +945,8 @@ Default: `14400` (4 hours)
 
 Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
 
+Default: `true`
+
 ##### --enable_truncate_cdcsdk_table
 
 By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables.
@@ -947,7 +955,7 @@ Default: `false`
 
 ##### --enable_tablet_split_of_replication_slot_streamed_tables
 
-Toggle automatic tablet splitting for tables under replication slot.
+Toggle automatic tablet splitting for tables under replication slot. Applicable only to CDC using the [PostgreSQL logical replication protocol](../../../develop/change-data-capture/using-logical-replication/).
 
 Default: `false`
 

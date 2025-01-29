@@ -1560,8 +1560,8 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid, /* type's collation (ranges never have one) */
-				   false);			/* whether relation is shared (n/a here) */
+				   InvalidOid,	/* type's collation (ranges never have one) */
+				   false);		/* whether relation is shared (n/a here) */
 	Assert(typoid == InvalidOid || typoid == address.objectId);
 	typoid = address.objectId;
 
@@ -2692,9 +2692,9 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 							 false, /* a domain isn't an implicit array */
 							 false, /* nor is it any kind of dependent type */
 							 false, /* don't touch extension membership */
-							 true, /* We do need to rebuild dependencies */
+							 true,	/* We do need to rebuild dependencies */
 							 false, /* not a system relation rowtype */
-							 false); /* not a shared relation rowtype */
+							 false);	/* not a shared relation rowtype */
 
 	InvokeObjectPostAlterHook(TypeRelationId, domainoid, 0);
 
@@ -4439,7 +4439,7 @@ AlterTypeRecurse(Oid typeOid, bool isImplicitArray,
 							 false, /* don't touch extension membership */
 							 true,
 							 false, /* not a system relation rowtype */
-							 false); /* not a shared relation rowtype */
+							 false);	/* not a shared relation rowtype */
 
 	InvokeObjectPostAlterHook(TypeRelationId, typeOid, 0);
 

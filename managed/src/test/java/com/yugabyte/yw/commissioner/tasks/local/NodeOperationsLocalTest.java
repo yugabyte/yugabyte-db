@@ -9,7 +9,6 @@ import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -325,7 +324,7 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
     NodeActionType nodeActionType = NodeActionType.STOP;
     taskParams.nodeName = nodeWithMaster.getNodeName();
     UUID taskUUID = commissioner.submit(nodeActionType.getCommissionerTask(), taskParams);
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskUUID, 500);
+    TaskInfo taskInfo = waitForTask(taskUUID, 500);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(2, universe.getMasters().size());
@@ -390,8 +389,7 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
   private void checkAndWaitForTask(Result result) throws InterruptedException {
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    TaskInfo taskInfo =
-        CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()), 500);
+    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), 500);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
 }

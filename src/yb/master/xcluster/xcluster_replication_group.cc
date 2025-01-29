@@ -141,7 +141,7 @@ Result<bool> IsSafeTimeReady(
     return true;
   }
 
-  const auto safe_time_map = VERIFY_RESULT(xcluster_manager.GetXClusterNamespaceToSafeTimeMap());
+  const auto safe_time_map = xcluster_manager.GetXClusterNamespaceToSafeTimeMap();
   for (const auto& namespace_info : universe_pb.db_scoped_info().namespace_infos()) {
     const auto& namespace_id = namespace_info.consumer_namespace_id();
     auto* it = FindOrNull(safe_time_map, namespace_id);
@@ -306,11 +306,12 @@ std::optional<NamespaceId> GetProducerNamespaceIdInternal(
 Result<bool> ShouldAddTableToReplicationGroup(
     UniverseReplicationInfo& universe, const TableInfo& table_info,
     CatalogManager& catalog_manager) {
-  const auto& table_pb = table_info.old_pb();
-
   if (!IsTableEligibleForXClusterReplication(table_info)) {
     return false;
   }
+
+  auto table_lock = table_info.LockForRead();
+  const auto& table_pb = table_lock->pb;
 
   auto l = universe.LockForRead();
   const auto& universe_pb = l->pb;
@@ -772,9 +773,10 @@ Status DeleteUniverseReplication(
     xcluster_manager->RemoveTableConsumerStream(table.second, universe.ReplicationGroupId());
   }
 
+  l.Commit();
+
   catalog_manager.RemoveUniverseReplicationFromMap(universe.ReplicationGroupId());
 
-  l.Commit();
   LOG(INFO) << "Processed delete universe replication of " << universe.ToString();
 
   return Status::OK();

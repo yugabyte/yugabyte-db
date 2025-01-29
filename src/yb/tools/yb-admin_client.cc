@@ -2403,6 +2403,47 @@ Status ClusterAdminClient::RollbackYsqlMajorCatalogVersion() {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetYsqlMajorCatalogUpgradeState() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::GetYsqlMajorCatalogUpgradeStateRequestPB req;
+  master::GetYsqlMajorCatalogUpgradeStateResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy_->GetYsqlMajorCatalogUpgradeState(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  switch (resp.state()) {
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_UNINITIALIZED:
+      // Bad enum, fail the call.
+      break;
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_DONE:
+      std::cout << "YSQL major catalog upgrade already completed, or is not required.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING:
+      std::cout << "YSQL major catalog upgrade for YSQL major upgrade has not yet started.\n"
+                   "Run `ysql_major_version_catalog_upgrade` to start the catalog upgrade\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK:
+      std::cout << "YSQL major catalog upgrade failed.\n"
+                   "Roll back the catalog upgrade using `rollback_ysql_major_version_upgrade`. "
+                   "After that you can either retry the catalog upgrade or roll back yb-masters to "
+                   "the older version.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_IN_PROGRESS:
+      std::cout << "YSQL major catalog upgrade is in progress.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK:
+      std::cout << "YSQL major catalog awaiting finalization or rollback.\n";
+      return Status::OK();
+    case master::YSQL_MAJOR_CATALOG_UPGRADE_ROLLBACK_IN_PROGRESS:
+      std::cout << "YSQL major catalog rollback is in progress.\n";
+      return Status::OK();
+  }
+
+  return STATUS_FORMAT(IllegalState, "Unknown ysql major upgrade state: $0", resp.state());
+}
+
 Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
     bool blacklist_leader) {
   auto config = VERIFY_RESULT(GetMasterClusterConfig());
@@ -2921,21 +2962,21 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(
   }));
 
   if (resp.snapshots_size() > 1) {
-        LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
-                     << resp.snapshots_size() << " snapshots in the response";
+    LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
+                 << resp.snapshots_size() << " snapshots in the response";
   }
 
   SnapshotInfoPB* snapshot = nullptr;
   for (SnapshotInfoPB& snapshot_entry : *resp.mutable_snapshots()) {
-        if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
+    if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
       snapshot = &snapshot_entry;
       break;
-        }
+    }
   }
   if (!snapshot) {
-        return STATUS_FORMAT(
-            InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
-            resp.snapshots_size(), snapshot_id);
+    return STATUS_FORMAT(
+        InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
+        resp.snapshots_size(), snapshot_id);
   }
 
   if (FLAGS_TEST_metadata_file_format_version == -1) {
@@ -2947,7 +2988,7 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(
         meta.clear_namespace_name();
         entry.set_data(meta.SerializeAsString());
       }
-        }
+    }
   }
 
   cout << "Exporting snapshot " << snapshot_id << " (" << snapshot->entry().state() << ") to file "

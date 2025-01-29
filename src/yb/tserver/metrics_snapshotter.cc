@@ -372,7 +372,7 @@ Status MetricsSnapshotter::Thread::DoYsqlConnMgrMetricsSnapshot(const client::Ta
     return Status::OK();
   }
   // Below is a modified copy of the GetYsqlConnMgrStats function in
-  // pgsql_webserver_wrapper.cc.
+  // ybc_pg_webserver_wrapper.cc.
   std::vector<ConnectionStats> stats_list;
   auto shm_key = server_->GetYsqlConnMgrStatsShmemKey();
   if (shm_key == 0) {

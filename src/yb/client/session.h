@@ -16,6 +16,7 @@
 #include <future>
 #include <unordered_set>
 
+#include "yb/client/batcher.h"
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
@@ -232,6 +233,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   void SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source);
 
   void SetLeaderTerm(int64_t leader_term) { batcher_config_.leader_term = leader_term; }
+
+  void SetBatcherBackgroundTransactionMeta(const TransactionMetadata& background_transaction_meta);
 
   struct BatcherConfig {
     std::weak_ptr<YBSession> session;

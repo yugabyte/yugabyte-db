@@ -61,7 +61,7 @@ When backing up to and/or restoring from NFS storage, the NFS storage system mus
 
   <div id="aws" class="tab-pane fade" role="tabpanel" aria-labelledby="aws-tab">
 
-When backing up to and/or restoring from AWS S3, YBA and DB nodes must be able to write to and read from the S3 storage bucket.
+When backing up to and/or restoring from AWS S3 or S3-compatible storage, YBA and DB nodes must be able to write to and read from the S3 storage bucket.
 
 To grant the required access, you can do one of the following:
 

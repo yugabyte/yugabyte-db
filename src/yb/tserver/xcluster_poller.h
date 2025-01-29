@@ -68,8 +68,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
   void InitDDLQueuePoller(
       bool use_local_tserver, rocksdb::RateLimiter* rate_limiter,
-      const NamespaceName& namespace_name, TserverXClusterContextIf& xcluster_context,
-      ConnectToPostgresFunc connect_to_pg_func);
+      const NamespaceId& source_namespace_id, const NamespaceName& target_namespace_name,
+      TserverXClusterContextIf& xcluster_context, ConnectToPostgresFunc connect_to_pg_func);
 
   void StartShutdown() override;
   void CompleteShutdown() override;
@@ -89,7 +89,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   std::string LogPrefix() const override;
   const XClusterPollerId& GetPollerId() const { return poller_id_; }
 
-  HybridTime GetSafeTime() const EXCLUDES(safe_time_lock_);
+  HybridTime GetSafeTime() const;
 
   const xcluster::ConsumerTabletInfo& GetConsumerTabletInfo() const {
     return consumer_tablet_info_;
@@ -133,8 +133,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
       EXCLUDES(data_mutex_);
   void VerifyApplyChangesResponse(XClusterOutputClientResponse response);
   void HandleApplyChangesResponse(XClusterOutputClientResponse response) EXCLUDES(data_mutex_);
-  void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
-  void InvalidateSafeTime() EXCLUDES(safe_time_lock_);
+  void UpdateSafeTime(int64 new_time);
+  void InvalidateSafeTime();
   void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
   bool IsLeaderTermValid() REQUIRES(data_mutex_);
   Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp);
@@ -171,8 +171,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   // Unsafe to use after shutdown.
   XClusterConsumer* const xcluster_consumer_;
 
-  mutable rw_spinlock safe_time_lock_;
-  HybridTime producer_safe_time_ GUARDED_BY(safe_time_lock_);
+  std::atomic<HybridTime> producer_safe_time_;
 
   std::atomic<bool> is_paused_;
   std::atomic<uint32> poll_failures_ = 0;

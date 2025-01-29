@@ -761,6 +761,7 @@ fetch_remote_table_info(char *nspname, char *relname,
 		TupleTableSlot *tslot;
 		Oid			attrsRow[] = {INT2VECTOROID};
 		StringInfoData pub_names;
+
 		initStringInfo(&pub_names);
 		foreach(lc, MySubscription->publications)
 		{

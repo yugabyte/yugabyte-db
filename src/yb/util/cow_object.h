@@ -100,11 +100,6 @@ class CowObject {
   }
 
   // Return the current state, not reflecting any in-progress mutations.
-  State& state() {
-    DCHECK(lock_.HasReaders() || lock_.HasWriteLock());
-    return state_;
-  }
-
   const State& state() const {
     DCHECK(lock_.HasReaders() || lock_.HasWriteLock());
     return state_;
@@ -131,6 +126,12 @@ class CowObject {
   // Else, this may sometimes return true even if another thread is in fact the holder.
   // Thus, this is only really useful in the context of a DCHECK assertion.
   bool HasWriteLock() const { return lock_.HasWriteLock(); }
+
+  // Should be invoked only from ctor of appropriate object.
+  State& DirectStateForInitialSetup() {
+    DCHECK(!lock_.HasReaders() && !lock_.HasWriteLock());
+    return state_;
+  }
 
  private:
   mutable RWCLock lock_;

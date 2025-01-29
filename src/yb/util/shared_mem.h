@@ -29,6 +29,8 @@ class SharedMemorySegment {
     kReadWrite = PROT_READ | PROT_WRITE,
   };
 
+  SharedMemorySegment() = default;
+
   // Creates a new anonymous shared memory segment with the given size.
   static Result<SharedMemorySegment> Create(size_t segment_size);
 
@@ -44,6 +46,10 @@ class SharedMemorySegment {
 
   ~SharedMemorySegment();
 
+  SharedMemorySegment& operator=(SharedMemorySegment&& other);
+
+  SharedMemorySegment& operator=(const SharedMemorySegment& other) = delete;
+
   // Returns the address of the start of the shared memory segment.
   void* GetAddress() const;
 
@@ -54,25 +60,36 @@ class SharedMemorySegment {
   SharedMemorySegment(void* base_address, int fd, size_t segment_size);
 
   // The address of the start of the shared memory segment.
-  void* base_address_;
+  void* base_address_ = nullptr;
 
   // The file descriptor of the shared memory segment.
-  int fd_;
+  int fd_ = -1;
 
   // The size, in bytes, of the shared memory segment.
-  size_t segment_size_;
+  size_t segment_size_ = 0;
 };
 
 // Utility wrapper for sharing object of specified type.
 template <class Object>
 class SharedMemoryObject {
  public:
+  SharedMemoryObject() = default;
+
   SharedMemoryObject(SharedMemoryObject&& rhs)
-      : segment_(std::move(rhs.segment_)), owned_(rhs.owned_) {
-    rhs.owned_ = false;
-  }
+      : segment_(std::move(rhs.segment_)), owned_(std::exchange(rhs.owned_, false)) { }
 
   ~SharedMemoryObject() {
+    Reset();
+  }
+
+  SharedMemoryObject& operator=(SharedMemoryObject&& rhs) {
+    Reset();
+    segment_ = std::move(rhs.segment_);
+    owned_ = std::exchange(rhs.owned_, false);
+    return *this;
+  }
+
+  void Reset() {
     if (owned_) {
       get()->~Object();
     }
@@ -126,7 +143,7 @@ class SharedMemoryObject {
   }
 
   SharedMemorySegment segment_;
-  bool owned_;
+  bool owned_ = false;
 };
 
 }  // namespace yb

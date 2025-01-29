@@ -46,7 +46,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 
 static void
@@ -167,7 +167,7 @@ yb_get_profile_oid(const char *prfname, bool missing_ok)
 	Relation	rel;
 	TableScanDesc scandesc;
 	HeapTuple	tuple;
-	ScanKeyData	entry[1];
+	ScanKeyData entry[1];
 
 	CheckProfileCatalogsExist();
 
@@ -204,7 +204,7 @@ yb_get_profile_tuple(Oid prfid)
 	Relation	rel;
 	TableScanDesc scandesc;
 	HeapTuple	tuple;
-	ScanKeyData	entry[1];
+	ScanKeyData entry[1];
 
 	CheckProfileCatalogsExist();
 
@@ -335,7 +335,8 @@ YbDropProfile(YbDropProfileStmt *stmt)
 	 * Check if there are snapshot schedules, disallow dropping in such cases.
 	 * TODO(profile): determine if this limitation is really needed.
 	 */
-	bool is_active;
+	bool		is_active;
+
 	HandleYBStatus(YBCPgCheckIfPitrActive(&is_active));
 	if (is_active)
 		ereport(ERROR,
@@ -418,7 +419,7 @@ yb_get_role_profile_tuple_by_role_oid(Oid roleid)
 	Relation	rel;
 	TableScanDesc scandesc;
 	HeapTuple	tuple;
-	ScanKeyData	entry[1];
+	ScanKeyData entry[1];
 
 	CheckProfileCatalogsExist();
 
@@ -448,7 +449,7 @@ yb_get_role_profile_tuple_by_oid(Oid rolprfoid)
 	Relation	rel;
 	TableScanDesc scandesc;
 	HeapTuple	tuple;
-	ScanKeyData	entry[1];
+	ScanKeyData entry[1];
 
 	CheckProfileCatalogsExist();
 
@@ -489,8 +490,9 @@ yb_update_role_profile(Oid roleid, const char *rolename, Datum *new_record,
 {
 	Relation	pg_yb_role_profile_rel;
 	TupleDesc	pg_yb_role_profile_dsc;
-	HeapTuple	tuple, new_tuple;
-	Oid 		roleprfid;
+	HeapTuple	tuple,
+				new_tuple;
+	Oid			roleprfid;
 
 	CheckProfileCatalogsExist();
 
@@ -504,7 +506,7 @@ yb_update_role_profile(Oid roleid, const char *rolename, Datum *new_record,
 	{
 		roleprfid = ((Form_pg_yb_role_profile) GETSTRUCT(tuple))->oid;
 		new_tuple = heap_modify_tuple(tuple, pg_yb_role_profile_dsc, new_record,
-								  new_record_nulls, new_record_repl);
+									  new_record_nulls, new_record_repl);
 		CatalogTupleUpdate(pg_yb_role_profile_rel, &tuple->t_self, new_tuple);
 
 		InvokeObjectPostAlterHook(YbRoleProfileRelationId, roleprfid, 0);
@@ -552,7 +554,8 @@ YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 	/*
 	 * Check that there is a profile by this name.
 	 */
-	Oid prfid = yb_get_profile_oid(prfname, true);
+	Oid			prfid = yb_get_profile_oid(prfname, true);
+
 	if (!OidIsValid(prfid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -647,7 +650,7 @@ YbSetRoleProfileStatus(Oid roleid, const char *rolename, char status)
 	new_record_repl[Anum_pg_yb_role_profile_rolprffailedloginattempts - 1] = true;
 
 	yb_update_role_profile(roleid, rolename, new_record, new_record_nulls,
-			new_record_repl, false);
+						   new_record_repl, false);
 	return;
 }
 
@@ -740,8 +743,8 @@ YbMaybeIncFailedAttemptsAndDisableProfile(Oid roleid)
 void
 YbRemoveRoleProfileForRoleIfExists(Oid roleid)
 {
-	Relation	 rel;
-	HeapTuple	 tup;
+	Relation	rel;
+	HeapTuple	tup;
 
 	CheckProfileCatalogsExist();
 

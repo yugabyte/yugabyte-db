@@ -115,7 +115,7 @@ class ThreadHolder {
 template<typename Functor, typename IntegralCounter>
 concept StatusFunctorTypeAcceptingIntegral = requires(Functor f, IntegralCounter i) {
   { f(i) } -> std::same_as<Status>;
-};  // NOLINT
+};
 
 // Processes a collection of items in multiple threads. The nature of items does not matter. The
 // processing function only receives an index index of an item. If processing of any item fails, all

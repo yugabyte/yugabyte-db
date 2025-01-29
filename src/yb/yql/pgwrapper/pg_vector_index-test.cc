@@ -217,10 +217,10 @@ void PgVectorIndexTest::VerifyRows(
       "SELECT * FROM test $0 ORDER BY embedding <-> '[0.0, 0.0, 0.0]' LIMIT $1",
       add_filter ? "WHERE id + 3 <= 5" : "",
       limit < 0 ? expected.size() : make_unsigned(limit)))));
-  EXPECT_EQ(result.size(), expected.size());
+  ASSERT_EQ(result.size(), expected.size());
   for (size_t i = 0; i != std::min(result.size(), expected.size()); ++i) {
     SCOPED_TRACE(Format("Row $0", i));
-    EXPECT_EQ(result[i], expected[i]);
+    ASSERT_EQ(result[i], expected[i]);
   }
 }
 
@@ -291,7 +291,16 @@ void PgVectorIndexTest::TestRestart(tablet::FlushFlags flush_flags) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 5;
 
-  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  auto conn = ASSERT_RESULT(MakeIndex());
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
+  for (const auto& peer : peers) {
+    auto tablet = peer->shared_tablet();
+    if (tablet->TEST_HasVectorIndexes()) {
+      tablet->TEST_SleepBeforeApplyIntents(5s * kTimeMultiplier);
+      break;
+    }
+  }
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, flush_flags));
   DisableFlushOnShutdown(*cluster_, true);

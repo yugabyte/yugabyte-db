@@ -10,6 +10,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.xml.JacksonXmlModule;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -47,6 +49,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 import javax.inject.Singleton;
 import lombok.EqualsAndHashCode;
 import org.apache.commons.collections4.MapUtils;
@@ -241,6 +244,85 @@ public class GFlagsValidation {
         flagStream.close();
       }
     }
+  }
+
+  public void validateConnectionPoolingGflags(
+      Universe universe, Map<String, String> connectionPoolingGflags) {
+    if (connectionPoolingGflags.isEmpty()) {
+      return;
+    }
+
+    // Get the right connection pooling gflags list for preview vs stable version.
+    String ybdbVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    boolean isStableVersion = Util.isStableVersion(ybdbVersion, false);
+
+    String flagsFileName = "connection_pooling/connection_pooling_gflags_";
+    if (isStableVersion) {
+      flagsFileName += "stable.json";
+    } else {
+      flagsFileName += "preview.json";
+    }
+
+    // Get the connection pooling gflags file content.
+    ObjectNode flagsFileObject = null;
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      flagsFileObject = (ObjectNode) mapper.readTree(environment.resourceAsStream(flagsFileName));
+    } catch (Exception e) {
+      String errMsg =
+          String.format(
+              "Error occurred retrieving connection pooling gflags file '%s'.", flagsFileName);
+      LOG.error(errMsg, e);
+      // If error with reading the file, log error and continue the operation.
+      return;
+    }
+
+    // Find the correct version to check against.
+    // Find the closest version less than or equal to ybdbVersion.
+    SortedSet<String> avaliableVersions = new TreeSet<>();
+    flagsFileObject.fieldNames().forEachRemaining(avaliableVersions::add);
+    SortedSet<String> head = avaliableVersions.headSet(ybdbVersion);
+    if (head.isEmpty()) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Failed to find connection pooling flags for '" + ybdbVersion + "' db version.");
+    }
+    String versionToUse = head.last();
+    LOG.debug(
+        "Found '{}' connection pooling flags versions, picked '{}' for current db version '{}'.",
+        avaliableVersions,
+        versionToUse,
+        ybdbVersion);
+
+    // Get all the allowed connection pooling gflags for that version.
+    JsonNode versionNode = flagsFileObject.get(versionToUse);
+    Set<String> allowedGflagsForCurrentVersion =
+        StreamSupport.stream(versionNode.spliterator(), false)
+            .map(JsonNode::asText)
+            .collect(Collectors.toSet());
+
+    // If there are extra gflags not related to connection pooling for that DB version, throw an
+    // error. Else validation is successful.
+    List<String> invalidConnectionPoolingGflags = new ArrayList<>();
+    for (String flag : connectionPoolingGflags.keySet()) {
+      if (!allowedGflagsForCurrentVersion.contains(flag) && !flag.startsWith("ysql_conn_mgr")) {
+        invalidConnectionPoolingGflags.add(flag);
+      }
+    }
+    if (!invalidConnectionPoolingGflags.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot set gflags '%s' as they are not related to Connection Pooling in version"
+                  + " '%s'.",
+              invalidConnectionPoolingGflags.toString(), ybdbVersion));
+    }
+    LOG.info(
+        "Successfully validated that all the gflags '{}' are related to connection pooling for"
+            + " version '{}'.",
+        connectionPoolingGflags.keySet().toString(),
+        ybdbVersion);
   }
 
   public synchronized void fetchGFlagFilesFromTarGZipInputStream(

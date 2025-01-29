@@ -16,7 +16,9 @@ import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 
@@ -41,6 +43,8 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
   public CommunicationPorts communicationPorts = new CommunicationPorts();
 
   public ServerType configureServer;
+
+  public Map<String, String> connectionPoolingGflags = new HashMap<>();
 
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {

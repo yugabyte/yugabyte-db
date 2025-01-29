@@ -29,6 +29,7 @@
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/advisory_locks_error.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
@@ -463,6 +464,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // Populate the transaction's metadata alone for the passed 'ops_info'.
     // 'ops_info->metadata.subtransaction_pb' has already been set upsteam in Batcher::FlushAsync.
     ops_info->metadata.transaction = metadata_;
+    // For resolving session advisory lock requests involved in a deadlock, the underlying tablet's
+    // wait queue requires this field.
+    if (pg_session_req_version_) {
+      ops_info->metadata.pg_session_req_version = pg_session_req_version_;
+    }
     return true;
   }
 
@@ -533,7 +539,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           }
         }
       } else {
-        if (CanAbortTransaction(status, metadata_, subtransaction_pb)) {
+        // Do not abort pg session level transaction despite failure on flush path, i.e attempt to
+        // obtain advisory locks. If it was indeed aborted at the coordinator, the heartbeat would
+        // realize it and set the status accordingly, failing subsequent Prepare(s).
+        if (CanAbortTransaction(status, metadata_, subtransaction_pb) &&
+            !pg_session_req_version_) {
           auto state = state_.load(std::memory_order_acquire);
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
           if (state == TransactionState::kRunning) {
@@ -1079,20 +1089,21 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     subtxn_table_mutation_counter_map_[subtxn_id].insert({table_id, mutation_count});
   }
 
-  std::unordered_map<TableId, uint64_t> GetTableMutationCounts() const {
+  std::vector<std::pair<TableId, uint64_t>> GetTableMutationCounts() const {
     std::lock_guard lock(mutation_count_mutex_);
     auto& aborted_sub_txn_set = subtransaction_.get().aborted;
-    std::unordered_map<TableId, uint64_t> table_mutation_counts;
+    std::vector<std::pair<TableId, uint64_t>> result;
     for (const auto& [sub_txn_id, table_mutation_cnt_map] : subtxn_table_mutation_counter_map_) {
       if (aborted_sub_txn_set.Test(sub_txn_id)) {
         continue;
       }
 
+      result.reserve(result.size() + table_mutation_cnt_map.size());
       for (const auto& [table_id, mutation_count] : table_mutation_cnt_map) {
-        table_mutation_counts[table_id] += mutation_count;
+        result.emplace_back(table_id, mutation_count);
       }
     }
-    return table_mutation_counts;
+    return result;
   }
 
   void SetLogPrefixTag(const LogPrefixName& name, uint64_t id) {
@@ -1108,6 +1119,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   void SetCurrentReuseVersion(TxnReuseVersion reuse_version) EXCLUDES(mutex_) {
     UniqueLock lock(mutex_);
     reuse_version_ = reuse_version;
+  }
+
+  void InitPgSessionRequestVersion() {
+    pg_session_req_version_ = 1;
+  }
+
+  void SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
+    background_transaction_ = background_transaction;
   }
 
  private:
@@ -1200,7 +1219,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       CoarseTimePoint deadline, const internal::RemoteTabletPtr& status_tablet,
       TransactionStatus status, UpdateTransactionCallback callback, TxnReuseVersion reuse_version,
       std::optional<SubtxnSet> aborted_set_for_rollback_heartbeat = std::nullopt,
-      const TabletStates& tablets_with_locks = {}) {
+      const TabletStates& tablets_with_locks = {},
+      const boost::optional<TransactionMetadata>& background_transaction = boost::none) {
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
@@ -1230,6 +1250,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                           << aborted_set_for_rollback_heartbeat.value().ToString();
 
       aborted_set_for_rollback_heartbeat.value().ToPB(state.mutable_aborted()->mutable_set());
+    }
+
+    if (pg_session_req_version_) {
+      state.set_pg_session_req_version(pg_session_req_version_);
+    }
+
+    if (background_transaction) {
+      background_transaction->ToPB(state.mutable_background_transaction_meta());
     }
 
     return UpdateTransaction(
@@ -1821,11 +1849,23 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       } else {
         status_tablet = status_tablet_;
       }
+      boost::optional<TransactionMetadata> background_transaction = boost::none;
+      if (auto shared_bg_txn = background_transaction_.lock(); shared_bg_txn) {
+        LOG_IF_WITH_PREFIX(DFATAL, !pg_session_req_version_)
+            << "Expected this path to be triggered only for PgSessionTransactions "
+            << "for which pg_session_req_version_ should be >= 1";
+        auto meta_future = shared_bg_txn->GetMetadata(CoarseMonoClock::now() + 1ms);
+        if (meta_future.wait_for(0ms) == std::future_status::ready) {
+          if (auto res = meta_future.get(); res.ok()) {
+            background_transaction = *res;
+          }
+        }
+      }
       rpc = PrepareHeartbeatRPC(
           CoarseMonoClock::now() + timeout, status_tablet, status,
           std::bind(
               &Impl::HeartbeatDone, this, _1, _2, _3, status, transaction, send_to_new_tablet),
-          reuse_version_, std::nullopt, tablets_);
+          reuse_version_, std::nullopt, tablets_, background_transaction);
     }
 
     auto& handle = send_to_new_tablet ? new_heartbeat_handle_ : heartbeat_handle_;
@@ -1984,6 +2024,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           DoAbortCleanup(transaction, CleanupType::kImmediate);
         }
         return;
+      }
+      if (status.IsTryAgain() && status.ErrorData(AdvisoryLocksErrorTag::kCategory)) {
+        auto new_pg_session_req_version = AdvisoryLocksError(status).value();
+        LOG_WITH_PREFIX(INFO)
+            << "PgSessionRequestVersion changed from " << pg_session_req_version_
+            << " to " << new_pg_session_req_version;
+        pg_session_req_version_ = new_pg_session_req_version;
       }
       // Other errors could have different causes, but we should just retry sending heartbeat
       // in this case.
@@ -2387,6 +2434,19 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // tablets. It is propagated to the status tablet, which helps in releasing inactive object
   // locks and pruning inactive wait-for probes that originated from TSLocalLockManager.
   TxnReuseVersion reuse_version_ GUARDED_BY(mutex_) = 0;
+
+  // Session level advisory lock requests launch a docdb distributed txn that lives for the lifetime
+  // of the pg session. The below field keeps track of the active request version as seen on the
+  // the txn's status tablet. The same is embedded into session advisory lock requests and is used
+  // by the wait-queue to resume deadlocked requests.
+  std::atomic<PgSessionRequestVersion> pg_session_req_version_{0};
+
+  // The below is populated only for pg session level transactions (created on session advisory lock
+  // requests). When a regular docdb transaction is created in the ysql session, the field is set to
+  // that transaction and is passed on to the session level txn's status tablet, which creates a
+  // wait-on-dependency from session level transaction -> regular transaction. This is necessary to
+  // detect deadlocks involving advisory locks and row-level locks (and object locks in future).
+  std::weak_ptr<YBTransaction> background_transaction_;
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -2560,7 +2620,7 @@ void YBTransaction::IncreaseMutationCounts(
   return impl_->IncreaseMutationCounts(subtxn_id, table_id, mutation_count);
 }
 
-std::unordered_map<TableId, uint64_t> YBTransaction::GetTableMutationCounts() const {
+std::vector<std::pair<TableId, uint64_t>> YBTransaction::GetTableMutationCounts() const {
   return impl_->GetTableMutationCounts();
 }
 
@@ -2574,6 +2634,14 @@ bool YBTransaction::OldTransactionAborted() const {
 
 void YBTransaction::SetCurrentReuseVersion(TxnReuseVersion reuse_version) {
   impl_->SetCurrentReuseVersion(reuse_version);
+}
+
+void YBTransaction::InitPgSessionRequestVersion() {
+  return impl_->InitPgSessionRequestVersion();
+}
+
+void YBTransaction::SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
+  return impl_->SetBackgroundTransaction(background_transaction);
 }
 
 } // namespace client

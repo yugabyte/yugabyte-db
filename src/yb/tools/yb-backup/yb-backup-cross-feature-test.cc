@@ -3321,5 +3321,70 @@ TEST_F(
         (2 rows)
       )#"));
 }
+
+TEST_F(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPartitionedTableRewrite)) {
+  // Create a partitioned table and index.
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE table_1 (a INT, b INT, c TEXT) PARTITION BY RANGE (a)"));
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE table_partition_1 PARTITION OF table_1 FOR VALUES FROM (1) TO (3)"));
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE table_partition_2 PARTITION OF table_1 FOR VALUES FROM (3) TO (6)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_partition_3 PARTITION OF table_1 DEFAULT"));
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE INDEX index_1 ON table_1 (b)", "CREATE INDEX"));
+  // Insert some data.
+  ASSERT_NO_FATALS(InsertRows("INSERT INTO table_1 (a, b, c) VALUES"
+      "(generate_series(1, 6), generate_series(1, 6), 'test')", 6));
+  // Perform some rewrite operations.
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE table_1 ADD PRIMARY KEY (a)", "ALTER TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "ALTER TABLE table_1 ALTER COLUMN c TYPE int USING LENGTH(c)", "ALTER TABLE"));
+  // Perform some failed rewrite operations.
+  ASSERT_NO_FATALS(RunPsqlCommand("SET yb_test_fail_table_rewrite_after_creation = true;"
+      "ALTER TABLE table_1 ADD COLUMN d SERIAL", "SET"));
+  ASSERT_NO_FATALS(RunPsqlCommand("SET yb_test_fail_next_ddl = true;"
+      "ALTER TABLE table_1 DROP CONSTRAINT table_1_pkey", "SET"));
+  // Backup then restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+  // Verify that the partitioned table and index were restored correctly.
+  SetDbName("yugabyte_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "EXPLAIN (COSTS OFF) SELECT a FROM table_1 WHERE b = 1", R"#(
+                                   QUERY PLAN
+      -------------------------------------------------------------------------------
+       Append
+         ->  Index Scan using table_partition_1_b_idx on table_partition_1 table_1_1
+               Index Cond: (b = 1)
+         ->  Index Scan using table_partition_2_b_idx on table_partition_2 table_1_2
+               Index Cond: (b = 1)
+         ->  Index Scan using table_partition_3_b_idx on table_partition_3 table_1_3
+               Index Cond: (b = 1)
+      (7 rows)
+      )#"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT a FROM table_1 WHERE b = 1", R"#(
+         a
+        ---
+         1
+        (1 row)
+      )#"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT * FROM table_1 ORDER BY a", R"#(
+         a | b | c
+        ---+---+---
+         1 | 1 | 4
+         2 | 2 | 4
+         3 | 3 | 4
+         4 | 4 | 4
+         5 | 5 | 4
+         6 | 6 | 4
+        (6 rows)
+      )#"));
+}
 }  // namespace tools
 }  // namespace yb

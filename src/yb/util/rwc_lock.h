@@ -40,6 +40,16 @@
 #include "yb/util/mutex.h"
 #include "yb/util/stack_trace.h"
 
+// Enable mechanism to detect deadlocks with mutex that does not belong to RWCLock.
+// For instance it could detect the following scenario:
+// T1:
+//   acquire read lock on RWCLock
+//   acquire read lock on some external mutex
+// T2:
+//   acquire write lock on the same external mutex
+//   acquire write and then commit lock on the same RWCLock
+#define RWC_LOCK_TRACK_EXTERNAL_DEADLOCK 0
+
 namespace yb {
 
 // A read-write-commit lock.
@@ -91,6 +101,14 @@ class RWCLock {
   RWCLock() = default;
   ~RWCLock();
 
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+  static void CheckNoReadLockConflict(void* mutex);
+  static void SetConflictingMutex(void* mutex);
+#else
+  static void CheckNoReadLockConflict(void* mutex) {}
+  static void SetConflictingMutex(void* mutex) {}
+#endif
+
   // Acquire the lock in read mode. Upon return, guarantees that:
   // - Other threads may concurrently hold the lock for Read.
   // - Either zero or one thread may hold the lock for Write.
@@ -136,7 +154,13 @@ class RWCLock {
   // locking thread holds this mutex, which prevents any new
   // threads from obtaining the lock in any mode.
 
+  // Thread sanitizer does not understand timed_mutex and cannot catch related issues.
+  // So use std::mutex with it.
+#if defined(THREAD_SANITIZER)
+  mutable std::mutex write_mutex_;
+#else
   mutable std::timed_mutex write_mutex_;
+#endif
 
 #ifndef NDEBUG
   CoarseTimePoint write_start_;

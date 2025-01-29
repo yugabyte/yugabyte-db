@@ -128,106 +128,114 @@ Optionally, add configuration flags for your YB-Master and YB-TServer nodes. You
 
 Optionally, use the **Helm Overrides** section, as follows:
 
-- Click **Add Kubernetes Overrides** to open the **Kubernetes Overrides** dialog.
+1. Click **Add Kubernetes Overrides** to open the **Kubernetes Overrides** dialog.
 
-  ![Kubernetes Overrides](/images/yb-platform/kubernetes-config66.png)
+    ![Kubernetes Overrides](/images/yb-platform/kubernetes-config66.png)
 
-- Using the YAML format (which is sensitive to spacing and indentation), specify the universe-level overrides for YB-Master and YB-TServer, as per the following example:
+1. Using the YAML format (which is sensitive to spacing and indentation), specify the universe-level overrides for YB-Master and YB-TServer, as per the following example:
 
-  ```yaml
-  master:
-    podLabels:
-      service-type: 'database'
-  ```
-
-- Add availability zone overrides, which only apply to pods that are deployed in that specific availability zone. For example, to define overrides for the availability zone us-west-2a, you would click **Add Availability Zone** and use the text area to insert YAML in the following form:
-
-  ```yaml
-  us-west-2a:
+    ```yaml
     master:
       podLabels:
-         service-type: 'database'
-  ```
-
-  If you specify conflicting overrides, YugabyteDB Anywhere would use the following order of precedence: universe availability zone-level overrides, universe-level overrides, provider overrides.
-
-- If you want to enable [GKE service account-based IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restore using GCS at the universe level, add the following overrides:
-
-    ```yaml
-    tserver:
-      serviceAccount: <KSA_NAME>
-    nodeSelector:
-      iam.gke.io/gke-metadata-server-enabled: "true"
+        service-type: 'database'
     ```
 
-    If you don't provide namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/kubernetes/), add the names using the following steps:
+1. Optionally, click **Add Availability Zone** to add availability zone overrides, which only apply to pods that are deployed in that specific availability zone.
 
-    1. Add the Kubernetes service account to the namespaces where the pods are created.
-    1. Follow the steps in [Upgrade universes for GKE service account-based IAM](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam) to add the annotated Kubernetes service account to pods.
-
-    To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/kubernetes/#overrides).
-
-- If you want to enable [readiness probes](../../../deploy/kubernetes/single-zone/oss/helm-chart/#readiness-probes), add the following overrides:
+    For example, to define overrides for the availability zone us-west-2a, you would click **Add Availability Zone** and use the text area to insert YAML in the following form:
 
     ```yaml
-    master:
-      readinessProbe:
-        enabled: true
-
-    tserver:
-      readinessProbe:
-        enabled: true
+    us-west-2a:
+      master:
+        podLabels:
+          service-type: 'database'
     ```
 
-- If you want to use ARM VMs, add the following overrides:
+    If you specify conflicting overrides, YugabyteDB Anywhere would use the following order of precedence: universe availability zone-level overrides, universe-level overrides, provider overrides.
 
-    ```yaml
-    # Point to the aarch64 image in case multi-arch is not available.
-    Image:
-        tag: {{< yb-version version="stable" format="build">}}-aarch64
-    # Add a nodeSelector to deploy universe to arm64 nodes in the cluster
-    nodeSelector:
-        kubernetes.io/arch: arm64
+1. Select **Force Apply** if you want to override any previous overrides.
 
-    # For each master and tserver add tolerations for any taints that might be
-    # present on the nodes. These taints can be added by default by the
-    # managed k8s provider or by the cluster administrator
-    master:
-      tolerations:
-        - key: kubernetes.io/arch
-          operator: Equal
-          value: aarch64
-          effect: NoSchedule
-        - key: kubernetes.io/arch
-          operator: Equal
-          value: arm64
-          effect: NoSchedule
-        - key: arch
-          operator: Equal
-          value: aarch64
-          effect: NoSchedule
+1. Click **Validate and Save**.
 
-    tserver:
-      tolerations:
-        - key: kubernetes.io/arch
-          operator: Equal
-          value: aarch64
-          effect: NoSchedule
-        - key: kubernetes.io/arch
-          operator: Equal
-          value: arm64
-          effect: NoSchedule
-        - key: arch
-          operator: Equal
-          value: aarch64
-          effect: NoSchedule
-    ```
+If there are any errors in your overrides definitions, a detailed error message is displayed. You can correct the errors and try to save again. To save your Kubernetes overrides regardless of any validation errors, select **Force Apply**.
 
-- Select **Force Apply** if you want to override any previous overrides.
+#### GKE service account
 
-- Click **Validate and Save**.
+If you want to enable [GKE service account-based IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restore using GCS at the universe level, add the following overrides:
 
-  If there are any errors in your overrides definitions, a detailed error message is displayed. You can correct the errors and try to save again. To save your Kubernetes overrides regardless of any validation errors, select **Force Apply**.
+```yaml
+tserver:
+  serviceAccount: <KSA_NAME>
+nodeSelector:
+  iam.gke.io/gke-metadata-server-enabled: "true"
+```
+
+If you don't provide namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/kubernetes/), add the names using the following steps:
+
+1. Add the Kubernetes service account to the namespaces where the pods are created.
+1. Follow the steps in [Upgrade universes for GKE service account-based IAM](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam) to add the annotated Kubernetes service account to pods.
+
+To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/kubernetes/#overrides).
+
+#### Readiness probes
+
+If you want to enable [readiness probes](../../../deploy/kubernetes/single-zone/oss/helm-chart/#readiness-probes), add the following overrides:
+
+```yaml
+master:
+  readinessProbe:
+    enabled: true
+
+tserver:
+  readinessProbe:
+    enabled: true
+```
+
+#### ARM VMs
+
+If you want to use ARM VMs, add the following overrides:
+
+```yaml
+# Point to the aarch64 image in case multi-arch is not available.
+Image:
+    tag: {{< yb-version version="stable" format="build">}}-aarch64
+# Add a nodeSelector to deploy universe to arm64 nodes in the cluster
+nodeSelector:
+    kubernetes.io/arch: arm64
+
+# For each master and tserver add tolerations for any taints that might be
+# present on the nodes. These taints can be added by default by the
+# managed k8s provider or by the cluster administrator
+master:
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: aarch64
+      effect: NoSchedule
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule
+    - key: arch
+      operator: Equal
+      value: aarch64
+      effect: NoSchedule
+
+tserver:
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: aarch64
+      effect: NoSchedule
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule
+    - key: arch
+      operator: Equal
+      value: aarch64
+      effect: NoSchedule
+```
 
 ## Examine the universe and connect to nodes
 
@@ -259,7 +267,7 @@ By default, each zone has its own YB-TServer service, and you can use this servi
 
 Note that this requires all the zone deployments to be in the same namespace.
 
-1. Set the following Kubernetes overrides to add the universe-name label on the YB-TServer pods. You can do this when you [create the universe](#configure-helm-overrides) or by [modifying the Kubernetes overrides](../../manage-deployments/edit-helm-overrides/) of an existing universe.
+1. Set the following Kubernetes overrides to add the universe-name label on the YB-TServer pods. You can do this when you [create the universe](#helm-overrides) or by [modifying the Kubernetes overrides](../../manage-deployments/edit-helm-overrides/) of an existing universe.
 
    ```yaml
    tserver:
@@ -309,9 +317,9 @@ For scenarios involving multi-namespaces or clusters, a distinct service is crea
 
 #### Enable the common load balancer
 
-By default, the load balancer service is created per zone. You can change this behavior by [configuring Helm overrides](#configure-helm-overrides) during universe creation, or by enabling a global runtime configuration option.
+By default, the load balancer service is created per zone. You can change this behavior by [configuring Helm overrides](#helm-overrides) during universe creation, or by enabling a global runtime configuration option.
 
-You can explicitly define the service scope with the values as "AZ" or "Namespaced" when you [configure Helm overrides](#configure-helm-overrides) as follows:
+You can explicitly define the service scope with the values as "AZ" or "Namespaced" when you configure Helm overrides as follows:
 
 ```yaml
 serviceEndpoints:
@@ -375,7 +383,7 @@ To create a universe with Namespaced scope services by default, do the following
 
 1. Set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true.
 
-1. When you [configure Helm overrides](#configure-helm-overrides), use serviceEndpoint overrides without explicitly defining scope, or define scope as "Namespaced":
+1. When you [configure Helm overrides](#helm-overrides), use serviceEndpoint overrides without explicitly defining scope, or define scope as "Namespaced":
 
     ```yaml
     serviceEndpoints:

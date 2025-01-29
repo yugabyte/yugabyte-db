@@ -30,6 +30,7 @@
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/redis_operation.h"
 
@@ -46,6 +47,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/flags.h"
@@ -797,6 +799,9 @@ Status WriteQuery::DoExecute() {
   auto conflict_management_policy = GetConflictManagementPolicy(
       wait_queue, write_batch, is_advisory_lock_request);
 
+  SCHECK(!write_batch.has_background_transaction_id() || is_advisory_lock_request,
+      IllegalState, "background_transaction_id should only be set for advisory lock requests.");
+
   // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
   return docdb::ResolveTransactionConflicts(
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
@@ -897,12 +902,18 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
                                                   read_time_))
       : ScopedReadOperation();
 
+  docdb::DocDBStatistics statistics;
+  auto scope_exit = ScopeExit([&statistics, tablet] {
+    statistics.MergeAndClear(
+        tablet->regulardb_statistics().get(), tablet->intentsdb_statistics().get());
+  });
   docdb::ReadOperationData read_operation_data {
     .deadline = deadline(),
     .read_time = prepare_result_.need_read_snapshot
         ? read_op.read_time()
         // When need_read_snapshot is false, this time is used only to write TTL field of record.
         : ReadHybridTime::SingleTime(tablet->clock()->Now()),
+    .statistics = &statistics,
   };
 
   // We expect all read operations for this transaction to be done in AssembleDocWriteBatch. Once

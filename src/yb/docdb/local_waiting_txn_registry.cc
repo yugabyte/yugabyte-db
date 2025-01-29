@@ -64,6 +64,7 @@ struct WaitingTransactionData {
   std::shared_ptr<ConflictDataManager> blockers;
   StatusTabletDataPtr status_tablet_data;
   HybridTime wait_start_time;
+  boost::optional<PgSessionRequestVersion> pg_session_req_version;
   rpc::Rpcs::Handle rpc_handle;
 };
 
@@ -95,6 +96,9 @@ void AttachWaitingTransaction(
   txn->set_transaction_id(data.id.data(), data.id.size());
   txn->set_wait_start_time(data.wait_start_time.ToUint64());
   txn->set_request_id(data.request_id);
+  if (data.pg_session_req_version) {
+    txn->set_pg_session_req_version(*data.pg_session_req_version);
+  }
   for (const auto& blocker : data.blockers->RemainingTransactions()) {
     auto* blocking_txn = txn->add_blocking_transaction();
     blocking_txn->set_transaction_id(blocker.id.data(), blocker.id.size());
@@ -251,9 +255,10 @@ class LocalWaitingTxnRegistry::Impl {
         const TransactionId& waiting,
         int64_t request_id,
         std::shared_ptr<ConflictDataManager> blockers,
-        const TabletId& status_tablet) override {
+        const TabletId& status_tablet,
+        boost::optional<PgSessionRequestVersion> pg_session_req_version) override {
       return registry_->RegisterWaitingFor(
-          waiting, request_id, std::move(blockers), status_tablet, this);
+          waiting, request_id, std::move(blockers), status_tablet, pg_session_req_version, this);
     }
 
     Status RegisterSingleShardWaiter(
@@ -402,7 +407,9 @@ class LocalWaitingTxnRegistry::Impl {
   Status RegisterWaitingFor(
       const TransactionId& waiting, int64_t request_id,
       std::shared_ptr<ConflictDataManager> blockers,
-      const TabletId& status_tablet_id, WaitingTransactionDataWrapper* wrapper) EXCLUDES(mutex_) {
+      const TabletId& status_tablet_id,
+      boost::optional<PgSessionRequestVersion> pg_session_req_version,
+      WaitingTransactionDataWrapper* wrapper) EXCLUDES(mutex_) {
     DCHECK(!status_tablet_id.empty());
     auto shared_tablet_data = VERIFY_RESULT(GetOrAdd(status_tablet_id));
 
@@ -412,6 +419,7 @@ class LocalWaitingTxnRegistry::Impl {
       .blockers = std::move(blockers),
       .status_tablet_data = shared_tablet_data,
       .wait_start_time = clock_->Now(),
+      .pg_session_req_version = pg_session_req_version,
       .rpc_handle = rpcs_.InvalidHandle(),
     });
 

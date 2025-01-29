@@ -717,6 +717,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
                                        ThreadPool *callback_pool,
                                        const string& permanent_uuid,
                                        const TabletInfoPtr& tablet,
+                                       const TabletInfo::ReadLock& tablet_lock,
                                        const std::vector<SnapshotScheduleId>& snapshot_schedules,
                                        LeaderEpoch epoch,
                                        CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers)
@@ -729,7 +730,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
 
   auto table_lock = tablet->table()->LockForRead();
   const auto& table_pb = table_lock->pb;
-  const auto& tablet_pb = tablet->metadata().dirty().pb;
+  const auto& tablet_pb = tablet_lock->pb;
 
   req_.set_dest_uuid(permanent_uuid);
   req_.set_table_id(tablet->table()->id());

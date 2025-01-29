@@ -11,6 +11,7 @@ import com.google.inject.Singleton;
 import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.FileHelperService;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -47,6 +49,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -109,6 +112,7 @@ public class YbcManager {
   private final KubernetesManagerFactory kubernetesManagerFactory;
   private final FileHelperService fileHelperService;
   private final StorageUtilFactory storageUtilFactory;
+  private final GFlagsValidation gFlagsValidation;
 
   private static final int WAIT_EACH_ATTEMPT_MS = 5000;
   private static final int WAIT_EACH_SHORT_ATTEMPT_MS = 2000;
@@ -126,7 +130,8 @@ public class YbcManager {
       NodeManager nodeManager,
       KubernetesManagerFactory kubernetesManagerFactory,
       FileHelperService fileHelperService,
-      StorageUtilFactory storageUtilFactory) {
+      StorageUtilFactory storageUtilFactory,
+      GFlagsValidation gFlagsValidation) {
     this.ybcClientService = ybcClientService;
     this.customerConfigService = customerConfigService;
     this.confGetter = confGetter;
@@ -135,6 +140,7 @@ public class YbcManager {
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.fileHelperService = fileHelperService;
     this.storageUtilFactory = storageUtilFactory;
+    this.gFlagsValidation = gFlagsValidation;
   }
 
   // Enum for YBC throttle param type.
@@ -1164,6 +1170,8 @@ public class YbcManager {
       Map<String, String> gflags,
       UpgradeTaskType type,
       UpgradeTaskSubType subType) {
+    UserIntent userIntent =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     // Add the universe uuid.
     params.setUniverseUUID(universe.getUniverseUUID());
@@ -1176,8 +1184,9 @@ public class YbcManager {
     params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
     params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
 
-    UserIntent userIntent =
-        universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+    if (UniverseTaskBase.isYsqlMajorUpgradeStateInPreFinalizeState(universe, gFlagsValidation)) {
+      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
+    }
 
     // Add testing flag.
     params.itestS3PackagePath = universe.getUniverseDetails().itestS3PackagePath;

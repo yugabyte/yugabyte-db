@@ -37,7 +37,7 @@ yugabyte=# CREATE OPERATOR @#@ (
 yugabyte=# SELECT @#@ 5;
 ```
 
-```
+```output
  ?column?
 ----------
       120
@@ -45,5 +45,6 @@ yugabyte=# SELECT @#@ 5;
 
 ## See also
 
-- [`DROP OPERATOR`](../ddl_drop_operator)
-- [postgresql-docs-create-operator](https://www.postgresql.org/docs/current/sql-createoperator.html)
+- [DROP OPERATOR](../ddl_drop_operator)
+
+[postgresql-docs-create-operator]: https://www.postgresql.org/docs/11/sql-createoperator.html

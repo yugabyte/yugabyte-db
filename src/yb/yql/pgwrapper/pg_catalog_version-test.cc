@@ -935,11 +935,11 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
             << ", use_tserver_response_cache: " << use_tserver_response_cache;
   string conn_str_prefix = Format("host=$0 port=$1 dbname='$2'",
                                   pg_ts->bind_host(),
-                                  pg_ts->pgsql_rpc_port(),
+                                  pg_ts->ysql_port(),
                                   kYugabyteDatabase);
   auto conn_yugabyte = ASSERT_RESULT(PGConnBuilder({
       .host = pg_ts->bind_host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = kYugabyteDatabase,
       .user = "yugabyte",
       .password = "yugabyte",
@@ -955,7 +955,7 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
   RestartClusterSetDBCatalogVersionMode(per_database_mode, extra_tserver_flags);
   conn_yugabyte = ASSERT_RESULT(PGConnBuilder({
       .host = pg_ts->bind_host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = kYugabyteDatabase,
       .user = "yugabyte",
       .password = "yugabyte",
@@ -967,7 +967,7 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
       "CREATE USER $0 PASSWORD '$1'", kTestUser, kOldPassword));
   auto conn_test = ASSERT_RESULT(PGConnBuilder({
       .host = pg_ts->bind_host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = kYugabyteDatabase,
       .user = kTestUser,
       .password = kOldPassword,
@@ -982,7 +982,7 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
   // Making a new connection using the old password should fail.
   auto status = ResultToStatus(PGConnBuilder({
       .host = pg_ts->bind_host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = kYugabyteDatabase,
       .user = kTestUser,
       .password = kOldPassword,
@@ -996,7 +996,7 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
   // tserver cache would have stored the old password.
   auto conn_test_new = ASSERT_RESULT(PGConnBuilder({
       .host = pg_ts->bind_host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = kYugabyteDatabase,
       .user = kTestUser,
       .password = kNewPassword,
@@ -1169,7 +1169,7 @@ TEST_F(PgCatalogVersionTest, ResetIsGlobalDdlState) {
   }
 
   // The following ALTER TABLE is a not a global impact DDL statement, if
-  // we had not reset is_global_ddl state in DdlTransactionState because of
+  // we had not reset is_global_ddl state in YbDdlTransactionState because of
   // the above injected error, this ALTER TABLE would be incorrectly treated
   // as a global impact DDL statement and caused catalog versions of all
   // the databases to increase.
@@ -1692,6 +1692,198 @@ TEST_F(PgCatalogVersionTest, DisableNopAlterRoleOptimization) {
   ASSERT_OK(conn.Execute("ALTER ROLE yugabyte SUPERUSER"));
   auto v3 = ASSERT_RESULT(GetCatalogVersion(&conn));
   ASSERT_EQ(v3, v2 + 1);
+}
+
+TEST_F(PgCatalogVersionTest, AlterDatabaseCatalogVersionIncrement) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  // Create a test db and a test user.
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+  ASSERT_OK(conn.Execute("CREATE USER test_user"));
+  auto v1_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn));
+
+  // Connect to the test db as the test user.
+  PGConn conn_test1 = ASSERT_RESULT(ConnectToDBAsUser("test_db" /* db_name */, "test_user"));
+  auto v1_test_db = ASSERT_RESULT(GetCatalogVersion(&conn_test1));
+
+  // Try to perform alter database test_db as the test user, which isn't the owner.
+  auto status = conn_test1.Execute("ALTER DATABASE test_db SET statement_timeout = 100");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "must be owner of database");
+  status = conn_test1.Execute("ALTER DATABASE test_db SET temp_file_limit = 1024");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "must be owner of database");
+  status = conn_test1.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "must be owner of database");
+
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user"));
+  auto v2_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn));
+  auto v2_test_db = ASSERT_RESULT(GetCatalogVersion(&conn_test1));
+  ASSERT_EQ(v2_yugabyte, v1_yugabyte + 1);
+  ASSERT_EQ(v2_test_db, v1_test_db + 1);
+  WaitForCatalogVersionToPropagate();
+  ASSERT_OK(conn_test1.Execute("ALTER DATABASE test_db SET statement_timeout = 100"));
+  auto v3_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn));
+  auto v3_test_db = ASSERT_RESULT(GetCatalogVersion(&conn_test1));
+  ASSERT_EQ(v3_yugabyte, v2_yugabyte);
+  ASSERT_EQ(v3_test_db, v2_test_db + 1);
+  // temp_file_limit requires PGC_SUSET, test_user only has PGC_USERSET.
+  status = conn_test1.Execute("ALTER DATABASE test_db SET temp_file_limit = 1024");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "permission denied to set parameter");
+
+  // Rename database requires createdb priviledge.
+  status = conn_test1.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "permission denied to rename database");
+
+  // Grant createdb priviledge to test user.
+  ASSERT_OK(conn.Execute("ALTER USER test_user CREATEDB"));
+  auto v4_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn));
+  auto v4_test_db = ASSERT_RESULT(GetCatalogVersion(&conn_test1));
+  // Alter user is a global-impact DDL.
+  ASSERT_EQ(v4_yugabyte, v3_yugabyte + 1);
+  ASSERT_EQ(v4_test_db, v3_test_db + 1);
+  WaitForCatalogVersionToPropagate();
+  status = conn_test1.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "current database cannot be renamed");
+
+  PGConn conn_test2 = ASSERT_RESULT(ConnectToDBAsUser(
+      "yugabyte" /* db_name */, "test_user"));
+  status = conn_test2.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  // The error is only detected on connection to the same node.
+  ASSERT_STR_CONTAINS(status.ToString(), "is being accessed by other users");
+
+  // Make a connection to the second node as test user.
+  pg_ts = cluster_->tablet_server(1);
+  PGConn conn_test3 = ASSERT_RESULT(ConnectToDBAsUser(
+      "yugabyte" /* db_name */, "test_user"));
+  // The error is not detected on connection to the a different node, this is
+  // unique for YB.
+  ASSERT_OK(conn_test3.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed"));
+}
+
+// This test ensures that ALTER DATABASE RENAME has global impact. If we only bump up
+// the catalog version of the altered database (test_db), or even if we also bump up the
+// catalog version of MyDatabaseId (yugabyte in this test), we can have a situation
+// where DROP DATABASE executed from a connection to a third DB (postgres) stucks in
+// a PG infinite loop: this third-DB connection has a stale cache entry of the database
+// with its old name, and performing a scan-based query from the master returns the new
+// name. The PG infinite loop can only break until they compare equal but if the third
+// DB's catalog version isn't bumped, its connection will never refresh its catalog caches
+// and the old name remains in the stale cache entry.
+// Note that due to tserver/master heartbeat delay, it is still possible that even if
+// ALTER DATABASE RENAME has global impact, the third-DB connection has already entered
+// into the infinite loop before it receives the heartbeat and performs a catalog cache
+// refresh. So this DROP DATABASE hanging problem is only mitigated not completed avoided.
+TEST_F(PgCatalogVersionTest, AlterDatabaseRename) {
+  // Test setup: create a test db.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  auto conn_postgres = ASSERT_RESULT(ConnectToDB("postgres"));
+
+  auto v1_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v1_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+
+  // Execute a query on the postgres-connection to get a cache entry with the old DB name.
+  ASSERT_OK(conn_postgres.Execute("ALTER DATABASE test_db SET temp_file_limit = 1024"));
+  auto v2_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v2_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+  ASSERT_EQ(v1_yugabyte, v2_yugabyte);
+  ASSERT_EQ(v1_postgres, v2_postgres);
+
+  // Execute a query on the yugabyte-connection to rename the test_db.
+  ASSERT_OK(conn_yugabyte.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed"));
+
+  auto v3_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v3_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+
+  // If we did not bump up the catalog version of postgres DB, this DROP DATABASE would
+  // stuck and the test timed out.
+  ASSERT_OK(conn_postgres.Execute("DROP DATABASE test_db_renamed"));
+  auto v4_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v4_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+
+  // ALTER DATABASE RENAME has global-impact.
+  ASSERT_EQ(v2_yugabyte + 1, v3_yugabyte);
+  ASSERT_EQ(v2_postgres + 1, v3_postgres);
+
+  // DROP DATABASE is a same-version DDL that does not bump up catalog version.
+  ASSERT_EQ(v3_yugabyte, v4_yugabyte);
+  ASSERT_EQ(v3_postgres, v4_postgres);
+}
+
+// This test ensures that ALTER DATABASE OWNER has global impact. If we only bump up
+// the catalog version of the altered database (test_db), or even if we also bump up the
+// catalog version of MyDatabaseId (yugabyte in this test), we can have a situation
+// where a user connected to a third DB (postgres in this test) can end up having a
+// stale database entry, which prevents/allows the user to perform an operation
+// of the test_db incorrectly.
+TEST_F(PgCatalogVersionTest, AlterDatabaseOwner) {
+  // Test setup: create a test db and two users.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+  ASSERT_OK(conn.Execute("CREATE USER test_user1"));
+  ASSERT_OK(conn.Execute("CREATE USER test_user2"));
+
+  auto conn_test_user1 = ASSERT_RESULT(ConnectToDBAsUser(
+      "postgres" /* db_name */, "test_user1"));
+  auto conn_test_user2 = ASSERT_RESULT(ConnectToDBAsUser(
+      "postgres" /* db_name */, "test_user2"));
+
+  // Initially neither user can drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+  ASSERT_NOK_STR_CONTAINS(conn_test_user2.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+
+  // Change the owner of test_db to test_user1.
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user1"));
+
+  WaitForCatalogVersionToPropagate();
+
+  // Now test_user1 owns the database, test_user2 should continue not be able to drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user2.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+  // Now test_user1 owns the database, so test_user1 should be able to drop test_db.
+  ASSERT_OK(conn_test_user1.Execute("DROP DATABASE test_db"));
+
+  // Redo the test in a different way.
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+
+  // Initially neither user can drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+  ASSERT_NOK_STR_CONTAINS(conn_test_user2.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+
+  // Change the owner of test_db to test_user1.
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user1"));
+
+  WaitForCatalogVersionToPropagate();
+
+  // Now test_user1 owns the database, so test_user1 should be able to alter it. This gets
+  // the test_db cache entry loaded in conn_test_user1. Note that temp_file_limit requires
+  // PGC_SUSET, test_user only has PGC_USERSET so we still get a permission denied error.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute(
+      "ALTER DATABASE test_db SET temp_file_limit = 1024"),
+      "permission denied to set parameter");
+
+  // Change the owner of test_db to test_user2.
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user2"));
+
+  WaitForCatalogVersionToPropagate();
+
+  // Now test_user2 owns the database, so test_user1 should not be able to drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+
+  // Now test_user2 owns the database, so test_user2 should be able to drop test_db.
+  ASSERT_OK(conn_test_user2.Execute("DROP DATABASE test_db"));
 }
 
 } // namespace pgwrapper

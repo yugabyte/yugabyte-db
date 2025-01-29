@@ -144,7 +144,8 @@ extern PGDLLIMPORT bool XLOG_DEBUG;
 /* These indicate the cause of a checkpoint request */
 #define CHECKPOINT_CAUSE_XLOG	0x0080	/* XLOG consumption */
 #define CHECKPOINT_CAUSE_TIME	0x0100	/* Elapsed time */
-#define CHECKPOINT_CAUSE_CLIENT 0x0200 /* YB: Client explicitly requested checkpoint */
+#define CHECKPOINT_CAUSE_CLIENT 0x0200	/* YB: Client explicitly requested
+										 * checkpoint */
 
 /*
  * Flag bits for the record being inserted, set using XLogSetRecordFlags().

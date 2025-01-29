@@ -42,10 +42,16 @@ public class GFlagsValidationUiOnlyController extends AuthenticatedController {
       responseContainer = "List")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.9.0")
   @AuthzPath
-  public Result listGFlags(String version, String gflag, String serverType, Boolean mostUsedGFlags)
+  public Result listGFlags(
+      String version,
+      String gflag,
+      String serverType,
+      Boolean mostUsedGFlags,
+      Boolean showExperimental)
       throws IOException {
     return PlatformResults.withData(
-        gflagsValidationHandler.listGFlags(version, gflag, serverType, mostUsedGFlags));
+        gflagsValidationHandler.listGFlags(
+            version, gflag, serverType, mostUsedGFlags, showExperimental));
   }
 
   /**

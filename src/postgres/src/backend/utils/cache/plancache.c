@@ -74,7 +74,7 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
-#include "optimizer/ybcplan.h"
+#include "optimizer/ybplan.h"
 
 /* Yugabyte includes */
 #include "pg_yb_utils.h"
@@ -126,13 +126,13 @@ int			plan_cache_mode;
  * For prepared statements, generate custom plans for at least the first 5 runs
  * (arbitrary)
  */
-int yb_test_planner_custom_plan_threshold = 5;
+int			yb_test_planner_custom_plan_threshold = 5;
 
 /*
  * Prefer custom plan over generic plan for prepared statement if more
  * partitions are pruned using a custom plan.
  */
-bool enable_choose_custom_plan_for_partition_pruning = true;
+bool		enable_choose_custom_plan_for_partition_pruning = true;
 
 /*
  * InitPlanCache: initialize module during InitPostgres.
@@ -1069,16 +1069,20 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	if (plansource->num_custom_plans < yb_test_planner_custom_plan_threshold)
 		return true;
 
-	/* For single row modify operations, use a custom plan so as to push down
+	/*
+	 * For single row modify operations, use a custom plan so as to push down
 	 * the update to the DocDB without performing the read. This involves
-	 * faking the read results in postgres. However the boundParams needs to be
-	 * passed for the creation of the plan and hence we would need to enforce a
-	 * custom plan.
+	 * faking the read results in postgres. However the boundParams needs to
+	 * be passed for the creation of the plan and hence we would need to
+	 * enforce a custom plan.
 	 */
-	if (plansource->gplan && list_length(plansource->gplan->stmt_list)) {
-		PlannedStmt *pstmt =
-			linitial_node(PlannedStmt, plansource->gplan->stmt_list);
-		if (YBCIsSingleRowModify(pstmt)) {
+	if (plansource->gplan && list_length(plansource->gplan->stmt_list))
+	{
+		PlannedStmt *pstmt = linitial_node(PlannedStmt,
+										   plansource->gplan->stmt_list);
+
+		if (YBCIsSingleRowModify(pstmt))
+		{
 			return true;
 		}
 	}
@@ -1091,8 +1095,8 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	 * generic plan.
 	 */
 	if (enable_choose_custom_plan_for_partition_pruning && plansource->gplan &&
-		plansource->yb_custom_max_num_referenced_rels <
-			plansource->yb_generic_num_referenced_rels)
+		(plansource->yb_custom_max_num_referenced_rels <
+		 plansource->yb_generic_num_referenced_rels))
 		return true;
 
 	/*
@@ -1118,10 +1122,12 @@ static int
 num_referenced_relations(CachedPlan *plan)
 {
 	ListCell   *lc1;
-	int nrelations = 0;
+	int			nrelations = 0;
+
 	foreach(lc1, plan->stmt_list)
 	{
 		PlannedStmt *plannedstmt = lfirst_node(PlannedStmt, lc1);
+
 		nrelations += plannedstmt->yb_num_referenced_relations;
 	}
 
@@ -1284,7 +1290,8 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 		plansource->total_custom_cost += cached_plan_cost(plan, true);
 
 		plansource->num_custom_plans++;
-		if (IsYugaByteEnabled()) {
+		if (IsYugaByteEnabled())
+		{
 			/*
 			 * Store the maximum number of relations referenced across all
 			 * the runs using custom plan. In Yugabyte clusters, higher the
@@ -1294,7 +1301,8 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 			 * the number of pruned partitions can be a huge performance
 			 * factor.
 			 */
-			int nrelations = num_referenced_relations(plan);
+			int			nrelations = num_referenced_relations(plan);
+
 			if (plansource->num_custom_plans == 1 ||
 				plansource->yb_custom_max_num_referenced_rels < nrelations)
 				plansource->yb_custom_max_num_referenced_rels = nrelations;

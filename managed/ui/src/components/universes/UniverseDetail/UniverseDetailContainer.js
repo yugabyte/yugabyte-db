@@ -101,6 +101,9 @@ const mapDispatchToProps = (dispatch) => {
     showDeleteUniverseModal: () => {
       dispatch(openDialog('deleteUniverseModal'));
     },
+    showForceDeleteUniverseModal: () => {
+      dispatch(openDialog('forceDeleteUniverseModal'));
+    },
     showToggleUniverseStateModal: () => {
       dispatch(openDialog('toggleUniverseStateForm'));
     },
@@ -242,7 +245,7 @@ function mapStateToProps(state) {
           const softwareVersions = state.customer?.dbVersionsWithMetadata;
           if (isCurrentVersionStable) {
             supportedSoftwareVersions =
-              softwareVersions
+              Object.keys(softwareVersions)
                 ?.filter((version) => isVersionStable(version))
                 ?.toSorted((versionA, versionB) =>
                   compareYBSoftwareVersions({
@@ -256,7 +259,7 @@ function mapStateToProps(state) {
                 ) ?? [];
           } else {
             supportedSoftwareVersions =
-              softwareVersions
+              Object.keys(softwareVersions)
                 ?.filter((version) => !isVersionStable(version))
                 ?.toSorted((versionA, versionB) =>
                   compareYBSoftwareVersions({

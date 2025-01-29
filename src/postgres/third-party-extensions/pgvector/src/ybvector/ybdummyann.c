@@ -27,10 +27,10 @@
 #include "postgres.h"
 
 #include "ybvector.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 
 static void
-ybdummyannbindcolumnschema(YBCPgStatement handle,
+ybdummyannbindcolumnschema(YbcPgStatement handle,
 						   IndexInfo *indexInfo,
 						   TupleDesc indexTupleDesc,
 						   int16 *coloptions)

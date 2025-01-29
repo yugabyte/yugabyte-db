@@ -49,7 +49,7 @@ Result<PGConn> LibPqTestBase::ConnectToDBAsUser(
     const string& db_name, const string& user, bool simple_query_protocol) {
   return PGConnBuilder({
     .host = pg_ts->bind_host(),
-    .port = pg_ts->pgsql_rpc_port(),
+    .port = pg_ts->ysql_port(),
     .dbname = db_name,
     .user = user
   }).Connect(simple_query_protocol);
@@ -58,7 +58,7 @@ Result<PGConn> LibPqTestBase::ConnectToDBAsUser(
 Result<PGConn> LibPqTestBase::ConnectToTs(const ExternalTabletServer& pg_ts) {
   return PGConnBuilder({
     .host = pg_ts.bind_host(),
-    .port = pg_ts.pgsql_rpc_port(),
+    .port = pg_ts.ysql_port(),
   }).Connect();
 }
 

@@ -733,7 +733,8 @@ enum DocDbBlocksSamplingMethod {
   COMBINE_INTERSECTING_BLOCKS = 2;
 }
 
-// See ysql_sampling_algorithm flag description.
+// See yb_sampling_algorithm flag description.
+// Should be in sync with YbcSamplingAlgorithmEnum in GUC (ybc_util.h).
 enum YsqlSamplingAlgorithm {
   FULL_TABLE_SCAN = 0;
   BLOCK_BASED_SAMPLING = 1;

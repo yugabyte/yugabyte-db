@@ -176,7 +176,8 @@ PostgresServerProcessMain(int argc, char *argv[])
 			do_check_root = false;
 	}
 
-	if (YBShouldAllowRunningAsAnyUser()) {
+	if (YBShouldAllowRunningAsAnyUser())
+	{
 		do_check_root = false;
 	}
 

@@ -33,8 +33,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.io.BufferedReader;
-import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -717,28 +715,5 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             });
       }
     }
-  }
-
-  private Map<String, String> getDiskFlags(
-      NodeDetails nodeDetails, Universe universe, UniverseTaskBase.ServerType serverType) {
-    Map<String, String> results = new HashMap<>();
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        universe.getCluster(nodeDetails.placementUuid).userIntent;
-    String gflagsFile =
-        localNodeManager.getNodeGFlagsFile(
-            userIntent, serverType, localNodeManager.getNodeInfo(nodeDetails));
-    try (FileReader fr = new FileReader(gflagsFile);
-        BufferedReader br = new BufferedReader(fr)) {
-      String line;
-      while ((line = br.readLine()) != null) {
-        String[] split = line.split("=");
-        String key = split[0].substring(2);
-        String val = split.length == 1 ? "" : split[1];
-        results.put(key, val);
-      }
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-    return results;
   }
 }

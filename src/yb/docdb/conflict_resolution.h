@@ -59,7 +59,7 @@ using ResolutionCallback = boost::function<void(const Result<HybridTime>&)>;
 //
 // 3. Fail-on-Conflict:
 //    (a) In this mode, transactions are assigned random priorities (with some exceptions based on
-//        TxnPriorityRequirement).
+//        YbcTxnPriorityRequirement).
 //    (b) If T0 tries to write an intent or data that conflicts with data modififed by committed
 //        transactions, T0 fails (i.e., tserver returns a kConflict error back to YSQL).
 //    (c) If T0 tries to write an intent or data that conflicts with intents of pending

@@ -21,7 +21,7 @@ showRightNav: true
 
 ## Semantics
 
-The _plpgsql_assert_stmt_ evaluates its defining _boolean_expression_. If the result is _true_, then the point of execution moves silently to the next executable statement. But if the result is _false_, then the _'P0004'_ error (_assert_failure_) is caused. If the optional _text_expression_ is omitted, then the system supplied error message _"assertion failed"_ is used—in whatever national language the _lc_messages_ run-time parameter specifies. (See the PostgreSQL documentation section [Locale Support](https://www.postgresql.org/docs/11/locale.html).) If _text_expression_ is defined, then this text is used as the error message.
+The _plpgsql_assert_stmt_ evaluates its defining _boolean_expression_. If the result is _true_, then the point of execution moves silently to the next executable statement. But if the result is _false_, then the _'P0004'_ error (_assert_failure_) is caused. If the optional _text_expression_ is omitted, then the system supplied error message _"assertion failed"_ is used—in whatever national language the _lc_messages_ run-time parameter specifies. (See the PostgreSQL documentation section [Locale Support](https://www.postgresql.org/docs/15/locale.html).) If _text_expression_ is defined, then this text is used as the error message.
 
 If an error occurs while evaluating the _boolean_expression_ or the _text_expression_, then this is reported as a normal error. The _text_expression_ is evaluated only when the assertion fails.
 

@@ -916,17 +916,17 @@ findExtensionByOid(Oid oid)
  *	  finds the DumpableObject for the tablegroup with the given oid
  *	  returns NULL if not found
  */
-TablegroupInfo *
+YbTablegroupInfo *
 findTablegroupByOid(Oid oid)
 {
-	CatalogId		catId;
+	CatalogId	catId;
 	DumpableObject *dobj;
 
 	catId.tableoid = YbTablegroupRelationId;
 	catId.oid = oid;
 	dobj = findObjectByCatalogId(catId);
 	Assert(dobj == NULL || dobj->objType == DO_TABLEGROUP);
-	return (TablegroupInfo *) dobj;
+	return (YbTablegroupInfo *) dobj;
 }
 
 /*

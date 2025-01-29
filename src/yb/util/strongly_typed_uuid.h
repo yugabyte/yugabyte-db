@@ -190,33 +190,14 @@ std::ostream& operator << (std::ostream& out, const StronglyTypedUuid<Tag>& uuid
 }
 
 template <class Tag>
-bool operator == (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
+bool operator== (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
   return *lhs == *rhs;
 }
 
 template <class Tag>
-bool operator != (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
-  return !(lhs == rhs);
-}
-
-template <class Tag>
-bool operator < (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
-  return *lhs < *rhs;
-}
-
-template <class Tag>
-bool operator > (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
-  return rhs < lhs;
-}
-
-template <class Tag>
-bool operator <= (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
-  return !(rhs < lhs);
-}
-
-template <class Tag>
-bool operator >= (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
-  return !(lhs < rhs);
+std::strong_ordering operator <=> (
+    const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
+  return std::compare_strong_order_fallback(*lhs, *rhs);
 }
 
 template <class Tag>

@@ -187,13 +187,25 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Get aggregated mutations for each table across the whole transaction (exclude aborted
   // sub-transactions).
-  std::unordered_map<TableId, uint64_t> GetTableMutationCounts() const;
+  std::vector<std::pair<TableId, uint64_t>> GetTableMutationCounts() const;
 
   bool OldTransactionAborted() const;
+
+  // For docdb transactions of type PgClientSessionKind::kPgSession, initializes the metadata
+  // necessary for deadlock detection etc. This info is plugged in into write rpcs and the target
+  // tablet's wait-queue relies on this information to resume deadlocked session advisory lock reqs.
+  void InitPgSessionRequestVersion();
 
   // Sets the transaction's reuse_version_ to the value observed by Perform rpc(s)
   // at pg_client_session.
   void SetCurrentReuseVersion(TxnReuseVersion reuse_version);
+
+  // For transactions of kind PgClientSessionKind::kPgSession, we record the background txn,
+  // if any. This info is propagated to the status tablet, which then creates an internal wait-for
+  // probe from the session level waiter -> active transaction if any which is necessary for
+  // detection of deadlocks spanning advisory locks and row-level locks (same would apply for
+  // detection of deadlocks spanning object locks, advisory locks and row locks in future).
+  void SetBackgroundTransaction(const YBTransactionPtr& background_transaction);
 
  private:
   class Impl;

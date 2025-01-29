@@ -239,6 +239,9 @@ public class Audit extends Model {
     @EnumValue("Retry")
     Retry,
 
+    @EnumValue("Rollback")
+    Rollback,
+
     @EnumValue("Restore")
     Restore,
 
@@ -460,6 +463,9 @@ public class Audit extends Model {
 
     @EnumValue("Create PITR Config")
     CreatePitrConfig,
+
+    @EnumValue("Update PITR Config")
+    UpdatePitrConfig,
 
     @EnumValue("Restore Snapshot Schedule")
     RestoreSnapshotSchedule,

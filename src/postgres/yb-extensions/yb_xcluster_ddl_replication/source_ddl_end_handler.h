@@ -1,16 +1,20 @@
-// Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not
-// use this file except in compliance with the License.  You may obtain a copy
-// of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
-// License for the specific language governing permissions and limitations under
-// the License.
+/*-----------------------------------------------------------------------------
+ * Copyright (c) YugabyteDB, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ *
+ *-----------------------------------------------------------------------------
+ */
 
 #ifndef YB_XCLUSTER_DDL_REPLICATION_SOURCE_DDL_END
 #define YB_XCLUSTER_DDL_REPLICATION_SOURCE_DDL_END
@@ -19,8 +23,7 @@
 #include "tcop/cmdtag.h"
 #include "utils/jsonb.h"
 
-bool
-IsPassThroughDdlCommandSupported(CommandTag command_tag);
+bool		IsPassThroughDdlCommandSupported(CommandTag command_tag);
 
 /*
  * Iterate over pg_catalog.pg_event_trigger_ddl_commands() and process each base
@@ -33,18 +36,18 @@ IsPassThroughDdlCommandSupported(CommandTag command_tag);
  *    the DDL are temp) - This function returns false.
  * 3. The DDL is valid and should be replicated - This function returns true.
  */
-bool ProcessSourceEventTriggerDDLCommands(JsonbParseState *state);
+bool		ProcessSourceEventTriggerDDLCommands(JsonbParseState *state);
 
 /*
  * Same as above but for pg_catalog.pg_event_trigger_dropped_objects().
  */
-bool ProcessSourceEventTriggerDroppedObjects();
+bool		ProcessSourceEventTriggerDroppedObjects();
 
 /*
  * Retrieve and store the OID of the table that is about to be rewritten.
  */
-void ProcessSourceEventTriggerTableRewrite();
+void		ProcessSourceEventTriggerTableRewrite();
 
-void ClearRewrittenTableOidList();
+void		ClearRewrittenTableOidList();
 
 #endif

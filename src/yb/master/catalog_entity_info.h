@@ -234,6 +234,47 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB> {
   void set_state(SysTabletsEntryPB::State state, const std::string& msg);
 };
 
+template <class T>
+struct CowObjectWithWriteLock {
+  scoped_refptr<T> info;
+  typename T::WriteLock lock;
+
+  CowObjectWithWriteLock() = default;
+  explicit CowObjectWithWriteLock(const scoped_refptr<T>& info_) : info(info_) {}
+
+  T* operator->() const {
+    return info.get();
+  }
+
+  T& operator*() const {
+    return *info;
+  }
+
+  explicit operator bool() const {
+    return info != nullptr;
+  }
+
+  void Lock() {
+    lock = info->LockForWrite();
+  }
+
+  void Commit() {
+    lock.Commit();
+  }
+};
+
+struct IdLess {
+  template <class T>
+  bool operator()(const T& lhs, const T& rhs) const {
+    return lhs.id() < rhs.id();
+  }
+
+  template <class T>
+  bool operator()(const scoped_refptr<T>& lhs, const scoped_refptr<T>& rhs) const {
+    return (*this)(*lhs, *rhs);
+  }
+};
+
 // The information about a single tablet which exists in the cluster,
 // including its state and locations.
 //
@@ -253,7 +294,14 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB> {
 // The object is owned/managed by the CatalogManager, and exposed for testing.
 class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
  public:
-  TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id);
+  TabletInfo(const TableInfoPtr& table, TabletId tablet_id);
+
+  template <class SetupFunctor>
+  TabletInfo(const TableInfoPtr& table, TabletId tablet_id, const SetupFunctor& setup)
+      : TabletInfo(table, tablet_id) {
+    setup(metadata_.DirectStateForInitialSetup());
+  }
+
   virtual const TabletId& id() const override { return tablet_id_; }
 
   const TabletId& tablet_id() const { return tablet_id_; }
@@ -363,10 +411,11 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
 
   // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.
-  std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_);
+  std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_) =
+      std::make_shared<TabletReplicaMap>();
 
   // Reported schema version (in-memory only).
-  std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_) = {};
+  std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_);
 
   // The protege UUID to use for the initial leader election (in-memory only).
   std::string initial_leader_election_protege_ GUARDED_BY(lock_);
@@ -536,6 +585,8 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.table_type();
   }
 };
+
+YB_DEFINE_ENUM(GetTabletsMode, (kOrderByPartitions)(kOrderByTabletId));
 
 // A tablet, and two partitions that together cover the tablet's partition.
 struct TabletWithSplitPartitions {
@@ -716,7 +767,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Get all tablets of the table.
   // If include_inactive is true then it also returns inactive tablets along with the active ones.
   // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
-  Result<TabletInfos> GetTablets(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
+  Result<TabletInfos> GetTablets(GetTabletsMode mode = GetTabletsMode::kOrderByPartitions) const;
+  Result<TabletInfos> GetTabletsIncludeInactive() const;
   size_t TabletCount(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
   // Get the tablet of the table. The table must satisfy IsColocatedUserTable.
@@ -830,8 +882,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return ToString() + ": ";
   }
 
-  static Result<TabletInfoPtr> PromoteTabletPointer(const std::weak_ptr<TabletInfo>& tablet);
-
   const TableId table_id_;
 
   // Sorted index of tablet start partition-keys to TabletInfo.
@@ -849,7 +899,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // TODO(#24956) If a tablet T1[0,100] splits into T2[0,50] and T3[50,100] and later the table is
   // Hidden, the partitions_ structure may end up with T1 and T3 as start_keys are unique.
   // TODO(#15043): remove tablets from tablets_ once they have been deleted from all TServers.
-  std::unordered_map<TabletId, std::weak_ptr<TabletInfo>> tablets_ GUARDED_BY(lock_);
+  std::map<TabletId, std::weak_ptr<TabletInfo>> tablets_ GUARDED_BY(lock_);
 
   // Protects partitions_ and tablets_.
   mutable rw_spinlock lock_;
@@ -903,6 +953,8 @@ struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB> {
     return pb.colocated();
   }
 };
+
+using TableInfoWithWriteLock = CowObjectWithWriteLock<TableInfo>;
 
 // The information about a namespace.
 //
@@ -1496,6 +1548,26 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
 };
 
 bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+
+// Leaves the tablet "write locked" with the new info in the "dirty" state field.
+TabletInfoPtr MakeTabletInfo(
+    const TableInfoPtr& table,
+    const TabletId& tablet_id = TabletId());
+
+// Helper for creating the initial TabletInfo state.
+// Leaves the tablet "write locked" with the new info in the "dirty" state field.
+TabletInfoPtr CreateTabletInfo(
+    const TableInfoPtr& table,
+    const PartitionPB& partition,
+    SysTabletsEntryPB::State state = SysTabletsEntryPB::PREPARING,
+    const TabletId& tablet_id = TabletId());
+
+// Expects tablet to be "write locked".
+void SetupTabletInfo(
+    TabletInfo& tablet,
+    const TableInfo& table,
+    const PartitionPB& partition,
+    SysTabletsEntryPB::State state);
 
 }  // namespace master
 }  // namespace yb

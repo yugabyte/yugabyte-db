@@ -80,8 +80,11 @@ INSERT 0 1
 
 EOT
 
+# Finalize the upgrade to re-enable pushdown and DDLs.
+finalize_upgrade
 # Upgrade is complete. After the restart, demonstrate that DDLs work.
 yb_ctl restart
+
 diff <(ysqlsh <<EOT | sed 's/ *$//'
 SHOW server_version_num;
 SELECT * FROM t ORDER BY h,r;

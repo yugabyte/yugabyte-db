@@ -32,11 +32,11 @@ class MockTserverXClusterContext : public TserverXClusterContextIf {
       (Result<std::optional<HybridTime>>), GetSafeTime, (const NamespaceId& namespace_id),
       (const, override));
 
-  MOCK_METHOD(bool, IsReadOnlyMode, (const NamespaceId namespace_id), (const, override));
+  MOCK_METHOD(bool, IsReadOnlyMode, (const NamespaceId& namespace_id), (const, override));
 
   MOCK_METHOD(bool, SafeTimeComputationRequired, (), (const, override));
   MOCK_METHOD(
-      bool, SafeTimeComputationRequired, (const NamespaceId namespace_id), (const, override));
+      bool, SafeTimeComputationRequired, (const NamespaceId& namespace_id), (const, override));
 
   MOCK_METHOD(
       Status, SetSourceTableMappingForCreateTable,

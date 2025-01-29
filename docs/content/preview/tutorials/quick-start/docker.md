@@ -168,7 +168,7 @@ docker exec -it yugabyte bash -c '/home/yugabyte/bin/ysqlsh --echo-queries --hos
 ```
 
 ```output
-ysqlsh (11.2-YB-{{< yb-version version="preview" >}}-b545)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

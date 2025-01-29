@@ -41,6 +41,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -90,6 +92,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.Data;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -2178,7 +2181,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       YBClientService ybClientService,
       UniverseTableHandler tableHandler,
       XClusterConfig xClusterConfig,
-      long timeoutMs) {
+      long timeoutMs,
+      RuntimeConfGetter confGetter) {
     Optional<Universe> targetUniverseOptional =
         Objects.isNull(xClusterConfig.getTargetUniverseUUID())
             ? Optional.empty()
@@ -2194,7 +2198,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     ReplicationClusterData replicationClusterData;
     try {
       replicationClusterData =
-          collectReplicationClusterData(ybClientService, xClusterConfig, timeoutMs);
+          collectReplicationClusterData(ybClientService, xClusterConfig, timeoutMs, confGetter);
       XClusterConfig.TableType tableType = xClusterConfig.getTableType();
       replicationClusterData.sourceTableInfoList =
           tableType.equals(XClusterConfig.TableType.YSQL)
@@ -2283,6 +2287,32 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           "Error getting table details not in replication for xCluster config {}",
           xClusterConfig.getUuid(),
           e);
+    }
+
+    xClusterConfig
+        .getTableDetails()
+        .forEach(
+            tableConfig -> {
+              if (tableConfig.getStatus().getCode() != 4) {
+                if (tableConfig.getStatus().getCode() > 0) {
+                  log.warn(
+                      "In xCluster config {}, table {} is not in Running status",
+                      xClusterConfig,
+                      tableConfig);
+                } else {
+                  log.error(
+                      "In xCluster config {}, table {} is in bad status",
+                      xClusterConfig,
+                      tableConfig);
+                }
+              }
+            });
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xClusterTableStatusLoggingEnabled)) {
+      log.info(
+          "After adding source and target table info to the xCluster config {} : {}",
+          xClusterConfig,
+          xClusterConfig.getTableDetails());
     }
   }
 
@@ -2453,7 +2483,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @return The ReplicationClusterData containing the collected data.
    */
   private static ReplicationClusterData collectReplicationClusterData(
-      YBClientService ybClientService, XClusterConfig xClusterConfig, long timeoutMs) {
+      YBClientService ybClientService,
+      XClusterConfig xClusterConfig,
+      long timeoutMs,
+      RuntimeConfGetter confGetter) {
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
 
@@ -2544,6 +2577,12 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
 
     MoreExecutors.shutdownAndAwaitTermination(executorService, timeoutMs, TimeUnit.MILLISECONDS);
+    if (confGetter.getGlobalConf(GlobalConfKeys.xClusterTableStatusLoggingEnabled)) {
+      log.info(
+          "Replication cluster data collected for xCluster config {}: {}",
+          xClusterConfig.getUuid(),
+          data);
+    }
     return data;
   }
 
@@ -2570,7 +2609,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       throws Exception {
     Set<String> sourceUniverseTableIds =
         sourceTableInfoList.stream()
-            .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
+            .map(XClusterConfigTaskBase::getTableId)
             .collect(Collectors.toSet());
 
     // Update the status for tables that were previously being replicated but have been dropped from
@@ -3253,14 +3292,60 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   /** Represents the data required for replication between clusters. */
   @Data
+  @ToString
   public static class ReplicationClusterData {
+
     private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList;
     private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList;
     private CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig;
     private Set<MasterTypes.NamespaceIdentifierPB> sourceNamespaceInfoList;
     private Set<MasterTypes.NamespaceIdentifierPB> targetNamespaceInfoList;
-    private GetUniverseReplicationInfoResponse targetUniverseReplicationInfo;
+    @ToString.Exclude private GetUniverseReplicationInfoResponse targetUniverseReplicationInfo;
+
+    @ToString.Exclude
     private GetXClusterOutboundReplicationGroupInfoResponse sourceUniverseReplicationInfo;
+
+    @ToString.Include(name = "targetUniverseReplicationInfo")
+    private String getTargetUniverseReplicationInfoString() {
+      if (Objects.isNull(targetUniverseReplicationInfo)) {
+        return null;
+      }
+      StringBuilder ret = new StringBuilder("(");
+      if (Objects.isNull(targetUniverseReplicationInfo.getReplicationType())) {
+        ret.append("replicationType=null");
+      } else {
+        ret.append("replicationType=")
+            .append(targetUniverseReplicationInfo.getReplicationType().toString());
+      }
+      if (Objects.isNull(targetUniverseReplicationInfo.getTableInfos())) {
+        ret.append(", tableInfos=null");
+      } else {
+        ret.append(", tableInfos=").append(targetUniverseReplicationInfo.getTableInfos());
+      }
+      if (Objects.isNull(targetUniverseReplicationInfo.getDbScopedInfos())) {
+        ret.append(", dbScopedInfos=null");
+      } else {
+        ret.append(", dbScopedInfos=").append(targetUniverseReplicationInfo.getDbScopedInfos());
+      }
+      ret.append(")");
+      return ret.toString();
+    }
+
+    @ToString.Include(name = "sourceUniverseReplicationInfo")
+    private String getSourceUniverseReplicationInfoString() {
+      if (Objects.isNull(sourceUniverseReplicationInfo)) {
+        return null;
+      }
+      StringBuilder ret = new StringBuilder("(");
+      if (Objects.isNull(sourceUniverseReplicationInfo.getNamespaceInfos())) {
+        ret.append("namespaceInfos=null");
+      } else {
+        ret.append("namespaceInfos=")
+            .append(sourceUniverseReplicationInfo.getNamespaceInfos().toString());
+      }
+      ret.append(")");
+      return ret.toString();
+    }
   }
 
   // --------------------------------------------------------------------------------

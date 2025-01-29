@@ -25,7 +25,7 @@ namespace yb::docdb {
 struct ReadOperationData {
   CoarseTimePoint deadline = CoarseTimePoint::max();
   ReadHybridTime read_time = ReadHybridTime::Max();
-  const DocDBStatistics* statistics = nullptr;
+  DocDBStatistics* statistics = nullptr;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(deadline, read_time);
@@ -37,7 +37,7 @@ struct ReadOperationData {
     return result;
   }
 
-  ReadOperationData WithStatistics(const DocDBStatistics* statistics_) const {
+  ReadOperationData WithStatistics(DocDBStatistics* statistics_) const {
     auto result = *this;
     result.statistics = statistics_;
     return result;

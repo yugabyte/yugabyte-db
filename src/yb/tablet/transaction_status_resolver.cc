@@ -271,6 +271,10 @@ class TransactionStatusResolver::Impl {
         // response contains a deadlock specific error.
         status_info.expected_deadlock_status = StatusFromPB(response.deadlock_reason(i));
       }
+      if (response.pg_session_req_version().size() > i &&
+          !response.pg_session_req_version(i)) {
+        status_info.pg_session_req_version = response.pg_session_req_version(i);
+      }
 
       if (PREDICT_FALSE(response.aborted_subtxn_set().empty())) {
         YB_LOG_EVERY_N(WARNING, 1)

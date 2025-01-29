@@ -698,6 +698,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     UserIntent currentUserIntent = universeDetails.getPrimaryCluster().userIntent;
     UserIntent incomingIntent = createUserIntent(ybUniverse, cust.getUuid(), false);
 
+    // Handle previously unset masterDeviceInfo
+    if (currentUserIntent.masterDeviceInfo == null) {
+      currentUserIntent.masterDeviceInfo = operatorUtils.defaultMasterDeviceInfo();
+    }
+
     // Fix non-changeable values to current.
     incomingIntent.accessKeyCode = currentUserIntent.accessKeyCode;
     incomingIntent.enableExposingService = currentUserIntent.enableExposingService;
@@ -721,6 +726,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                 universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
             currentUserIntent.numNodes = incomingIntent.numNodes;
             currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
+            currentUserIntent.masterDeviceInfo.volumeSize =
+                incomingIntent.masterDeviceInfo.volumeSize;
             taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
             break;
           case KubernetesOverridesUpgrade:
@@ -792,10 +799,15 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
               upgradeYBUniverse(
                   universeDetails, cust, ybUniverse, incomingIntent.ybSoftwareVersion);
         } else if (operatorUtils.shouldUpdateYbUniverse(
-            currentUserIntent, incomingIntent.numNodes, incomingIntent.deviceInfo)) {
+            currentUserIntent,
+            incomingIntent.numNodes,
+            incomingIntent.deviceInfo,
+            incomingIntent.masterDeviceInfo)) {
           log.info("Calling Edit Universe");
           currentUserIntent.numNodes = incomingIntent.numNodes;
           currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
+          currentUserIntent.masterDeviceInfo.volumeSize =
+              incomingIntent.masterDeviceInfo.volumeSize;
           kubernetesStatusUpdater.createYBUniverseEventStatus(
               universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
           if (checkAndHandleUniverseLock(
@@ -988,8 +1000,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       userIntent.accessKeyCode = "";
 
       userIntent.deviceInfo = operatorUtils.mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
-      log.debug("ui.deviceInfo : {}", userIntent.deviceInfo);
-      log.debug("given deviceInfo: {} ", ybUniverse.getSpec().getDeviceInfo());
+      userIntent.masterDeviceInfo =
+          operatorUtils.mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
 
       userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
       userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
@@ -1081,7 +1093,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                           .map(
                               z -> {
                                 HashMap<String, String> tempMap = new HashMap<>(z.config);
-                                tempMap.put("STORAGE_CLASS", storageClass);
+                                if (StringUtils.isNotBlank(storageClass)) {
+                                  tempMap.put("STORAGE_CLASS", storageClass);
+                                }
                                 tempMap.put("KUBENAMESPACE", kubeNamespace);
                                 z.config = tempMap;
                                 return z;

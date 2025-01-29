@@ -93,10 +93,14 @@ public class NodeAgentEnabler {
 
   public void init() {
     checkState(!isEnabled(), "Node agent enabler is already enabled");
+    if (confGetter.getGlobalConf(GlobalConfKeys.disableNodeAgentOnProviderCreation)) {
+      log.info("Disabling node agent enabler because node agent is disabled on provider creation");
+      return;
+    }
     Duration scannerInterval =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnablerScanInterval);
     if (scannerInterval.isZero()) {
-      log.info("Node agent enabler is disabled because the scanner interval is to zero");
+      log.info("Disabling node agent enabler because the scanner interval is to zero");
       return;
     }
     enable();
@@ -220,11 +224,11 @@ public class NodeAgentEnabler {
     boolean clientEnabled =
         confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
     if (!clientEnabled) {
-      log.debug("Node agent server is disabled for provider {}", provider.getUuid());
+      log.trace("Node agent server is disabled for provider {}", provider.getUuid());
       return false;
     }
     if (!isEnabled()) {
-      log.debug("Node agent server is disabled for old provider {}", provider.getUuid());
+      log.trace("Node agent server is disabled for old provider {}", provider.getUuid());
       return provider.getDetails().isEnableNodeAgent();
     }
     // The internal provider flag is not checked if enabler is enabled.

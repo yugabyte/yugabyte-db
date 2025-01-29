@@ -213,7 +213,7 @@ struct config_int
 	void	   *reset_extra;
 };
 
-struct config_oid
+struct yb_config_oid
 {
 	struct config_generic gen;
 	/* constant fields, must be set correctly in initial value: */
@@ -221,8 +221,8 @@ struct config_oid
 	Oid			boot_val;
 	Oid			min;
 	Oid			max;
-	GucOidCheckHook check_hook;
-	GucOidAssignHook assign_hook;
+	YbGucOidCheckHook check_hook;
+	YbGucOidAssignHook assign_hook;
 	GucShowHook show_hook;
 	/* variable fields, initialized at runtime: */
 	Oid			reset_val;

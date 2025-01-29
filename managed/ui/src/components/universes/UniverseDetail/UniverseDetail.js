@@ -327,6 +327,7 @@ class UniverseDetail extends Component {
       showHelmOverridesModal,
       showManageKeyModal,
       showDeleteUniverseModal,
+      showForceDeleteUniverseModal,
       showToggleUniverseStateModal,
       showToggleBackupModal,
       showEnableYSQLModal,
@@ -503,7 +504,6 @@ class UniverseDetail extends Component {
       isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_VM_IMAGE);
     const isUpgradeToSystemdDisabled =
       isUniverseStatusPending ||
-      onPremSkipProvisioning ||
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_TO_SYSTEMD);
     const isThirdPartySoftwareDisabled =
       isUniverseStatusPending ||
@@ -1538,6 +1538,26 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       </RbacValidator>
                     )}
+                    <RbacValidator
+                      isControl
+                      accessRequiredOn={{
+                        onResource: uuid,
+                        ...ApiPermissionMap.DELETE_UNIVERSE
+                      }}
+                    >
+                      <YBMenuItem
+                        onClick={showForceDeleteUniverseModal}
+                        availability={getFeatureState(
+                          currentCustomer.data.features,
+                          'universes.details.overview.deleteUniverse'
+                        )}
+                        disabled={isDeleteUniverseDisabled}
+                      >
+                        <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                          Force Delete Universe
+                        </YBLabelWithIcon>
+                      </YBMenuItem>
+                    </RbacValidator>
                   </>
                 ),
                 [ActionMenu.SECURITY]: (setActiveSubmenu) => (
@@ -1644,6 +1664,18 @@ class UniverseDetail extends Component {
           title="Delete Universe: "
           body="Are you sure you want to delete the universe? You will lose all your data!"
           type="primary"
+          showForceDelete={false}
+          showDeleteBackups={false}
+        />
+
+        <DeleteUniverseContainer
+          visible={showModal && visibleModal === 'forceDeleteUniverseModal'}
+          onHide={closeModal}
+          title="Force Delete Universe: "
+          body="Are you sure you want to force delete the universe? You will lose all your data!"
+          type="primary"
+          showForceDelete={true}
+          showDeleteBackups={true}
         />
 
         <ToggleUniverseStateContainer

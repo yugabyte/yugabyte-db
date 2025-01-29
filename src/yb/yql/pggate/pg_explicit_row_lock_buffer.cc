@@ -81,7 +81,7 @@ Status ExplicitRowLockBuffer::DoFlushImpl() {
   RETURN_NOT_OK(ybctid_reader_(
       info_->database_id, ybctids, region_local_tables_,
       make_lw_function(
-          [&info = *info_](PgExecParameters& params) {
+          [&info = *info_](YbcPgExecParameters& params) {
             params.rowmark = info.rowmark;
             params.pg_wait_policy = info.pg_wait_policy;
             params.docdb_wait_policy = info.docdb_wait_policy;

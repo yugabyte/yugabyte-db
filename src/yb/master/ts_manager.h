@@ -76,6 +76,7 @@ class TSInformationPB;
 
 // A callback that is called when the number of tablet servers reaches a certain number.
 using TSCountCallback = std::function<void()>;
+using TSDescriptorMap = std::map<std::string, TSDescriptorPtr>;
 
 using LeaseExpiredCallback = std::function<void(const std::string&, uint64_t, LeaderEpoch)>;
 
@@ -241,13 +242,6 @@ class TSManager {
   std::optional<TSDescriptorPtr> LookupTSInternalUnlocked(const std::string& permanent_uuid) const
       REQUIRES_SHARED(map_lock_);
 
-  // Returns the registered ts descriptors whose hostport matches the hostport in the
-  // registration argument.
-  Result<std::pair<std::vector<TSDescriptorPtr>, std::vector<TSDescriptor::WriteLock>>>
-  FindHostPortCollisions(
-      const NodeInstancePB& instance, const TSRegistrationPB& registration,
-      const CloudInfoPB& local_cloud_info) const REQUIRES_SHARED(map_lock_);
-
   size_t NumDescriptorsUnlocked() const REQUIRES_SHARED(map_lock_);
 
   SysCatalogTable& sys_catalog_;
@@ -271,7 +265,6 @@ class TSManager {
   mutable rw_spinlock map_lock_;
   Mutex registration_lock_;
 
-  using TSDescriptorMap = std::unordered_map<std::string, TSDescriptorPtr>;
   TSDescriptorMap servers_by_id_ GUARDED_BY(map_lock_);
 
   // This callback will be called when the number of tablet servers reaches the given number.

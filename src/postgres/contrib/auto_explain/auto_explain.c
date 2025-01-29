@@ -36,7 +36,7 @@ static int	auto_explain_log_format = EXPLAIN_FORMAT_TEXT;
 static int	auto_explain_log_level = LOG;
 static bool auto_explain_log_nested_statements = false;
 static double auto_explain_sample_rate = 1;
-static bool auto_explain_log_dist = true; /* option = auto_explain.log_dist */
+static bool auto_explain_log_dist = true;	/* option = auto_explain.log_dist */
 
 static const struct config_enum_entry format_options[] = {
 	{"text", EXPLAIN_FORMAT_TEXT, false},

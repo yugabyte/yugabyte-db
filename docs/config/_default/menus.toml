@@ -386,7 +386,7 @@
   weight = 10
   identifier = "yugabytedb"
   pre = "<i class='icon-database'></i>"
-  url = "/stable/"
+  url = "/preview/"
   [home.params]
     classes = "no-transform"
     showSection = true
@@ -396,7 +396,7 @@
   weight = 11
   identifier = "yugabytedb-anywhere"
   pre = "<i class='icon-server'></i>"
-  url = "/stable/yugabyte-platform/"
+  url = "/preview/yugabyte-platform/"
   [home.params]
     classes = "no-transform"
     showSection = true

@@ -54,7 +54,7 @@
 #include "utils/snapmgr.h"
 
 /* Yugabyte includes */
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"
 
@@ -557,7 +557,7 @@ CopyFrom(CopyFromState cstate)
 	bool		leafpart_use_multi_insert = false;
 
 	/* Yb variables */
-	bool useNonTxnInsert = false;
+	bool		useNonTxnInsert = false;
 	bool		has_more_tuples;
 
 	Assert(cstate->rel);
@@ -741,12 +741,12 @@ CopyFrom(CopyFromState cstate)
 		 * under the following use cases in which case
 		 * all rows will be copied over in a single transaction.
 		 */
-		int batch_size = 0;
+		int			batch_size = 0;
 
 		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
 		{
 			Assert(resultRelInfo->ri_RelationDesc->rd_rel->relpersistence == RELPERSISTENCE_TEMP ||
-					resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
+				   resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("batched COPY is not supported on %s tables",
@@ -757,19 +757,19 @@ CopyFrom(CopyFromState cstate)
 		}
 		else if (YBIsDataSent())
 			ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("batched COPY is not supported in transaction blocks"),
-				 errdetail("Defaulting to using one transaction for the entire copy."),
-				 errhint("Either run this COPY outside of a transaction block or set "
-						 "rows_per_transaction option to `0` to disable batching and "
-						 "remove this warning.")));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("batched COPY is not supported in transaction blocks"),
+					 errdetail("Defaulting to using one transaction for the entire copy."),
+					 errhint("Either run this COPY outside of a transaction block or set "
+							 "rows_per_transaction option to `0` to disable batching and "
+							 "remove this warning.")));
 		else if (HasNonRITrigger(cstate->rel->trigdesc))
 			ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("batched COPY is not supported on table with non RI trigger"),
-				 errdetail("Defaulting to using one transaction for the entire copy."),
-				 errhint("Set rows_per_transaction option to `0` to disable batching "
-						 "and remove this warning.")));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("batched COPY is not supported on table with non RI trigger"),
+					 errdetail("Defaulting to using one transaction for the entire copy."),
+					 errhint("Set rows_per_transaction option to `0` to disable batching "
+							 "and remove this warning.")));
 		else
 			batch_size = cstate->opts.batch_size;
 
@@ -913,7 +913,10 @@ CopyFrom(CopyFromState cstate)
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
-	/* Warn if non-txn COPY enabled and relation does not meet non-txn criteria. */
+	/*
+	 * Warn if non-txn COPY enabled and relation does not meet non-txn
+	 * criteria.
+	 */
 	if (YBIsNonTxnCopyEnabled() && !useNonTxnInsert)
 		ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -927,7 +930,7 @@ CopyFrom(CopyFromState cstate)
 	/* Skip num_initial_skipped_rows. */
 	for (uint64 i = 0; i < cstate->opts.num_initial_skipped_rows; i++)
 	{
-		has_more_tuples = NextCopyFrom(cstate, econtext, NULL, NULL, true /* skip_row */);
+		has_more_tuples = NextCopyFrom(cstate, econtext, NULL, NULL, true /* skip_row */ );
 		if (!has_more_tuples)
 			break;
 	}
@@ -988,7 +991,7 @@ yb_process_more_batches:
 		/* Directly store the values/nulls array in the slot */
 		has_more_tuples = NextCopyFrom(cstate, econtext, myslot->tts_values,
 									   myslot->tts_isnull,
-									   false /* skip_row */);
+									   false /* skip_row */ );
 		if (!has_more_tuples)
 			break;
 
@@ -1247,6 +1250,7 @@ yb_process_more_batches:
 					else if (resultRelInfo->ri_FdwRoutine != NULL)
 					{
 						MemoryContext saved_context;
+
 						saved_context = MemoryContextSwitchTo(estate->es_query_cxt);
 						myslot = resultRelInfo->ri_FdwRoutine->ExecForeignInsert(estate,
 																				 resultRelInfo,
@@ -1319,7 +1323,8 @@ yb_process_more_batches:
 		 */
 		YBCCommitTransaction();
 
-		/* Update progress of the COPY command as well.
+		/*
+		 * Update progress of the COPY command as well.
 		 */
 		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
 		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
@@ -1330,7 +1335,10 @@ yb_process_more_batches:
 	}
 	else
 	{
-		/* We need to flush buffered operations so that error callback is executed */
+		/*
+		 * We need to flush buffered operations so that error callback is
+		 * executed
+		 */
 		YBFlushBufferedOperations();
 
 		/* Update progress of the COPY command as well */
@@ -1699,8 +1707,9 @@ BeginCopyFrom(ParseState *pstate,
 		Assert(!is_program);	/* the grammar does not allow this */
 		if (whereToSendOutput == DestRemote)
 		{
-			bool isDataSent = YBIsDataSent();
-			bool isDataSentForCurrQuery = YBIsDataSentForCurrQuery();
+			bool		isDataSent = YBIsDataSent();
+			bool		isDataSentForCurrQuery = YBIsDataSentForCurrQuery();
+
 			ReceiveCopyBegin(cstate);
 			/*
 			 * ReceiveCopyBegin sends a message back to the client
@@ -1709,8 +1718,10 @@ BeginCopyFrom(ParseState *pstate,
 			 * although the message does not contain any data from YB.
 			 * So we can safely roll back YBIsDataSent to its previous value.
 			 */
-			if (!isDataSent) YBMarkDataNotSent();
-			if (!isDataSentForCurrQuery) YBMarkDataNotSentForCurrQuery();
+			if (!isDataSent)
+				YBMarkDataNotSent();
+			if (!isDataSentForCurrQuery)
+				YBMarkDataNotSentForCurrQuery();
 		}
 		else
 			cstate->copy_file = stdin;

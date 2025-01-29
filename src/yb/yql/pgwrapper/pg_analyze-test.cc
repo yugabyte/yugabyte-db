@@ -25,7 +25,6 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_int32(ysql_docdb_blocks_sampling_method);
-DECLARE_int32(ysql_sampling_algorithm);
 
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
@@ -182,6 +181,14 @@ size_t EstimateDistinct(size_t d, size_t k, size_t n) {
   return d * (1 - pow(1 - 1.0 * n / d / k, k));
 }
 
+std::string GetYbSamplingAlgorithm(YsqlSamplingAlgorithm algorithm) {
+  switch (algorithm) {
+    case YsqlSamplingAlgorithm::FULL_TABLE_SCAN: return "full_table_scan";
+    case YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING: return "block_based_sampling";
+  }
+  FATAL_INVALID_PB_ENUM_VALUE(YsqlSamplingAlgorithm, algorithm);
+}
+
 } // namespace
 
 class PgAnalyzeTest : public PgMiniTestBase {
@@ -335,7 +342,8 @@ TEST_F(PgAnalyzeTest, AnalyzeSamplingColocated) {
     }
 
     for (const auto ysql_sampling_algorithm : GetAllPbEnumValues<YsqlSamplingAlgorithm>()) {
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sampling_algorithm) = ysql_sampling_algorithm;
+      ASSERT_OK(conn.ExecuteFormat(
+          "SET yb_sampling_algorithm = $0", GetYbSamplingAlgorithm(ysql_sampling_algorithm)));
 
       std::vector<DocDbBlocksSamplingMethod> blocks_sampling_methods;
       if (ysql_sampling_algorithm == YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING) {
@@ -349,9 +357,6 @@ TEST_F(PgAnalyzeTest, AnalyzeSamplingColocated) {
                   << DocDbBlocksSamplingMethod_Name(blocks_sampling_method);
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_docdb_blocks_sampling_method) =
             blocks_sampling_method;
-
-        ASSERT_OK(RestartPostgres());
-        conn = ASSERT_RESULT(ConnectToDB(kColocatedDatabaseName));
 
         const auto num_distinct_tolerace = kNumDistinctTolerance[blocks_sampling_method];
         const auto null_frac_tolerance = kNullFracTolerance[blocks_sampling_method];
@@ -414,7 +419,7 @@ TEST_F(PgAnalyzeTest, AnalyzeSamplingColocated) {
           ASSERT_GT(correlation, - 1 - kEps);
           // YsqlSamplingAlgorithm::FULL_TABLE_SCAN calculates correlation incorrectly as of
           // 2024-12-12, so skip it.
-          if (FLAGS_ysql_sampling_algorithm != YsqlSamplingAlgorithm::FULL_TABLE_SCAN) {
+          if (ysql_sampling_algorithm != YsqlSamplingAlgorithm::FULL_TABLE_SCAN) {
             if (column_name == "k" || column_name == "v" || column_name == "v_d") {
               // These column values are in the scan order.
               ASSERT_GT(correlation, 1 - kEps);

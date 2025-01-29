@@ -15,12 +15,7 @@
 
 #include <memory>
 
-namespace rocksdb {
-
-class Statistics;
-class ScopedStatistics;
-
-} // namespace rocksdb
+#include "yb/rocksdb/util/statistics.h"
 
 namespace yb {
 
@@ -30,11 +25,8 @@ namespace docdb {
 
 class DocDBStatistics {
  public:
-  DocDBStatistics();
-  ~DocDBStatistics();
-
-  rocksdb::Statistics* RegularDBStatistics() const;
-  rocksdb::Statistics* IntentsDBStatistics() const;
+  rocksdb::Statistics* RegularDBStatistics();
+  rocksdb::Statistics* IntentsDBStatistics();
 
   void MergeAndClear(
       rocksdb::Statistics* regulardb_statistics,
@@ -46,8 +38,8 @@ class DocDBStatistics {
   void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
 
  private:
-  std::unique_ptr<rocksdb::ScopedStatistics> regulardb_statistics_;
-  std::unique_ptr<rocksdb::ScopedStatistics> intentsdb_statistics_;
+  rocksdb::ScopedStatistics regulardb_statistics_;
+  rocksdb::ScopedStatistics intentsdb_statistics_;
 };
 
 } // namespace docdb

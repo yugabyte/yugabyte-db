@@ -264,6 +264,10 @@ When the source universe is lost, an explicit decision must be made to switch ov
 - Technically, xCluster replication can be set up with Kubernetes-deployed universes.  However, the source and target must be able to communicate by directly referencing the pods in the other universe.  In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
 - Being able to have two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported, as per [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
 
+### Backups
+
+Backups are supported. However for backups on target clusters, if there is an active workload, consistency of the latest data is not guaranteed.
+
 ## Cross-feature interactions
 
 A number of interactions across features are supported.

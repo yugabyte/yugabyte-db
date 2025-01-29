@@ -565,7 +565,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			break;
 		case T_YbSeqScan:
 			{
-				YbSeqScan    *splan = (YbSeqScan *) plan;
+				YbSeqScan  *splan = (YbSeqScan *) plan;
 
 				splan->scan.scanrelid += rtoffset;
 				splan->yb_pushdown.quals =
@@ -596,6 +596,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 		case T_IndexScan:
 			{
 				IndexScan  *splan = (IndexScan *) plan;
+
 				splan->scan.scanrelid += rtoffset;
 				splan->scan.plan.targetlist =
 					fix_scan_list(root, splan->scan.plan.targetlist,
@@ -614,6 +615,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				if (splan->yb_idx_pushdown.quals)
 				{
 					indexed_tlist *index_itlist;
+
 					index_itlist = build_tlist_index(splan->indextlist);
 					splan->yb_idx_pushdown.quals = (List *)
 						fix_upper_expr(root,
@@ -692,6 +694,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				if (splan->yb_idx_pushdown.quals)
 				{
 					indexed_tlist *index_itlist;
+
 					index_itlist = build_tlist_index(splan->indextlist);
 					splan->yb_idx_pushdown.quals = (List *)
 						fix_upper_expr(root,
@@ -2281,8 +2284,8 @@ YbBNL_hinfo_cmp_inner_att(const void *arg_1,
 	if (!OidIsValid(hinfo_2->hashOp))
 		return 1;
 
-	return (hinfo_1->innerHashAttNo > hinfo_2->innerHashAttNo) -
-		   (hinfo_1->innerHashAttNo < hinfo_2->innerHashAttNo);
+	return ((hinfo_1->innerHashAttNo > hinfo_2->innerHashAttNo) -
+			(hinfo_1->innerHashAttNo < hinfo_2->innerHashAttNo));
 }
 
 /*
@@ -2322,9 +2325,9 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 	/* Now do join-type-specific stuff */
 	if (IsA(join, NestLoop) || IsA(join, YbBatchedNestLoop))
 	{
-		NestLoop   *nl = IsA(join, NestLoop)
-						 ? (NestLoop *) join
-						 : &((YbBatchedNestLoop *) join)->nl;
+		NestLoop   *nl = (IsA(join, NestLoop) ?
+						  (NestLoop *) join :
+						  &((YbBatchedNestLoop *) join)->nl);
 		ListCell   *lc;
 
 		foreach(lc, nl->nestParams)
@@ -2343,7 +2346,8 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 				elog(ERROR, "NestLoopParam was not reduced to a simple Var");
 		}
 
-		ListCell *l;
+		ListCell   *l;
+
 		if (IsA(join, YbBatchedNestLoop))
 		{
 			YbBatchedNestLoop *batchednl = (YbBatchedNestLoop *) join;
@@ -2352,16 +2356,17 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 
 			foreach(l, join->joinqual)
 			{
-				Expr *clause = (Expr *) lfirst(l);
-				Oid hashOp = current_hinfo->hashOp;
+				Expr	   *clause = (Expr *) lfirst(l);
+				Oid			hashOp = current_hinfo->hashOp;
 
 				if (OidIsValid(hashOp))
 				{
 					Assert(IsA(clause, OpExpr));
-					OpExpr *opexpr = (OpExpr *) clause;
+					OpExpr	   *opexpr = (OpExpr *) clause;
+
 					Assert(list_length(opexpr->args) == 2);
-					Expr *leftArg = linitial(opexpr->args);
-					Expr *rightArg = lsecond(opexpr->args);
+					Expr	   *leftArg = linitial(opexpr->args);
+					Expr	   *rightArg = lsecond(opexpr->args);
 
 					if (IsA(leftArg, RelabelType))
 						leftArg = ((RelabelType *) leftArg)->arg;
@@ -2369,11 +2374,11 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 					if (IsA(rightArg, RelabelType))
 						rightArg = ((RelabelType *) rightArg)->arg;
 
-					Var *innerArg;
-					Expr *outerArg;
+					Var		   *innerArg;
+					Expr	   *outerArg;
 
-					if (IsA((Expr*) leftArg, Var) &&
-						((Var*) leftArg)->varno == INNER_VAR)
+					if (IsA((Expr *) leftArg, Var) &&
+						((Var *) leftArg)->varno == INNER_VAR)
 					{
 						innerArg = (Var *) leftArg;
 						outerArg = rightArg;
@@ -2398,7 +2403,8 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 				  sizeof(YbBNLHashClauseInfo), YbBNL_hinfo_cmp_inner_att);
 
 			YbBNLHashClauseInfo *valid_bnl_hinfos = batchednl->hashClauseInfos;
-			int num_invalid = 0;
+			int			num_invalid = 0;
+
 			while (num_invalid < batchednl->num_hashClauseInfos &&
 				   !OidIsValid(valid_bnl_hinfos->hashOp))
 			{
@@ -3254,6 +3260,7 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 			{
 				/* Found a match */
 				YbExprColrefDesc *newcolref = makeNode(YbExprColrefDesc);
+
 				*newcolref = *colref;
 				newcolref->attno = vinfo->resno;
 				return (Node *) newcolref;

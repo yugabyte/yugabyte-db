@@ -21,7 +21,7 @@
 namespace yb {
 namespace pggate {
 
-PgTuple::PgTuple(uint64_t *datums, bool *isnulls, PgSysColumns *syscols)
+PgTuple::PgTuple(uint64_t *datums, bool *isnulls, YbcPgSysColumns *syscols)
     : datums_(datums), isnulls_(isnulls), syscols_(syscols) {
 }
 

@@ -863,6 +863,10 @@ struct Tablet::IntentsDbFlushFilterState {
     }
     return !Flushed(idx, memtable_op_index);
   }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(vector_indexes, largest_flushed_index, flush_ability);
+  }
 };
 
 Result<bool> Tablet::IntentsDbFlushFilter(
@@ -899,11 +903,11 @@ Result<bool> Tablet::IntentsDbFlushFilter(
       }
     }
     if (all_flushed) {
-      VLOG_WITH_PREFIX_AND_FUNC(4) << "Already flushed";
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Already flushed: " << state->ToString();
       return true;
     }
   } else {
-    VLOG_WITH_PREFIX(4) << __func__ << ", no frontiers";
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "No frontiers";
   }
 
   bool initial = state->flush_ability.empty();
@@ -919,7 +923,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   // If regular db does not have anything to flush, it means that we have just added intents,
   // without apply, so it is OK to flush the intents RocksDB.
   if (!state->HasNewData(memtable_index)) {
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "No new data";
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "No new data: " << state->ToString();
     return true;
   }
 
@@ -930,7 +934,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
        std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout)) {
     for (size_t idx = 0; idx != state->flush_ability.size(); ++idx) {
       if (state->NeedFlush(idx, memtable_index)) {
-        VLOG_WITH_PREFIX(2) << __func__ << ", force flush";
+        VLOG_WITH_PREFIX_AND_FUNC(2) << "Force flush";
         if (idx == 0) {
           rocksdb::FlushOptions options;
           options.wait = false;
@@ -1178,6 +1182,8 @@ Status Tablet::CreateVectorIndex(
     return Status::OK();
   }
   auto vector_index = VERIFY_RESULT(docdb::CreateVectorIndex(
+      MakeTabletLogPrefix(
+          tablet_id(), Format("$0 VI $1", log_prefix_suffix_, index_table.table_id)),
       metadata_->rocksdb_dir(), *vector_index_thread_pool_provider_(),
       indexed_table.doc_read_context->table_key_prefix(), *index_table.index_info, doc_db()));
   auto it = vector_indexes_map_.emplace(index_table.table_id, std::move(vector_index)).first;
@@ -1366,7 +1372,9 @@ void Tablet::DoCleanupIntentFiles() {
         << ", max ht: " << best_file_max_ht
         << ", min running transaction start ht: " << min_running_start_ht
         << ", min_start_ht_cdc_unstreamed_txns: " << min_start_ht_cdc_unstreamed_txns;
-    auto flush_status = regular_db_->Flush(rocksdb::FlushOptions());
+    auto flush_status = Flush(
+        FlushMode::kSync,
+        FlushFlags::kRegular | FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation);
     if (!flush_status.ok()) {
       LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to flush regular db: " << flush_status;
       break;
@@ -2378,10 +2386,13 @@ Status Tablet::ImportData(const std::string& source_dir) {
 // Using value of reverse index record we find original intent record and apply it.
 // After that we delete both intent record and reverse index record.
 docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& data) {
-  VLOG_WITH_PREFIX(4) << __func__ << ": " << data.transaction_id;
+  VLOG_WITH_PREFIX_AND_FUNC(4) << data.transaction_id;
 
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
 
+  if (TEST_sleep_before_apply_intents_) {
+    std::this_thread::sleep_for(TEST_sleep_before_apply_intents_.ToSteadyDuration());
+  }
   // This flag enables tests to induce a situation where a transaction has committed but its intents
   // haven't yet moved to regular db for a sufficiently long period. For example, it can help a test
   // to reliably assert that conflict resolution/ concurrency control with a conflicting committed
@@ -2467,6 +2478,10 @@ Status Tablet::RemoveAdvisoryLock(
       intents_db_.get(), &context, /* ignore_metadata= */ true, advisory_lock_key);
   RETURN_NOT_OK(writer.Apply(handler));
   LOG_IF(DFATAL, !writer.key_applied()) << "Lock not found for " << key.ToDebugString();
+  // TODO (advisory-locks): The waiters would get scheduled for resumption (async), but the required
+  // shared in-memory locks are still held by this request. Don't see a better way of signaling the
+  // wait-queue on all peers post a session level advisory unlock request for now.
+  transaction_participant_->ForceRefreshWaitersForBlocker(transaction_id);
   return Status::OK();
 }
 
@@ -2490,6 +2505,10 @@ Status Tablet::RemoveAdvisoryLocks(const TransactionId& id, rocksdb::DirectWrite
     }
     apply_state = std::move(context.apply_state());
   }
+  // TODO (advisory-locks): The waiters would get scheduled for resumption (async), but the required
+  // shared in-memory locks are still held by this request. Don't see a better way of signaling the
+  // wait-queue on all peers post a session level advisory unlock request for now.
+  transaction_participant_->ForceRefreshWaitersForBlocker(id);
   return Status::OK();
 }
 
@@ -2617,7 +2636,7 @@ Status Tablet::SetAllInitialCDCRetentionBarriers(
   VLOG_WITH_PREFIX(1) << "CDC Retention barrier initialization request";
   std::lock_guard lock(cdcsdk_retention_barrier_lock_);
 
-  cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
+  cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
 
   if (log && log->cdc_min_replicated_index() > cdc_wal_index) {
     log->set_cdc_min_replicated_index(cdc_wal_index);
@@ -2670,7 +2689,7 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
   // Retention barriers cannot be moved forward if the barrier revision
   // has been recently blocked
   auto duration_since_last_blocked =
-      MonoTime::Now().GetDeltaSince(cdcsdk_block_barrier_revision_start_time).ToSeconds();
+      MonoTime::Now().GetDeltaSince(cdcsdk_block_barrier_revision_start_time_).ToSeconds();
   VLOG_WITH_PREFIX(1) << "Duration since last blocked: " << duration_since_last_blocked;
 
   if (duration_since_last_blocked >

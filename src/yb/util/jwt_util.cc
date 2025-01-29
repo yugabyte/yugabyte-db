@@ -200,7 +200,7 @@ Status ValidateDecodedJWT(
 }  // namespace
 
 Status ValidateJWT(
-    const std::string& token, const YBCPgJwtAuthOptions& options,
+    const std::string& token, const YbcPgJwtAuthOptions& options,
     std::vector<std::string>* identity_claims) {
   VLOG(4) << Format(
       "Start with token = $0, jwks = $1, matching_claim_key = $2, allowed_issuers = $3, "

@@ -595,7 +595,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionSpanningMultipleBa
 
   ASSERT_OK(conn.ExecuteFormat("delete from $0", table_name_str));
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
   ASSERT_OK(DeleteUniverseReplication());
 }
 
@@ -758,7 +758,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, AddServerIntraTransaction) {
   // Sleep for half the duration of the workload (30s) to ensure that the workload is running before
   // adding a server.
   SleepFor(MonoDelta::FromSeconds(15));
-  ASSERT_OK(consumer_cluster()->AddTabletServer());
+  {
+    TEST_SetThreadPrefixScoped prefix_se("C");
+    ASSERT_OK(consumer_cluster()->AddTabletServer());
+  }
   ASSERT_OK(
       consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
 
@@ -925,7 +928,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensus
   }
 
   test_thread_holder.JoinAll();
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
   ASSERT_OK(DeleteUniverseReplication());
 }
 
@@ -2063,8 +2066,7 @@ TEST_F(XClusterYsqlTest, ValidateSchemaPackingGCDuringNetworkPartition) {
     }
   }
 
-  ASSERT_OK(VerifyWrittenRecords(
-      producer_table_, consumer_table_, /*verify_column_count_match=*/false));
+  ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
 }
 
 void PrepareChangeRequest(
@@ -2752,7 +2754,7 @@ TEST_F(XClusterYsqlTest, InsertUpdateDeleteTransactionsWithUnevenTabletPartition
     ASSERT_OK(p_conn.Execute("COMMIT"));
     }
 
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
 }
 
 Status XClusterYSqlTestConsistentTransactionsTest::RunInsertUpdateDeleteTransactionWithSplitTest(
@@ -3192,6 +3194,51 @@ TEST_F(XClusterYsqlTest, TransactionalBidirectionalWithTwoDBs) {
       producer_tables_[1]->name().namespace_id(), /*is_read_only=*/false, &producer_cluster_));
   ASSERT_OK(WriteWorkload(250, 350, &producer_cluster_, producer_tables_[1]->name()));
   ASSERT_OK(WriteWorkload(250, 350, &consumer_cluster_, consumer_tables_[1]->name()));
+}
+
+// Create and drop tables and indexes in a loop with PITR which will keep the dropped tables in
+// hidden state.
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, CreateDropTableAndIndexWithPITR) {
+  const auto kBatchSize = 10;
+  ASSERT_OK(CreateTableAndSetupReplication());
+  ASSERT_OK(EnablePITROnClusters());
+
+  auto producer_conn =
+      EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table_->name().namespace_name()));
+  auto consumer_conn =
+      EXPECT_RESULT(consumer_cluster_.ConnectToDB(consumer_table_->name().namespace_name()));
+
+  for (int run_count = 0; run_count < 5; run_count++) {
+    auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+        /*idx=*/1, /*num_tablets=*/1, &producer_cluster_));
+    std::shared_ptr<client::YBTable> new_producer_table;
+    ASSERT_OK(producer_client()->OpenTable(producer_table_name, &new_producer_table));
+
+    auto consumer_table_name = ASSERT_RESULT(CreateYsqlTable(
+        /*idx=*/1, /*num_tablets=*/1, &consumer_cluster_));
+    std::shared_ptr<client::YBTable> new_consumer_table;
+    ASSERT_OK(consumer_client()->OpenTable(consumer_table_name, &new_consumer_table));
+
+    ASSERT_OK(
+        AlterUniverseReplication(kReplicationGroupId, {new_producer_table}, true /* add_tables */));
+
+    const auto create_index_stmt = Format(
+        "CREATE INDEX my_idx ON $0 ($1 ASC)", new_producer_table->name().table_name(),
+        kKeyColumnName);
+
+    ASSERT_OK(producer_conn.Execute(create_index_stmt));
+    ASSERT_OK(consumer_conn.Execute(create_index_stmt));
+
+    ASSERT_OK(InsertRowsInProducer(
+        run_count * kBatchSize, (run_count + 1) * kBatchSize, new_producer_table));
+    ASSERT_OK(VerifyWrittenRecords(new_producer_table, new_consumer_table));
+
+    ASSERT_OK(DropYsqlTable(producer_cluster_, *new_producer_table.get()));
+    ASSERT_OK(DropYsqlTable(consumer_cluster_, *new_consumer_table.get()));
+  }
+
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
+  ASSERT_OK(VerifyWrittenRecords());
 }
 
 }  // namespace yb

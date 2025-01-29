@@ -26,7 +26,7 @@ class PgTruncateColocated final : public PgStatementLeafBase<PgDmlWrite, StmtOp:
  public:
   static Result<std::unique_ptr<PgTruncateColocated>> Make(
       const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
-      YBCPgTransactionSetting transaction_setting) {
+      YbcPgTransactionSetting transaction_setting) {
     std::unique_ptr<PgTruncateColocated> result{new PgTruncateColocated{
         pg_session, transaction_setting}};
     RETURN_NOT_OK(result->Prepare(table_id, is_region_local));
@@ -35,7 +35,7 @@ class PgTruncateColocated final : public PgStatementLeafBase<PgDmlWrite, StmtOp:
 
  private:
   PgTruncateColocated(
-      const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting)
+      const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting)
       : BaseType(pg_session, transaction_setting) {}
 
   PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {

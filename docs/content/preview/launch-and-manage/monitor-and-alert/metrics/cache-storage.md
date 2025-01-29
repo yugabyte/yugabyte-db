@@ -2,7 +2,7 @@
 title: Cache and storage subsystem metrics
 headerTitle: Cache and storage subsystems
 linkTitle: Cache and storage metrics
-headcontent: Monitor RocksDB storage subsystem metrics
+headcontent: Monitor metrics for the RocksDB storage subsystem and other caches
 description: Learn about YugabyteDB's cache and storage subsystem metrics, and how to select and use the metrics.
 menu:
   preview:
@@ -12,7 +12,9 @@ menu:
 type: docs
 ---
 
-## Storage layer IOPS
+## RocksDB storage subsystem metrics
+
+### Storage layer IOPS
 
 [DocDB](../../../../architecture/docdb/performance/) uses a modified version of RocksDB (an LSM-based key-value store that consists of multiple logical levels, and data in each level are sorted by key) as the storage layer. This storage layer performs `seek`, `next`, and `prev` operations.
 
@@ -29,7 +31,7 @@ The following table describes key throughput and latency metrics for the storage
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.
 
-## Block cache
+### Block cache
 
 When the data requested from YSQL layer is sitting in an SST File, it will be cached in RocksDb Block Cache. This is the fundamental cache that sits in RocksDB instead of the YSQL layer. A block requires multiple touches before it is added to the multi-touch (hot) portion of the cache.
 
@@ -44,7 +46,7 @@ The following table describes key cache metrics for the storage (RocksDB) layer.
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.
 
-## Bloom filters
+### Bloom filters
 
 Bloom filters are hash tables used to determine if a given SSTable has the data for a query looking for a particular value.
 
@@ -55,7 +57,7 @@ Bloom filters are hash tables used to determine if a given SSTable has the data 
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.
 
-## SST files
+### SST files
 
 RocksDB LSM-trees buffer incoming data in a memory buffer that, when full, is sorted, and flushed to disk in the form of a sorted run. When a sorted run is flushed to disk, it may be iteratively merged with existing runs of the same size. Overall, as a result of such iterative merges, the sorted runs on disk (also called Sorted-String Table or SST files) form a collection of levels of exponentially increasing size with potentially overlapping key ranges across the levels.
 
@@ -63,10 +65,12 @@ RocksDB LSM-trees buffer incoming data in a memory buffer that, when full, is so
 | :------ | :--- | :--- | :---------- |
 | `rocksdb_current_version_sst_files_size` | bytes | counter | The aggregate size of all SST files. |
 | `rocksdb_current_version_num_sst_files` | files | counter | The number of SST files. |
+| `ts_active_data_size` |   bytes   |   gauge   | Amount of data in active data directories (excluding snapshots) across all non-hidden tablets. Hidden tablets (retained by a snapshot schedule) are excluded. The gives the size of the data in the cluster as if PITR is off and no snapshots are taken for the databases. |
+| `ts_data_size` |   bytes  |   gauge    | Amount of data in data directories (including snapshots) across all tablets. This gives the total size of the data directories including snapshots. To calculate the overhead of snapshots, subtract `ts_active_data_size` from `ts_data_size`. |
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.
 
-## Compaction
+### Compaction
 
 To make reads more performant over time, RocksDB periodically reduces the number of logical levels by running compaction (sorted-merge) on the SST files in the background, where part or multiple logical levels are merged into one. In other words, RocksDB uses compactions to balance write, space, and read amplifications.
 
@@ -79,7 +83,7 @@ A description of key metrics in this category is listed in the following table:
 | `rocksdb_compaction_times_micros` | microseconds | counter | Time for the compaction process to complete. |
 | `rocksdb_numfiles_in_singlecompaction` | files | counter | Number of files in any single compaction. |
 
-## Memtable
+### Memtable
 
 Memtable is the first level of data storage where data is stored when you start inserting. It provides statistics about reading documents, which are essentially columns in the table. If a memtable is full, the existing memtable is made immutable and stored on disk as an SST file.
 
@@ -93,7 +97,7 @@ Memtable has statistics about reading documents, which essentially are columns i
 
 These metrics are available per tablet and can be aggregated across the entire cluster using appropriate aggregations.
 
-## Write-Ahead-Logging (WAL)
+### Write-Ahead-Logging (WAL)
 
 The Write Ahead Log (or WAL) is used to write and persist updates to disk on each tablet. The following table describes metrics for observing the performance of the WAL component.
 
@@ -106,3 +110,15 @@ The Write Ahead Log (or WAL) is used to write and persist updates to disk on eac
 | `log_reader_bytes_read` | bytes | counter | Number of bytes read from WAL after the tablet start. |
 
 These metrics are available per tablet and can be aggregated across the entire cluster using appropriate aggregations.
+
+## YSQL cache metrics
+
+### Catalog cache misses
+
+During YSQL query processing, system catalog (pg_catalog) tables that live on the YB-Master are cached locally on each YSQL backend process. Misses on this cache can make initial queries or queries after a DDL change slow until the corresponding cache is warmed up. The following table describes metrics for the specific pg_catalog tables that were not found in the cache and required a YB-Master lookup. These tables can then be preloaded using the [ysql_catalog_preload_additional_table_list](../../../../reference/configuration/yb-tserver/#ysql-catalog-preload-additional-table-list) YB-TServer flag.
+
+This metric is a counter and units are misses.
+
+| Metric (counter \| misses) | Description |
+| :------ | :---------- |
+| `handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheTableMisses_count` | Count of catalog cache misses for this pg_catalog table or an associated index. |

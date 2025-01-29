@@ -74,7 +74,7 @@ export default class TaskListTable extends Component {
             <code>{row?.details?.versionNumbers?.ybSoftwareVersion}</code>
           </span>
         );
-      } else if (row.status === 'Running' && row.abortable) {
+      } else if ((row.status === 'Running' || row.status === 'Created') && row.abortable) {
         return (
           <>
             <YBConfirmModal

@@ -91,6 +91,8 @@ class ArenaWrappedDBIter final : public Iterator {
     ScanCallback* scan_callback) override;
 
  private:
+  const KeyValueEntry& DoSeekWithNewFilter(Slice target, Slice filter_user_key) override;
+
   DBIter* db_iter_;
   Arena arena_;
 };

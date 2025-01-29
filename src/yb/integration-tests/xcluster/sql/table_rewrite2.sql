@@ -19,6 +19,3 @@ DROP TABLE rewrite_test_alter_col_type;
 
 -- Drop table for Test 6: Table rewrite operations on a partitioned table.
 DROP TABLE rewrite_test_partitioned;
-
--- Drop table for Test 7: Table rewrite operations on a temp table.
-DROP TABLE temp_table_rewrite_test;

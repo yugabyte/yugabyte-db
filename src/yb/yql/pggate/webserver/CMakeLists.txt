@@ -14,7 +14,7 @@
 set(YB_PCH_PATH ../)
 
 set(PGGATE_WEBSERVER_SRCS
-    pgsql_webserver_wrapper.cc
+    ybc_pg_webserver_wrapper.cc
     )
 
 set(PGGATE_WEBSERVER_LIBS

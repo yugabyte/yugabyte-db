@@ -267,6 +267,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   Status ProcessRecentlyAppliedTransactions();
 
+  void ForceRefreshWaitersForBlocker(const TransactionId& txn_id);
+
  private:
   Result<int64_t> RegisterRequest() override;
   void UnregisterRequest(int64_t request) override;

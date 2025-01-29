@@ -510,7 +510,7 @@ bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const
   return !placement_uuid().empty();
 }
 
-std::pair<std::optional<TSDescriptor::WriteLock>, std::optional<uint64_t>>
+std::optional<std::pair<TSDescriptor::WriteLock, std::optional<uint64_t>>>
 TSDescriptor::MaybeUpdateLiveness(MonoTime mono_time, HybridTime hybrid_time) {
   auto proto_lock = LockForWrite();
   bool updated = false;
@@ -522,18 +522,17 @@ TSDescriptor::MaybeUpdateLiveness(MonoTime mono_time, HybridTime hybrid_time) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
     updated = true;
   }
-  if (GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) {
-    if (proto_lock->pb.live_client_operation_lease() &&
-        client_operation_lease_deadline_ < hybrid_time) {
-      proto_lock.mutable_data()->pb.set_live_client_operation_lease(false);
-      updated = true;
-      expired_lease_epoch = proto_lock->pb.lease_epoch();
-    }
+  if (GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease) &&
+      proto_lock->pb.live_client_operation_lease() &&
+      client_operation_lease_deadline_ < hybrid_time) {
+    proto_lock.mutable_data()->pb.set_live_client_operation_lease(false);
+    updated = true;
+    expired_lease_epoch = proto_lock->pb.lease_epoch();
   }
   if (updated) {
     return std::make_pair(std::move(proto_lock), expired_lease_epoch);
   }
-  return std::make_pair(std::nullopt, expired_lease_epoch);
+  return std::nullopt;
 }
 
 bool TSDescriptor::HasLiveClientOperationLease() const {

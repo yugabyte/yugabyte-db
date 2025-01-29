@@ -143,8 +143,8 @@ class MultiVectorInnerProductSpace : public BaseMultiVectorSpace<DOCIDTYPE> {
 };
 
 
-template<typename DOCIDTYPE, typename dist_t>
-class MultiVectorSearchStopCondition : public BaseSearchStopCondition<dist_t> {
+template<typename DOCIDTYPE, typename dist_t, typename label_t>
+class MultiVectorSearchStopCondition : public BaseSearchStopCondition<dist_t, label_t> {
     size_t curr_num_docs_;
     size_t num_docs_to_search_;
     size_t ef_collection_;
@@ -163,7 +163,7 @@ class MultiVectorSearchStopCondition : public BaseSearchStopCondition<dist_t> {
             ef_collection_ = std::max(ef_collection, num_docs_to_search);
         }
 
-    void add_point_to_result(labeltype label, const void *datapoint, dist_t dist) override {
+    void add_point_to_result(label_t label, const void *datapoint, dist_t dist) override {
         DOCIDTYPE doc_id = space_.get_doc_id(datapoint);
         if (doc_counter_[doc_id] == 0) {
             curr_num_docs_ += 1;
@@ -172,7 +172,7 @@ class MultiVectorSearchStopCondition : public BaseSearchStopCondition<dist_t> {
         doc_counter_[doc_id] += 1;
     }
 
-    void remove_point_from_result(labeltype label, const void *datapoint, dist_t dist) override {
+    void remove_point_from_result(label_t label, const void *datapoint, dist_t dist) override {
         DOCIDTYPE doc_id = space_.get_doc_id(datapoint);
         doc_counter_[doc_id] -= 1;
         if (doc_counter_[doc_id] == 0) {
@@ -196,7 +196,7 @@ class MultiVectorSearchStopCondition : public BaseSearchStopCondition<dist_t> {
         return flag_remove_extra;
     }
 
-    void filter_results(std::vector<std::pair<dist_t, labeltype >> &candidates) override {
+    void filter_results(std::vector<std::pair<dist_t, label_t >> &candidates) override {
         while (curr_num_docs_ > num_docs_to_search_) {
             dist_t dist_cand = candidates.back().first;
             dist_t dist_res = search_results_.top().first;
@@ -215,8 +215,8 @@ class MultiVectorSearchStopCondition : public BaseSearchStopCondition<dist_t> {
 };
 
 
-template<typename dist_t>
-class EpsilonSearchStopCondition : public BaseSearchStopCondition<dist_t> {
+template<typename dist_t, typename label_t>
+class EpsilonSearchStopCondition : public BaseSearchStopCondition<dist_t, label_t> {
     float epsilon_;
     size_t min_num_candidates_;
     size_t max_num_candidates_;
@@ -231,11 +231,11 @@ class EpsilonSearchStopCondition : public BaseSearchStopCondition<dist_t> {
         curr_num_items_ = 0;
     }
 
-    void add_point_to_result(labeltype label, const void *datapoint, dist_t dist) override {
+    void add_point_to_result(label_t label, const void *datapoint, dist_t dist) override {
         curr_num_items_ += 1;
     }
 
-    void remove_point_from_result(labeltype label, const void *datapoint, dist_t dist) override {
+    void remove_point_from_result(label_t label, const void *datapoint, dist_t dist) override {
         curr_num_items_ -= 1;
     }
 
@@ -262,7 +262,7 @@ class EpsilonSearchStopCondition : public BaseSearchStopCondition<dist_t> {
         return flag_remove_extra;
     }
 
-    void filter_results(std::vector<std::pair<dist_t, labeltype >> &candidates) override {
+    void filter_results(std::vector<std::pair<dist_t, label_t >> &candidates) override {
         while (!candidates.empty() && candidates.back().first > epsilon_) {
             candidates.pop_back();
         }

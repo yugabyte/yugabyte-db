@@ -80,6 +80,54 @@ class PgAdvisoryLockTest : public PgAdvisoryLockTestBase {
   }
 };
 
+
+TEST_F(PgAdvisoryLockTest, TwoSessionsWithDependencies) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  // Verify session-level locks.
+  ASSERT_OK(conn1.Execute("CREATE TABLE test_table (id INT PRIMARY KEY, value INT);"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test_table (id, value) VALUES (0, 0);"));
+  ASSERT_OK(conn1.Fetch("SELECT pg_advisory_lock(10);"));
+  ASSERT_OK(conn1.Execute("UPDATE test_table SET value = value + 1 WHERE id = 0;"));
+  std::future<Status> conn2_session_lock_future = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Fetch("SELECT pg_advisory_lock(10);"));
+    return Status::OK();
+  });
+  // conn2 attempt to acquire session-level lock on the same key should block.
+  ASSERT_EQ(conn2_session_lock_future.wait_for(
+      std::chrono::seconds(1)), std::future_status::timeout);
+  ASSERT_TRUE(ASSERT_RESULT(conn1.FetchRow<bool>("SELECT pg_advisory_unlock(10);")));
+  // Unlocking the conn1 session-level lock should allow conn2 session-level lock to proceed.
+  ASSERT_OK(conn2_session_lock_future.get());
+  ASSERT_OK(conn2.Execute("UPDATE test_table SET value = value + 1 WHERE id = 0;"));
+  auto result =
+      ASSERT_RESULT(conn2.FetchRow<int32_t>("SELECT value FROM test_table WHERE id = 0;"));
+  ASSERT_EQ(result, 2);
+  ASSERT_TRUE(ASSERT_RESULT(conn2.FetchRow<bool>("SELECT pg_advisory_unlock(10);")));
+
+  // Verify transaction-level locks.
+  ASSERT_OK(conn1.Execute("BEGIN;"));
+  ASSERT_OK(conn1.Fetch("SELECT pg_advisory_xact_lock(10);"));
+  ASSERT_OK(conn1.Execute("UPDATE test_table SET value = value + 1 WHERE id = 0;"));
+  std::future<Status> conn2_txn_lock_future = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Execute("BEGIN;"));
+    RETURN_NOT_OK(conn2.Fetch("SELECT pg_advisory_xact_lock(10);"));
+    return Status::OK();
+  });
+  // conn2 attempt to acquire xact lock on the same key should block.
+  ASSERT_EQ(conn2_txn_lock_future.wait_for(
+      std::chrono::seconds(1)), std::future_status::timeout);
+  ASSERT_OK(conn1.Execute("COMMIT;"));
+  // Unlocking the conn1 xact lock should allow conn2 xact lock to proceed.
+  ASSERT_OK(conn2_txn_lock_future.get());
+  ASSERT_OK(conn2.Execute("UPDATE test_table SET value = value + 1 WHERE id = 0;"));
+  ASSERT_OK(conn2.Execute("COMMIT;"));
+  result =
+      ASSERT_RESULT(conn2.FetchRow<int32_t>("SELECT value FROM test_table WHERE id = 0;"));
+  ASSERT_EQ(result, 4);
+}
+
 TEST_F(PgAdvisoryLockTest, AcquireXactLocksInDifferentDBs) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
@@ -118,6 +166,78 @@ TEST_F(PgAdvisoryLockTest, CleanupSessionAdvisoryLock) {
   ASSERT_OK(conn.Fetch("select pg_advisory_unlock(10)"));
 
   ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
+}
+
+// Verify that session-level and transaction-level advisory locks within the same session
+// coexist without conflicts.
+TEST_F(PgAdvisoryLockTest, VerifyNoConflictBetweenSessionAndTransactionLocks) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Fetch("select pg_advisory_xact_lock(10)"));
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
+}
+
+TEST_F(PgAdvisoryLockTest, SessionAdvisoryLocksDeadlock) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(10)"));
+
+  {
+    auto conn2 = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn2.Fetch("select pg_advisory_lock(11)"));
+
+    auto status_future = std::async(std::launch::async, [&]() -> Status {
+      RETURN_NOT_OK(conn1.Fetch("select pg_advisory_lock(11)"));
+      return Status::OK();
+    });
+    ASSERT_NOK(conn2.Fetch("select pg_advisory_lock(10)"));
+    ASSERT_NOK(status_future.get());
+  }
+  SleepFor(2 * kExpiredSessionCleanupMs * 1ms * kTimeMultiplier);
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(11)"));
+}
+
+TEST_F(PgAdvisoryLockTest, SessionAdvisoryLockReleaseUnlocksWaiters) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(10)"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Fetch("select pg_advisory_lock(10)"));
+    return Status::OK();
+  });
+
+  ASSERT_OK(conn1.Fetch("select pg_advisory_unlock(10)"));
+  ASSERT_OK(status_future.get());
+}
+
+TEST_F(PgAdvisoryLockTest, SessionLockDeadlockWithRowLocks) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO foo SELECT generate_series(0, 11), 0"));
+
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(10)"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn2.Execute("UPDATE foo SET v=v+1 WHERE k=1"));
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Fetch("select pg_advisory_lock(10)"));
+    return Status::OK();
+  });
+  // Introduce a deadlock with session lock and row lock. Eventually conn1 will go through
+  // because of retries. conn2 cannot be retried since it is not the first statement.
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn1.Execute("UPDATE foo SET v=v+1 where k=1"));
+  ASSERT_TRUE(status_future.wait_for(2s * kTimeMultiplier) == std::future_status::ready);
+  ASSERT_NOK(status_future.get());
+  ASSERT_OK(conn2.RollbackTransaction());
+  ASSERT_OK(conn1.CommitTransaction());
 }
 
 } // namespace yb::pgwrapper

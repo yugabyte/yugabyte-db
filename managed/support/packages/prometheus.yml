@@ -143,6 +143,10 @@ scrape_configs:
        - '/opt/yugabyte/swamper_targets/yugabyte.*.json'
    metric_relabel_configs:
    - source_labels: ["__name__"]
+     regex: "(.*)"
+     target_label: "saved_name"
+     replacement: "$1"
+   - source_labels: ["__name__"]
      regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)"
      target_label: "server_type"
      replacement: "$1"
@@ -158,7 +162,3 @@ scrape_configs:
      regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?"
      target_label: "__name__"
      replacement: "rpc_latency$4"
-   - source_labels: ["__name__"]
-     regex: "(.*)"
-     target_label: "saved_name"
-     replacement: "$1"

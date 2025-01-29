@@ -3302,7 +3302,7 @@ TEST_F_EX(PgLibPqTest, YB_LINUX_ONLY_TEST(TestOomScoreAdjPGWebserver), PgLibPqYS
   ASSERT_EQ(oom_score_adj, expected_webserver_oom_score);
 }
 
-TEST_F_EX(PgLibPqTest, YbTableProperties, PgLibPqTestRF1) {
+TEST_F_EX(PgLibPqTest, YbcTableProperties, PgLibPqTestRF1) {
   const string kDatabaseName = "yugabyte";
   const string kTableName = "test";
 
@@ -3931,11 +3931,11 @@ TEST_F(PgLibPqTest, TempTableMultiNodeNamespaceConflict) {
   auto* ts2 = cluster_->tserver_daemons()[1];
   auto conn1 = ASSERT_RESULT(PGConnBuilder({
         .host = ts1->bind_host(),
-        .port = ts1->pgsql_rpc_port(),
+        .port = ts1->ysql_port(),
       }).Connect());
   auto conn2 = ASSERT_RESULT(PGConnBuilder({
         .host = ts2->bind_host(),
-        .port = ts2->pgsql_rpc_port(),
+        .port = ts2->ysql_port(),
       }).Connect());
   ASSERT_OK(conn1.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName));
   ASSERT_OK(conn1.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName2));

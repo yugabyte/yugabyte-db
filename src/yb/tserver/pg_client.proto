@@ -18,10 +18,12 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
+import "yb/common/common_net.proto";
 import "yb/common/pgsql_protocol.proto";
 import "yb/common/transaction.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
@@ -129,6 +131,12 @@ service PgClientService {
       returns (PgAcquireAdvisoryLockResponsePB);
   rpc ReleaseAdvisoryLock(PgReleaseAdvisoryLockRequestPB)
       returns (PgReleaseAdvisoryLockResponsePB);
+
+  rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
+      returns (PgExportTxnSnapshotResponsePB);
+
+  rpc ImportTxnSnapshot(PgImportTxnSnapshotRequestPB)
+      returns (PgImportTxnSnapshotResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -579,6 +587,7 @@ message PgReplicationSlotInfoPB {
   uint64 record_id_commit_time_ht = 9;
   uint64 last_pub_refresh_time = 10;
   string output_plugin_name = 11;
+  PGReplicationSlotLsnType yb_lsn_type = 12;
 }
 
 message PgListReplicationSlotsResponsePB {
@@ -672,9 +681,6 @@ message PgPerformOptionsPB {
   // - Clamps the read uncertainty window.
   // See the commit desc for more info.
   bool clamp_uncertainty_window = 24;
-
-  // True only in case of perform requests for session level advisory locks.
-  bool needs_pg_session_transaction = 25;
 }
 
 message PgPerformRequestPB {
@@ -750,6 +756,7 @@ message PgTruncateTableResponsePB {
 }
 
 message PgPlacementInfoPB {
+  option deprecated = true;
   string cloud = 1;
   string region = 2;
   string zone = 3;
@@ -759,9 +766,10 @@ message PgPlacementInfoPB {
 
 message PgValidatePlacementRequestPB {
   uint64 session_id = 1;
-  int32 num_replicas = 2;
-  repeated PgPlacementInfoPB placement_infos = 3;
+  int32 num_replicas = 2; /* deprecated, use replication_info */
+  repeated PgPlacementInfoPB placement_infos = 3; /* deprecated, use replication_info */
   AshMetadataPB ash_metadata = 4;
+  ReplicationInfoPB replication_info = 5;
 }
 
 message PgValidatePlacementResponsePB {
@@ -1036,6 +1044,7 @@ message YCQLStatementStatsPB {
   double max_time = 7;
   double mean_time = 8;
   double stddev_time = 9;
+  string keyspace = 10;
 }
 
 message PgTabletsMetadataRequestPB {
@@ -1149,4 +1158,28 @@ message PgReleaseAdvisoryLockRequestPB {
 
 message PgReleaseAdvisoryLockResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgExportTxnSnapshotRequestPB {
+  uint64 session_id = 1;
+  PgTxnSnapshotPB snapshot = 2;
+  PgPerformOptionsPB options = 3;
+  AshMetadataPB ash_metadata = 4;
+}
+
+message PgExportTxnSnapshotResponsePB {
+  AppStatusPB status = 1;
+  string snapshot_id = 2;
+}
+
+message PgImportTxnSnapshotRequestPB {
+  uint64 session_id = 1;
+  string snapshot_id = 2;
+  PgPerformOptionsPB options = 3;
+  AshMetadataPB ash_metadata = 4;
+}
+
+message PgImportTxnSnapshotResponsePB {
+  AppStatusPB status = 1;
+  PgTxnSnapshotPB snapshot = 2;
 }

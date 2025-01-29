@@ -11,36 +11,18 @@ menu:
 type: indexpage
 ---
 
-After installing YugabyteDB Anywhere (YBA), the next step is to create provider configurations.
+After installing YugabyteDB Anywhere, the next step is to create provider configurations.
 
 A provider configuration describes your cloud environment (such as its security group, regions and availability zones, NTP server, SSH credentials for connecting to VMs for provisioning, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
-Before you can deploy universes using YBA, you must create a provider configuration.
+{{<lead link="../yba-overview/#provider-configurations">}}
+Not sure what type of provider to use? Refer to [Provider configurations](../yba-overview/#provider-configurations).
+{{</lead>}}
 
-| To deploy YugbayteDB universes to | Create provider |
-| :--- | :--- |
-| Private cloud<br>Bare metal, racks<br>Cloud provider (limited SSH permissions) | [On-premises](on-premises/) |
-| Cloud provider (full SSH permissions) | [AWS](aws/)<br>[GCP](gcp/)<br>[Azure](azure/) |
-| Kubernetes | [Kubernetes](kubernetes/)<br>[VMware Tanzu](vmware-tanzu/)<br>[OpenShift](openshift/) |
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
 
-{{<index/block>}}
-
-  {{<index/item
-    title="On-premises"
-    body="Create provider configurations for on-premises deployments."
-    href="on-premises/"
-    icon="fa-thin fa-building">}}
-
-  {{<index/item
-    title="Cloud"
-    body="Create provider configurations for AWS, Azure, and GCP."
-    href="aws/"
-    icon="fa-thin fa-cloud">}}
-
-  {{<index/item
-    title="Kubernetes"
-    body="Create provider configurations for Kubernetes, including VMWare Tanzu and OpenShift."
-    href="kubernetes/"
-    icon="fa-thin fa-dharmachakra">}}
-
-{{</index/block>}}
+| To&nbsp;Deploy&nbsp;universes&nbsp;to | Create&nbsp;provider | Description |
+| :--- | :--- | :--- |
+| Private cloud<br>Bare metal, racks<br>Cloud provider (limited SSH permissions) | [On-premises](on-premises/) | Deploy universes to your own infrastructure, or to cloud providers where (due to security policies or other restrictions) you can't provide YBA with cloud permissions or SSH access to cloud VMs.<br>Provides maximum flexibility. |
+| Cloud provider (full SSH permissions) | [AWS](aws/)<br>[GCP](gcp/)<br>[Azure](azure/) | Deploy universes to cloud providers with full automation.<br>Provides maximum automation. |
+| Kubernetes | [Kubernetes](kubernetes/)<br>[VMware Tanzu](vmware-tanzu/)<br>[OpenShift](openshift/) | Deploy universes on Kubernetes. |

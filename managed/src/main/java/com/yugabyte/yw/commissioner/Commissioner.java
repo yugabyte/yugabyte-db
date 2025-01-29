@@ -116,6 +116,16 @@ public class Commissioner {
   }
 
   /**
+   * Returns true if the task identified by the task type can rollback.
+   *
+   * @param taskType the task type.
+   * @return true if can rollback.
+   */
+  public static boolean canTaskTypeRollback(TaskType taskType) {
+    return TaskExecutor.canTaskRollback(taskType.getTaskClass());
+  }
+
+  /**
    * Creates a new task runnable to run the required task, and submits it to the TaskExecutor.
    *
    * @param taskType the task type.
@@ -222,11 +232,14 @@ public class Commissioner {
    */
   public boolean abortTask(UUID taskUUID, boolean force) {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    if (taskQueue.cancel(taskUUID)) {
+      log.info("Task {} is removed from the queue", taskUUID);
+      return true;
+    }
     if (!force && !isTaskTypeAbortable(taskInfo.getTaskType())) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid task type: Task %s cannot be aborted", taskUUID));
     }
-
     if (taskInfo.getTaskState() != TaskInfo.State.Running) {
       log.warn("Task {} is not in running state", taskUUID);
       return false;
@@ -350,6 +363,7 @@ public class Commissioner {
               return taskUuidsToAllowRetry.contains(taskInfo.getUuid().toString());
             });
     responseJson.put("retryable", retryable);
+    responseJson.put("canRollback", canTaskRollback(taskInfo));
     if (isTaskPaused(taskInfo.getUuid())) {
       // Set this only if it is true. The thread is just parking. From the task state
       // perspective, it is still running.
@@ -359,8 +373,14 @@ public class Commissioner {
   }
 
   public boolean isTaskAbortable(TaskInfo taskInfo) {
-    return isTaskTypeAbortable(taskInfo.getTaskType())
-        && taskExecutor.isTaskRunning(taskInfo.getUuid());
+    RunnableTask taskRunnable = taskQueue.find(taskInfo.getUuid());
+    if (taskRunnable == null || taskRunnable.isRunning()) {
+      // Check with the executor if the task is not queued or already running.
+      return isTaskTypeAbortable(taskInfo.getTaskType())
+          && taskExecutor.isTaskRunning(taskInfo.getUuid());
+    }
+    // Task is still in the queue.
+    return true;
   }
 
   public boolean isTaskRetryable(TaskInfo taskInfo, Predicate<TaskInfo> moreCondition) {
@@ -369,6 +389,11 @@ public class Commissioner {
       return moreCondition.test(taskInfo);
     }
     return false;
+  }
+
+  public boolean canTaskRollback(TaskInfo taskInfo) {
+    return canTaskTypeRollback(taskInfo.getTaskType())
+        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState());
   }
 
   public ObjectNode getVersionInfo(CustomerTask task, TaskInfo taskInfo) {

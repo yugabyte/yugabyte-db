@@ -461,7 +461,6 @@ public class Universe extends Model {
   public static class UniverseUpdaterConfig {
     @Builder.Default private int expectedUniverseVersion = -1;
     private boolean checkSuccess;
-    private boolean forceUpdate;
     @Builder.Default private boolean freezeUniverse = true;
     private boolean ignoreAbsence;
     private Consumer<Universe> callback;

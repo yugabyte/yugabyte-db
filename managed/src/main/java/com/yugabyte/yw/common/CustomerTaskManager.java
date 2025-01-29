@@ -6,6 +6,7 @@ import static io.ebean.DB.beginTransaction;
 import static io.ebean.DB.commitTransaction;
 import static io.ebean.DB.endTransaction;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -51,6 +52,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PendingConsistencyCheck;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
@@ -58,6 +60,8 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
@@ -358,7 +362,6 @@ public class CustomerTaskManager {
                 CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
                 handlePendingTask(customerTask, taskInfo);
               });
-
       for (Customer customer : Customer.getAll()) {
         // Change the DeleteInProgress backups state to QueuedForDeletion
         Backup.findAllBackupWithState(
@@ -460,6 +463,10 @@ public class CustomerTaskManager {
   }
 
   public void handleAutoRetryAbortedTasks() {
+    if (HighAvailabilityConfig.isFollower()) {
+      LOG.info("Skipping auto-retry of tasks because this YBA is a follower");
+      return;
+    }
     Duration timeWindow =
         confGetter.getGlobalConf(GlobalConfKeys.autoRetryTasksOnYbaRestartTimeWindow);
     if (timeWindow.isZero()) {
@@ -555,6 +562,10 @@ public class CustomerTaskManager {
         });
   }
 
+  private boolean canTaskRollback(TaskInfo taskInfo) {
+    return commissioner.canTaskRollback(taskInfo);
+  }
+
   // This performs actual retryability check on the task parameters.
   private String verifyTaskRetryability(CustomerTask customerTask, AbstractTaskParams taskParams) {
     UUID retriedTaskUuid = customerTask.getTaskUUID();
@@ -577,6 +588,77 @@ public class CustomerTaskManager {
       return "Unknown type for task params " + taskParams;
     }
     return null;
+  }
+
+  public CustomerTask rollbackCustomerTask(UUID customerUUID, UUID taskUUID) {
+    CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    TaskInfo taskInfo = customerTask.getTaskInfo();
+    JsonNode oldTaskParams = commissioner.getTaskParams(taskUUID);
+    TaskType taskType = taskInfo.getTaskType();
+    LOG.info(
+        "Will rollback task {}, of type {} in {} state.",
+        taskUUID,
+        taskType,
+        taskInfo.getTaskState());
+    if (!canTaskRollback(taskInfo)) {
+      String errMsg = String.format("Invalid task: Task %s cannot be rolled back", taskUUID);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+    AbstractTaskParams taskParams;
+    CustomerTask.TaskType customerTaskType;
+    if (Objects.requireNonNull(taskType) == TaskType.SwitchoverDrConfig) {
+      taskParams = Json.fromJson(oldTaskParams, DrConfigTaskParams.class);
+      DrConfigTaskParams drConfigTaskParams = (DrConfigTaskParams) taskParams;
+      drConfigTaskParams.refreshIfExists();
+      taskType = TaskType.SwitchoverDrConfigRollback;
+      customerTaskType = CustomerTask.TaskType.SwitchoverRollback;
+
+      // Roll back cannot be done if the old xCluster config is partially or fully deleted.
+      XClusterConfig currentXClusterConfig = drConfigTaskParams.getOldXClusterConfig();
+      if (Objects.isNull(currentXClusterConfig)
+          || !currentXClusterConfig.getTables().stream()
+              .allMatch(XClusterTableConfig::isReplicationSetupDone)) {
+        // At this point, the replication group on the new primary is deleted and it is
+        // possible that the user has written data to the new primary, so setting up
+        // replication from the new primary to the old primary is not safe and might need
+        // bootstrapping which cannot be done in the rollback of the switchover.
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "The old xCluster config or its associated replication group is deleted and cannot do a"
+                + " roll back; At this point the user is able to write to the new primary universe."
+                + " You may retry the switchover task. If your intention is make the new primary"
+                + " universe the dr universe again, you can run another switchover task.");
+      }
+      LOG.debug("Rolling back switchover task with old xCluster config: {}", currentXClusterConfig);
+    } else {
+      String errMsg =
+          String.format(
+              "Invalid task type: %s cannot be rolled back, the task is annotated to be able to"
+                  + " roll back but the logic to compute the taskParams is not implemented",
+              taskType);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
+    }
+    if (Objects.isNull(customerTaskType)) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "CustomerTaskType is null");
+    }
+
+    // Reset the error string.
+    taskParams.setErrorString(null);
+    taskParams.setPreviousTaskUUID(taskUUID);
+    UUID newTaskUUID = commissioner.submit(taskType, taskParams);
+    LOG.info(
+        "Submitted rollback task for target {}:{}, task uuid = {}.",
+        customerTask.getTargetUUID(),
+        customerTask.getTargetName(),
+        newTaskUUID);
+    return CustomerTask.create(
+        customer,
+        customerTask.getTargetUUID(),
+        newTaskUUID,
+        customerTask.getTargetType(),
+        customerTaskType,
+        customerTask.getTargetName());
   }
 
   public CustomerTask retryCustomerTask(UUID customerUUID, UUID taskUUID) {

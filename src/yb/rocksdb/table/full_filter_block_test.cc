@@ -66,7 +66,7 @@ class TestFilterBitsReader : public FilterBitsReader {
   explicit TestFilterBitsReader(const Slice& contents)
       : data_(contents.cdata()), len_(static_cast<uint32_t>(contents.size())) {}
 
-  bool MayMatch(const Slice& entry) override {
+  bool MayMatch(Slice entry) override {
     uint32_t h = Hash(entry.data(), entry.size(), 1);
     for (size_t i = 0; i + 4 <= len_; i += 4) {
       if (h == DecodeFixed32(data_ + i)) {

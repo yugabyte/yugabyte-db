@@ -8,20 +8,17 @@ pghost3=127.0.0.$((ip_start + 2))
 # TEST_always_return_consensus_info_for_succeeded_rpc=false is needed to upgrade a release build to
 # debug.
 common_pg15_flags="TEST_always_return_consensus_info_for_succeeded_rpc=false"
-# Set ysql_hba_conf to allow local socket connections. This is needed for older builds that do not
-# have D39564.
-ysql_hba_conf_flag='"ysql_hba_conf=""local all yugabyte trust,host all all all trust"""'
 # yb_enable_expression_pushdown=false is needed because the expression pushdown rewriter is not yet
 # implemented.
-common_tserver_flags=$ysql_hba_conf_flag',"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
+common_tserver_flags='"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
 
 # Downloads, runs, and pushds the directory for pg11.
 # Sets $pg11path to the pg11 directory.
 run_and_pushd_pg11() {
   prefix="/tmp"
-  ybversion_pg11="2024.2.0.0"
-  ybbuild="b58"
-  ybhash="d78199a0d53b4ab2bd86e6805a46a38fad783ba2"
+  ybversion_pg11="2024.2.1.0"
+  ybbuild="b116"
+  ybhash="ef5232e8f428fba9d52c6cc2002d46ffd79ab999"
   if [[ $OSTYPE = linux* ]]; then
     arch="release-clang17-centos-x86_64"
     tarbin="tar"
@@ -52,7 +49,7 @@ run_and_pushd_pg11() {
 upgrade_masters() {
   for i in {1..3}; do
     yb_ctl restart_node $i --master \
-      --master_flags="$ysql_hba_conf_flag,master_join_existing_universe=true,$common_pg15_flags"
+      --master_flags="master_join_existing_universe=true,$common_pg15_flags"
   done
 }
 
@@ -81,6 +78,20 @@ restart_node_2_in_pg15() {
 run_preflight_checks() {
   build/latest/postgres/bin/pg_upgrade --old-datadir "$data_dir/node-1/disk-1/pg_data" \
     --old-host "$PGHOST" --old-port 5433 --username "yugabyte" --check
+}
+
+finalize_ysql_major_version_catalog_upgrade() {
+  echo finalize_ysql_major_version_catalog_upgrade starting at $(date +"%r")
+  build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
+    finalize_ysql_major_version_catalog_upgrade
+  echo finalize_ysql_major_version_catalog_upgrade finished at $(date +"%r")
+}
+
+finalize_upgrade() {
+  finalize_ysql_major_version_catalog_upgrade
+
+  build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
+    promote_auto_flags
 }
 
 verify_simple_table_mixed_cluster() {

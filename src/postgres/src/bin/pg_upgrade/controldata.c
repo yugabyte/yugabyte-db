@@ -33,6 +33,9 @@
 void
 get_control_data(ClusterInfo *cluster, bool live_check)
 {
+	/* YB: See comment above call to check_cluster_compatibility */
+	Assert(!is_yugabyte_enabled());
+
 	char		cmd[MAXPGPATH];
 	char		bufin[MAX_STRING];
 	FILE	   *output;
@@ -72,9 +75,7 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 	uint32		tli = 0;
 	uint32		logid = 0;
 	uint32		segno = 0;
-#ifdef YB_TODO
 	char	   *resetwal_bin;
-#endif
 
 
 	/*
@@ -182,20 +183,15 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 		}
 	}
 
-#ifdef YB_TODO
 	/* pg_resetxlog has been renamed to pg_resetwal in version 10 */
 	if (GET_MAJOR_VERSION(cluster->bin_version) <= 906)
 		resetwal_bin = "pg_resetxlog\" -n";
 	else
 		resetwal_bin = "pg_resetwal\" -n";
-#endif
+
 	snprintf(cmd, sizeof(cmd), "\"%s/%s \"%s\"",
 			 cluster->bindir,
-#ifdef YB_TODO
-			 /* Investigate how to use pg_resetwal when not doing a live check */
 			 live_check ? "pg_controldata\"" : resetwal_bin,
-#endif
-			 "pg_controldata\"",
 			 cluster->pgdata);
 	fflush(stdout);
 	fflush(stderr);
@@ -560,8 +556,6 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 			got_nextxlogfile = true;
 		}
 	}
-	/* YB_TODO: Remove this statement after pg_resetwal is being used */
-	got_nextxlogfile = true;
 
 	/* verify that we got all the mandatory pg_control data */
 	if (!got_xid || !got_oid ||
@@ -657,6 +651,9 @@ void
 check_control_data(ControlData *oldctrl,
 				   ControlData *newctrl)
 {
+	/* YB: See comment above call to check_cluster_compatibility */
+	Assert(!is_yugabyte_enabled());
+
 	if (oldctrl->align == 0 || oldctrl->align != newctrl->align)
 		pg_fatal("old and new pg_controldata alignments are invalid or do not match\n"
 				 "Likely one cluster is a 32-bit install, the other 64-bit\n");
@@ -679,11 +676,8 @@ check_control_data(ControlData *oldctrl,
 	if (oldctrl->index == 0 || oldctrl->index != newctrl->index)
 		pg_fatal("old and new pg_controldata maximum indexed columns are invalid or do not match\n");
 
-#ifdef YB_TODO
-	/* Investigate/implement this check */
 	if (oldctrl->toast == 0 || oldctrl->toast != newctrl->toast)
 		pg_fatal("old and new pg_controldata maximum TOAST chunk sizes are invalid or do not match\n");
-#endif
 
 	/* large_object added in 9.5, so it might not exist in the old cluster */
 	if (oldctrl->large_object != 0 &&

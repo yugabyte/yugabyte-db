@@ -56,18 +56,18 @@ class DocKeyWithDistance {
   bool operator>(const DocKeyWithDistance& other) const { return Compare(other) > 0; }
 };
 
-// Our default comparator for VertexWithDistance already orders the pairs by increasing distance.
+// Our default comparator for VectorWithDistance already orders the pairs by increasing distance.
 template<ValidDistanceResultType DistanceResult>
 using MaxDistanceQueue =
-    std::priority_queue<VertexWithDistance<DistanceResult>,
-                        std::vector<VertexWithDistance<DistanceResult>>>;
+    std::priority_queue<VectorWithDistance<DistanceResult>,
+                        std::vector<VectorWithDistance<DistanceResult>>>;
 
 
-// Drain a max-queue of (vertex, distance) pairs and return a list of VertexWithDistance instances
+// Drain a max-queue of (vertex, distance) pairs and return a list of VectorWithDistance instances
 // ordered by increasing distance.
 template<ValidDistanceResultType DistanceResult>
 auto DrainMaxQueueToIncreasingDistanceList(MaxDistanceQueue<DistanceResult>& queue) {
-  std::vector<VertexWithDistance<DistanceResult>> result_list;
+  std::vector<VectorWithDistance<DistanceResult>> result_list;
   while (!queue.empty()) {
     result_list.push_back(queue.top());
     queue.pop();
@@ -82,7 +82,7 @@ auto DrainMaxQueueToIncreasingDistanceList(MaxDistanceQueue<DistanceResult>& que
 // multiple results having the same distance from the query, results with lower vertex ids are
 // preferred.
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-std::vector<VertexWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbors(
+std::vector<VectorWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbors(
     const Vector& query,
     const std::vector<VectorId>& vertex_ids,
     const VertexIdToVectorDistanceFunction<Vector, DistanceResult>& distance_fn,
@@ -93,7 +93,7 @@ std::vector<VertexWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbor
   MaxDistanceQueue<DistanceResult> queue;
   for (const auto& vertex_id : vertex_ids) {
     auto distance = distance_fn(vertex_id, query);
-    auto new_element = VertexWithDistance<DistanceResult>(vertex_id, distance);
+    auto new_element = VectorWithDistance<DistanceResult>(vertex_id, distance);
     if (queue.size() < num_results || new_element < queue.top()) {
       // Add a new element if there is a room in the result set, or if the new element is better
       // than the worst element of the result set. The comparsion is done using the (distance,

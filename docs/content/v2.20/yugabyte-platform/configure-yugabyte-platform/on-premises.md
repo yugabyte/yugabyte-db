@@ -73,7 +73,7 @@ To create, provision, and add nodes to your on-premises provider using legacy pr
   - Install a YugabyteDB-supported Linux OS on the VMs.
   - Set up a `yugabyte` user with root privileges (SSH access and sudo-capable).
 
-  For instructions on creating VMs that are suitable for deploying YugabyteDB, refer to [Software requirements for on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+  For instructions on creating VMs that are suitable for deploying YugabyteDB, refer to [Legacy provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/).
 
 ### Stage 2: Create an on-premises provider configuration
 
@@ -96,7 +96,7 @@ In YBA, navigate to the provider you created in Stage 2 and do the following:
     | Provisioning | Description | What happens |
     | :--- | :--- | :--- |
     | Legacy automatic | YBA is provided an SSH user with sudo access for the nodes it needs to provision. For example, the `ec2-user` for AWS EC2 instances. | No action. YBA will automatically provision the VMs that you add. |
-    | Legacy assisted&nbsp;manual | The SSH user requires a password for sudo access. | Run a script, provided by YBA, to provision each VM, providing credentials for the SSH user with sudo access. |
+    | Legacy assisted&nbsp;manual | The SSH user requires a password for sudo access. | [Run a script](../on-premises-script/), provided by YBA, to provision each VM, providing credentials for the SSH user with sudo access. |
     | Legacy fully manual | Neither YBA nor the user has access to an SSH user with sudo access; only a local (non-SSH) user is available with sudo access. | Follow a sequence of steps to [provision each VM manually](../../prepare/server-nodes-software/software-on-prem-manual/) before adding the VM to the pool. |
 
 1. Add the VMs (instances) to the provider.

@@ -14,6 +14,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -51,6 +52,7 @@ public class KubernetesCheckVolumeExpansion extends AbstractTaskBase {
     public String namespace;
     public UUID providerUUID;
     public String helmReleaseName;
+    public ServerType serverType;
   }
 
   public static String getSubTaskGroupName() {
@@ -76,18 +78,23 @@ public class KubernetesCheckVolumeExpansion extends AbstractTaskBase {
             taskParams().config,
             taskParams().namespace,
             taskParams().helmReleaseName,
-            false,
+            taskParams().serverType == ServerType.MASTER /* forMaster */,
             taskParams().newNamingStyle);
-    log.info("Verifiying that the PVC storage class {} allows volume expansion", scName);
+    log.info(
+        "Verifiying that the PVC storage class {} for {} allows volume expansion",
+        scName,
+        taskParams().serverType);
     if (Strings.isNullOrEmpty(scName)) {
       // Could be using ephemeral volume
-      throw new RuntimeException("TServer Volume does not support expansion");
+      throw new RuntimeException(
+          String.format("%s Volume does not support expansion", taskParams().serverType));
     }
     boolean allowsExpansion = k8s.storageClassAllowsExpansion(taskParams().config, scName);
     if (!allowsExpansion) {
       throw new RuntimeException(
           String.format(
-              "StorageClass %s should allow volume expansion for this operation", scName));
+              "StorageClass %s for %s should allow volume expansion for this operation",
+              scName, taskParams().serverType));
     }
 
     // verify there are no orphan PVCs
@@ -96,7 +103,9 @@ public class KubernetesCheckVolumeExpansion extends AbstractTaskBase {
             taskParams().config,
             taskParams().namespace,
             taskParams().helmReleaseName,
-            "yb-tserver",
+            taskParams().serverType == ServerType.TSERVER
+                ? "yb-tserver"
+                : "yb-master" /* appName */,
             taskParams().newNamingStyle);
     Set<String> pvcNamesInNs =
         pvcsInNs.stream().map(pvc -> pvc.getMetadata().getName()).collect(Collectors.toSet());
@@ -105,7 +114,9 @@ public class KubernetesCheckVolumeExpansion extends AbstractTaskBase {
             taskParams().config,
             taskParams().namespace,
             taskParams().helmReleaseName,
-            "yb-tserver",
+            taskParams().serverType == ServerType.TSERVER
+                ? "yb-tserver"
+                : "yb-master" /* appName */,
             taskParams().newNamingStyle);
     Set<String> pvcsAttachedToPods = new HashSet<>();
     podsInNs.stream()

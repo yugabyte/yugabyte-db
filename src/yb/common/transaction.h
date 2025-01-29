@@ -50,6 +50,12 @@ using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 using TransactionIdApplyOpIdMap = std::unordered_map<TransactionId, OpId, TransactionIdHash>;
 using SubTransactionId = uint32_t;
 using TxnReuseVersion = uint64_t;
+// When session level advisory locks are enabled, we created a docdb transaction for a pg session
+// on a session advisory lock request, if one doesn't already exist. This transaction lives for the
+// lifetime of the pg session. The version is used to resolve failed waiting lock requests (probably
+// due to deadlock etc).
+// Note: The field is not persisted along with the lock, i.e, it is not persisted in intentsdb.
+using PgSessionRequestVersion = uint64_t;
 
 // By default, postgres SubTransactionId's propagated to DocDB start at 1, so we use this as a
 // minimum value on the DocDB side as well. All intents written without an explicit SubTransactionId
@@ -125,6 +131,11 @@ struct TransactionStatusResult {
   // Defaults to Status::OK() in all other cases.
   Status expected_deadlock_status = Status::OK();
 
+  // Only relevant for docdb transactions of type PgClientSessionKind::kPgSession. The field is
+  // populated for transaction status responses and is used by the the wait-queue to resume
+  // deadlocked session advisory lock requests.
+  PgSessionRequestVersion pg_session_req_version = 0;
+
   TransactionStatusResult() {}
 
   TransactionStatusResult(
@@ -133,7 +144,8 @@ struct TransactionStatusResult {
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_,
-      SubtxnSet aborted_subtxn_set_, Status expected_deadlock_status_ = Status::OK());
+      SubtxnSet aborted_subtxn_set_, Status expected_deadlock_status_ = Status::OK(),
+      PgSessionRequestVersion pg_session_req_version_ = 0);
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
@@ -148,7 +160,9 @@ struct TransactionStatusResult {
   }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set, status_tablet);
+    return YB_STRUCT_TO_STRING(
+        status, status_time, aborted_subtxn_set, status_tablet, expected_deadlock_status,
+        pg_session_req_version);
   }
 };
 

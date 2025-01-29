@@ -18,7 +18,7 @@ Use change data capture with YugabyteDB Aeon clusters to capture and stream chan
 
 ## Overview
 
-YugabyteDB Aeon change data capture uses the [PostgreSQL Logical Replication](https://www.postgresql.org/docs/11/logical-replication.html) protocol. Logical replication uses a publish and subscribe model with one or more subscribers subscribing to one or more publications on a publisher node. Subscribers pull data from the publications they subscribe to and may subsequently re-publish data to allow cascading replication or more complex configurations.
+YugabyteDB Aeon change data capture uses the [PostgreSQL Logical Replication](https://www.postgresql.org/docs/15/logical-replication.html) protocol. Logical replication uses a publish and subscribe model with one or more subscribers subscribing to one or more publications on a publisher node. Subscribers pull data from the publications they subscribe to and may subsequently re-publish data to allow cascading replication or more complex configurations.
 
 It works as follows:
 
@@ -237,7 +237,7 @@ On the cluster **Metrics** tab, you can view the following metrics:
 
 ### Establish a replication connection to the database
 
-To be able to send [replication commands](https://www.postgresql.org/docs/11/protocol-replication.html) to the database, you need to make a replication connection by adding the `replication=database` connection parameter to the connection string.
+To be able to send [replication commands](https://www.postgresql.org/docs/15/protocol-replication.html) to the database, you need to make a replication connection by adding the `replication=database` connection parameter to the connection string.
 
 To do this, [connect to your cluster](../../cloud-connect/connect-client-shell/) using a client shell as you normally would, and add `replication=database` to the connection string. For example:
 

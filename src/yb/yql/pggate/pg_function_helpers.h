@@ -69,18 +69,18 @@ struct SetValueHelper<bool> {
 
 template <>
 struct SetValueHelper<std::vector<std::string>> {
-  static Result<QLValuePB> Apply(const std::vector<std::string>& str_vals, YBCPgOid oid);
+  static Result<QLValuePB> Apply(const std::vector<std::string>& str_vals, YbcPgOid oid);
 };
 
 template <>
 struct SetValueHelper<google::protobuf::RepeatedPtrField<std::string>> {
   static Result<QLValuePB> Apply(
-      const google::protobuf::RepeatedPtrField<std::string>& str_vals, YBCPgOid oid);
+      const google::protobuf::RepeatedPtrField<std::string>& str_vals, YbcPgOid oid);
 };
 
 template <>
 struct SetValueHelper<std::vector<TransactionId>> {
-  static Result<QLValuePB> Apply(const std::vector<TransactionId>& transaction_vals, YBCPgOid oid);
+  static Result<QLValuePB> Apply(const std::vector<TransactionId>& transaction_vals, YbcPgOid oid);
 };
 
 template <class T>
@@ -90,7 +90,7 @@ Result<QLValuePB> SetValue(const T& t, DataType data_type) {
 }
 
 template <class T>
-Result<QLValuePB> SetArrayValue(const T& t, YBCPgOid oid, DataType data_type) {
+Result<QLValuePB> SetArrayValue(const T& t, YbcPgOid oid, DataType data_type) {
   typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type CleanedT;
   if (data_type != DataType::BINARY) {
     return STATUS_FORMAT(InvalidArgument, "unexpected ARRAY datatype $0", data_type);
@@ -99,7 +99,7 @@ Result<QLValuePB> SetArrayValue(const T& t, YBCPgOid oid, DataType data_type) {
   return SetValueHelper<CleanedT>::Apply(t, oid);
 }
 
-Result<std::tuple<ColumnId, YBCPgOid, DataType>> ColumnIndexAndType(
+Result<std::tuple<ColumnId, YbcPgOid, DataType>> ColumnIndexAndType(
     const std::string& col_name, const Schema&);
 
 // private helper to set QLValuePB to row after massaging
@@ -133,17 +133,17 @@ using ValueAndIsNullPair = std::pair<T, bool>;
 template <>
 struct GetValueHelper<uint32_t> {
   static Result<ValueAndIsNullPair<uint32_t>> Retrieve(
-      const QLValuePB& ql_val, const YBCPgTypeEntity* pg_type);
+      const QLValuePB& ql_val, const YbcPgTypeEntity* pg_type);
 };
 
 template <>
 struct GetValueHelper<Uuid> {
   static Result<ValueAndIsNullPair<Uuid>> Retrieve(
-      const QLValuePB& ql_val, const YBCPgTypeEntity* pg_type);
+      const QLValuePB& ql_val, const YbcPgTypeEntity* pg_type);
 };
 
 template <class T>
-Result<ValueAndIsNullPair<T>> GetValue(const QLValuePB& ql_val, const YBCPgTypeEntity* pg_type) {
+Result<ValueAndIsNullPair<T>> GetValue(const QLValuePB& ql_val, const YbcPgTypeEntity* pg_type) {
   typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type CleanedT;
   return GetValueHelper<CleanedT>::Retrieve(ql_val, pg_type);
 }

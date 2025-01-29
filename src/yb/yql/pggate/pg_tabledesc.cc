@@ -88,8 +88,8 @@ Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
   return STATUS_FORMAT(InvalidArgument, "Invalid column number $0", attr_num);
 }
 
-Result<YBCPgColumnInfo> PgTableDesc::GetColumnInfo(int attr_number) const {
-  YBCPgColumnInfo column_info {
+Result<YbcPgColumnInfo> PgTableDesc::GetColumnInfo(int attr_number) const {
+  YbcPgColumnInfo column_info {
     .is_primary = false,
     .is_hash = false
   };
@@ -106,11 +106,11 @@ bool PgTableDesc::IsColocated() const {
   return resp_.colocated();
 }
 
-YBCPgOid PgTableDesc::GetColocationId() const {
+YbcPgOid PgTableDesc::GetColocationId() const {
   return schema().has_colocation_id() ? schema().colocation_id() : kColocationIdNotSet;
 }
 
-YBCPgOid PgTableDesc::GetTablegroupOid() const {
+YbcPgOid PgTableDesc::GetTablegroupOid() const {
   return tablegroup_oid_;
 }
 

@@ -238,7 +238,7 @@ struct XLogReaderState
 	/* Last record returned by XLogReadRecord(). */
 	DecodedXLogRecord *record;
 
-	YBCPgVirtualWalRecord *yb_virtual_wal_record;
+	YbVirtualWalRecord *yb_virtual_wal_record;
 
 	/* ----------------------------------------
 	 * private/internal state

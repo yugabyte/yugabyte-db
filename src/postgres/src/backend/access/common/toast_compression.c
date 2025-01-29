@@ -24,7 +24,7 @@
 #include "utils/builtins.h"
 
 /* GUC */
-int			default_toast_compression = TOAST_PGLZ_COMPRESSION;
+int			default_toast_compression = TOAST_LZ4_COMPRESSION;
 
 #define NO_LZ4_SUPPORT() \
 	ereport(ERROR, \

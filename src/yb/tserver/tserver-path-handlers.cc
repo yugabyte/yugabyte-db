@@ -75,8 +75,7 @@
 #include "yb/tserver/xcluster_poller_stats.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/url-coding.h"
-#include "yb/util/version_info.h"
-#include "yb/util/version_info.pb.h"
+#include "yb/common/version_info.h"
 #include "yb/util/flags.h"
 
 using yb::consensus::GetConsensusRole;

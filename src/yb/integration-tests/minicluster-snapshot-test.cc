@@ -1031,7 +1031,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitting)) {
   // Wait for the split to complete on master.
   // The parent should still be running because we have cleanup is still disabled.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return VERIFY_RESULT(source_table->GetTablets(IncludeInactive::kTrue)).size() == 5;
+    return VERIFY_RESULT(source_table->GetTabletsIncludeInactive()).size() == 5;
   }, 30s, "Wait for master split."));
   auto after_master_split_timestamp = ASSERT_RESULT(GetCurrentTime()).ToInt64();
 
@@ -1042,7 +1042,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitting)) {
   // Enable cleanup of split parents and wait for the split parent to be deleted.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto tablets = VERIFY_RESULT(source_table->GetTablets(IncludeInactive::kTrue));
+    auto tablets = VERIFY_RESULT(source_table->GetTabletsIncludeInactive());
     for (auto& tablet : tablets) {
       if (tablet->id() == split_tablet_id) {
         return tablet->LockForRead()->is_hidden();

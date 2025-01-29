@@ -68,20 +68,6 @@ ADD_YB_LIBRARY(pb_util_proto
   DEPS protobuf
   NONLINK_DEPS ${PB_UTIL_PROTO_TGTS})
 
-#######################################
-# version_info_proto
-#######################################
-
-PROTOBUF_GENERATE_CPP(
-  VERSION_INFO_PROTO_SRCS VERSION_INFO_PROTO_HDRS VERSION_INFO_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES version_info.proto)
-ADD_YB_LIBRARY(version_info_proto
-  SRCS ${VERSION_INFO_PROTO_SRCS}
-  DEPS protobuf
-  NONLINK_DEPS ${VERSION_INFO_PROTO_TGTS})
-
 ############################################################
 # Version stamp
 ############################################################
@@ -131,6 +117,7 @@ set(UTIL_SRCS
   concurrent_value.cc
   condition_variable.cc
   countdown_latch.cc
+  crash_point.cc
   crc.cc
   cross_thread_mutex.cc
   crypt.cc
@@ -165,7 +152,6 @@ set(UTIL_SRCS
   flags/flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
-  init.cc
   jsonreader.cc
   jsonwriter.cc
   jwt_util.cc
@@ -215,6 +201,8 @@ set(UTIL_SRCS
   rw_semaphore.cc
   rwc_lock.cc
   shared_mem.cc
+  shmem/reserved_address_segment.cc
+  shmem/robust_mutex.cc
   signal_util.cc
   slice.cc
   slice_parts.cc
@@ -251,7 +239,6 @@ set(UTIL_SRCS
   user.cc
   uuid.cc
   varint.cc
-  version_info.cc
   write_buffer.cc
   yb_partition.cc
   ysql_binary_runner.cc
@@ -276,7 +263,6 @@ set(UTIL_LIBS
   libev
   pb_util_proto
   protobuf
-  version_info_proto
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
   ${OPENSSL_SSL_LIBRARY})
@@ -347,6 +333,7 @@ ADD_YB_TEST(byte_buffer-test)
 ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
+ADD_YB_TEST(crash_point-test)
 ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
 ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
@@ -414,6 +401,8 @@ if (NOT "${YB_BUILD_TYPE}" STREQUAL "asan")
 endif()
 ADD_YB_TEST(scope_exit-test)
 ADD_YB_TEST(shared_mem-test)
+ADD_YB_TEST(shmem/reserved_address_segment-test)
+ADD_YB_TEST(shmem/robust_mutex-test)
 ADD_YB_TEST(slice-test)
 ADD_YB_TEST(spinlock_profiling-test)
 ADD_YB_TEST(split-test)

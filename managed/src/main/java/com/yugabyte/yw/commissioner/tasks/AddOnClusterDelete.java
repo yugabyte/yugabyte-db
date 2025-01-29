@@ -54,23 +54,13 @@ public class AddOnClusterDelete extends UniverseDefinitionTaskBase {
   @Override
   public void run() {
     log.info("Started {} task for uuid={}", getName(), params().getUniverseUUID());
-
+    if (params().clusterUUID == null) {
+      log.error("Cluster UUID is null. Aborting.");
+      throw new RuntimeException("Cluster UUID is null");
+    }
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(params().expectedUniverseVersion, null /* Txn callback */);
     try {
-
-      if (params().clusterUUID == null) {
-        log.error("Cluster UUID is null. Aborting.");
-        throw new RuntimeException("Cluster UUID is null");
-      }
-
-      Universe universe = null;
-      if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1 /* expectedUniverseVersion */);
-      } else {
-        universe =
-            lockAndFreezeUniverseForUpdate(
-                params().expectedUniverseVersion, null /* Txn callback */);
-      }
-
       Cluster clusterToDelete = universe.getCluster(params().clusterUUID);
 
       if (clusterToDelete == null || clusterToDelete.clusterType != ClusterType.ADDON) {

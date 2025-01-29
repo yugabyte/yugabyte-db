@@ -50,7 +50,7 @@ static void bindAnnSearchKeys(IndexScanDesc scan, Relation rel, int nkeys,
 					errmsg("different vector dimensions %d and %d", ind_dim, vec_dim)));
 
 	so->query_vector = scan->orderByData->sk_argument;
-	YBCPgExpr vec_handle = YBCNewConstant(
+	YbcPgExpr vec_handle = YBCNewConstant(
 		so->yb_scan_desc->handle, BYTEAOID, InvalidOid /* collation_id */,
 		so->query_vector, false);
 

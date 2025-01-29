@@ -469,6 +469,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Default refresh interval for the KMS providers.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> kmsAllowCiphertrust =
+      new ConfKeyInfo<>(
+          "yb.kms.allow_ciphertrust",
+          ScopeType.GLOBAL,
+          "Allow CipherTrust KMS",
+          "Allow the usage of CipherTrust KMS.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   // TODO() Add metadata
   public static final ConfKeyInfo<Boolean> startMasterOnStopNode =
       new ConfKeyInfo<>(
@@ -800,6 +808,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable xcluster/DR auto flag validation",
           "Enables checks for xcluster/disaster recovery validations for autoflags for xcluster/DR"
               + " operations",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> xClusterTableStatusLoggingEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.table_status_logging_enabled",
+          ScopeType.GLOBAL,
+          "Whether to log information about gathering table statuses in xCluster",
+          "Whether to log information about gathering bad table statuses in xCluster; the logs can"
+              + " be huge and this gives you a leverage to disable it",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
@@ -1577,4 +1594,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " session level",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipYbaMinVersionCheck =
+      new ConfKeyInfo<>(
+          "yb.skip_yba_min_version_check",
+          ScopeType.GLOBAL,
+          "Skip YBA Minimum Version Check",
+          "Skip YBA Minimum Version Check when adding a new YugabyteDB Release.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> disableNodeAgentOnProviderCreation =
+      new ConfKeyInfo<>(
+          "yb.internal.disable_node_agent_on_provider_creation",
+          ScopeType.GLOBAL,
+          "Disable Node Agent on Provider Creation",
+          "Disable node agent on provider creation by setting the internal flag in the provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

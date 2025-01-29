@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
+import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -151,6 +152,83 @@ public class PitrController extends AuthenticatedController {
   }
 
   @ApiOperation(
+      value = "Update pitr config for a keyspace in a universe",
+      nickname = "updatePitrConfig",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "pitrConfig",
+          value = "put pitr config",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.UpdatePitrConfigParams",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result updatePitrConfig(
+      UUID customerUUID, UUID universeUUID, UUID pitrConfigUUID, Http.Request request) {
+    // Validate customer UUID
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot update PITR when the universe is in paused state");
+    } else if (universe.getUniverseDetails().updateInProgress) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot update PITR when the universe is in locked state");
+    }
+
+    PitrConfig pitrConfig = PitrConfig.getOrBadRequest(pitrConfigUUID);
+
+    checkCompatibleYbVersion(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+    UpdatePitrConfigParams taskParams = parseJsonAndValidate(request, UpdatePitrConfigParams.class);
+
+    if (taskParams.retentionPeriodInSeconds <= 0L) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "PITR Config retention period cannot be less than 1 second");
+    }
+
+    if (taskParams.retentionPeriodInSeconds <= taskParams.intervalInSeconds) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "PITR Config interval cannot be less than retention period");
+    }
+
+    if (taskParams.retentionPeriodInSeconds == pitrConfig.getRetentionPeriod()
+        && taskParams.intervalInSeconds == pitrConfig.getScheduleInterval()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Nothing to update in the PITR config");
+    }
+
+    taskParams.setUniverseUUID(universeUUID);
+    taskParams.customerUUID = customerUUID;
+    taskParams.pitrConfigUUID = pitrConfig.getUuid();
+    UUID taskUUID = commissioner.submit(TaskType.UpdatePitrConfig, taskParams);
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.UpdatePitrConfig,
+        universe.getName());
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.UpdatePitrConfig,
+            Json.toJson(taskParams),
+            taskUUID);
+    return new YBPTask(taskUUID).asResult();
+  }
+
+  @ApiOperation(
       value = "List the PITR configs of a universe",
       response = PitrConfig.class,
       responseContainer = "List",
@@ -202,9 +280,8 @@ public class PitrController extends AuthenticatedController {
               BackupUtil.allSnapshotsSuccessful(snapshotScheduleInfo.getSnapshotInfoList());
           long currentTimeMillis = System.currentTimeMillis();
           long minTimeInMillis =
-              Math.max(
-                  currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
-                  pitrConfig.getUpdateTime().getTime());
+              BackupUtil.getMinRecoveryTimeForSchedule(
+                  snapshotScheduleInfo.getSnapshotInfoList(), pitrConfig.getRetentionPeriod());
           pitrConfig.setMinRecoverTimeInMillis(minTimeInMillis);
           pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
           pitrConfig.setState(pitrStatus ? State.COMPLETE : State.FAILED);

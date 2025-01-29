@@ -401,7 +401,7 @@ public class AWSUtil implements CloudUtil {
         CloudLocationInfo cLInfo =
             getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
 
-        // Get all the backups in the specified bucket/directory
+        // Get all the releases in the specified bucket/directory
         String nextContinuationToken = null;
 
         do {
@@ -420,7 +420,7 @@ public class AWSUtil implements CloudUtil {
 
           if (listObjectsResult.getKeyCount() == 0) {
             // No releases found for a specified version (best effort, might work later)
-            break;
+            continue;
           }
 
           nextContinuationToken =
@@ -633,7 +633,7 @@ public class AWSUtil implements CloudUtil {
       // Delete the old backups
       client.deleteObjects(deleteRequest);
       log.info(
-          "Deleted {} old backups from s3://{}/{}",
+          "Deleted {} old backup(s) from s3://{}/{}",
           backupsToDelete.size(),
           cLInfo.bucket,
           backupDir);

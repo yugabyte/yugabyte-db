@@ -50,6 +50,8 @@ DECLARE_uint32(xcluster_safe_time_log_outliers_interval_secs);
 DECLARE_uint32(xcluster_safe_time_slow_tablet_delta_secs);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
+DECLARE_int32(ht_lease_duration_ms);
+DECLARE_int32(leader_lease_duration_ms);
 
 namespace yb {
 using client::YBSchema;
@@ -362,6 +364,23 @@ TEST_F(XClusterSafeTimeTest, SafeTimeInTableDoesNotGoBackwards) {
     ASSERT_GT(safe_ht, low_safe_time);
   }
   ASSERT_OK(table_scan_status);
+}
+
+// Make sure safe time computation is not affected by the yb-master leader lease loss.
+TEST_F(XClusterSafeTimeTest, LostMasterLeaderLease) {
+  ASSERT_OK(WaitForSafeTime(GetProducerSafeTime()));
+
+  const auto old_ht_lease_duration_ms = FLAGS_ht_lease_duration_ms;
+  const auto old_leader_lease_duration_ms = FLAGS_leader_lease_duration_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 0;
+
+  SleepFor(FLAGS_xcluster_safe_time_update_interval_secs * 5s);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = old_ht_lease_duration_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = old_leader_lease_duration_ms;
+
+  ASSERT_OK(WaitForSafeTime(GetProducerSafeTime()));
 }
 
 }  // namespace yb

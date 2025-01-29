@@ -214,9 +214,7 @@ class XClusterConsumer : public XClusterConsumerIf {
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
 
-  std::unordered_map<
-      xcluster::ProducerTabletInfo, std::shared_ptr<XClusterPoller>,
-      xcluster::ProducerTabletInfo::Hash>
+  std::unordered_map<xcluster::ProducerTabletInfo, std::shared_ptr<XClusterPoller>>
       pollers_map_ GUARDED_BY(pollers_map_mutex_);
 
   std::unique_ptr<ThreadPool> thread_pool_;

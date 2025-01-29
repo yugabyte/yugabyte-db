@@ -57,7 +57,7 @@ class YsqlManager : public YsqlManagerIf {
 
   Status SetInitDbDone(const LeaderEpoch& epoch);
 
-  bool IsYsqlMajorCatalogUpgradeInProgress() const;
+  bool IsMajorUpgradeInProgress() const;
 
   void HandleNewTableId(const TableId& table_id);
 
@@ -94,6 +94,10 @@ class YsqlManager : public YsqlManagerIf {
       const RollbackYsqlMajorCatalogVersionRequestPB* req,
       RollbackYsqlMajorCatalogVersionResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+
+  Status GetYsqlMajorCatalogUpgradeState(
+      const GetYsqlMajorCatalogUpgradeStateRequestPB* req,
+      GetYsqlMajorCatalogUpgradeStateResponsePB* resp, rpc::RpcContext* rpc);
 
   Status CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch);
 

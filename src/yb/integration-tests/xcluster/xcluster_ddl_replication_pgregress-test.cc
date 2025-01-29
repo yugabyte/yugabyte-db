@@ -22,7 +22,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/tsan_util.h"
 
-DECLARE_bool(TEST_skip_schema_validation);
+DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_int32(ysql_num_tablets);
 
 using namespace std::chrono_literals;
@@ -49,13 +49,27 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     google::SetVLOGLevel("cdc*", 0);
   }
 
-  Result<std::string> RunYSQLDump(Cluster& cluster, const std::string& database_name = "yugabyte") {
+  Result<std::string> RunYSQLDump(Cluster& cluster) { return RunYSQLDump(cluster, namespace_name); }
+
+  Result<std::string> RunYSQLDump(Cluster& cluster, const std::string& database_name) {
     const auto output = VERIFY_RESULT(tools::RunYSQLDump(cluster.pg_host_port_, database_name));
 
     // Filter out any lines in output that contain "binary_upgrade_set_next", since these contain
     // oids which may not match.
     const std::regex pattern("\n.*binary_upgrade_set_next.*(?=\n)");
     return std::regex_replace(output, pattern, "\n<binary_upgrade_set_next>");
+  }
+
+  Result<std::string> ReadEnumLabelInfo(Cluster& cluster) {
+    return ReadEnumLabelInfo(cluster, namespace_name);
+  }
+
+  Result<std::string> ReadEnumLabelInfo(Cluster& cluster, const std::string& database_name) {
+    auto conn = VERIFY_RESULT(cluster.ConnectToDB(database_name));
+    return VERIFY_RESULT(conn.FetchAllAsString(
+        "SELECT typname, enumlabel, pg_enum.oid, enumsortorder FROM pg_enum "
+        "JOIN pg_type ON pg_enum.enumtypid = pg_type.oid;",
+        ", ", "\n"));
   }
 
   void ExecutePgFile(const std::string& file_path) {
@@ -65,6 +79,8 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     args.push_back(producer_cluster_.pg_host_port_.host());
     args.push_back("--port");
     args.push_back(AsString(producer_cluster_.pg_host_port_.port()));
+    // Fail the script on the first error.
+    args.push_back("--variable=ON_ERROR_STOP=1");
     args.push_back("-f");
     args.push_back(file_path);
 
@@ -79,8 +95,16 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     const auto sub_dir = "test_xcluster_ddl_replication_sql";
     const auto test_sql_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir, "sql");
 
-    // Setup xCluster.
     RETURN_NOT_OK(SetUpClusters());
+
+    // Perturb OIDs on consumer side to make sure we don't accidentally preserve OIDs.
+    auto conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB("yugabyte"));
+    RETURN_NOT_OK(
+        conn.Execute("CREATE TYPE gratuitous_enum AS ENUM ('red', 'orange', 'yellow', 'green', "
+                     "'blue', 'purple');"));
+    RETURN_NOT_OK(conn.Execute("DROP TYPE gratuitous_enum;"));
+
+    // Setup xCluster.
     RETURN_NOT_OK(CheckpointReplicationGroup());
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
 
@@ -102,6 +126,12 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
       auto producer_dump = VERIFY_RESULT(RunYSQLDump(producer_cluster_));
       auto consumer_dump = VERIFY_RESULT(RunYSQLDump(consumer_cluster_));
       SCHECK_EQ(producer_dump, consumer_dump, IllegalState, "Ysqldumps do not match");
+
+      auto producer_enum_label_info = VERIFY_RESULT(ReadEnumLabelInfo(producer_cluster_));
+      auto consumer_enum_label_info = VERIFY_RESULT(ReadEnumLabelInfo(consumer_cluster_));
+      SCHECK_EQ(
+          producer_enum_label_info, consumer_enum_label_info, IllegalState,
+          "enum label information does not match");
     }
 
     return Status::OK();
@@ -134,6 +164,8 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateTableUnsupported) {
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropPartitionedTable) {
   // Tests basic create and drop of partitioned tables.
+  // Need to prefetch pg_operator to avoid DFATAL in pg systable prefetch. See GHI #25639.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) = "pg_operator";
   ASSERT_OK(TestPgRegress("create_table_partitioned.sql", "drop_table_partitioned.sql"));
 }
 
@@ -149,7 +181,6 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTablePartitions2)
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterTable) {
   // Tests various add column types, alter index columns, renames and partitioned tables.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_schema_validation) = true;
   ASSERT_OK(TestPgRegress("alter_table.sql", "alter_table2.sql"));
 }
 
@@ -170,6 +201,10 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressTableRewrite) {
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropExtensions) {
   // Tests create and drops of the extensions supported by YB
   ASSERT_OK(TestPgRegress("pgonly_extensions_create.sql", "pgonly_extensions_drop.sql"));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, YB_DISABLE_TEST(PgRegressCreateDropEnum)) {
+  ASSERT_OK(TestPgRegress("create_enum.sql", "drop_enum.sql"));
 }
 
 }  // namespace yb

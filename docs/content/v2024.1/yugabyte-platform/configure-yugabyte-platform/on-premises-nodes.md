@@ -14,43 +14,14 @@ type: docs
 
 After creating the on-premises provider, you can add instances to its free pool of nodes.
 
-1. Navigate to **Integrations > Infrastructure > On-Premises Datacenters**, and select the on-premises configuration you created.
+1. Navigate to **Configs > Infrastructure > On-Premises Datacenters**, and select the on-premises configuration you created.
 1. Select **Instances**.
 
 This displays the configured instance types and instances for the selected provider.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
-  <li>
-    <a href="#automatic" class="nav-link active" id="automatic-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="automatic" aria-selected="true">
-      Automatic Provisioning
-    </a>
-  </li>
-  <li>
-    <a href="#manual" class="nav-link" id="manual-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="manual" aria-selected="false">
-      Manual Provisioning
-    </a>
-  </li>
-</ul>
-<div class="tab-content">
-  <div id="automatic" class="tab-pane fade show active" role="tabpanel" aria-labelledby="automatic-tab">
-
-For automatic provisioning, the **Instances** page is displayed as follows:
-
 ![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
-  </div>
-
-  <div id="manual" class="tab-pane fade" role="tabpanel" aria-labelledby="manual-tab">
-
-For manual provisioning, the **Instances** page includes the command for running the provisioning script, as follows:
-
-![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
-
-  </div>
-
-</div>
+(For legacy manual provisioning, the **Instances** page additionally includes the command for running the provisioning script.)
 
 To add nodes, do the following:
 
@@ -82,9 +53,9 @@ Before you add instances, you need the following:
 
 - The IP addresses of your VMs. See [Software requirements for nodes](../../prepare/server-nodes-software/).
 - Instance type to assign each instance. The instance types define properties of the instances, along with the mount points. See [Add instance types](#add-instance-types).
-- If you are doing [assisted manual provisioning](../on-premises/#stage-3-add-nodes-to-the-provider-free-pool), you must provision the nodes using the script. Follow the instructions in [Assisted manual provisioning](../on-premises-script/).
+- If you are doing legacy [assisted manual provisioning](../on-premises/#stage-3-add-nodes-to-the-provider-free-pool-1), you must provision the nodes using the script. Follow the instructions in [Assisted manual provisioning](../on-premises-script/).
 
-### Add instances to the on-premises provider
+### Add instances to the on-prem provider
 
 To add the instances, do the following:
 

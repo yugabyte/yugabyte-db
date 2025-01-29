@@ -16,7 +16,7 @@ showRightNav: true
 ## The rules
 
 
-**Note:** If the text contains a digit, then it is taken as POSIX syntax. See the appendix [B.5. POSIX Time Zone Specifications](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html) in the PostgreSQL documentation.
+**Note:** If the text contains a digit, then it is taken as POSIX syntax. See the appendix [B.5. POSIX Time Zone Specifications](https://www.postgresql.org/docs/15/datetime-posix-timezone-specs.html) in the PostgreSQL documentation.
 
 When a string is used to identify a _UTC offset_, there might seem _a priori_ to be three contexts in which it might be resolved:
 
@@ -81,4 +81,4 @@ The rules for resolving a string that's intended to specify a _UTC offset_ can b
 - A string is always resolved in _pg_timezone_names.name_.
 - A string used in _set timezone_ is resolved only in _pg_timezone_names.name_.
 - A string that's used in _at time zone_ or in the explicit specification of a _timestamptz_ value is resolved first in _pg_timezone_abbrevs.abbrev_ and only if this fails, then in _pg_timezone_names.name_.
-- If a string escapes all of the attempts at resolution that the previous five bullet points set out, then an attempt is made to resolve it as [POSIX](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html) syntax.
+- If a string escapes all of the attempts at resolution that the previous five bullet points set out, then an attempt is made to resolve it as [POSIX](https://www.postgresql.org/docs/15/datetime-posix-timezone-specs.html) syntax.

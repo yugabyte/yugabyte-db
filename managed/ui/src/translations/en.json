@@ -95,7 +95,7 @@
     "dashboard": {
       "nodeAgentReminderBanner": {
         "primaryText": "Automatic installation of node agent failed on some nodes.",
-        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can to upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>To proceed, verify the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph>",
+        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>To proceed, verify the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph>",
         "reinstallNodeAgentButton": "Reinstall Node Agents"
       }
     },
@@ -1353,7 +1353,7 @@
               "tooltipUpgradePrompt": "To leverage the new {{xClusterOffering}} features with streamlined table and index management, upgrade the {{targetUniverseTerm}} followed by the {{sourceUniverseTerm}}. Then remove and reconfigure your {{xClusterOffering}} setup."
             },
             "schemaChanges": "Schema Changes",
-            "universeLevelSchemaChangesInstructions": "To make schema changes such as creating, altering, or dropping tables or partitions to databases with xCluster Disaster Recovery or xCluster Replication enabled, you need to complete the <bold>specified steps</bold> on the <bold>source universe, target universe, and the xCluster configuration in the specified order.<bold>",
+            "universeLevelSchemaChangesInstructions": "To make schema changes (such as creating, altering, or dropping tables or partitions) to databases with xCluster Disaster Recovery or xCluster Replication enabled, you need to complete the <bold>specified steps</bold> on the <bold>source universe, target universe, and the xCluster configuration in the specified order.<bold>",
             "schemaChangesInstructions": "To make schema changes to databases in replication for xCluster DR (such as creating, altering, or dropping tables or partitions), you need to complete the <bold>specified steps in a specific order.</bold>",
             "universeLevelLearnMore": "Learn more about making schema changes for:",
             "universeLevelLearnMoreDrDocsLink": "xCluster Disaster Recovery",
@@ -1369,7 +1369,7 @@
           },
           "upgradeModal": {
             "title": "Upgrade Available",
-            "upgradeInfo": "<paragraph>Congratulations for completing your database upgrade.</paragraph><br/><paragraph>The new database version streamlines table and index management for databases with {{xClusterOffering}} enabled, but your {{xClusterOffering}} config is still in <bold>{{schemaChangeMode}}</bold>.</paragraph><br/><paragraph>To leverage the new schema change mode, upgrade your {{xClusterOffering}} config.</paragraph>",
+            "upgradeInfo": "<paragraph>Congratulations for completing your database upgrade.</paragraph><br/><paragraph>The new database version streamlines table and index management for databases with {{xClusterOffering}} enabled, but your {{xClusterOffering}} configuration is still in <bold>{{schemaChangeMode}}</bold>.</paragraph><br/><paragraph>To leverage the new schema change mode, upgrade your {{xClusterOffering}} configuration.</paragraph>",
             "learnMore": "Learn more"
           }
         },
@@ -1658,8 +1658,8 @@
     },
     "nodeAgent": {
       "title": "Node Agents",
-      "assignedNodesTitle": "In-Use Nodes",
-      "unassignedNodesTitle": "Not-In-Use Nodes",
+      "assignedNodesTitle": "Deployed Nodes",
+      "unassignedNodesTitle": "Free Nodes",
       "viewDetailsButton": "View Details",
       "unreachableInstanceAgents": "Instance agents are unreachable",
       "contactSupport": "Contact Support",
@@ -1667,7 +1667,7 @@
       "delete": "Delete",
       "deleteNodeAgent": "Delete Node Agent",
       "confirmDeletionMessage": "Are you sure you want to delete the Node Agent associated with the provider {{provider_name}} ?",
-      "errorStatusFilterCheckbox": "Show only agents with error statues",
+      "errorStatusFilterCheckbox": "Show only agents with error status",
       "runtimeConfig": {
         "nodeAgentClientEnabledWarning": "Disabling this runtime configuration will prevent you from upgrading YugabyteDB Anywhere to future major versions."
       },
@@ -1813,7 +1813,8 @@
       },
       "renameKeyspaces": {
         "title": "Rename keyspace/s before restoring  (Optional)",
-        "currenyKeyspacename": "Current keyspace name",
+        "searchKeyspaceName": "Search keyspace name",
+        "currentKeyspaceName": "Current keyspace name",
         "assignNewName": "Assign new name",
         "addNewName": "Add new name",
         "validationMessages": {

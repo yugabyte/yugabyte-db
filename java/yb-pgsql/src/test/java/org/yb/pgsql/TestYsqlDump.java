@@ -240,7 +240,6 @@ public class TestYsqlDump extends BasePgSQLTest {
   public void ysqlDumpColocatedTablesWithTablespaces() throws Exception {
     markClusterNeedsRecreation();
     restartClusterWithClusterBuilder(cb -> {
-      cb.addCommonFlag("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
       cb.addCommonFlag("ysql_enable_colocated_tables_with_tablespaces", "true");
       cb.addCommonTServerFlag("placement_cloud", "testCloud");
       cb.addCommonTServerFlag("placement_region", "testRegion");

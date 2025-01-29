@@ -358,7 +358,7 @@ ExecRenameStmt(RenameStmt *stmt)
 		case OBJECT_MATVIEW:
 		case OBJECT_INDEX:
 		case OBJECT_FOREIGN_TABLE:
-			return RenameRelation(stmt, false /* yb_is_internal_clone_rename */);
+			return RenameRelation(stmt, false /* yb_is_internal_clone_rename */ );
 
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:
@@ -883,7 +883,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 										newowner);
 
 		case OBJECT_FUNCTION:
-			return AlterFunctionOwner(stmt,  newowner);
+			return AlterFunctionOwner(stmt, newowner);
 
 			/* Generic cases */
 		case OBJECT_AGGREGATE:

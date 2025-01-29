@@ -38,7 +38,7 @@
 
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/flags.h"
-#include "yb/util/init.h"
+#include "yb/util/signal_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/debug-util.h"

@@ -976,14 +976,19 @@ class Tablet : public AbstractTablet,
 
   Status AbortSQLTransactions(CoarseTimePoint deadline) const;
 
+  // TODO: Move mutex to private section.
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
 
-  // Serializes access to setting/revising/releasing CDCSDK retention barriers
-  mutable simple_spinlock cdcsdk_retention_barrier_lock_;
-  MonoTime cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
-
   void CleanupIntentFiles();
+
+  bool TEST_HasVectorIndexes() const {
+    return has_vector_indexes_.load();
+  }
+
+  void TEST_SleepBeforeApplyIntents(MonoDelta value) {
+    TEST_sleep_before_apply_intents_ = value;
+  }
 
  private:
   friend class Iterator;
@@ -1320,6 +1325,12 @@ class Tablet : public AbstractTablet,
   std::unordered_map<TableId, docdb::VectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
   docdb::VectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
+
+  // Serializes access to setting/revising/releasing CDCSDK retention barriers
+  mutable simple_spinlock cdcsdk_retention_barrier_lock_;
+  MonoTime cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
+
+  MonoDelta TEST_sleep_before_apply_intents_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

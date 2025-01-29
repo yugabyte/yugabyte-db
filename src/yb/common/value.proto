@@ -94,7 +94,7 @@ message QLValuePB {
 // To ensure compatibility between release versions, the numeric values of these datatypes cannot
 // be changed once the types are implemented and released.
 //
-// Make sure this is in sync with YBCPgDataType in ybc_pg_typedefs.h.
+// Make sure this is in sync with YbcPgDataType in ybc_pg_typedefs.h.
 enum PersistentDataType {
   // DataType constains continuous range of values and should be used in memory for efficiency.
   option (yb.rpc.lightweight_enum).name = "DataType";

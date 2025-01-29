@@ -47,7 +47,7 @@
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/util/yb_guc.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/util/flags.h"
 
 DECLARE_bool(use_node_hostname_for_local_tserver);
@@ -362,7 +362,7 @@ client::VersionedTablePartitionList BuildTablePartitionList(
 
 class PgClient::Impl : public BigDataFetcher {
  public:
-  Impl(const YBCPgAshConfig& ash_config,
+  Impl(const YbcPgAshConfig& ash_config,
        std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
     : heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)),
       ash_config_(ash_config),
@@ -1192,6 +1192,31 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req) {
+    tserver::PgExportTxnSnapshotResponsePB resp;
+    req->set_session_id(session_id_);
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::ExportTxnSnapshot, *req, resp,
+        ash::PggateRPC::kExportTxnSnapshot));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.snapshot_id();
+  }
+
+  Result<tserver::PgImportTxnSnapshotResponsePB> ImportTxnSnapshot(
+      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
+    tserver::PgImportTxnSnapshotRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_snapshot_id(snapshot_id.data(), snapshot_id.length());
+    *req.mutable_options() = std::move(options);
+
+    tserver::PgImportTxnSnapshotResponsePB resp;
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::ImportTxnSnapshot, req, resp,
+        ash::PggateRPC::kImportTxnSnapshot));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory() {
     tserver::PgActiveSessionHistoryRequestPB req;
     req.set_fetch_tserver_states(true);
@@ -1273,7 +1298,7 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
-    const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush) {
+    const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush) {
     cdc::UpdateAndPersistLSNRequestPB req;
     req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
@@ -1411,7 +1436,7 @@ class PgClient::Impl : public BigDataFetcher {
   std::array<int, 2> tablet_server_count_cache_;
   MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
 
-  YBCPgAshConfig ash_config_;
+  YbcPgAshConfig ash_config_;
   const WaitEventWatcher& wait_event_watcher_;
 
   uint64_t big_shared_memory_id_;
@@ -1430,7 +1455,7 @@ void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const 
   }
 }
 
-PgClient::PgClient(const YBCPgAshConfig& ash_config,
+PgClient::PgClient(const YbcPgAshConfig& ash_config,
                    std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
     : impl_(new Impl(ash_config, wait_event_watcher)) {}
 
@@ -1660,6 +1685,15 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgClient::GetReplicationSlot(
   return impl_->GetReplicationSlot(slot_name);
 }
 
+Result<std::string> PgClient::ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req) {
+  return impl_->ExportTxnSnapshot(req);
+}
+
+Result<tserver::PgImportTxnSnapshotResponsePB> PgClient::ImportTxnSnapshot(
+    std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
+  return impl_->ImportTxnSnapshot(snapshot_id, std::move(options));
+}
+
 Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory() {
   return impl_->ActiveSessionHistory();
 }
@@ -1688,7 +1722,7 @@ Result<cdc::GetConsistentChangesResponsePB> PgClient::GetConsistentChangesForCDC
 }
 
 Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
-    const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush) {
+    const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush) {
   return impl_->UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush);
 }
 

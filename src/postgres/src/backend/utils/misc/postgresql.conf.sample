@@ -442,6 +442,7 @@
 					# force_custom_plan
 #recursive_worktable_factor = 10.0	# range 0.001-1000000
 
+#yb_sampling_algorithm = block_based_sampling
 
 #------------------------------------------------------------------------------
 # REPORTING AND LOGGING

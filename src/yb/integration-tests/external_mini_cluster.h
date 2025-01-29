@@ -106,6 +106,10 @@ class ServerStatusPB;
 
 using yb::consensus::ChangeConfigType;
 
+void AppendCsvFlagValue(
+    std::vector<std::string>& flag_list, const std::string& flag_name,
+    const std::string& value_to_add);
+
 struct ExternalMiniClusterOptions {
 
   // Number of masters to start.
@@ -395,8 +399,8 @@ class ExternalMiniCluster : public MiniClusterBase {
     return yb_controller_servers_;
   }
 
-  // Get tablet server host.
-  HostPort pgsql_hostport(int node_index) const;
+  // Get table server host for ysql conn mgr or pg depending if test running with conn mgr.
+  HostPort ysql_hostport(int node_index) const;
 
   size_t num_tablet_servers() const {
     return tablet_servers_.size();
@@ -579,7 +583,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   void SetMaxGracefulShutdownWaitSec(int max_graceful_shutdown_wait_sec);
 
   Status CallYbAdmin(
-      const std::vector<std::string>& args, MonoDelta timeout = MonoDelta::FromSeconds(60));
+      const std::vector<std::string>& args, MonoDelta timeout = MonoDelta::FromSeconds(60),
+      std::string* output = nullptr);
 
  protected:
   friend class UpgradeTestBase;
@@ -625,6 +630,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   void SetDaemonBinPath(const std::string& bin_path);
   std::string GetMasterBinaryPath() const;
   std::string GetTServerBinaryPath() const;
+
+  // Checks whether user has enabled connection manager
+  bool IsYsqlConnMgrEnabledInTests() const;
 
   ExternalMiniClusterOptions opts_;
 
@@ -731,7 +739,7 @@ class ExternalTabletServer : public ExternalDaemon {
       const std::string& exe, const std::string& data_dir, uint16_t num_drives,
       std::string bind_host, uint16_t rpc_port, uint16_t http_port, uint16_t redis_rpc_port,
       uint16_t redis_http_port, uint16_t cql_rpc_port, uint16_t cql_http_port,
-      uint16_t pgsql_rpc_port, uint16_t pgsql_http_port,
+      uint16_t pgsql_rpc_port, uint16_t ysql_conn_mgr_rpc_port, uint16_t pgsql_http_port,
       const std::vector<HostPort>& master_addrs,
       const std::vector<std::string>& extra_flags);
 
@@ -770,6 +778,20 @@ class ExternalTabletServer : public ExternalDaemon {
   uint16_t pgsql_rpc_port() const {
     return pgsql_rpc_port_;
   }
+
+  // Returns either connection manager or postgres port.
+  uint16_t ysql_port() const {
+    if (ysql_conn_mgr_rpc_port_ != 0) {
+      // Connection manager is enabled
+      return ysql_conn_mgr_rpc_port_;
+    }
+    return pgsql_rpc_port_;
+  }
+
+  uint16_t ysql_conn_mgr_rpc_port() const {
+    return ysql_conn_mgr_rpc_port_;
+  }
+
   uint16_t pgsql_http_port() const {
     return pgsql_http_port_;
   }
@@ -809,6 +831,7 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t redis_rpc_port_;
   const uint16_t redis_http_port_;
   const uint16_t pgsql_rpc_port_;
+  const uint16_t ysql_conn_mgr_rpc_port_;
   const uint16_t pgsql_http_port_;
   const uint16_t cql_rpc_port_;
   const uint16_t cql_http_port_;

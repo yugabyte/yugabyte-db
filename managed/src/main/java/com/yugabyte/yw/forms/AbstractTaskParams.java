@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import static com.yugabyte.yw.common.Util.getYbaVersion;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.UUID;
 
@@ -40,7 +41,7 @@ public class AbstractTaskParams implements ITaskParams {
 
   @JsonIgnore
   @Override
-  public UUID getTargetUuid() {
+  public UUID getTargetUuid(TaskType taskType) {
     return null;
   }
 

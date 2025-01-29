@@ -58,6 +58,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -160,6 +161,23 @@ public class BackupUtil {
 
   public static boolean allSnapshotsSuccessful(List<SnapshotInfo> snapshotInfoList) {
     return !snapshotInfoList.stream().anyMatch(info -> info.getState().equals(State.FAILED));
+  }
+
+  public static long getMinRecoveryTimeForSchedule(
+      List<SnapshotInfo> snapshotInfoList, long retentionPeriodInSeconds) {
+    Optional<SnapshotInfo> oldestSuccessfulSnaptshoScheduletOptional =
+        snapshotInfoList.stream()
+            .filter(
+                i ->
+                    i.getState().equals(State.COMPLETE)
+                        && (i.getSnapshotTime()
+                            >= System.currentTimeMillis() - (retentionPeriodInSeconds * 1000L)))
+            .sorted(Comparator.comparing(SnapshotInfo::getSnapshotTime))
+            .findFirst();
+    if (oldestSuccessfulSnaptshoScheduletOptional.isPresent()) {
+      return oldestSuccessfulSnaptshoScheduletOptional.get().getSnapshotTime();
+    }
+    return 0L;
   }
 
   public static Metric buildMetricTemplate(

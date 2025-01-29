@@ -26,6 +26,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/docdb_statistics.h"
 
 #include "yb/rocksdb/util/statistics.h"
 
@@ -195,8 +196,7 @@ Status QLRocksDBStorage::GetIterator(
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op);
 
-  if (!(request.has_lower_bound() || request.has_upper_bound()) &&
-      range_components.size() == schema.num_range_key_columns() &&
+  if (range_components.size() == schema.num_range_key_columns() &&
       hashed_components.size() == schema.num_hash_key_columns()) {
     // Construct the scan spec basing on the RANGE condition as all range columns are specified.
     RETURN_NOT_OK(doc_iter->Init(
@@ -664,9 +664,11 @@ Result<YQLStorageIf::SampleBlocksData> QLRocksDBStorage::GetSampleBlocks(
     ScopedStats(const DocDB& doc_db_, int vlog_level_) : doc_db(doc_db_), vlog_level(vlog_level_) {}
 
     ~ScopedStats() {
-      std::stringstream ss;
-      docdb_stats.Dump(&ss);
-      VLOG(vlog_level) << "DocDB stats:\n" << ss.str();
+      if (VLOG_IS_ON(vlog_level)) {
+        std::stringstream ss;
+        docdb_stats.Dump(&ss);
+        VLOG(vlog_level) << "DocDB stats:\n" << ss.str();
+      }
       docdb_stats.MergeAndClear(
           doc_db.regular->GetOptions().statistics.get(),
           doc_db.intents->GetOptions().statistics.get());

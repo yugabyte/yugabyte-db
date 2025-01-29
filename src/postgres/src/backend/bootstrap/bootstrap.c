@@ -46,10 +46,10 @@
 #include "utils/relmapper.h"
 
 /* Yugabyte includes */
-#include "bootstrap/ybcbootstrap.h"
+#include "bootstrap/yb_bootstrap.h"
 #include "catalog/pg_database.h"
-#include "commands/ybccmds.h"
-#include "executor/ybcModifyTable.h"
+#include "commands/yb_cmds.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "storage/pg_shmem.h"
 
@@ -383,9 +383,9 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 						  "template1",
 						  InvalidOid,
 						  FirstGenbkiObjectId,
-						  false /* colocated */,
-						  NULL /* retry_on_oid_collision */,
-						  NULL /* yb_clone_info */);
+						  false /* colocated */ ,
+						  NULL /* retry_on_oid_collision */ ,
+						  NULL /* yb_clone_info */ );
 	}
 
 	/*
@@ -654,6 +654,7 @@ InsertOneTuple(void)
 	{
 		TupleTableSlot *slot = MakeSingleTupleTableSlot(tupDesc,
 														&TTSOpsHeapTuple);
+
 		ExecStoreHeapTuple(tuple, slot, false);
 		YBCExecuteInsert(boot_reldesc, slot, ONCONFLICT_NONE);
 		ExecDropSingleTupleTableSlot(slot);

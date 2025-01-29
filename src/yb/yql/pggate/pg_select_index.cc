@@ -17,6 +17,7 @@
 
 #include "yb/util/status_format.h"
 
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 
@@ -45,6 +46,7 @@ Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
   if (!ybctids) {
     return std::nullopt;
   }
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return YbctidBatch{*ybctids, read_req_->has_is_forward_scan()};
 }
 

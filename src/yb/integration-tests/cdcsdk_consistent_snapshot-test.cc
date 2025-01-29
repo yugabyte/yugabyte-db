@@ -149,15 +149,20 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
   }
   LOG(INFO) << "Asserted the stream creation failures";
 
+  auto condition = [this, tablet_peer]() -> Result<bool> {
+    auto list_streams_resp = VERIFY_RESULT(ListDBStreams());
+    if(list_streams_resp.streams_size() != 0) {
+      LOG(INFO) << "Non empty streams: " << list_streams_resp.ShortDebugString();
+      return false;
+    }
+
+    return tablet_peer->get_cdc_sdk_safe_time() == HybridTime::kInvalid;
+  };
+
   // Allow the background UpdatePeersAndMetrics to clean up the stream.
-  SleepFor(
-      MonoDelta::FromSeconds(4 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier));
-
-  LOG(INFO) << "Checking the list of DB streams.";
-  auto list_streams_resp = ASSERT_RESULT(ListDBStreams());
-  ASSERT_EQ(list_streams_resp.streams_size(), 0) << list_streams_resp.DebugString();
-
-  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  auto timeout = MonoDelta::FromSeconds(
+      10 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier);
+  ASSERT_OK(WaitFor(condition, timeout, "Wait streams cleaned"));
 
   // Future stream creations must succeed. Disable running UpdatePeersAndMetrics now so that it
   // doesn't interfere with the safe time.
@@ -181,7 +186,7 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
   ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
             tablet_peer->get_cdc_min_replicated_index());
 
-  list_streams_resp = ASSERT_RESULT(ListDBStreams());
+  auto list_streams_resp = ASSERT_RESULT(ListDBStreams());
   ASSERT_EQ(list_streams_resp.streams_size(), 1);
 
   yb::SyncPoint::GetInstance()->DisableProcessing();

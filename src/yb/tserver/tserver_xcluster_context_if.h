@@ -31,10 +31,10 @@ class TserverXClusterContextIf {
 
   virtual Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const = 0;
 
-  virtual bool IsReadOnlyMode(const NamespaceId namespace_id) const = 0;
+  virtual bool IsReadOnlyMode(const NamespaceId& namespace_id) const = 0;
 
   virtual bool SafeTimeComputationRequired() const = 0;
-  virtual bool SafeTimeComputationRequired(const NamespaceId namespace_id) const = 0;
+  virtual bool SafeTimeComputationRequired(const NamespaceId& namespace_id) const = 0;
 
   virtual Status SetSourceTableMappingForCreateTable(
       const YsqlFullTableName& table_name, const PgObjectId& producer_table_id) = 0;

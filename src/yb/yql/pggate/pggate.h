@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -55,6 +56,7 @@
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_tools.h"
+#include "yb/yql/pggate/pg_type.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -92,52 +94,36 @@ struct PgMemctxHasher {
 };
 
 //--------------------------------------------------------------------------------------------------
-
-struct PgApiContext {
+// Implements support for CAPI.
+class PgApiImpl {
+ public:
   struct MessengerHolder {
     std::unique_ptr<rpc::SecureContext> security_context;
     std::unique_ptr<rpc::Messenger> messenger;
 
     MessengerHolder(
-        std::unique_ptr<rpc::SecureContext> security_context,
-        std::unique_ptr<rpc::Messenger> messenger);
-    MessengerHolder(MessengerHolder&&);
-
+        std::unique_ptr<rpc::SecureContext>&& security_context_,
+        std::unique_ptr<rpc::Messenger>&& messenger_);
+    MessengerHolder(MessengerHolder&& rhs);
     ~MessengerHolder();
   };
 
-  std::unique_ptr<MetricRegistry> metric_registry;
-  scoped_refptr<MetricEntity> metric_entity;
-  std::shared_ptr<MemTracker> mem_tracker;
-  MessengerHolder messenger_holder;
-  std::unique_ptr<rpc::ProxyCache> proxy_cache;
+  PgApiImpl(
+      YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
+      std::optional<uint64_t> session_id, const YbcPgAshConfig& ash_config);
 
-  PgApiContext();
-  PgApiContext(PgApiContext&&);
-  ~PgApiContext();
-};
-
-//--------------------------------------------------------------------------------------------------
-// Implements support for CAPI.
-class PgApiImpl {
- public:
-  PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
-            YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
-            const YBCPgAshConfig& ash_config);
   ~PgApiImpl();
 
-  const YBCPgCallbacks* pg_callbacks() {
+  const YbcPgCallbacks* pg_callbacks() {
     return &pg_callbacks_;
   }
-
-  Slice GetYbctidAsSlice(uint64_t ybctid);
 
   // Interrupt aborts all pending RPCs immediately to unblock main thread.
   void Interrupt();
   void ResetCatalogReadTime();
 
   // Initialize a session to process statements that come from the same client connection.
-  Status InitSession(YBCPgExecStatsState& session_stats, bool is_binary_upgrade);
+  Status InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
 
   uint64_t GetSessionID() const;
 
@@ -174,9 +160,9 @@ class PgApiImpl {
   pid_t GetLocalTServerPid() const;
 
   Status NewTupleExpr(
-    YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
-    const YBCPgTypeAttrs *type_attrs, int num_elems,
-    const YBCPgExpr *elems, YBCPgExpr *expr_handle);
+    YbcPgStatement stmt, const YbcPgTypeEntity *tuple_type_entity,
+    const YbcPgTypeAttrs *type_attrs, int num_elems,
+    const YbcPgExpr *elems, YbcPgExpr *expr_handle);
 
   // Setup the table to store sequences data.
   Status CreateSequencesDataTable();
@@ -227,8 +213,7 @@ class PgApiImpl {
 
   void DeleteStatement(PgStatement *handle);
 
-  // Search for type_entity.
-  const YBCPgTypeEntity *FindTypeEntity(int type_oid);
+  const PgTypeInfo& pg_types() const { return pg_types_; }
 
   //------------------------------------------------------------------------------------------------
   // Determine whether the given database is colocated.
@@ -241,7 +226,7 @@ class PgApiImpl {
                            PgOid source_database_oid,
                            PgOid next_oid,
                            const bool colocated,
-                           YbCloneInfo *yb_clone_info,
+                           YbcCloneInfo *yb_clone_info,
                            PgStatement **handle);
   Status ExecCreateDatabase(PgStatement *handle);
 
@@ -304,7 +289,7 @@ class PgApiImpl {
                         bool is_shared_table,
                         bool is_sys_catalog_table,
                         bool if_not_exist,
-                        PgYbrowidMode ybrowid_mode,
+                        YbcPgYbrowidMode ybrowid_mode,
                         bool is_colocated_via_database,
                         const PgObjectId& tablegroup_oid,
                         const ColocationId colocation_id,
@@ -316,7 +301,7 @@ class PgApiImpl {
                         PgStatement **handle);
 
   Status CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
-                              const YBCPgTypeEntity *attr_type, bool is_hash,
+                              const YbcPgTypeEntity *attr_type, bool is_hash,
                               bool is_range, bool is_desc, bool is_nulls_first);
 
   Status CreateTableSetNumTablets(PgStatement *handle, int32_t num_tablets);
@@ -329,8 +314,8 @@ class PgApiImpl {
                        PgStatement **handle);
 
   Status AlterTableAddColumn(PgStatement *handle, const char *name,
-                             int order, const YBCPgTypeEntity *attr_type,
-                             YBCPgExpr missing_value);
+                             int order, const YbcPgTypeEntity *attr_type,
+                             YbcPgExpr missing_value);
 
   Status AlterTableRenameColumn(PgStatement *handle, const char *oldname,
                                 const char *newname);
@@ -366,7 +351,7 @@ class PgApiImpl {
 
   Result<tserver::PgListClonesResponsePB> GetDatabaseClones();
 
-  Result<YBCPgColumnInfo> GetColumnInfo(YBCPgTableDesc table_desc,
+  Result<YbcPgColumnInfo> GetColumnInfo(YbcPgTableDesc table_desc,
                                         int16_t attr_number);
 
   Result<bool> DmlModifiesRow(PgStatement* handle);
@@ -392,22 +377,22 @@ class PgApiImpl {
                         bool if_not_exist,
                         bool is_colocated_via_database,
                         const PgObjectId& tablegroup_oid,
-                        const YBCPgOid& colocation_id,
+                        const YbcPgOid& colocation_id,
                         const PgObjectId& tablespace_oid,
                         const PgObjectId& pg_table_oid,
                         const PgObjectId& old_relfilenode_oid,
                         PgStatement **handle);
 
   Status CreateIndexAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
-                              const YBCPgTypeEntity *attr_type, bool is_hash,
+                              const YbcPgTypeEntity *attr_type, bool is_hash,
                               bool is_range, bool is_desc, bool is_nulls_first);
 
   Status CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tablets);
 
-  Status CreateIndexSetVectorOptions(PgStatement *handle, YbPgVectorIdxOptions *options);
+  Status CreateIndexSetVectorOptions(PgStatement *handle, YbcPgVectorIdxOptions *options);
 
   Status CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
-                                YBCPgTypeEntity **types, uint64_t *data);
+                                YbcPgTypeEntity **types, uint64_t *data);
 
   Status ExecCreateIndex(PgStatement *handle);
 
@@ -426,13 +411,13 @@ class PgApiImpl {
 
   Status BackfillIndex(const PgObjectId& table_id);
 
-  Status NewDropSequence(const YBCPgOid database_oid,
-                         const YBCPgOid sequence_oid,
+  Status NewDropSequence(const YbcPgOid database_oid,
+                         const YbcPgOid sequence_oid,
                          PgStatement **handle);
 
   Status ExecDropSequence(PgStatement *handle);
 
-  Status NewDropDBSequences(const YBCPgOid database_oid,
+  Status NewDropDBSequences(const YbcPgOid database_oid,
                             PgStatement **handle);
 
   //------------------------------------------------------------------------------------------------
@@ -460,61 +445,61 @@ class PgApiImpl {
   //   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
   //     contain bind-variables (placeholders) and constants whose values can be updated for each
   //     execution of the same allocated statement.
-  Status DmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
-  Status DmlBindColumnCondBetween(YBCPgStatement handle,
+  Status DmlBindColumn(YbcPgStatement handle, int attr_num, YbcPgExpr attr_value);
+  Status DmlBindColumnCondBetween(YbcPgStatement handle,
                                   int attr_num,
                                   PgExpr *attr_value,
                                   bool start_inclusive,
                                   PgExpr *attr_value_end,
                                   bool end_inclusive);
-  Status DmlBindColumnCondIn(YBCPgStatement handle,
-                             YBCPgExpr lhs,
+  Status DmlBindColumnCondIn(YbcPgStatement handle,
+                             YbcPgExpr lhs,
                              int n_attr_values,
-                             YBCPgExpr *attr_values);
+                             YbcPgExpr *attr_values);
   Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
-  Status DmlBindRow(YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count);
+  Status DmlBindRow(YbcPgStatement handle, uint64_t ybctid, YbcBindColumn* columns, int count);
 
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
-  Status DmlBindRange(YBCPgStatement handle,
+  Status DmlBindRange(YbcPgStatement handle,
                       Slice lower_bound,
                       bool lower_bound_inclusive,
                       Slice upper_bound,
                       bool upper_bound_inclusive);
 
-  Status DmlAddRowUpperBound(YBCPgStatement handle,
+  Status DmlAddRowUpperBound(YbcPgStatement handle,
                              int n_col_values,
-                             YBCPgExpr *col_values,
+                             YbcPgExpr *col_values,
                              bool is_inclusive);
 
-  Status DmlAddRowLowerBound(YBCPgStatement handle,
+  Status DmlAddRowLowerBound(YbcPgStatement handle,
                              int n_col_values,
-                             YBCPgExpr *col_values,
+                             YbcPgExpr *col_values,
                              bool is_inclusive);
 
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
-  Status DmlBindTable(YBCPgStatement handle);
+  Status DmlBindTable(YbcPgStatement handle);
 
   // Utility method to get the info for column 'attr_num'.
-  Result<YBCPgColumnInfo> DmlGetColumnInfo(YBCPgStatement handle, int attr_num);
+  Result<YbcPgColumnInfo> DmlGetColumnInfo(YbcPgStatement handle, int attr_num);
 
   // API for SET clause.
-  Status DmlAssignColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+  Status DmlAssignColumn(YbcPgStatement handle, int attr_num, YbcPgExpr attr_value);
 
   // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
   // by YBCPgDmlBindColumn().
   Status DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values, bool *isnulls,
-                  PgSysColumns *syscols, bool *has_data);
+                  YbcPgSysColumns *syscols, bool *has_data);
 
   // Utility method that checks stmt type and calls exec insert, update, or delete internally.
   Status DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count);
 
   // This function adds a primary column to be used in the construction of the tuple id (ybctid).
   Status DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
-                               bool is_null, const YBCPgTypeEntity *type_entity);
+                               bool is_null, const YbcPgTypeEntity *type_entity);
 
-  Result<dockv::KeyBytes> BuildTupleId(const YBCPgYBTupleIdDescriptor& descr);
+  Result<dockv::KeyBytes> BuildTupleId(const YbcPgYBTupleIdDescriptor& descr);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.
@@ -537,13 +522,13 @@ class PgApiImpl {
   Result<PgStatement*> NewInsertBlock(
       const PgObjectId& table_id,
       bool is_region_local,
-      YBCPgTransactionSetting transaction_setting);
+      YbcPgTransactionSetting transaction_setting);
 
   Status NewInsert(const PgObjectId& table_id,
                    bool is_region_local,
                    PgStatement **handle,
-                   YBCPgTransactionSetting transaction_setting =
-                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting =
+                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -558,8 +543,8 @@ class PgApiImpl {
   Status NewUpdate(const PgObjectId& table_id,
                    bool is_region_local,
                    PgStatement **handle,
-                   YBCPgTransactionSetting transaction_setting =
-                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting =
+                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecUpdate(PgStatement *handle);
 
@@ -568,8 +553,8 @@ class PgApiImpl {
   Status NewDelete(const PgObjectId& table_id,
                    bool is_region_local,
                    PgStatement **handle,
-                   YBCPgTransactionSetting transaction_setting =
-                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting =
+                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecDelete(PgStatement *handle);
 
@@ -580,8 +565,8 @@ class PgApiImpl {
   Status NewTruncateColocated(const PgObjectId& table_id,
                               bool is_region_local,
                               PgStatement **handle,
-                              YBCPgTransactionSetting transaction_setting =
-                                  YBCPgTransactionSetting::YB_TRANSACTIONAL);
+                              YbcPgTransactionSetting transaction_setting =
+                                  YbcPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecTruncateColocated(PgStatement *handle);
 
@@ -589,7 +574,7 @@ class PgApiImpl {
   // Select.
   Status NewSelect(
       const PgObjectId& table_id, const PgObjectId& index_id,
-      const PgPrepareParameters* prepare_params, bool is_region_local, PgStatement** handle);
+      const YbcPgPrepareParameters* prepare_params, bool is_region_local, PgStatement** handle);
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
@@ -597,12 +582,12 @@ class PgApiImpl {
 
   Status SetHashBounds(PgStatement *handle, uint16_t low_bound, uint16_t high_bound);
 
-  Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
+  Status ExecSelect(PgStatement *handle, const YbcPgExecParameters *exec_params);
   Result<bool> RetrieveYbctids(
-      PgStatement *handle, const YBCPgExecParameters *exec_params, int natts, SliceVector *ybctids,
-      size_t *count);
-  Status FetchRequestedYbctids(PgStatement *handle, const PgExecParameters *exec_params,
-                               ConstSliceVector ybctids);
+      PgStatement *handle, const YbcPgExecParameters *exec_params, int natts,
+      YbcSliceVector *ybctids, size_t *count);
+  Status FetchRequestedYbctids(PgStatement *handle, const YbcPgExecParameters *exec_params,
+                               YbcConstSliceVector ybctids);
 
   Status DmlANNBindVector(PgStatement *handle, PgExpr *vector);
 
@@ -615,12 +600,12 @@ class PgApiImpl {
   Status NewSRF(PgFunction **handle, PgFunctionDataProcessor processor);
 
   Status AddFunctionParam(
-      PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
+      PgFunction *handle, const std::string& name, const YbcPgTypeEntity *type_entity,
       uint64_t datum, bool is_null);
 
   Status AddFunctionTarget(
-      PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
-      const YBCPgTypeAttrs type_attrs);
+      PgFunction *handle, const std::string& name, const YbcPgTypeEntity *type_entity,
+      const YbcPgTypeAttrs type_attrs);
 
   Status FinalizeFunctionTargets(PgFunction *handle);
 
@@ -665,28 +650,28 @@ class PgApiImpl {
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
   double GetTransactionPriority() const;
-  TxnPriorityRequirement GetTransactionPriorityType() const;
+  YbcTxnPriorityRequirement GetTransactionPriorityType() const;
   Result<Uuid> GetActiveTransaction() const;
-  Status GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_infos);
+  Status GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_infos);
   bool IsDdlMode() const;
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
   // Column reference.
   Status NewColumnRef(
-      PgStatement *handle, int attr_num, const PgTypeEntity *type_entity,
-      bool collate_is_valid_non_c, const PgTypeAttrs *type_attrs, PgExpr **expr_handle);
+      PgStatement *handle, int attr_num, const YbcPgTypeEntity *type_entity,
+      bool collate_is_valid_non_c, const YbcPgTypeAttrs *type_attrs, PgExpr **expr_handle);
 
   // Constant expressions.
   Status NewConstant(
-      YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
-      const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
+      YbcPgStatement stmt, const YbcPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+      const char *collation_sortkey, uint64_t datum, bool is_null, YbcPgExpr *expr_handle);
   Status NewConstantVirtual(
-      YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-      YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
+      YbcPgStatement stmt, const YbcPgTypeEntity *type_entity,
+      YbcPgDatumKind datum_kind, YbcPgExpr *expr_handle);
   Status NewConstantOp(
-      YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
-      const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle,
+      YbcPgStatement stmt, const YbcPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+      const char *collation_sortkey, uint64_t datum, bool is_null, YbcPgExpr *expr_handle,
       bool is_gt);
 
   // TODO(neil) UpdateConstant should be merged into one.
@@ -705,7 +690,7 @@ class PgApiImpl {
 
   // Operators.
   Status NewOperator(
-      PgStatement *stmt, const char *opname, const YBCPgTypeEntity *type_entity,
+      PgStatement *stmt, const char *opname, const YbcPgTypeEntity *type_entity,
       bool collate_is_valid_non_c, PgExpr **op_handle);
   Status OperatorAppendArg(PgExpr *op_handle, PgExpr *arg);
 
@@ -717,18 +702,18 @@ class PgApiImpl {
 
   Status AddExplicitRowLockIntent(
       const PgObjectId& table_id, const Slice& ybctid,
-      const PgExplicitRowLockParams& params, bool is_region_local,
-      PgExplicitRowLockErrorInfo& error_info);
-  Status FlushExplicitRowLockIntents(PgExplicitRowLockErrorInfo& error_info);
+      const YbcPgExplicitRowLockParams& params, bool is_region_local,
+      YbcPgExplicitRowLockErrorInfo& error_info);
+  Status FlushExplicitRowLockIntents(YbcPgExplicitRowLockErrorInfo& error_info);
 
   // INSERT ... ON CONFLICT batching ---------------------------------------------------------------
   Status AddInsertOnConflictKey(
-      PgOid table_id, const Slice& ybctid, void* state, const YBCPgInsertOnConflictKeyInfo& info);
-  YBCPgInsertOnConflictKeyState InsertOnConflictKeyExists(
+      PgOid table_id, const Slice& ybctid, void* state, const YbcPgInsertOnConflictKeyInfo& info);
+  YbcPgInsertOnConflictKeyState InsertOnConflictKeyExists(
       PgOid table_id, const Slice& ybctid, void* state);
-  Result<YBCPgInsertOnConflictKeyInfo> DeleteInsertOnConflictKey(
+  Result<YbcPgInsertOnConflictKeyInfo> DeleteInsertOnConflictKey(
       PgOid table_id, const Slice& ybctid, void* state);
-  Result<YBCPgInsertOnConflictKeyInfo> DeleteNextInsertOnConflictKey(void* state);
+  Result<YbcPgInsertOnConflictKeyInfo> DeleteNextInsertOnConflictKey(void* state);
   uint64_t GetInsertOnConflictKeyCount(void* state);
   void AddInsertOnConflictKeyIntent(PgOid table_id, const Slice& ybctid);
   void ClearAllInsertOnConflictCaches();
@@ -755,7 +740,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // System Validation.
-  Status ValidatePlacement(const char *placement_info);
+  Status ValidatePlacement(const char *placement_info, bool check_satisfiable);
 
   Result<bool> CheckIfPitrActive();
 
@@ -769,9 +754,9 @@ class PgApiImpl {
 
   MemTracker& GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
 
-  void DumpSessionState(YBCPgSessionState* session_data);
+  void DumpSessionState(YbcPgSessionState* session_data);
 
-  void RestoreSessionState(const YBCPgSessionState& session_data);
+  void RestoreSessionState(const YbcPgSessionState& session_data);
 
   void RollbackSubTransactionScopedSessionState();
   void RollbackTransactionScopedSessionState();
@@ -784,8 +769,8 @@ class PgApiImpl {
   Status NewCreateReplicationSlot(const char *slot_name,
                                   const char *plugin_name,
                                   const PgOid database_oid,
-                                  YBCPgReplicationSlotSnapshotAction snapshot_action,
-                                  YBCLsnType lsn_type,
+                                  YbcPgReplicationSlotSnapshotAction snapshot_action,
+                                  YbcLsnType lsn_type,
                                   PgStatement **handle);
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);
@@ -807,12 +792,15 @@ class PgApiImpl {
       const std::string& stream_id);
 
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
-      const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush);
+      const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);
 
   // Drop Replication Slot.
   Status NewDropReplicationSlot(const char *slot_name,
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
+
+  Result<std::string> ExportSnapshot(const YbcPgTxnSnapshot& snapshot);
+  Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
@@ -828,26 +816,23 @@ class PgApiImpl {
   [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);
 
-  void ForceAllowCatalogModifications(bool allowed);
+  void DdlEnableForceCatalogModification();
 
   //----------------------------------------------------------------------------------------------
   // Advisory Locks.
   //----------------------------------------------------------------------------------------------
 
   Status AcquireAdvisoryLock(
-      const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode, bool wait, bool session);
-  Status ReleaseAdvisoryLock(const YBAdvisoryLockId& lock_id, YBAdvisoryLockMode mode);
+      const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);
+  Status ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode);
   Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
 
  private:
-  Result<bool> RetrieveYbctidsImpl(
-      PgDmlRead& dml_read, int natts, size_t max_mem_bytes, std::vector<Slice>& ybctids);
-
   class Interrupter;
 
   class TupleIdBuilder {
    public:
-    Result<dockv::KeyBytes> Build(PgSession* session, const YBCPgYBTupleIdDescriptor& descr);
+    Result<dockv::KeyBytes> Build(PgSession* session, const YbcPgYBTupleIdDescriptor& descr);
 
    private:
     void Prepare();
@@ -857,6 +842,8 @@ class PgApiImpl {
     size_t counter_ = 0;
   };
 
+  PgTypeInfo pg_types_;
+
   // Metrics.
   std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
@@ -864,12 +851,12 @@ class PgApiImpl {
   // Memory tracker.
   std::shared_ptr<MemTracker> mem_tracker_;
 
-  PgApiContext::MessengerHolder messenger_holder_;
+  MessengerHolder messenger_holder_;
   std::unique_ptr<Interrupter> interrupter_;
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
-  YBCPgCallbacks pg_callbacks_;
+  YbcPgCallbacks pg_callbacks_;
 
   const WaitEventWatcher wait_event_watcher_;
 
@@ -882,9 +869,6 @@ class PgApiImpl {
   tserver::TServerSharedObject tserver_shared_object_;
 
   scoped_refptr<PgTxnManager> pg_txn_manager_;
-
-  // Mapping table of YugaByte and PostgreSQL datatypes.
-  std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
 
   scoped_refptr<PgSession> pg_session_;
   std::optional<PgSysTablePrefetcher> pg_sys_table_prefetcher_;

@@ -25,21 +25,21 @@ The default (auto-generated) configuration in the `ysql_hba.conf` file depends o
 The four default cases are shown in the following table.
 
 | | Auth disabled | Auth enabled |
-| ---|---|---|
+| :--- | :--- | :--- |
 | TLS disabled | `host all all all trust`</br>(no ssl, no password) | `host all all all md5`</br>(no ssl, password required) |
 | TLS enabled | `hostssl all all all trust`</br>(require ssl, no password) | `hostssl all all all md5`</br>(require ssl and password) |
 
-{{< note title="Note" >}}
-Before version 2.5.2, when TLS was enabled the default was to use the more strict `cert` option when auth was disabled, and `md5 clientcert=1` (effectively md5 + cert) when auth was enabled.
-{{< /note >}}
-
 Additionally, `ysql_hba_conf_csv` can be used to manually configure a custom HBA configuration.
 
-For instance, to use TLS with both `md5` and `cert` authentication, you can set the `ysql_hba_conf_csv` flag as follows:
+For instance, to use TLS with both password authentication and client certificate verification, you can set the `ysql_hba_conf_csv` flag as follows:
 
 ```sh
-hostssl all all all md5 clientcert=1
+hostssl all all all md5 clientcert=verify-full
 ```
+
+{{< note title="Note" >}}
+To use the client certificate only for verification (signed by the CA) but not for authentication, you can set `clientcert` to verify-ca.
+{{< /note >}}
 
 The `ysql_hba_conf_csv` rules are added above the auto-generated rules in the `ysql_hba.conf` file, so if they do not match the connection type, database, user, or host, then the auto-generated rules (that is, from the table above) may still be used.
 
@@ -93,12 +93,12 @@ $ ./bin/ysqlsh "sslmode=require"
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
 
-The default ysqlsh SSL mode is `prefer` (refer to [SSL Support](https://www.postgresql.org/docs/11/libpq-ssl.html) in the PostgreSQL documentation), which tries SSL first, but falls back to `disable` if the server does not support it.
+The default ysqlsh SSL mode is `prefer` (refer to [SSL Support](https://www.postgresql.org/docs/15/libpq-ssl.html) in the PostgreSQL documentation), which tries SSL first, but falls back to `disable` if the server does not support it.
 
 In this case, a plain ysqlsh with no options will work and use encryption:
 
@@ -107,7 +107,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -132,7 +132,7 @@ $ ./bin/ysqlsh
 
 ```output
 Password for user yugabyte:
-ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -142,10 +142,6 @@ The other modes (that is, `sslmode=require` or `disable`) behave analogously.
 ### TLS with authentication via certificate
 
 This configuration requires the client to use client-to-server encryption and authenticate with the appropriate certificate to connect.
-
-{{< note title="Note" >}}
-Before version 2.5.2, this was the default for TLS without authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
-{{< /note >}}
 
 To create the database, execute the following command:
 
@@ -173,7 +169,7 @@ $ ./bin/ysqlsh "sslcert=$CERTS/node.127.0.0.1.crt sslkey=$CERTS/node.127.0.0.1.k
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -182,17 +178,12 @@ Type "help" for help.
 
 This configuration requires the client to use client-to-server encryption and authenticate with both the appropriate certificate and the password to connect.
 
-{{< note title="Note" >}}
-Before version 2.5.2, this was the default for TLS with authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
-
-{{< /note >}}
-
 To create the database, execute the following command:
 
 ```sh
 $ ./bin/yb-ctl destroy && ./bin/yb-ctl create \
     --tserver_flags="$ENABLE_TLS,ysql_enable_auth=true" \
-    --ysql_hba_conf_csv="hostssl all all all md5 clientcert=1"
+    --ysql_hba_conf_csv="hostssl all all all md5 clientcert=verify-full"
 ```
 
 The `ysql_enable_auth=true` flag is redundant in this case, but included to demonstrate the ability to override the auto-generated configuration using `ysql_hba_conf_csv`.
@@ -216,7 +207,7 @@ $ ./bin/ysqlsh "sslcert=$CERTS/node.127.0.0.1.crt sslkey=$CERTS/node.127.0.0.1.k
 
 ```output
 Password for user yugabyte:
-ysqlsh (11.2-YB-{{<yb-version version="preview" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```

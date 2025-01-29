@@ -27,14 +27,6 @@ scoped_refptr<TableInfo> TableIndex::FindTableOrNull(const TableId& id) const {
   return *result;
 }
 
-TableIndex::TablesRange TableIndex::GetAllTables() const {
-  return tables_.get<ColocatedUserTableTag>();
-}
-
-TableIndex::TablesRange TableIndex::GetPrimaryTables() const {
-  return tables_.get<ColocatedUserTableTag>().equal_range(false /* is_colocated_user_table */);
-}
-
 void TableIndex::Clear() {
   tables_.clear();
 }

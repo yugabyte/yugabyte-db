@@ -111,9 +111,4 @@ DocDbAwareV3FilterPolicy::GetKeyTransformer() const {
   return &DocKeyComponentsExtractor<dockv::DocKeyPart::kUpToHashOrFirstRange>::GetInstance();
 }
 
-Result<Slice> ExtractFilterPrefixFromKey(Slice key) {
-  return key.Prefix(VERIFY_RESULT(dockv::DocKey::EncodedSize(
-      key, dockv::DocKeyPart::kUpToHashOrFirstRange)));
-}
-
 }   // namespace yb::docdb

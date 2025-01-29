@@ -1064,7 +1064,7 @@ TEST_F_EX(PgIndexBackfillTest,
   {
     auto auth_conn = ASSERT_RESULT(PGConnBuilder({
         .host = pg_ts->bind_host(),
-        .port = pg_ts->pgsql_rpc_port(),
+        .port = pg_ts->ysql_port(),
         .dbname = this->kAuthDbName,
         .user = "yugabyte",
         .password = "yugabyte"
@@ -1656,7 +1656,7 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Create connection to a different tablet server from the one running CREATE INDEX";
   PGConn diff_ts_conn = ASSERT_RESULT(PGConnBuilder({
     .host = diff_ts->bind_host(),
-    .port = diff_ts->pgsql_rpc_port(),
+    .port = diff_ts->ysql_port(),
     .dbname = kDatabaseName
   }).Connect());
 

@@ -42,13 +42,13 @@ class PgDmlWrite : public PgDml {
 
   Status SetWriteTime(const HybridTime& write_time);
 
-  Status BindRow(uint64_t ybctid, YBCBindColumn* columns, int count);
+  Status BindRow(uint64_t ybctid, YbcBindColumn* columns, int count);
 
   [[nodiscard]] bool packed() const { return packed_; }
 
  protected:
   PgDmlWrite(
-      const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting,
+      const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting,
       bool packed = false);
 
   // Prepare write operations.
@@ -66,7 +66,7 @@ class PgDmlWrite : public PgDml {
   // Protobuf code.
   std::shared_ptr<LWPgsqlWriteRequestPB> write_req_;
 
-  const YBCPgTransactionSetting transaction_setting_;
+  const YbcPgTransactionSetting transaction_setting_;
 
   int32_t rows_affected_count_ = 0;
 
@@ -79,7 +79,7 @@ class PgDmlWrite : public PgDml {
 
   virtual PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const = 0;
 
-  Status BindPackedRow(uint64_t ybctid, YBCBindColumn* columns, int count);
+  Status BindPackedRow(uint64_t ybctid, YbcBindColumn* columns, int count);
 };
 
 }  // namespace yb::pggate

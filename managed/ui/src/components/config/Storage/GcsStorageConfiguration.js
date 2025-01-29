@@ -94,7 +94,7 @@ class GcsStorageConfiguration extends Component {
                 component={YBToggle}
                 onToggle={gcpIamToggle}
                 isReadOnly={this.disableInputFields(isEdited, 'USE_GCP_IAM')}
-                subLabel="Whether to use GKE Service Account for backup."
+                subLabel="Whether to use IAM role for backup on GCS."
               />
             </Col>
             <Col lg={1} className="config-zone-tooltip">

@@ -324,7 +324,7 @@ Status Master::RegisterServices() {
       std::make_shared<tserver::PgClientServiceImpl>(
           *master_tablet_server_, client_future(), clock(),
           std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
-          fs_manager_->uuid(), &options(), nullptr /* xcluster_context */)));
+          fs_manager_->uuid(), &options())));
 
   return Status::OK();
 }

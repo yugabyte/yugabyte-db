@@ -204,7 +204,7 @@ Create a new database user, and assign the necessary user permissions.
 
     CREATE TABLE ybvoyager_metadata.ybvoyager_imported_event_count_by_table (
                   migration_uuid VARCHAR2(36),
-                  table_name VARCHAR2(250),
+                  table_name VARCHAR2(4000),
                   channel_no INT,
                   total_events NUMBER(19),
                   num_inserts NUMBER(19),

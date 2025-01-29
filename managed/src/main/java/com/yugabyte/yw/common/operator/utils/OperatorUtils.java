@@ -126,9 +126,13 @@ public class OperatorUtils {
   /*--- YBUniverse related help methods ---*/
 
   public boolean shouldUpdateYbUniverse(
-      UserIntent currentUserIntent, int newNumNodes, DeviceInfo newDeviceInfo) {
+      UserIntent currentUserIntent,
+      int newNumNodes,
+      DeviceInfo newDeviceInfo,
+      DeviceInfo newMasterDeviceInfo) {
     return !(currentUserIntent.numNodes == newNumNodes)
-        || !currentUserIntent.deviceInfo.volumeSize.equals(newDeviceInfo.volumeSize);
+        || !currentUserIntent.deviceInfo.volumeSize.equals(newDeviceInfo.volumeSize)
+        || !currentUserIntent.masterDeviceInfo.volumeSize.equals(newMasterDeviceInfo.volumeSize);
   }
 
   public String getKubernetesOverridesString(
@@ -229,6 +233,36 @@ public class OperatorUtils {
     return di;
   }
 
+  public DeviceInfo mapMasterDeviceInfo(
+      io.yugabyte.operator.v1alpha1.ybuniversespec.MasterDeviceInfo spec) {
+    DeviceInfo di = new DeviceInfo();
+
+    if (spec == null) {
+      return defaultMasterDeviceInfo();
+    }
+
+    Long numVols = spec.getNumVolumes();
+    if (numVols != null) {
+      di.numVolumes = numVols.intValue();
+    }
+
+    Long volSize = spec.getVolumeSize();
+    if (volSize != null) {
+      di.volumeSize = volSize.intValue();
+    }
+
+    di.storageClass = spec.getStorageClass();
+
+    return di;
+  }
+
+  public DeviceInfo defaultMasterDeviceInfo() {
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 50;
+    masterDeviceInfo.numVolumes = 1;
+    return masterDeviceInfo;
+  }
+
   public boolean universeAndSpecMismatch(Customer cust, Universe u, YBUniverse ybUniverse) {
     return universeAndSpecMismatch(cust, u, ybUniverse, null);
   }
@@ -243,6 +277,11 @@ public class OperatorUtils {
 
     UserIntent currentUserIntent = universeDetails.getPrimaryCluster().userIntent;
 
+    // Handle previously unset masterDeviceInfo
+    if (currentUserIntent.masterDeviceInfo == null) {
+      currentUserIntent.masterDeviceInfo = defaultMasterDeviceInfo();
+    }
+
     Provider provider =
         Provider.getOrBadRequest(cust.getUuid(), UUID.fromString(currentUserIntent.provider));
     // Get all required params
@@ -251,6 +290,8 @@ public class OperatorUtils {
         getKubernetesOverridesString(ybUniverse.getSpec().getKubernetesOverrides());
     String incomingYbSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
     DeviceInfo incomingDeviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
+    DeviceInfo incomingMasterDeviceInfo =
+        mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
     int incomingNumNodes = (int) ybUniverse.getSpec().getNumNodes().longValue();
 
     if (prevTaskToRerun != null) {
@@ -260,7 +301,10 @@ public class OperatorUtils {
           UniverseDefinitionTaskParams prevTaskParams =
               Json.fromJson(prevTaskToRerun.getTaskParams(), UniverseDefinitionTaskParams.class);
           return shouldUpdateYbUniverse(
-              prevTaskParams.getPrimaryCluster().userIntent, incomingNumNodes, incomingDeviceInfo);
+              prevTaskParams.getPrimaryCluster().userIntent,
+              incomingNumNodes,
+              incomingDeviceInfo,
+              incomingMasterDeviceInfo);
         case KubernetesOverridesUpgrade:
           KubernetesOverridesUpgradeParams overridesUpgradeTaskParams =
               Json.fromJson(
@@ -286,7 +330,8 @@ public class OperatorUtils {
                 .userIntent
                 .specificGFlags /*Current gflags */,
             specGFlags)
-        || shouldUpdateYbUniverse(currentUserIntent, incomingNumNodes, incomingDeviceInfo)
+        || shouldUpdateYbUniverse(
+            currentUserIntent, incomingNumNodes, incomingDeviceInfo, incomingMasterDeviceInfo)
         || !StringUtils.equals(currentUserIntent.ybSoftwareVersion, incomingYbSoftwareVersion);
   }
 

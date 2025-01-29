@@ -20,6 +20,10 @@ If your universe is running on a [deprecated OS](../../../reference/configuratio
 
 {{< /note >}}
 
+{{< warning title="Upgrading YugabyteDB to v2.25" >}}
+Upgrading universes to YugabyteDB v2.25 from previous preview versions is not yet available.
+{{< /warning >}}
+
 When performing a database upgrade, do the following:
 
 1. [Upgrade YugabyteDB Anywhere](../../upgrade/). You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.

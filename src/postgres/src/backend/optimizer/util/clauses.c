@@ -1204,7 +1204,7 @@ contain_leaked_vars_walker(Node *node, void *context)
 
 		case T_YbBatchedExpr:
 			{
-				contain_leaked_vars_walker((Node *) ((YbBatchedExpr*) node)->orig_expr,
+				contain_leaked_vars_walker((Node *) ((YbBatchedExpr *) node)->orig_expr,
 										   context);
 				break;
 			}
@@ -5271,24 +5271,27 @@ pull_paramids_walker(Node *node, Bitmapset **context)
 								  (void *) context);
 }
 
-typedef struct replace_varnos_context
+typedef struct
 {
-	Index oldvarno;
-	Index newvarno;
-} replace_varnos_context;
+	Index		oldvarno;
+	Index		newvarno;
+} yb_replace_varnos_context;
 
-static Node *yb_copy_replace_varnos_mutator(Node *node,
-											replace_varnos_context *context)
+static Node *
+yb_copy_replace_varnos_mutator(Node *node,
+							   yb_replace_varnos_context *context)
 {
 	if (node == NULL)
 		return NULL;
 
 	if (IsA(node, Var))
 	{
-		Var *var = (Var *) node;
+		Var		   *var = (Var *) node;
+
 		if (var->varno == context->oldvarno)
 		{
-			Var *newvar = copyObject(var);
+			Var		   *newvar = copyObject(var);
+
 			newvar->varno = context->newvarno;
 			return (Node *) newvar;
 		}
@@ -5299,9 +5302,11 @@ static Node *yb_copy_replace_varnos_mutator(Node *node,
 								   (void *) context);
 }
 
-Expr *yb_copy_replace_varnos(Expr *expr, Index oldvarno, Index newvarno)
+Expr *
+yb_copy_replace_varnos(Expr *expr, Index oldvarno, Index newvarno)
 {
-	replace_varnos_context ctx;
+	yb_replace_varnos_context ctx;
+
 	ctx.oldvarno = oldvarno;
 	ctx.newvarno = newvarno;
 	return (Expr *) yb_copy_replace_varnos_mutator((Node *) expr,

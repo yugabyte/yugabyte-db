@@ -346,7 +346,8 @@ typedef struct _tableInfo
 	bool	   *inhNotNull;		/* true if NOT NULL is inherited */
 	struct _attrDefInfo **attrdefs; /* DEFAULT expressions */
 	struct _constraintInfo *checkexprs; /* CHECK constraints */
-	struct _indxInfo *primaryKeyIndex; /* Associated index of a PRIMARY KEY constraint */
+	struct _indxInfo *primaryKeyIndex;	/* Associated index of a PRIMARY KEY
+										 * constraint */
 	bool		needs_override; /* has GENERATED ALWAYS AS IDENTITY */
 	char	   *amname;			/* relation access method */
 
@@ -362,17 +363,17 @@ typedef struct _tableInfo
 	struct _triggerInfo *triggers;	/* array of TriggerInfo structs */
 } TableInfo;
 
-typedef struct _tablegroupInfo
+typedef struct _ybTablegroupInfo
 {
 	/*
 	 * These fields are collected for every tablegroup in the database.
 	 */
 	DumpableObject dobj;
-	DumpableAcl	   dacl;
+	DumpableAcl dacl;
 	const char *rolname;
 	char	   *grptablespace;
 	char	   *grpoptions;		/* options specified by WITH (...) */
-} TablegroupInfo;
+} YbTablegroupInfo;
 
 typedef struct _tableAttachInfo
 {
@@ -701,7 +702,7 @@ extern OprInfo *findOprByOid(Oid oid);
 extern CollInfo *findCollationByOid(Oid oid);
 extern NamespaceInfo *findNamespaceByOid(Oid oid);
 extern ExtensionInfo *findExtensionByOid(Oid oid);
-extern TablegroupInfo *findTablegroupByOid(Oid oid);
+extern YbTablegroupInfo *findTablegroupByOid(Oid oid);
 extern PublicationInfo *findPublicationByOid(Oid oid);
 
 extern void recordExtensionMembership(CatalogId catId, ExtensionInfo *ext);
@@ -762,6 +763,6 @@ extern void getPublicationTables(Archive *fout, TableInfo tblinfo[],
 								 int numTables);
 extern void getSubscriptions(Archive *fout);
 
-extern TablegroupInfo *getTablegroups(Archive *fout, int *numTablegroups);
+extern YbTablegroupInfo *getTablegroups(Archive *fout, int *numTablegroups);
 
 #endif							/* PG_DUMP_H */

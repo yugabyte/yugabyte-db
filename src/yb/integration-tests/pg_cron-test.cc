@@ -37,6 +37,8 @@ namespace yb {
 constexpr auto kTableName = "tbl1";
 constexpr auto kDefaultJobName = "Job1";
 constexpr auto kJobListRefreshInterval = 10;
+constexpr auto kFailedJobStatus = "failed";
+constexpr auto kRunningJobStatus = "running";
 const client::YBTableName service_table_name =
     stateful_service::GetStatefulServiceTableName(StatefulServiceKind::PG_CRON_LEADER);
 const auto kTimeout = 60s * kTimeMultiplier;
@@ -151,6 +153,31 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
           return row_count > min_count;
         },
         kTimeout, Format("Wait for row count to be above $0", min_count));
+  }
+
+  Status WaitForJobStatus(int64 job_id, const std::string job_name, const std::string job_status) {
+    Status s = LoggedWaitFor(
+        [this, job_id, job_status]() -> Result<bool> {
+          /*
+           * This query could be written as
+           * `SELECT status FROM ... WHERE ... ORDER BY start_time DESC LIMIT 1`
+           * but that would require a special case for when there are 0 entries for this jobid.
+           */
+          return VERIFY_RESULT(conn_->FetchRow<pgwrapper::PGUint64>(Format(
+              "SELECT COUNT(*) FROM ("
+              "    SELECT * FROM cron.job_run_details WHERE jobid = $0 "
+              "    ORDER BY start_time DESC LIMIT 1 "
+              ") AS most_recent "
+              "WHERE status = '$1';",
+              job_id, job_status))) > 0;
+        },
+        kTimeout,
+        Format("Wait for most recent run of job '$0' to have status '$1'", job_name, job_status));
+    if (!s.ok())
+      LOG(INFO) << conn_->FetchAllAsString(Format(
+          "SELECT * FROM cron.job_run_details WHERE jobid = $0 ORDER BY start_time DESC", job_id),
+          ",", "\n");
+    return s;
   }
 
   Status WaitForDataInPgCronLeaderTable() {
@@ -553,32 +580,91 @@ TEST_F(PgCronTest, FailBeforeStoringLastMinute) {
 TEST_F(PgCronTest, DeactivateRunningJob) {
   ASSERT_OK(Schedule1SecInsertJob());
   // Start a job that will run for a long time.
-  auto sleep_job_id = ASSERT_RESULT(ScheduleJob("Sleep Job", "1 second", "SELECT pg_sleep(1000)"));
+  const auto sleep_job_name = "Sleep Job";
+  const auto sleep_job_id = ASSERT_RESULT(
+      ScheduleJob(sleep_job_name, "1 second", "SELECT pg_sleep(1000)"));
 
   ASSERT_OK(WaitForRowCountAbove(0));
-
-  auto is_sleep_job_running = [this, sleep_job_id]() -> Result<bool> {
-    return VERIFY_RESULT(conn_->FetchRow<pgwrapper::PGUint64>(Format(
-               "SELECT COUNT(*) FROM cron.job_run_details WHERE jobid = $0 AND status = 'running'",
-               sleep_job_id))) > 0;
-  };
-
-  {
-    const auto is_running = ASSERT_RESULT(is_sleep_job_running());
-    ASSERT_TRUE(is_running);
-  }
+  ASSERT_OK(WaitForJobStatus(sleep_job_id, sleep_job_name, kRunningJobStatus));
 
   // Deactivating the sleep job should stop it immediately.
   ASSERT_OK(conn_->FetchFormat("SELECT cron.alter_job($0, active:=false)", sleep_job_id));
 
   // Wait for the change to get picked up and sleep job to get canceled.
-  ASSERT_OK(WaitFor(
-      [&is_sleep_job_running]() -> Result<bool> { return !VERIFY_RESULT(is_sleep_job_running()); },
-      kTimeout, "Wait for sleeping job to get killed"));
+  ASSERT_OK(WaitForJobStatus(sleep_job_id, sleep_job_name, kFailedJobStatus));
 
   // Make sure the other job is still running.
   const auto initial_row_count = ASSERT_RESULT(GetRowCount());
   ASSERT_OK(WaitForRowCountAbove(initial_row_count));
+}
+
+// Test that a job that receives a SIGTERM doesn't affect other jobs, but a job that receives a
+// SIGKILL causes a postmaster restart, interrupting all running jobs.
+TEST_F(PgCronTest, KillRunningJob) {
+  ASSERT_OK(Schedule1SecInsertJob());
+
+  // Start jobs that will run for a long time.
+  const auto sleep_job_1_name = "sleep job 1";
+  const auto sleep_job_2_name = "sleep job 2";
+  const auto sleep_job_1_id = ASSERT_RESULT(
+      ScheduleJob(sleep_job_1_name, "3 seconds", "SELECT pg_sleep(1000)"));
+  const auto sleep_job_2_id = ASSERT_RESULT(
+      ScheduleJob(sleep_job_2_name, "3 seconds", "SELECT pg_sleep(999)"));
+
+  auto wait_for_jobs_to_run =
+      [this, sleep_job_1_id, sleep_job_2_id, sleep_job_1_name, sleep_job_2_name] () {
+    ASSERT_OK(WaitForRowCountAbove(ASSERT_RESULT(GetRowCount())));
+    ASSERT_OK(WaitForJobStatus(sleep_job_1_id, sleep_job_1_name, kRunningJobStatus));
+    ASSERT_OK(WaitForJobStatus(sleep_job_2_id, sleep_job_2_name, kRunningJobStatus));
+  };
+
+  auto wait_for_failed_job_count = [this] (const int64 job_id, const std::string &job_name,
+                                           const uint64 count) {
+    return LoggedWaitFor(
+        [this, job_id, count]() -> Result<bool> {
+          return VERIFY_RESULT(conn_->FetchRow<pgwrapper::PGUint64>(Format(
+              "SELECT COUNT(*) FROM cron.job_run_details WHERE jobid = $0 AND status = '$1'",
+              job_id, kFailedJobStatus))) == count;
+        },
+        kTimeout,
+        Format("Wait for job '$0' to have $1 '$2' entries", job_name, count, kFailedJobStatus));
+  };
+
+  wait_for_jobs_to_run();
+
+  auto send_signal_to_job = [this] (int64 jobid, int signal) {
+    const auto sleep_job_pid = ASSERT_RESULT(conn_->FetchRow<int>(Format(
+        "SELECT job_pid FROM cron.job_run_details WHERE jobid = $0 AND status = 'running'",
+        jobid)));
+
+    LOG(INFO) << "Sending signal " << signal << " to the sleep job with pid " << sleep_job_pid;
+    kill(sleep_job_pid, signal);
+  };
+
+  {
+    send_signal_to_job(sleep_job_1_id, SIGTERM);
+
+    // The killed job should fail and restart, but the other jobs should be uninterrupted
+    ASSERT_OK(wait_for_failed_job_count(sleep_job_1_id, sleep_job_1_name, 1));
+    ASSERT_OK(wait_for_failed_job_count(sleep_job_2_id, sleep_job_1_name, 0));
+
+    wait_for_jobs_to_run();
+  }
+
+  {
+    send_signal_to_job(sleep_job_1_id, SIGKILL);
+
+    // Reconnect to the database after the failure.
+    conn_ = std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(cluster_->ConnectToDB()));
+
+    // Each running job should fail, and then restart. We don't check for a failure of the insert
+    // job because it executes too quickly to guarantee that the SIGKILL occurs during its
+    // execution.
+    ASSERT_OK(wait_for_failed_job_count(sleep_job_1_id, sleep_job_1_name, 2));
+    ASSERT_OK(wait_for_failed_job_count(sleep_job_2_id, sleep_job_1_name, 1));
+
+    wait_for_jobs_to_run();
+  }
 }
 
 TEST_F(PgCronTest, CancelJobOnLeaderChange) {
