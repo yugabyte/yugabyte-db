@@ -95,7 +95,7 @@ function SetupPostgresServerExtensions()
   fi
 
   echo "create extension $extensionName on port $port with version '${extensionVersion:-latest}'."
-  psql -p $port -U $user -d postgres -c "CREATE EXTENSION $extensionName $versionString CASCADE;"
+  psql -p $port -U $user -d postgres -X -c "CREATE EXTENSION $extensionName $versionString CASCADE;"
 
   psql -p $port -U $user -d postgres -c "SELECT * FROM pg_extension WHERE extname = '$extensionName';"
 }
