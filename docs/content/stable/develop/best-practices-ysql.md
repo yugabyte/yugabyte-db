@@ -195,10 +195,6 @@ For more information, refer to the following:
 
 Whenever possible, use [prepared statements](../../api/ysql/the-sql-language/statements/perf_prepare/) to ensure that YugabyteDB can re-use the same query plan and eliminate the need for a server to parse the query on each operation.
 
-{{<lead link="https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3">}}
-For more details, see [Prepared statements in PL/pgSQL](https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3).
-{{</lead>}}
-
 {{<warning title="Avoid explicit PREPARE or EXECUTE">}}
 
 When using server-side pooling, avoid explicit PREPARE and EXECUTE calls and use protocol-level prepared statements instead. Explicit prepare/execute calls can make connections sticky, which prevents you from realizing the benefits of using YSQL Connection Manager and server-side pooling.
@@ -215,6 +211,9 @@ Note: YSQL Connection Manager  is currently in Technical Preview {{<tags/feature
 
 {{</warning>}}
 
+{{<lead link="https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3">}}
+For more details, see [Prepared statements in PL/pgSQL](https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3).
+{{</lead>}}
 
 ## Large scans and batch jobs
 
