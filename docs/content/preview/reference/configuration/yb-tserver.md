@@ -1538,8 +1538,6 @@ Default: -1 (disabled). Minimum: 128 bytes.
 
 ## DDL concurrency flags
 
-DDL concurrency flags are {{<tags/feature/tp>}}.
-
 ##### ysql_enable_db_catalog_version_mode
 
 Enable the per database catalog version mode. A DDL statement that
