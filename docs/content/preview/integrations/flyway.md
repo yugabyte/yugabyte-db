@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-[Flyway](https://flywaydb.org/) provides the means to manage schema changes to a YugabyteDB database, among others.
+[Flyway](https://www.red-gate.com/products/flyway/community/) provides the means to manage schema changes to a YugabyteDB database, among others.
 
 YugabyteDB has developed a plugin for better integration with Flyway. This plugin is available under the [Flyway Community DB Support](https://github.com/flyway/flyway-community-db-support) project.
 
@@ -21,7 +21,7 @@ To use Flyway with YugabyteDB, you need the following:
 
 - YugabyteDB version 2.20 or later (see [Quick Start](/preview/tutorials/quick-start/)).
 
-- Flyway community edition version 10.12.0 or later (see [Download Flyway](https://flywaydb.org/download)).
+- Flyway community edition version 10.12.0 or later (see [Download Flyway](https://www.red-gate.com/products/flyway/editions)).
 
 - Flyway plugin for YugabyteDB version 10.12.0 or later (see [Maven coordinates](https://central.sonatype.com/artifact/org.flywaydb/flyway-database-yugabytedb)).
 
@@ -54,7 +54,7 @@ Flyway allows you to specify migrations using either SQL or Java.
 
 {{< note title="Note" >}}
 
-By default, Flyway runs migrations inside a transaction. In case of failures, the transaction is rolled back (see [Flyway Transactions](https://flywaydb.org/documentation/concepts/migrations.html#transactions)). Because YugabyteDB does not currently support DDLs inside a user-initiated transaction (instead, it runs a DDL inside an implicit transaction), you may need to manually revert the DDL changes when you see a message about failed migrations "Please restore backups and roll back database and code".
+By default, Flyway runs migrations inside a transaction. In case of failures, the transaction is rolled back (see [Flyway Transactions](https://documentation.red-gate.com/fd/migration-transaction-handling-273973399.html)). Because YugabyteDB does not currently support DDLs inside a user-initiated transaction (instead, it runs a DDL inside an implicit transaction), you may need to manually revert the DDL changes when you see a message about failed migrations "Please restore backups and roll back database and code".
 
 {{< /note >}}
 
@@ -130,4 +130,4 @@ To check the state of the database and run the migration, execute the following 
 
 ## Learn more
 
-Refer to the [Flyway documentation](https://documentation.red-gate.com/flyway/flyway-cli-and-api/usage) for more details on using Flyway.
+Refer to the [Flyway documentation](https://documentation.red-gate.com/flyway) for more details on using Flyway.
