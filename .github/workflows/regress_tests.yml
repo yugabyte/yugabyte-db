@@ -139,4 +139,8 @@ jobs:
 
       - name: Citus Indent
         run: |
-          citus_indent --check || (echo ""; echo "citus_indent failed, refer to CONTRIBUTING.md on how to use citus_indent"; exit 1)    
+          citus_indent --check || (echo ""; echo "citus_indent failed, refer to CONTRIBUTING.md on how to use citus_indent"; exit 1)
+
+      - name: Validate sanity of files
+        run: |
+          ./scripts/validate_extension_file_state.sh

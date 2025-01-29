@@ -19,7 +19,7 @@ repoScriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
 declare -A headerMap;
 
 # Ensure unique headers between OSS extensions
-echo "Checking pg_documentdb_core"
+echo "Checking headers for pg_documentdb_core"
 for f in `find $repoScriptDir/../pg_documentdb_core/include/ -name *.h`; do
     subPath=${f#$repoScriptDir/../pg_documentdb_core/include/}
     if [ "${headerMap[$subPath]}" != "" ]; then
@@ -29,7 +29,7 @@ for f in `find $repoScriptDir/../pg_documentdb_core/include/ -name *.h`; do
     headerMap[$subPath]=1;
 done;
 
-echo "Checking pg_documentdb"
+echo "Checking headers for pg_documentdb"
 for f in `find $repoScriptDir/../pg_documentdb/include/ -name *.h`; do
     subPath=${f#$repoScriptDir/../pg_documentdb/include/}
     if [ "${headerMap[$subPath]}" != "" ]; then
@@ -39,7 +39,7 @@ for f in `find $repoScriptDir/../pg_documentdb/include/ -name *.h`; do
     headerMap[$subPath]=1;
 done;
 
-echo "Checking pg_documentdb_distributed"
+echo "Checking headers for pg_documentdb_distributed"
 for f in `find $repoScriptDir/../internal/pg_documentdb_distributed/include/ -name *.h`; do
     subPath=${f#$repoScriptDir/../internal/pg_documentdb_distributed/include/}
     if [ "${headerMap[$subPath]}" != "" ]; then
