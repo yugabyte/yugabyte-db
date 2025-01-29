@@ -21,7 +21,7 @@ unversioned: true
     </a>
   </li>
   <li>
-    <a href="../quick-start/" class="nav-link">
+    <a href="../quick-start/macos/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">
       Use a local cluster
     </a>

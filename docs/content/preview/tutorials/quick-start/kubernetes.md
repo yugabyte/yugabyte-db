@@ -19,7 +19,7 @@ unversioned: true
     </a>
   </li>
   <li class="active">
-    <a href="../../quick-start/" class="nav-link">
+    <a href="../../quick-start/macos/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">
       Use a local cluster
     </a>
@@ -30,7 +30,7 @@ The local cluster setup on a single host is intended for development and learnin
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
