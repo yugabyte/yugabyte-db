@@ -163,13 +163,15 @@ The following features supported in v2024.2 and earlier are not yet available in
 - [View terminated queries with yb_terminated_queries](../../explore/observability/yb-pg-stat-get-queries/)
 - [PostgreSQL_FDW extension](../../explore/ysql-language-features/pg-extensions/extension-postgres-fdw/)
 
-## What to watch out for when upgrading
+## What's changed
+
+The following features have different behaviors as compared to previous versions of YugabyteDB due to changes in the underlying PostgreSQL implementation.
+
+When upgrading a YugabyteDB cluster from PostgreSQL 11-compatible versions (v2024.2 and earlier) to a PostgreSQL 15-compatible version (v2.25 and later), review the following to understand how they may affect your upgrade.
 
 {{< warning title="Upgrading to v2.25" >}}
 Upgrading to v2.25 from previous versions (v2.23) is not yet available.
 {{< /warning >}}
-
-When upgrading a YugabyteDB cluster from PostgreSQL 11-compatible versions (v2024.2 and earlier) to a PostgreSQL 15-compatible version (v2.25 and later), the following features have different behaviors due to changes in the underlying PostgreSQL implementation.
 
 ### ysqlsh
 
