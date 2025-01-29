@@ -786,10 +786,10 @@ AddInt64ToValue(bson_value_t *current, int64_t value, bool *overflowedFromInt64)
 {
 	if (current->value_type == BSON_TYPE_DOUBLE)
 	{
-		overflowedFromInt64 = false;
-
 		/* current is already double - just do double add. */
 		AddDoubleToValue(current, (double) value);
+
+		*overflowedFromInt64 = false;
 		return;
 	}
 	else if (current->value_type == BSON_TYPE_DECIMAL128)
@@ -801,6 +801,8 @@ AddInt64ToValue(bson_value_t *current, int64_t value, bool *overflowedFromInt64)
 		valueToAdd.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(&valueToAdd);
 		valueToAdd.value_type = BSON_TYPE_DECIMAL128;
 		AddDecimal128Numbers(current, &valueToAdd, current);
+
+		*overflowedFromInt64 = false;
 		return;
 	}
 
