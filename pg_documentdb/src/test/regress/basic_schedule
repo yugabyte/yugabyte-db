@@ -16,3 +16,4 @@ test: collection_management
 test: bson_aggregation_object_operators_tests
 test: commands_crud_ignore_common_spec_fields
 test: bson_aggregation_type_operators_tests
+test: bson_aggregation_stage_merge_tests

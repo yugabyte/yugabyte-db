@@ -1258,7 +1258,7 @@ AddTargetCollectionRTEDollarMerge(Query *query, MongoCollection *targetCollectio
 	rte->self_reference = false;
 	rte->lateral = false;
 	rte->inh = false;
-	rte->inFromCl = true;
+	rte->inFromCl = false;
 	rte->rellockmode = RowExclusiveLock;
 	RangeVar *rangeVar = makeRangeVar(ApiDataSchemaName, targetCollection->tableName, -1);
 	rte->relid = RangeVarGetRelid(rangeVar, RowExclusiveLock, false);
@@ -1272,7 +1272,8 @@ AddTargetCollectionRTEDollarMerge(Query *query, MongoCollection *targetCollectio
 	RangeTblEntry *existingrte = list_nth(query->rtable, 0);
 	query->rtable = list_make2(rte, existingrte);
 	query->resultRelation = 1;
-	query->jointree->fromlist = list_make1(rte);
+	query->mergeUseOuterJoin = true;
+	query->targetList = NIL;
 }
 
 
