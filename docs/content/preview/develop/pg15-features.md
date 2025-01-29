@@ -205,4 +205,4 @@ Starting from YugabyteDB 2.25 (PostgreSQL 15), database users are no longer auto
 
 ### extra_float_digits
 
-The value of [extra_float_digits](https://www.postgresql.org/docs/15/runtime-config-client.html#GUC-EXTRA-FLOAT-DIGITS) has changed from 0 to 1 in PostgreSQL 15, with the result of higher-precision results being returned.
+The value of [extra_float_digits](https://www.postgresql.org/docs/15/runtime-config-client.html#GUC-EXTRA-FLOAT-DIGITS) has changed from 0 to 1 in PostgreSQL 15, resulting in values output in shortest-precise format. This format is both fast and precise, preserving the original binary float value exactly when correctly read.
