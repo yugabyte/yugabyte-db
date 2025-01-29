@@ -53,11 +53,11 @@ The following table describes the connection parameters required to connect, inc
 | database/dbname | Database name |  |
 | user | User connecting to the database |  |
 | password | User password |  |
-| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
-| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
-| yb_servers_refresh_interval | If load_balance is true, the interval in seconds to refresh the servers list | 300 |
-| fallback_to_topology_keys_only | If all the servers in the primary and fallback topology key placements are down, fall back to the host(s) specified in the connection URL, instead of to nodes across the entire cluster. | false |
-| failed_host_reconnect_delay_secs | Mark the server as "UP" only if the server is currently present in `yb_servers()` response and `failed-host-reconnect-delay-secs` duration has elapsed from the last time it was marked "DOWN". | 5 seconds |
+| load_balance | Enables [uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | false |
+| topology_keys | Enables [topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing). Specify comma-separated geo-locations in the form `cloud.region.zone:priority`. Ignored if `load_balance` is false. | Empty |
+| yb_servers_refresh_interval | The interval (in seconds) to refresh the servers list; ignored if `load_balance` is false | 300 |
+| fallback_to_topology_keys_only | If set to true and `topology_keys` are specified, the driver only tries to connect to nodes specified in `topology_keys` | false |
+| failed_host_ttl_seconds | Time (in seconds) to wait before trying to connect to failed nodes. When the driver is unable to connect to a node, it marks the node as failed using a timestamp, and ignores the node when trying new connections until this time elapses. | 5 |
 
 The following is an example connection string for connecting to YugabyteDB:
 
@@ -93,7 +93,7 @@ The hosts are only used during the initial connection attempt. If the first host
 
 Make sure that you have created a new rust project as part of the [prerequisites](../#prerequisites).
 
-1. Add `yb-postgres = "0.19.7-yb-1-beta` dependency in the `Cargo.toml` file as follows:
+1. Add `yb-postgres = "0.19.7-yb-1-beta.3` dependency in the `Cargo.toml` file as follows:
 
     ```toml
     [package]
@@ -104,7 +104,7 @@ Make sure that you have created a new rust project as part of the [prerequisites
     # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
     [dependencies]
-    yb-postgres = "0.19.7-yb-1-beta"
+    yb-postgres = "0.19.7-yb-1-beta.3"
     ```
 
 1. Replace the existing code in `src/main.rs` with the following sample code to set up tables and query the table contents. Replace the values in the connection string `connection_url` with the database credentials, if required.
