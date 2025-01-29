@@ -47,7 +47,7 @@ DEFINE_RUNTIME_uint32(cdcsdk_max_consistent_records, 500,
     "cdc_vwal_use_byte_threshold_for_consistent_changes flag is set to false.");
 
 DEFINE_RUNTIME_uint64(
-    cdcsdk_publication_list_refresh_interval_secs, 3600 /* 1 hour */,
+    cdcsdk_publication_list_refresh_interval_secs, 900 /* 15 mins */,
     "Interval in seconds at which the table list in the publication will be refreshed");
 
 DEFINE_RUNTIME_uint64(
