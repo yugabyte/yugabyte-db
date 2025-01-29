@@ -95,6 +95,7 @@
 /* YB includes */
 #include "replication/walsender_private.h"
 #include "utils/guc_tables.h"
+#include "yb_ysql_conn_mgr_helper.h"
 
 /* ----------------
  *		global variables
@@ -459,6 +460,13 @@ SocketBackend(StringInfo inBuf)
 			ignore_till_sync = false;
 			break;
 
+		case 'n':				/* YB: no-op but return ParseComplete */
+		case 'p':				/* YB: parse without ParseComplete */
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
+			switch_fallthrough();
 		case 'B':				/* bind */
 		case 'C':				/* close */
 		case 'D':				/* describe */
@@ -1352,8 +1360,9 @@ static void
 exec_parse_message(const char *query_string,	/* string to execute */
 				   const char *stmt_name,	/* name for prepared stmt */
 				   Oid *paramTypes, /* parameter types */
-				   int numParams, /* number of parameters */
-				   CommandDest output_dest) /* where to send output */
+				   int numParams,	/* number of parameters */
+				   CommandDest output_dest, /* where to send output */
+				   bool yb_parse_no_parse_complete) /* do not send ParseComplete */
 {
 	MemoryContext unnamed_stmt_context = NULL;
 	MemoryContext oldcontext;
@@ -1582,8 +1591,12 @@ exec_parse_message(const char *query_string,	/* string to execute */
 
 	/*
 	 * Send ParseComplete.
+	 *
+	 * YB: Do not send this packet only if a Parse was specifically requested
+	 * by Connection Manager without the need for ParseComplete.
 	 */
-	if (output_dest == DestRemote)
+	if (output_dest == DestRemote &&
+		!(YbIsClientYsqlConnMgr() && yb_parse_no_parse_complete))
 		pq_putemptymessage('1');
 
 	/*
@@ -5696,6 +5709,25 @@ PostgresMain(int argc, char *argv[],
 			}
 			break;
 
+			case 'n':			/* YB: no-op but return ParseComplete */
+				if (!YbIsClientYsqlConnMgr())
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("invalid frontend message type %d",
+									firstchar)));
+				if (whereToSendOutput == DestRemote)
+					{
+						pq_putemptymessage('1');
+						pq_flush();
+					}
+				break;
+			case 'p':			/* YB: parse without ParseComplete */
+				if (!YbIsClientYsqlConnMgr())
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("invalid frontend message type %d",
+									firstchar)));
+				switch_fallthrough();
 			case 'P':			/* parse */
 				{
 					const char *stmt_name;
@@ -5726,10 +5758,11 @@ PostgresMain(int argc, char *argv[],
 					PG_TRY();
 					{
 						exec_parse_message(query_string,
-						                   stmt_name,
-						                   paramTypes,
-						                   numParams,
-						                   whereToSendOutput);
+										   stmt_name,
+										   paramTypes,
+										   numParams,
+										   whereToSendOutput,
+										   (firstchar == 'p')); /* YB: from switch_fallthrough() */
 					}
 					PG_CATCH();
 					{
@@ -5865,10 +5898,11 @@ PostgresMain(int argc, char *argv[],
 
 								/* 1. Redo Parse: Create Cached stmt (no output) */
 								exec_parse_message(query_string,
-								                   portal_name,
-								                   NULL /* param_types*/,
-								                   0 /* num_params */,
-								                   DestNone);
+												   portal_name,
+												   NULL /* param_types */ ,
+												   0 /* num_params */ ,
+												   DestNone,
+												   false);	/* yb_parse_no_parse_complete */
 
 								/* 2. Redo the Bind step */
 								Portal portal;

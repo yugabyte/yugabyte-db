@@ -131,6 +131,10 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_timeout, 0,
     "milliseconds for an available server. Disconnect client on timeout reach. "
     "If the value is set to zero, the client waits for the server connection indefinitely");
 
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
+    "Enable optimized extended query protocol in Ysql Connection Manager. "
+    "If set to false, extended query protocol handling is fully correct but unoptimized.");
+
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_multi_route_pool, false,
     "Enable the use of the dynamic multi-route pooling. "
     "When false, the older static pool sizes are used."
