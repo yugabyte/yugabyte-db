@@ -64,10 +64,8 @@ Learn how to perform common tasks required for Python application development us
 
 The following connection properties need to be added to enable load balancing:
 
-- `load_balance` - enable cluster-aware load balancing by setting this property to one of the allowed values other than `false`; disabled by default.
+- `load_balance` - enable cluster-aware load balancing by setting this property to one of the [allowed values](../../../../drivers-orms/smart-drivers/#node-type-aware-load-balancing) other than `false`; disabled by default.
 - `topology_keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
-
-By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter.
 
 For more information, see [Cluster-aware load balancing](../../../../drivers-orms/smart-drivers/#cluster-aware-load-balancing).
 
@@ -89,7 +87,7 @@ To enable uniform load balancing across all servers, you set the `load_balance` 
     conn = psycopg2.connect(user = 'username', password='password', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='True')
     ```
 
-You can specify [multiple hosts](../../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+You can specify [multiple hosts](../../../../drivers-orms/python/yugabyte-psycopg2/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 To specify topology keys, you set the `topology_keys` property to comma-separated values in the Connection string or dictionary, as per the following examples:
 

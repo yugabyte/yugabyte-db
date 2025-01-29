@@ -65,8 +65,10 @@ Learn how to perform common tasks required for Python application development us
 
 The following connection properties need to be added to enable load balancing:
 
-- `load_balance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- `load_balance` - enable cluster-aware load balancing by setting this property to one of the [allowed values](../../smart-drivers/#node-type-aware-load-balancing) other than `false`; disabled by default.
 - `topology_keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
+
+For more information, see [Cluster-aware load balancing](../../smart-drivers/#cluster-aware-load-balancing).
 
 ### Use the driver
 
