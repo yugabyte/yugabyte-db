@@ -30,7 +30,7 @@ PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 p
 | :--- | :--- |
 | YugabyteDB | Follow the instructions in [Quick Start](../../tutorials/quick-start/). |
 | YugabyteDB&nbsp;Anywhere | [Install YugabyteDB Anywhere v2.25.0.0 or later](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#quick-start) and [create a universe](../../yugabyte-platform/create-deployments/create-universe-multi-zone/) using DB Version 2.25.0.0 or later. |
-| YugabyteDB Aeon| Coming Soon |
+| YugabyteDB Aeon| [Create a Sandbox cluster](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) with the Database version set to Preview Track (v2.25). |
 
 ## What's new
 
@@ -163,7 +163,7 @@ The following features supported in v2024.2 and earlier are not yet available in
 - [View terminated queries with yb_terminated_queries](../../explore/observability/yb-pg-stat-get-queries/)
 - [PostgreSQL_FDW extension](../../explore/ysql-language-features/pg-extensions/extension-postgres-fdw/)
 
-## Upgrading
+## What to watch out for when upgrading
 
 {{< warning title="Upgrading to v2.25" >}}
 Upgrading to v2.25 from previous versions (v2.23) is not yet available.
@@ -200,3 +200,7 @@ The `clientcert=1` option is no longer supported in `pg_hba.conf`. You need to u
 In versions of YugabyteDB prior to v2.25 (and versions of PostgreSQL prior to 15), whenever you create a database user, that user is granted [CREATE](../../api/ysql/the-sql-language/statements/dcl_grant/#:~:text=the%20specified%20table.-,CREATE,-For%20databases%2C%20this) and [USAGE](../../api/ysql/the-sql-language/statements/dcl_grant/#:~:text=of%20the%20function.-,USAGE,-For%20schemas%2C%20this) privileges on the public schema by default.
 
 Starting from YugabyteDB 2.25 (PostgreSQL 15), database users are no longer automatically granted creation permission on the public schema. The USAGE privilege is still present, as in previous versions. Database users with superuser privileges or who are database owners by default have the CREATE permission on the public schema. Any schema that is explicitly created is not impacted by this change, as they are already restricted with the default privileges.
+
+### extra_float_digits
+
+The value of [extra_float_digits](https://www.postgresql.org/docs/15/runtime-config-client.html#GUC-EXTRA-FLOAT-DIGITS) has changed from 0 to 1 in PostgreSQL 15, with the result of higher-precision results being returned.
