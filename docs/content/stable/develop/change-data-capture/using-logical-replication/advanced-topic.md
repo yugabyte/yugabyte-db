@@ -112,19 +112,19 @@ CREATE TABLE test_table_2(id INT PRIMARY KEY, aa INT, bb INT);
 
 ### YugabyteDB semantics
 
-Unlike PostgreSQL, any changes made to the publication's tables list are not applied immediately in YugabyteDB. Instead the publication's tables list is periodically refreshed, and changes, if any, are applied. The refresh interval is managed using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. The default is one hour (3600 sec). This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case.
+Unlike PostgreSQL, any changes made to the publication's tables list are not applied immediately in YugabyteDB. Instead the publication's tables list is periodically refreshed, and changes, if any, are applied. The refresh interval is managed using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. The default is 15 minutes (900 sec). This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case.
 
 Consider the following example:
 
-- Suppose that the value of the flag `cdcsdk_publication_list_refresh_interval_secs` is 3600 sec (1 hour) and the publication's tables list is being refreshed every hour at 8 am, 9 am, 10 am, and so on.
+- Suppose that the value of the flag `cdcsdk_publication_list_refresh_interval_secs` is 900 sec (15 minutes) and the publication's tables list is being refreshed every 15 minutes at 8:00 am, 8:15 am, 8:30 am and so on.
 
-- If any change is made to publication's tables list at 8:01 am, then this change will be applied at 9:00 am. However, any change made to publication's tables list at 8:59 am will also be applied at 9:00 am.
+- If any change is made to publication's tables list at 8:01 am, then this change will be applied at 8:15 am. However, any change made to publication's tables list at 8:14 am will also be applied at 8:15 am.
 
 The value of this flag can be changed at run time, but the change becomes effective only after some time. Continuing the example:
 
-- Suppose that the value of the flag `cdcsdk_publication_list_refresh_interval_secs` is changed from 3600 sec (1 hour) to 600 sec (10 minutes) at 8:01 am.
+- Suppose that the value of the flag `cdcsdk_publication_list_refresh_interval_secs` is changed from 900 sec (15 minutes) to 300 sec (5 minutes) at 8:01 am.
 
-- This change will only be applied after 9:00 am. That is, the publication's tables list will be next refreshed at 9:00 am. Then, the next refresh will happen at 9:10 am, and the subsequent refreshes will take place every 10 minutes.
+- This change will only be applied after 8:15 am. That is, the publication's tables list will be next refreshed at 8:15 am. Then, the next refresh will happen at 8:20 am, and the subsequent refreshes will take place every 5 minutes.
 
 ### Required settings
 
@@ -136,11 +136,13 @@ To enable dynamic table addition, perform the following steps:
     ./yb-ts-cli --server_address=<tserverIpAddress:tserverPort> set_flag cdcsdk_publication_list_refresh_interval_secs 120
     ```
 
-1. After you start receiving records from the newly added table in the publication, reset the  `cdcsdk_publication_list_refresh_interval_secs` flag to a high value (for example, 3600 seconds).
+1. After you start receiving records from the newly added table in the publication, reset the  `cdcsdk_publication_list_refresh_interval_secs` flag back to original value (i.e 900 seconds).
 
     ```sh
-    ./yb-ts-cli --server_address=<tserverIpAddress:tserverPort> set_flag cdcsdk_publication_list_refresh_interval_secs 3600
+    ./yb-ts-cli --server_address=<tserverIpAddress:tserverPort> set_flag cdcsdk_publication_list_refresh_interval_secs 900
     ```
+
+> **Note:** In the event that user ends up reducing the value of `cdcsdk_publication_list_refresh_interval_secs`, it is recommended to increase the value of the flag back to its original value once you start receiving changes from the new table.
 
 ## Initial snapshot
 
