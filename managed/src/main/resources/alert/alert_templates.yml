@@ -87,15 +87,15 @@ templates:
     createForNewCustomer: true
     defaultThresholdMap:
       WARNING:
-        threshold: 900.0
+        threshold: 15
     targetType: PLATFORM
     defaultThresholdCondition: GREATER_THAN
-    defaultThresholdUnit: SECOND
+    defaultThresholdUnit: MINUTE
     thresholdReadOnly: false
-    thresholdUnitName: seconds
+    thresholdUnitName: min
     labels:
       affected_instance_addrs: >-
-        {{ range $index, $element := query "count by (instance_address) (time() - last_over_time(yba_ha_last_backup_seconds[1m]) > {{ query_threshold }}) > 0"}}
+        {{ range $index, $element := query "count by (instance_address) ((time() - last_over_time(yba_ha_last_backup_seconds[1m]) / 60) > {{ query_threshold }}) > 0"}}
         {{ if $index }},{{ end }}{{ $element.Labels.instance_address }}{{ end }}
     annotations:
       summary: >-
@@ -1293,15 +1293,15 @@ templates:
     thresholdUnitName: ms
     labels:
       affected_node_names: >-
-        {{ range $index, $element := query 
+        {{ range $index, $element := query
         "max by (universe_uuid, node_name)
-        (max_over_time(consumer_safe_time_lag{universe_uuid='{{ $labels.universe_uuid }}'}[10m]) 
+        (max_over_time(consumer_safe_time_lag{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
         {{ query_condition }} {{ query_threshold }})" }}
         {{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
       affected_namespace_ids: >-
-        {{ range $index, $element := query 
+        {{ range $index, $element := query
         "max by (universe_uuid, namespace_id)
-        (max_over_time(consumer_safe_time_lag{universe_uuid='{{ $labels.universe_uuid }}'}[10m]) 
+        (max_over_time(consumer_safe_time_lag{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
         {{ query_condition }} {{ query_threshold }})" }}
         {{if $index}},{{end}}{{ $element.Labels.namespace_id }}{{ end }}
     annotations:
