@@ -201,6 +201,7 @@ set(UTIL_SRCS
   rw_semaphore.cc
   rwc_lock.cc
   shared_mem.cc
+  shmem/reserved_address_segment.cc
   shmem/robust_mutex.cc
   signal_util.cc
   slice.cc
@@ -400,6 +401,7 @@ if (NOT "${YB_BUILD_TYPE}" STREQUAL "asan")
 endif()
 ADD_YB_TEST(scope_exit-test)
 ADD_YB_TEST(shared_mem-test)
+ADD_YB_TEST(shmem/reserved_address_segment-test)
 ADD_YB_TEST(shmem/robust_mutex-test)
 ADD_YB_TEST(slice-test)
 ADD_YB_TEST(spinlock_profiling-test)

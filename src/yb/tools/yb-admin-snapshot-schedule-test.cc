@@ -261,18 +261,19 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     std::string source_namespace_id{VERIFY_RESULT(GetMemberAsStr(out, "source_namespace_id"))};
     std::string seq_no{VERIFY_RESULT(GetMemberAsStr(out, "seq_no"))};
 
-    RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
-      auto out = VERIFY_RESULT(
-          CallJsonAdmin("list_clones", source_namespace_id, seq_no));
+    return WaitFor([&]() -> Result<bool> {
+      auto out = VERIFY_RESULT(CallJsonAdmin("list_clones", source_namespace_id, seq_no));
       const auto entries = out.GetArray();
       SCHECK_EQ(entries.Size(), 1, IllegalState, "Wrong number of entries. Expected 1");
-      master::SysCloneStatePB::State state = master::SysCloneStatePB::CLONE_SCHEMA_STARTED;
+      auto state = master::SysCloneStatePB::CLONE_SCHEMA_STARTED;
       master::SysCloneStatePB::State_Parse(
           std::string(VERIFY_RESULT(GetMemberAsStr(entries[0], "aggregate_state"))), &state);
-      return state == master::SysCloneStatePB::ABORTED ||
-             state == master::SysCloneStatePB::COMPLETE;
-    }, timeout, "Wait for clone to complete"));
-    return Status::OK();
+      if (state == master::SysCloneStatePB::ABORTED) {
+        return STATUS_FORMAT(
+            Aborted, "Clone aborted: $0", common::PrettyWriteRapidJsonToString(entries[0]));
+      }
+      return state == master::SysCloneStatePB::COMPLETE;
+    }, timeout, "Wait for clone to complete");
   }
 
   Status PrepareCommon() {
@@ -287,11 +288,15 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   virtual std::vector<std::string> ExtraTSFlags() {
-    return { Format("--timestamp_history_retention_interval_sec=$0", kHistoryRetentionIntervalSec),
+    return { Format("--timestamp_history_retention_interval_sec=$0", HistoryRetentionIntervalSec()),
              "--history_cutoff_propagation_interval_ms=1000",
              "--enable_automatic_tablet_splitting=true",
              Format("--cleanup_split_tablets_interval_sec=$0",
                       MonoDelta(kCleanupSplitTabletsInterval).ToSeconds()) };
+  }
+
+  virtual int HistoryRetentionIntervalSec() {
+    return kHistoryRetentionIntervalSec;
   }
 
   virtual std::vector<std::string> ExtraMasterFlags() {
@@ -1213,16 +1218,14 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
     return PgConnect(GetRestoredDbName());
   }
 
-  virtual Status RestoreSnapshotSchedule(
+  Status RestoreSnapshotSchedule(
       const std::string& schedule_id, Timestamp restore_at) override {
-    if (GetRestoreType() == RestoreType::kClone) {
-      RETURN_NOT_OK(CloneAndWait(
-          "ysql." + kTableName.namespace_name(), GetRestoredDbName(), 2min /* timeout */,
-          restore_at.ToFormattedString()));
-      return Status::OK();
-    } else {
+    if (GetRestoreType() != RestoreType::kClone) {
       return YbAdminSnapshotScheduleTest::RestoreSnapshotSchedule(schedule_id, restore_at);
     }
+    return CloneAndWait(
+        "ysql." + kTableName.namespace_name(), GetRestoredDbName(), 2min /* timeout */,
+        restore_at.ToFormattedString());
   }
 
   void ExecuteOnTables(std::string non_colo_prefix,
@@ -1286,7 +1289,12 @@ INSTANTIATE_TEST_CASE_P(
 
 // Test for PITR and DB clone against colocated and non-colocated databases.
 class YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam:
-    public YbAdminSnapshotScheduleTestWithYsqlParam {};
+    public YbAdminSnapshotScheduleTestWithYsqlParam {
+  int HistoryRetentionIntervalSec() override {
+    return 30;
+  }
+};
+
 INSTANTIATE_TEST_CASE_P(
     ColocationAndRestoreType, YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam,
     ::testing::Values(

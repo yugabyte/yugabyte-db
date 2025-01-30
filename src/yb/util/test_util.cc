@@ -441,12 +441,14 @@ Status ForkAndRunToCompletion(const std::function<void(void)>& child,
   }
 }
 
-Status ForkAndRunToCrashPoint(const std::function<void(void)>& f, std::string_view crash_point) {
-  return ForkAndRunToCompletion([&f, crash_point] {
+Status ForkAndRunToCrashPoint(const std::function<void(void)>& child,
+                              const std::function<void(void)>& parent,
+                              std::string_view crash_point) {
+  return ForkAndRunToCompletion([&child, crash_point] {
     SetTestCrashPoint(crash_point);
-    f();
+    child();
     FAIL() << "Child process did not reach crash point";
-  });
+  }, parent);
 }
 
 } // namespace yb

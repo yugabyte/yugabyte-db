@@ -1280,6 +1280,36 @@ templates:
         XCluster config tables are in bad state for universe '{{ $labels.source_name }}'
         Affected XCluster configs: {{ $labels.affected_xcluster_configs }}
 
+  SAFETIME_LAG:
+    name: XCluster Transactional Safe Time Lag
+    description: Max xCluster transactional safe time lag for 10 minutes in ms on the target universe is above threshold; Safe time on the target universe has not progressed for a long time
+    queryTemplate: max by (universe_uuid) (max_over_time(consumer_safe_time_lag{universe_uuid="__universeUuid__"}[10m])) {{ query_condition }} {{ query_threshold }}
+    defaultThresholdMap:
+      SEVERE:
+        paramName: yb.alert.safetime_lag_ms
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query 
+        "max by (universe_uuid, node_name)
+        (max_over_time(consumer_safe_time_lag{universe_uuid='{{ $labels.universe_uuid }}'}[10m]) 
+        {{ query_condition }} {{ query_threshold }})" }}
+        {{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+      affected_namespace_ids: >-
+        {{ range $index, $element := query 
+        "max by (universe_uuid, namespace_id)
+        (max_over_time(consumer_safe_time_lag{universe_uuid='{{ $labels.universe_uuid }}'}[10m]) 
+        {{ query_condition }} {{ query_threshold }})" }}
+        {{if $index}},{{end}}{{ $element.Labels.namespace_id }}{{ end }}
+    annotations:
+      summary: >-
+        Max xCluster transactional safe time lag for the target universe '{{ $labels.source_name }}' is above
+        {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+
+
   PRIVATE_ACCESS_KEY_STATUS:
     name: Private access key permission status
     description: Change in universe private access keys file permissions

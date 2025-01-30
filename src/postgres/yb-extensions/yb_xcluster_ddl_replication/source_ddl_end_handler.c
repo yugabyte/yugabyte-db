@@ -1,5 +1,4 @@
-/*-----------------------------------------------------------------------------
- * Copyright (c) YugabyteDB, Inc.
+/* Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -55,6 +54,7 @@
 #include "tcop/cmdtag.h"
 #include "tcop/deparse_utility.h"
 #include "utils/jsonb.h"
+#include "utils/lsyscache.h"
 #include "utils/palloc.h"
 #include "utils/rel.h"
 
@@ -99,7 +99,6 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_CREATE_TEXT_SEARCH_PARSER) \
 	X(CMDTAG_CREATE_TEXT_SEARCH_TEMPLATE) \
 	X(CMDTAG_CREATE_TRIGGER) \
-	X(CMDTAG_CREATE_TYPE) \
 	X(CMDTAG_CREATE_USER_MAPPING) \
 	X(CMDTAG_CREATE_VIEW) \
 	X(CMDTAG_ALTER_AGGREGATE) \
@@ -122,7 +121,6 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_ALTER_TEXT_SEARCH_PARSER) \
 	X(CMDTAG_ALTER_TEXT_SEARCH_TEMPLATE) \
 	X(CMDTAG_ALTER_TRIGGER) \
-	X(CMDTAG_ALTER_TYPE) \
 	X(CMDTAG_ALTER_VIEW) \
 	X(CMDTAG_DROP_ACCESS_METHOD) \
 	X(CMDTAG_DROP_AGGREGATE) \
@@ -162,6 +160,13 @@ typedef struct YbNewRelMapEntry
 	char	   *rel_name;
 } YbNewRelMapEntry;
 
+typedef struct YbEnumLabelMapEntry
+{
+	Oid enum_oid;
+	Oid label_oid;
+	char *label_name;
+} YbEnumLabelMapEntry;
+
 Oid
 SPI_GetOid(HeapTuple spi_tuple, int column_id)
 {
@@ -174,7 +179,7 @@ SPI_GetOid(HeapTuple spi_tuple, int column_id)
 	return oid;
 }
 
-const char *
+char *
 SPI_GetText(HeapTuple spi_tuple, int column_id)
 {
 	return SPI_getvalue(spi_tuple, SPI_tuptable->tupdesc, column_id);
@@ -389,6 +394,36 @@ ShouldReplicateAlterReplication(Oid rel_oid)
 	return true;
 }
 
+static void
+GetEnumLabels(Oid enum_oid, List **enum_label_list)
+{
+	StringInfoData query;
+	initStringInfo(&query);
+	appendStringInfo(&query,
+					 "SELECT enumlabel, oid FROM pg_catalog.pg_enum WHERE "
+					 "enumtypid = %u",
+					 enum_oid);
+	int exec_result = SPI_execute(query.data, /* readonly */ true, /* tcount */ 0);
+	if (exec_result != SPI_OK_SELECT)
+		elog(ERROR, "SPI_exec failed (error %d): %s", exec_result, query.data);
+	pfree(query.data);
+
+	for (int i = 0; i < SPI_processed; i++)
+	{
+		HeapTuple tuple = SPI_tuptable->vals[i];
+		TupleDesc tupdesc = SPI_tuptable->tupdesc;
+
+		YbEnumLabelMapEntry *enum_label_entry =
+			palloc(sizeof(YbEnumLabelMapEntry));
+		enum_label_entry->enum_oid = enum_oid;
+		enum_label_entry->label_name =
+			SPI_GetText(tuple, SPI_fnumber(tupdesc, "enumlabel"));
+		enum_label_entry->label_oid =
+			SPI_GetOid(tuple, SPI_fnumber(tupdesc, "oid"));
+		*enum_label_list = lappend(*enum_label_list, enum_label_entry);
+	}
+}
+
 bool
 ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 {
@@ -403,16 +438,19 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
+	List	   *new_rel_list = NIL;
+	List       *enum_label_list = NIL;
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
 	 * will set this to true and replicate the entire query string.
 	 */
-	List	   *new_rel_list = NIL;
 	bool		should_replicate_ddl = false;
-
-	for (int row = 0; row < SPI_processed; row++)
+	int         num_of_rows = SPI_processed;
+	/* Save SPI_tuptable so the routines we call can call SPI_execute. */
+	SPITupleTable *saved_SPI_tuptable = SPI_tuptable;
+	for (int row = 0; row < num_of_rows; row++)
 	{
-		HeapTuple	spi_tuple = SPI_tuptable->vals[row];
+		HeapTuple	spi_tuple = saved_SPI_tuptable->vals[row];
 		Oid			obj_id = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
 		const char *command_tag_name = SPI_GetText(spi_tuple,
 												   DDL_END_COMMAND_TAG_COLUMN_ID);
@@ -423,6 +461,13 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateNewRelation(obj_id, &new_rel_list);
+		}
+		else if (command_tag == CMDTAG_CREATE_TYPE ||
+				 command_tag == CMDTAG_ALTER_TYPE)
+		{
+			if (type_is_enum(obj_id))
+				GetEnumLabels(obj_id, &enum_label_list);
+			should_replicate_ddl |= true;
 		}
 		else if (command_tag == CMDTAG_ALTER_TABLE &&
 				 list_member_oid(rewritten_table_oid_list, obj_id))
@@ -489,11 +534,41 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			YbNewRelMapEntry *entry = (YbNewRelMapEntry *) lfirst(l);
 
 			(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
-			AddNumericJsonEntry(state, "relfile_oid", entry->relfile_oid);
 			AddStringJsonEntry(state, "rel_name", entry->rel_name);
+			AddNumericJsonEntry(state, "relfile_oid", entry->relfile_oid);
 			(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 
 			pfree(entry->rel_name);
+			pfree(entry);
+		}
+
+		(void) pushJsonbValue(&state, WJB_END_ARRAY, NULL);
+	}
+	if (enum_label_list)
+	{
+		/*----------
+		 * Add the enum_label_list to the JSON output.  We use a flat array of
+		 * entries because JSON doesn't allow maps on composite values.
+		 *
+		 * If two entries have the same enum and label OIDs, then the
+		 * remaining fields are guaranteed to be the same.
+		 *----------
+		 */
+		AddJsonKey(state, "enum_label_info");
+		(void) pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
+
+		ListCell *l;
+		foreach (l, enum_label_list)
+		{
+			YbEnumLabelMapEntry *entry = (YbEnumLabelMapEntry *) lfirst(l);
+
+			(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+			AddNumericJsonEntry(state, "enum_oid", entry->enum_oid);
+			AddStringJsonEntry(state, "label", entry->label_name);
+			AddNumericJsonEntry(state, "label_oid", entry->label_oid);
+			(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+
+			pfree(entry->label_name);
 			pfree(entry);
 		}
 

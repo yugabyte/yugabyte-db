@@ -46,6 +46,30 @@ ROLLBACK;
 --- Accessing the EXCLUDED row from the RETURNING clause should be disallowed
 INSERT INTO ab_tab VALUES (generate_series(-3, 13)) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.a RETURNING EXCLUDED.b, b, (b % 5);
 
+--- SPI
+BEGIN;
+SELECT yb_run_spi($$
+    INSERT INTO ab_tab VALUES (1) ON CONFLICT DO NOTHING RETURNING a
+$$, 1);
+SELECT count(*), min(a), max(a) FROM ab_tab;
+SELECT yb_run_spi($$
+    INSERT INTO ab_tab VALUES (null) ON CONFLICT DO NOTHING RETURNING a
+$$, 1);
+SELECT count(*), min(a), max(a) FROM ab_tab;
+SELECT yb_run_spi($$
+    INSERT INTO ab_tab VALUES (generate_series(-10, 20)) ON CONFLICT DO NOTHING RETURNING b
+$$, 100);
+SELECT count(*), min(a), max(a) FROM ab_tab;
+SELECT yb_run_spi($$
+    INSERT INTO ab_tab VALUES (generate_series(-20, 30)) ON CONFLICT DO NOTHING RETURNING b, a
+$$, 15);
+SELECT count(*), min(a), max(a) FROM ab_tab;
+SELECT yb_run_spi($$
+    INSERT INTO ab_tab VALUES (generate_series(-30, 40)) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.a RETURNING (a + b)
+$$, 45);
+SELECT count(*), min(a), max(a) FROM ab_tab;
+ABORT;
+
 --- Multiple arbiter indexes
 CREATE UNIQUE INDEX NONCONCURRENTLY br_idx ON ab_tab (b ASC);
 -- No constraint specification.

@@ -12074,6 +12074,11 @@
   proparallel => 'r', prorettype => 'void', proargtypes => 'bool',
   prosrc => 'binary_upgrade_set_next_tablegroup_default' },
 
+{ oid => '8079', descr => 'private function used by xCluster to control OID assignment',
+  proname => 'yb_xcluster_set_next_oid_assignments', provolatile => 'v',
+  proparallel => 'r', prorettype => 'void', proargtypes => 'text',
+  prosrc => 'yb_xcluster_set_next_oid_assignments' },
+
 { oid => '8072',
   descr => 'Get metrics of all nodes',
   proname => 'yb_servers_metrics', prorows => '10',

@@ -15,6 +15,8 @@ import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -325,8 +327,13 @@ public class SwaggerGenTest extends FakeDBApplication {
     ObjectNode specJsonNode = (ObjectNode) Json.parse(jsonString);
     deleteApiUrl(specJsonNode);
     sortTagsList(specJsonNode);
+
+    // Use a prettyPrinter to get array elements on new lines.
+    DefaultPrettyPrinter prettyPrinter = new DefaultPrettyPrinter();
+    prettyPrinter.indentArraysWith(DefaultIndenter.SYSTEM_LINEFEED_INSTANCE);
+
     final Object obj = SORTED_MAPPER.treeToValue(specJsonNode, Object.class);
-    return SORTED_MAPPER.writeValueAsString(obj);
+    return SORTED_MAPPER.writer(prettyPrinter).writeValueAsString(obj);
   }
 
   // Do not hardcode API url

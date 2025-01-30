@@ -33,10 +33,10 @@ You can use the YugabyteDB Rust driver [crates](https://crates.io/) by adding th
 
 ```toml
 # For yb-postgres
-yb-postgres = "0.19.7-yb-1-beta"
+yb-postgres = "0.19.7-yb-1-beta.3"
 
 # For yb-tokio-postgres
-yb-tokio-postgres = "0.7.10-yb-1-beta"
+yb-tokio-postgres = "0.7.10-yb-1-beta.3"
 ```
 
 Or, run the following command from your project directory:
@@ -57,7 +57,7 @@ Learn how to perform common tasks required for Rust application development usin
 
 The following connection properties need to be added to enable load balancing:
 
-- `load_balance` - enable [cluster-aware load balancing](../../../../drivers-orms/smart-drivers/#cluster-aware-load-balancing) by setting this property to true; disabled by default.
+- `load_balance` - enable [cluster-aware load balancing](../../smart-drivers/#cluster-aware-load-balancing) by setting this property to one of the [allowed values](../../smart-drivers/#node-type-aware-load-balancing) other than `false`; disabled by default.
 - `topology_keys` - provide comma-separated geo-location values to enable [topology-aware load balancing](../../../../drivers-orms/smart-drivers/#topology-aware-load-balancing). Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter.
@@ -72,10 +72,10 @@ Following are other connection properties offered with the Rust smart driver:
 
 To use the driver, pass new connection properties for load balancing in the connection string.
 
-To enable uniform load balancing across all servers, you set the load-balance property to true in the connection string, as per the following examples:
+To enable uniform load balancing across all servers, you set the load-balance property to `true` or `any` in the connection string, as per the following examples:
 
 ```sh
-let url: String = String::from( "postgresql://localhost:5434/yugabyte?user=yugabyte&password=yugabyte&load_balance=true", );
+let url: String = String::from( "postgresql://localhost:5434/yugabyte?user=yugabyte&password=yugabyte&load_balance=any", );
 let conn = yb_postgres::Client::connect(&connection_url,NoTls,)?;
 ```
 
@@ -156,7 +156,7 @@ To check uniform load balancing, do the following:
     # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
     [dependencies]
-    yb-tokio-postgres = "0.7.10-yb-1-beta"
+    yb-tokio-postgres = "0.7.10-yb-1-beta.3"
     ```
 
 1. Replace the existing code in the file `src/main.rs` with the following code:
@@ -171,7 +171,7 @@ To check uniform load balancing, do the following:
        println!("Starting the example ...");
 
        let url: String = String::from(
-       "postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load_balance=true",
+       "postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load_balance=any",
        );
        println!("Using connection url: {}", url);
        let (_clients, _connections) = createconn(30, url).await.unwrap();
@@ -254,7 +254,7 @@ async fn main() -> Result<(), Error> {
    println!("Starting the example ...");
 
    let url: String = String::from(
-       "postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load_balance=true&topology_keys=aws.us-east-1.us-east-1a",
+       "postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load_balance=any&topology_keys=aws.us-east-1.us-east-1a",
    );
    println!("Using connection url: {}", url);
    let (_clients, _connections) = createconn(30, url).await.unwrap();
@@ -357,7 +357,7 @@ If you created a cluster on [YugabyteDB Aeon](/preview/yugabyte-cloud/), use the
 
 The following is an example application for connecting to a YugabyteDB cluster with SSL enabled:
 
-Add `yb-postgres-openssl = "0.5.0-yb-1"`, `yb-postgres = "0.19.7-yb-1-beta"`, and `openssl = "0.10.61"` dependencies in the `Cargo.toml` file before executing the application.
+Add `yb-postgres-openssl = "0.5.0-yb-1-beta.3"`, `yb-postgres = "0.19.7-yb-1-beta.3"`, and `openssl = "0.10.61"` dependencies in the `Cargo.toml` file before executing the application.
 
 ```rust
 use openssl::ssl::{SslConnector, SslMethod};

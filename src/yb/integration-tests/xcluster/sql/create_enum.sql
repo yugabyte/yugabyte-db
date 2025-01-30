@@ -157,3 +157,21 @@ ALTER TYPE bogus3 RENAME TO bogon3;
 ALTER TYPE bogon3 ADD VALUE 'bad';
 ALTER TYPE bogon3 ADD VALUE 'ugly';
 -- ROLLBACK;
+
+
+--
+-- Test for handling to enums with overlapping labels
+--
+
+-- BEGIN;
+CREATE TYPE colors AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple');
+CREATE TYPE paint_color AS ENUM ('red', 'orange', 'white');
+-- COMMIT;
+
+
+-- Test empty enum
+
+CREATE TYPE empty_enum AS ENUM ();
+
+
+CREATE TYPE huge_label AS ENUM ('exactly_63_character_identifier_1234567890abcdefghijklmnopqrstu');

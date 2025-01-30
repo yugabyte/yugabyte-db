@@ -1719,7 +1719,7 @@ TEST_F(PgCatalogVersionTest, AlterDatabaseCatalogVersionIncrement) {
   ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user"));
   auto v2_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn));
   auto v2_test_db = ASSERT_RESULT(GetCatalogVersion(&conn_test1));
-  ASSERT_EQ(v2_yugabyte, v1_yugabyte);
+  ASSERT_EQ(v2_yugabyte, v1_yugabyte + 1);
   ASSERT_EQ(v2_test_db, v1_test_db + 1);
   WaitForCatalogVersionToPropagate();
   ASSERT_OK(conn_test1.Execute("ALTER DATABASE test_db SET statement_timeout = 100"));
@@ -1763,6 +1763,127 @@ TEST_F(PgCatalogVersionTest, AlterDatabaseCatalogVersionIncrement) {
   // The error is not detected on connection to the a different node, this is
   // unique for YB.
   ASSERT_OK(conn_test3.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed"));
+}
+
+// This test ensures that ALTER DATABASE RENAME has global impact. If we only bump up
+// the catalog version of the altered database (test_db), or even if we also bump up the
+// catalog version of MyDatabaseId (yugabyte in this test), we can have a situation
+// where DROP DATABASE executed from a connection to a third DB (postgres) stucks in
+// a PG infinite loop: this third-DB connection has a stale cache entry of the database
+// with its old name, and performing a scan-based query from the master returns the new
+// name. The PG infinite loop can only break until they compare equal but if the third
+// DB's catalog version isn't bumped, its connection will never refresh its catalog caches
+// and the old name remains in the stale cache entry.
+// Note that due to tserver/master heartbeat delay, it is still possible that even if
+// ALTER DATABASE RENAME has global impact, the third-DB connection has already entered
+// into the infinite loop before it receives the heartbeat and performs a catalog cache
+// refresh. So this DROP DATABASE hanging problem is only mitigated not completed avoided.
+TEST_F(PgCatalogVersionTest, AlterDatabaseRename) {
+  // Test setup: create a test db.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  auto conn_postgres = ASSERT_RESULT(ConnectToDB("postgres"));
+
+  auto v1_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v1_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+
+  // Execute a query on the postgres-connection to get a cache entry with the old DB name.
+  ASSERT_OK(conn_postgres.Execute("ALTER DATABASE test_db SET temp_file_limit = 1024"));
+  auto v2_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v2_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+  ASSERT_EQ(v1_yugabyte, v2_yugabyte);
+  ASSERT_EQ(v1_postgres, v2_postgres);
+
+  // Execute a query on the yugabyte-connection to rename the test_db.
+  ASSERT_OK(conn_yugabyte.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed"));
+
+  auto v3_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v3_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+
+  // If we did not bump up the catalog version of postgres DB, this DROP DATABASE would
+  // stuck and the test timed out.
+  ASSERT_OK(conn_postgres.Execute("DROP DATABASE test_db_renamed"));
+  auto v4_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v4_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+
+  // ALTER DATABASE RENAME has global-impact.
+  ASSERT_EQ(v2_yugabyte + 1, v3_yugabyte);
+  ASSERT_EQ(v2_postgres + 1, v3_postgres);
+
+  // DROP DATABASE is a same-version DDL that does not bump up catalog version.
+  ASSERT_EQ(v3_yugabyte, v4_yugabyte);
+  ASSERT_EQ(v3_postgres, v4_postgres);
+}
+
+// This test ensures that ALTER DATABASE OWNER has global impact. If we only bump up
+// the catalog version of the altered database (test_db), or even if we also bump up the
+// catalog version of MyDatabaseId (yugabyte in this test), we can have a situation
+// where a user connected to a third DB (postgres in this test) can end up having a
+// stale database entry, which prevents/allows the user to perform an operation
+// of the test_db incorrectly.
+TEST_F(PgCatalogVersionTest, AlterDatabaseOwner) {
+  // Test setup: create a test db and two users.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+  ASSERT_OK(conn.Execute("CREATE USER test_user1"));
+  ASSERT_OK(conn.Execute("CREATE USER test_user2"));
+
+  auto conn_test_user1 = ASSERT_RESULT(ConnectToDBAsUser(
+      "postgres" /* db_name */, "test_user1"));
+  auto conn_test_user2 = ASSERT_RESULT(ConnectToDBAsUser(
+      "postgres" /* db_name */, "test_user2"));
+
+  // Initially neither user can drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+  ASSERT_NOK_STR_CONTAINS(conn_test_user2.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+
+  // Change the owner of test_db to test_user1.
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user1"));
+
+  WaitForCatalogVersionToPropagate();
+
+  // Now test_user1 owns the database, test_user2 should continue not be able to drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user2.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+  // Now test_user1 owns the database, so test_user1 should be able to drop test_db.
+  ASSERT_OK(conn_test_user1.Execute("DROP DATABASE test_db"));
+
+  // Redo the test in a different way.
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+
+  // Initially neither user can drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+  ASSERT_NOK_STR_CONTAINS(conn_test_user2.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+
+  // Change the owner of test_db to test_user1.
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user1"));
+
+  WaitForCatalogVersionToPropagate();
+
+  // Now test_user1 owns the database, so test_user1 should be able to alter it. This gets
+  // the test_db cache entry loaded in conn_test_user1. Note that temp_file_limit requires
+  // PGC_SUSET, test_user only has PGC_USERSET so we still get a permission denied error.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute(
+      "ALTER DATABASE test_db SET temp_file_limit = 1024"),
+      "permission denied to set parameter");
+
+  // Change the owner of test_db to test_user2.
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user2"));
+
+  WaitForCatalogVersionToPropagate();
+
+  // Now test_user2 owns the database, so test_user1 should not be able to drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+
+  // Now test_user2 owns the database, so test_user2 should be able to drop test_db.
+  ASSERT_OK(conn_test_user2.Execute("DROP DATABASE test_db"));
 }
 
 } // namespace pgwrapper

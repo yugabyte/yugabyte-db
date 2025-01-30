@@ -4,23 +4,13 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.NodeUniverseManager;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.Collections;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
 @Slf4j
-public class RunYsqlMajorVersionCatalogUpgrade extends UniverseTaskBase {
+public class RunYsqlMajorVersionCatalogUpgrade extends YsqlMajorUpgradeServerTaskBase {
 
-  private final NodeUniverseManager nodeUniverseManager;
-
-  private final long TIMEOUT = 600000;
-
-  public static class Params extends UniverseTaskParams {}
+  public static class Params extends YsqlMajorUpgradeServerTaskBase.Params {}
 
   @Override
   protected Params taskParams() {
@@ -28,38 +18,37 @@ public class RunYsqlMajorVersionCatalogUpgrade extends UniverseTaskBase {
   }
 
   @Inject
-  protected RunYsqlMajorVersionCatalogUpgrade(
-      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+  protected RunYsqlMajorVersionCatalogUpgrade(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   @Override
   public void run() {
+    log.info("Running {}", getName());
+    try {
+      if (isUpgradeAlreadyCompleted()) {
+        log.info("Skipping YSQL major version catalog upgrade as it is already completed");
+        return;
+      }
 
-    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
+      YsqlMajorCatalogUpgradeState state = getYsqlMajorCatalogUpgradeState();
+      if (state.equals(YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK)) {
+        log.info("Rolling back YSQL major version catalog upgrade as it failed previously");
+        rollbackYsqlMajorCatalogVersion();
+        state = getYsqlMajorCatalogUpgradeState();
+      }
 
-    if (masterLeaderNode == null) {
-      log.error("No master leader found for universe " + universe.getUniverseUUID());
-      throw new RuntimeException(
-          "No master leader found for universe " + universe.getUniverseUUID());
+      if (state.equals(YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_IN_PROGRESS)) {
+        log.info("Skipping YSQL major version catalog upgrade as it is already in progress");
+      } else {
+        log.info("Starting YSQL major version catalog upgrade");
+        startYsqlMajorCatalogUpgrade();
+      }
+      waitForCatalogUpgradeToFinish();
+    } catch (Exception e) {
+      log.error("Error running ysql major version catalog upgrade: ", e);
+      throw new RuntimeException(e);
     }
-
-    ShellResponse response =
-        nodeUniverseManager.runYbAdminCommand(
-            masterLeaderNode,
-            universe,
-            taskInfo,
-            Collections.singletonList("ysql_major_version_catalog_upgrade"),
-            TIMEOUT);
-
-    if (response.code != 0) {
-      log.error("Failed to run ysql_major_version_catalog_upgrade. Error: " + response.message);
-      throw new RuntimeException(
-          "Failed to run ysql_major_version_catalog_upgrade. Check logs for more info.");
-    }
-
-    log.info("Successfully ran ysql_major_version_catalog_upgrade.");
+    log.info("Finished {}", getName());
   }
 }

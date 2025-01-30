@@ -57,6 +57,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DropTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.FinalizeYsqlMajorCatalogUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent;
@@ -1705,7 +1706,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createPGUpgradeTServerCheckTask(String ybSoftwareVersion) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("PGUpgradeTServerCheck");
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("PGUpgradeTServerCheck", SubTaskGroupType.PreflightChecks);
     PGUpgradeTServerCheck task = createTask(PGUpgradeTServerCheck.class);
     PGUpgradeTServerCheck.Params params = new PGUpgradeTServerCheck.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
@@ -1717,7 +1719,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createRunYsqlMajorVersionCatalogUpgradeTask() {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("RunYsqlMajorVersionCatalogUpgrade");
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("RunYsqlMajorVersionCatalogUpgrade", SubTaskGroupType.UpgradingSoftware);
     RunYsqlMajorVersionCatalogUpgrade task = createTask(RunYsqlMajorVersionCatalogUpgrade.class);
     RunYsqlMajorVersionCatalogUpgrade.Params params =
         new RunYsqlMajorVersionCatalogUpgrade.Params();
@@ -1729,7 +1732,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createRollbackYsqlMajorVersionCatalogUpgradeTask() {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("RollbackYsqlMajorVersionCatalogUpgrade");
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            "RollbackYsqlMajorVersionCatalogUpgrade", SubTaskGroupType.RollingBackSoftware);
     RollbackYsqlMajorVersionCatalogUpgrade task =
         createTask(RollbackYsqlMajorVersionCatalogUpgrade.class);
     RollbackYsqlMajorVersionCatalogUpgrade.Params params =
@@ -1737,6 +1742,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.setUniverseUUID(taskParams().getUniverseUUID());
     task.initialize(params);
     subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createFinalizeYsqlMajorCatalogUpgradeTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            "FinalizeYsqlMajorVersionCatalogUpgrade", SubTaskGroupType.FinalizingUpgrade);
+    FinalizeYsqlMajorCatalogUpgrade task = createTask(FinalizeYsqlMajorCatalogUpgrade.class);
+    FinalizeYsqlMajorCatalogUpgrade.Params params = new FinalizeYsqlMajorCatalogUpgrade.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpgradingSoftware);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
@@ -6317,6 +6336,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         true /* retainPrevYBSoftwareConfig */);
 
     if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
+      if (universe.getUniverseDetails().prevYBSoftwareConfig != null) {
+        UniverseDefinitionTaskParams.Cluster primaryCluster =
+            universe.getUniverseDetails().getPrimaryCluster();
+        String oldVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+        String currentVersion = primaryCluster.userIntent.ybSoftwareVersion;
+        if (this.gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, currentVersion)
+            && primaryCluster.userIntent.enableYSQL) {
+          createFinalizeYsqlMajorCatalogUpgradeTask();
+        }
+      }
+
       if (ysqlUpgradeFinalizeTask != null) {
         // Run YSQL upgrade finalize task on the universe.
         // This is a temp step as we need to remove flags set during upgrade.

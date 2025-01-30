@@ -49,7 +49,9 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     google::SetVLOGLevel("cdc*", 0);
   }
 
-  Result<std::string> RunYSQLDump(Cluster& cluster, const std::string& database_name = "yugabyte") {
+  Result<std::string> RunYSQLDump(Cluster& cluster) { return RunYSQLDump(cluster, namespace_name); }
+
+  Result<std::string> RunYSQLDump(Cluster& cluster, const std::string& database_name) {
     const auto output = VERIFY_RESULT(tools::RunYSQLDump(cluster.pg_host_port_, database_name));
 
     // Filter out any lines in output that contain "binary_upgrade_set_next", since these contain
@@ -58,8 +60,11 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     return std::regex_replace(output, pattern, "\n<binary_upgrade_set_next>");
   }
 
-  Result<std::string> ReadEnumLabelInfo(
-      Cluster& cluster, const std::string& database_name = "yugabyte") {
+  Result<std::string> ReadEnumLabelInfo(Cluster& cluster) {
+    return ReadEnumLabelInfo(cluster, namespace_name);
+  }
+
+  Result<std::string> ReadEnumLabelInfo(Cluster& cluster, const std::string& database_name) {
     auto conn = VERIFY_RESULT(cluster.ConnectToDB(database_name));
     return VERIFY_RESULT(conn.FetchAllAsString(
         "SELECT typname, enumlabel, pg_enum.oid, enumsortorder FROM pg_enum "
@@ -198,7 +203,7 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropExtensions) {
   ASSERT_OK(TestPgRegress("pgonly_extensions_create.sql", "pgonly_extensions_drop.sql"));
 }
 
-TEST_F(XClusterPgRegressDDLReplicationTest, YB_DISABLE_TEST(PgRegressCreateDropEnum)) {
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropEnum) {
   ASSERT_OK(TestPgRegress("create_enum.sql", "drop_enum.sql"));
 }
 

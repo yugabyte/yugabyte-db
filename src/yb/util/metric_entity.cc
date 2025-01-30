@@ -14,6 +14,8 @@
 //
 #include "yb/util/metric_entity.h"
 
+#include <boost/regex.hpp>
+
 #include "yb/gutil/map-util.h"
 
 #include "yb/util/debug.h"

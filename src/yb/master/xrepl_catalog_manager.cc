@@ -144,6 +144,8 @@ DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_uint32(cdc_wal_retention_time_secs);
+DECLARE_uint64(cdc_intent_retention_ms);
+DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 
 
@@ -359,7 +361,8 @@ void CatalogManager::RecordCDCSDKHiddenTablets(
         .table_id_ = hidden_tablet->table()->id(),
         .parent_tablet_id_ =
             tablet_pb.has_split_parent_tablet_id() ? tablet_pb.split_parent_tablet_id() : "",
-        .split_tablets_ = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)}};
+        .split_tablets_ = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)},
+        .hide_time_ = HybridTime(tablet_pb.hide_hybrid_time())};
 
     retained_by_cdcsdk_.emplace(hidden_tablet->id(), std::move(info));
   }
@@ -3415,9 +3418,11 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
 
       std::optional<cdc::CDCStateTableEntry> parent_entry_opt;
       if (stream_type == cdc::CDCSDK) {
-         parent_entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
-          {split_tablet_ids.source, stream->StreamId()},
-          cdc::CDCStateTableEntrySelector().IncludeActiveTime().IncludeCDCSDKSafeTime()));
+        parent_entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+            {split_tablet_ids.source, stream->StreamId()}, cdc::CDCStateTableEntrySelector()
+                                                               .IncludeCheckpoint()
+                                                               .IncludeActiveTime()
+                                                               .IncludeCDCSDKSafeTime()));
         DCHECK(parent_entry_opt);
       }
 
@@ -3443,17 +3448,24 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         }
       }
 
-      // Insert children entries into cdc_state now, set the opid to 0.0 and the timestamp to
-      // NULL. When we process the parent's SPLIT_OP in GetChanges, we will update the opid to
-      // the SPLIT_OP so that the children pollers continue from the next records. When we process
-      // the first GetChanges for the children, then their timestamp value will be set. We use
-      // this information to know that the children has been polled for. Once both children have
-      // been polled for, then we can delete the parent tablet via the bg task
+      // Insert children entries into cdc_state now. In case of logical replication set the opid to
+      // parent entry's opid. The split will be detected in the immediate next GetChanges call on
+      // this tablet and we will transition to the children tablets. In other cases, set the opid to
+      // 0.0 and the timestamp to NULL. When we process the parent's SPLIT_OP in GetChanges, we will
+      // update the opid to the SPLIT_OP so that the children pollers continue from the next
+      // records. When we process the first GetChanges for the children, then their timestamp value
+      // will be set. We use this information to know that the children has been polled for. Once
+      // both children have been polled for, then we can delete the parent tablet via the bg task
       // DoProcessXClusterParentTabletDeletion.
       for (const auto& child_tablet_id :
            {split_tablet_ids.children.first, split_tablet_ids.children.second}) {
         cdc::CDCStateTableEntry entry(child_tablet_id, stream->StreamId());
-        entry.checkpoint = OpId().Min();
+        if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
+            DCHECK(parent_entry_opt->checkpoint);
+            entry.checkpoint = *parent_entry_opt->checkpoint;
+        } else {
+            entry.checkpoint = OpId().Min();
+        }
 
         if (stream_type == cdc::CDCSDK) {
           entry.active_time = last_active_time;
@@ -4435,7 +4447,6 @@ bool CatalogManager::IsTablePartOfCDCSDK(
 
 std::unordered_set<xrepl::StreamId> CatalogManager::GetCDCSDKStreamsForTable(
     const TableId& table_id) const {
-  SharedLock lock(mutex_);
   DCHECK(xrepl_maps_loaded_);
   auto table_ids = FindOrNull(cdcsdk_tables_to_stream_map_, table_id);
   if (!table_ids) {
@@ -4444,6 +4455,74 @@ std::unordered_set<xrepl::StreamId> CatalogManager::GetCDCSDKStreamsForTable(
   return *table_ids;
 }
 
+Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
+    const std::unordered_set<xrepl::StreamId>& stream_ids) {
+  if (stream_ids.empty()) {
+    return HybridTime::kInvalid;
+  }
+
+  // All these streams are on the same tablet (hence same DB). We can only have either logical
+  // replication or gRPC replication on any DB. If the first stream present in cdc_stream_map_
+  // among the ones passed, does't contain replication slot name it means that this DB has gRPC
+  // streams.
+  for (const auto stream_id : stream_ids) {
+    if (cdc_stream_map_.contains(stream_id)) {
+      if (cdc_stream_map_[stream_id]->GetCdcsdkYsqlReplicationSlotName().empty()) {
+        return HybridTime::kInvalid;
+      }
+      break;
+    }
+  }
+
+  HybridTime min_restart_time_across_all_slots;
+  for (const auto& stream_id : stream_ids) {
+    auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+        {kCDCSDKSlotEntryTabletId, stream_id},
+        cdc::CDCStateTableEntrySelector().IncludeRecordIdCommitTime()));
+    RSTATUS_DCHECK(entry_opt, NotFound, "Slot entry not found for stream_id : {}", stream_id);
+    RSTATUS_DCHECK(
+        entry_opt->record_id_commit_time.has_value(), NotFound,
+        "Restart time not found for slot with stream_id : {}", stream_id);
+    min_restart_time_across_all_slots =
+        std::min(min_restart_time_across_all_slots, HybridTime(*entry_opt->record_id_commit_time));
+  }
+
+  return min_restart_time_across_all_slots;
+}
+
+Result<std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>>
+CatalogManager::GetCDCSDKStreamCreationTimeMap(
+    const std::unordered_set<xrepl::StreamId>& stream_ids) {
+  std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
+  for (const auto stream_id : stream_ids) {
+    auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+    RSTATUS_DCHECK(
+        stream, NotFound, "Entry for stream: {} not found in cdc_stream_map_", stream_id);
+
+    auto stream_lock_pb = stream->LockForRead()->pb;
+    if (stream_lock_pb.has_stream_creation_time()) {
+      stream_creation_time_map.emplace(stream_id, stream_lock_pb.stream_creation_time());
+    } else {
+      stream_creation_time_map.emplace(stream_id, std::nullopt);
+    }
+  }
+  return stream_creation_time_map;
+}
+
+bool CatalogManager::IsCDCSDKTabletExpiredOrNotOfInterest(
+    HybridTime last_active_time, std::optional<HybridTime> stream_creation_time) {
+  if (last_active_time.AddMilliseconds(FLAGS_cdc_intent_retention_ms) < Clock()->Now()) {
+    return true;
+  }
+
+  auto not_of_interest_limit_secs =
+      GetAtomicFlag(&FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) + 2;
+  if (!stream_creation_time.has_value() || last_active_time != *stream_creation_time ||
+      last_active_time.AddSeconds(not_of_interest_limit_secs) > Clock()->Now()) {
+    return false;
+  }
+  return true;
+}
 
 void CatalogManager::RunXReplBgTasks(const LeaderEpoch& epoch) {
   if (!FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) {
@@ -4724,7 +4803,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
   }
 
   std::unordered_set<TabletId> tablets_to_delete;
-  std::vector<cdc::CDCStateTableEntry> entries_to_update;
   std::vector<cdc::CDCStateTableKey> entries_to_delete;
 
   // Check cdc_state table to see if the children tablets are being polled.
@@ -4735,8 +4813,18 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
       continue;
     }
 
-    // For each hidden tablet, check if for each stream we have an entry in the mapping for them.
-    const auto stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
+    // For each hidden tablet, get all the streams on it and related info about the streams.
+    std::unordered_set<xrepl::StreamId> stream_ids;
+    HybridTime min_restart_time_across_slots;
+    std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
+    {
+      SharedLock lock(mutex_);
+      stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
+      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
+      if (min_restart_time_across_slots.is_valid()) {
+        stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
+      }
+    }
 
     size_t count_tablet_streams_to_delete = 0;
     size_t count_streams_already_deleted = 0;
@@ -4746,8 +4834,10 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
       // If the entry for the tablet does not exist, then we can go ahead with deletion of the
       // tablet.
       auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
-          {tablet_id, stream_id},
-          cdc::CDCStateTableEntrySelector().IncludeCheckpoint().IncludeLastReplicationTime()));
+          {tablet_id, stream_id}, cdc::CDCStateTableEntrySelector()
+                                      .IncludeCheckpoint()
+                                      .IncludeLastReplicationTime()
+                                      .IncludeActiveTime()));
 
       // This means we already deleted the entry for this stream in a previous iteration.
       if (!entry_opt) {
@@ -4801,6 +4891,24 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
         // Also delete the parent tablet from cdc_state for all completed streams.
         entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
         count_tablet_streams_to_delete++;
+        continue;
+      }
+
+      // This is the case where the tablet is not being polled by the replication slot corresponding
+      // to the stream id. We can delete the hidden tablet if:
+      //   1. The min_restart_time_across_slots is greater than the hide time of the hidden tablet.
+      //   2. If the tablet has expired or become not of interest. This is because if a tablet
+      //   has expired or become not of interest, all its barriers will be lifted, hence making it
+      //   unconsumable for CDC.
+      // Also delete the parent tablet entry from cdc_state table.
+      DCHECK(entry_opt->active_time);
+      auto last_active_time = HybridTime::FromMicros(*entry_opt->active_time);
+      if (min_restart_time_across_slots.is_valid() &&
+          (hidden_tablet.hide_time_ < min_restart_time_across_slots ||
+           IsCDCSDKTabletExpiredOrNotOfInterest(
+               last_active_time, stream_creation_time_map.at(stream_id)))) {
+        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+        count_tablet_streams_to_delete++;
       }
     }
 
@@ -4809,13 +4917,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
     }
   }
 
-  Status s = cdc_state_table_->UpdateEntries(entries_to_update);
-  if (!s.ok()) {
-    LOG(ERROR) << "Unable to flush operations to update cdc streams: " << s;
-    return s.CloneAndPrepend("Error updating cdc stream rows from cdc_state table");
-  }
-
-  s = cdc_state_table_->DeleteEntries(entries_to_delete);
+  auto s = cdc_state_table_->DeleteEntries(entries_to_delete);
   if (!s.ok()) {
     LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
     return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
