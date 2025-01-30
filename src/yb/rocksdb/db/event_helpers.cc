@@ -46,7 +46,9 @@ void EventHelpers::LogAndNotifyTableFileCreation(
           << "job" << info.job_id
           << "event" << "table_file_creation"
           << "file_number" << fd.GetNumber()
-          << "file_size" << fd.GetTotalFileSize();
+          << "file_size" << fd.GetTotalFileSize()
+          << "metadata_size" << fd.GetBaseFileSize()
+          << "cache_key_prefix" << info.table_properties.cache_key_prefix;
 
   // table_properties
   {
