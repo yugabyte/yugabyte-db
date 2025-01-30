@@ -1233,6 +1233,11 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
 }
 
+Status PgApiImpl::WaitVectorIndexReady(const PgObjectId& table_id) {
+  while (!VERIFY_RESULT(pg_session_->pg_client().PollVectorIndexReady(table_id))) {}
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statement Support.
 //--------------------------------------------------------------------------------------------------

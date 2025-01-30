@@ -102,6 +102,10 @@ class TserverXClusterContextIf;
     (ImportTxnSnapshot) \
     /**/
 
+#define YB_PG_CLIENT_TRIVIAL_METHODS \
+    (PollVectorIndexReady) \
+    /**/
+
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
@@ -138,8 +142,15 @@ class PgClientServiceImpl : public PgClientServiceIf {
       BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
       rpc::RpcContext context) override;
 
+#define YB_PG_CLIENT_TRIVIAL_METHOD_DECLARE(r, data, method) \
+  Result<BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)> method( \
+      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
+      CoarseTimePoint deadline) override;
+
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_METHODS);
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_ASYNC_METHODS);
+
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_TRIVIAL_METHOD_DECLARE, ~, YB_PG_CLIENT_TRIVIAL_METHODS);
 
  private:
   class Impl;
@@ -179,6 +190,11 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_SETTER_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
+
+  Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
+      const PgPollVectorIndexReadyRequestPB& req, CoarseTimePoint deadline) override {
+    return STATUS(NotSupported, "Mocking PollVectorIndexReady is not supported");
+  }
 
  private:
   PgClientServiceIf* impl_;

@@ -448,6 +448,10 @@ YbcStatus YBCPgBackfillIndex(
     const YbcPgOid database_oid,
     const YbcPgOid index_relfilenode_oid);
 
+YbcStatus YBCPgWaitVectorIndexReady(
+    const YbcPgOid database_oid,
+    const YbcPgOid index_relfilenode_oid);
+
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)
 //--------------------------------------------------------------------------------------------------

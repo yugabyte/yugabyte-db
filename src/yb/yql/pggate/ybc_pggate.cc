@@ -1308,6 +1308,13 @@ YbcStatus YBCPgBackfillIndex(
   return ToYBCStatus(pgapi->BackfillIndex(index_id));
 }
 
+YbcStatus YBCPgWaitVectorIndexReady(
+    const YbcPgOid database_oid,
+    const YbcPgOid index_oid) {
+  const PgObjectId index_id(database_oid, index_oid);
+  return ToYBCStatus(pgapi->WaitVectorIndexReady(index_id));
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statements.
 //--------------------------------------------------------------------------------------------------

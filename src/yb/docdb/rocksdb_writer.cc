@@ -707,14 +707,6 @@ Result<bool> ApplyIntentsContext::Entry(
   return false;
 }
 
-void ApplyIntentsContext::AddVectorIndexReverseEntry(
-    rocksdb::DirectWriteHandler* handler, Slice ybctid, Slice value) {
-  DocHybridTimeBuffer ht_buf;
-  auto encoded_write_time = ht_buf.EncodeWithValueType({ commit_ht_, write_id_ });
-
-  handler->Put(dockv::VectorIndexReverseEntryKeyParts(value, encoded_write_time), {&ybctid, 1});
-}
-
 Status ApplyIntentsContext::ProcessVectorIndexes(
     rocksdb::DirectWriteHandler* handler, Slice key, Slice value) {
   auto sizes = VERIFY_RESULT(dockv::DocKey::EncodedPrefixAndDocKeySizes(key));
@@ -732,13 +724,12 @@ Status ApplyIntentsContext::ProcessVectorIndexes(
         const auto& vector_index = *(*vector_indexes_)[i];
         auto table_key_prefix = vector_index.indexed_table_key_prefix();
         if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id) {
-          auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
           vector_index_batches_[i].push_back(VectorIndexInsertEntry {
-            .key = KeyBuffer(ybctid),
-            .value = ValueBuffer(value),
+            .value = ValueBuffer(value.WithoutPrefix(1)),
           });
           if (!added_to_vector_index) {
-            AddVectorIndexReverseEntry(handler, ybctid, value);
+            auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
+            AddVectorIndexReverseEntry(handler, ybctid, value, commit_ht_);
             added_to_vector_index = true;
           }
         }
@@ -807,15 +798,14 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
 
     auto ybctid = key.WithoutPrefix(table_key_prefix.size());
     vector_index_batches_[i].push_back(VectorIndexInsertEntry {
-      .key = KeyBuffer(ybctid),
-      .value = ValueBuffer(*column_value),
+      .value = ValueBuffer(column_value->WithoutPrefix(1)),
     });
 
     size_t column_index = schema_packing_->GetIndex(vector_index.column_id());
     columns_added_to_vector_index.resize(
         std::max(columns_added_to_vector_index.size(), column_index + 1));
     if (!columns_added_to_vector_index.test_set(column_index)) {
-      AddVectorIndexReverseEntry(handler, ybctid, *column_value);
+      AddVectorIndexReverseEntry(handler, ybctid, *column_value, commit_ht_);
     }
   }
   return Status::OK();

@@ -92,6 +92,7 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/tserver/heartbeater.h"
+#include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/read_query.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"

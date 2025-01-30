@@ -31,6 +31,7 @@
 #include "yb/common/row_mark.h"
 
 #include "yb/common/transaction_error.h"
+
 #include "yb/docdb/doc_pg_expr.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
@@ -2470,6 +2471,9 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   table_iter_.reset();
   PgsqlVectorFilter filter(&table_iter_);
   RETURN_NOT_OK(filter.Init(data_));
+  RSTATUS_DCHECK(
+      data_.vector_index->BackfillDone(), IllegalState,
+      "Vector index query on non ready index: $0", *data_.vector_index);
   auto result = VERIFY_RESULT(data_.vector_index->Search(
       vector_slice,
       vector_index::SearchOptions {

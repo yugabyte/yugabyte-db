@@ -86,11 +86,12 @@ Result<typename vector_index::VectorLSMTypes<Vector, DistanceResult>::VectorInde
 
 template<vector_index::IndexableVectorType Vector>
 Result<Vector> VectorFromYSQL(Slice slice) {
+  Slice original_slice = slice;
   size_t size = VERIFY_RESULT((CheckedRead<uint16_t, LittleEndian>(slice)));
   slice.RemovePrefix(2);
   RSTATUS_DCHECK_EQ(
-      slice.size(), size * sizeof(typename Vector::value_type),
-      Corruption, Format("Wrong vector value size, vector: $0", slice.ToDebugHexString()));
+      slice.size(), size * sizeof(typename Vector::value_type), Corruption,
+      Format("Wrong vector value size, vector: $0", original_slice.ToDebugHexString()));
   Vector result;
   auto* input = slice.data();
   result.reserve(size);
@@ -102,14 +103,6 @@ Result<Vector> VectorFromYSQL(Slice slice) {
 }
 
 template<vector_index::IndexableVectorType Vector>
-Result<Vector> VectorFromBinary(Slice slice) {
-  RSTATUS_DCHECK_EQ(
-      dockv::ConsumeValueEntryType(&slice), dockv::ValueEntryType::kString,
-      Corruption, "Unexpected value type for vector");
-  return VectorFromYSQL<Vector>(slice);
-}
-
-template<vector_index::IndexableVectorType Vector>
 Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
     const VectorIndexInsertEntry& entry) {
 
@@ -118,7 +111,7 @@ Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
   auto encoded = dockv::EncodedDocVectorValue::FromSlice(entry.value.AsSlice());
   return vector_index::VectorLSMInsertEntry<Vector> {
     .vector_id = VERIFY_RESULT(encoded.DecodeId()),
-    .vector = VERIFY_RESULT(VectorFromBinary<Vector>(encoded.data)),
+    .vector = VERIFY_RESULT(VectorFromYSQL<Vector>(encoded.data)),
   };
 }
 
@@ -135,6 +128,10 @@ class VectorIndexImpl : public VectorIndex {
       const DocDB& doc_db)
       : table_id_(table_id), indexed_table_key_prefix_(indexed_table_key_prefix),
         column_id_(column_id), doc_db_(doc_db) {
+  }
+
+  const TableId& table_id() const override {
+    return table_id_;
   }
 
   Slice indexed_table_key_prefix() const override {
@@ -217,8 +214,8 @@ class VectorIndexImpl : public VectorIndex {
     return lsm_.WaitForFlush();
   }
 
-  rocksdb::UserFrontierPtr GetFlushedFrontier() override {
-    return lsm_.GetFlushedFrontier();
+  ConsensusFrontierPtr GetFlushedFrontier() override {
+    return down_cast<ConsensusFrontier>(lsm_.GetFlushedFrontier());
   }
 
   rocksdb::FlushAbility GetFlushAbility() override {
@@ -262,6 +259,26 @@ Result<VectorIndexPtr> CreateVectorIndex(
       index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), doc_db);
   RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool, options));
   return result;
+}
+
+bool VectorIndex::BackfillDone() {
+  if (backfill_done_cache_.load()) {
+    return true;
+  }
+  auto frontier = GetFlushedFrontier();
+  if (frontier && frontier->backfill_done()) {
+    backfill_done_cache_.store(true);
+    return true;
+  }
+  return false;
+}
+
+void AddVectorIndexReverseEntry(
+    rocksdb::DirectWriteHandler* handler, Slice ybctid, Slice value, HybridTime write_ht) {
+  DocHybridTimeBuffer ht_buf;
+  auto encoded_write_time = ht_buf.EncodeWithValueType({ write_ht, 0 });
+  handler->Put(
+      dockv::VectorIndexReverseEntryKeyParts(value, encoded_write_time), {&ybctid, 1});
 }
 
 }  // namespace yb::docdb

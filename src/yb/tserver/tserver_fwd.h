@@ -38,6 +38,7 @@ namespace tserver {
 class Heartbeater;
 class LocalTabletServer;
 class MetricsSnapshotter;
+class PgClientServiceMockImpl;
 class PgTableCache;
 class PgResponseCache;
 class PgSequenceCache;

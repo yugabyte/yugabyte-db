@@ -105,7 +105,6 @@ class HnswlibIndex :
     return hnsw_->getInternalParameters().max_elements;
   }
 
-
   Status DoSaveToFile(const std::string& path) {
     try {
       hnsw_->saveIndex(path);

@@ -99,6 +99,7 @@ class VectorLSMInsertTask :
 
   void Bind(const std::shared_ptr<MutableChunk>& chunk) {
     DCHECK(!chunk_);
+    DCHECK_ONLY_NOTNULL(chunk->index);
     chunk_ = chunk;
   }
 
@@ -273,8 +274,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   bool RegisterInsert(
       const std::vector<InsertEntry>& entries, const Options& options, size_t new_tasks,
       const rocksdb::UserFrontiers* frontiers) {
-    // TODO(vector_index) Handle size of entries greater than points_per_chunk.
-    if (num_entries && num_entries + entries.size() > options.points_per_chunk) {
+    if (num_entries && num_entries + entries.size() > index->MaxVectors()) {
       return false;
     }
     num_entries += entries.size();
@@ -287,6 +287,10 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
 
   void Insert(VectorLSM& lsm, VectorId vertex_id, const Vector& vector) {
     lsm.CheckFailure(index->Insert(vertex_id, vector));
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(num_entries, num_tasks, user_frontiers);
   }
 };
 
@@ -310,6 +314,10 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
     added_chunk.set_order_no(order_no);
     user_frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
     user_frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(serial_no, order_no, state, user_frontiers);
   }
 };
 
@@ -403,7 +411,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   }
 
   for (const auto& [_, chunk_pb] : chunks) {
-    auto index = options_.vector_index_factory();
+    auto index = chunk_pb->serial_no() ? options_.vector_index_factory() : nullptr;
     auto user_frontiers = options_.frontiers_factory();
     RETURN_NOT_OK(user_frontiers->Smallest().FromPB(chunk_pb->smallest().user_frontier()));
     RETURN_NOT_OK(user_frontiers->Largest().FromPB(chunk_pb->largest().user_frontier()));
@@ -421,7 +429,12 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
 
   CountDownLatch latch(immutable_chunks_.size());
   for (size_t i = 0; i != immutable_chunks_.size(); ++i) {
-    options_.thread_pool->EnqueueFunctor([this, &latch, &chunk = immutable_chunks_[i]] {
+    auto& chunk = immutable_chunks_[i];
+    if (!chunk->serial_no) {
+      latch.CountDown();
+      continue;
+    }
+    options_.thread_pool->EnqueueFunctor([this, &latch, &chunk] {
       CheckFailure(chunk->index->LoadFromFile(
           GetChunkPath(options_.storage_dir, chunk->serial_no),
           MaxConcurrentReads()));
@@ -455,9 +468,11 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
   RETURN_NOT_OK(env_->CreateDirs(out));
   VectorLSMUpdatePB update;
   for (const auto& chunk : chunks) {
-    RETURN_NOT_OK(env_->LinkFile(
-        GetChunkPath(options_.storage_dir, chunk->serial_no),
-        GetChunkPath(out, chunk->serial_no)));
+    if (chunk->serial_no) {
+      RETURN_NOT_OK(env_->LinkFile(
+          GetChunkPath(options_.storage_dir, chunk->serial_no),
+          GetChunkPath(out, chunk->serial_no)));
+    }
     chunk->AddToUpdate(update);
   }
   auto metadata_file = VERIFY_RESULT(VectorLSMMetadataOpenFile(env_, out, 0));
@@ -467,6 +482,9 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Insert(
     std::vector<InsertEntry> entries, const VectorLSMInsertContext& context) {
+  VLOG_WITH_PREFIX_AND_FUNC(5)
+      << "entries: " << entries.size() << ", frontier: " << AsString(context.frontiers);
+
   std::shared_ptr<MutableChunk> chunk;
   size_t num_tasks = ceil_div<size_t>(entries.size(), FLAGS_vector_index_task_size);
   {
@@ -483,6 +501,11 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
           RuntimeError, "Failed to register insert into a new mutable chunk");
     }
     chunk = mutable_chunk_;
+  }
+
+  if (!num_tasks) {
+    // Empty insert could be used to update frontiers.
+    return Status::OK();
   }
 
   size_t entries_per_task = ceil_div(entries.size(), num_tasks);
@@ -601,7 +624,9 @@ auto VectorLSM<Vector, DistanceResult>::Search(
       indexes.push_back(mutable_chunk_->index);
     }
     for (const auto& chunk : immutable_chunks_) {
-      indexes.push_back(chunk->index);
+      if (chunk->index) {
+        indexes.push_back(chunk->index);
+      }
     }
   }
 
@@ -620,11 +645,15 @@ auto VectorLSM<Vector, DistanceResult>::Search(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& chunk) {
-  const auto chunk_path = GetChunkPath(options_.storage_dir, chunk->serial_no);
-  if (chunk->serial_no == 1 && FLAGS_TEST_vector_index_delay_saving_first_chunk_ms != 0) {
-    std::this_thread::sleep_for(FLAGS_TEST_vector_index_delay_saving_first_chunk_ms * 1ms);
+  VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(*chunk);
+
+  if (chunk->index) {
+    const auto chunk_path = GetChunkPath(options_.storage_dir, chunk->serial_no);
+    if (chunk->serial_no == 1 && FLAGS_TEST_vector_index_delay_saving_first_chunk_ms != 0) {
+      std::this_thread::sleep_for(FLAGS_TEST_vector_index_delay_saving_first_chunk_ms * 1ms);
+    }
+    RETURN_NOT_OK(chunk->index->SaveToFile(chunk_path));
   }
-  RETURN_NOT_OK(chunk->index->SaveToFile(chunk_path));
 
   rocksdb::WritableFile* metadata_file = nullptr;
   ImmutableChunkPtr writing_chunk;
@@ -651,6 +680,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
     RSTATUS_DCHECK(
         it != updates_queue_.end(), RuntimeError,
         "Missing chunk in updates queue: $0", chunk->order_no);
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Updated queue: " << AsString(updates_queue_);
     for (;;) {
       if (it->second->state != ImmutableChunkState::kOnDisk) {
         return Status::OK();
@@ -678,6 +708,7 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
   for (;;) {
     VectorLSMUpdatePB update;
     chunk->AddToUpdate(update);
+    VLOG_WITH_PREFIX_AND_FUNC(4) << update.ShortDebugString();
     RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*metadata_file, update));
 
     std::lock_guard lock(mutex_);
@@ -719,13 +750,18 @@ void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise) {
-  auto chunk_serial_no = ++current_chunk_serial_no_;
+  size_t chunk_serial_no = 0;;
 
+  VectorIndexPtr index;
+  if (mutable_chunk_->num_entries) {
+    chunk_serial_no = ++current_chunk_serial_no_;
+    index = mutable_chunk_->index;
+  }
   immutable_chunks_.push_back(std::make_shared<ImmutableChunk>(ImmutableChunk {
     .serial_no = chunk_serial_no,
     .order_no = immutable_chunks_.empty() ? 0 : immutable_chunks_.back()->order_no + 1,
     .state = ImmutableChunkState::kInMemory,
-    .index = mutable_chunk_->index,
+    .index = std::move(index),
     .user_frontiers = std::move(mutable_chunk_->user_frontiers),
     .flush_promise = promise,
   }));
@@ -752,11 +788,19 @@ Status VectorLSM<Vector, DistanceResult>::RollChunk(size_t min_points) {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_points) {
-  auto index = options_.vector_index_factory();
-  RETURN_NOT_OK(index->Reserve(
-      std::max(min_points, options_.points_per_chunk),
-      options_.thread_pool->options().max_workers, MaxConcurrentReads()));
+Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_vectors) {
+  VLOG_WITH_PREFIX_AND_FUNC(4) << min_vectors;
+  VectorIndexPtr index;
+  if (mutable_chunk_ && mutable_chunk_->num_entries == 0 &&
+      mutable_chunk_->index->MaxVectors() >= min_vectors) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Reuse index of " << AsString(*mutable_chunk_);
+    index = std::move(mutable_chunk_->index);
+  } else {
+    index = options_.vector_index_factory();
+    RETURN_NOT_OK(index->Reserve(
+        std::max(min_vectors, options_.points_per_chunk),
+        options_.thread_pool->options().max_workers, MaxConcurrentReads()));
+  }
 
   mutable_chunk_ = std::make_shared<MutableChunk>();
   mutable_chunk_->index = std::move(index);
@@ -765,6 +809,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_point
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "wait: " << wait;
   std::promise<Status> promise;
   {
     std::lock_guard lock(mutex_);
@@ -782,6 +827,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier() {
   rocksdb::UserFrontierPtr result;
   std::lock_guard lock(mutex_);
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "immutable_chunks: " << AsString(immutable_chunks_);
 
   for (const auto& chunk : immutable_chunks_) {
     if (chunk->state != ImmutableChunkState::kInManifest) {
@@ -796,13 +842,13 @@ rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier()
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 rocksdb::FlushAbility VectorLSM<Vector, DistanceResult>::GetFlushAbility() {
   std::lock_guard lock(mutex_);
-  if (mutable_chunk_ && mutable_chunk_->num_entries) {
-    return rocksdb::FlushAbility::kHasNewData;
-  }
   for (const auto& chunk : immutable_chunks_) {
     if (chunk->state != ImmutableChunkState::kInManifest) {
       return rocksdb::FlushAbility::kAlreadyFlushing;
     }
+  }
+  if (mutable_chunk_ && mutable_chunk_->num_entries) {
+    return rocksdb::FlushAbility::kHasNewData;
   }
   return rocksdb::FlushAbility::kNoNewData;
 }
@@ -833,9 +879,15 @@ DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
     SharedLock lock(mutex_);
     if (mutable_chunk_) {
       index = mutable_chunk_->index;
-    } else if (!immutable_chunks_.empty()) {
-      index = immutable_chunks_.front()->index;
     } else {
+      for (const auto& chunk : immutable_chunks_) {
+        index = chunk->index;
+        if (index) {
+          break;
+        }
+      }
+    }
+    if (!index) {
       index = options_.vector_index_factory();
     }
   }

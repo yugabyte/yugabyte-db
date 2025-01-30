@@ -379,27 +379,13 @@ concept PbWith_AshMetadataPB = requires (const Pb& t) {
   t.ash_metadata();
 };
 
-template <PbWith_AshMetadataPB Pb>
+template <class Pb>
 void TryUpdateAshWaitState(const Pb& req) {
-  if (req.has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req.ash_metadata());
+  if constexpr (PbWith_AshMetadataPB<Pb>) {
+    if (req.has_ash_metadata()) {
+      ash::WaitStateInfo::UpdateMetadataFromPB(req.ash_metadata());
+    }
   }
 }
-
-// Overloads for RPCs which intentionally doesn't have the ash_metadata
-// field, either because they are deprecated, or they are async RPCs, or
-// they are called before ASH is able to sample them as of 08-10-2024
-//
-// NOTE: New sync RPCs should have ASH metadata along with it, and it shouldn't
-// be overloaded here.
-inline void TryUpdateAshWaitState(const PgHeartbeatRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgActiveSessionHistoryRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgFetchDataRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgGetCatalogMasterVersionRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgGetReplicationSlotStatusRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgSetActiveSubTransactionRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgGetDatabaseInfoRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgIsInitDbDoneRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgCreateSequencesDataTableRequestPB&) {}
 
 } // namespace yb::tserver

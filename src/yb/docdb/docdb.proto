@@ -124,6 +124,10 @@ message ConsensusFrontierPB {
   repeated PerDbFilterPB db_oid_to_ht_filter = 7;
   // Set only on the master for cotables.
   optional fixed64 cotables_cutoff_ht = 8;
+
+  optional bool backfill_done = 9;
+  optional fixed64 backfill_read_ht = 10;
+  optional bytes backfill_key = 11;
 }
 
 message ApplyTransactionStatePB {

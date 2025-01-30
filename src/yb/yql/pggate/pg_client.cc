@@ -563,6 +563,17 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.info();
   }
 
+  Result<bool> PollVectorIndexReady(const PgObjectId& table_id) {
+    tserver::PgPollVectorIndexReadyRequestPB req;
+    req.set_table_id(table_id.GetYbTableId());
+
+    tserver::PgPollVectorIndexReadyResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->PollVectorIndexReady(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.ready();
+  }
+
   Status SetActiveSubTransaction(
       SubTransactionId id, tserver::PgPerformOptionsPB* options) {
     tserver::PgSetActiveSubTransactionRequestPB req;
@@ -1499,6 +1510,10 @@ Result<tserver::PgListClonesResponsePB> PgClient::ListDatabaseClones() {
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
   return impl_->GetDatabaseInfo(oid);
+}
+
+Result<bool> PgClient::PollVectorIndexReady(const PgObjectId& table_id) {
+  return impl_->PollVectorIndexReady(table_id);
 }
 
 Result<std::pair<PgOid, PgOid>> PgClient::ReserveOids(

@@ -156,7 +156,7 @@ void DocRowwiseIterator::Refresh(SeekFilter seek_filter) {
   seek_filter_ = seek_filter;
 }
 
-inline void DocRowwiseIterator::Seek(Slice key) {
+void DocRowwiseIterator::Seek(Slice key) {
   VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
 
   DCHECK(!done_);

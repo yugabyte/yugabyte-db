@@ -574,6 +574,59 @@ class PgClientServiceImpl::Impl {
         resp->mutable_info());
   }
 
+  Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
+      const PgPollVectorIndexReadyRequestPB& req, CoarseTimePoint deadline) {
+    // TODO(vector_index) Move method implementation to the place where actual polling could be
+    // implemented. So method could wait until deadline of index is ready.
+    auto& client = this->client();
+    bool ready = false;
+    for (;;) {
+      auto table = VERIFY_RESULT(client.OpenTable(req.table_id()));
+      auto tablets = VERIFY_RESULT(client.LookupAllTabletsFuture(table, deadline).get());
+      ready = true;
+      for (const auto& tablet : tablets) {
+        auto* leader = tablet->LeaderTServer();
+        if (!leader) {
+          VLOG_WITH_FUNC(4) << "No leader for " << tablet->tablet_id();
+          ready = false;
+          break;
+        }
+        auto proxy = leader->ObtainProxy(client);
+        tserver::GetTabletStatusRequestPB status_req;
+        tserver::GetTabletStatusResponsePB status_resp;
+        status_req.set_tablet_id(tablet->tablet_id());
+        rpc::RpcController controller;
+        controller.set_deadline(deadline);
+        RETURN_NOT_OK(leader->proxy()->GetTabletStatus(status_req, &status_resp, &controller));
+        bool tablet_ready = false;
+        VLOG_WITH_FUNC(4)
+            << "Finished on " << tablet->tablet_id() << ": "
+            << AsString(status_resp.tablet_status().vector_index_finished_backfills());
+        for (const auto& table_id : status_resp.tablet_status().vector_index_finished_backfills()) {
+          if (table_id == req.table_id()) {
+            tablet_ready = true;
+            break;
+          }
+        }
+        if (!tablet_ready) {
+          ready = false;
+          break;
+        }
+      }
+      if (ready) {
+        break;
+      }
+      auto wait_time = 100ms;
+      if (CoarseMonoClock::Now() + wait_time * 2 > deadline) {
+        break;
+      }
+      std::this_thread::sleep_for(wait_time);
+    }
+    PgPollVectorIndexReadyResponsePB result;
+    result.set_ready(ready);
+    return result;
+  }
+
   Status IsInitDbDone(
       const PgIsInitDbDoneRequestPB& req, PgIsInitDbDoneResponsePB* resp,
       rpc::RpcContext* context) {
@@ -2211,8 +2264,17 @@ void PgClientServiceImpl::method( \
   impl_->method(*req, resp, std::move(context)); \
 }
 
+#define YB_PG_CLIENT_TRIVIAL_METHOD_DEFINE(r, data, method) \
+Result<BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)> PgClientServiceImpl::method( \
+    const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
+    CoarseTimePoint deadline) { \
+  TryUpdateAshWaitState(req); \
+  return impl_->method(req, deadline); \
+}
+
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DEFINE, ~, YB_PG_CLIENT_METHODS);
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, ~, YB_PG_CLIENT_ASYNC_METHODS);
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_TRIVIAL_METHOD_DEFINE, ~, YB_PG_CLIENT_TRIVIAL_METHODS);
 
 PgClientServiceMockImpl::PgClientServiceMockImpl(
     const scoped_refptr<MetricEntity>& entity, PgClientServiceIf* impl)

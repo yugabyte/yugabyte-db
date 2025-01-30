@@ -42,6 +42,9 @@ DECLARE_uint32(vector_index_concurrent_writes);
 
 namespace yb::pgwrapper {
 
+YB_STRONGLY_TYPED_BOOL(AddFilter);
+YB_STRONGLY_TYPED_BOOL(Backfill);
+
 using FloatVector = std::vector<float>;
 
 const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
@@ -67,7 +70,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
     return IsColocated() ? ConnectToDB("colocated_db") : PgMiniTestBase::Connect();
   }
 
-  Result<PGConn> MakeIndex(size_t dimensions = 3) {
+  Result<PGConn> MakeTable(size_t dimensions = 3) {
     auto colocated = IsColocated();
     auto conn = VERIFY_RESULT(PgMiniTestBase::Connect());
     std::string create_suffix;
@@ -81,12 +84,20 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
         "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector($0))$1",
         dimensions, create_suffix));
 
-    RETURN_NOT_OK(conn.Execute("CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
-
     return conn;
   }
 
-  Result<PGConn> MakeIndexAndFill(size_t num_rows);
+  Status CreateIndex(PGConn& conn) {
+    return conn.Execute("CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)");
+  }
+
+  Result<PGConn> MakeIndex(size_t dimensions = 3) {
+    auto conn = VERIFY_RESULT(MakeTable(dimensions));
+    RETURN_NOT_OK(CreateIndex(conn));
+    return conn;
+  }
+
+  Result<PGConn> MakeIndexAndFill(size_t num_rows, Backfill backfill);
   Result<PGConn> MakeIndexAndFillRandom(size_t num_rows, size_t dimensions);
   Status InsertRows(PGConn& conn, size_t start_row, size_t end_row);
   Status InsertRandomRows(PGConn& conn, size_t num_rows, size_t dimensions);
@@ -96,7 +107,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
       PGConn& conn, bool add_filter, const std::vector<std::string>& expected, int64_t limit = -1);
 
   void TestSimple();
-  void TestManyRows(bool add_filter);
+  void TestManyRows(AddFilter add_filter, Backfill backfill = Backfill::kFalse);
   void TestRestart(tablet::FlushFlags flush_flags);
 
   FloatVector RandomVector(size_t dimensions) {
@@ -199,9 +210,16 @@ Status PgVectorIndexTest::InsertRandomRows(PGConn& conn, size_t num_rows, size_t
   return conn.CommitTransaction();
 }
 
-Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(size_t num_rows) {
-  auto conn = VERIFY_RESULT(MakeIndex());
-  RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
+Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(
+    size_t num_rows, Backfill backfill = Backfill::kFalse) {
+  auto conn = VERIFY_RESULT(MakeTable());
+  if (backfill) {
+    RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
+    RETURN_NOT_OK(CreateIndex(conn));
+  } else {
+    RETURN_NOT_OK(CreateIndex(conn));
+    RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
+  }
   return conn;
 }
 
@@ -232,11 +250,11 @@ void PgVectorIndexTest::VerifyRead(PGConn& conn, size_t limit, bool add_filter) 
   VerifyRows(conn, add_filter, expected);
 }
 
-void PgVectorIndexTest::TestManyRows(bool add_filter) {
+void PgVectorIndexTest::TestManyRows(AddFilter add_filter, Backfill backfill) {
   constexpr size_t kNumRows = RegularBuildVsSanitizers(2000, 64);
   const size_t query_limit = add_filter ? 1 : 5;
 
-  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows, backfill));
   ASSERT_NO_FATALS(VerifyRead(conn, query_limit, add_filter));
 }
 
@@ -254,11 +272,15 @@ TEST_P(PgVectorIndexTest, Split) {
 }
 
 TEST_P(PgVectorIndexTest, ManyRows) {
-  TestManyRows(false);
+  TestManyRows(AddFilter::kFalse);
+}
+
+TEST_P(PgVectorIndexTest, ManyRowsWithBackfill) {
+  TestManyRows(AddFilter::kFalse, Backfill::kTrue);
 }
 
 TEST_P(PgVectorIndexTest, ManyRowsWithFilter) {
-  TestManyRows(true);
+  TestManyRows(AddFilter::kTrue);
 }
 
 TEST_P(PgVectorIndexTest, ManyReads) {

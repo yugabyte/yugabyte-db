@@ -145,6 +145,8 @@ class PgClient {
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
+  Result<bool> PollVectorIndexReady(const PgObjectId& table_id);
+
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
 
   Result<PgOid> GetNewObjectId(PgOid db_oid);

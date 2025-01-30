@@ -27,6 +27,7 @@ import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
+import "yb/rpc/service.proto";
 import "yb/tablet/tablet.proto";
 
 service PgClientService {
@@ -64,6 +65,10 @@ service PgClientService {
       returns (PgGetTablePartitionListResponsePB);
   rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
+  };
+  rpc PollVectorIndexReady(PgPollVectorIndexReadyRequestPB)
+      returns (PgPollVectorIndexReadyResponsePB) {
+    option (yb.rpc.trivial) = true;
   };
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
@@ -625,6 +630,15 @@ message PgGetTablePartitionListRequestPB {
 message PgGetTablePartitionListResponsePB {
   AppStatusPB status = 1;
   PgTablePartitionsPB partitions = 2;
+}
+
+message PgPollVectorIndexReadyRequestPB {
+  string table_id = 1;
+}
+
+message PgPollVectorIndexReadyResponsePB {
+  AppStatusPB status = 1;
+  bool ready = 2;
 }
 
 message PgPerformOpPB {

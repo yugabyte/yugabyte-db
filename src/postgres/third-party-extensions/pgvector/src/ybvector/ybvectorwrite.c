@@ -455,6 +455,9 @@ ybvectorcopartitionedbackfill(Relation heap, Relation index, struct IndexInfo *i
 IndexBuildResult *
 ybvectorcopartitionedbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 {
+	HandleYBStatus(YBCPgWaitVectorIndexReady(
+		YBCGetDatabaseOid(index), index->rd_id));
+
 	IndexBuildResult *result = palloc0(sizeof(IndexBuildResult));
 
 	return result;

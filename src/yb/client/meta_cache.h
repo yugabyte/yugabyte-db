@@ -118,6 +118,8 @@ class RemoteTabletServer {
   // If there is an active proxy, does nothing.
   Status InitProxy(YBClient* client);
 
+  Result<std::shared_ptr<tserver::TabletServerServiceProxy>> ObtainProxy(YBClient& client);
+
   // Update information from the given pb.
   // Requires that 'pb''s UUID matches this server.
   void Update(const master::TSInfoPB& pb);

@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/entity_ids_types.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -32,7 +33,6 @@ namespace yb::docdb {
 using EncodedDistance = size_t;
 
 struct VectorIndexInsertEntry {
-  KeyBuffer key;
   ValueBuffer value;
 };
 
@@ -49,6 +49,7 @@ class VectorIndex {
  public:
   virtual ~VectorIndex() = default;
 
+  virtual const TableId& table_id() const = 0;
   virtual Slice indexed_table_key_prefix() const = 0;
   virtual ColumnId column_id() const = 0;
   virtual const std::string& path() const = 0;
@@ -60,10 +61,15 @@ class VectorIndex {
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
-  virtual rocksdb::UserFrontierPtr GetFlushedFrontier() = 0;
+  virtual docdb::ConsensusFrontierPtr GetFlushedFrontier() = 0;
   virtual rocksdb::FlushAbility GetFlushAbility() = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
+
+  bool BackfillDone();
+
+ private:
+  std::atomic<bool> backfill_done_cache_{false};
 };
 
 Result<VectorIndexPtr> CreateVectorIndex(
@@ -75,5 +81,8 @@ Result<VectorIndexPtr> CreateVectorIndex(
     const DocDB& doc_db);
 
 extern const std::string kVectorIndexDirPrefix;
+
+void AddVectorIndexReverseEntry(
+    rocksdb::DirectWriteHandler* handler, Slice ybctid, Slice value, HybridTime write_ht);
 
 }  // namespace yb::docdb

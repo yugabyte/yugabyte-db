@@ -146,7 +146,7 @@ class VectorLSM {
   Status UpdateManifest(
       rocksdb::WritableFile* metadata_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
 
-  Status CreateNewMutableChunk(size_t min_points) REQUIRES(mutex_);
+  Status CreateNewMutableChunk(size_t min_vectors) REQUIRES(mutex_);
 
   Status RemoveUpdateQueueEntry(size_t order_no) REQUIRES(mutex_);
 
