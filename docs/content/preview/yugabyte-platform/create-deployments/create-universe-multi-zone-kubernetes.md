@@ -193,7 +193,7 @@ tserver:
 
 #### ARM VMs
 
-If you want to use ARM VMs, add the following overrides:
+{{<tags/feature/ea idea="1486">}}If you want to use ARM VMs, add the following overrides:
 
 ```yaml
 # Point to the aarch64 image in case multi-arch is not available.
