@@ -247,9 +247,6 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 			 * Section 2 contains relations in relcache init file but
 			 * do not support sys cache. Should be kept in sync with
 			 * YbRelationIdIsInInitFileAndNotCached.
-			 * As of 2023-11-27, SECURITY LABEL command is not supported.
-			 * Add SharedSecLabelRelationId, SharedSecLabelObjectIndexId
-			 * to section 2 when SECURITY LABEL command is supported.
 			 */
 			Assert(relid == AuthIdRelationId ||
 				   relid == AuthIdRolnameIndexId ||
@@ -258,8 +255,9 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 				   relid == AuthMemMemRoleIndexId ||
 				   relid == DatabaseRelationId ||
 				   relid == TableSpaceRelationId ||
-
-				   relid == DatabaseNameIndexId);
+				   relid == DatabaseNameIndexId ||
+				   relid == SharedSecLabelRelationId ||
+				   relid == SharedSecLabelObjectIndexId);
 
 			YbSetIsGlobalDDL();
 		}
