@@ -197,6 +197,9 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   // is not safe to run in parallel.
   Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
 
+  void StopPostgres(Cluster* cluster);
+  Status StartPostgres(Cluster* cluster);
+
   Status WriteGenerateSeries(
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table);
 

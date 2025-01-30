@@ -139,23 +139,27 @@ void PgMiniTestBase::StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx) {
             << pg_process_conf.data_dir
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
 
+  auto pg_ts = cluster_->mini_tablet_server(pg_ts_idx);
+
   BeforePgProcessStart();
   pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf, nullptr /* tserver */);
   ASSERT_OK(pg_supervisor_->Start());
+  pg_ts->SetPgServerHandlers(
+      [this] { return StartPostgres(); },
+      [this] { StopPostgres(); });
 }
 
 Status PgMiniTestBase::RecreatePgSupervisor() {
   pg_supervisor_ = std::make_unique<PgSupervisor>(
-      VERIFY_RESULT(CreatePgProcessConf(pg_host_port_.port(), /* ts_idx */ 0)),
+      VERIFY_RESULT(CreatePgProcessConf(pg_host_port_.port(), kPgTsIndex)),
       /* tserver */ nullptr);
   return Status::OK();
 }
 
 Status PgMiniTestBase::RestartCluster() {
-  pg_supervisor_->Stop();
-  RETURN_NOT_OK(cluster_->RestartSync());
-  RETURN_NOT_OK(RecreatePgSupervisor());
-  return pg_supervisor_->Start();
+  // Postgres will get stopped/started when the corresponding tserver is, so no need to
+  // explicitly restart it here.
+  return cluster_->RestartSync();
 }
 
 Status PgMiniTestBase::RestartMaster() {
@@ -165,19 +169,25 @@ Status PgMiniTestBase::RestartMaster() {
   return mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests();
 }
 
-Status PgMiniTestBase::RestartPostgres() {
-  LOG(INFO) << "Restarting PostgreSQL server";
+void PgMiniTestBase::StopPostgres() {
+  LOG(INFO) << "Stopping PostgreSQL server";
   pg_supervisor_->Stop();
+  pg_supervisor_ = nullptr;
+}
+
+Status PgMiniTestBase::StartPostgres() {
+  LOG(INFO) << "Starting PostgreSQL server";
   RETURN_NOT_OK(RecreatePgSupervisor());
   return pg_supervisor_->Start();
 }
 
-void PgMiniTestBase::OverrideMiniClusterOptions(MiniClusterOptions* options) {}
-
-const std::shared_ptr<tserver::MiniTabletServer> PgMiniTestBase::PickPgTabletServer(
-    const MiniCluster::MiniTabletServers& servers) {
-  return RandomElement(servers);
+Status PgMiniTestBase::RestartPostgres() {
+  LOG(INFO) << "Restarting PostgreSQL server";
+  StopPostgres();
+  return StartPostgres();
 }
+
+void PgMiniTestBase::OverrideMiniClusterOptions(MiniClusterOptions* options) {}
 
 std::vector<tserver::TabletServerOptions> PgMiniTestBase::ExtraTServerOptions() {
   return std::vector<tserver::TabletServerOptions>();

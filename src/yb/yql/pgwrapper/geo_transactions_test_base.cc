@@ -100,12 +100,6 @@ void GeoTransactionsTestBase::InitTransactionManagerAndPool() {
   ASSERT_NE(transaction_pool_, nullptr);
 }
 
-const std::shared_ptr<tserver::MiniTabletServer> GeoTransactionsTestBase::PickPgTabletServer(
-    const MiniCluster::MiniTabletServers& servers) {
-  // Force postgres to run on first TS.
-  return servers[0];
-}
-
 uint64_t GeoTransactionsTestBase::GetCurrentVersion() {
   return transaction_manager_->GetLoadedStatusTabletsVersion();
 }

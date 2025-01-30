@@ -149,7 +149,13 @@ Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped
   RETURN_NOT_OK(Reconnect());
 
   started_ = true;
-  return wait_tablets_bootstrapped ? WaitStarted() : Status::OK();
+  if (wait_tablets_bootstrapped) {
+    RETURN_NOT_OK(WaitStarted());
+  }
+  if (start_pg_) {
+    RETURN_NOT_OK(start_pg_());
+  }
+  return Status::OK();
 }
 
 string MiniTabletServer::ToString() const { return Format("ts-$0", index_); }
@@ -195,6 +201,9 @@ void MiniTabletServer::Shutdown() {
     tunnel_->Shutdown();
   }
   if (started_) {
+    if (shutdown_pg_) {
+      shutdown_pg_();
+    }
     // Save bind address and port so we can later restart the server.
     opts_.rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(
         index_, bound_rpc_addr().port());
@@ -368,6 +377,12 @@ const MemTrackerPtr& MiniTabletServer::mem_tracker() const {
 HybridTime MiniTabletServer::Now() const {
   CHECK(started_);
   return server_->clock()->Now();
+}
+
+void MiniTabletServer::SetPgServerHandlers(
+    std::function<Status(void)> start_pg, std::function<void(void)> shutdown_pg) {
+  start_pg_ = start_pg;
+  shutdown_pg_ = shutdown_pg;
 }
 
 } // namespace tserver

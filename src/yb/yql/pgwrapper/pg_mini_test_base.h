@@ -30,6 +30,8 @@ namespace yb::pgwrapper {
 
 class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
  protected:
+  constexpr static size_t kPgTsIndex = 0;
+
   // This allows modifying flags before we start the postgres process in SetUp.
   virtual void BeforePgProcessStart() {
   }
@@ -51,11 +53,6 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
   // This allows changing mini cluster options before the mini cluster is started.
   virtual void OverrideMiniClusterOptions(MiniClusterOptions* options);
 
-  // This allows modifying the logic to decide which tablet server to run postgres on -
-  // by default, randomly picked out of all the tablet servers.
-  virtual const std::shared_ptr<tserver::MiniTabletServer> PickPgTabletServer(
-     const MiniCluster::MiniTabletServers& servers);
-
   // This allows passing extra tserver options to the underlying mini cluster.
   virtual std::vector<tserver::TabletServerOptions> ExtraTServerOptions();
 
@@ -70,6 +67,10 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
   Status RestartCluster();
 
   Status RestartMaster();
+
+  void StopPostgres();
+
+  Status StartPostgres();
 
   Status RestartPostgres();
 
