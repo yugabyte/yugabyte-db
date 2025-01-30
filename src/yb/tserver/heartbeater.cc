@@ -486,8 +486,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
           break;
         }
         default:
-          return StatusFromPB(resp.error().status());
-
+          auto status = StatusFromPB(resp.error().status());
+          if (resp.is_fatal_error()) {
+            // yb-master has requested us to terminate the process immediately.
+            LOG(FATAL) << "Unable to join universe: " << status;
+          }
+          return status;
       }
     }
 
