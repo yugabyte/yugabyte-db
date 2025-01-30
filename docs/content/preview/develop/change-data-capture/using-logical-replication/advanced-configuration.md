@@ -30,7 +30,7 @@ CDC retains resources (such as WAL segments) that contain information related to
 
 Retaining resources has an impact on the system. Clients are expected to consume these transactions within configurable duration limits. Resources will be released if the duration exceeds these configured limits.
 
-Use the [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) & [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-tserver/#cdc_wal_retention_time_secs) flag to control the duration for which resources are retained.
+Use the [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) and [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-tserver/#cdc-wal-retention-time-secs) flags to control the duration for which resources are retained.
 
 Resources are retained for each tablet of a table that is part of a database whose changes are being consumed using a replication slot. This includes those tables that may not be currently part of the publication specification.
 
