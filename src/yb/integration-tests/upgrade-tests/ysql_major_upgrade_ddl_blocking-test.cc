@@ -60,19 +60,10 @@ class YsqlMajorUpgradeDdlBlockingTest : public Pg15UpgradeTestBase {
       if (!error_expected) {
         RETURN_NOT_OK(status);
       } else {
-        if (upgrade_state_ == UpgradeState::kAfterUpgrade) {
-          // Depending on the cleanup state we may get different errors after the upgrade.
-          SCHECK(
-              !status.ok() &&
-                  (status.message().ToString().find(kExpectedDdlError) != std::string::npos ||
-                   status.message().ToString().find("unknown_table_name") != std::string::npos),
-              IllegalState, "Unexpected status: ", status.ToString());
-        } else {
-          SCHECK(
-              !status.ok() &&
-                  status.message().ToString().find(kExpectedDdlError) != std::string::npos,
-              IllegalState, "Unexpected status: ", status.ToString());
-        }
+        SCHECK(
+            !status.ok() &&
+                status.message().ToString().find(kExpectedDdlError) != std::string::npos,
+            IllegalState, "Unexpected status: ", status.ToString());
       }
     }
     return Status::OK();

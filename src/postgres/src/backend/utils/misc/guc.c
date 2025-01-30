@@ -3142,6 +3142,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_refresh_matview_in_place", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Refresh materialized views in place."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_refresh_matview_in_place,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -4992,6 +5003,18 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_query_diagnostics_circular_buffer_size,
 		64, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_major_version_upgrade_compatibility", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("The compatibility level to use during a YSQL Major version upgrade. "
+						 "Allowed values are 0 and 11."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_major_version_upgrade_compatibility,
+		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
