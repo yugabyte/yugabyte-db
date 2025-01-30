@@ -236,8 +236,21 @@ Status XClusterYsqlTestBase::InitPostgres(
       std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
   RETURN_NOT_OK(cluster->pg_supervisor_->Start());
 
+  pg_ts->SetPgServerHandlers(
+      [this, cluster] { return StartPostgres(cluster); },
+      [this, cluster] { StopPostgres(cluster); });
+
   cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
   return OK();
+}
+
+void XClusterYsqlTestBase::StopPostgres(Cluster* cluster) {
+  cluster->pg_supervisor_->Stop();
+  cluster->pg_supervisor_.reset();
+}
+
+Status XClusterYsqlTestBase::StartPostgres(Cluster* cluster) {
+  return InitPostgres(cluster, cluster->pg_ts_idx_, cluster->mini_cluster_->AllocateFreePort());
 }
 
 std::string XClusterYsqlTestBase::GetCompleteTableName(const YBTableName& table) {
