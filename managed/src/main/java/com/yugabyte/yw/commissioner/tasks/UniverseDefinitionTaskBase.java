@@ -3633,7 +3633,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .build();
     // Check only the exit code in shellProcessHandler.
     return createRunNodeCommandTask(
-            universe, nodes, command, (n, r) -> {}, null /* shell context */)
+            universe,
+            nodes,
+            command,
+            (n, r) -> r.processErrors("linger could not be enabled for yugabyte user"),
+            null /* shell context */)
         .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
   }
 
