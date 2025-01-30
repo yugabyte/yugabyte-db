@@ -14,7 +14,8 @@ done
 # set access key and secret key
 mc alias set local $AWS_ENDPOINT_URL $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
 
-# create bucket
+# create buckets
 mc mb local/$AWS_S3_TEST_BUCKET
+mc mb local/${AWS_S3_TEST_BUCKET}2
 
 wait $minio_pid

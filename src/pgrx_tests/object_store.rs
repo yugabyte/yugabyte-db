@@ -2,12 +2,49 @@
 mod tests {
     use std::io::Write;
 
-    use pgrx::{pg_test, Spi};
+    use pgrx::{pg_sys::Timestamp, pg_test, Spi};
 
     use crate::pgrx_tests::common::TestTable;
 
+    fn object_store_cache_clear() {
+        Spi::run("SELECT parquet_test.object_store_cache_clear();").unwrap();
+    }
+
+    fn object_store_cache_items() -> Vec<(&'static str, &'static str, Option<Timestamp>)> {
+        Spi::connect(|client| {
+            let mut results = Vec::new();
+            let tup_table = client
+                .select(
+                    "SELECT * FROM parquet_test.object_store_cache_items() ORDER BY 1,2,3;",
+                    None,
+                    None,
+                )
+                .unwrap();
+
+            for row in tup_table {
+                let scheme = row.get_by_name("scheme").unwrap().unwrap();
+                let bucket = row.get_by_name("bucket").unwrap().unwrap();
+                let expire_at = row.get_by_name("expire_at").unwrap();
+
+                results.push((scheme, bucket, expire_at));
+            }
+
+            results
+        })
+    }
+
+    fn object_store_expire_item(bucket: &str) {
+        Spi::run(&format!(
+            "SELECT parquet_test.object_store_cache_expire_bucket('{}');",
+            bucket
+        ))
+        .unwrap();
+    }
+
     #[pg_test]
     fn test_s3_from_env() {
+        object_store_cache_clear();
+
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
 
@@ -33,6 +70,8 @@ mod tests {
 
     #[pg_test]
     fn test_s3_from_config_file() {
+        object_store_cache_clear();
+
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
 
@@ -86,6 +125,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "403 Forbidden")]
     fn test_s3_wrong_access_key_id() {
+        object_store_cache_clear();
+
         std::env::set_var("AWS_ACCESS_KEY_ID", "wrong_access_key_id");
 
         let test_bucket_name: String =
@@ -102,6 +143,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "403 Forbidden")]
     fn test_s3_wrong_secret_access_key() {
+        object_store_cache_clear();
+
         std::env::set_var("AWS_SECRET_ACCESS_KEY", "wrong_secret_access_key");
 
         let test_bucket_name: String =
@@ -118,6 +161,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "permission denied to COPY from a remote uri")]
     fn test_s3_no_read_access() {
+        object_store_cache_clear();
+
         // create regular user
         Spi::run("CREATE USER regular_user;").unwrap();
 
@@ -154,6 +199,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "permission denied to COPY to a remote uri")]
     fn test_s3_no_write_access() {
+        object_store_cache_clear();
+
         // create regular user
         Spi::run("CREATE USER regular_user;").unwrap();
 
@@ -198,6 +245,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "404 Not Found")]
     fn test_s3_write_wrong_bucket() {
+        object_store_cache_clear();
+
         let s3_uri = "s3://randombucketwhichdoesnotexist/pg_parquet_test.parquet";
 
         let copy_to_command = format!(
@@ -210,6 +259,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "404 Not Found")]
     fn test_s3_read_wrong_bucket() {
+        object_store_cache_clear();
+
         let s3_uri = "s3://randombucketwhichdoesnotexist/pg_parquet_test.parquet";
 
         let create_table_command = "CREATE TABLE test_table (a int);";
@@ -221,6 +272,8 @@ mod tests {
 
     #[pg_test]
     fn test_s3_temporary_token() {
+        object_store_cache_clear();
+
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
 
@@ -266,8 +319,20 @@ mod tests {
 
         let s3_uri = format!("s3://{}/pg_parquet_test.parquet", test_bucket_name);
 
-        let test_table = TestTable::<i32>::new("int4".into()).with_uri(s3_uri);
+        let test_table = TestTable::<i32>::new("int4".into()).with_uri(s3_uri.clone());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
 
+        assert!(matches!(
+            object_store_cache_items()[..],
+            [("AmazonS3", "testbucket" , Some(expire_at) )] if expire_at > 0
+        ));
+
+        // expire the token for the bucket
+        object_store_expire_item("testbucket");
+
+        // next run will create a new token
+        let test_table = TestTable::<i32>::new("int4".into()).with_uri(s3_uri);
         test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
         test_table.assert_expected_and_result_rows();
 
@@ -278,6 +343,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "unsupported s3 uri")]
     fn test_s3_unsupported_uri() {
+        object_store_cache_clear();
+
         let cloudflare_s3_uri = "https://ACCOUNT_ID.r2.cloudflarestorage.com/bucket".into();
 
         let test_table = TestTable::<i32>::new("int4".into()).with_uri(cloudflare_s3_uri);
@@ -288,6 +355,8 @@ mod tests {
 
     #[pg_test]
     fn test_azure_blob_from_env() {
+        object_store_cache_clear();
+
         // unset AZURE_STORAGE_CONNECTION_STRING to make sure the account name and key are used
         std::env::remove_var("AZURE_STORAGE_CONNECTION_STRING");
 
@@ -316,6 +385,8 @@ mod tests {
 
     #[pg_test]
     fn test_azure_from_config_file() {
+        object_store_cache_clear();
+
         let test_container_name: String = std::env::var("AZURE_TEST_CONTAINER_NAME")
             .expect("AZURE_TEST_CONTAINER_NAME not found");
 
@@ -360,6 +431,8 @@ mod tests {
 
     #[pg_test]
     fn test_azure_from_env_via_connection_string() {
+        object_store_cache_clear();
+
         // unset AZURE_STORAGE_ACCOUNT AND AZURE_STORAGE_KEY to make sure the connection string is used
         std::env::remove_var("AZURE_STORAGE_ACCOUNT");
         std::env::remove_var("AZURE_STORAGE_KEY");
@@ -377,6 +450,8 @@ mod tests {
 
     #[pg_test]
     fn test_azure_from_config_via_connection_string() {
+        object_store_cache_clear();
+
         let test_container_name: String = std::env::var("AZURE_TEST_CONTAINER_NAME")
             .expect("AZURE_TEST_CONTAINER_NAME not found");
 
@@ -418,6 +493,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "Account must be specified")]
     fn test_azure_no_storage_account() {
+        object_store_cache_clear();
+
         // unset AZURE_STORAGE_CONNECTION_STRING to make sure the account name and key are used
         std::env::remove_var("AZURE_STORAGE_CONNECTION_STRING");
 
@@ -437,6 +514,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "403 Forbidden")]
     fn test_azure_wrong_storage_key() {
+        object_store_cache_clear();
+
         // unset AZURE_STORAGE_CONNECTION_STRING to make sure the account name and key are used
         std::env::remove_var("AZURE_STORAGE_CONNECTION_STRING");
 
@@ -463,6 +542,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "404 Not Found")]
     fn test_azure_write_wrong_container() {
+        object_store_cache_clear();
+
         let test_account_name: String =
             std::env::var("AZURE_STORAGE_ACCOUNT").expect("AZURE_STORAGE_ACCOUNT not found");
 
@@ -480,6 +561,8 @@ mod tests {
 
     #[pg_test]
     fn test_azure_read_write_sas() {
+        object_store_cache_clear();
+
         let test_container_name: String = std::env::var("AZURE_TEST_CONTAINER_NAME")
             .expect("AZURE_TEST_CONTAINER_NAME not found");
 
@@ -509,6 +592,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "403 Forbidden")]
     fn test_azure_read_only_sas() {
+        object_store_cache_clear();
+
         let test_container_name: String = std::env::var("AZURE_TEST_CONTAINER_NAME")
             .expect("AZURE_TEST_CONTAINER_NAME not found");
 
@@ -538,6 +623,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "unsupported azure blob storage uri")]
     fn test_azure_unsupported_uri() {
+        object_store_cache_clear();
+
         let fabric_azure_blob_uri = "https://ACCOUNT.dfs.fabric.microsoft.com".into();
 
         let test_table = TestTable::<i32>::new("int4".into()).with_uri(fabric_azure_blob_uri);
@@ -549,6 +636,8 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "unsupported scheme gs in uri gs://testbucket")]
     fn test_unsupported_uri() {
+        object_store_cache_clear();
+
         let test_table =
             TestTable::<i32>::new("int4".into()).with_uri("gs://testbucket".to_string());
         test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
@@ -558,9 +647,98 @@ mod tests {
     #[pg_test]
     #[should_panic(expected = "unrecognized uri dummy://testbucket")]
     fn test_unrecognized_uri() {
+        object_store_cache_clear();
+
         let test_table =
             TestTable::<i32>::new("int4".into()).with_uri("dummy://testbucket".to_string());
         test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
         test_table.assert_expected_and_result_rows();
+    }
+
+    #[pg_test]
+    fn test_object_store_cache() {
+        object_store_cache_clear();
+
+        // s3 scheme and bucket
+        let test_table =
+            TestTable::<i32>::new("int4".into()).with_uri("s3://testbucket/test1.parquet".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![("AmazonS3", "testbucket", None)]
+        );
+
+        // s3 scheme and same bucket
+        let test_table =
+            TestTable::<i32>::new("int4".into()).with_uri("s3://testbucket/test1.parquet".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![("AmazonS3", "testbucket", None)]
+        );
+
+        // s3 scheme and different bucket
+        let test_table =
+            TestTable::<i32>::new("int4".into()).with_uri("s3://testbucket2/test1.parquet".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![
+                ("AmazonS3", "testbucket", None),
+                ("AmazonS3", "testbucket2", None)
+            ]
+        );
+
+        // az scheme and container
+        let test_table = TestTable::<i32>::new("int4".into())
+            .with_uri("az://testcontainer/test1.parquet".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![
+                ("AmazonS3", "testbucket", None),
+                ("AmazonS3", "testbucket2", None),
+                ("MicrosoftAzure", "testcontainer", None)
+            ]
+        );
+
+        // az scheme and same container
+        let test_table = TestTable::<i32>::new("int4".into())
+            .with_uri("az://testcontainer/test1.parquet".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![
+                ("AmazonS3", "testbucket", None),
+                ("AmazonS3", "testbucket2", None),
+                ("MicrosoftAzure", "testcontainer", None)
+            ]
+        );
+
+        // az scheme and different container
+        let test_table = TestTable::<i32>::new("int4".into())
+            .with_uri("az://testcontainer2/test1.parquet".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![
+                ("AmazonS3", "testbucket", None),
+                ("AmazonS3", "testbucket2", None),
+                ("MicrosoftAzure", "testcontainer", None),
+                ("MicrosoftAzure", "testcontainer2", None)
+            ]
+        );
     }
 }

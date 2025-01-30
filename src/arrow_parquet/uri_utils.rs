@@ -18,8 +18,8 @@ use pgrx::{
 use url::Url;
 
 use crate::{
-    arrow_parquet::parquet_writer::DEFAULT_ROW_GROUP_SIZE, object_store::create_object_store,
-    PG_BACKEND_TOKIO_RUNTIME,
+    arrow_parquet::parquet_writer::DEFAULT_ROW_GROUP_SIZE,
+    object_store::object_store_cache::get_or_create_object_store, PG_BACKEND_TOKIO_RUNTIME,
 };
 
 const PARQUET_OBJECT_STORE_READ_ROLE: &str = "parquet_object_store_read";
@@ -58,7 +58,7 @@ pub(crate) fn parquet_schema_from_uri(uri: &Url) -> SchemaDescriptor {
 
 pub(crate) fn parquet_metadata_from_uri(uri: &Url) -> Arc<ParquetMetaData> {
     let copy_from = true;
-    let (parquet_object_store, location) = create_object_store(uri, copy_from);
+    let (parquet_object_store, location) = get_or_create_object_store(uri, copy_from);
 
     PG_BACKEND_TOKIO_RUNTIME.block_on(async {
         let object_store_meta = parquet_object_store
@@ -81,7 +81,7 @@ pub(crate) fn parquet_metadata_from_uri(uri: &Url) -> Arc<ParquetMetaData> {
 
 pub(crate) fn parquet_reader_from_uri(uri: &Url) -> ParquetRecordBatchStream<ParquetObjectReader> {
     let copy_from = true;
-    let (parquet_object_store, location) = create_object_store(uri, copy_from);
+    let (parquet_object_store, location) = get_or_create_object_store(uri, copy_from);
 
     PG_BACKEND_TOKIO_RUNTIME.block_on(async {
         let object_store_meta = parquet_object_store
@@ -113,7 +113,7 @@ pub(crate) fn parquet_writer_from_uri(
     writer_props: WriterProperties,
 ) -> AsyncArrowWriter<ParquetObjectWriter> {
     let copy_from = false;
-    let (parquet_object_store, location) = create_object_store(uri, copy_from);
+    let (parquet_object_store, location) = get_or_create_object_store(uri, copy_from);
 
     let parquet_object_writer = ParquetObjectWriter::new(parquet_object_store, location);
 

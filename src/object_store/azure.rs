@@ -1,8 +1,12 @@
+use std::sync::Arc;
+
 use azure_storage::{ConnectionString, EndpointProtocol};
 use home::home_dir;
 use ini::Ini;
-use object_store::azure::{AzureConfigKey, MicrosoftAzure, MicrosoftAzureBuilder};
+use object_store::azure::{AzureConfigKey, MicrosoftAzureBuilder};
 use url::Url;
+
+use super::object_store_cache::ObjectStoreWithExpiration;
 
 // create_azure_object_store creates a MicrosoftAzure object store with the given container name.
 // It is configured by environment variables and azure config files as fallback method.
@@ -16,7 +20,7 @@ use url::Url;
 // - AZURE_CONFIG_FILE (env var only, object_store specific)
 // - AZURE_STORAGE_ENDPOINT (env var only, object_store specific)
 // - AZURE_ALLOW_HTTP (env var only, object_store specific)
-pub(crate) fn create_azure_object_store(uri: &Url) -> MicrosoftAzure {
+pub(crate) fn create_azure_object_store(uri: &Url) -> ObjectStoreWithExpiration {
     let container_name = parse_azure_blob_container(uri).unwrap_or_else(|| {
         panic!("unsupported azure blob storage uri: {}", uri);
     });
@@ -63,10 +67,18 @@ pub(crate) fn create_azure_object_store(uri: &Url) -> MicrosoftAzure {
         azure_builder = azure_builder.with_client_secret(client_secret);
     }
 
-    azure_builder.build().unwrap_or_else(|e| panic!("{}", e))
+    let object_store = azure_builder.build().unwrap_or_else(|e| panic!("{}", e));
+
+    // object store handles refreshing bearer token, so we do not need to handle expiry here
+    let expire_at = None;
+
+    ObjectStoreWithExpiration {
+        object_store: Arc::new(object_store),
+        expire_at,
+    }
 }
 
-fn parse_azure_blob_container(uri: &Url) -> Option<String> {
+pub(crate) fn parse_azure_blob_container(uri: &Url) -> Option<String> {
     let host = uri.host_str()?;
 
     // az(ure)://{container}/key

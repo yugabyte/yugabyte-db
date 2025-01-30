@@ -1,9 +1,11 @@
+use std::{sync::Arc, time::SystemTime};
+
 use aws_config::BehaviorVersion;
 use aws_credential_types::provider::ProvideCredentials;
-use object_store::aws::{AmazonS3, AmazonS3Builder};
+use object_store::aws::AmazonS3Builder;
 use url::Url;
 
-use super::PG_BACKEND_TOKIO_RUNTIME;
+use super::{object_store_cache::ObjectStoreWithExpiration, PG_BACKEND_TOKIO_RUNTIME};
 
 // create_s3_object_store creates an AmazonS3 object store with the given bucket name.
 // It is configured by environment variables and aws config files as fallback method.
@@ -19,7 +21,7 @@ use super::PG_BACKEND_TOKIO_RUNTIME;
 // - AWS_CONFIG_FILE (env var only)
 // - AWS_PROFILE (env var only)
 // - AWS_ALLOW_HTTP (env var only, object_store specific)
-pub(crate) fn create_s3_object_store(uri: &Url) -> AmazonS3 {
+pub(crate) fn create_s3_object_store(uri: &Url) -> ObjectStoreWithExpiration {
     let bucket_name = parse_s3_bucket(uri).unwrap_or_else(|| {
         panic!("unsupported s3 uri: {}", uri);
     });
@@ -58,10 +60,17 @@ pub(crate) fn create_s3_object_store(uri: &Url) -> AmazonS3 {
         aws_s3_builder = aws_s3_builder.with_region(region);
     }
 
-    aws_s3_builder.build().unwrap_or_else(|e| panic!("{}", e))
+    let object_store = aws_s3_builder.build().unwrap_or_else(|e| panic!("{}", e));
+
+    let expire_at = aws_s3_config.expire_at;
+
+    ObjectStoreWithExpiration {
+        object_store: Arc::new(object_store),
+        expire_at,
+    }
 }
 
-fn parse_s3_bucket(uri: &Url) -> Option<String> {
+pub(crate) fn parse_s3_bucket(uri: &Url) -> Option<String> {
     let host = uri.host_str()?;
 
     // s3(a)://{bucket}/key
@@ -98,6 +107,7 @@ struct AwsS3Config {
     access_key_id: Option<String>,
     secret_access_key: Option<String>,
     session_token: Option<String>,
+    expire_at: Option<SystemTime>,
     endpoint_url: Option<String>,
     allow_http: bool,
 }
@@ -121,6 +131,7 @@ impl AwsS3Config {
         let mut access_key_id = None;
         let mut secret_access_key = None;
         let mut session_token = None;
+        let mut expire_at = None;
 
         if let Some(credential_provider) = sdk_config.credentials_provider() {
             if let Ok(credentials) = PG_BACKEND_TOKIO_RUNTIME
@@ -129,6 +140,7 @@ impl AwsS3Config {
                 access_key_id = Some(credentials.access_key_id().to_string());
                 secret_access_key = Some(credentials.secret_access_key().to_string());
                 session_token = credentials.session_token().map(|t| t.to_string());
+                expire_at = credentials.expiry();
             }
         }
 
@@ -141,6 +153,7 @@ impl AwsS3Config {
             access_key_id,
             secret_access_key,
             session_token,
+            expire_at,
             endpoint_url,
             allow_http,
         }
