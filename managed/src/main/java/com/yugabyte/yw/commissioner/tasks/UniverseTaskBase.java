@@ -153,6 +153,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModify
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatus;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterNetworkConnectivityCheck;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.DrConfigStates;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
@@ -5717,6 +5718,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     DeleteReplication task = createTask(DeleteReplication.class);
     task.initialize(deleteReplicationParams);
     subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createXClusterNetworkConnectivityCheckTask(XClusterConfig xClusterConfig) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            "XClusterNetworkConnectivityCheck", UserTaskDetails.SubTaskGroupType.PreflightChecks);
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    for (NodeDetails node : targetUniverse.getUniverseDetails().nodeDetailsSet) {
+      XClusterNetworkConnectivityCheck.Params params =
+          new XClusterNetworkConnectivityCheck.Params();
+      params.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+      params.nodeName = node.nodeName;
+      params.xClusterConfig = xClusterConfig;
+
+      XClusterNetworkConnectivityCheck task = createTask(XClusterNetworkConnectivityCheck.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

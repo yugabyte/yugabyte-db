@@ -968,6 +968,26 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "to be created; otherwise, it will fail the operation",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> xClusterNetworkConnectivityCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.network_connectivity_check.enabled",
+          ScopeType.UNIVERSE,
+          "Enable network connectivity check for xCluster",
+          "If this flag is true on the source universe, a ping and port accessibility "
+              + "check from each node of the target universe to all the source universe nodes will "
+              + "be performed",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xClusterNetworkConnectivityCheckPingCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.network_connectivity_check.ping_command_timeout",
+          ScopeType.UNIVERSE,
+          "The timeout used for network connectivity check for xCluster setup",
+          "The network connectivity check for xCluster ping all the source nodes from the "
+              + "target nodes; this is the timeout used to indicate how long the ping command "
+              + "should wait for the response",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",
