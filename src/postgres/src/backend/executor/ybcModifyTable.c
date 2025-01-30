@@ -31,10 +31,12 @@
 #include "catalog/pg_auth_members_d.h"
 #include "catalog/pg_shseclabel_d.h"
 #include "catalog/pg_tablespace_d.h"
+#include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_role_profile_d.h"
 #include "catalog/yb_type.h"
+#include "commands/trigger.h"
 #include "commands/yb_profile.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
@@ -499,19 +501,37 @@ YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
 	 * TODO(jason): disable (or handle) NULLS NOT DISTINCT indexes once that is
 	 * officially allowed.
 	 */
-	return (yb_insert_on_conflict_read_batch_size > 0 &&
-			IsYBRelation(resultRelInfo->ri_RelationDesc) &&
-			!IsCatalogRelation(resultRelInfo->ri_RelationDesc) &&
-			!(resultRelInfo->ri_TrigDesc &&
-			  (resultRelInfo->ri_TrigDesc->trig_delete_after_row ||
-			   resultRelInfo->ri_TrigDesc->trig_delete_before_row ||
-			   resultRelInfo->ri_TrigDesc->trig_delete_instead_row ||
-			   resultRelInfo->ri_TrigDesc->trig_insert_after_row ||
-			   resultRelInfo->ri_TrigDesc->trig_insert_before_row ||
-			   resultRelInfo->ri_TrigDesc->trig_insert_instead_row ||
-			   resultRelInfo->ri_TrigDesc->trig_update_after_row ||
-			   resultRelInfo->ri_TrigDesc->trig_update_before_row ||
-			   resultRelInfo->ri_TrigDesc->trig_update_instead_row)));
+	if (yb_insert_on_conflict_read_batch_size == 0 ||
+		!IsYBRelation(resultRelInfo->ri_RelationDesc) ||
+		IsCatalogRelation(resultRelInfo->ri_RelationDesc) ||
+		(resultRelInfo->ri_TrigDesc &&
+		 (resultRelInfo->ri_TrigDesc->trig_delete_before_row ||
+		  resultRelInfo->ri_TrigDesc->trig_delete_instead_row ||
+		  resultRelInfo->ri_TrigDesc->trig_insert_before_row ||
+		  resultRelInfo->ri_TrigDesc->trig_insert_instead_row ||
+		  resultRelInfo->ri_TrigDesc->trig_update_before_row ||
+		  resultRelInfo->ri_TrigDesc->trig_update_instead_row)))
+	{
+		return false;
+	}
+
+	TriggerDesc *trigdesc = resultRelInfo->ri_TrigDesc;
+	if (!(trigdesc && (trigdesc->trig_delete_after_row ||
+					   trigdesc->trig_insert_after_row ||
+					   trigdesc->trig_update_after_row)))
+		return true;
+
+	/* Any non-FK after row triggers make batching not supported. */
+	for (int i = 0; i < trigdesc->numtriggers; i++)
+	{
+		Trigger    *trig = &trigdesc->triggers[i];
+
+		if (TRIGGER_FOR_AFTER(trig->tgtype) &&
+			TRIGGER_FOR_ROW(trig->tgtype) &&
+			RI_FKey_trigger_type(trig->tgfoid) == RI_TRIGGER_NONE)
+			return false;
+	}
+	return true;
 }
 
 /*
