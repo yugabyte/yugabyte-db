@@ -724,9 +724,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return true;
   }
 
-  Status PromoteToGlobal(const CoarseTimePoint& deadline) EXCLUDES(mutex_) {
+  Status EnsureGlobal(const CoarseTimePoint& deadline) EXCLUDES(mutex_) {
     {
       UniqueLock lock(mutex_);
+      if (metadata_.locality == TransactionLocality::GLOBAL) {
+        return Status::OK();
+      }
       RETURN_NOT_OK(StartPromotionToGlobal());
     }
     DoPromoteToGlobal(deadline);
@@ -2534,8 +2537,8 @@ void YBTransaction::Abort(CoarseTimePoint deadline) {
   impl_->Abort(AdjustDeadline(deadline));
 }
 
-Status YBTransaction::PromoteToGlobal(CoarseTimePoint deadline) {
-  return impl_->PromoteToGlobal(AdjustDeadline(deadline));
+Status YBTransaction::EnsureGlobal(CoarseTimePoint deadline) {
+  return impl_->EnsureGlobal(AdjustDeadline(deadline));
 }
 
 bool YBTransaction::IsRestartRequired() const {

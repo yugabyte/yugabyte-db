@@ -20,6 +20,7 @@
 #include <mutex>
 #include <queue>
 #include <set>
+#include <tuple>
 
 #include "yb/cdc/cdc_service.h"
 
@@ -860,6 +861,50 @@ std::ostream& operator<<(std::ostream& str, const PgClientSession::PrefixLogger&
   return str << "Session id " << logger.id_ << ": ";
 }
 
+PgClientSession::TransactionProvider::TransactionProvider(TransactionBuilder&& builder)
+    : builder_(std::move(builder)) {}
+
+client::YBTransactionPtr PgClientSession::TransactionProvider::TakeForPgSession(
+    CoarseTimePoint deadline) {
+  // The transaction coordinator needs to know that this is a session level transaction as the
+  // handling on deadlocks and heartbeats etc are different for regular docdb transactions and
+  // session level transactions. Hence, we create a new transaction instead of using a ready
+  // transaction (whose state at the coordinator would be different from what we want to set).
+  //
+  // Advisory locks table is not placement local, hence we need a global transaction for tagging
+  // the requested session advisory locks.
+  return Build(deadline, {.force_global = true, .force_create = true});
+}
+
+client::YBTransactionPtr PgClientSession::TransactionProvider::TakeForDdl(
+    CoarseTimePoint deadline) {
+  return Build(deadline, {.is_ddl = true, .force_global = true});
+}
+
+auto PgClientSession::TransactionProvider::TakeForPlain(
+    client::ForceGlobalTransaction force_global,
+    CoarseTimePoint deadline) -> TakeForPlainReturnType {
+  using RT = TakeForPlainReturnType;
+  return next_plain_
+      ? RT{std::exchange(next_plain_, {}), EnsureGlobal{force_global}}
+      : RT{Build(deadline, {.force_global = force_global}), EnsureGlobal::kFalse};
+}
+
+const TransactionId& PgClientSession::TransactionProvider::NextTxnIdForPlain(
+    CoarseTimePoint deadline) {
+  if (!next_plain_) {
+    next_plain_ = Build(deadline, {});
+  }
+  return next_plain_->id();
+}
+
+client::YBTransactionPtr PgClientSession::TransactionProvider::Build(
+  CoarseTimePoint deadline, const BuildStrategy& strategy) {
+  return builder_(
+      IsDDL{strategy.is_ddl}, client::ForceGlobalTransaction{strategy.force_global}, deadline,
+      client::ForceCreateTransaction{strategy.force_create});
+}
+
 bool PgClientSession::ReadPointHistory::Restore(
     ConsistentReadPoint* read_point, uint64_t read_time_serial_no) {
   auto result = false;
@@ -903,7 +948,7 @@ PgClientSession::PgClientSession(
       context_(context),
       shared_this_(std::shared_ptr<PgClientSession>(std::move(shared_this_source), this)),
       id_(id),
-      transaction_builder_(std::move(transaction_builder)),
+      transaction_provider_(std::move(transaction_builder)),
       big_shared_mem_expiration_task_(&scheduler),
       read_point_history_(PrefixLogger(id_)) {}
 
@@ -1613,20 +1658,12 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
 
 Result<const PgClientSession::SessionData&> PgClientSession::BeginPgSessionLevelTxnIfNecessary(
     CoarseTimePoint deadline) {
-  EnsureSession(PgClientSessionKind::kPgSession, deadline);
-  auto& session_data = GetSessionData(PgClientSessionKind::kPgSession);
+  constexpr auto kSessionKind = PgClientSessionKind::kPgSession;
+  EnsureSession(kSessionKind, deadline);
+  auto& session_data = GetSessionData(kSessionKind);
   auto& txn = session_data.transaction;
   if (!txn) {
-    // The transaction coordinator needs to know that this is a session level transaction as the
-    // handling on deadlocks and heartbeats etc are different for regular docdb transactions and
-    // session level transactions. Hence, we create a new transaction instead of using a ready
-    // transaction (whose state at the coordinator would be different from what we want to set).
-    //
-    // Advisory locks table is not placement local, hence we need a global transaction for tagging
-    // the requested session advisory locks.
-    txn = transaction_builder_(
-        IsDDL::kFalse, client::ForceGlobalTransaction::kTrue, deadline,
-        client::ForceCreateTransaction::kTrue);
+    txn = transaction_provider_.Take<kSessionKind>(deadline);
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     txn->InitPgSessionRequestVersion();
     // Isolation level doesn't matter but we need to set it for conflict resolution to not treat
@@ -1814,8 +1851,9 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
   const auto isolation = static_cast<IsolationLevel>(options.isolation());
 
   auto priority = options.priority();
-  auto& session = EnsureSession(PgClientSessionKind::kPlain, deadline);
-  auto& txn = GetSessionData(PgClientSessionKind::kPlain).transaction;
+  constexpr auto kSessionKind = PgClientSessionKind::kPlain;
+  auto& session = EnsureSession(kSessionKind, deadline);
+  auto& txn = GetSessionData(kSessionKind).transaction;
   if (txn && txn_serial_no_ != options.txn_serial_no()) {
     VLOG_WITH_PREFIX(2)
         << "Abort previous transaction, use existing priority: " << options.use_existing_priority()
@@ -1849,9 +1887,9 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
         : Status::OK();
   }
 
-  txn = transaction_builder_(
-    IsDDL::kFalse, client::ForceGlobalTransaction(options.force_global_transaction()), deadline,
-    client::ForceCreateTransaction::kFalse);
+  TransactionProvider::EnsureGlobal ensure_global{false};
+  std::tie(txn, ensure_global) = transaction_provider_.Take<kSessionKind>(
+      client::ForceGlobalTransaction{options.force_global_transaction()}, deadline);
   txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
   RETURN_NOT_OK(txn->SetPgTxnStart(options.pg_txn_start_us()));
   if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
@@ -1867,6 +1905,9 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
                         << ", id: " << txn->id()
                         << ", new read time";
     RETURN_NOT_OK(txn->Init(isolation));
+  }
+  if (ensure_global) {
+    RETURN_NOT_OK(txn->EnsureGlobal(deadline));
   }
 
   RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, deadline, &txn->read_point()));
@@ -1887,16 +1928,16 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
     return nullptr;
   }
 
-  auto& txn = GetSessionData(PgClientSessionKind::kDdl).transaction;
+  constexpr auto kSessionKind = PgClientSessionKind::kDdl;
+  auto& txn = GetSessionData(kSessionKind).transaction;
   if (!txn) {
     const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
         ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
-    txn = transaction_builder_(IsDDL::kTrue, client::ForceGlobalTransaction::kTrue, deadline,
-                               client::ForceCreateTransaction::kFalse);
+    txn = transaction_provider_.Take<kSessionKind>(deadline);
     RETURN_NOT_OK(txn->Init(isolation));
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
-    EnsureSession(PgClientSessionKind::kDdl, deadline)->SetTransaction(txn);
+    EnsureSession(kSessionKind, deadline)->SetTransaction(txn);
   }
 
   return &ddl_txn_metadata_;

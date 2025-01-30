@@ -351,11 +351,53 @@ class PgClientSession final {
     std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
   };
 
+  class TransactionProvider {
+   public:
+    YB_STRONGLY_TYPED_BOOL(EnsureGlobal);
+    using TakeForPlainReturnType = std::pair<client::YBTransactionPtr, EnsureGlobal>;
+
+    explicit TransactionProvider(TransactionBuilder&& builder);
+
+    template<PgClientSessionKind kind, class... Args>
+    requires(
+        kind == PgClientSessionKind::kPlain ||
+        kind == PgClientSessionKind::kDdl ||
+        kind == PgClientSessionKind::kPgSession)
+    auto Take(Args&&... args) {
+      if constexpr (kind == PgClientSessionKind::kPlain) {
+        return TakeForPlain(std::forward<Args>(args)...);
+      } else if constexpr (kind == PgClientSessionKind::kDdl) {
+        return TakeForDdl(std::forward<Args>(args)...);
+      } else if constexpr (kind == PgClientSessionKind::kPgSession) {
+        return TakeForPgSession(std::forward<Args>(args)...);
+      }
+    }
+
+    const TransactionId& NextTxnIdForPlain(CoarseTimePoint deadline);
+
+   private:
+    struct BuildStrategy {
+      bool is_ddl = false;
+      bool force_global = false;
+      bool force_create = false;
+    };
+
+    client::YBTransactionPtr TakeForPgSession(CoarseTimePoint deadline);
+    client::YBTransactionPtr TakeForDdl(CoarseTimePoint deadline);
+    TakeForPlainReturnType TakeForPlain(
+        client::ForceGlobalTransaction force_global, CoarseTimePoint deadline);
+
+    client::YBTransactionPtr Build(CoarseTimePoint deadline, const BuildStrategy& strategy);
+
+    const TransactionBuilder builder_;
+    client::YBTransactionPtr next_plain_;
+  };
+
   client::YBClient& client_;
   const PgClientSessionContext& context_;
   const std::weak_ptr<PgClientSession> shared_this_;
   const uint64_t id_;
-  const TransactionBuilder transaction_builder_;
+  TransactionProvider transaction_provider_;
   std::mutex big_shared_mem_mutex_;
   std::atomic<CoarseTimePoint> last_big_shared_memory_access_;
   SharedMemorySegmentHandle big_shared_mem_handle_ GUARDED_BY(big_shared_mem_mutex_);
