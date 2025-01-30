@@ -77,7 +77,7 @@ Complete the **Instance Configuration** section for **TServer** and **Master** a
 - **Memory(GiB)** - specify the memory allocation of the TServer and Master.
 - **Volume Info** - specify the number of volumes multiplied by size for the TServer and Master. The default is 1 x 100GB.
 
-{{<tags/feature/ea>}}YugabyteDB Kubernetes supports ARM instances, which are specified using Helm overrides. See [Helm Overrides](#helm-overrides).
+{{<tags/feature/ea idea="1486">}}YugabyteDB Kubernetes supports ARM instances, which are specified using Helm overrides. See [Helm Overrides](#helm-overrides).
 
 ### Security Configurations
 
@@ -193,7 +193,7 @@ tserver:
 
 #### ARM VMs
 
-{{<tags/feature/ea>}}If you want to use ARM VMs, add the following overrides:
+{{<tags/feature/ea idea="1486">}}If you want to use ARM VMs, add the following overrides:
 
 ```yaml
 # Point to the aarch64 image in case multi-arch is not available.
