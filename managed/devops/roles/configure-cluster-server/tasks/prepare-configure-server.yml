@@ -96,7 +96,9 @@
 
 - set_fact:
     yb_metrics_dir: "{{ yb_metrics_dir_out.stdout }}"
-  tags: yb-prebuilt-ami
+  tags:
+    - yb-prebuilt-ami
+    - systemd_upgrade
 
 - name: Configure | Add collect metrics wrapper script
   template:
