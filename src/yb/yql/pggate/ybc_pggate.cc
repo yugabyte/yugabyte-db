@@ -2910,6 +2910,10 @@ YBCStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapsho
       pgapi->ImportSnapshot(snapshot_id), [snapshot](auto value) { *snapshot = value; });
 }
 
+bool YBCPgHasExportedSnapshots() { return pgapi->HasExportedSnapshots(); }
+
+void YBCPgClearExportedTxnSnapshots() { pgapi->ClearExportedTxnSnapshots(); }
+
 } // extern "C"
 
 } // namespace yb::pggate

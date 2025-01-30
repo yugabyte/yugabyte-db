@@ -822,6 +822,9 @@ class PgApiImpl {
   Result<std::string> ExportSnapshot(const YbcPgTxnSnapshot& snapshot);
   Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
 
+  bool HasExportedSnapshots() const;
+  void ClearExportedTxnSnapshots();
+
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 

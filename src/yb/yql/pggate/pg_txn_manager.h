@@ -96,6 +96,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);
   Result<std::string> ExportSnapshot(const YbcPgTxnSnapshot& snapshot);
   Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
+  bool HasExportedSnapshots() const;
+  void ClearExportedTxnSnapshots();
 
  private:
   struct DdlCommitInfo {
@@ -178,6 +180,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
   bool snapshot_read_time_is_set_ = false;
+  bool has_exported_snapshots_ = false;
 
   PgCallbacks pg_callbacks_;
 

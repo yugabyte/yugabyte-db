@@ -948,6 +948,9 @@ uint64_t YBCGetCurrentHybridTimeLsn();
 YBCStatus YBCPgExportSnapshot(const YbcPgTxnSnapshot* snapshot, char** snapshot_id);
 YBCStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot);
 
+bool YBCPgHasExportedSnapshots();
+void YBCPgClearExportedTxnSnapshots();
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

@@ -563,4 +563,61 @@ TEST_F(PgExportSnapshotTest, ExportMultipleSnapshots) {
   ValidateRows(*conn2_, expected_rows);
 }
 
+TEST_F(PgExportSnapshotTest, CheckCleanupAfterExportingTxnCommit) {
+  ASSERT_OK(conn1_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  const auto snapshot_id = ASSERT_RESULT(ExportSnapshot(*conn1_));
+  LOG(INFO) << Format("Snapshot Exported: $0", snapshot_id);
+  ASSERT_OK(conn1_->CommitTransaction());
+
+  ASSERT_OK(conn2_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_NOK_STR_CONTAINS(ImportSnapshot(*conn2_, snapshot_id), "Could not find Snapshot");
+  ASSERT_OK(conn2_->RollbackTransaction());
+}
+
+TEST_F(PgExportSnapshotTest, CheckCleanupAfterExportingTxnAbort) {
+  ASSERT_OK(conn1_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  const auto snapshot_id = ASSERT_RESULT(ExportSnapshot(*conn1_));
+  LOG(INFO) << Format("Snapshot Exported: $0", snapshot_id);
+  ASSERT_OK(conn1_->RollbackTransaction());
+
+  ASSERT_OK(conn2_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_NOK_STR_CONTAINS(ImportSnapshot(*conn2_, snapshot_id), "Could not find Snapshot");
+  ASSERT_OK(conn2_->RollbackTransaction());
+}
+
+TEST_F(PgExportSnapshotTest, CheckCleanupAfterPgBackendReset) {
+  ASSERT_OK(conn1_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  const auto snapshot_id = ASSERT_RESULT(ExportSnapshot(*conn1_));
+  LOG(INFO) << Format("Snapshot Exported: $0", snapshot_id);
+  conn1_->Reset();
+
+  ASSERT_OK(conn2_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_NOK_STR_CONTAINS(ImportSnapshot(*conn2_, snapshot_id), "Could not find Snapshot");
+  ASSERT_OK(conn2_->RollbackTransaction());
+}
+
+TEST_F(PgExportSnapshotTest, CheckCleanupAfterExportingTserverRestart) {
+  ASSERT_OK(conn1_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  const auto snapshot_id = ASSERT_RESULT(ExportSnapshot(*conn1_));
+  LOG(INFO) << Format("Snapshot Exported: $0", snapshot_id);
+  cluster_->tablet_server(0)->Shutdown();
+  ASSERT_OK(cluster_->tablet_server(0)->Restart());
+  ASSERT_OK(
+      cluster_->WaitForTabletsRunning(cluster_->tablet_server(0), MonoDelta::FromSeconds(60)));
+
+  auto connSameTserver_afterRestart = ASSERT_RESULT(Connect());
+  auto connOtherTserver_afterRestart =
+      ASSERT_RESULT(ConnectToTs(*cluster_->tserver_daemons().back()));
+
+  ASSERT_OK(connSameTserver_afterRestart.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_NOK_STR_CONTAINS(
+      ImportSnapshot(connSameTserver_afterRestart, snapshot_id), "Could not find Snapshot");
+  ASSERT_OK(connSameTserver_afterRestart.RollbackTransaction());
+
+  ASSERT_OK(connOtherTserver_afterRestart.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_NOK_STR_CONTAINS(
+      ImportSnapshot(connOtherTserver_afterRestart, snapshot_id), "Could not find Snapshot");
+  ASSERT_OK(connOtherTserver_afterRestart.RollbackTransaction());
+}
+
 } // namespace yb::pgwrapper

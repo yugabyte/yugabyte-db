@@ -98,6 +98,7 @@ class TserverXClusterContextIf;
     (CronGetLastMinute) \
     (ExportTxnSnapshot) \
     (ImportTxnSnapshot) \
+    (ClearExportedTxnSnapshots) \
     /**/
 
 // Forwards call to corresponding PgClientSession async method (see
