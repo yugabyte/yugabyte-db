@@ -1284,6 +1284,7 @@ templates:
     name: XCluster Transactional Safe Time Lag
     description: Max xCluster transactional safe time lag for 10 minutes in ms on the target universe is above threshold; Safe time on the target universe has not progressed for a long time
     queryTemplate: max by (universe_uuid) (max_over_time(consumer_safe_time_lag{universe_uuid="__universeUuid__"}[10m])) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
     defaultThresholdMap:
       SEVERE:
         paramName: yb.alert.safetime_lag_ms
