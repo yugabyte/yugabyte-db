@@ -1515,7 +1515,9 @@ class PgClientServiceImpl::Impl {
         (req.ignore_ash_and_perform_calls() && call.wait_state().has_aux_info() &&
          call.wait_state().aux_info().has_method() &&
          (call.wait_state().aux_info().method() == "ActiveSessionHistory" ||
-          call.wait_state().aux_info().method() == "Perform")));
+          call.wait_state().aux_info().method() == "Perform" ||
+          call.wait_state().aux_info().method() == "AcquireAdvisoryLock")));
+
   }
 
   void MaybeIncludeSample(
