@@ -515,7 +515,7 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, true,
     "When set, it enables automatic tablet splitting for tables that are part of a "
     "CDCSDK stream");
 
-DEFINE_RUNTIME_bool(enable_tablet_split_of_replication_slot_streamed_tables, false,
+DEFINE_RUNTIME_bool(enable_tablet_split_of_replication_slot_streamed_tables, true,
     "When set, it enables automatic tablet splitting for tables that are part of replication "
     "slot's stream metadata");
 
@@ -10302,13 +10302,13 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
   // Update all the tablet states in raft in bulk.
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tablet_infos));
 
-  TEST_SYNC_POINT("CatalogManager::DeleteOrHideTabletsAndSendRequests::AddToMaps");
-  RecordHiddenTablets(marked_as_hidden, delete_retainer);
-
   for (auto& tablet_data : tablets_data) {
     LOG(INFO) << (hide_only ? "Hid" : "Deleted") << " tablet " << tablet_data.tablet->tablet_id();
     tablet_data.lock.Commit();
   }
+
+  TEST_SYNC_POINT("CatalogManager::DeleteOrHideTabletsAndSendRequests::AddToMaps");
+  RecordHiddenTablets(marked_as_hidden, delete_retainer);
 
   for (auto& tablet_data : tablets_data) {
     auto& tablet = tablet_data.tablet;
