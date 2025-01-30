@@ -1454,6 +1454,15 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status ClearExportedTxnSnapshots(
+      const PgClearExportedTxnSnapshotsRequestPB& req, PgClearExportedTxnSnapshotsResponsePB* resp,
+      rpc::RpcContext* context) {
+    VLOG(1) << "ClearExportedTxnSnapshots from " << RequestorString(context) << ": "
+            << req.DebugString();
+    txn_snapshot_manager_.UnregisterAll(req.session_id());
+    return Status::OK();
+  }
+
   Status GetIndexBackfillProgress(
       const PgGetIndexBackfillProgressRequestPB& req, PgGetIndexBackfillProgressResponsePB* resp,
       rpc::RpcContext* context) {

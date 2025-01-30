@@ -263,6 +263,7 @@ class PgClient {
   Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req);
   Result<tserver::PgImportTxnSnapshotResponsePB> ImportTxnSnapshot(
       std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options);
+  Status ClearExportedTxnSnapshots();
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

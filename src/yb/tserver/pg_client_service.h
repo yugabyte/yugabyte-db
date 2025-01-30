@@ -100,6 +100,7 @@ class TserverXClusterContextIf;
     (ReleaseAdvisoryLock) \
     (ExportTxnSnapshot) \
     (ImportTxnSnapshot) \
+    (ClearExportedTxnSnapshots) \
     /**/
 
 #define YB_PG_CLIENT_TRIVIAL_METHODS \

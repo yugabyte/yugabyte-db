@@ -1228,6 +1228,16 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Status ClearExportedTxnSnapshots() {
+    tserver::PgClearExportedTxnSnapshotsRequestPB req;
+    tserver::PgClearExportedTxnSnapshotsResponsePB resp;
+    req.set_session_id(session_id_);
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::ClearExportedTxnSnapshots, req, resp,
+        ash::PggateRPC::kClearExportedTxnSnapshots));
+    return ResponseStatus(resp);
+  }
+
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory() {
     tserver::PgActiveSessionHistoryRequestPB req;
     req.set_fetch_tserver_states(true);
@@ -1708,6 +1718,8 @@ Result<tserver::PgImportTxnSnapshotResponsePB> PgClient::ImportTxnSnapshot(
     std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
   return impl_->ImportTxnSnapshot(snapshot_id, std::move(options));
 }
+
+Status PgClient::ClearExportedTxnSnapshots() { return impl_->ClearExportedTxnSnapshots(); }
 
 Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory() {
   return impl_->ActiveSessionHistory();

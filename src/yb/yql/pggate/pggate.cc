@@ -2140,13 +2140,6 @@ Result<tserver::PgCreateReplicationSlotResponsePB> PgApiImpl::ExecCreateReplicat
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateReplicationSlot>(handle)).Exec();
 }
 
-Result<std::string> PgApiImpl::ExportSnapshot(const YbcPgTxnSnapshot& snapshot) {
-  return pg_txn_manager_->ExportSnapshot(snapshot);
-}
-
-Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id) {
-  return pg_txn_manager_->ImportSnapshot(snapshot_id);
-}
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {
   return pg_session_->ListReplicationSlots();
@@ -2268,5 +2261,21 @@ Status PgApiImpl::ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvis
 Status PgApiImpl::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
   return pg_session_->ReleaseAllAdvisoryLocks(db_oid);
 }
+
+//------------------------------------------------------------------------------------------------
+// Export/Import Pg Txn Snapshot.
+//------------------------------------------------------------------------------------------------
+
+Result<std::string> PgApiImpl::ExportSnapshot(const YbcPgTxnSnapshot& snapshot) {
+  return pg_txn_manager_->ExportSnapshot(snapshot);
+}
+
+Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id) {
+  return pg_txn_manager_->ImportSnapshot(snapshot_id);
+}
+
+bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->HasExportedSnapshots(); }
+
+void PgApiImpl::ClearExportedTxnSnapshots() { pg_txn_manager_->ClearExportedTxnSnapshots(); }
 
 } // namespace yb::pggate

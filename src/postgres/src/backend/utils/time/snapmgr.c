@@ -1131,6 +1131,9 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 	/*
 	 * If we exported any snapshots, clean them up.
 	 */
+	if (IsYugaByteEnabled())
+		YBCPgClearExportedTxnSnapshots();
+
 	if (exportedSnapshots != NIL)
 	{
 		ListCell   *lc;
@@ -1706,6 +1709,9 @@ ImportSnapshot(const char *idstr)
 bool
 XactHasExportedSnapshots(void)
 {
+	if (IsYugaByteEnabled())
+		return YBCPgHasExportedSnapshots();
+
 	return (exportedSnapshots != NIL);
 }
 

@@ -682,7 +682,11 @@ Result<std::string> PgTxnManager::ExportSnapshot(const YbcPgTxnSnapshot& snapsho
   auto& options = *req.mutable_options();
   RETURN_NOT_OK(SetupPerformOptions(&options, EnsureReadTimeIsSet::kTrue));
   RETURN_NOT_OK(CheckTxnSnapshotOptions(options));
-  return client_->ExportTxnSnapshot(&req);
+  auto res = client_->ExportTxnSnapshot(&req);
+  if (res.ok()) {
+    has_exported_snapshots_ = true;
+  }
+  return res;
 }
 
 Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(std::string_view snapshot_id) {
@@ -723,6 +727,17 @@ Status PgTxnManager::CheckTxnSnapshotOptions(const tserver::PgPerformOptionsPB& 
       !options.defer_read_point(), NotSupported,
       "Cannot export/import snapshot with deferred read point.");
   return Status::OK();
+}
+
+bool PgTxnManager::HasExportedSnapshots() const { return has_exported_snapshots_; }
+
+void PgTxnManager::ClearExportedTxnSnapshots() {
+  if (!has_exported_snapshots_) {
+    return;
+  }
+  has_exported_snapshots_ = false;
+  const auto s = client_->ClearExportedTxnSnapshots();
+  LOG_IF(DFATAL, !s.ok()) << "Faced error while deleting exported snapshots. Error Details: " << s;
 }
 
 }  // namespace yb::pggate
