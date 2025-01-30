@@ -8,6 +8,9 @@ menu:
     parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
     weight: 620
+    params:
+      classes: separator
+      hideLink: true
 type: indexpage
 ---
 

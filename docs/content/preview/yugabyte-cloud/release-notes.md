@@ -9,6 +9,9 @@ menu:
     identifier: yugabytedb-managed-releases
     parent: yugabytedb-managed
     weight: 22
+    params:
+      classes: separator
+      hideLink: true
 type: docs
 rightNav:
   hideH4: true

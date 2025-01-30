@@ -2,13 +2,14 @@
 title: YugabyteDB Quick start for macOS
 headerTitle: Quick start
 linkTitle: Quick start
-headcontent: Create a local cluster on a single host
+headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
   - /preview/quick-start/create-local-cluster/
   - /preview/quick-start/install/
   - /preview/quick-start/macos/
   - /preview/quick-start/
+  - /tutorials/quick-start/
 layout: single
 type: docs
 rightNav:
@@ -18,13 +19,13 @@ unversioned: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+    <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
       Use a cloud cluster
     </a>
   </li>
   <li class="active">
-    <a href="../quick-start/" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">
       Use a local cluster
     </a>
@@ -35,25 +36,25 @@ The local cluster setup on a single host is intended for development and learnin
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
-    <a href="../quick-start/" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a href="../quick-start/linux/" class="nav-link">
+    <a href="../linux/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
   <li>
-    <a href="../quick-start/docker/" class="nav-link">
+    <a href="../docker/" class="nav-link">
       <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li>
-    <a href="../quick-start/kubernetes/" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
