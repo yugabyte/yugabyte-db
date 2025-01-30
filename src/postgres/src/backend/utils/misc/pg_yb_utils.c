@@ -2924,6 +2924,13 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			is_breaking_change = false;
 			break;
 
+		case T_SecLabelStmt:
+			/*
+			 * This is related to defining or updating a security label on a
+			 * database object, so this is a breaking change.
+			 */
+			break;
+
 		default:
 			/* Not a DDL operation. */
 			is_ddl = false;
