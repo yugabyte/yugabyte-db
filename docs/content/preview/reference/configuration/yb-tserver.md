@@ -1336,7 +1336,13 @@ Default: `102400`
 
 The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
 
-Default: `14400000` (4 hours)
+Default: `28800000` (8 hours)
+
+##### --cdc_wal_retention_time_secs
+
+WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
+
+Default: `28800` (8 hours)
 
 ##### --cdcsdk_table_processing_limit_per_run
 
@@ -1354,9 +1360,9 @@ Default: `CHANGE`
 
 ##### --cdcsdk_enable_dynamic_table_support
 
-Tables created after the creation of a replication slot are referred as Dynamic tables. This preview flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
+Tables created after the creation of a replication slot are referred as Dynamic tables. This flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
 
-Default: `false`
+Default: `true`
 
 ##### --cdcsdk_publication_list_refresh_interval_secs
 
