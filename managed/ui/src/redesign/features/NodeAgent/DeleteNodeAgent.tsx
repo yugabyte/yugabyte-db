@@ -9,7 +9,7 @@ import { ToastNotificationDuration } from '../../helpers/constants';
 
 interface DeleteNodeAgentProps {
   openNodeAgentDialog: boolean;
-  providerName: string;
+  nodeName: string;
   nodeAgentUUID: string;
   onClose: () => void;
   onNodeAgentDeleted?: () => void;
@@ -17,7 +17,7 @@ interface DeleteNodeAgentProps {
 
 export const DeleteNodeAgent: FC<DeleteNodeAgentProps> = ({
   openNodeAgentDialog,
-  providerName,
+  nodeName,
   nodeAgentUUID,
   onClose,
   onNodeAgentDeleted
@@ -68,7 +68,7 @@ export const DeleteNodeAgent: FC<DeleteNodeAgentProps> = ({
       >
         <Typography variant="body2">
           {t('nodeAgent.confirmDeletionMessage', {
-            provider_name: providerName
+            nodeName: nodeName
           })}
         </Typography>
       </Box>
