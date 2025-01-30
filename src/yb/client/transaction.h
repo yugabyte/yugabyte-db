@@ -196,10 +196,6 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // tablet's wait-queue relies on this information to resume deadlocked session advisory lock reqs.
   void InitPgSessionRequestVersion();
 
-  // Sets the transaction's reuse_version_ to the value observed by Perform rpc(s)
-  // at pg_client_session.
-  void SetCurrentReuseVersion(TxnReuseVersion reuse_version);
-
   // For transactions of kind PgClientSessionKind::kPgSession, we record the background txn,
   // if any. This info is propagated to the status tablet, which then creates an internal wait-for
   // probe from the session level waiter -> active transaction if any which is necessary for

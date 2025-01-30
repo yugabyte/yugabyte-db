@@ -28,8 +28,8 @@ using namespace std::literals;
 
 namespace yb::docdb {
 
-auto kTxn1 = ObjectLockOwner{VersionedTransaction{TransactionId::GenerateRandom(), 1}, 1};
-auto kTxn2 = ObjectLockOwner{VersionedTransaction{TransactionId::GenerateRandom(), 1}, 1};
+auto kTxn1 = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+auto kTxn2 = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
 
 constexpr auto kDatabase1 = 1;
 constexpr auto kDatabase2 = 2;
@@ -77,8 +77,7 @@ class TSLocalLockManagerTest : public YBTest {
 
   Status ReleaseAllLocksForTxn(const ObjectLockOwner& owner) {
     tserver::ReleaseObjectLockRequestPB req;
-    req.set_txn_id(owner.versioned_txn.txn_id.data(), owner.versioned_txn.txn_id.size());
-    req.set_txn_reuse_version(owner.versioned_txn.txn_version);
+    req.set_txn_id(owner.txn_id.data(), owner.txn_id.size());
     req.set_subtxn_id(owner.subtxn_id);
     req.set_release_all_locks(true);
     return lm_.ReleaseObjectLocks(req);
@@ -137,7 +136,7 @@ TEST_F(TSLocalLockManagerTest, TestWaitersAndBlocker) {
   std::vector<ObjectLockOwner> reader_txns;
   for (uint64_t i = 0; i < kNumReaders; i++) {
     reader_txns.push_back(
-        ObjectLockOwner{VersionedTransaction{TransactionId::GenerateRandom(), i}, 1});
+        ObjectLockOwner{TransactionId::GenerateRandom(), 1});
     ASSERT_OK(LockObject(
         reader_txns[i],
         kDatabase1, kObject1, TableLockType::ACCESS_SHARE));

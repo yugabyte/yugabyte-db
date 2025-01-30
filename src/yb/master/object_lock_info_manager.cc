@@ -60,13 +60,6 @@ namespace {
 Status ValidateLockRequest(
     const AcquireObjectLockRequestPB& req,
     const std::optional<uint64_t>& requestor_latest_lease_epoch) {
-  // For now, DDLs operate under a separate transaction. So we always start an explicit distrubited
-  // txn for a DDL. As we wouldn't be re-using a transaction, we wouldn't need txn_version here.
-  if (req.txn_reuse_version()) {
-    return STATUS_FORMAT(
-        InvalidArgument, "txn_reuse_version populated for exclusive object lock req $0",
-        req.ShortDebugString());
-  }
   if (!req.subtxn_id()) {
     return STATUS_FORMAT(
         InvalidArgument, "subtxn_id not set for exclusive object lock req $0",
@@ -267,7 +260,6 @@ AcquireObjectLockRequestPB TserverRequestFor(
     const AcquireObjectLocksGlobalRequestPB& master_request) {
   AcquireObjectLockRequestPB req;
   req.set_txn_id(master_request.txn_id());
-  req.set_txn_reuse_version(master_request.txn_reuse_version());
   req.set_subtxn_id(master_request.subtxn_id());
   req.set_session_host_uuid(master_request.session_host_uuid());
   for (auto& entry : master_request.object_locks()) {
@@ -284,7 +276,6 @@ ReleaseObjectLockRequestPB TserverRequestFor(
     const ReleaseObjectLocksGlobalRequestPB& master_request) {
   ReleaseObjectLockRequestPB req;
   req.set_txn_id(master_request.txn_id());
-  req.set_txn_reuse_version(master_request.txn_reuse_version());
   req.set_subtxn_id(master_request.subtxn_id());
   req.set_session_host_uuid(master_request.session_host_uuid());
   for (auto& entry : master_request.object_locks()) {

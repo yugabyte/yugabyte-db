@@ -74,7 +74,6 @@ struct PgsqlReadOperationData;
 struct ReadOperationData;
 struct VectorIndexInsertEntry;
 struct VectorIndexSearchResultEntry;
-struct VersionedTransaction;
 
 using DocKeyHash = uint16_t;
 using DocReadContextPtr = std::shared_ptr<DocReadContext>;

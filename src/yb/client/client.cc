@@ -3044,7 +3044,6 @@ Status YBClient::AcquireObjectLocksGlobal(const tserver::AcquireObjectLockReques
   AcquireObjectLocksGlobalRequestPB req;
   AcquireObjectLocksGlobalResponsePB resp;
   req.set_txn_id(lock_req.txn_id());
-  req.set_txn_reuse_version(lock_req.txn_reuse_version());
   req.set_subtxn_id(lock_req.subtxn_id());
   req.set_session_host_uuid(lock_req.session_host_uuid());
   req.mutable_object_locks()->CopyFrom(lock_req.object_locks());
@@ -3060,7 +3059,6 @@ Status YBClient::ReleaseObjectLocksGlobal(const tserver::ReleaseObjectLockReques
   ReleaseObjectLocksGlobalRequestPB req;
   ReleaseObjectLocksGlobalResponsePB resp;
   req.set_txn_id(release_req.txn_id());
-  req.set_txn_reuse_version(release_req.txn_reuse_version());
   req.set_subtxn_id(release_req.subtxn_id());
   req.set_session_host_uuid(release_req.session_host_uuid());
   req.mutable_object_locks()->CopyFrom(release_req.object_locks());

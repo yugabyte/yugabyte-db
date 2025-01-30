@@ -87,8 +87,7 @@ class ObjectLockTest : public YBMiniClusterTestBase<MiniCluster> {
     lock_owners.reserve(num_txns);
     for (int i = 0; i < num_txns; i++) {
       lock_owners.push_back(
-        docdb::ObjectLockOwner{
-            docdb::VersionedTransaction{TransactionId::GenerateRandom(), 0}, 1}
+        docdb::ObjectLockOwner{TransactionId::GenerateRandom(), 1}
       );
     }
     return lock_owners;
@@ -132,10 +131,8 @@ class ObjectLockTest : public YBMiniClusterTestBase<MiniCluster> {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
 
-auto kTxn1 = docdb::ObjectLockOwner{
-    docdb::VersionedTransaction{TransactionId::GenerateRandom(), 0}, 1};
-auto kTxn2 = docdb::ObjectLockOwner{
-    docdb::VersionedTransaction{TransactionId::GenerateRandom(), 0}, 1};
+auto kTxn1 = docdb::ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+auto kTxn2 = docdb::ObjectLockOwner{TransactionId::GenerateRandom(), 1};
 constexpr uint64_t kDatabaseID = 1;
 constexpr uint64_t kObjectId = 1;
 constexpr uint64_t kObjectId2 = 2;

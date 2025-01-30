@@ -257,16 +257,12 @@ class TransactionState {
     return host_node_uuid_;
   }
 
-  TxnReuseVersion min_active_txn_reuse_version() const {
-    return min_active_txn_reuse_version_ ? *min_active_txn_reuse_version_ : 0;
-  }
-
   std::string ToString() const {
     return Format(
         "{ id: $0 last_touch: $1 status: $2 involved_tablets: $3 replicating: $4 "
-        " request_queue: $5 first_entry_raft_index: $6 min_active_txn_reuse_version: $7 }",
+        " request_queue: $5 first_entry_raft_index: $6 }",
         id_, last_touch_, TransactionStatus_Name(status_), involved_tablets_, replicating_,
-        request_queue_, first_entry_raft_index_, min_active_txn_reuse_version_);
+        request_queue_, first_entry_raft_index_);
   }
 
   // Whether this transaction expired at specified time.
@@ -1001,17 +997,6 @@ class TransactionState {
     }
     last_touch_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
-    // TODO(table-locks): When handling a txn heartbeat, reject the ones with reuse version lesser
-    // than what we already have. It could happen when we increment the reuse version to resolve a
-    // deadlock.
-    if (data.state.txn_reuse_version()) {
-      if (min_active_txn_reuse_version_) {
-        min_active_txn_reuse_version_ =
-            std::max(*min_active_txn_reuse_version_, data.state.txn_reuse_version());
-      } else {
-        min_active_txn_reuse_version_ = data.state.txn_reuse_version();
-      }
-    }
     // TODO(savepoints) -- consider swapping instead of copying here.
     // Asynchronous heartbeats don't include aborted sub-txn set (and hence the set is empty), so
     // avoid updating in those cases.
@@ -1127,13 +1112,6 @@ class TransactionState {
   std::vector<TransactionAbortCallback> abort_waiters_;
   // Node uuid hosting the transaction at the query layer.
   std::string host_node_uuid_;
-  // When re-using docdb transactions, the below field helps determine whether requests/locks
-  // tagged against a <txn, txn_version> pair are active or not, since the coordinator sends
-  // it as part of transactions status responses.
-  //
-  // Note: For pre-created transactions, this field might be populated on the later heartbeats. The
-  // txn status receivers shouldn't infer anything when version isn't populated as part of resp.
-  boost::optional<TxnReuseVersion> min_active_txn_reuse_version_ = boost::none;
   boost::optional<PgSessionRequestVersion> pg_session_req_version_ = boost::none;
   // For pg session level transactions, we introduce wait-for dependencies from the session level
   // transaction to the current active regular transaction, if any. This is necessary for detecting
@@ -1360,7 +1338,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
           if (txn_status_with_ht.status == TransactionStatus::COMMITTED ||
               txn_status_with_ht.status == TransactionStatus::PENDING) {
             *mutable_aborted_set_pb = it->GetAbortedSubtxnInfo()->pb();
-            response->add_min_active_txn_reuse_version(it->min_active_txn_reuse_version());
           }
           if (txn_status_with_ht.status == TransactionStatus::SEALED) {
             // TODO(dtxn) Avoid concurrent resolve
@@ -1380,9 +1357,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
           // Since it is only case when transaction could be actually committed.
           response->mutable_coordinator_safe_time()->Resize(response->status().size(), 0);
           response->add_coordinator_safe_time(leader_safe_time.ToUint64());
-          // Doesn't matter since the txn itself doesn't exist, populate the field so as to keep
-          // the sizes of all repeated fields of the response same.
-          response->add_min_active_txn_reuse_version(0);
         }
         response->add_status(txn_status_with_ht.status);
         response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());

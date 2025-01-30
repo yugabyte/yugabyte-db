@@ -310,9 +310,8 @@ message GetTransactionStatusResponsePB {
 
   optional TabletConsensusInfoPB tablet_consensus_info = 9;
 
-  // When re-using transactions, coordinator replies with the current active reuse version of the
-  // transaction, and the receiver can drop all requests/locks corresponding to older versions.
-  repeated uint64 min_active_txn_reuse_version = 10;
+  // Reserved for deprecated object-locks field min_active_txn_reuse_version.
+  reserved 10;
 
   repeated uint64 pg_session_req_version = 11;
 }

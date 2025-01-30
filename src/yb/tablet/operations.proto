@@ -63,10 +63,8 @@ message TransactionStatePB {
   // Status containing deadlock info if the transaction was aborted due to deadlock.
   optional AppStatusPB deadlock_reason = 12;
 
-  // Make the coordinator track the current txn reuse version. When re-using transactions,
-  // coordinator can reply with the current txn reuse version for the transaction, and the
-  // receiver can drop all requests/locks corresponding to older versions.
-  optional uint64 txn_reuse_version = 13;
+  // Reserved for deprecated object-locks field txn_reuse_version.
+  reserved 13;
 
   // Fields 14, 15 are used for session level transactions alone (when session advisory locks
   // feature is enabled).

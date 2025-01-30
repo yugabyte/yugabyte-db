@@ -958,10 +958,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   std::future<Status> SendHeartBeatOnRollback(
       const CoarseTimePoint& deadline, const internal::RemoteTabletPtr& status_tablet,
       rpc::Rpcs::Handle* handle,
-      const SubtxnSet& aborted_sub_txn_set) REQUIRES_SHARED(mutex_) {
+      const SubtxnSet& aborted_sub_txn_set) {
     DCHECK(status_tablet);
 
-    return MakeFuture<Status>([&, handle, reuse_version = reuse_version_](auto callback) {
+    return MakeFuture<Status>([&, handle](auto callback) {
       manager_->rpcs().RegisterAndStart(
           PrepareHeartbeatRPC(
               deadline, status_tablet, TransactionStatus::PENDING,
@@ -970,7 +970,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                 manager_->rpcs().Unregister(handle);
                 callback(status);
               },
-              reuse_version, aborted_sub_txn_set), handle);
+              aborted_sub_txn_set), handle);
     });
   }
 
@@ -1119,11 +1119,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return state == OldTransactionState::kAborted;
   }
 
-  void SetCurrentReuseVersion(TxnReuseVersion reuse_version) EXCLUDES(mutex_) {
-    UniqueLock lock(mutex_);
-    reuse_version_ = reuse_version;
-  }
-
   void InitPgSessionRequestVersion() {
     pg_session_req_version_ = 1;
   }
@@ -1202,7 +1197,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           manager_->rpcs().Unregister(&commit_handle_);
           last_old_heartbeat_failed_.store(!status.ok(), std::memory_order_release);
           DoCommit(deadline, seal_only, status, transaction);
-        }, reuse_version_);
+        });
   }
 
   struct TabletState {
@@ -1220,7 +1215,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   rpc::RpcCommandPtr PrepareHeartbeatRPC(
       CoarseTimePoint deadline, const internal::RemoteTabletPtr& status_tablet,
-      TransactionStatus status, UpdateTransactionCallback callback, TxnReuseVersion reuse_version,
+      TransactionStatus status, UpdateTransactionCallback callback,
       std::optional<SubtxnSet> aborted_set_for_rollback_heartbeat = std::nullopt,
       const TabletStates& tablets_with_locks = {},
       const boost::optional<TransactionMetadata>& background_transaction = boost::none) {
@@ -1231,7 +1226,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     auto& state = *req.mutable_state();
     state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
     state.set_status(status);
-    state.set_txn_reuse_version(reuse_version);
 
     auto start = start_.load(std::memory_order_acquire);
     if (start > 0) {
@@ -1868,7 +1862,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           CoarseMonoClock::now() + timeout, status_tablet, status,
           std::bind(
               &Impl::HeartbeatDone, this, _1, _2, _3, status, transaction, send_to_new_tablet),
-          reuse_version_, std::nullopt, tablets_, background_transaction);
+          std::nullopt, tablets_, background_transaction);
     }
 
     auto& handle = send_to_new_tablet ? new_heartbeat_handle_ : heartbeat_handle_;
@@ -2432,12 +2426,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   scoped_refptr<Counter> transaction_promotions_;
 
-  // The below field is relevant only in context of table/object locking (when re-using docdb
-  // read-only transactions). It has no significance in context of regular write/read rpc(s) to
-  // tablets. It is propagated to the status tablet, which helps in releasing inactive object
-  // locks and pruning inactive wait-for probes that originated from TSLocalLockManager.
-  TxnReuseVersion reuse_version_ GUARDED_BY(mutex_) = 0;
-
   // Session level advisory lock requests launch a docdb distributed txn that lives for the lifetime
   // of the pg session. The below field keeps track of the active request version as seen on the
   // the txn's status tablet. The same is embedded into session advisory lock requests and is used
@@ -2633,10 +2621,6 @@ void YBTransaction::SetLogPrefixTag(const LogPrefixName& name, uint64_t value) {
 
 bool YBTransaction::OldTransactionAborted() const {
   return impl_->OldTransactionAborted();
-}
-
-void YBTransaction::SetCurrentReuseVersion(TxnReuseVersion reuse_version) {
-  impl_->SetCurrentReuseVersion(reuse_version);
 }
 
 void YBTransaction::InitPgSessionRequestVersion() {
