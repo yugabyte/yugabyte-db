@@ -891,19 +891,28 @@ public class DrConfigController extends AuthenticatedController {
           sourceTableInfoList, xClusterConfig.getTableIds());
     }
 
+    XClusterConfig xClusterConfigTemp = XClusterConfig.getOrBadRequest(xClusterConfig.getUuid());
+    xClusterScheduler.syncXClusterConfig(xClusterConfigTemp);
+    xClusterConfigTemp.refresh();
+    XClusterConfigTaskBase.updateReplicationDetailsFromDB(
+        xClusterUniverseService,
+        ybService,
+        tableHandler,
+        xClusterConfigTemp,
+        confGetter.getGlobalConf(GlobalConfKeys.xclusterGetApiTimeoutMs),
+        this.confGetter);
     // To do switchover, the xCluster config and all the tables in that config must be in
     // the green status because we are going to drop that config and the information for bad
     // replication streams will be lost.
-    if (xClusterConfig.getStatus() != XClusterConfigStatusType.Running
-        || !xClusterConfig.getTableDetails().stream()
+    if (xClusterConfigTemp.getStatus() != XClusterConfigStatusType.Running
+        || !xClusterConfigTemp.getTableDetails().stream()
             .map(XClusterTableConfig::getStatus)
             .allMatch(tableConfigStatus -> tableConfigStatus == Status.Running)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "In order to do switchover, the underlying xCluster config and all of its "
-              + "replication streams must be in a running status. Please either restart the config "
-              + "to put everything in a working state, or if the xCluster config is in a running "
-              + "status, you can remove the tables whose replication is broken to run switchover.");
+              + "replication streams must be in a running status. Go to the tables tab to see the "
+              + "tables not in Running status.");
     }
 
     XClusterConfig switchoverXClusterConfig =
