@@ -57,6 +57,7 @@
 #include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
+#include "catalog/pg_yb_invalidation_messages.h"
 #include "commands/defrem.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -286,6 +287,7 @@ IsSharedRelation(Oid relationId)
 		relationId == SubscriptionRelationId ||
 		relationId == TableSpaceRelationId ||
 		relationId == YBCatalogVersionRelationId ||
+		relationId == YbInvalidationMessagesRelationId ||
 		relationId == YbProfileRelationId ||
 		relationId == YbRoleProfileRelationId ||
 		relationId == YBLogicalClientVersionRelationId)
@@ -311,6 +313,7 @@ IsSharedRelation(Oid relationId)
 		relationId == TablespaceNameIndexId ||
 		relationId == TablespaceOidIndexId ||
 		relationId == YBCatalogVersionDbOidIndexId ||
+		relationId == YbInvalidationMessagesIndexId ||
 		relationId == YbProfileOidIndexId ||
 		relationId == YbProfileRolnameIndexId ||
 		relationId == YbRoleProfileOidIndexId ||

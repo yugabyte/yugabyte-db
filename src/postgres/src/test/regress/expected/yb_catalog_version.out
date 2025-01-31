@@ -901,3 +901,373 @@ ALTER ROLE test_role;
 -----------------+-----------------------
            10053 |                 10053
 (1 row)
+
+-- Sanity test yb_increment_db_catalog_version_with_inval_messages
+\set display_all 'SELECT * FROM pg_yb_catalog_version; SELECT db_oid, current_version, messages FROM pg_yb_invalidation_messages'
+SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
+SET yb_disable_catalog_version_check TO on;
+-- Messages expire after 10 seconds.
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 10);
+ yb_increment_db_catalog_version_with_inval_messages
+-----------------------------------------------------
+                                               10054
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              14 |                    14
+      4 |              14 |                    14
+      5 |              14 |                    14
+  13515 |           10054 |                 10053
+  13516 |              14 |                    14
+  16389 |              11 |                    11
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+  13515 |           10054 | \x
+(1 row)
+
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, null, 10);
+ yb_increment_db_catalog_version_with_inval_messages
+-----------------------------------------------------
+                                               10055
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              14 |                    14
+      4 |              14 |                    14
+      5 |              14 |                    14
+  13515 |           10055 |                 10053
+  13516 |              14 |                    14
+  16389 |              11 |                    11
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+  13515 |           10054 | \x
+  13515 |           10055 |
+(2 rows)
+
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10);
+ yb_increment_db_catalog_version_with_inval_messages
+-----------------------------------------------------
+                                               10056
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              14 |                    14
+      4 |              14 |                    14
+      5 |              14 |                    14
+  13515 |           10056 |                 10056
+  13516 |              14 |                    14
+  16389 |              11 |                    11
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+  13515 |           10054 | \x
+  13515 |           10055 |
+  13515 |           10056 | \x
+(3 rows)
+
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, null, 10);
+ yb_increment_db_catalog_version_with_inval_messages
+-----------------------------------------------------
+                                               10057
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              14 |                    14
+      4 |              14 |                    14
+      5 |              14 |                    14
+  13515 |           10057 |                 10057
+  13516 |              14 |                    14
+  16389 |              11 |                    11
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+  13515 |           10054 | \x
+  13515 |           10055 |
+  13515 |           10056 | \x
+  13515 |           10057 |
+(4 rows)
+
+-- Wait for the old message row to expire.
+SELECT pg_sleep(15);
+ pg_sleep
+----------
+
+(1 row)
+
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 10);
+ yb_increment_db_catalog_version_with_inval_messages
+-----------------------------------------------------
+                                               10058
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              14 |                    14
+      4 |              14 |                    14
+      5 |              14 |                    14
+  13515 |           10058 |                 10057
+  13516 |              14 |                    14
+  16389 |              11 |                    11
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+  13515 |           10058 | \x
+(1 row)
+
+SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10);
+ yb_increment_db_catalog_version_with_inval_messages
+-----------------------------------------------------
+                                               10059
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              14 |                    14
+      4 |              14 |                    14
+      5 |              14 |                    14
+  13515 |           10059 |                 10059
+  13516 |              14 |                    14
+  16389 |              11 |                    11
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+  13515 |           10058 | \x
+  13515 |           10059 | \x
+(2 rows)
+
+-- Wait for the old message row to expire.
+SELECT pg_sleep(15);
+ pg_sleep
+----------
+
+(1 row)
+
+-- Sanity test yb_increment_all_db_catalog_versions_with_inval_messages
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, '', 10);
+ yb_increment_all_db_catalog_versions_with_inval_messages
+----------------------------------------------------------
+                                                    10060
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              15 |                    14
+      4 |              15 |                    14
+      5 |              15 |                    14
+  13515 |           10060 |                 10059
+  13516 |              15 |                    14
+  16389 |              12 |                    11
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+      1 |              15 | \x
+      4 |              15 | \x
+      5 |              15 | \x
+  13515 |           10060 | \x
+  13516 |              15 | \x
+  16389 |              12 | \x
+(6 rows)
+
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, null, 10);
+ yb_increment_all_db_catalog_versions_with_inval_messages
+----------------------------------------------------------
+                                                    10061
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              16 |                    14
+      4 |              16 |                    14
+      5 |              16 |                    14
+  13515 |           10061 |                 10059
+  13516 |              16 |                    14
+  16389 |              13 |                    11
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+      1 |              15 | \x
+      1 |              16 |
+      4 |              15 | \x
+      4 |              16 |
+      5 |              15 | \x
+      5 |              16 |
+  13515 |           10060 | \x
+  13515 |           10061 |
+  13516 |              15 | \x
+  13516 |              16 |
+  16389 |              12 | \x
+  16389 |              13 |
+(12 rows)
+
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
+ yb_increment_all_db_catalog_versions_with_inval_messages
+----------------------------------------------------------
+                                                    10062
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              17 |                    17
+      4 |              17 |                    17
+      5 |              17 |                    17
+  13515 |           10062 |                 10062
+  13516 |              17 |                    17
+  16389 |              14 |                    14
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+      1 |              15 | \x
+      1 |              16 |
+      1 |              17 | \x
+      4 |              15 | \x
+      4 |              16 |
+      4 |              17 | \x
+      5 |              15 | \x
+      5 |              16 |
+      5 |              17 | \x
+  13515 |           10060 | \x
+  13515 |           10061 |
+  13515 |           10062 | \x
+  13516 |              15 | \x
+  13516 |              16 |
+  13516 |              17 | \x
+  16389 |              12 | \x
+  16389 |              13 |
+  16389 |              14 | \x
+(18 rows)
+
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, null, 10);
+ yb_increment_all_db_catalog_versions_with_inval_messages
+----------------------------------------------------------
+                                                    10063
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              18 |                    18
+      4 |              18 |                    18
+      5 |              18 |                    18
+  13515 |           10063 |                 10063
+  13516 |              18 |                    18
+  16389 |              15 |                    15
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+      1 |              15 | \x
+      1 |              16 |
+      1 |              17 | \x
+      1 |              18 |
+      4 |              15 | \x
+      4 |              16 |
+      4 |              17 | \x
+      4 |              18 |
+      5 |              15 | \x
+      5 |              16 |
+      5 |              17 | \x
+      5 |              18 |
+  13515 |           10060 | \x
+  13515 |           10061 |
+  13515 |           10062 | \x
+  13515 |           10063 |
+  13516 |              15 | \x
+  13516 |              16 |
+  13516 |              17 | \x
+  13516 |              18 |
+  16389 |              12 | \x
+  16389 |              13 |
+  16389 |              14 | \x
+  16389 |              15 |
+(24 rows)
+
+-- Wait for the old message row to expire.
+SELECT pg_sleep(15);
+ pg_sleep
+----------
+
+(1 row)
+
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, '', 10);
+ yb_increment_all_db_catalog_versions_with_inval_messages
+----------------------------------------------------------
+                                                    10064
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              19 |                    18
+      4 |              19 |                    18
+      5 |              19 |                    18
+  13515 |           10064 |                 10063
+  13516 |              19 |                    18
+  16389 |              16 |                    15
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+      1 |              19 | \x
+      4 |              19 | \x
+      5 |              19 | \x
+  13515 |           10064 | \x
+  13516 |              19 | \x
+  16389 |              16 | \x
+(6 rows)
+
+SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
+ yb_increment_all_db_catalog_versions_with_inval_messages
+----------------------------------------------------------
+                                                    10065
+(1 row)
+
+:display_all;
+ db_oid | current_version | last_breaking_version
+--------+-----------------+-----------------------
+      1 |              20 |                    20
+      4 |              20 |                    20
+      5 |              20 |                    20
+  13515 |           10065 |                 10065
+  13516 |              20 |                    20
+  16389 |              17 |                    17
+(6 rows)
+
+ db_oid | current_version | messages
+--------+-----------------+----------
+      1 |              19 | \x
+      1 |              20 | \x
+      4 |              19 | \x
+      4 |              20 | \x
+      5 |              19 | \x
+      5 |              20 | \x
+  13515 |           10064 | \x
+  13515 |           10065 | \x
+  13516 |              19 | \x
+  13516 |              20 | \x
+  16389 |              16 | \x
+  16389 |              17 | \x
+(12 rows)
