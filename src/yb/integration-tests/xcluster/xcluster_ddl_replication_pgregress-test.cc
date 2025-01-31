@@ -72,7 +72,9 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
         ", ", "\n"));
   }
 
-  void ExecutePgFile(const std::string& file_path) {
+  void ExecutePgFile(const std::string& file_path) { ExecutePgFile(file_path, namespace_name); }
+
+  void ExecutePgFile(const std::string& file_path, const std::string& database_name) {
     std::vector<std::string> args;
     args.push_back(GetPgToolPath("ysqlsh"));
     args.push_back("--host");
@@ -83,6 +85,8 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     args.push_back("--variable=ON_ERROR_STOP=1");
     args.push_back("-f");
     args.push_back(file_path);
+    args.push_back("-d");
+    args.push_back(database_name);
 
     auto s = CallAdminVec(args);
     LOG(INFO) << "Command output: " << s;
@@ -98,7 +102,7 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     RETURN_NOT_OK(SetUpClusters());
 
     // Perturb OIDs on consumer side to make sure we don't accidentally preserve OIDs.
-    auto conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB("yugabyte"));
+    auto conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
     RETURN_NOT_OK(
         conn.Execute("CREATE TYPE gratuitous_enum AS ENUM ('red', 'orange', 'yellow', 'green', "
                      "'blue', 'purple');"));
@@ -111,7 +115,8 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     // Some of the scripts do take a long time to run so setting this timeout high.
     propagation_timeout_ = MonoDelta::FromMinutes(4 * kTimeMultiplier);
 
-    // First run just the create table part of the file, then run the drop parts.
+    // First run just the create part of the file, then run the drop parts.
+    std::string initial_dump = "";
     for (const auto& file_name : {create_file_name, drop_file_name}) {
       if (file_name.empty()) {
         continue;
@@ -126,6 +131,14 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
       auto producer_dump = VERIFY_RESULT(RunYSQLDump(producer_cluster_));
       auto consumer_dump = VERIFY_RESULT(RunYSQLDump(consumer_cluster_));
       SCHECK_EQ(producer_dump, consumer_dump, IllegalState, "Ysqldumps do not match");
+      // Ensure that the dump is not empty, should at least contain the extension.
+      if (initial_dump.empty()) {
+        initial_dump = producer_dump;
+      } else {
+        // Check to ensure that the test is working properly.
+        SCHECK_NE(
+            initial_dump, producer_dump, IllegalState, "Ysqldumps after drops should not match");
+      }
 
       auto producer_enum_label_info = VERIFY_RESULT(ReadEnumLabelInfo(producer_cluster_));
       auto consumer_enum_label_info = VERIFY_RESULT(ReadEnumLabelInfo(consumer_cluster_));
