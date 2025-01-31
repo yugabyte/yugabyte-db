@@ -4,7 +4,10 @@
 
 package security
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/security/eit"
+)
 
 // SecurityUniverseCmd represents the universe security command
 var SecurityUniverseCmd = &cobra.Command{
@@ -20,6 +23,7 @@ func init() {
 	SecurityUniverseCmd.Flags().SortFlags = false
 
 	SecurityUniverseCmd.AddCommand(encryptionAtRestCmd)
+	SecurityUniverseCmd.AddCommand(eit.EncryptionInTransitCmd)
 
 	SecurityUniverseCmd.PersistentFlags().StringP("name", "n", "",
 		"[Required] The name of the universe for the operation.")
