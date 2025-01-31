@@ -13,7 +13,7 @@
 #include "metadata/collection.h"
 #include "utils/array.h"
 
-void GetMongoCollectionShardOidsAndNames(MongoCollection *collection,
+bool GetMongoCollectionShardOidsAndNames(MongoCollection *collection,
 										 ArrayType **shardIdArray,
 										 ArrayType **shardNames);
 

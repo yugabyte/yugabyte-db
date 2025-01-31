@@ -20,31 +20,25 @@ function ValidateNoCitusReferences()
 
     # TODO: Clean these up
     validationExceptions="documentdb--0.24-0.sql create_index_background--0.23-0.sql create_index_background--latest.sql drop_indexes.c create_indexes_background.c"
-    validationExceptions="$validationExceptions current_op.c index.c ttl_support_functions--0.24-0.sql ttl_support_functions--latest.sql db_stats.c coll_stats.c"
+    validationExceptions="$validationExceptions current_op.c index.c ttl_support_functions--0.24-0.sql ttl_support_functions--latest.sql"
+    validationExceptions="$validationExceptions diagnostic_commands_common.c"
 
     foundInvalid="";
-    for f in `grep -r -l -i -E "citus_" --include "*.h" --include "*.c" --include "*.sql" $_dir_to_check`; do
-        fileName=$(basename $f)
-        if [[ $validationExceptions =~ $fileName ]]; then
-            echo "Allowing $f as an exception"
-            continue;
-        fi;
+    for queryStr in "citus_" "pg_dist" "run_command_on_all_nodes" "run_command_on_coordinator"; do
+        for f in `grep -r -l -i -E $queryStr --include "*.h" --include "*.c" --include "*.sql" $_dir_to_check`; do
+            fileName=$(basename $f)
+            if [[ $validationExceptions =~ $fileName ]]; then
+                echo "Allowing $f as an exception for $queryStr"
+                continue;
+            fi;
 
-        echo "Remove references to citus_ in $f - Please introduce a distributed hook to manage citus function execution"
-        foundInvalid="true"
-    done
-    for f in `grep -r -l -i -E "pg_dist" --include "*.h" --include "*.c" --include "*.sql" $_dir_to_check`; do
-        fileName=$(basename $f)
-        if [[ $validationExceptions =~ $fileName ]]; then
-            echo "Allowing $f as an exception"
-            continue;
-        fi;
-
-        echo "Remove references to pg_dist in $f - Please introduce a distributed hook to manage citus function execution"
-        foundInvalid="true"
+            echo "Remove references to $queryStr in $f - Please introduce a distributed hook to manage citus function execution"
+            foundInvalid="true"
+        done
     done
 
     if [ "$foundInvalid" != "" ]; then
+        echo "Found invalid citus references"
         exit 1
     fi
 }

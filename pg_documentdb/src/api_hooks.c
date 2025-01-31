@@ -50,6 +50,8 @@ TryCustomParseAndValidateVectorQuerySpec_HookType
 TryOptimizePathForBitmapAndHookType try_optimize_path_for_bitmap_and_hook = NULL;
 TryGetExtendedVersionRefreshQuery_HookType try_get_extended_version_refresh_query_hook =
 	NULL;
+GetShardIdsAndNamesForCollection_HookType get_shard_ids_and_names_for_collection_hook =
+	NULL;
 
 
 /*
@@ -412,4 +414,27 @@ TryGetExtendedVersionRefreshQuery(void)
 	}
 
 	return NULL;
+}
+
+
+void
+GetShardIdsAndNamesForCollection(Oid relationOid, const char *tableName,
+								 Datum **shardOidArray, Datum **shardNameArray,
+								 int32_t *shardCount)
+{
+	if (get_shard_ids_and_names_for_collection_hook != NULL)
+	{
+		get_shard_ids_and_names_for_collection_hook(relationOid, tableName, shardOidArray,
+													shardNameArray, shardCount);
+	}
+	else
+	{
+		/* Non distributed case, is just the main table */
+		*shardCount = 1;
+		*shardOidArray = palloc(sizeof(Datum) * 1);
+		*shardNameArray = palloc(sizeof(Datum) * 1);
+
+		(*shardOidArray)[0] = ObjectIdGetDatum(relationOid);
+		(*shardNameArray)[0] = CStringGetTextDatum(tableName);
+	}
 }

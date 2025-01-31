@@ -194,4 +194,13 @@ typedef char *(*TryGetExtendedVersionRefreshQuery_HookType)(void);
 extern TryGetExtendedVersionRefreshQuery_HookType
 	try_get_extended_version_refresh_query_hook;
 
+typedef void (*GetShardIdsAndNamesForCollection_HookType)(Oid relationOid, const
+														  char *tableName,
+														  Datum **shardOidArray,
+														  Datum **shardNameArray,
+														  int32_t *shardCount);
+extern GetShardIdsAndNamesForCollection_HookType
+	get_shard_ids_and_names_for_collection_hook;
+
+
 #endif

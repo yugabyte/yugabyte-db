@@ -24,7 +24,6 @@
 #include "commands/diagnostic_commands_common.h"
 #include "api_hooks.h"
 #include "metadata/metadata_cache.h"
-#include "api_hooks_def.h"
 
 
 static const char *IndexUsageKey = "index_usage";
@@ -105,28 +104,12 @@ IndexStatsCoordinator(Datum databaseName, Datum collectionName,
 					  TupleDesc tupleDescriptor)
 {
 	List *workerBsons = NIL;
-	if (DefaultInlineWriteOperations)
-	{
-		workerBsons = list_make1(DatumGetPgBson(DirectFunctionCall2(
-													command_index_stats_worker,
-													databaseName,
-													collectionName)));
-	}
-	else
-	{
-		StringInfo cmdStr = makeStringInfo();
-		appendStringInfo(cmdStr,
-						 "SELECT success, result FROM run_command_on_all_nodes("
-						 "FORMAT($$ SELECT %s.index_stats_worker(%%L, %%L) $$, $1, $2))",
-						 ApiInternalSchemaName);
-
-		int numValues = 2;
-		Datum values[2] = { databaseName, collectionName };
-		Oid types[2] = { TEXTOID, TEXTOID };
-
-		workerBsons = GetWorkerBsonsFromAllWorkers(cmdStr->data, values, types,
-												   numValues, "IndexStats");
-	}
+	int numValues = 2;
+	Datum values[2] = { databaseName, collectionName };
+	Oid types[2] = { TEXTOID, TEXTOID };
+	workerBsons = RunQueryOnAllServerNodes("IndexStats", values, types, numValues,
+										   command_index_stats_worker,
+										   ApiInternalSchemaName, "index_stats_worker");
 
 	/* Now that we have the worker BSON results, merge them to the final one */
 	MergeWorkerResults(collection, workerBsons, tupleStore, tupleDescriptor);
@@ -160,14 +143,13 @@ IndexStatsWorker(void *fcinfoPointer)
 	/* First step, get the relevant shards on this node (We're already in the query worker) */
 	ArrayType *shardNames = NULL;
 	ArrayType *shardOids = NULL;
-	GetMongoCollectionShardOidsAndNames(collection, &shardOids, &shardNames);
 
 	/* Next get the relation and table size */
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
 
 	/* Only do work if there are shards */
-	if (shardOids == NULL)
+	if (!GetMongoCollectionShardOidsAndNames(collection, &shardOids, &shardNames))
 	{
 		return PgbsonWriterGetPgbson(&writer);
 	}

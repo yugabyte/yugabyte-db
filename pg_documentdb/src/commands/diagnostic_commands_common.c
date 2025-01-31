@@ -23,6 +23,7 @@
 #include "utils/hashset_utils.h"
 #include "utils/version_utils.h"
 #include "commands/parse_error.h"
+#include "commands/commands_common.h"
 #include "commands/diagnostic_commands_common.h"
 #include "utils/error_utils.h"
 #include "utils/documentdb_errors.h"
@@ -33,19 +34,63 @@
  * worker data. used in diagnostic query scenarios, and handles
  * failures in retrieving errors from the workers. Callers are still
  * responsible for parsing errors from the bson directly.
+ *
+ * TODO: Make this a hook somehow.
  */
 List *
-GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
-							 Oid *types, int numValues,
-							 const char *commandName)
+RunQueryOnAllServerNodes(const char *commandName, Datum *values, Oid *types,
+						 int numValues, PGFunction directFunc,
+						 const char *nameSpaceName, const char *functionName)
 {
+	if (DefaultInlineWriteOperations)
+	{
+		FunctionCallInfo fcinfo = palloc(SizeForFunctionCallInfo(numValues));
+		Datum result;
+		InitFunctionCallInfoData(*fcinfo, NULL, numValues, InvalidOid, NULL, NULL);
+
+		for (int i = 0; i < numValues; i++)
+		{
+			fcinfo->args[i].value = values[i];
+			fcinfo->args[i].isnull = false;
+		}
+
+		result = (*directFunc)(fcinfo);
+
+		List *resultList = list_make1(DatumGetPgBson(result));
+		pfree(fcinfo);
+		return resultList;
+	}
+
+	StringInfo cmdStr = makeStringInfo();
+
+	/* Add the query: FORMAT($$ SELECT schema.function(%%L, %%L) $$, $1, $2)" */
+	appendStringInfo(cmdStr, "SELECT success, result FROM run_command_on_all_nodes("
+							 "FORMAT($$ SELECT %s.%s(", nameSpaceName, functionName);
+
+	/* Add formats for all the args*/
+	char *separator = "";
+	for (int i = 0; i < numValues; i++)
+	{
+		appendStringInfo(cmdStr, "%s%%L", separator);
+		separator = ",";
+	}
+
+	appendStringInfo(cmdStr, ")$$");
+
+	for (int i = 0; i < numValues; i++)
+	{
+		appendStringInfo(cmdStr, ",$%d", (i + 1));
+	}
+
+	appendStringInfo(cmdStr, "))");
 	bool readOnly = true;
 	List *workerBsons = NIL;
 	MemoryContext priorMemoryContext = CurrentMemoryContext;
 	SPI_connect();
 
-	Portal workerQueryPortal = SPI_cursor_open_with_args("workerQueryPortal", query,
-														 numValues, types, paramValues,
+	Portal workerQueryPortal = SPI_cursor_open_with_args("workerQueryPortal",
+														 cmdStr->data,
+														 numValues, types, values,
 														 NULL, readOnly, 0);
 	bool hasData = true;
 

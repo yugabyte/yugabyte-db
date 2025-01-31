@@ -28,6 +28,7 @@
 #include "commands/coll_stats.h"
 #include "commands/commands_common.h"
 #include "commands/diagnostic_commands_common.h"
+#include "api_hooks.h"
 
 extern int CollStatsCountPolicyThreshold;
 
@@ -352,28 +353,13 @@ BuildResultData(Datum databaseName, Datum collectionName, CollStatsResult *resul
 				MongoCollection *collection, int32 scale)
 {
 	List *workerBsons;
-	if (DefaultInlineWriteOperations)
-	{
-		Datum resultDatum = DirectFunctionCall3(command_coll_stats_worker,
-												databaseName, collectionName,
-												Int32GetDatum(scale));
-		workerBsons = list_make1(DatumGetPgBsonPacked(resultDatum));
-	}
-	else
-	{
-		StringInfo cmdStr = makeStringInfo();
-		appendStringInfo(cmdStr,
-						 "SELECT success, result FROM run_command_on_all_nodes("
-						 "FORMAT($$ SELECT %s.coll_stats_worker(%%L, %%L, %d) $$, $1, $2))",
-						 ApiToApiInternalSchemaName, scale);
-
-		int numValues = 2;
-		Datum values[2] = { databaseName, collectionName };
-		Oid types[2] = { TEXTOID, TEXTOID };
-
-		workerBsons = GetWorkerBsonsFromAllWorkers(cmdStr->data, values, types,
-												   numValues, "CollStats");
-	}
+	int numValues = 3;
+	Datum values[3] = { databaseName, collectionName, Int32GetDatum(scale) };
+	Oid types[3] = { TEXTOID, TEXTOID, INT4OID };
+	workerBsons = RunQueryOnAllServerNodes("CollStats", values, types, numValues,
+										   command_coll_stats_worker,
+										   ApiToApiInternalSchemaName,
+										   "coll_stats_worker");
 
 	/* Now that we have the worker BSON results, merge them to the final one */
 	MergeWorkerResults(result, collection, workerBsons, scale);
@@ -637,29 +623,13 @@ CollStatsWorker(void *fcinfoPointer)
 	/* First step, get the relevant shards on this node (We're already in the query worker) */
 	ArrayType *shardNames = NULL;
 	ArrayType *shardOids = NULL;
-	if (DefaultInlineWriteOperations)
-	{
-		int singleShardCount = 1;
-		Datum resultDatums[1] = { ObjectIdGetDatum(collection->collectionId) };
-		Datum resultNames[1] = { CStringGetTextDatum(collection->shardTableName) };
-		shardOids = construct_array(resultDatums, singleShardCount, OIDOID,
-									sizeof(Oid), true,
-									TYPALIGN_INT);
-		shardNames = construct_array(resultNames, singleShardCount, TEXTOID, -1,
-									 false,
-									 TYPALIGN_INT);
-	}
-	else
-	{
-		GetMongoCollectionShardOidsAndNames(collection, &shardOids, &shardNames);
-	}
 
 	/* Next get the relation and table size */
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
 
 	/* Only do work if there are shards */
-	if (shardOids != NULL)
+	if (GetMongoCollectionShardOidsAndNames(collection, &shardOids, &shardNames))
 	{
 		Assert(shardNames != NULL);
 
@@ -710,84 +680,30 @@ CollStatsWorker(void *fcinfoPointer)
  * Given a mongo collection, retrieves the shard OIDs and shard names that are associated with
  * that table on the current node.
  */
-void
+bool
 GetMongoCollectionShardOidsAndNames(MongoCollection *collection, ArrayType **shardIdArray,
 									ArrayType **shardNames)
 {
-	*shardIdArray = NULL;
-	*shardNames = NULL;
-	const char *query =
-		"SELECT array_agg($2 || '_' || shardid) FROM pg_dist_shard WHERE logicalrelid = $1";
+	Datum *resultDatums = NULL;
+	Datum *resultNameDatums = NULL;
+	int32_t shardCount = 0;
+	GetShardIdsAndNamesForCollection(collection->relationId, collection->tableName,
+									 &resultDatums, &resultNameDatums, &shardCount);
 
-	int nargs = 2;
-	Oid argTypes[2] = { OIDOID, TEXTOID };
-	Datum argValues[2] = {
-		ObjectIdGetDatum(collection->relationId), CStringGetTextDatum(
-			collection->tableName)
-	};
-	bool isReadOnly = true;
-	bool isNull = true;
-	Datum shardIds = ExtensionExecuteQueryWithArgsViaSPI(query, nargs, argTypes,
-														 argValues,
-														 NULL, isReadOnly, SPI_OK_SELECT,
-														 &isNull);
-
-	if (isNull)
+	if (shardCount == 0)
 	{
-		return;
+		return false;
 	}
 
-	ArrayType *arrayType = DatumGetArrayTypeP(shardIds);
-
-	/* Need to build the result */
-	int numItems = ArrayGetNItems(ARR_NDIM(arrayType), ARR_DIMS(arrayType));
-	Datum *resultDatums = palloc0(sizeof(Datum) * numItems);
-	Datum *resultNameDatums = palloc0(sizeof(Datum) * numItems);
-	int resultCount = 0;
-
-	const int slice_ndim = 0;
-	ArrayMetaState *mState = NULL;
-	ArrayIterator shardIterator = array_create_iterator(arrayType,
-														slice_ndim, mState);
-
-	Datum shardName = 0;
-	while (array_iterate(shardIterator, &shardName, &isNull))
-	{
-		if (isNull)
-		{
-			continue;
-		}
-
-		RangeVar *rangeVar = makeRangeVar(ApiDataSchemaName, TextDatumGetCString(
-											  shardName), -1);
-		bool missingOk = true;
-		Oid shardRelationId = RangeVarGetRelid(rangeVar, AccessShareLock, missingOk);
-		if (shardRelationId != InvalidOid)
-		{
-			Assert(resultCount < numItems);
-			resultDatums[resultCount] = shardRelationId;
-			resultNameDatums[resultCount] = PointerGetDatum(DatumGetTextPCopy(
-																shardName));
-			resultCount++;
-		}
-	}
-
-	array_free_iterator(shardIterator);
-
-	/* Now that we have the shard list as a Datum*, create an array type */
-	if (resultCount > 0)
-	{
-		*shardIdArray = construct_array(resultDatums, resultCount, OIDOID,
-										sizeof(Oid), true,
-										TYPALIGN_INT);
-		*shardNames = construct_array(resultNameDatums, resultCount, TEXTOID, -1,
-									  false,
-									  TYPALIGN_INT);
-	}
-
+	*shardIdArray = construct_array(resultDatums, shardCount, OIDOID,
+									sizeof(Oid), true,
+									TYPALIGN_INT);
+	*shardNames = construct_array(resultNameDatums, shardCount, TEXTOID, -1,
+								  false,
+								  TYPALIGN_INT);
 	pfree(resultDatums);
 	pfree(resultNameDatums);
-	pfree(arrayType);
+	return true;
 }
 
 

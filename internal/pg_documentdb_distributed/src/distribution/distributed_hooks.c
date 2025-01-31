@@ -493,6 +493,88 @@ TryGetExtendedVersionRefreshQueryCore(void)
 }
 
 
+static void
+GetShardIdsAndNamesForCollectionCore(Oid relationOid, const char *tableName,
+									 Datum **shardOidArray, Datum **shardNameArray,
+									 int32_t *shardCount)
+{
+	*shardOidArray = NULL;
+	*shardNameArray = NULL;
+	*shardCount = 0;
+	const char *query =
+		"SELECT array_agg($2 || '_' || shardid) FROM pg_dist_shard WHERE logicalrelid = $1";
+
+	int nargs = 2;
+	Oid argTypes[2] = { OIDOID, TEXTOID };
+	Datum argValues[2] = {
+		ObjectIdGetDatum(relationOid), CStringGetTextDatum(tableName)
+	};
+	bool isReadOnly = true;
+	bool isNull = true;
+	Datum shardIds = ExtensionExecuteQueryWithArgsViaSPI(query, nargs, argTypes,
+														 argValues,
+														 NULL, isReadOnly, SPI_OK_SELECT,
+														 &isNull);
+
+	if (isNull)
+	{
+		return;
+	}
+
+	ArrayType *arrayType = DatumGetArrayTypeP(shardIds);
+
+	/* Need to build the result */
+	int numItems = ArrayGetNItems(ARR_NDIM(arrayType), ARR_DIMS(arrayType));
+	Datum *resultDatums = palloc0(sizeof(Datum) * numItems);
+	Datum *resultNameDatums = palloc0(sizeof(Datum) * numItems);
+	int resultCount = 0;
+
+	const int slice_ndim = 0;
+	ArrayMetaState *mState = NULL;
+	ArrayIterator shardIterator = array_create_iterator(arrayType,
+														slice_ndim, mState);
+
+	Datum shardName = 0;
+	while (array_iterate(shardIterator, &shardName, &isNull))
+	{
+		if (isNull)
+		{
+			continue;
+		}
+
+		RangeVar *rangeVar = makeRangeVar(ApiDataSchemaName, TextDatumGetCString(
+											  shardName), -1);
+		bool missingOk = true;
+		Oid shardRelationId = RangeVarGetRelid(rangeVar, AccessShareLock, missingOk);
+		if (shardRelationId != InvalidOid)
+		{
+			Assert(resultCount < numItems);
+			resultDatums[resultCount] = shardRelationId;
+			resultNameDatums[resultCount] = PointerGetDatum(DatumGetTextPCopy(
+																shardName));
+			resultCount++;
+		}
+	}
+
+	array_free_iterator(shardIterator);
+
+	/* Now that we have the shard list as a Datum*, create an array type */
+	if (resultCount > 0)
+	{
+		*shardOidArray = resultDatums;
+		*shardNameArray = resultNameDatums;
+		*shardCount = resultCount;
+	}
+	else
+	{
+		pfree(resultDatums);
+		pfree(resultNameDatums);
+	}
+
+	pfree(arrayType);
+}
+
+
 /*
  * Register hook overrides for DocumentDB.
  */
@@ -516,4 +598,5 @@ InitializeDocumentDBDistributedHooks(void)
 	UpdateColocationHooks();
 
 	try_get_extended_version_refresh_query_hook = TryGetExtendedVersionRefreshQueryCore;
+	get_shard_ids_and_names_for_collection_hook = GetShardIdsAndNamesForCollectionCore;
 }

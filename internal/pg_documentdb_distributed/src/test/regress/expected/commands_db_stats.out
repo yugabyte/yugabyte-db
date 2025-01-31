@@ -54,21 +54,21 @@ NOTICE:  creating collection
 
 -- db_stats with one empty collection
 SELECT documentdb_api.db_stats('db1');
-                                                                                                                                                                                                                                     db_stats                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                      db_stats                                                                                                                                                                                                                                       
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "8192.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT documentdb_api.db_stats('db1', 1);
-                                                                                                                                                                                                                                     db_stats                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                      db_stats                                                                                                                                                                                                                                       
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "8192.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT documentdb_api.db_stats('db1', 1024);
                                                                                                                                                                                                                                   db_stats                                                                                                                                                                                                                                  
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "8.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8.0" }, "totalSize" : { "$numberDouble" : "16.0" }, "scaleFactor" : { "$numberInt" : "1024" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "8.0" }, "storageSize" : { "$numberDouble" : "8.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8.0" }, "totalSize" : { "$numberDouble" : "16.0" }, "scaleFactor" : { "$numberInt" : "1024" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Add one doc
@@ -291,9 +291,9 @@ SELECT documentdb_api.shard_collection('db1','col5', '{"a":"hashed"}', false);
 
 -- "objects" count should remain 100
 SELECT documentdb_api.db_stats('db1');
-                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                            db_stats                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "614400.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 --===================== Test for "indexes", "indexSize" =====================--
@@ -306,9 +306,9 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db1', documentdb
 
 -- "indexes" count should increase to 6, "indexSize" should increase
 SELECT documentdb_api.db_stats('db1');
-                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                            db_stats                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "6" }, "indexSize" : { "$numberDouble" : "1400832.0" }, "totalSize" : { "$numberDouble" : "2015232.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "614400.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "6" }, "indexSize" : { "$numberDouble" : "1400832.0" }, "totalSize" : { "$numberDouble" : "2015232.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Create one more index in each remaining collections
@@ -338,9 +338,9 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db1', documentdb
 
 -- "indexes" count should increase to 10, "indexSize" should increase
 SELECT documentdb_api.db_stats('db1');
-                                                                                                                                                                                                                                          db_stats                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                            db_stats                                                                                                                                                                                                                                             
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "10" }, "indexSize" : { "$numberDouble" : "1925120.0" }, "totalSize" : { "$numberDouble" : "2539520.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "614400.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "10" }, "indexSize" : { "$numberDouble" : "1925120.0" }, "totalSize" : { "$numberDouble" : "2539520.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Drop one index
@@ -352,9 +352,9 @@ CALL documentdb_api.drop_indexes('db1', '{"dropIndexes": "col1", "index": "index
 
 -- "indexes" count should reduce to 9
 SELECT documentdb_api.db_stats('db1');
-                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                            db_stats                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "9" }, "indexSize" : { "$numberDouble" : "1794048.0" }, "totalSize" : { "$numberDouble" : "2408448.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "614400.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "9" }, "indexSize" : { "$numberDouble" : "1794048.0" }, "totalSize" : { "$numberDouble" : "2408448.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Drop one index from each remaining collections
@@ -384,9 +384,9 @@ CALL documentdb_api.drop_indexes('db1', '{"dropIndexes": "col5", "index": "index
 
 -- "indexes" count should be back to 5 (one default _id index in each collection), "indexSize" should decrease
 SELECT documentdb_api.db_stats('db1');
-                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                            db_stats                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "614400.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 --===================== Test with Views =====================================--
@@ -399,9 +399,9 @@ SELECT documentdb_api.create_collection_view('db1', '{ "create": "col1_view1", "
 
 -- "views" should be 1
 SELECT documentdb_api.db_stats('db1');
-                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                            db_stats                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "1" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "1" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "614400.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- create one view on each remaining collection
@@ -431,9 +431,9 @@ SELECT documentdb_api.create_collection_view('db1', '{ "create": "col5_view1", "
 
 -- "views" should be 5
 SELECT documentdb_api.db_stats('db1');
-                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                            db_stats                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "5" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "5" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "614400.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Drop one collection (despite a view on it)

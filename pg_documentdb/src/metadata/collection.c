@@ -1068,14 +1068,10 @@ GetMongoCollectionFromCatalogByNameDatum(Datum databaseNameDatum,
 Oid
 GetRelationIdForCollectionId(uint64 collectionId, LOCKMODE lockMode)
 {
-	StringInfo collectionTableNameStr = makeStringInfo();
-	appendStringInfo(collectionTableNameStr, DOCUMENT_DATA_TABLE_NAME_FORMAT,
-					 collectionId);
-
-	Oid relationId = GetRelationIdForCollectionTableName(collectionTableNameStr->data,
+	char tableName[NAMEDATALEN] = { 0 };
+	sprintf(tableName, DOCUMENT_DATA_TABLE_NAME_FORMAT, collectionId);
+	Oid relationId = GetRelationIdForCollectionTableName(tableName,
 														 lockMode);
-
-	pfree(collectionTableNameStr->data);
 
 	return relationId;
 }

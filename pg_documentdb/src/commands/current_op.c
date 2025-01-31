@@ -30,7 +30,6 @@
 #include "metadata/collection.h"
 #include "metadata/index.h"
 #include "utils/guc_utils.h"
-#include "api_hooks_def.h"
 
 
 /*
@@ -195,22 +194,19 @@ CurrentOpAggregateCore(PG_FUNCTION_ARGS, TupleDesc descriptor,
 	PopulateCurrentOpOptions(spec, &options);
 
 	List *workerBsons = NIL;
-	if (options.localOps || DefaultInlineWriteOperations)
+	if (options.localOps)
 	{
 		workerBsons = list_make1(CurrentOpWorkerCore(spec));
 	}
 	else
 	{
-		StringInfo cmdStr = makeStringInfo();
-		appendStringInfo(cmdStr,
-						 "SELECT success, result FROM run_command_on_all_nodes("
-						 "FORMAT($$ SELECT %s.current_op_worker(%%L) $$, $1))",
-						 ApiToApiInternalSchemaName);
 		int numValues = 1;
 		Datum values[1] = { PointerGetDatum(spec) };
 		Oid types[1] = { BsonTypeId() };
-		workerBsons = GetWorkerBsonsFromAllWorkers(cmdStr->data, values, types, numValues,
-												   "CurrentOp");
+		workerBsons = RunQueryOnAllServerNodes("CurrentOp", values, types, numValues,
+											   command_current_op_worker,
+											   ApiToApiInternalSchemaName,
+											   "current_op_worker");
 	}
 
 	MergeWorkerBsons(workerBsons, descriptor, tupleStore);

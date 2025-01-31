@@ -27,9 +27,9 @@
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
 #include "planner/documentdb_planner.h"
+#include "commands/commands_common.h"
 #include "commands/diagnostic_commands_common.h"
-#include "api_hooks_def.h"
-
+#include "api_hooks.h"
 
 PG_FUNCTION_INFO_V1(command_db_stats);
 PG_FUNCTION_INFO_V1(command_db_stats_worker);
@@ -62,7 +62,7 @@ static pgbson * DbStatsWorker(void *fcinfoPointer);
 static void BuildResultData(Datum databaseName, DbStatsResult *result, int32 scale);
 static pgbson * BuildResponseMessage(DbStatsResult *result);
 static void MergeWorkerResults(DbStatsResult *result, List *workerResults, int32 scale);
-static void GetAllMongoCollectionShardOidsAndNamesInDB(ArrayType *collectionIdArray,
+static bool GetAllMongoCollectionShardOidsAndNamesInDB(ArrayType *collectionIdArray,
 													   ArrayType **shardIdArray,
 													   ArrayType **shardNames);
 static void GetPostgresRelationSizes(ArrayType *relationIds, int64 *totalRelationSize,
@@ -208,27 +208,14 @@ BuildResultData(Datum databaseName, DbStatsResult *result, int32 scale)
 												   TYPALIGN_INT);
 
 	List *workerBsons;
-	if (DefaultInlineWriteOperations)
-	{
-		workerBsons = list_make1(DatumGetPgBson(DirectFunctionCall1(
-													command_db_stats_worker,
-													PointerGetDatum(collectionIdArray))));
-	}
-	else
-	{
-		StringInfo cmdStr = makeStringInfo();
-		appendStringInfo(cmdStr,
-						 "SELECT success, result FROM run_command_on_all_nodes("
-						 "FORMAT($$ SELECT %s.db_stats_worker(%%L) $$, $1))",
-						 ApiInternalSchemaName);
+	int numValues = 1;
+	Datum values[1] = { PointerGetDatum(collectionIdArray) };
+	Oid types[1] = { INT8ARRAYOID };
 
-		int numValues = 1;
-		Datum values[1] = { PointerGetDatum(collectionIdArray) };
-		Oid types[1] = { INT8ARRAYOID };
-
-		workerBsons = GetWorkerBsonsFromAllWorkers(cmdStr->data, values, types,
-												   numValues, "DbStats");
-	}
+	workerBsons = RunQueryOnAllServerNodes("DbStats", values, types, numValues,
+										   command_db_stats_worker,
+										   ApiInternalSchemaName,
+										   "db_stats_worker");
 
 	/* Now that we have the worker BSON results, merge them to the final one */
 	MergeWorkerResults(result, workerBsons, scale);
@@ -438,6 +425,12 @@ MergeWorkerResults(DbStatsResult *result,
 	result->indexSize = totalIndexSize;
 	result->totalSize = totalTotalSize;
 
+	/* Assign some value if unavailable */
+	if (result->dataSize == 0)
+	{
+		result->dataSize = result->storageSize;
+	}
+
 	if (scale > 1)
 	{
 		result->dataSize /= scale;
@@ -461,15 +454,14 @@ DbStatsWorker(void *fcinfoPointer)
 	/* First step, get the relevant shards on this node (We're already in the query worker) */
 	ArrayType *shardNames = NULL;
 	ArrayType *shardOids = NULL;
-	GetAllMongoCollectionShardOidsAndNamesInDB(collectionIdArray, &shardOids,
-											   &shardNames);
 
 	/* Next get the relation and table size */
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
 
 	/* Only do work if there are shards */
-	if (shardOids != NULL)
+	if (GetAllMongoCollectionShardOidsAndNamesInDB(collectionIdArray, &shardOids,
+												   &shardNames))
 	{
 		Assert(shardNames != NULL);
 
@@ -623,7 +615,7 @@ GetAllCollectionIdsInDb(Datum databaseNameDatum, int64 *views)
  * Given an array of collecionIds, this function retrieves the shard OIDs and shard names that are
  * associated with given all collectionIds on the current node.
  */
-static void
+static bool
 GetAllMongoCollectionShardOidsAndNamesInDB(ArrayType *collectionIdArray,
 										   ArrayType **shardIdArray,
 										   ArrayType **shardNames)
@@ -637,101 +629,72 @@ GetAllMongoCollectionShardOidsAndNamesInDB(ArrayType *collectionIdArray,
 	deconstruct_array(collectionIdArray, INT8OID, sizeof(uint64), true, TYPALIGN_INT,
 					  &collectionIdDatums, &nulls, &numCollections);
 
-	Datum *relationIdDatums = palloc0(sizeof(Datum) * numCollections);
 
-	uint64 collectionId;
+	Datum *databaseResultDatums = NULL;
+	Datum *databaseNameResultDatums = NULL;
+	int32_t datumCount = 0;
 	for (int i = 0; i < numCollections; i++)
 	{
 		CHECK_FOR_INTERRUPTS();
-		collectionId = DatumGetInt64(collectionIdDatums[i]);
-		relationIdDatums[i] = ObjectIdGetDatum(GetRelationIdForCollectionId(collectionId,
-																			NoLock));
-	}
+		int64_t collectionId = DatumGetInt64(collectionIdDatums[i]);
 
-	ArrayType *relationIdArray = construct_array(relationIdDatums, numCollections, OIDOID,
-												 sizeof(Oid), true,
-												 TYPALIGN_INT);
+		char tableName[NAMEDATALEN] = { 0 };
+		sprintf(tableName, DOCUMENT_DATA_TABLE_NAME_FORMAT, collectionId);
+		Oid collectionOid = GetRelationIdForCollectionId(collectionId, NoLock);
 
-	/* Here the logicalrelid is of the format ApiDataSchemaName.documents_<collectionId>
-	 *      e.g. ApiDataSchemaName.documents_1
-	 * This query gets all the shardIds of given logicalrelid, and appends it to "documents_<collectionId>"
-	 * part of the logicalrelid
-	 *      e.g. documents_1_10240
-	 */
-	StringInfo queryStr = makeStringInfo();
-	appendStringInfo(queryStr,
-					 "SELECT array_agg(right(logicalrelid::regclass::text,-%lu) || '_' || shardid) FROM pg_dist_shard WHERE logicalrelid = ANY($1)",
-					 strlen(ApiDataSchemaName) + 1); /* length of "ApiDataSchemaName." */
-
-
-	int nargs = 1;
-	Oid argTypes[1] = { OIDARRAYOID };
-	Datum argValues[1] = { PointerGetDatum(relationIdArray) };
-
-	bool isReadOnly = true;
-	bool isNull = false;
-	Datum shardIds = ExtensionExecuteQueryWithArgsViaSPI(queryStr->data, nargs, argTypes,
-														 argValues,
-														 NULL, isReadOnly, SPI_OK_SELECT,
-														 &isNull);
-
-	if (isNull)
-	{
-		return;
-	}
-
-	ArrayType *arrayType = DatumGetArrayTypeP(shardIds);
-
-	/* Need to build the result */
-	int64 numItems = ArrayGetNItems(ARR_NDIM(arrayType), ARR_DIMS(arrayType));
-
-	Datum *resultDatums = palloc0(sizeof(Datum) * numItems);
-	Datum *resultNameDatums = palloc0(sizeof(Datum) * numItems);
-
-	const int slice_ndim = 0;
-	ArrayMetaState *mState = NULL;
-	ArrayIterator shardIterator = array_create_iterator(arrayType,
-														slice_ndim, mState);
-
-	Datum shardName = 0;
-	int64 resultCount = 0;
-	while (array_iterate(shardIterator, &shardName, &isNull))
-	{
-		if (isNull)
+		if (collectionOid == InvalidOid)
 		{
 			continue;
 		}
 
-		RangeVar *rangeVar = makeRangeVar(ApiDataSchemaName, TextDatumGetCString(
-											  shardName), -1);
-		bool missingOk = true;
-		Oid shardRelationId = RangeVarGetRelid(rangeVar, AccessShareLock, missingOk);
-		if (shardRelationId != InvalidOid)
+		Datum *resultDatums = NULL;
+		Datum *resultNameDatums = NULL;
+		int32_t shardCount = 0;
+		GetShardIdsAndNamesForCollection(collectionOid, tableName, &resultDatums,
+										 &resultNameDatums, &shardCount);
+
+		if (shardCount == 0)
 		{
-			Assert(resultCount < numItems);
-			resultDatums[resultCount] = shardRelationId;
-			resultNameDatums[resultCount] = PointerGetDatum(DatumGetTextPCopy(
-																shardName));
-			resultCount++;
+			continue;
+		}
+
+		if (datumCount == 0)
+		{
+			databaseResultDatums = resultDatums;
+			databaseNameResultDatums = resultNameDatums;
+			datumCount = shardCount;
+		}
+		else
+		{
+			int32_t newSize = shardCount + datumCount;
+			databaseResultDatums = repalloc(databaseResultDatums, sizeof(Datum) *
+											newSize);
+			databaseNameResultDatums = repalloc(databaseNameResultDatums, sizeof(Datum) *
+												newSize);
+			memcpy(&databaseResultDatums[datumCount], resultDatums, shardCount *
+				   sizeof(Datum));
+			memcpy(&databaseNameResultDatums[datumCount], resultNameDatums, shardCount *
+				   sizeof(Datum));
+			datumCount = newSize;
+			pfree(resultDatums);
+			pfree(resultNameDatums);
 		}
 	}
 
-	array_free_iterator(shardIterator);
-
-	/* Now that we have the shard list as a Datum*, create an array type */
-	if (resultCount > 0)
+	if (datumCount == 0)
 	{
-		*shardIdArray = construct_array(resultDatums, resultCount, OIDOID,
-										sizeof(Oid), true,
-										TYPALIGN_INT);
-		*shardNames = construct_array(resultNameDatums, resultCount, TEXTOID, -1,
-									  false,
-									  TYPALIGN_INT);
+		return false;
 	}
 
-	pfree(resultDatums);
-	pfree(resultNameDatums);
-	pfree(arrayType);
+	*shardIdArray = construct_array(databaseResultDatums, datumCount, OIDOID,
+									sizeof(Oid), true,
+									TYPALIGN_INT);
+	*shardNames = construct_array(databaseNameResultDatums, datumCount, TEXTOID, -1,
+								  false,
+								  TYPALIGN_INT);
+	pfree(databaseResultDatums);
+	pfree(databaseNameResultDatums);
+	return true;
 }
 
 

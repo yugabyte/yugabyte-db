@@ -12,10 +12,10 @@
 #ifndef DIAGNOSTIC_COMMANDS_COMMON_H
 #define DIAGNOSTIC_COMMANDS_COMMON_H
 
+List * RunQueryOnAllServerNodes(const char *commandName, Datum *values, Oid *types, int
+								numValues, PGFunction directFunc,
+								const char *nameSpaceName, const char *functionName);
 
-List * GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
-									Oid *types, int numValues,
-									const char *commandName);
 
 pgbson * RunWorkerDiagnosticLogic(pgbson *(*workerFunc)(void *state), void *state);
 
