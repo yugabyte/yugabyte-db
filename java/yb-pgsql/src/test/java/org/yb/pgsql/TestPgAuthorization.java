@@ -3227,7 +3227,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testLongPasswords() throws Exception {
-    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
 
