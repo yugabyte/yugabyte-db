@@ -81,6 +81,9 @@ od_hashmap_t *od_hashmap_create(size_t sz)
 
 	for (size_t i = 0; i < sz; ++i) {
 		if (od_hash_bucket_init(&hm->buckets[i]) == NOT_OK_RESPONSE) {
+			for (size_t j = 0; j < i; ++j) {
+				od_hash_bucket_free(hm->buckets[j]);
+			}
 			free(hm->buckets);
 			free(hm);
 			return NULL;
