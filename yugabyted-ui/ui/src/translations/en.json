@@ -1087,6 +1087,7 @@
               "issue": "Issue",
               "issueType": "Issue Type",
               "occurrences": "Occurrences",
+              "objectName": "Object Name : ",
               "previewSqlStatement": "Preview SQL Statement/Object",
               "workaround": "Workaround",
               "linkToDocs": "Link to docs",
