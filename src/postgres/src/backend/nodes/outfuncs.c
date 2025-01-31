@@ -4049,14 +4049,14 @@ _outYbSkippableEntities(StringInfo str, const YbSkippableEntities *node)
 static void
 _outYbUpdateAffectedEntities(StringInfo str, const YbUpdateAffectedEntities *node)
 {
-	int nfields = node->matrix.nrows;
-	int nentities = node->matrix.ncols;
+	int			nfields = node->matrix.nrows;
+	int			nentities = node->matrix.ncols;
 
 	WRITE_NODE_TYPE("YBUPDATEAFFECTEDENTITIES");
 
 	/* Write out the number of fields and entities to support deserialization */
-	WRITE_INT_FIELD(matrix.nrows); /* Number of fields */
-	WRITE_INT_FIELD(matrix.ncols); /* Number of entities */
+	WRITE_INT_FIELD(matrix.nrows);	/* Number of fields */
+	WRITE_INT_FIELD(matrix.ncols);	/* Number of entities */
 
 	for (int i = 0; i < nentities; i++)
 	{

@@ -1217,4 +1217,17 @@ public class XClusterConfig extends Model {
   public static boolean isUniverseXClusterParticipant(UUID universeUUID) {
     return !CollectionUtils.isEmpty(getByUniverseUuid(universeUUID));
   }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    XClusterConfig other = (XClusterConfig) o;
+    return this.uuid != null && this.uuid.equals(other.uuid);
+  }
+
+  @Override
+  public int hashCode() {
+    return this.uuid != null ? this.uuid.hashCode() : 0;
+  }
 }

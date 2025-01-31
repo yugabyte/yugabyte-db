@@ -8,10 +8,8 @@ LINE 1: CREATE DATABASE test IS_TEMPLATE = TRUE;
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues.
 CREATE DATABASE test LC_COLLATE = "C";
 CREATE DATABASE test LC_CTYPE = "C";
-ERROR:  value other than 'en_US.UTF-8' for lc_ctype option is not yet supported
-LINE 1: CREATE DATABASE test LC_CTYPE = "C";
-                             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues.
+ERROR:  new LC_CTYPE (C) is incompatible with the LC_CTYPE of the template database (en_US.UTF-8)
+HINT:  Use the same LC_CTYPE as in the template database, or use template0 as template.
 CREATE DATABASE test ENCODING = LATIN5;
 ERROR:  value other than unicode or utf8 for encoding option is not yet supported
 LINE 1: CREATE DATABASE test ENCODING = LATIN5;

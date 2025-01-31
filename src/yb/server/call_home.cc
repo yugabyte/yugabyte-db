@@ -31,7 +31,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/user.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 using std::string;
 using std::vector;

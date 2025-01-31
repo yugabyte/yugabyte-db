@@ -112,36 +112,34 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
       typeFilter === t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.dataType");
     const includeFunctions = typeFilter === "" ||
       typeFilter === t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.function");
+
     const features = includeFeatures
-      ? unsupportedFeatures?.map((data) => {
-          return {
-            ...data,
-            issue_type:
-              t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.feature"),
-            sql_statement: data.objects?.length ? data.objects[0].sql_statement : "N/A",
-          };
-        }) ?? []
+      ? unsupportedFeatures?.map((data) => ({
+          ...data,
+          issue_type:
+            t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.feature"),
+          sql_statement: data.objects?.length ? (data.objects[0].sql_statement || "N/A") : "N/A",
+        })) ?? []
       : [];
+
     const dataTypes = includeDataTypes
-      ? unsupportedDataTypes?.map((data) => {
-          return {
-            ...data,
-            issue_type:
-              t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.dataType"),
-            sql_statement: data.objects?.length ? data.objects[0].sql_statement : "N/A",
-          };
-        }) ?? []
+      ? unsupportedDataTypes?.map((data) => ({
+          ...data,
+          issue_type:
+            t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.dataType"),
+          sql_statement: data.objects?.length ? (data.objects[0].sql_statement || "N/A") : "N/A",
+        })) ?? []
       : [];
+
     const functions = includeFunctions
-      ? unsupportedFunctions?.map((data) => {
-          return {
-            ...data,
-            issue_type:
-              t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.function"),
-            sql_statement: data.objects?.length ? data.objects[0].sql_statement : "N/A",
-          };
-        }) ?? []
+      ? unsupportedFunctions?.map((data) => ({
+          ...data,
+          issue_type:
+            t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.function"),
+          sql_statement: data.objects?.length ? (data.objects[0].sql_statement || "N/A") : "N/A",
+        })) ?? []
       : [];
+
     return features.concat(dataTypes, functions);
   }, [unsupportedDataTypes, unsupportedFeatures, unsupportedFunctions, typeFilter]);
 

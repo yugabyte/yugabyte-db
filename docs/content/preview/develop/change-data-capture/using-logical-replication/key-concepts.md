@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-The YugabyteDB logical replication feature uses [PostgreSQL Logical Replication](https://www.postgresql.org/docs/11/logical-replication.html), which operates using a publish-subscribe model. Understanding the following key concepts will help you set up and manage a logical replication environment effectively.
+The YugabyteDB logical replication feature uses [PostgreSQL Logical Replication](https://www.postgresql.org/docs/15/logical-replication.html), which operates using a publish-subscribe model. Understanding the following key concepts will help you set up and manage a logical replication environment effectively.
 
 ## Concepts
 
@@ -24,7 +24,7 @@ A replication slot represents a stream of changes that can be replayed to a clie
 
 In logical replication, the fundamental unit of data transmission is a transaction. A logical slot emits each change just once in normal operation. The current position of each slot is persisted only at checkpoint, so if a replication process is interrupted and restarts, even if the checkpoint or the starting LSN falls in the middle of a transaction, **the entire transaction is retransmitted**. This behavior guarantees that clients receive complete transactions without missing any intermediate changes, maintaining data integrity across the replication stream​. Logical decoding clients are responsible for avoiding ill effects from handling the same message more than once. Clients may wish to record the last LSN they saw when decoding and skip over any repeated data or (when using the replication protocol) request that decoding start from that LSN rather than letting the server determine the start point.
 
-For more information, refer to [Replication slots](https://www.postgresql.org/docs/11/logicaldecoding-explanation.html#LOGICALDECODING-REPLICATION-SLOTS) in the PostgreSQL documentation.
+For more information, refer to [Replication slots](https://www.postgresql.org/docs/15/logicaldecoding-explanation.html#LOGICALDECODING-REPLICATION-SLOTS) in the PostgreSQL documentation.
 
 ### Publication
 
@@ -32,7 +32,7 @@ A publication is a set of changes generated from a table or a group of tables, a
 
 Publications are different from schemas and do not affect how the table is accessed. Each table can be added to multiple publications if needed. Publications may currently only contain tables. Objects must be added explicitly, except when a publication is created for ALL TABLES.
 
-For more information, refer to [Publication](https://www.postgresql.org/docs/11/logical-replication-publication.html#LOGICAL-REPLICATION-PUBLICATION) in the PostgreSQL documentation.
+For more information, refer to [Publication](https://www.postgresql.org/docs/15/logical-replication-publication.html#LOGICAL-REPLICATION-PUBLICATION) in the PostgreSQL documentation.
 
 ### Output plugin
 
@@ -53,7 +53,7 @@ The plugin `yboutput` is YugabyteDB specific. It is similar to `pgoutput` in mos
 
 {{</note>}}
 
-For more information, refer to [Logical Decoding Output Plugins](https://www.postgresql.org/docs/11/logicaldecoding-output-plugin.html) in the PostgreSQL documentation.
+For more information, refer to [Logical Decoding Output Plugins](https://www.postgresql.org/docs/15/logicaldecoding-output-plugin.html) in the PostgreSQL documentation.
 
 ### LSN
 
@@ -100,11 +100,11 @@ The [ysql_yb_default_replica_identity](../../../../reference/configuration/yb-ts
 You should refrain from altering the replica identity of a dynamically created table for at least 5 minutes after its creation.
 {{< /note >}}
 
-For more information, refer to [Replica Identity](https://www.postgresql.org/docs/11/sql-altertable.html#SQL-CREATETABLE-REPLICA-IDENTITY) in the PostgreSQL documentation.
+For more information, refer to [Replica Identity](https://www.postgresql.org/docs/15/sql-altertable.html#SQL-CREATETABLE-REPLICA-IDENTITY) in the PostgreSQL documentation.
 
 ### Replication protocols
 
-PostgreSQL has defined protocols for replication that need to be followed by clients to establish replication connection as well as message structures for streaming data. This includes the [Streaming Replication protocol](https://www.postgresql.org/docs/11/protocol-replication.html) and the [Logical Streaming Replication protocol](https://www.postgresql.org/docs/11/protocol-logical-replication.html).
+PostgreSQL has defined protocols for replication that need to be followed by clients to establish replication connection as well as message structures for streaming data. This includes the [Streaming Replication protocol](https://www.postgresql.org/docs/15/protocol-replication.html) and the [Logical Streaming Replication protocol](https://www.postgresql.org/docs/15/protocol-logical-replication.html).
 
 The logical streaming replication protocol sends individual transactions one-by-one. This means that all messages between a pair of `BEGIN` and `COMMIT` messages belong to the same transaction.
 

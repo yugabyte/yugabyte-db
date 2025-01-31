@@ -44,32 +44,33 @@
  * is shared between multiple ereport's functions call via edata field. Other
  * fields in YbgStatusData structure are to expose the summary to DocDB.
  */
-typedef struct YbgStatusData {
-	int32_t err_level;		/* error code (from elog.h), 0 means no error */
-	const char *err_msg;	/* template to format error message
-							   NULL if no error, else may still be NULL */
-	int32_t nargs;
-	const char **err_args;	/* arguments to format error message */
-	const char *filename;	/* error file name */
-	int lineno;				/* error line number */
-	const char *funcname;	/* error function name */
-	uint32_t sqlerror;		/* SQL error code */
-	void *edata;			/* detailed error data, see elog.c */
-	YbgMemoryContext error_ctx;	/* memory context for YbgStatusData and other
-								   dynamically allocated data */
+typedef struct YbgStatusData
+{
+	int32_t		err_level;		/* error code (from elog.h), 0 means no error */
+	const char *err_msg;		/* template to format error message NULL if no
+								 * error, else may still be NULL */
+	int32_t		nargs;
+	const char **err_args;		/* arguments to format error message */
+	const char *filename;		/* error file name */
+	int			lineno;			/* error line number */
+	const char *funcname;		/* error function name */
+	uint32_t	sqlerror;		/* SQL error code */
+	void	   *edata;			/* detailed error data, see elog.c */
+	YbgMemoryContext error_ctx; /* memory context for YbgStatusData and other
+								 * dynamically allocated data */
 } YbgStatusData;
 
 static struct YbgStatusData YbgFailedErrorReporting = {
-	FATAL, /* err_level */
-	"PG error reporting went wrong", /* err_msg */
-	0, /* nargs */
-	NULL, /* err_args */
-	NULL, /* filename */
-	0, /* lineno */
-	NULL, /* funcname */
-	ERRCODE_INTERNAL_ERROR, /* SQL error code */
-	NULL, /* edata */
-	NULL /* error_ctx */
+	FATAL,						/* err_level */
+	"PG error reporting went wrong",	/* err_msg */
+	0,							/* nargs */
+	NULL,						/* err_args */
+	NULL,						/* filename */
+	0,							/* lineno */
+	NULL,						/* funcname */
+	ERRCODE_INTERNAL_ERROR,		/* SQL error code */
+	NULL,						/* edata */
+	NULL						/* error_ctx */
 };
 
 /*
@@ -92,7 +93,7 @@ YbgStatusCreate()
 {
 	YbgMemoryContext error_ctx;
 	YbgMemoryContext old_ctx;
-	YbgStatus		status;
+	YbgStatus	status;
 
 	error_ctx = CreateThreadLocalCurrentMemoryContext(NULL, "DocDBErrorContext");
 	old_ctx = SetThreadLocalCurrentMemoryContext(error_ctx);
@@ -114,11 +115,12 @@ YbgStatus
 YbgStatusCreateError(const char *msg, const char *filename, int line)
 {
 	YbgMemoryContext old_ctx;
-	YbgStatus status = YbgStatusCreate();
+	YbgStatus	status = YbgStatusCreate();
+
 	old_ctx = SetThreadLocalCurrentMemoryContext(status->error_ctx);
 	status->err_level = ERROR;
 	status->err_msg = strdup(msg);
-	status->filename = filename; /* no dup, expect static value */
+	status->filename = filename;	/* no dup, expect static value */
 	status->lineno = line;
 	SetThreadLocalCurrentMemoryContext(old_ctx);
 	return status;
@@ -194,7 +196,8 @@ YbgStatusSetMessageAndArgs(YbgStatus status, const char *msg,
 	status->nargs = nargs;
 	if (nargs > 0)
 	{
-		int i;
+		int			i;
+
 		status->err_args = (const char **) palloc(nargs * sizeof(const char *));
 		for (i = 0; i < nargs; i++)
 			status->err_args[i] = pstrdup(args[i]);
@@ -311,7 +314,8 @@ YbgStatusSetFuncname(YbgStatus status, const char *funcname)
  * in the instance's error context, as well as any data it owns, so it is
  * automatically cleaned up when status is destroyed.
  */
-void *YbgStatusGetEdata(YbgStatus status)
+void *
+YbgStatusGetEdata(YbgStatus status)
 {
 	return status->edata;
 }

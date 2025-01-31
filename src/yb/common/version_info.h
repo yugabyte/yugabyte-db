@@ -36,8 +36,10 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/util/ref_wrap.h"
 #include "yb/util/status_fwd.h"
-#include "yb/util/version_info.pb.h"
+#include "yb/util/enums.h"
+#include "yb/common/version_info.pb.h"
 
 namespace yb {
 
@@ -45,6 +47,13 @@ struct VersionData {
   VersionInfoPB pb;
   std::string json;
 };
+
+YB_DEFINE_ENUM(
+    ValidateVersionInfoOp,
+    (kVersionEQ)            // The version, build, and ysql major version are the same.
+    (kYsqlMajorVersionLT)   // The ysql major version is lower.
+    (kYsqlMajorVersionLE)   // The ysql major version is lower or equal.
+    (kYsqlMajorVersionEQ))  // The ysql major version is equal.
 
 // Static functions related to fetching information about the current build.
 class VersionInfo {
@@ -65,6 +74,13 @@ class VersionInfo {
   static Status Init();
 
   static uint32 YsqlMajorVersion();
+
+  static bool ValidateVersion(
+      std::optional<ConstRefWrap<VersionInfoPB>> version, ValidateVersionInfoOp op);
+
+  static bool ValidateVersion(const VersionInfoPB& version, ValidateVersionInfoOp op) {
+    return ValidateVersion(std::optional(std::cref(version)), op);
+  }
 
  private:
   // Get the git hash for this build. If the working directory was dirty when

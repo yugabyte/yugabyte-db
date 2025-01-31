@@ -3038,8 +3038,8 @@ adjust_view_column_set(Bitmapset *cols,
 {
 	Bitmapset  *result = NULL;
 	int			col;
-	AttrNumber view_lowattrno = YBGetFirstLowInvalidAttributeNumber(view_rel);
-	AttrNumber base_lowattrno = YBGetFirstLowInvalidAttributeNumberFromOid(base_relid);
+	AttrNumber	view_lowattrno = YBGetFirstLowInvalidAttributeNumber(view_rel);
+	AttrNumber	base_lowattrno = YBGetFirstLowInvalidAttributeNumberFromOid(base_relid);
 
 	col = -1;
 	while ((col = bms_next_member(cols, col)) >= 0)

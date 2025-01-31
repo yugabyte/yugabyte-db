@@ -20,6 +20,7 @@
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
+#include "yb/util/clone_ptr.h"
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -73,7 +74,6 @@ struct PgsqlReadOperationData;
 struct ReadOperationData;
 struct VectorIndexInsertEntry;
 struct VectorIndexSearchResultEntry;
-struct VersionedTransaction;
 
 using DocKeyHash = uint16_t;
 using DocReadContextPtr = std::shared_ptr<DocReadContext>;
@@ -87,6 +87,7 @@ using LockBatchEntries = std::vector<LockBatchEntry<LockManager>>;
 using LockState = uint64_t;
 using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
 
+using ConsensusFrontierPtr = clone_ptr<ConsensusFrontier>;
 using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestPB>>;
 using VectorIndexPtr = std::shared_ptr<VectorIndex>;
 using VectorIndexes = std::vector<VectorIndexPtr>;

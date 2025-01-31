@@ -333,12 +333,11 @@ public class LdapUtil {
         }
 
         // Cursor.next returns true in some environments
-        if (!StringUtils.isEmpty(distinguishedName)
-            && getNameFromDN(distinguishedName).equals(email)) {
+        if (!StringUtils.isEmpty(distinguishedName)) {
           if (ldapConfiguration.isEnableDetailedLogs()) {
             log.debug("Successfully fetched user entry from LDAP Server {}", userEntry.toString());
           }
-          return new ImmutableTriple<Entry, String, String>(userEntry, distinguishedName, role);
+          break;
         }
       }
 
@@ -352,7 +351,7 @@ public class LdapUtil {
       log.error("LDAP query failed.", e);
       throw new PlatformServiceException(BAD_REQUEST, "LDAP search failed.");
     }
-    return new ImmutableTriple<Entry, String, String>(null, "", "");
+    return new ImmutableTriple<Entry, String, String>(userEntry, distinguishedName, role);
   }
 
   public LdapNetworkConnection createConnection(

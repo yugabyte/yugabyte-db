@@ -31,6 +31,7 @@
 #include "yb/common/row_mark.h"
 
 #include "yb/common/transaction_error.h"
+
 #include "yb/docdb/doc_pg_expr.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
@@ -919,7 +920,7 @@ class PgsqlVectorFilter {
   }
 
   bool operator()(const vector_index::VectorId& vector_id) {
-    auto key = VectorIdKey(vector_id);
+    auto key = dockv::VectorIdKey(vector_id);
     // TODO(vector_index) handle failure
     auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key.AsSlice()));
     if (ybctid.empty()) {
@@ -1072,8 +1073,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
-      BloomFilterMode::USE_BLOOM_FILTER,
-      encoded_doc_key_.as_slice(),
+      BloomFilterOptions::Fixed(encoded_doc_key_.as_slice()),
       rocksdb::kDefaultQueryId,
       txn_op_context_,
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
@@ -2471,6 +2471,9 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   table_iter_.reset();
   PgsqlVectorFilter filter(&table_iter_);
   RETURN_NOT_OK(filter.Init(data_));
+  RSTATUS_DCHECK(
+      data_.vector_index->BackfillDone(), IllegalState,
+      "Vector index query on non ready index: $0", *data_.vector_index);
   auto result = VERIFY_RESULT(data_.vector_index->Search(
       vector_slice,
       vector_index::SearchOptions {
@@ -2943,8 +2946,7 @@ Result<bool> PgsqlLockOperation::LockExists(const DocOperationApplyData& data) {
   auto reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
   auto iter = CreateRocksDBIterator(
       data.doc_write_batch->doc_db().intents, &KeyBounds::kNoBounds,
-      BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      rocksdb::kDefaultQueryId, nullptr, &reverse_index_upperbound,
+      BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId, nullptr, &reverse_index_upperbound,
       rocksdb::CacheRestartBlockKeys::kFalse);
   Slice key_prefix = txn_reverse_index_prefix.AsSlice();
   key_prefix.remove_suffix(1);

@@ -62,7 +62,7 @@ Connect to the cluster using ysqlsh as follows:
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

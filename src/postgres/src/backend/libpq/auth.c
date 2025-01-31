@@ -67,7 +67,9 @@ static void set_authn_id(Port *port, const char *id);
  * in auth passthrough, instead of FATAL/ERROR packet, WARNING packet along with
  * FatalForLogicalConnection packet is used.
  */
-static int YbAuthFailedErrorLevel(const bool auth_passthrough) {
+static int
+YbAuthFailedErrorLevel(const bool auth_passthrough)
+{
 	return (YbIsClientYsqlConnMgr() && auth_passthrough == true) ? WARNING : FATAL;
 }
 
@@ -169,7 +171,7 @@ ULONG		(*__ldap_start_tls_sA) (IN PLDAP ExternalHandle,
 
 static int	CheckLDAPAuth(Port *port);
 
-static char* get_ldap_password(char* ldapbindpasswd);
+static char *get_ldap_password(char *ldapbindpasswd);
 
 /* LDAP_OPT_DIAGNOSTIC_MESSAGE is the newer spelling */
 #ifndef LDAP_OPT_DIAGNOSTIC_MESSAGE
@@ -353,7 +355,8 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 			break;
 	}
 
-	char *line_to_print = port->hba->maskedline;
+	char	   *line_to_print = port->hba->maskedline;
+
 	if (!line_to_print)
 		line_to_print = port->hba->rawline;
 
@@ -369,10 +372,10 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 
 	ereport(YbAuthFailedErrorLevel(port->yb_is_auth_passthrough_req),
 			(errcode(errcode_return),
-			 (yb_role_is_locked_out ? errmsg("role \"%s\" is locked. Contact"
-											 " your database administrator.",
-											 port->user_name)
-									: errmsg(errstr, port->user_name)),
+			 (yb_role_is_locked_out ?
+			  errmsg("role \"%s\" is locked. Contact your database administrator.",
+					 port->user_name) :
+			  errmsg(errstr, port->user_name)),
 			 (logdetail ? errdetail_log("%s", logdetail) : 0)));
 
 	/* doesn't return */
@@ -434,7 +437,7 @@ ClientAuthentication(Port *port)
 	int			status = STATUS_ERROR;
 	const char *logdetail = NULL;
 
-	bool 		yb_auth_passthrough = port->yb_is_auth_passthrough_req;
+	bool		yb_auth_passthrough = port->yb_is_auth_passthrough_req;
 
 	if (yb_auth_passthrough)
 	{
@@ -702,8 +705,9 @@ ClientAuthentication(Port *port)
 			if (YbIsClientYsqlConnMgr() && port->yb_is_auth_passthrough_req)
 			{
 				YbSendFatalForLogicalConnectionPacket();
-				elog(WARNING, "YbTserverKey authentication is not supported "
-							  " in auth passthrough");
+				elog(WARNING,
+					 "YbTserverKey authentication is not supported "
+					 " in auth passthrough");
 			}
 
 			status = CheckYbTserverKeyAuth(port, &logdetail);
@@ -773,9 +777,10 @@ ClientAuthentication(Port *port)
 	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist &&
 		IsProfileHandlingRequired(port->hba->auth_method))
 	{
-		bool profile_is_disabled = false;
-		HeapTuple roleTuple, profileTuple = NULL;
-		Oid roleid = InvalidOid;
+		bool		profile_is_disabled = false;
+		HeapTuple	roleTuple,
+					profileTuple = NULL;
+		Oid			roleid = InvalidOid;
 
 		/* Get role info from pg_authid */
 		roleTuple = SearchSysCache1(AUTHNAME, PointerGetDatum(port->user_name));
@@ -785,8 +790,8 @@ ClientAuthentication(Port *port)
 			profileTuple = yb_get_role_profile_tuple_by_role_oid(roleid);
 			if (HeapTupleIsValid(profileTuple))
 			{
-				Form_pg_yb_role_profile rolprfform =
-					(Form_pg_yb_role_profile) GETSTRUCT(profileTuple);
+				Form_pg_yb_role_profile rolprfform = (Form_pg_yb_role_profile) GETSTRUCT(profileTuple);
+
 				if (rolprfform->rolprfstatus != YB_ROLPRFSTATUS_OPEN)
 					profile_is_disabled = true;
 			}
@@ -821,7 +826,7 @@ ClientAuthentication(Port *port)
 			YbCreateClientId();
 	}
 	else
-		auth_failed(port, status, logdetail, false /* yb_role_is_locked_out */);
+		auth_failed(port, status, logdetail, false /* yb_role_is_locked_out */ );
 }
 
 
@@ -1090,7 +1095,8 @@ CheckYbTserverKeyAuth(Port *port, const char **logdetail)
 	else
 	{
 		/* Convert client-supplied password string to uint64 key */
-		char *end;
+		char	   *end;
+
 		errno = 0;
 		client_key = pg_strtouint64(passwd, &end, 10);
 		if (!(*passwd != '\0' && *end == '\0') || errno == ERANGE)
@@ -1100,7 +1106,8 @@ CheckYbTserverKeyAuth(Port *port, const char **logdetail)
 		pfree(passwd);
 	}
 
-	uint64_t auth_key;
+	uint64_t	auth_key;
+
 	return yb_get_role_password(port->user_name, logdetail, &auth_key)
 		? yb_plain_key_verify(port->user_name, auth_key, client_key, logdetail)
 		: STATUS_ERROR;
@@ -2776,7 +2783,7 @@ CheckLDAPAuth(Port *port)
 		 * Bind with a pre-defined username/password (if available) for
 		 * searching. If none is specified, this turns into an anonymous bind.
 		 */
-		char* hba_password = get_ldap_password(port->hba->ldapbindpasswd);
+		char	   *hba_password = get_ldap_password(port->hba->ldapbindpasswd);
 
 		r = ldap_simple_bind_s(ldap,
 							   port->hba->ldapbinddn ? port->hba->ldapbinddn : "",
@@ -2950,7 +2957,7 @@ errdetail_for_ldap(LDAP *ldap)
 }
 
 static char *
-get_ldap_password(char* ldapbindpasswd)
+get_ldap_password(char *ldapbindpasswd)
 {
 	/* Return password stored in YSQL_LDAP_BIND_PWD_ENV env var */
 	if (strncmp(ldapbindpasswd, "YSQL_LDAP_BIND_PWD_ENV", 22) == 0)
@@ -2961,7 +2968,7 @@ get_ldap_password(char* ldapbindpasswd)
 		}
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-				errmsg("expected env variable YSQL_LDAP_BIND_PWD_ENV to be defined, got NULL")));
+				 errmsg("expected env variable YSQL_LDAP_BIND_PWD_ENV to be defined, got NULL")));
 	}
 
 	/* Return password as defined in hba.conf */
@@ -3585,14 +3592,14 @@ static void
 ybGetJwtAuthOptionsFromPortAndJwks(Port *port, char *jwks,
 								   YbcPgJwtAuthOptions *opt)
 {
-	HbaLine	   *hba_line = port->hba;
+	HbaLine    *hba_line = port->hba;
 
 	opt->jwks = jwks;
 	opt->usermap = hba_line->usermap;
 	opt->username = port->user_name;
 
 	/* Use "sub" as the default matching claim key */
-	opt->matching_claim_key = hba_line->yb_jwt_matching_claim_key ?: "sub";
+	opt->matching_claim_key = hba_line->yb_jwt_matching_claim_key ? : "sub";
 
 	opt->allowed_issuers = (char **)
 		YbPtrListToArray(hba_line->yb_jwt_issuers,
@@ -3628,7 +3635,7 @@ YbCheckJwtAuth(Port *port)
 	/* Interpret password as jwt */
 	jwt = recv_password_packet(port);
 	if (jwt == NULL)
-		return STATUS_EOF; /* client didn't send jwt */
+		return STATUS_EOF;		/* client didn't send jwt */
 
 	/*
 	 * We are allocating a temporary array of char* for audiences and issuers
@@ -3636,11 +3643,13 @@ YbCheckJwtAuth(Port *port)
 	 * C++ layer.
 	 */
 	YbcPgJwtAuthOptions jwt_auth_options;
+
 	ybGetJwtAuthOptionsFromPortAndJwks(port, jwks, &jwt_auth_options);
 
-	YbcStatus s = YBCValidateJWT(jwt, &jwt_auth_options);
+	YbcStatus	s = YBCValidateJWT(jwt, &jwt_auth_options);
+
 	auth_result = (s) ? STATUS_ERROR : STATUS_OK;
-	if (s) /* !ok */
+	if (s)						/* !ok */
 	{
 		ereport(LOG,
 				(errmsg("JWT login failed with error: %s",
@@ -3672,9 +3681,9 @@ YbCheckJwtAuth(Port *port)
 static char *
 ybReadFile(const char *outer_filename, const char *inc_filename, int elevel)
 {
-	char *file_fullname;
-	char *file_contents;
-	int len;
+	char	   *file_fullname;
+	char	   *file_contents;
+	int			len;
 
 	if (is_absolute_path(inc_filename))
 	{
@@ -3683,8 +3692,10 @@ ybReadFile(const char *outer_filename, const char *inc_filename, int elevel)
 	}
 	else
 	{
-		/* relative path is relative to dir of file from which the path was
-		 * referenced. */
+		/*
+		 * relative path is relative to dir of file from which the path was
+		 * referenced.
+		 */
 		file_fullname =
 			(char *) palloc(strlen(outer_filename) + 1 + strlen(inc_filename) + 1);
 		strcpy(file_fullname, outer_filename);
@@ -3722,12 +3733,12 @@ ybReadFile(const char *outer_filename, const char *inc_filename, int elevel)
 static char *
 ybReadFromUrl(const char *url)
 {
-	char *url_contents = NULL;
-	int len;
-	YbcStatus status;
+	char	   *url_contents = NULL;
+	int			len;
+	YbcStatus	status;
 
 	status = YBCFetchFromUrl(url, &url_contents);
-	if (status) /* !ok */
+	if (status)					/* !ok */
 	{
 		ereport(LOG,
 				(errmsg("fetching from JWT_JWKS_URL failed with error: %s",

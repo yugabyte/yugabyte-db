@@ -66,7 +66,7 @@ ERROR: adding primary key to a partitioned table is not yet implemented (SQLSTAT
 
 **Workaround**: Manual intervention needed. Add primary key in the `CREATE TABLE` statement.
 
-**Fixed In**: {{<release "2024.1.0.0, 2024.2.0.0, 2.23.0.0">}}.
+**Fixed In**: {{<release "2024.1.0.0, 2024.2.0.0, 2.23.0.0, 2.25">}}.
 
 **Example**
 
@@ -210,6 +210,8 @@ ERROR: syntax error at or near "(" (SQLSTATE 42601)
 ```
 
 **Workaround**: Create a trigger on this table that updates its value on any INSERT/UPDATE operation, and set a default value for this column. This provides functionality similar to PostgreSQL's GENERATED ALWAYS AS STORED columns using a trigger.
+
+**Fixed In**: {{<release "2.25">}}.
 
 **Example**
 
@@ -907,7 +909,7 @@ ERROR:  UNLOGGED database object not supported yet
 
 **Workaround**: Convert it to a LOGGED table.
 
-**Fixed In**: {{<release "2024.2.0.0">}}.
+**Fixed In**: {{<release "2024.2.0.0, 2.25">}}
 
 **Example**
 
@@ -1059,9 +1061,9 @@ CREATE TABLE public.locations (
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: For live migration, the migration skips databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`.
+**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`.
 
-For live migration with fall-forward/fall-back, the migration skips databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`.
+For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column: `HSTORE`, `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`.
 
 **Workaround**: None.
 
@@ -1160,6 +1162,8 @@ ERROR: Partitioned tables cannot have BEFORE / FOR EACH ROW triggers.
 ```
 
 **Workaround**: Create this trigger on the individual partitions.
+
+**Fixed In**: {{<release "2.25">}}.
 
 **Example**
 
@@ -1329,20 +1333,29 @@ CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
 
 **GitHub**: Issue [#25575](https://github.com/yugabyte/yugabyte-db/issues/25575)
 
-**Description**: If any of the following PostgreSQL features for version 12 and later are present in the source schema, the import schema step on the target YugabyteDB will fail as YugabyteDB is currently PG11 compatible.
+**Description**: If any of these PostgreSQL features for version 12 and later are present in the source schema, the import schema step on the target YugabyteDB will fail as YugabyteDB is currently PG11 compatible.
 
-- Multirange [datatypes](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-BUILTIN).
-- UNIQUE NULLS NOT DISTINCT [clause](https://www.postgresql.org/about/featurematrix/detail/392/) in constraint and index.
-- Aggregate [functions](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `any_value`, `range_agg`, `range_intersect_agg`.
-- FETCH FIRST … WITH TIES in select [statement](https://www.postgresql.org/docs/13/sql-select.html#SQL-LIMIT).
-- Regex [functions](https://www.postgresql.org/about/featurematrix/detail/367/) - `regexp_count`, `regexp_instr`, `regexp_like`
-- JSON Constructor [functions](https://www.postgresql.org/about/featurematrix/detail/395/) - `JSON_ARRAY_AGG`, `JSON_ARRAY`,  `JSON_OBJECT`, `JSON_OBJECT_AGG`.
-- JSON query [functions](https://www.postgresql.org/docs/17/functions-json.html#FUNCTIONS-SQLJSON-TABLE) - `JSON_QUERY`, `JSON_VALUE`, `JSON_EXISTS`, `JSON_TABLE`.
-- IS JSON predicate [clause](https://www.postgresql.org/about/featurematrix/detail/396/).
-- Foreign key [references](https://www.postgresql.org/about/featurematrix/detail/319/) to partitioned table.
-- Security invoker [views](https://www.postgresql.org/about/featurematrix/detail/389/).
-- COPY FROM command with WHERE [clause](https://www.postgresql.org/about/featurematrix/detail/330/) and ON_ERROR [option](https://www.postgresql.org/about/featurematrix/detail/433/).
-- Deterministic [attribute](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC) in COLLATION objects.
+- [JSON Constructor functions](https://www.postgresql.org/about/featurematrix/detail/395/) - `JSON_ARRAY_AGG`, `JSON_ARRAY`, `JSON_OBJECT`, `JSON_OBJECT_AGG`.
+- [JSON query functions](https://www.postgresql.org/docs/17/functions-json.html#FUNCTIONS-SQLJSON-TABLE) - `JSON_QUERY`, `JSON_VALUE`, `JSON_EXISTS`, `JSON_TABLE`.
+- [IS JSON predicate clause](https://www.postgresql.org/about/featurematrix/detail/396/).
+- Any Value [Aggregate function](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `any_value`.
+- [COPY FROM command with ON_ERROR](https://www.postgresql.org/about/featurematrix/detail/433/) option.
+- [Non-decimal integer literals](https://www.postgresql.org/about/featurematrix/detail/407/).
+- [Non-deterministic collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC).
+
+Apart from these, the following issues are supported in the YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25) release (preview release where YugabyteDB now supports PostgreSQL 15).
+
+- [Multirange datatypes](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-BUILTIN).
+- [UNIQUE NULLS NOT DISTINCT clause](https://www.postgresql.org/about/featurematrix/detail/392/) in constraint and index.
+- [Range Aggregate functions](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `range_agg`, `range_intersect_agg`.
+- [FETCH FIRST … WITH TIES in select](https://www.postgresql.org/docs/13/sql-select.html#SQL-LIMIT) statement.
+- [Regex functions](https://www.postgresql.org/about/featurematrix/detail/367/) - `regexp_count`, `regexp_instr`, `regexp_like`.
+- [Foreign key references](https://www.postgresql.org/about/featurematrix/detail/319/) to partitioned table.
+- [Security invoker views](https://www.postgresql.org/about/featurematrix/detail/389/).
+- COPY FROM command with WHERE [clause](https://www.postgresql.org/about/featurematrix/detail/330/).
+- [Deterministic attribute](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC) in COLLATION objects.
+- [SQL Body in Create function](https://www.postgresql.org/docs/15/sql-createfunction.html#:~:text=a%20new%20session.-,sql_body,-The%20body%20of).
+- [Common Table Expressions (With queries) with MATERIALIZED clause](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-CTE-MATERIALIZATION).
 
 ### MERGE command
 
@@ -1421,6 +1434,8 @@ ERROR: cannot subscript type jsonb because it is not an array
 ```
 
 **Workaround**: You can use the Arrow ( `-> / ->>` ) operators to access JSONB fields.
+
+**Fixed In**: {{<release "2.25">}}.
 
 **Example**
 

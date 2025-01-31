@@ -306,11 +306,12 @@ std::optional<NamespaceId> GetProducerNamespaceIdInternal(
 Result<bool> ShouldAddTableToReplicationGroup(
     UniverseReplicationInfo& universe, const TableInfo& table_info,
     CatalogManager& catalog_manager) {
-  const auto& table_pb = table_info.old_pb();
-
   if (!IsTableEligibleForXClusterReplication(table_info)) {
     return false;
   }
+
+  auto table_lock = table_info.LockForRead();
+  const auto& table_pb = table_lock->pb;
 
   auto l = universe.LockForRead();
   const auto& universe_pb = l->pb;

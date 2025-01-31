@@ -9,6 +9,9 @@ menu:
     identifier: yugabytedb-managed-releases
     parent: yugabytedb-managed
     weight: 22
+    params:
+      classes: separator
+      hideLink: true
 type: docs
 rightNav:
   hideH4: true
@@ -82,7 +85,7 @@ rightNav:
 
 ##### New features
 
-- Support for exporting [PostgreSQL logs](https://www.postgresql.org/docs/11/runtime-config-logging.html) to third-party tools (such as Datadog) for security monitoring, to build operations and health dashboards, troubleshooting, and more.
+- Support for exporting [PostgreSQL logs](https://www.postgresql.org/docs/15/runtime-config-logging.html) to third-party tools (such as Datadog) for security monitoring, to build operations and health dashboards, troubleshooting, and more.
 - New regions. Jakarta and Hyderabad on AWS, and Singapore on Azure.
 
 ##### Database

@@ -58,8 +58,7 @@ docdb::BoundedRocksDbIterator CreateFullScanIterator(
     rocksdb::DB* db, std::shared_ptr<rocksdb::ReadFileFilter> filter) {
   return docdb::BoundedRocksDbIterator(docdb::CreateRocksDBIterator(
       db, &docdb::KeyBounds::kNoBounds,
-      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      /* user_key_for_filter= */ boost::none, rocksdb::kDefaultQueryId, filter,
+      docdb::BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId, filter,
       /* iterate_upper_bound = */ nullptr, rocksdb::CacheRestartBlockKeys::kFalse));
 }
 

@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -36,6 +37,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -181,6 +183,11 @@ public class UniverseActionsHandler {
   }
 
   public UUID pause(Customer customer, Universe universe) {
+    return pause(customer, universe, null);
+  }
+
+  public UUID pause(
+      Customer customer, Universe universe, @Nullable KubernetesResourceDetails resourceDetails) {
     LOG.info(
         "Pause universe, customer uuid: {}, universe: {} [ {} ] ",
         customer.getUuid(),
@@ -198,6 +205,9 @@ public class UniverseActionsHandler {
       kubeParams.setUniverseUUID(universe.getUniverseUUID());
       kubeParams.expectedUniverseVersion = -1;
       kubeParams.customerUUID = customer.getUuid();
+      if (resourceDetails != null) {
+        kubeParams.setKubernetesResourceDetails(resourceDetails);
+      }
       taskType = TaskType.PauseKubernetesUniverse;
       // Submit the task to pause the universe.
       UUID taskUUID = commissioner.submit(taskType, kubeParams);
@@ -246,6 +256,12 @@ public class UniverseActionsHandler {
   }
 
   public UUID resume(Customer customer, Universe universe) throws IOException {
+    return resume(customer, universe, null);
+  }
+
+  public UUID resume(
+      Customer customer, Universe universe, @Nullable KubernetesResourceDetails resourceDetails)
+      throws IOException {
     LOG.info(
         "Resume universe, customer uuid: {}, universe: {} [ {} ] ",
         customer.getUuid(),
@@ -269,6 +285,9 @@ public class UniverseActionsHandler {
       kubeParams.setUniverseUUID(universe.getUniverseUUID());
       kubeParams.expectedUniverseVersion = -1;
       kubeParams.customerUUID = customer.getUuid();
+      if (resourceDetails != null) {
+        kubeParams.setKubernetesResourceDetails(resourceDetails);
+      }
       taskType = TaskType.ResumeKubernetesUniverse;
       UUID taskUUID = commissioner.submit(taskType, kubeParams);
       LOG.info(

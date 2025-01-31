@@ -185,6 +185,8 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Status VerifyDDLExtensionTablesCreation(const NamespaceName& db_name, bool only_source = false);
   Status VerifyDDLExtensionTablesDeletion(const NamespaceName& db_name, bool only_source = false);
 
+  Status EnablePITROnClusters();
+
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
 

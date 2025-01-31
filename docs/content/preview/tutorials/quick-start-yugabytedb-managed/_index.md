@@ -1,9 +1,9 @@
 ---
-title: Quick start for YugabyteDB Aeon
+title: YugabyteDB Quick start for Aeon
 headerTitle: Quick start
 linkTitle: Quick start
-headcontent: Sign up for YugabyteDB Aeon and create a free Sandbox cluster
-description: Quick start for YugabyteDB Aeon to get started in less than five minutes.
+headcontent: Get started in less than 5 minutes in the cloud or on your desktop
+description: Get started using YugabyteDB in less than five minutes in the cloud on Aeon.
 aliases:
   - /preview/quick-start-yugabytedb-managed/
 layout: single
@@ -21,7 +21,7 @@ unversioned: true
     </a>
   </li>
   <li>
-    <a href="../quick-start/" class="nav-link">
+    <a href="../quick-start/macos/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">
       Use a local cluster
     </a>
@@ -121,16 +121,16 @@ To connect to your cluster, do the following:
     The shell prompt appears and is ready to use.
 
     ```output
-    ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
     SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
     Type "help" for help.
 
     yugabyte=>
     ```
 
-> The command line interface (CLI) being used is called [ysqlsh](../../api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](../../api/ysql/). Cloud Shell also supports [ycqlsh](../../api/ycqlsh/), a CLI for the [YCQL API](../../api/ycql/).
->
-> For information on other ways to connect to your cluster, refer to [Connect to clusters](../../yugabyte-cloud/cloud-connect).
+The command line interface (CLI) being used is called [ysqlsh](../../api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](../../api/ysql/). Cloud Shell also supports [ycqlsh](../../api/ycqlsh/), a CLI for the [YCQL API](../../api/ycql/).
+
+For information on other ways to connect to your cluster, refer to [Connect to clusters](../../yugabyte-cloud/cloud-connect).
 
 ## Explore distributed SQL
 
@@ -164,9 +164,9 @@ YugabyteDB enables midsize applications running on single-node instances to effo
 
 You can [install](../../yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
 
-In addition to [offline migration](../../yugabyte-voyager/migrate/migrate-steps/), the latest release of YugabyteDB Voyager introduces [live, non-disruptive migration](../../yugabyte-voyager/migrate/live-migrate/) from PostgreSQL, along with new live migration workflows featuring [fall-forward](../../yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](../../yugabyte-voyager/migrate/live-fall-back/) capabilities.
+Voyager provides a powerful migration assessment that scans your existing applications and databases. This detailed assessment provides valuable insights into the readiness of your applications, data, and schema for migration.
 
-Furthermore, Voyager previews a powerful migration assessment that scans existing applications and databases. This detailed assessment provides organizations with valuable insights into the readiness of their applications, data, and schema for migration, thereby accelerating modernization efforts.
+When you're ready to migrate, you can perform an [offline migration](../../yugabyte-voyager/migrate/migrate-steps/); or do a non-disruptive [live migration](../../yugabyte-voyager/migrate/live-migrate/), with [fall-forward](../../yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](../../yugabyte-voyager/migrate/live-fall-back/) capabilities.
 
 ## Learn more
 

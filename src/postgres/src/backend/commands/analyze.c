@@ -105,9 +105,9 @@ static int	compare_rows(const void *a, const void *b, void *arg);
 static int	acquire_inherited_sample_rows(Relation onerel, int elevel,
 										  HeapTuple *rows, int targrows,
 										  double *totalrows, double *totaldeadrows);
-static int yb_acquire_sample_rows(Relation onerel, int elevel,
-								  HeapTuple *rows, int targrows,
-								  double *totalrows, double *totaldeadrows);
+static int	yb_acquire_sample_rows(Relation onerel, int elevel,
+								   HeapTuple *rows, int targrows,
+								   double *totalrows, double *totaldeadrows);
 static void update_attstats(Oid relid, bool inh,
 							int natts, VacAttrStats **vacattrstats);
 static Datum std_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
@@ -1625,7 +1625,8 @@ yb_acquire_sample_rows(Relation onerel, int elevel,
 	ybSample = ybBeginSample(onerel, targrows);
 
 	/* Loop over the table blocks until sample is selected */
-	while (ybSampleNextBlock(ybSample)) {
+	while (ybSampleNextBlock(ybSample))
+	{
 		vacuum_delay_point();
 	}
 

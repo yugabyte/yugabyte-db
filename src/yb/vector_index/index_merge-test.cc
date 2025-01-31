@@ -71,8 +71,8 @@ class IndexMergeTest : public YBTest {
   void VerifyExpectedVertexIds(const VectorIndexReaderIf<FloatVector, float>::SearchResult& results,
                                std::set<VectorId>&& expected_ids) {
     for (const auto& result : results) {
-      ASSERT_TRUE(expected_ids.find(result.vertex_id) != expected_ids.end());
-      expected_ids.erase(result.vertex_id); // Remove found ID from the set.
+      ASSERT_TRUE(expected_ids.find(result.vector_id) != expected_ids.end());
+      expected_ids.erase(result.vector_id); // Remove found ID from the set.
     }
     ASSERT_TRUE(expected_ids.empty()); // Verify all expected IDs were found.
   }
@@ -90,12 +90,12 @@ class IndexMergeTest : public YBTest {
     auto result_a = ASSERT_RESULT(merged_index->Search(
         input_vectors_[0], {.max_num_results = 1}));
     ASSERT_EQ(result_a.size(), 1);
-    ASSERT_EQ(result_a[0].vertex_id, data_a.vector_ids[0]);
+    ASSERT_EQ(result_a[0].vector_id, data_a.vector_ids[0]);
 
     auto result_b = ASSERT_RESULT(merged_index->Search(
         input_vectors_[half_size], {.max_num_results = 1}));
     ASSERT_EQ(result_b.size(), 1);
-    ASSERT_EQ(result_b[0].vertex_id, data_b.vector_ids[0]);
+    ASSERT_EQ(result_b[0].vector_id, data_b.vector_ids[0]);
 
     // Verify the size of the merged index.
     auto all_results = ASSERT_RESULT(merged_index->Search(

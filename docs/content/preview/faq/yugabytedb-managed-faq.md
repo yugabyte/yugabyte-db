@@ -216,7 +216,7 @@ Before you can connect using a client shell, you need to add your computer to th
 
   {{% tab header="psql" lang="psql" %}}
 
-Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your clusters. The connection string to use is similar to what you would use for ysqlsh, as follows:
+Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/15/app-psql.html) to connect to your clusters. The connection string to use is similar to what you would use for ysqlsh, as follows:
 
 ```sh
 psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \

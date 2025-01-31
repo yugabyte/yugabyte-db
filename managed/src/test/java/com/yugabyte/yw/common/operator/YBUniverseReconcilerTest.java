@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
@@ -103,6 +104,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock UpgradeUniverseHandler upgradeUniverseHandler;
   @Mock KubernetesOperatorStatusUpdater kubernetesStatusUpdator;
   @Mock ReleaseManager releaseManager;
+  @Mock UniverseActionsHandler universeActionsHandler;
 
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
@@ -147,7 +149,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             kubernetesStatusUpdator,
             confGetter,
             customerTaskManager,
-            operatorUtils);
+            operatorUtils,
+            universeActionsHandler);
     // reconcilerFactory.getYBUniverseReconciler(client);
 
     // Setup Defaults

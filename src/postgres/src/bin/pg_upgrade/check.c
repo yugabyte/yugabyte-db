@@ -192,7 +192,8 @@ check_and_dump_old_cluster(bool live_check)
 
 	if (is_yugabyte_enabled())
 	{
-		PGconn *old_cluster_conn = connectToServer(&old_cluster, "template1");
+		PGconn	   *old_cluster_conn = connectToServer(&old_cluster, "template1");
+
 		/*
 		 * Yugabyte does not support expression pushdown during major upgrades.
 		 * Only check this when we are ready to actually upgrade the cluster,
@@ -1585,7 +1586,8 @@ get_canonical_locale_name(int category, const char *locale)
 static void
 yb_check_pushdown_is_disabled(PGconn *old_cluster_conn)
 {
-	PGresult *res;
+	PGresult   *res;
+
 	prep_status("Checking expression pushdown is disabled");
 
 	res = executeQueryOrDie(old_cluster_conn, "SHOW yb_enable_expression_pushdown");
@@ -1607,11 +1609,12 @@ yb_check_pushdown_is_disabled(PGconn *old_cluster_conn)
 static void
 yb_check_system_databases_exist(PGconn *old_cluster_conn)
 {
-	PGresult *res;
+	PGresult   *res;
+
 	prep_status("Checking for all 3 system databases");
 
 	res = executeQueryOrDie(old_cluster_conn,
-			"VALUES ('template0'), ('template1'), ('yugabyte') EXCEPT SELECT datname FROM pg_database;");
+							"VALUES ('template0'), ('template1'), ('yugabyte') EXCEPT SELECT datname FROM pg_database;");
 
 	if (PQntuples(res) != 0)
 		pg_fatal("Missing system database %s\n", PQgetvalue(res, 0, 0));
@@ -1631,9 +1634,9 @@ yb_check_user_attributes(PGconn *old_cluster_conn, const char *user_name,
 						 const char **role_attrs)
 {
 	PQExpBufferData buf;
-	PGresult *res;
+	PGresult   *res;
 	const char **role_attr;
-	bool first_attribute = true;
+	bool		first_attribute = true;
 
 	prep_status("Checking '%s' user attibutes", user_name);
 
@@ -1673,10 +1676,16 @@ yb_check_user_attributes(PGconn *old_cluster_conn, const char *user_name,
 static void
 yb_check_yugabyte_user(PGconn *old_cluster_conn)
 {
-	static const char *role_attrs[] = {"rolsuper",		"rolinherit",
-									   "rolcreaterole", "rolcreatedb",
-									   "rolcanlogin",	"rolreplication",
-									   "rolbypassrls",	NULL};
+	static const char *role_attrs[] = {
+		"rolsuper",
+		"rolinherit",
+		"rolcreaterole",
+		"rolcreatedb",
+		"rolcanlogin",
+		"rolreplication",
+		"rolbypassrls",
+		NULL,
+	};
 
 	yb_check_user_attributes(old_cluster_conn, "yugabyte", role_attrs);
 }
@@ -1693,6 +1702,7 @@ yb_check_old_cluster_user(PGconn *old_cluster_conn)
 				"cluster");
 
 	static const char *role_attributes[] = {"rolsuper", "rolcanlogin", NULL};
+
 	yb_check_user_attributes(old_cluster_conn, old_cluster.yb_user,
 							 role_attributes);
 }

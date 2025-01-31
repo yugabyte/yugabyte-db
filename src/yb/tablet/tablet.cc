@@ -87,6 +87,8 @@
 
 #include "yb/rocksutil/yb_rocksdb.h"
 
+#include "yb/rpc/thread_pool.h"
+
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -893,6 +895,9 @@ Result<bool> Tablet::IntentsDbFlushFilter(
           state->AddLargestFlushedIndex(vector_index->GetFlushedFrontier());
         }
       }
+      VLOG_WITH_PREFIX_AND_FUNC(4)
+          << "memtable_index: " << memtable_index << ", largest_flushed_index: "
+          << AsString(state->largest_flushed_index);
     }
 
     bool all_flushed = true;
@@ -918,6 +923,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
         state->flush_ability.push_back(index->GetFlushAbility());
       }
     }
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Flush ability: " << AsString(state->flush_ability);
   }
 
   // If regular db does not have anything to flush, it means that we have just added intents,
@@ -1169,23 +1175,54 @@ Status Tablet::OpenVectorIndexes() NO_THREAD_SAFETY_ANALYSIS {
         [](const auto& table_info) { return table_info->table_id; });
     SCHECK(it != tables.end(), IllegalState,
            "Indexed table not found: $0", table_info->index_info->indexed_table_id());
-    RETURN_NOT_OK(CreateVectorIndex(*table_info, **it, /* allow_inplace_insert = */ true));
+    RETURN_NOT_OK(CreateVectorIndex(*table_info, *it, /* allow_inplace_insert = */ true));
   }
   return Status::OK();
 }
 
 Status Tablet::CreateVectorIndex(
-    const TableInfo& index_table, const TableInfo& indexed_table, bool allow_inplace_insert) {
+    const TableInfo& index_table, const TableInfoPtr& indexed_table, bool allow_inplace_insert) {
   has_vector_indexes_ = true;
   if (vector_indexes_map_.count(index_table.table_id)) {
     LOG(DFATAL) << "Vector index for " << index_table.table_id << " already exists";
     return Status::OK();
   }
+  auto& thread_pool = *vector_index_thread_pool_provider_();
   auto vector_index = VERIFY_RESULT(docdb::CreateVectorIndex(
       MakeTabletLogPrefix(
           tablet_id(), Format("$0 VI $1", log_prefix_suffix_, index_table.table_id)),
-      metadata_->rocksdb_dir(), *vector_index_thread_pool_provider_(),
-      indexed_table.doc_read_context->table_key_prefix(), *index_table.index_info, doc_db()));
+      metadata_->rocksdb_dir(), thread_pool,
+      indexed_table->doc_read_context->table_key_prefix(), *index_table.index_info, doc_db()));
+  {
+    HybridTime backfill_read_ht;
+    std::string backfill_key;
+    auto flushed_frontier = vector_index->GetFlushedFrontier();
+    if (flushed_frontier) {
+      if (!flushed_frontier->backfill_done()) {
+        backfill_read_ht = flushed_frontier->backfill_read_ht();
+        backfill_key = flushed_frontier->backfill_key();
+      }
+    } else {
+      // TODO(vector_index) Use actual read ht
+      backfill_read_ht = VERIFY_RESULT(SafeTime());
+    }
+    if (backfill_read_ht) {
+      auto read_op = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+      if (read_op.ok()) {
+        thread_pool.EnqueueFunctor(
+            [this, vector_index, backfill_read_ht, backfill_key, indexed_table,
+             read_op = std::make_shared<ScopedRWOperation>(std::move(read_op))] {
+          auto status = BackfillVectorIndex(
+              vector_index, *indexed_table, backfill_key, backfill_read_ht);
+          LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
+              << "Backfill " << AsString(vector_index) << " failed: " << status;
+        });
+      } else {
+        LOG_WITH_PREFIX_AND_FUNC(WARNING)
+            << "Failed to create operation for backfill: " << read_op.GetAbortedStatus();
+      }
+    }
+  }
   auto it = vector_indexes_map_.emplace(index_table.table_id, std::move(vector_index)).first;
   auto& indexes = vector_indexes_list_;
   if (!indexes) {
@@ -1204,6 +1241,77 @@ Status Tablet::CreateVectorIndex(
   indexes = std::move(new_indexes);
 
   return Status::OK();
+}
+
+class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
+ public:
+  explicit VectorIndexBackfillHelper(HybridTime write_ht)
+      : write_ht_(write_ht) {}
+
+  void Add(Slice ybctid, Slice value) {
+    ybctids_.push_back(arena_.DupSlice(ybctid));
+    entries_.emplace_back(docdb::VectorIndexInsertEntry {
+      .value = ValueBuffer(value),
+    });
+  }
+
+  Status Flush(docdb::VectorIndex& index) {
+    docdb::ConsensusFrontiers frontiers;
+    frontiers.Largest().SetBackfillDone();
+    RETURN_NOT_OK(index.Insert(entries_, &frontiers));
+    return Status::OK();
+  }
+
+  Status Apply(rocksdb::DirectWriteHandler* handler) override {
+    for (size_t i = 0; i != ybctids_.size(); ++i) {
+      docdb::AddVectorIndexReverseEntry(
+          handler, ybctids_[i], entries_[i].value.AsSlice(), write_ht_);
+    }
+    return Status::OK();
+  }
+
+ private:
+  const HybridTime write_ht_;
+  docdb::VectorIndexInsertEntries entries_;
+  std::vector<Slice> ybctids_;
+  Arena arena_;
+};
+
+Status Tablet::BackfillVectorIndex(
+    const docdb::VectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice from_key,
+    HybridTime backfill_ht) {
+  auto read_ht = ReadHybridTime::SingleTime(backfill_ht);
+  dockv::ReaderProjection projection(indexed_table.schema(), {vector_index->column_id()});
+  auto iter = VERIFY_RESULT(NewUninitializedDocRowIterator(
+      projection, read_ht, indexed_table.table_id));
+
+  {
+    docdb::DocPgsqlScanSpec spec(indexed_table.schema(), rocksdb::kDefaultQueryId, dockv::DocKey());
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+  if (!from_key.empty()) {
+    iter->Seek(from_key);
+  }
+
+  // Expecting one row at most.
+  dockv::PgTableRow row(projection);
+  VectorIndexBackfillHelper helper(backfill_ht);
+  while (VERIFY_RESULT(iter->PgFetchNext(&row))) {
+    auto value = row.GetValueByIndex(0);
+    if (!value) {
+      continue;
+    }
+
+    helper.Add(iter->GetTupleId(), value->binary_value());
+  }
+  RETURN_NOT_OK(helper.Flush(*vector_index));
+
+  rocksdb::WriteBatch regular_write_batch;
+  regular_write_batch.SetDirectWriter(&helper);
+  WriteToRocksDB(nullptr, &regular_write_batch, StorageDbType::kRegular);
+
+  RETURN_NOT_OK(Flush(FlushMode::kSync, FlushFlags::kRegular));
+  return vector_index->Flush();
 }
 
 void Tablet::RegularDbFilesChanged() {
@@ -2355,6 +2463,22 @@ docdb::VectorIndexesPtr Tablet::VectorIndexesList() const {
   return vector_indexes_list_;
 }
 
+std::optional<google::protobuf::RepeatedPtrField<std::string>>
+    Tablet::VectorIndexFinishedBackfills() {
+  auto list = VectorIndexesList();
+  if (!list) {
+    return std::nullopt;
+  }
+  google::protobuf::RepeatedPtrField<std::string> result;
+  for (const auto& index : *list) {
+    if (index->BackfillDone()) {
+      *result.Add() = index->table_id();
+    }
+  }
+  VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(result);
+  return result;
+}
+
 Status Tablet::WaitForFlush() {
   TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
 
@@ -2776,7 +2900,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
     VLOG_WITH_PREFIX_AND_FUNC(3) << table_info_ptr->ToString();
     std::lock_guard lock(vector_indexes_mutex_);
     RETURN_NOT_OK(CreateVectorIndex(
-        *table_info_ptr, *indexed_table_info, /* allow_inplace_insert = */ false));
+        *table_info_ptr, indexed_table_info, /* allow_inplace_insert = */ false));
   }
 
   return Status::OK();

@@ -35,6 +35,7 @@
 #include <mutex>
 #include <vector>
 
+#include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/map-util.h"
@@ -69,6 +70,8 @@ DEFINE_RUNTIME_AUTO_bool(persist_tserver_registry, kLocalPersisted, false, true,
 DEFINE_test_flag(bool, enable_ysql_operation_lease, false,
     "Enables the client operation lease. The client operation lease must be held by a tserver to "
     "host pg sessions. It is refreshed by the master leader.");
+
+DEFINE_RUNTIME_bool(skip_tserver_version_checks, false, "Skip all tserver version checks");
 
 namespace yb::master {
 namespace {
@@ -432,13 +435,14 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
     std::vector<TSDescriptor*> updated_descs;
     std::vector<TSDescriptor::WriteLock> cow_locks;
     for (const auto& [id, desc] : servers_by_id_) {
-      auto [maybe_lock, expired_lease] = desc->MaybeUpdateLiveness(mono_time, hybrid_time);
-      if (expired_lease) {
-        uuid_to_expired_lease_epoch[id] = *expired_lease;
-      }
-      if (maybe_lock) {
+      auto update_opt = desc->MaybeUpdateLiveness(mono_time, hybrid_time);
+      if (update_opt)  {
+        auto [lock, expired_lease_opt] = std::move(update_opt).value();
         updated_descs.push_back(desc.get());
-        cow_locks.push_back(std::move(maybe_lock).value());
+        cow_locks.push_back(std::move(lock));
+        if (expired_lease_opt) {
+          uuid_to_expired_lease_epoch[id] = *expired_lease_opt;
+        }
       }
     }
     RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, updated_descs));
@@ -455,10 +459,8 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
     local_lease_expired_callback = lease_expired_callback_;
   }
   for (const auto& [uuid, lease_epoch] : uuid_to_expired_lease_epoch) {
-    // TODO(zdrudi): we should pass the lease_epoch here instead of hardcoding 0.
-    // Also need to handle failures.
-    (void)lease_epoch;
-    local_lease_expired_callback(uuid, 0, epoch);
+    // TODO(zdrudi): We should spawn a task here instead of making a one-off call.
+    local_lease_expired_callback(uuid, lease_epoch, epoch);
   }
   return Status::OK();
 }
@@ -536,6 +538,36 @@ Status TSManager::RemoveTabletServer(
     std::lock_guard map_l(map_lock_);
     servers_by_id_.erase(desc->id());
   }
+  return Status::OK();
+}
+
+Status TSManager::ValidateAllTserverVersions(ValidateVersionInfoOp op) const {
+  if (FLAGS_skip_tserver_version_checks) {
+    return Status::OK();
+  }
+
+  std::vector<std::string> invalid_tservers;
+  SharedLock l(map_lock_);
+  for (const auto& [ts_id, ts_dsc] : servers_by_id_) {
+    auto l = ts_dsc->LockForRead();
+    if (!l->IsLive()) {
+      // This is probably some old tserver that has been dead for hours. When it comes back up we
+      // will validate it, so it can be ignored here.
+      continue;
+    }
+    auto version_info_opt =
+        l->pb.has_version_info() ? std::optional(std::cref(l->pb.version_info())) : std::nullopt;
+    if (!VersionInfo::ValidateVersion(version_info_opt, op)) {
+      invalid_tservers.push_back(Format(
+          "[TS $0; Version $1]", ts_dsc->ToString(),
+          version_info_opt ? version_info_opt->get().ShortDebugString() : "<NA>"));
+    }
+  }
+
+  SCHECK_FORMAT(
+      invalid_tservers.empty(), IllegalState, "yb-tserver(s) not on the correct version: $0",
+      yb::ToString(invalid_tservers));
+
   return Status::OK();
 }
 

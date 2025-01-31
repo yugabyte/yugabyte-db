@@ -197,7 +197,7 @@ class UsearchIndex :
         pointer_cast<const byte_t*>(lhs.data()), pointer_cast<const byte_t*>(rhs.data()));
   }
 
-  Result<std::vector<VertexWithDistance<DistanceResult>>> DoSearch(
+  Result<std::vector<VectorWithDistance<DistanceResult>>> DoSearch(
       const Vector& query_vector, const SearchOptions& options) const {
     SemaphoreLock lock(*search_semaphore_);
     auto usearch_results = index_.filtered_search(
@@ -205,11 +205,11 @@ class UsearchIndex :
     RSTATUS_DCHECK(
         usearch_results, RuntimeError, "Failed to search a vector: $0",
         usearch_results.error.release());
-    std::vector<VertexWithDistance<DistanceResult>> result_vec;
+    std::vector<VectorWithDistance<DistanceResult>> result_vec;
     result_vec.reserve(usearch_results.size());
     for (size_t i = 0; i < usearch_results.size(); ++i) {
       auto match = usearch_results[i];
-      result_vec.push_back(VertexWithDistance<DistanceResult>(match.member.key, match.distance));
+      result_vec.push_back(VectorWithDistance<DistanceResult>(match.member.key, match.distance));
     }
     return result_vec;
   }

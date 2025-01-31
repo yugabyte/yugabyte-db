@@ -35,6 +35,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/yql_partitions_vtable.h"
 
 #include "yb/util/debug/trace_event.h"
@@ -116,6 +117,7 @@ DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
 DECLARE_bool(enable_register_ts_from_raft);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
+DECLARE_bool(skip_tserver_version_checks);
 
 namespace yb {
 namespace master {
@@ -323,13 +325,15 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     return;
   }
   TSDescriptorPtr ts_desc;
-  ClientOperationLeaseUpdate lease_update;
   ts_desc = std::move(desc_result->desc);
   if (desc_result->lease_update) {
     *resp->mutable_op_lease_update() = desc_result->lease_update->ToPB();
-    server_->catalog_manager_impl()->ExportObjectLockInfo(
-        req->common().ts_instance().permanent_uuid(),
-        resp->mutable_op_lease_update()->mutable_ddl_lock_entries());
+    if (desc_result->lease_update->new_lease) {
+      *resp->mutable_op_lease_update()->mutable_ddl_lock_entries() =
+          server_->catalog_manager_impl()->object_lock_info_manager()->ExportObjectLockInfo();
+      server_->catalog_manager_impl()->object_lock_info_manager()->UpdateTabletServerLeaseEpoch(
+          ts_desc->id(), desc_result->lease_update->lease_epoch);
+    }
   }
 
   resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
@@ -1457,6 +1461,22 @@ Result<HeartbeatResult>
 MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
     const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
     rpc::RpcContext* rpc) {
+  if (!FLAGS_skip_tserver_version_checks && req.registration().has_version_info()) {
+    const auto& registration = req.registration();
+    auto status = server_->ysql_manager().ValidateTServerVersion(registration.version_info());
+    if (!status.ok()) {
+      LOG(WARNING) << "yb-tserver " << registration.common().ShortDebugString()
+                   << " running invalid version: "
+                   << registration.version_info().ShortDebugString();
+      resp->set_is_fatal_error(true);
+      auto* error = resp->mutable_error();
+      error->set_code(MasterErrorPB::INTERNAL_ERROR);
+      StatusToPB(status, error->mutable_status());
+      rpc->RespondSuccess();
+      return status;
+    }
+  }
+
   auto desc_result = server_->ts_manager()->RegisterFromHeartbeat(
       req, epoch, server_->MakeCloudInfoPB(), &server_->proxy_cache());
   if (desc_result.ok()) {

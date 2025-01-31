@@ -305,8 +305,8 @@ struct PGPROC
 	 * occasionally the number can be much higher; for example, the
 	 * pg_buffercache extension locks all buffer partitions simultaneously.
 	 */
-	bool 		ybLWLockAcquired;
-	int 		ybSpinLocksAcquired;
+	bool		ybLWLockAcquired;
+	int			ybSpinLocksAcquired;
 	/*
 	 * Keep track of if the proc has been fully initialized. If a process that
 	 * was not fully initialized is killed, we don't know how to clean up after
@@ -485,7 +485,7 @@ extern PGDLLIMPORT bool log_lock_waits;
 extern int	RetryMaxBackoffMsecs;
 extern int	RetryMinBackoffMsecs;
 extern double RetryBackoffMultiplier;
-extern int yb_max_query_layer_retries;
+extern int	yb_max_query_layer_retries;
 
 /* Metrics */
 extern int *yb_too_many_conn;

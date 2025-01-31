@@ -80,6 +80,12 @@ class TwoLevelIterator final : public InternalIterator {
       const Comparator* user_key_comparator, const Slice& upperbound,
       KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override;
 
+  bool MatchFilter(
+      const IteratorFilter* filter, const QueryOptions& options, Slice key,
+      FilterKeyCache* cache) override {
+    return state_->MatchFilter(filter, options, key, cache);
+  }
+
  private:
   void SaveError(const Status& s) {
     if (status_.ok() && !s.ok()) status_ = s;

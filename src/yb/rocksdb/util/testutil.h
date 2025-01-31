@@ -159,10 +159,13 @@ class VectorIterator : public InternalIterator {
     values_.resize(keys.size());
   }
 
-  VectorIterator(const std::vector<std::string>& keys,
-      const std::vector<std::string>& values)
-    : keys_(keys), values_(values), current_(keys.size()) {
+  VectorIterator(const std::vector<std::string>& keys, const std::vector<std::string>& values)
+      : keys_(keys), values_(values), current_(keys.size()) {
     assert(keys_.size() == values_.size());
+  }
+
+  void ExpectSeekToPrefixOnly() {
+    expect_seek_to_prefix_only_ = true;
   }
 
   const KeyValueEntry& SeekToFirst() override {
@@ -177,6 +180,10 @@ class VectorIterator : public InternalIterator {
 
   const KeyValueEntry& Seek(Slice target) override {
     current_ = std::lower_bound(keys_.begin(), keys_.end(), target.ToBuffer()) - keys_.begin();
+    if (expect_seek_to_prefix_only_) {
+      CHECK(current_ != keys_.size());
+      CHECK(Slice(keys_[current_]).starts_with(target));
+    }
     return Entry();
   }
 
@@ -201,6 +208,12 @@ class VectorIterator : public InternalIterator {
     return entry_;
   }
 
+  bool MatchFilter(
+      const IteratorFilter* filter, const QueryOptions& options, Slice user_key,
+      FilterKeyCache* cache) override {
+    return filter->Filter(options, user_key, cache, &keys_);
+  }
+
   Status status() const override { return Status::OK(); }
 
  private:
@@ -208,6 +221,7 @@ class VectorIterator : public InternalIterator {
   std::vector<std::string> values_;
   size_t current_;
   mutable KeyValueEntry entry_;
+  bool expect_seek_to_prefix_only_ = false;
 };
 
 extern WritableFileWriter* GetWritableFileWriter(WritableFile* wf);

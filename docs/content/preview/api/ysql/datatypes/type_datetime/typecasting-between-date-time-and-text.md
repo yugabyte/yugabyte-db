@@ -110,7 +110,7 @@ $body$;
 select z from to_char_demo();
 ```
 
-Because this uses the _to_char()_ function, and not typecasting, the result is not sensitive to the _DateStyle_ setting. PostgreSQL documents the various components, like _'TMDay'_, _'TMMonth'_, _'yyyy'_, _dd_, and so on that define the format that _to_char()_ produces in [Table 9.24. Template Patterns for Date/Time Formatting](https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIME-TABLE).
+Because this uses the _to_char()_ function, and not typecasting, the result is not sensitive to the _DateStyle_ setting. PostgreSQL documents the various components, like _'TMDay'_, _'TMMonth'_, _'yyyy'_, _dd_, and so on that define the format that _to_char()_ produces in [Table 9.24. Template Patterns for Date/Time Formatting](https://www.postgresql.org/docs/15/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIME-TABLE).
 
 And because _to_char_demo()_ uses the _at time zone_ operator, it is not sensitive to the current _TimeZone_ setting. This is the result:
 
@@ -125,7 +125,7 @@ And because _to_char_demo()_ uses the _at time zone_ operator, it is not sensiti
  Pe 07-Syy-1042 11:59:59.543216 BC
 ```
 
-As you see, the _lc_time_ session parameter determines the national language that is used for the spellings of the short and long day and month names. The PostgreSQL documentation describes this parameter in the section [23.1. Locale Support](https://www.postgresql.org/docs/11/locale.html). Notice that this section, in turn, references the section [19.11.2. Locale and Formatting](https://www.postgresql.org/docs/11/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-FORMAT).
+As you see, the _lc_time_ session parameter determines the national language that is used for the spellings of the short and long day and month names. The PostgreSQL documentation describes this parameter in the section [23.1. Locale Support](https://www.postgresql.org/docs/15/locale.html). Notice that this section, in turn, references the section [19.11.2. Locale and Formatting](https://www.postgresql.org/docs/15/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-FORMAT).
 
 In short, a setting like _'fi_FI'_ is operating-system-dependent and may, or may not, be available according to what local support files have been installed. You can see what's available on a Unix-like system with this shell command:
 
@@ -205,7 +205,7 @@ Approach One is used consistently throughout the whole of the [Date and time dat
 
 ## The DateStyle session parameter
 
-See the PostgreSQL documentation section [19.11.2. Locale and Formatting](https://www.postgresql.org/docs/11/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-FORMAT). The _DateStyle_ session parameter determines the format of the _::text_ typecast of a _date-time_ value. It also, but in a subtle fashion, determines how a _text_ value is interpreted when it's typecast to a _date-time_ value. It has two orthogonal components: the _style_ and the _substyle_. The _style_ has these legal values:
+See the PostgreSQL documentation section [19.11.2. Locale and Formatting](https://www.postgresql.org/docs/15/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-FORMAT). The _DateStyle_ session parameter determines the format of the _::text_ typecast of a _date-time_ value. It also, but in a subtle fashion, determines how a _text_ value is interpreted when it's typecast to a _date-time_ value. It has two orthogonal components: the _style_ and the _substyle_. The _style_ has these legal values:
 
 ```output
 ISO

@@ -421,6 +421,11 @@ public enum TaskType {
       CustomerTask.TaskType.Switchover,
       CustomerTask.TargetType.DrConfig),
 
+  SwitchoverDrConfigRollback(
+      com.yugabyte.yw.commissioner.tasks.SwitchoverDrConfigRollback.class,
+      CustomerTask.TaskType.Switchover,
+      CustomerTask.TargetType.DrConfig),
+
   EditDrConfig(
       com.yugabyte.yw.commissioner.tasks.EditDrConfig.class,
       CustomerTask.TaskType.Edit,
@@ -805,6 +810,9 @@ public enum TaskType {
 
   DeleteBootstrapIds(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds.class),
 
+  XClusterNetworkConnectivityCheck(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterNetworkConnectivityCheck.class),
+
   DeleteReplication(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication.class),
 
   DeleteXClusterConfigEntry(
@@ -984,6 +992,9 @@ public enum TaskType {
 
   ManageAlertDefinitions(com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions.class),
 
+  ManageCatalogUpgradeSuperUser(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.class),
+
   MarkSourceMetric(com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric.class),
 
   UniverseSetTlsParams(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams.class),
@@ -1037,6 +1048,9 @@ public enum TaskType {
 
   RollbackYsqlMajorVersionCatalogUpgrade(
       com.yugabyte.yw.commissioner.tasks.subtasks.RollbackYsqlMajorVersionCatalogUpgrade.class),
+
+  FinalizeYsqlMajorCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.FinalizeYsqlMajorCatalogUpgrade.class),
 
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),

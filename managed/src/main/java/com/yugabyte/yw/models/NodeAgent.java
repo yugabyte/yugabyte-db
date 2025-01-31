@@ -65,6 +65,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
 import play.mvc.Http.Status;
 
 @Slf4j
@@ -370,6 +372,18 @@ public class NodeAgent extends Model {
     } finally {
       NODE_AGENT_KEY_LOCK.releaseLock(getUuid());
     }
+  }
+
+  @Override
+  public String toString() {
+    return new ToStringBuilder(this, ToStringStyle.NO_CLASS_NAME_STYLE)
+        .append("uuid", getUuid())
+        .append("ip", getIp())
+        .append("port", getPort())
+        .append("state", getState())
+        .append("home", getHome())
+        .append("version", getVersion())
+        .build();
   }
 
   public void ensureState(State expectedState) {

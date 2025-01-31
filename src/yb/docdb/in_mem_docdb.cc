@@ -130,9 +130,9 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
   root_ = SubDocument();
 
   auto rocksdb_iter = CreateRocksDBIterator(
-      doc_db.regular, doc_db.key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      boost::none /* user_key_for_filter = */, query_id, /* file_filter = */ nullptr,
-      /* iterate_upper_bound = */ nullptr, rocksdb::CacheRestartBlockKeys::kFalse);
+      doc_db.regular, doc_db.key_bounds, BloomFilterOptions::Inactive(), query_id,
+      /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
+      rocksdb::CacheRestartBlockKeys::kFalse);
   rocksdb_iter.SeekToFirst();
   KeyBytes prev_key;
   while (CHECK_RESULT(rocksdb_iter.CheckedValid())) {

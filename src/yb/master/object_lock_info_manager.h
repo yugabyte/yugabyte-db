@@ -42,7 +42,6 @@ class ReleaseObjectLocksGlobalRequestPB;
 class ReleaseObjectLocksGlobalResponsePB;
 
 class ObjectLockInfo;
-struct ExpiredLeaseInfo;
 
 class ObjectLockInfoManager {
  public:
@@ -57,17 +56,20 @@ class ObjectLockInfoManager {
       const ReleaseObjectLocksGlobalRequestPB& req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
 
-  void ExportObjectLockInfo(const std::string& tserver_uuid, tserver::DdlLockEntriesPB* resp);
+  tserver::DdlLockEntriesPB ExportObjectLockInfo();
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info);
+  void UpdateTabletServerLeaseEpoch(const std::string& tserver_uuid, uint64_t current_lease_epoch);
   void Clear();
   std::shared_ptr<tablet::TSLocalLockManager> TEST_ts_local_lock_manager();
   std::shared_ptr<tablet::TSLocalLockManager> ts_local_lock_manager();
 
   // Releases any object locks that may have been taken by the specified tservers's previous
   // incarnations.
-  void ReleaseOldObjectLocks(
-      const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait = false,
+  void ReleaseLocksHeldByExpiredLeaseEpoch(
+      const std::string& tserver_uuid, uint64 max_lease_epoch_to_release, bool wait = false,
       std::optional<LeaderEpoch> leader_epoch = std::nullopt);
+
+  void BootstrapLocksPostLoad();
 
  private:
   template <class Req, class Resp>

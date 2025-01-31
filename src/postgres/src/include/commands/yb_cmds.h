@@ -94,16 +94,16 @@ extern void YBCBindCreateIndexColumns(YbcPgStatement handle,
 
 extern void YBCDropIndex(Relation index);
 
-extern List* YBCPrepareAlterTable(List** subcmds,
-										   int subcmds_size,
-										   Oid relationId,
-										   YbcPgStatement *rollbackHandle,
-										   bool isPartitionOfAlteredTable,
-										   List *volatile *ybAlteredTableIds);
+extern List *YBCPrepareAlterTable(List **subcmds,
+								  int subcmds_size,
+								  Oid relationId,
+								  YbcPgStatement *rollbackHandle,
+								  bool isPartitionOfAlteredTable,
+								  List *volatile *ybAlteredTableIds);
 
 extern void YBCExecAlterTable(YbcPgStatement handle, Oid relationId);
 
-extern void YBCRename(RenameStmt* stmt, Oid relationId);
+extern void YBCRename(RenameStmt *stmt, Oid relationId);
 
 extern void YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId);
 
@@ -127,13 +127,11 @@ extern void YBCCreateReplicationSlot(const char *slot_name,
 									 uint64_t *consistent_snapshot_time,
 									 YbCRSLsnType lsn_type);
 
-extern void
-YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
-						size_t *numreplicationslots);
+extern void YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
+									size_t *numreplicationslots);
 
-extern void
-YBCGetReplicationSlot(const char *slot_name,
-					  YbcReplicationSlotDescriptor **replication_slot);
+extern void YBCGetReplicationSlot(const char *slot_name,
+								  YbcReplicationSlotDescriptor **replication_slot);
 
 extern void YBCDropReplicationSlot(const char *slot_name);
 
@@ -142,8 +140,8 @@ extern void YBCInitVirtualWalForCDC(const char *stream_id,
 									size_t numrelations);
 
 extern void YBCUpdatePublicationTableList(const char *stream_id,
-									Oid *relations,
-									size_t numrelations);
+										  Oid *relations,
+										  size_t numrelations);
 
 extern void YBCDestroyVirtualWalForCDC();
 

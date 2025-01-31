@@ -56,10 +56,12 @@ CREATE TABLE "S 1"."T 4" (
 );
 -- Disable autovacuum for these tables to avoid unexpected effects of that
 -- YB note: Currently, YugabyteDB doesn't run a background job like PostgreSQL's autovacuum to analyze the tables.
---ALTER TABLE "S 1"."T 1" SET (autovacuum_enabled = 'false');
---ALTER TABLE "S 1"."T 2" SET (autovacuum_enabled = 'false');
---ALTER TABLE "S 1"."T 3" SET (autovacuum_enabled = 'false');
---ALTER TABLE "S 1"."T 4" SET (autovacuum_enabled = 'false');
+/*
+ALTER TABLE "S 1"."T 1" SET (autovacuum_enabled = 'false');
+ALTER TABLE "S 1"."T 2" SET (autovacuum_enabled = 'false');
+ALTER TABLE "S 1"."T 3" SET (autovacuum_enabled = 'false');
+ALTER TABLE "S 1"."T 4" SET (autovacuum_enabled = 'false');
+*/
 INSERT INTO "S 1"."T 1"
 	SELECT id,
 	       id % 10,
@@ -2041,11 +2043,13 @@ SELECT t1c1, avg(t1c1 + t2c1) FROM (SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 
 (10 rows)
 
 -- join with lateral reference
---EXPLAIN (VERBOSE, COSTS OFF)
---SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
 -- YB note: This is commented out as it ends up doing rescans on a remote relation
 -- which uses an unsupported MOVE BACKWARD ALL IN command. See issue #11422.
---SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
+/*
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
+SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
+*/
 -- non-Var items in targetlist of the nullable rel of a join preventing
 -- push-down in some cases
 -- unable to push {ft1, ft2}
@@ -3130,8 +3134,10 @@ select sum(c2) * (random() <= 1)::int as sum from ft1 order by 1;
 -- LATERAL join, with parameterization
 -- YB note: ERROR:  FETCH BACKWARD not supported yet, see issue #11422
 set enable_hashagg to false;
---explain (verbose, costs off)
---select c2, sum from "S 1"."T 1" t1, lateral (select sum(t2.c1 + t1."C 1") sum from ft2 t2 group by t2.c1) qry where t1.c2 * 2 = qry.sum and t1.c2 < 3 and t1."C 1" < 100 order by 1;
+/*
+explain (verbose, costs off)
+select c2, sum from "S 1"."T 1" t1, lateral (select sum(t2.c1 + t1."C 1") sum from ft2 t2 group by t2.c1) qry where t1.c2 * 2 = qry.sum and t1.c2 < 3 and t1."C 1" < 100 order by 1;
+*/
 select c2, sum from "S 1"."T 1" t1, lateral (select sum(t2.c1 + t1."C 1") sum from ft2 t2 group by t2.c1) qry where t1.c2 * 2 = qry.sum and t1.c2 < 3 and t1."C 1" < 100 order by 1;
  c2 | sum
 ----+-----
@@ -3708,8 +3714,10 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
 (5 rows)
 
 -- YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
---ALTER TABLE "S 1"."T 1" RENAME TO "T 0";
---ALTER FOREIGN TABLE ft1 OPTIONS (SET table_name 'T 0');
+/*
+ALTER TABLE "S 1"."T 1" RENAME TO "T 0";
+ALTER FOREIGN TABLE ft1 OPTIONS (SET table_name 'T 0');
+*/
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
                                           QUERY PLAN
 ----------------------------------------------------------------------------------------------
@@ -3744,14 +3752,18 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
 (5 rows)
 
 -- YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
---ALTER TABLE "S 1"."T 0" RENAME TO "T 1";
---ALTER FOREIGN TABLE ft1 OPTIONS (SET table_name 'T 1');
+/*
+ALTER TABLE "S 1"."T 0" RENAME TO "T 1";
+ALTER FOREIGN TABLE ft1 OPTIONS (SET table_name 'T 1');
+*/
 PREPARE st8 AS SELECT count(c3) FROM ft1 t1 WHERE t1.c1 === t1.c2;
---EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st8;
---ALTER SERVER loopback OPTIONS (DROP extensions);
---EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st8;
---EXECUTE st8;
---ALTER SERVER loopback OPTIONS (ADD extensions 'postgres_fdw');
+/*
+EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st8;
+ALTER SERVER loopback OPTIONS (DROP extensions);
+EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st8;
+EXECUTE st8;
+ALTER SERVER loopback OPTIONS (ADD extensions 'postgres_fdw');
+*/
 -- cleanup
 DEALLOCATE st1;
 DEALLOCATE st2;
@@ -3818,7 +3830,9 @@ SELECT ctid, * FROM ft1 t1 LIMIT 1;
    Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8, ctid FROM "S 1"."T 1" LIMIT 1::bigint
 (3 rows)
 
---SELECT ctid, * FROM ft1 t1 LIMIT 1;
+/*
+SELECT ctid, * FROM ft1 t1 LIMIT 1;
+*/
 -- ===================================================================
 -- used in PL/pgSQL function
 -- ===================================================================
@@ -4060,23 +4074,25 @@ INSERT INTO ft2 (c1,c2,c3)
 
 INSERT INTO ft2 (c1,c2,c3) VALUES (1104,204,'ddd'), (1105,205,'eee');
 -- YB note: CTID not supported yet, see issue #11419, reenable commented out part below when fixed
---EXPLAIN (verbose, costs off)
---UPDATE ft2 SET c2 = c2 + 300, c3 = c3 || '_update3' WHERE c1 % 10 = 3;              -- can be pushed down
---UPDATE ft2 SET c2 = c2 + 300, c3 = c3 || '_update3' WHERE c1 % 10 = 3;
---EXPLAIN (verbose, costs off)
---UPDATE ft2 SET c2 = c2 + 400, c3 = c3 || '_update7' WHERE c1 % 10 = 7 RETURNING *;  -- can be pushed down
---UPDATE ft2 SET c2 = c2 + 400, c3 = c3 || '_update7' WHERE c1 % 10 = 7 RETURNING *;
---EXPLAIN (verbose, costs off)
---UPDATE ft2 SET c2 = ft2.c2 + 500, c3 = ft2.c3 || '_update9', c7 = DEFAULT
---  FROM ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 9;                               -- can be pushed down
---UPDATE ft2 SET c2 = ft2.c2 + 500, c3 = ft2.c3 || '_update9', c7 = DEFAULT
---  FROM ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 9;
---EXPLAIN (verbose, costs off)
---  DELETE FROM ft2 WHERE c1 % 10 = 5 RETURNING c1, c4;                               -- can be pushed down
---DELETE FROM ft2 WHERE c1 % 10 = 5 RETURNING c1, c4;
---EXPLAIN (verbose, costs off)
---DELETE FROM ft2 USING ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 2;                -- can be pushed down
---DELETE FROM ft2 USING ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 2;
+/*
+EXPLAIN (verbose, costs off)
+UPDATE ft2 SET c2 = c2 + 300, c3 = c3 || '_update3' WHERE c1 % 10 = 3;              -- can be pushed down
+UPDATE ft2 SET c2 = c2 + 300, c3 = c3 || '_update3' WHERE c1 % 10 = 3;
+EXPLAIN (verbose, costs off)
+UPDATE ft2 SET c2 = c2 + 400, c3 = c3 || '_update7' WHERE c1 % 10 = 7 RETURNING *;  -- can be pushed down
+UPDATE ft2 SET c2 = c2 + 400, c3 = c3 || '_update7' WHERE c1 % 10 = 7 RETURNING *;
+EXPLAIN (verbose, costs off)
+UPDATE ft2 SET c2 = ft2.c2 + 500, c3 = ft2.c3 || '_update9', c7 = DEFAULT
+  FROM ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 9;                               -- can be pushed down
+UPDATE ft2 SET c2 = ft2.c2 + 500, c3 = ft2.c3 || '_update9', c7 = DEFAULT
+  FROM ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 9;
+EXPLAIN (verbose, costs off)
+  DELETE FROM ft2 WHERE c1 % 10 = 5 RETURNING c1, c4;                               -- can be pushed down
+DELETE FROM ft2 WHERE c1 % 10 = 5 RETURNING c1, c4;
+EXPLAIN (verbose, costs off)
+DELETE FROM ft2 USING ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 2;                -- can be pushed down
+DELETE FROM ft2 USING ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 2;
+*/
 SELECT c1,c2,c3,c4 FROM ft2 ORDER BY c1;
   c1  | c2  |     c3     |              c4
 ------+-----+------------+------------------------------
@@ -5157,48 +5173,52 @@ UPDATE ft2 SET c3 = 'foo'
   RETURNING ft2, ft2.*, ft4, ft4.*;       -- can be pushed down
 ERROR:  system column "ctid" is not supported yet
 CONTEXT:  remote SQL command: EXPLAIN SELECT "C 1", c2, c3, c4, c5, c6, c7, c8, ctid FROM "S 1"."T 1" WHERE (("C 1" > 1200)) FOR UPDATE
---UPDATE ft2 SET c3 = 'foo'
---  FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
---  WHERE ft2.c1 > 1200 AND ft2.c2 = ft4.c1
---  RETURNING ft2, ft2.*, ft4, ft4.*;
---EXPLAIN (verbose, costs off)
---DELETE FROM ft2
---  USING ft4 LEFT JOIN ft5 ON (ft4.c1 = ft5.c1)
---  WHERE ft2.c1 > 1200 AND ft2.c1 % 10 = 0 AND ft2.c2 = ft4.c1
---  RETURNING 100;                          -- can be pushed down
---DELETE FROM ft2
---  USING ft4 LEFT JOIN ft5 ON (ft4.c1 = ft5.c1)
---  WHERE ft2.c1 > 1200 AND ft2.c1 % 10 = 0 AND ft2.c2 = ft4.c1
---  RETURNING 100;
---DELETE FROM ft2 WHERE ft2.c1 > 1200;
+/*
+UPDATE ft2 SET c3 = 'foo'
+  FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
+  WHERE ft2.c1 > 1200 AND ft2.c2 = ft4.c1
+  RETURNING ft2, ft2.*, ft4, ft4.*;
+EXPLAIN (verbose, costs off)
+DELETE FROM ft2
+  USING ft4 LEFT JOIN ft5 ON (ft4.c1 = ft5.c1)
+  WHERE ft2.c1 > 1200 AND ft2.c1 % 10 = 0 AND ft2.c2 = ft4.c1
+  RETURNING 100;                          -- can be pushed down
+DELETE FROM ft2
+  USING ft4 LEFT JOIN ft5 ON (ft4.c1 = ft5.c1)
+  WHERE ft2.c1 > 1200 AND ft2.c1 % 10 = 0 AND ft2.c2 = ft4.c1
+  RETURNING 100;
+DELETE FROM ft2 WHERE ft2.c1 > 1200;
+*/
 -- Test UPDATE/DELETE with WHERE or JOIN/ON conditions containing
 -- user-defined operators/functions
 ALTER SERVER loopback OPTIONS (DROP extensions);
 -- YB note: CTID not supported yet, see issue #11419, reenable commented out part below when fixed
 INSERT INTO ft2 (c1,c2,c3)
   SELECT id, id % 10, to_char(id, 'FM00000') FROM generate_series(2001, 2010) id;
---EXPLAIN (verbose, costs off)
---UPDATE ft2 SET c3 = 'bar' WHERE postgres_fdw_abs(c1) > 2000 RETURNING *;            -- can't be pushed down
---UPDATE ft2 SET c3 = 'bar' WHERE postgres_fdw_abs(c1) > 2000 RETURNING *;
---EXPLAIN (verbose, costs off)
---UPDATE ft2 SET c3 = 'baz'
---  FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
---  WHERE ft2.c1 > 2000 AND ft2.c2 === ft4.c1
---  RETURNING ft2.*, ft4.*, ft5.*;                                                    -- can't be pushed down
---UPDATE ft2 SET c3 = 'baz'
---  FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
---  WHERE ft2.c1 > 2000 AND ft2.c2 === ft4.c1
---  RETURNING ft2.*, ft4.*, ft5.*;
---EXPLAIN (verbose, costs off)
---DELETE FROM ft2
---  USING ft4 INNER JOIN ft5 ON (ft4.c1 === ft5.c1)
---  WHERE ft2.c1 > 2000 AND ft2.c2 = ft4.c1
---  RETURNING ft2.c1, ft2.c2, ft2.c3;       -- can't be pushed down
---DELETE FROM ft2
---  USING ft4 INNER JOIN ft5 ON (ft4.c1 === ft5.c1)
---  WHERE ft2.c1 > 2000 AND ft2.c2 = ft4.c1
---  RETURNING ft2.c1, ft2.c2, ft2.c3;
---DELETE FROM ft2 WHERE ft2.c1 > 2000;
+/*
+EXPLAIN (verbose, costs off)
+UPDATE ft2 SET c3 = 'bar' WHERE postgres_fdw_abs(c1) > 2000 RETURNING *;            -- can't be pushed down
+UPDATE ft2 SET c3 = 'bar' WHERE postgres_fdw_abs(c1) > 2000 RETURNING *;
+EXPLAIN (verbose, costs off)
+UPDATE ft2 SET c3 = 'baz'
+  FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
+  WHERE ft2.c1 > 2000 AND ft2.c2 === ft4.c1
+  RETURNING ft2.*, ft4.*, ft5.*;                                                    -- can't be pushed down
+UPDATE ft2 SET c3 = 'baz'
+  FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
+  WHERE ft2.c1 > 2000 AND ft2.c2 === ft4.c1
+  RETURNING ft2.*, ft4.*, ft5.*;
+EXPLAIN (verbose, costs off)
+DELETE FROM ft2
+  USING ft4 INNER JOIN ft5 ON (ft4.c1 === ft5.c1)
+  WHERE ft2.c1 > 2000 AND ft2.c2 = ft4.c1
+  RETURNING ft2.c1, ft2.c2, ft2.c3;       -- can't be pushed down
+DELETE FROM ft2
+  USING ft4 INNER JOIN ft5 ON (ft4.c1 === ft5.c1)
+  WHERE ft2.c1 > 2000 AND ft2.c2 = ft4.c1
+  RETURNING ft2.c1, ft2.c2, ft2.c3;
+DELETE FROM ft2 WHERE ft2.c1 > 2000;
+*/
 ALTER SERVER loopback OPTIONS (ADD extensions 'postgres_fdw');
 -- Test that trigger on remote table works as expected
 CREATE OR REPLACE FUNCTION "S 1".F_BRTRIG() RETURNS trigger AS $$
@@ -7073,23 +7093,28 @@ ERROR:  VIEW WITH CHECK OPTION not supported yet
 LINE 2:   WHERE a < b WITH CHECK OPTION;
                       ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
---\d+ rw_view
---INSERT INTO rw_view VALUES (0, 10); -- ok
---INSERT INTO rw_view VALUES (10, 0); -- should fail
---EXPLAIN (VERBOSE, COSTS OFF)
---UPDATE rw_view SET b = 20 WHERE a = 0; -- not pushed down
---UPDATE rw_view SET b = 20 WHERE a = 0; -- ok
---EXPLAIN (VERBOSE, COSTS OFF)
---UPDATE rw_view SET b = -20 WHERE a = 0; -- not pushed down
---UPDATE rw_view SET b = -20 WHERE a = 0; -- should fail
---SELECT * FROM foreign_tbl;
+/*
+\d+ rw_view
+
+INSERT INTO rw_view VALUES (0, 10); -- ok
+INSERT INTO rw_view VALUES (10, 0); -- should fail
+EXPLAIN (VERBOSE, COSTS OFF)
+UPDATE rw_view SET b = 20 WHERE a = 0; -- not pushed down
+UPDATE rw_view SET b = 20 WHERE a = 0; -- ok
+EXPLAIN (VERBOSE, COSTS OFF)
+UPDATE rw_view SET b = -20 WHERE a = 0; -- not pushed down
+UPDATE rw_view SET b = -20 WHERE a = 0; -- should fail
+SELECT * FROM foreign_tbl;
+*/
 DROP FOREIGN TABLE foreign_tbl CASCADE;
 DROP TABLE base_tbl;
 -- ===================================================================
 -- test serial columns (ie, sequence-based defaults)
 -- ===================================================================
 create table loc1 (f1 serial, f2 text);
---alter table loc1 set (autovacuum_enabled = 'false');
+/*
+alter table loc1 set (autovacuum_enabled = 'false');
+*/
 create foreign table rem1 (f1 serial, f2 text)
   server loopback options(table_name 'loc1');
 select pg_catalog.setval('rem1_f1_seq', 10, false);
@@ -7125,113 +7150,129 @@ select * from rem1 order by f1;
 -- ===================================================================
 -- YB note: CTID not supported yet, see issue #11419, reenable commented out part below when fixed
 -- Trigger functions "borrowed" from triggers regress test.
---CREATE FUNCTION trigger_func() RETURNS trigger LANGUAGE plpgsql AS $$
---BEGIN
---RAISE NOTICE 'trigger_func(%) called: action = %, when = %, level = %',
---TG_ARGV[0], TG_OP, TG_WHEN, TG_LEVEL;
---RETURN NULL;
---END;$$;
---
---CREATE TRIGGER trig_stmt_before BEFORE DELETE OR INSERT OR UPDATE ON rem1
---FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
---CREATE TRIGGER trig_stmt_after AFTER DELETE OR INSERT OR UPDATE ON rem1
---FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
---
---CREATE OR REPLACE FUNCTION trigger_data()  RETURNS trigger
---LANGUAGE plpgsql AS $$
---
---declare
---oldnew text[];
---relid text;
---    argstr text;
---begin
---
---relid := TG_relid::regclass;
---argstr := '';
---for i in 0 .. TG_nargs - 1 loop
---if i > 0 then
---argstr := argstr || ', ';
---end if;
---argstr := argstr || TG_argv[i];
---end loop;
---
---    RAISE NOTICE '%(%) % % % ON %',
---tg_name, argstr, TG_when, TG_level, TG_OP, relid;
---    oldnew := '{}'::text[];
---if TG_OP != 'INSERT' then
---oldnew := array_append(oldnew, format('OLD: %s', OLD));
---end if;
---
---if TG_OP != 'DELETE' then
---oldnew := array_append(oldnew, format('NEW: %s', NEW));
---end if;
---
---    RAISE NOTICE '%', array_to_string(oldnew, ',');
---
---if TG_OP = 'DELETE' then
---return OLD;
---else
---return NEW;
---end if;
---end;
---$$;
+/*
+CREATE FUNCTION trigger_func() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	RAISE NOTICE 'trigger_func(%) called: action = %, when = %, level = %',
+		TG_ARGV[0], TG_OP, TG_WHEN, TG_LEVEL;
+	RETURN NULL;
+END;$$;
+
+CREATE TRIGGER trig_stmt_before BEFORE DELETE OR INSERT OR UPDATE ON rem1
+	FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
+CREATE TRIGGER trig_stmt_after AFTER DELETE OR INSERT OR UPDATE ON rem1
+	FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
+
+CREATE OR REPLACE FUNCTION trigger_data()  RETURNS trigger
+LANGUAGE plpgsql AS $$
+
+declare
+	oldnew text[];
+	relid text;
+    argstr text;
+begin
+
+	relid := TG_relid::regclass;
+	argstr := '';
+	for i in 0 .. TG_nargs - 1 loop
+		if i > 0 then
+			argstr := argstr || ', ';
+		end if;
+		argstr := argstr || TG_argv[i];
+	end loop;
+
+    RAISE NOTICE '%(%) % % % ON %',
+		tg_name, argstr, TG_when, TG_level, TG_OP, relid;
+    oldnew := '{}'::text[];
+	if TG_OP != 'INSERT' then
+		oldnew := array_append(oldnew, format('OLD: %s', OLD));
+	end if;
+
+	if TG_OP != 'DELETE' then
+		oldnew := array_append(oldnew, format('NEW: %s', NEW));
+	end if;
+
+    RAISE NOTICE '%', array_to_string(oldnew, ',');
+
+	if TG_OP = 'DELETE' then
+		return OLD;
+	else
+		return NEW;
+	end if;
+end;
+$$;
+*/
 -- Test basic functionality
---CREATE TRIGGER trig_row_before
---BEFORE INSERT OR UPDATE OR DELETE ON rem1
---FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
---
---CREATE TRIGGER trig_row_after
---AFTER INSERT OR UPDATE OR DELETE ON rem1
---FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
---
---delete from rem1;
---insert into rem1 values(1,'insert');
---update rem1 set f2  = 'update' where f1 = 1;
---update rem1 set f2 = f2 || f2;
+/*
+CREATE TRIGGER trig_row_before
+BEFORE INSERT OR UPDATE OR DELETE ON rem1
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+CREATE TRIGGER trig_row_after
+AFTER INSERT OR UPDATE OR DELETE ON rem1
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+delete from rem1;
+insert into rem1 values(1,'insert');
+update rem1 set f2  = 'update' where f1 = 1;
+update rem1 set f2 = f2 || f2;
+*/
 -- cleanup
---DROP TRIGGER trig_row_before ON rem1;
---DROP TRIGGER trig_row_after ON rem1;
---DROP TRIGGER trig_stmt_before ON rem1;
---DROP TRIGGER trig_stmt_after ON rem1;
---DELETE from rem1;
+/*
+DROP TRIGGER trig_row_before ON rem1;
+DROP TRIGGER trig_row_after ON rem1;
+DROP TRIGGER trig_stmt_before ON rem1;
+DROP TRIGGER trig_stmt_after ON rem1;
+
+DELETE from rem1;
+*/
 -- Test WHEN conditions
---CREATE TRIGGER trig_row_before_insupd
---BEFORE INSERT OR UPDATE ON rem1
---FOR EACH ROW
---WHEN (NEW.f2 like '%update%')
---EXECUTE PROCEDURE trigger_data(23,'skidoo');
---
---CREATE TRIGGER trig_row_after_insupd
---AFTER INSERT OR UPDATE ON rem1
---FOR EACH ROW
---WHEN (NEW.f2 like '%update%')
---EXECUTE PROCEDURE trigger_data(23,'skidoo');
---
----- Insert or update not matching: nothing happens
---INSERT INTO rem1 values(1, 'insert');
---UPDATE rem1 set f2 = 'test';
+/*
+CREATE TRIGGER trig_row_before_insupd
+BEFORE INSERT OR UPDATE ON rem1
+FOR EACH ROW
+WHEN (NEW.f2 like '%update%')
+EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+CREATE TRIGGER trig_row_after_insupd
+AFTER INSERT OR UPDATE ON rem1
+FOR EACH ROW
+WHEN (NEW.f2 like '%update%')
+EXECUTE PROCEDURE trigger_data(23,'skidoo');
+*/
+-- Insert or update not matching: nothing happens
+/*
+INSERT INTO rem1 values(1, 'insert');
+UPDATE rem1 set f2 = 'test';
+*/
 -- Insert or update matching: triggers are fired
---INSERT INTO rem1 values(2, 'update');
---UPDATE rem1 set f2 = 'update update' where f1 = '2';
---CREATE TRIGGER trig_row_before_delete
---BEFORE DELETE ON rem1
---FOR EACH ROW
---WHEN (OLD.f2 like '%update%')
---EXECUTE PROCEDURE trigger_data(23,'skidoo');
---
---CREATE TRIGGER trig_row_after_delete
---AFTER DELETE ON rem1
---FOR EACH ROW
---WHEN (OLD.f2 like '%update%')
---EXECUTE PROCEDURE trigger_data(23,'skidoo');
---
----- Trigger is fired for f1=2, not for f1=1
---DELETE FROM rem1;
+/*
+INSERT INTO rem1 values(2, 'update');
+UPDATE rem1 set f2 = 'update update' where f1 = '2';
+
+CREATE TRIGGER trig_row_before_delete
+BEFORE DELETE ON rem1
+FOR EACH ROW
+WHEN (OLD.f2 like '%update%')
+EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+CREATE TRIGGER trig_row_after_delete
+AFTER DELETE ON rem1
+FOR EACH ROW
+WHEN (OLD.f2 like '%update%')
+EXECUTE PROCEDURE trigger_data(23,'skidoo');
+*/
+-- Trigger is fired for f1=2, not for f1=1
+/*
+DELETE FROM rem1;
+*/
 -- cleanup
---DROP TRIGGER trig_row_before_insupd ON rem1;
---DROP TRIGGER trig_row_after_insupd ON rem1;
---DROP TRIGGER trig_row_before_delete ON rem1;
---DROP TRIGGER trig_row_after_delete ON rem1;
+/*
+DROP TRIGGER trig_row_before_insupd ON rem1;
+DROP TRIGGER trig_row_after_insupd ON rem1;
+DROP TRIGGER trig_row_before_delete ON rem1;
+DROP TRIGGER trig_row_after_delete ON rem1;
+*/
 -- Test various RETURN statements in BEFORE triggers.
 CREATE FUNCTION trig_row_before_insupdate() RETURNS TRIGGER AS $$
   BEGIN
@@ -7388,7 +7429,9 @@ SELECT * from loc1 order by f1;
 (1 row)
 
 -- YB note: CTID not supported yet, see issue #11419, reenable commented out part below when fixed
---UPDATE rem1 SET f2 = 'test2';
+/*
+UPDATE rem1 SET f2 = 'test2';
+*/
 SELECT * from loc1 order by f1;
  f1 |  f2
 ----+------
@@ -7639,201 +7682,219 @@ ERROR:  trigger "trig_row_after_delete" for table "rem1" does not exist
 -- YB note: ERROR:  INHERITS not supported yet, reenable when fixed, see issue #5956
 CREATE TABLE a (aa TEXT);
 CREATE TABLE loct (aa TEXT, bb TEXT);
---ALTER TABLE a SET (autovacuum_enabled = 'false');
---ALTER TABLE loct SET (autovacuum_enabled = 'false');
+/*
+ALTER TABLE a SET (autovacuum_enabled = 'false');
+ALTER TABLE loct SET (autovacuum_enabled = 'false');
+*/
 CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
   SERVER loopback OPTIONS (table_name 'loct');
 ERROR:  INHERITS not supported yet
-LINE 1: CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
+LINE 5: CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
                                          ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
---INSERT INTO a(aa) VALUES('aaa');
---INSERT INTO a(aa) VALUES('aaaa');
---INSERT INTO a(aa) VALUES('aaaaa');
---
---INSERT INTO b(aa) VALUES('bbb');
---INSERT INTO b(aa) VALUES('bbbb');
---INSERT INTO b(aa) VALUES('bbbbb');
---
---SELECT tableoid::regclass, * FROM a;
---SELECT tableoid::regclass, * FROM b;
---SELECT tableoid::regclass, * FROM ONLY a;
---
---UPDATE a SET aa = 'zzzzzz' WHERE aa LIKE 'aaaa%';
---
---SELECT tableoid::regclass, * FROM a;
---SELECT tableoid::regclass, * FROM b;
---SELECT tableoid::regclass, * FROM ONLY a;
---
---UPDATE b SET aa = 'new';
---
---SELECT tableoid::regclass, * FROM a;
---SELECT tableoid::regclass, * FROM b;
---SELECT tableoid::regclass, * FROM ONLY a;
---
---UPDATE a SET aa = 'newtoo';
---
---SELECT tableoid::regclass, * FROM a;
---SELECT tableoid::regclass, * FROM b;
---SELECT tableoid::regclass, * FROM ONLY a;
---
---DELETE FROM a;
---
---SELECT tableoid::regclass, * FROM a;
---SELECT tableoid::regclass, * FROM b;
---SELECT tableoid::regclass, * FROM ONLY a;
+/*
+INSERT INTO a(aa) VALUES('aaa');
+INSERT INTO a(aa) VALUES('aaaa');
+INSERT INTO a(aa) VALUES('aaaaa');
+
+INSERT INTO b(aa) VALUES('bbb');
+INSERT INTO b(aa) VALUES('bbbb');
+INSERT INTO b(aa) VALUES('bbbbb');
+
+SELECT tableoid::regclass, * FROM a;
+SELECT tableoid::regclass, * FROM b;
+SELECT tableoid::regclass, * FROM ONLY a;
+
+UPDATE a SET aa = 'zzzzzz' WHERE aa LIKE 'aaaa%';
+
+SELECT tableoid::regclass, * FROM a;
+SELECT tableoid::regclass, * FROM b;
+SELECT tableoid::regclass, * FROM ONLY a;
+
+UPDATE b SET aa = 'new';
+
+SELECT tableoid::regclass, * FROM a;
+SELECT tableoid::regclass, * FROM b;
+SELECT tableoid::regclass, * FROM ONLY a;
+
+UPDATE a SET aa = 'newtoo';
+
+SELECT tableoid::regclass, * FROM a;
+SELECT tableoid::regclass, * FROM b;
+SELECT tableoid::regclass, * FROM ONLY a;
+
+DELETE FROM a;
+
+SELECT tableoid::regclass, * FROM a;
+SELECT tableoid::regclass, * FROM b;
+SELECT tableoid::regclass, * FROM ONLY a;
+*/
 DROP TABLE a CASCADE;
 DROP TABLE loct;
----- Check SELECT FOR UPDATE/SHARE with an inherited source table
---create table loct1 (f1 int, f2 int, f3 int);
---create table loct2 (f1 int, f2 int, f3 int);
---
---alter table loct1 set (autovacuum_enabled = 'false');
---alter table loct2 set (autovacuum_enabled = 'false');
---
---create table foo (f1 int, f2 int);
---create foreign table foo2 (f3 int) inherits (foo)
---  server loopback options (table_name 'loct1');
---create table bar (f1 int, f2 int);
---create foreign table bar2 (f3 int) inherits (bar)
---  server loopback options (table_name 'loct2');
---
---alter table foo set (autovacuum_enabled = 'false');
---alter table bar set (autovacuum_enabled = 'false');
---
---insert into foo values(1,1);
---insert into foo values(3,3);
---insert into foo2 values(2,2,2);
---insert into foo2 values(4,4,4);
---insert into bar values(1,11);
---insert into bar values(2,22);
---insert into bar values(6,66);
---insert into bar2 values(3,33,33);
---insert into bar2 values(4,44,44);
---insert into bar2 values(7,77,77);
---
---explain (verbose, costs off)
---select * from bar where f1 in (select f1 from foo) for update;
---select * from bar where f1 in (select f1 from foo) for update;
---
---explain (verbose, costs off)
---select * from bar where f1 in (select f1 from foo) for share;
---select * from bar where f1 in (select f1 from foo) for share;
---
----- Check UPDATE with inherited target and an inherited source table
---explain (verbose, costs off)
---update bar set f2 = f2 + 100 where f1 in (select f1 from foo);
---update bar set f2 = f2 + 100 where f1 in (select f1 from foo);
---
---select tableoid::regclass, * from bar order by 1,2;
---
----- Check UPDATE with inherited target and an appendrel subquery
---explain (verbose, costs off)
---update bar set f2 = f2 + 100
---from
---  ( select f1 from foo union all select f1+3 from foo ) ss
---where bar.f1 = ss.f1;
---update bar set f2 = f2 + 100
---from
---  ( select f1 from foo union all select f1+3 from foo ) ss
---where bar.f1 = ss.f1;
---
---select tableoid::regclass, * from bar order by 1,2;
---
----- Test forcing the remote server to produce sorted data for a merge join,
----- but the foreign table is an inheritance child.
---truncate table loct1;
---truncate table only foo;
---\set num_rows_foo 2000
---insert into loct1 select generate_series(0, :num_rows_foo, 2), generate_series(0, :num_rows_foo, 2), generate_series(0, :num_rows_foo, 2);
---insert into foo select generate_series(1, :num_rows_foo, 2), generate_series(1, :num_rows_foo, 2);
---SET enable_hashjoin to false;
---SET enable_nestloop to false;
---alter foreign table foo2 options (use_remote_estimate 'true');
---create index i_loct1_f1 on loct1(f1);
---create index i_foo_f1 on foo(f1);
---analyze foo;
---analyze loct1;
----- inner join; expressions in the clauses appear in the equivalence class list
---explain (verbose, costs off)
---select foo.f1, loct1.f1 from foo join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
---select foo.f1, loct1.f1 from foo join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
----- outer join; expressions in the clauses do not appear in equivalence class
----- list but no output change as compared to the previous query
---explain (verbose, costs off)
---select foo.f1, loct1.f1 from foo left join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
---select foo.f1, loct1.f1 from foo left join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
---RESET enable_hashjoin;
---RESET enable_nestloop;
---
----- Test that WHERE CURRENT OF is not supported
---begin;
---declare c cursor for select * from bar where f1 = 7;
---fetch from c;
---update bar set f2 = null where current of c;
---rollback;
---
---explain (verbose, costs off)
---delete from foo where f1 < 5 returning *;
---delete from foo where f1 < 5 returning *;
---explain (verbose, costs off)
---update bar set f2 = f2 + 100 returning *;
---update bar set f2 = f2 + 100 returning *;
---
----- Test that UPDATE/DELETE with inherited target works with row-level triggers
---CREATE TRIGGER trig_row_before
---BEFORE UPDATE OR DELETE ON bar2
---FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
---
---CREATE TRIGGER trig_row_after
---AFTER UPDATE OR DELETE ON bar2
---FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
---
---explain (verbose, costs off)
---update bar set f2 = f2 + 100;
---update bar set f2 = f2 + 100;
---
---explain (verbose, costs off)
---delete from bar where f2 < 400;
---delete from bar where f2 < 400;
---
----- cleanup
---drop table foo cascade;
---drop table bar cascade;
---drop table loct1;
---drop table loct2;
---
----- Test pushing down UPDATE/DELETE joins to the remote server
---create table parent (a int, b text);
---create table loct1 (a int, b text);
---create table loct2 (a int, b text);
---create foreign table remt1 (a int, b text)
---  server loopback options (table_name 'loct1');
---create foreign table remt2 (a int, b text)
---  server loopback options (table_name 'loct2');
---alter foreign table remt1 inherit parent;
---
---insert into remt1 values (1, 'foo');
---insert into remt1 values (2, 'bar');
---insert into remt2 values (1, 'foo');
---insert into remt2 values (2, 'bar');
---
---analyze remt1;
---analyze remt2;
---
---explain (verbose, costs off)
---update parent set b = parent.b || remt2.b from remt2 where parent.a = remt2.a returning *;
---update parent set b = parent.b || remt2.b from remt2 where parent.a = remt2.a returning *;
---explain (verbose, costs off)
---delete from parent using remt2 where parent.a = remt2.a returning parent;
---delete from parent using remt2 where parent.a = remt2.a returning parent;
---
----- cleanup
---drop foreign table remt1;
---drop foreign table remt2;
---drop table loct1;
---drop table loct2;
---drop table parent;
+-- Check SELECT FOR UPDATE/SHARE with an inherited source table
+/*
+create table loct1 (f1 int, f2 int, f3 int);
+create table loct2 (f1 int, f2 int, f3 int);
+
+alter table loct1 set (autovacuum_enabled = 'false');
+alter table loct2 set (autovacuum_enabled = 'false');
+
+create table foo (f1 int, f2 int);
+create foreign table foo2 (f3 int) inherits (foo)
+  server loopback options (table_name 'loct1');
+create table bar (f1 int, f2 int);
+create foreign table bar2 (f3 int) inherits (bar)
+  server loopback options (table_name 'loct2');
+
+alter table foo set (autovacuum_enabled = 'false');
+alter table bar set (autovacuum_enabled = 'false');
+
+insert into foo values(1,1);
+insert into foo values(3,3);
+insert into foo2 values(2,2,2);
+insert into foo2 values(4,4,4);
+insert into bar values(1,11);
+insert into bar values(2,22);
+insert into bar values(6,66);
+insert into bar2 values(3,33,33);
+insert into bar2 values(4,44,44);
+insert into bar2 values(7,77,77);
+
+explain (verbose, costs off)
+select * from bar where f1 in (select f1 from foo) for update;
+select * from bar where f1 in (select f1 from foo) for update;
+
+explain (verbose, costs off)
+select * from bar where f1 in (select f1 from foo) for share;
+select * from bar where f1 in (select f1 from foo) for share;
+*/
+-- Check UPDATE with inherited target and an inherited source table
+/*
+explain (verbose, costs off)
+update bar set f2 = f2 + 100 where f1 in (select f1 from foo);
+update bar set f2 = f2 + 100 where f1 in (select f1 from foo);
+
+select tableoid::regclass, * from bar order by 1,2;
+*/
+-- Check UPDATE with inherited target and an appendrel subquery
+/*
+explain (verbose, costs off)
+update bar set f2 = f2 + 100
+from
+  ( select f1 from foo union all select f1+3 from foo ) ss
+where bar.f1 = ss.f1;
+update bar set f2 = f2 + 100
+from
+  ( select f1 from foo union all select f1+3 from foo ) ss
+where bar.f1 = ss.f1;
+
+select tableoid::regclass, * from bar order by 1,2;
+*/
+-- Test forcing the remote server to produce sorted data for a merge join,
+-- but the foreign table is an inheritance child.
+/*
+truncate table loct1;
+truncate table only foo;
+\set num_rows_foo 2000
+insert into loct1 select generate_series(0, :num_rows_foo, 2), generate_series(0, :num_rows_foo, 2), generate_series(0, :num_rows_foo, 2);
+insert into foo select generate_series(1, :num_rows_foo, 2), generate_series(1, :num_rows_foo, 2);
+SET enable_hashjoin to false;
+SET enable_nestloop to false;
+alter foreign table foo2 options (use_remote_estimate 'true');
+create index i_loct1_f1 on loct1(f1);
+create index i_foo_f1 on foo(f1);
+analyze foo;
+analyze loct1;
+*/
+-- inner join; expressions in the clauses appear in the equivalence class list
+/*
+explain (verbose, costs off)
+	select foo.f1, loct1.f1 from foo join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
+select foo.f1, loct1.f1 from foo join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
+*/
+-- outer join; expressions in the clauses do not appear in equivalence class
+-- list but no output change as compared to the previous query
+/*
+explain (verbose, costs off)
+	select foo.f1, loct1.f1 from foo left join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
+select foo.f1, loct1.f1 from foo left join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
+RESET enable_hashjoin;
+RESET enable_nestloop;
+*/
+-- Test that WHERE CURRENT OF is not supported
+/*
+begin;
+declare c cursor for select * from bar where f1 = 7;
+fetch from c;
+update bar set f2 = null where current of c;
+rollback;
+
+explain (verbose, costs off)
+delete from foo where f1 < 5 returning *;
+delete from foo where f1 < 5 returning *;
+explain (verbose, costs off)
+update bar set f2 = f2 + 100 returning *;
+update bar set f2 = f2 + 100 returning *;
+*/
+-- Test that UPDATE/DELETE with inherited target works with row-level triggers
+/*
+CREATE TRIGGER trig_row_before
+BEFORE UPDATE OR DELETE ON bar2
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+CREATE TRIGGER trig_row_after
+AFTER UPDATE OR DELETE ON bar2
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+explain (verbose, costs off)
+update bar set f2 = f2 + 100;
+update bar set f2 = f2 + 100;
+
+explain (verbose, costs off)
+delete from bar where f2 < 400;
+delete from bar where f2 < 400;
+*/
+-- cleanup
+/*
+drop table foo cascade;
+drop table bar cascade;
+drop table loct1;
+drop table loct2;
+*/
+-- Test pushing down UPDATE/DELETE joins to the remote server
+/*
+create table parent (a int, b text);
+create table loct1 (a int, b text);
+create table loct2 (a int, b text);
+create foreign table remt1 (a int, b text)
+  server loopback options (table_name 'loct1');
+create foreign table remt2 (a int, b text)
+  server loopback options (table_name 'loct2');
+alter foreign table remt1 inherit parent;
+
+insert into remt1 values (1, 'foo');
+insert into remt1 values (2, 'bar');
+insert into remt2 values (1, 'foo');
+insert into remt2 values (2, 'bar');
+
+analyze remt1;
+analyze remt2;
+
+explain (verbose, costs off)
+update parent set b = parent.b || remt2.b from remt2 where parent.a = remt2.a returning *;
+update parent set b = parent.b || remt2.b from remt2 where parent.a = remt2.a returning *;
+explain (verbose, costs off)
+delete from parent using remt2 where parent.a = remt2.a returning parent;
+delete from parent using remt2 where parent.a = remt2.a returning parent;
+*/
+-- cleanup
+/*
+drop foreign table remt1;
+drop foreign table remt2;
+drop table loct1;
+drop table loct2;
+drop table parent;
+*/
 -- ===================================================================
 -- test tuple routing for foreign-table partitions
 -- ===================================================================
@@ -8005,35 +8066,51 @@ CONTEXT:  remote SQL command: UPDATE public.loct SET a = 2 WHERE ((b = 'foo')) R
 -- But the reverse is allowed
 -- YB note: The query below produces a check constraint violation, while it
 -- must produce a tuple routing violation.
---update utrtest set a = 1 where b = 'qux' returning *;
---select tableoid::regclass, * FROM utrtest;
---select tableoid::regclass, * FROM remp;
---select tableoid::regclass, * FROM locp;
+/*
+update utrtest set a = 1 where b = 'qux' returning *;
+
+select tableoid::regclass, * FROM utrtest;
+select tableoid::regclass, * FROM remp;
+select tableoid::regclass, * FROM locp;
+*/
 -- The executor should not let unexercised FDWs shut down
---update utrtest set a = 1 where b = 'foo';
+/*
+update utrtest set a = 1 where b = 'foo';
+*/
 -- Test that remote triggers work with update tuple routing
---create trigger loct_br_insert_trigger before insert on loct
---for each row execute procedure br_insert_trigfunc();
---delete from utrtest;
---insert into utrtest values (2, 'qux');
+/*
+create trigger loct_br_insert_trigger before insert on loct
+	for each row execute procedure br_insert_trigfunc();
+
+delete from utrtest;
+insert into utrtest values (2, 'qux');
+*/
 -- Check case where the foreign partition is a subplan target rel
---explain (verbose, costs off)
---update utrtest set a = 1 where a = 1 or a = 2 returning *;
+/*
+explain (verbose, costs off)
+update utrtest set a = 1 where a = 1 or a = 2 returning *;
+*/
 -- The new values are concatenated with ' triggered !'
---update utrtest set a = 1 where a = 1 or a = 2 returning *;
---delete from utrtest;
---insert into utrtest values (2, 'qux');
---
----- Check case where the foreign partition isn't a subplan target rel
---explain (verbose, costs off)
---update utrtest set a = 1 where a = 2 returning *;
----- The new values are concatenated with ' triggered !'
---update utrtest set a = 1 where a = 2 returning *;
---
---drop trigger loct_br_insert_trigger on loct;
---
---drop table utrtest;
---drop table loct;
+/*
+update utrtest set a = 1 where a = 1 or a = 2 returning *;
+
+delete from utrtest;
+insert into utrtest values (2, 'qux');
+*/
+-- Check case where the foreign partition isn't a subplan target rel
+/*
+explain (verbose, costs off)
+update utrtest set a = 1 where a = 2 returning *;
+*/
+-- The new values are concatenated with ' triggered !'
+/*
+update utrtest set a = 1 where a = 2 returning *;
+
+drop trigger loct_br_insert_trigger on loct;
+
+drop table utrtest;
+drop table loct;
+*/
 -- Test copy tuple routing
 create table ctrtest (a int, b text) partition by list (a);
 create table loct1 (a int check (a in (1)), b text);
@@ -8633,15 +8710,17 @@ ERROR:  ALTER action OPTIONS not supported yet
 LINE 1: ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '600...
                                        ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
---SELECT COUNT(*)
---FROM pg_foreign_table
---WHERE ftrelid = 'table30000'::regclass
---AND ftoptions @> array['fetch_size=30000'];
---
---SELECT COUNT(*)
---FROM pg_foreign_table
---WHERE ftrelid = 'table30000'::regclass
---AND ftoptions @> array['fetch_size=60000'];
+/*
+SELECT COUNT(*)
+FROM pg_foreign_table
+WHERE ftrelid = 'table30000'::regclass
+AND ftoptions @> array['fetch_size=30000'];
+
+SELECT COUNT(*)
+FROM pg_foreign_table
+WHERE ftrelid = 'table30000'::regclass
+AND ftoptions @> array['fetch_size=60000'];
+*/
 ROLLBACK;
 -- ===================================================================
 -- test partitionwise joins
@@ -8650,8 +8729,10 @@ SET enable_partitionwise_join=on;
 CREATE TABLE fprt1 (a int, b int, c varchar) PARTITION BY RANGE(a);
 CREATE TABLE fprt1_p1 (LIKE fprt1);
 CREATE TABLE fprt1_p2 (LIKE fprt1);
---ALTER TABLE fprt1_p1 SET (autovacuum_enabled = 'false');
---ALTER TABLE fprt1_p2 SET (autovacuum_enabled = 'false');
+/*
+ALTER TABLE fprt1_p1 SET (autovacuum_enabled = 'false');
+ALTER TABLE fprt1_p2 SET (autovacuum_enabled = 'false');
+*/
 INSERT INTO fprt1_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 2) i;
 INSERT INTO fprt1_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 2) i;
 CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (0) TO (250)
@@ -8664,8 +8745,10 @@ ANALYZE fprt1_p2;
 CREATE TABLE fprt2 (a int, b int, c varchar) PARTITION BY RANGE(b);
 CREATE TABLE fprt2_p1 (LIKE fprt2);
 CREATE TABLE fprt2_p2 (LIKE fprt2);
---ALTER TABLE fprt2_p1 SET (autovacuum_enabled = 'false');
---ALTER TABLE fprt2_p2 SET (autovacuum_enabled = 'false');
+/*
+ALTER TABLE fprt2_p1 SET (autovacuum_enabled = 'false');
+ALTER TABLE fprt2_p2 SET (autovacuum_enabled = 'false');
+*/
 INSERT INTO fprt2_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 3) i;
 INSERT INTO fprt2_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 3) i;
 CREATE FOREIGN TABLE ftprt2_p1 (b int, c varchar, a int)
@@ -8839,9 +8922,11 @@ SELECT t1.a, t1.phv, t2.b, t2.phv FROM (SELECT 't1_phv' phv, * FROM fprt1 WHERE 
 
 -- test FOR UPDATE; partitionwise join does not apply
 -- YB note: Segmentation fault in MakeExpandedObjectReadOnlyInternal(), issue #11426
--- EXPLAIN (COSTS OFF)
--- SELECT t1.a, t2.b FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.a = t2.b) WHERE t1.a % 25 = 0 ORDER BY 1,2 FOR UPDATE OF t1;
---SELECT t1.a, t2.b FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.a = t2.b) WHERE t1.a % 25 = 0 ORDER BY 1,2 FOR UPDATE OF t1;
+/*
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t2.b FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.a = t2.b) WHERE t1.a % 25 = 0 ORDER BY 1,2 FOR UPDATE OF t1;
+SELECT t1.a, t2.b FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.a = t2.b) WHERE t1.a % 25 = 0 ORDER BY 1,2 FOR UPDATE OF t1;
+*/
 RESET enable_partitionwise_join;
 -- ===================================================================
 -- test partitionwise aggregates

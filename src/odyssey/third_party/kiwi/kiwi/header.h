@@ -23,8 +23,13 @@ typedef enum {
 	KIWI_FE_COPY_DATA = 'd',
 	KIWI_FE_COPY_DONE = 'c',
 	KIWI_FE_COPY_FAIL = 'f',
+	/* YB */
 	KIWI_FE_AUTH = 'A',
-	KIWI_FE_SET_SESSION_PARAMETER = 's'
+	KIWI_FE_SET_SESSION_PARAMETER = 's',
+	/* send Parse to server, instructing server to not return ParseComplete */
+	YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE = 'p',
+	/* perform no-op on server, instructing server to return ParseComplete */
+	YB_KIWI_FE_NO_PARSE_PARSE_COMPLETE = 'n',
 } kiwi_fe_type_t;
 
 typedef enum {
@@ -64,6 +69,7 @@ typedef enum {
 	KIWI_BE_READY_FOR_QUERY = 'Z',
 	KIWI_BE_ROW_DESCRIPTION = 'T',
 	KIWI_BE_COMPRESSION = 'z',
+	/* YB */
 	YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION = 'F',
 	YB_OID_DETAILS = 'O',
 	YB_ROLE_OID_PARAMETER_STATUS = 'r',

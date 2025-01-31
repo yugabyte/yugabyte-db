@@ -70,7 +70,7 @@ PGPROC	   *MyProc = NULL;
 int			RetryMaxBackoffMsecs;
 int			RetryMinBackoffMsecs;
 double		RetryBackoffMultiplier;
-int yb_max_query_layer_retries;
+int			yb_max_query_layer_retries;
 
 /*
  * This spinlock protects the freelist of recycled PGPROC structures.
@@ -86,7 +86,7 @@ PROC_HDR   *ProcGlobal = NULL;
 NON_EXEC_STATIC PGPROC *AuxiliaryProcs = NULL;
 PGPROC	   *PreparedXactProcs = NULL;
 PGPROC	   *KilledProcToClean = NULL;
-int *yb_too_many_conn = NULL;
+int		   *yb_too_many_conn = NULL;
 
 /* If we are waiting for a lock, this points to the associated LOCALLOCK */
 static LOCALLOCK *lockAwaited = NULL;
@@ -958,6 +958,7 @@ void
 ReleaseProcToFreeList(PGPROC *proc)
 {
 	PGPROC	   *volatile *procgloballist = proc->procgloballist;
+
 	SpinLockAcquire(ProcStructLock);
 
 	/*

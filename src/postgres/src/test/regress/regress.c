@@ -1265,8 +1265,8 @@ PG_FUNCTION_INFO_V1(bigname_in);
 Datum
 bigname_in(PG_FUNCTION_ARGS)
 {
-	char		*input_string = PG_GETARG_CSTRING(0);
-	char		*result = (char *) palloc0(128 * sizeof(char));
+	char	   *input_string = PG_GETARG_CSTRING(0);
+	char	   *result = (char *) palloc0(128 * sizeof(char));
 
 	strncpy(result, input_string, 127 * sizeof(char));
 
@@ -1277,10 +1277,43 @@ PG_FUNCTION_INFO_V1(bigname_out);
 Datum
 bigname_out(PG_FUNCTION_ARGS)
 {
-	char		*internal_string = (char *) PG_GETARG_POINTER(0);
-	char		*result = (char *) palloc(128);
+	char	   *internal_string = (char *) PG_GETARG_POINTER(0);
+	char	   *result = (char *) palloc(128);
 
 	strncpy(result, internal_string, 128);
 
 	PG_RETURN_CSTRING(result);
+}
+
+/*
+ * Run given query using SPI_execute_with_args, retrieve only count rows, and
+ * return how many rows were returned.
+ */
+PG_FUNCTION_INFO_V1(yb_run_spi);
+Datum
+yb_run_spi(PG_FUNCTION_ARGS)
+{
+	char	   *query = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	int			count = PG_GETARG_INT32(1);
+	int			return_count;
+	int			res;
+
+	/* Open SPI context. */
+	if (SPI_connect() != SPI_OK_CONNECT)
+		elog(ERROR, "SPI_connect failed");
+
+	res = SPI_execute_with_args(query, 0, NULL, NULL, NULL, false, count);
+	if (res != SPI_OK_INSERT_RETURNING)
+		ereport(ERROR,
+				(errmsg("SPI_exec failed with %s: %s",
+						SPI_result_code_string(res), query)));
+
+	if (SPI_processed <= 0)
+		return_count = 0;
+	else
+		return_count = SPI_tuptable->numvals;
+
+	SPI_finish();
+
+	PG_RETURN_INT64(return_count);
 }

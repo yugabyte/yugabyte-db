@@ -72,10 +72,10 @@ Ideally, use the same version of the PostgreSQL extension as that used by Yugaby
 ```
 
 ```output
-psql (PostgreSQL) 11.2-YB-{{<yb-version version="preview">}}-b0
+psql (PostgreSQL) 15.2-YB-{{<yb-version version="preview">}}-b0
 ```
 
-If you already have PostgreSQL (use version `11.2` for best YSQL compatibility) with the extension installed, you can find the extension's files as follows:
+If you already have PostgreSQL (use version 15 for best YSQL compatibility) with the extension installed, you can find the extension's files as follows:
 
 ```sh
 ls "$(pg_config --pkglibdir)" | grep <name>

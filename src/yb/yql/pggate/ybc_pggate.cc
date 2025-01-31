@@ -163,6 +163,11 @@ DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
     "used with superuser login disabled, such as in YBM. When true, this assumes those blocked "
     "roles are not already in use.");
 
+DEFINE_RUNTIME_PREVIEW_bool(
+    ysql_enable_pg_export_snapshot, false,
+    "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
+    "and SET TRANSACTION SNAPSHOT");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -1303,6 +1308,13 @@ YbcStatus YBCPgBackfillIndex(
   return ToYBCStatus(pgapi->BackfillIndex(index_id));
 }
 
+YbcStatus YBCPgWaitVectorIndexReady(
+    const YbcPgOid database_oid,
+    const YbcPgOid index_oid) {
+  const PgObjectId index_id(database_oid, index_oid);
+  return ToYBCStatus(pgapi->WaitVectorIndexReady(index_id));
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statements.
 //--------------------------------------------------------------------------------------------------
@@ -2093,6 +2105,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
+      .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
   };
   // clang-format on
   return &accessor;
@@ -2893,6 +2906,21 @@ YbcStatus YBCReleaseAdvisoryLock(YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode 
 YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid) {
   return ToYBCStatus(pgapi->ReleaseAllAdvisoryLocks(db_oid));
 }
+
+YbcStatus YBCPgExportSnapshot(const YbcPgTxnSnapshot *snapshot, char** snapshot_id) {
+  return ExtractValueFromResult(
+      pgapi->ExportSnapshot(*snapshot),
+      [snapshot_id](auto value) { *snapshot_id = YBCPAllocStdString(value); });
+}
+
+YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot *snapshot) {
+  return ExtractValueFromResult(
+      pgapi->ImportSnapshot(snapshot_id), [snapshot](auto value) { *snapshot = value; });
+}
+
+bool YBCPgHasExportedSnapshots() { return pgapi->HasExportedSnapshots(); }
+
+void YBCPgClearExportedTxnSnapshots() { pgapi->ClearExportedTxnSnapshots(); }
 
 } // extern "C"
 

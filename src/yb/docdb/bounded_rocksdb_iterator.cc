@@ -55,15 +55,29 @@ const rocksdb::KeyValueEntry& BoundedRocksDbIterator::SeekToLast() {
 }
 
 const rocksdb::KeyValueEntry& BoundedRocksDbIterator::Seek(Slice target) {
+  return DoSeek(target, nullptr);
+}
+
+template <class Filter>
+const rocksdb::KeyValueEntry& BoundedRocksDbIterator::DoSeek(Slice target, Filter filter_user_key) {
   if (!key_bounds_->lower.empty() && target.compare(key_bounds_->lower) < 0) {
-    return FilterEntry(iterator_->Seek(key_bounds_->lower));
+    return FilterEntry(DoSeekImpl(key_bounds_->lower, filter_user_key));
   }
 
   if (!key_bounds_->upper.empty() && target.compare(key_bounds_->upper) > 0) {
-    return FilterEntry(iterator_->Seek(key_bounds_->upper));
+    return FilterEntry(DoSeekImpl(key_bounds_->upper, filter_user_key));
   }
 
-  return FilterEntry(iterator_->Seek(target));
+  return FilterEntry(DoSeekImpl(target, filter_user_key));
+}
+
+const rocksdb::KeyValueEntry& BoundedRocksDbIterator::DoSeekImpl(Slice target, std::nullptr_t) {
+  return iterator_->Seek(target);
+}
+
+const rocksdb::KeyValueEntry& BoundedRocksDbIterator::DoSeekImpl(
+    Slice target, Slice filter_user_key) {
+  return iterator_->SeekWithNewFilter(target, filter_user_key);
 }
 
 const rocksdb::KeyValueEntry& BoundedRocksDbIterator::Next() {
@@ -95,6 +109,11 @@ Status BoundedRocksDbIterator::status() const {
 
 void BoundedRocksDbIterator::UseFastNext(bool value) {
   iterator_->UseFastNext(value);
+}
+
+const rocksdb::KeyValueEntry& BoundedRocksDbIterator::DoSeekWithNewFilter(
+    Slice target, Slice filter_user_key) {
+  return DoSeek(target, filter_user_key);
 }
 
 }  // namespace docdb

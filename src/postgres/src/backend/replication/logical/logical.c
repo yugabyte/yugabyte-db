@@ -319,7 +319,7 @@ StartupDecodingContext(List *output_plugin_options,
 		 * memory context of the LogicalDecodingContext.
 		 */
 		memset(&ctl, 0, sizeof(ctl));
-		ctl.keysize = sizeof(Oid);		/* table_oid */
+		ctl.keysize = sizeof(Oid);	/* table_oid */
 
 		/*
 		 * Ideally, we want to keep a bool as the value or not have a value at
@@ -331,7 +331,7 @@ StartupDecodingContext(List *output_plugin_options,
 		ctl.hcxt = context;
 		ctx->yb_needs_relcache_invalidation =
 			hash_create("yb_needs_relcache_invalidation table",
-						32, /* start small and extend */
+						32,		/* start small and extend */
 						&ctl, HASH_ELEM | HASH_BLOBS);
 	}
 
@@ -741,13 +741,16 @@ LoadOutputPlugin(OutputPluginCallbacks *callbacks, const char *plugin)
 {
 	LogicalOutputPluginInit plugin_init;
 
-	/* 'yboutput' is a special plugin which reuses most of the code of 'pgoutput'. */
+	/*
+	 * 'yboutput' is a special plugin which reuses most of the code of
+	 * 'pgoutput'.
+	 */
 	if (IsYugaByteEnabled() && strcmp(plugin, YB_OUTPUT_PLUGIN) == 0)
 		plugin_init = (LogicalOutputPluginInit)
-			load_external_function(PG_OUTPUT_PLUGIN,"_PG_output_plugin_init", false, NULL);
+			load_external_function(PG_OUTPUT_PLUGIN, "_PG_output_plugin_init", false, NULL);
 	else
 		plugin_init = (LogicalOutputPluginInit)
-		  load_external_function(plugin, "_PG_output_plugin_init", false, NULL);
+			load_external_function(plugin, "_PG_output_plugin_init", false, NULL);
 
 	if (plugin_init == NULL)
 		elog(ERROR, "output plugins have to declare the _PG_output_plugin_init symbol");
@@ -785,7 +788,7 @@ void
 YBValidateLsnType(char *lsn_type)
 {
 	if (!(strcmp(lsn_type, LSN_TYPE_SEQUENCE) == 0
-		|| strcmp(lsn_type, LSN_TYPE_HYBRID_TIME) == 0))
+		  || strcmp(lsn_type, LSN_TYPE_HYBRID_TIME) == 0))
 		elog(ERROR, "lsn type can only be SEQUENCE or HYBRID_TIME");
 }
 
@@ -1937,6 +1940,7 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 	else
 	{
 		XLogRecPtr	yb_restart_lsn = InvalidXLogRecPtr;
+
 		if (IsYugaByteEnabled())
 			yb_restart_lsn = YBCCalculatePersistAndGetRestartLSN(lsn);
 

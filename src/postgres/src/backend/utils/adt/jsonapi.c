@@ -38,7 +38,7 @@ typedef enum					/* contexts of JSON parser */
 
 static inline JsonParseErrorType json_lex_string(JsonLexContext *lex);
 static inline JsonParseErrorType json_lex_number(JsonLexContext *lex, char *s,
-								   bool *num_err, int *total_len);
+												 bool *num_err, int *total_len);
 static inline JsonParseErrorType parse_scalar(JsonLexContext *lex, JsonSemAction *sem);
 static JsonParseErrorType parse_object_field(JsonLexContext *lex, JsonSemAction *sem);
 static JsonParseErrorType parse_object(JsonLexContext *lex, JsonSemAction *sem);
@@ -113,7 +113,7 @@ IsValidJsonNumber(const char *str, int len)
 	 */
 	if (*str == '-')
 	{
-		dummy_lex.input = unconstify(char *, str) +1;
+		dummy_lex.input = unconstify(char *, str) + 1;
 		dummy_lex.input_length = len - 1;
 	}
 	else
@@ -162,7 +162,7 @@ JsonParseErrorType
 pg_parse_json(JsonLexContext *lex, JsonSemAction *sem)
 {
 	JsonTokenType tok;
-	JsonParseErrorType	result;
+	JsonParseErrorType result;
 
 	/* get the initial token */
 	result = json_lex(lex);
@@ -181,7 +181,7 @@ pg_parse_json(JsonLexContext *lex, JsonSemAction *sem)
 			result = parse_array(lex, sem);
 			break;
 		default:
-			result = parse_scalar(lex, sem); /* json can be a bare scalar */
+			result = parse_scalar(lex, sem);	/* json can be a bare scalar */
 	}
 
 	if (result == JSON_SUCCESS)
@@ -203,7 +203,7 @@ json_count_array_elements(JsonLexContext *lex, int *elements)
 {
 	JsonLexContext copylex;
 	int			count;
-	JsonParseErrorType	result;
+	JsonParseErrorType result;
 
 	/*
 	 * It's safe to do this with a shallow copy because the lexical routines
@@ -235,7 +235,7 @@ json_count_array_elements(JsonLexContext *lex, int *elements)
 		}
 	}
 	result = lex_expect(JSON_PARSE_ARRAY_NEXT, &copylex,
-							JSON_TOKEN_ARRAY_END);
+						JSON_TOKEN_ARRAY_END);
 	if (result != JSON_SUCCESS)
 		return result;
 
@@ -510,7 +510,7 @@ json_lex(JsonLexContext *lex)
 {
 	char	   *s;
 	int			len;
-	JsonParseErrorType	result;
+	JsonParseErrorType result;
 
 	/* Skip leading whitespace. */
 	s = lex->token_terminator;
@@ -1075,8 +1075,8 @@ json_errdetail(JsonParseErrorType error, JsonLexContext *lex)
 static char *
 extract_token(JsonLexContext *lex)
 {
-	int toklen = lex->token_terminator - lex->token_start;
-	char *token = palloc(toklen + 1);
+	int			toklen = lex->token_terminator - lex->token_start;
+	char	   *token = palloc(toklen + 1);
 
 	memcpy(token, lex->token_start, toklen);
 	token[toklen] = '\0';

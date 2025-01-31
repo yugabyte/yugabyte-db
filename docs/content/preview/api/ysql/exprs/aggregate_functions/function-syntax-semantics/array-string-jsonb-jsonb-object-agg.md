@@ -72,7 +72,7 @@ return value:      text
                    bytea
 ```
 
-**Purpose:** Returns a single value produced by concatenating the aggregated values (first argument) separated by a mandatory separator (second argument). The first overload has `text` inputs and returns `text`. The second overload has `bytea` inputs and returns `bytea`. (The PostgreSQL documentation describes the `bytea` data type in section [8.4. Binary Data Types](https://www.postgresql.org/docs/11/datatype-binary.html).
+**Purpose:** Returns a single value produced by concatenating the aggregated values (first argument) separated by a mandatory separator (second argument). The first overload has `text` inputs and returns `text`. The second overload has `bytea` inputs and returns `bytea`. (The PostgreSQL documentation describes the `bytea` data type in section [8.4. Binary Data Types](https://www.postgresql.org/docs/15/datatype-binary.html).
 
 Here's a basic example:
 

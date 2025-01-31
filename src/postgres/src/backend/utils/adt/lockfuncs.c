@@ -46,18 +46,19 @@ YbcAdvisoryLockId
 GetYBAdvisoryLockId(LOCKTAG tag)
 {
 	YbcAdvisoryLockId lock;
-	// Current database oid.
+
+	/* Current database oid. */
 	lock.database_id = tag.locktag_field1;
-	// First of 2 int4 keys, or high-order half of an int8 key.
+	/* First of 2 int4 keys, or high-order half of an int8 key. */
 	lock.classid = tag.locktag_field2;
-	// Second of 2 int4 keys, or low-order half of an int8 key.
+	/* Second of 2 int4 keys, or low-order half of an int8 key. */
 	lock.objid = tag.locktag_field3;
-	// 1 if using one int8 key. 2 if using two int4 keys.
+	/* 1 if using one int8 key. 2 if using two int4 keys. */
 	lock.objsubid = tag.locktag_field4;
 	return lock;
 }
 
-// Returns true if lock is acquired, false if lock is skipped.
+/*  Returns true if lock is acquired, false if lock is skipped. */
 bool
 HandleStatusIgnoreSkipLocking(YbcStatus status)
 {
@@ -842,7 +843,7 @@ pg_try_advisory_lock_int8(PG_FUNCTION_ARGS)
 
 	SET_LOCKTAG_INT64(tag, key);
 	TryAcquireYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE,
-							 /* session_level= */ true);
+							  /* session_level= */ true);
 
 	res = LockAcquire(&tag, ExclusiveLock, true, true);
 
@@ -864,7 +865,7 @@ pg_try_advisory_xact_lock_int8(PG_FUNCTION_ARGS)
 
 	SET_LOCKTAG_INT64(tag, key);
 	TryAcquireYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE,
-							 /* session_level= */ false);
+							  /* session_level= */ false);
 
 	res = LockAcquire(&tag, ExclusiveLock, false, true);
 
@@ -963,7 +964,7 @@ pg_advisory_lock_int4(PG_FUNCTION_ARGS)
 	LOCKTAG		tag;
 
 	SET_LOCKTAG_INT32(tag, key1, key2);
-	ReleaseYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE);
+	AcquireYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE, /* session_level= */ true);
 
 	(void) LockAcquire(&tag, ExclusiveLock, true, false);
 
@@ -1042,7 +1043,7 @@ pg_try_advisory_lock_int4(PG_FUNCTION_ARGS)
 
 	SET_LOCKTAG_INT32(tag, key1, key2);
 	TryAcquireYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE,
-							 /* session_level= */ true);
+							  /* session_level= */ true);
 
 	res = LockAcquire(&tag, ExclusiveLock, true, true);
 
@@ -1065,7 +1066,7 @@ pg_try_advisory_xact_lock_int4(PG_FUNCTION_ARGS)
 
 	SET_LOCKTAG_INT32(tag, key1, key2);
 	TryAcquireYBAdvisoryLock(tag, YB_ADVISORY_LOCK_EXCLUSIVE,
-							 /* session_level= */ false);
+							  /* session_level= */ false);
 
 	res = LockAcquire(&tag, ExclusiveLock, false, true);
 

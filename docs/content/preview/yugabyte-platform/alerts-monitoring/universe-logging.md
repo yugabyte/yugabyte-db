@@ -16,9 +16,9 @@ type: docs
 
 Export YSQL database logs to third-party tools for security monitoring, to build operations and health dashboards, troubleshooting, and more. You can export the following types of logs:
 
-- Database audit logging. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
+- Database audit logging. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.7.0/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
 
-Note that YugabyteDB is based on PostgreSQL 11 and uses PostgreSQL Audit Extension v1.3.2.
+Note that YugabyteDB v2.25 is based on PostgreSQL 15 and uses pgaudit v1.7.0; earlier versions are based on PostgreSQL 11 and use pgaudit v1.3.2.
 
 ## Prerequisites
 
@@ -26,11 +26,11 @@ The Audit log export feature is {{<tags/feature/ea>}}. To enable the feature in 
 
 To export logs, you need to first create an export configuration. A configuration defines the sign in credentials and settings for the tool that you want to export your logs to. Refer to [Manage export configurations](../anywhere-export-configuration).
 
-If you want to set pgaudit.log_level to a [severity level](https://www.postgresql.org/docs/11/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) greater than WARNING (that is, DEBUG1-5, INFO, NOTICE), you must set the YB-TServer [ysql_log_min_messages](../../../reference/configuration/yb-tserver/#ysql-log-min-messages) flag accordingly.
+If you want to set pgaudit.log_level to a [severity level](https://www.postgresql.org/docs/15/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) greater than WARNING (that is, DEBUG1-5, INFO, NOTICE), you must set the YB-TServer [ysql_log_min_messages](../../../reference/configuration/yb-tserver/#ysql-log-min-messages) flag accordingly.
 
 ## Limitations
 
-- Log export is only supported for cloud-based universes and automatically provisioned on-premises universes. Manually provisioned universes and Kubernetes universes are not supported.
+- Kubernetes universes are not supported.
 - Only YSQL database audit logs can be exported, not YCQL.
 
 ## Best practices
@@ -72,7 +72,7 @@ The YSQL audit logging settings are derived from the settings for logging used b
 | :----- | :----- | :------ |
 | pgaudit.log_catalog | Log statements for the PostgreSQL system catalog relations in `pg_catalog`. These system catalog tables record system (as opposed to user) activity, such as metadata lookups and from third-party tools performing lookups.<br>These statements aren't required for typical auditing and you can disable this option to reduce noise in the log. | ON |
 | pgaudit.log_client | Enable this option to echo log messages directly to clients such as [ysqlsh](../../../api/ysqlsh/) and psql. Log messages are printed directly to the shell, which can be helpful for debugging.<br>When enabled, you can set the level of logs that are output using `pgaudit.log_level`. | OFF |
-| pgaudit.log_level | Sets the [severity level](https://www.postgresql.org/docs/11/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) of logs written to clients when `pgaudit.log_client` is on. Use this setting for debugging and testing.<br>Values: DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG.<br>ERROR, FATAL, and PANIC are not allowed.<br>`pgaudit.log_level` only applies when `pgaudit.log_client` is on; otherwise the default LOG level is used. | LOG |
+| pgaudit.log_level | Sets the [severity level](https://www.postgresql.org/docs/15/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) of logs written to clients when `pgaudit.log_client` is on. Use this setting for debugging and testing.<br>Values: DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG.<br>ERROR, FATAL, and PANIC are not allowed.<br>`pgaudit.log_level` only applies when `pgaudit.log_client` is on; otherwise the default LOG level is used. | LOG |
 | pgaudit.log_parameter | Include the parameters that were passed with the statement in the logs. When parameters are present, they are included in CSV format after the statement text. | OFF |
 | pgaudit.log_relation | Create separate log entries for each relation (TABLE, VIEW, and so on) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using [object audit logging](../../../secure/audit-logging/object-audit-logging-ysql/). | OFF |
 | pgaudit.log_statement_once | Ordinarily, statement text (and, if enabled, parameters) are included with every log entry. Enable this setting to only include statement text and parameters for the first entry for a statement or sub-statement combination. This makes for less verbose logging, but can make it more difficult to determine the statement that generated a log entry. | OFF |
@@ -80,4 +80,4 @@ The YSQL audit logging settings are derived from the settings for logging used b
 ## Learn more
 
 - [Logging in YugabyteDB](../../../secure/audit-logging/)
-- [PostgreSQL Error Reporting and Logging](https://www.postgresql.org/docs/11/runtime-config-logging.html)
+- [PostgreSQL Error Reporting and Logging](https://www.postgresql.org/docs/15/runtime-config-logging.html)

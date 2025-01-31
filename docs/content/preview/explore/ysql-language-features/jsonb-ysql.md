@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-JSON data types are for storing JSON (JavaScript Object Notation) data, as specified in [RFC 7159](https://tools.ietf.org/html/rfc7159). Such data can also be stored as `text`, but the JSON data types have the advantage of enforcing that each stored value is valid according to the JSON rules. Assorted JSON-specific functions and operators are also available for data stored in these data types. JSON functionality in YSQL is nearly identical to the [JSON functionality in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
+JSON data types are for storing JSON (JavaScript Object Notation) data, as specified in [RFC 7159](https://tools.ietf.org/html/rfc7159). Such data can also be stored as `text`, but the JSON data types have the advantage of enforcing that each stored value is valid according to the JSON rules. Assorted JSON-specific functions and operators are also available for data stored in these data types. JSON functionality in YSQL is nearly identical to the [JSON functionality in PostgreSQL](https://www.postgresql.org/docs/15/datatype-json.html).
 
 ## JSON vs JSONB
 

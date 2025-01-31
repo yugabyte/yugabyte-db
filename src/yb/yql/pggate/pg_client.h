@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -144,6 +145,8 @@ class PgClient {
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
+  Result<bool> PollVectorIndexReady(const PgObjectId& table_id);
+
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
 
   Result<PgOid> GetNewObjectId(PgOid db_oid);
@@ -256,6 +259,11 @@ class PgClient {
 
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
+
+  Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req);
+  Result<tserver::PgImportTxnSnapshotResponsePB> ImportTxnSnapshot(
+      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options);
+  Status ClearExportedTxnSnapshots();
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

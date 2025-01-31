@@ -91,6 +91,7 @@ message KeyValueWriteBatchPB {
   // - For transaction-level advisory lock requests: background_transaction_id points to
   //   the session-level transaction, if exists.
   optional bytes background_transaction_id = 14;
+  optional string background_txn_status_tablet = 16;
 
   // Only relevant when the write op was launched for a session advisory lock request. Used by the
   // wait-queue to resume deadlocked requests.
@@ -123,6 +124,10 @@ message ConsensusFrontierPB {
   repeated PerDbFilterPB db_oid_to_ht_filter = 7;
   // Set only on the master for cotables.
   optional fixed64 cotables_cutoff_ht = 8;
+
+  optional bool backfill_done = 9;
+  optional fixed64 backfill_read_ht = 10;
+  optional bytes backfill_key = 11;
 }
 
 message ApplyTransactionStatePB {

@@ -592,8 +592,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		/* Ditto for ybinheritsrefarr */
 		while (ResourceArrayGetAny(&owner->ybinheritsrefarr, &foundres))
 		{
-			YbPgInheritsCacheEntry entry =
-				(YbPgInheritsCacheEntry) DatumGetPointer(foundres);
+			YbPgInheritsCacheEntry entry = (YbPgInheritsCacheEntry) DatumGetPointer(foundres);
 
 			if (isCommit)
 				PrintYbPgInheritsCacheLeakWarning(entry);
@@ -1197,8 +1196,9 @@ PrintRelCacheLeakWarning(Relation rel)
 static void
 PrintYbPgInheritsCacheLeakWarning(YbPgInheritsCacheEntry entry)
 {
-	elog(WARNING, "YbPgInheritsCache reference leak: Entry for oid \"%d\" not "
-				  "released", entry->parentOid);
+	elog(WARNING,
+		 "YbPgInheritsCache reference leak: Entry for oid \"%d\" not released",
+		 entry->parentOid);
 }
 
 /*

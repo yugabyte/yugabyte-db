@@ -64,18 +64,20 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/dockv/partition.h"
+#include "yb/common/init.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-#include "yb/common/schema_pbutil.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -104,7 +106,6 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/logging_callback.h"
 #include "yb/util/mem_tracker.h"
@@ -3043,7 +3044,6 @@ Status YBClient::AcquireObjectLocksGlobal(const tserver::AcquireObjectLockReques
   AcquireObjectLocksGlobalRequestPB req;
   AcquireObjectLocksGlobalResponsePB resp;
   req.set_txn_id(lock_req.txn_id());
-  req.set_txn_reuse_version(lock_req.txn_reuse_version());
   req.set_subtxn_id(lock_req.subtxn_id());
   req.set_session_host_uuid(lock_req.session_host_uuid());
   req.mutable_object_locks()->CopyFrom(lock_req.object_locks());
@@ -3059,7 +3059,6 @@ Status YBClient::ReleaseObjectLocksGlobal(const tserver::ReleaseObjectLockReques
   ReleaseObjectLocksGlobalRequestPB req;
   ReleaseObjectLocksGlobalResponsePB resp;
   req.set_txn_id(release_req.txn_id());
-  req.set_txn_reuse_version(release_req.txn_reuse_version());
   req.set_subtxn_id(release_req.subtxn_id());
   req.set_session_host_uuid(release_req.session_host_uuid());
   req.mutable_object_locks()->CopyFrom(release_req.object_locks());

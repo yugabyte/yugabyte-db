@@ -38,6 +38,7 @@ option java_package = "org.yb.tserver";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/pgsql_protocol.proto";
 import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/rpc/service.proto";
@@ -141,6 +142,9 @@ service TabletServerService {
 
   rpc AdminExecutePgsql(AdminExecutePgsqlRequestPB)
       returns (AdminExecutePgsqlResponsePB);
+
+  rpc GetLocalPgTxnSnapshot(GetLocalPgTxnSnapshotRequestPB)
+      returns (GetLocalPgTxnSnapshotResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -306,9 +310,8 @@ message GetTransactionStatusResponsePB {
 
   optional TabletConsensusInfoPB tablet_consensus_info = 9;
 
-  // When re-using transactions, coordinator replies with the current active reuse version of the
-  // transaction, and the receiver can drop all requests/locks corresponding to older versions.
-  repeated uint64 min_active_txn_reuse_version = 10;
+  // Reserved for deprecated object-locks field min_active_txn_reuse_version.
+  reserved 10;
 
   repeated uint64 pg_session_req_version = 11;
 }
@@ -575,4 +578,14 @@ message AdminExecutePgsqlRequestPB {
 
 message AdminExecutePgsqlResponsePB {
   optional TabletServerErrorPB error = 1;
+}
+
+message GetLocalPgTxnSnapshotRequestPB {
+  required bytes snapshot_id = 1;
+}
+
+message GetLocalPgTxnSnapshotResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional PgTxnSnapshotPB snapshot = 2;
+  optional ReadHybridTimePB snapshot_read_time = 3;
 }

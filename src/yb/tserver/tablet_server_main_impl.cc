@@ -63,7 +63,6 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/mem_tracker.h"

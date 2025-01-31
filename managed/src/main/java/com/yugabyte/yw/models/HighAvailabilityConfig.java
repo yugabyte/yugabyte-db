@@ -30,8 +30,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
@@ -68,9 +66,7 @@ public class HighAvailabilityConfig extends Model {
   @JsonProperty("cluster_key")
   private String clusterKey;
 
-  @Temporal(TemporalType.TIMESTAMP)
-  @JsonProperty("last_failover")
-  private Date lastFailover;
+  private Long lastFailover;
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL)
   private List<PlatformInstance> instances;
@@ -80,13 +76,18 @@ public class HighAvailabilityConfig extends Model {
   private boolean acceptAnyCertificate;
 
   public void updateLastFailover(Date lastFailover) {
-    this.lastFailover = lastFailover;
+    this.lastFailover = lastFailover.getTime();
     this.update();
   }
 
   public void updateLastFailover() {
-    this.lastFailover = new Date();
+    this.lastFailover = new Date().getTime();
     this.update();
+  }
+
+  @JsonProperty("last_failover")
+  public Date getLastFailover() {
+    return (this.lastFailover != null) ? new Date(this.lastFailover) : null;
   }
 
   public void updateAcceptAnyCertificate(boolean acceptAnyCertificate) {

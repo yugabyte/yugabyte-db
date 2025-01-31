@@ -69,4 +69,12 @@ Result<sigset_t> ThreadYsqlSignalMaskBlock() {
   return ThreadSignalMaskBlock(kYsqlHandledSignals);
 }
 
+Status InstallSignalHandler(int signum, void (*handler)(int)) {
+  struct sigaction sig_action{};
+  sig_action.sa_handler = handler;
+  return STATUS_FROM_ERRNO_IF_NONZERO_RV(
+      Format("InstallSignalHandler failed for signal $0 ($1)", signum, strsignal(signum)),
+      sigaction(signum, &sig_action, nullptr));
+}
+
 } // namespace yb

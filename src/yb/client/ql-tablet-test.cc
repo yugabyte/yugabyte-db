@@ -2031,7 +2031,7 @@ Status CalcKeysDistributionAcrossWorkers(
 
   auto iter = CreateRocksDBIterator(
       tablet->doc_db().regular, tablet->doc_db().key_bounds,
-      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId,
+      docdb::BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId,
       /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
       rocksdb::CacheRestartBlockKeys { direction == tablet::Direction::kBackward });
   if (direction == tablet::Direction::kForward) {

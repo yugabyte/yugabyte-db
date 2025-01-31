@@ -22,15 +22,21 @@ func RBACRuntimeConfigurationCheck(
 	authAPI *ybaAuthClient.AuthAPIClient,
 	commandCall, operation string,
 ) (bool, error) {
-	scopeUUID := "00000000-0000-0000-0000-000000000000" // global scope
 	key := "yb.rbac.use_new_authz"
-	rbacAllow, response, err := authAPI.GetConfigurationKey(scopeUUID, key).Execute()
+	configs, response, err := authAPI.ListFeatureFlags().Execute()
 	if err != nil {
 		errMessage := util.ErrorFromHTTPResponse(
 			response,
 			err,
-			commandCall, operation+" - Get Runtime Configuration Key")
+			commandCall, operation+" - List Feature Flags")
 		return false, errMessage
+	}
+	rbacAllow := ""
+	for _, config := range configs {
+		if strings.Compare(config.GetKey(), key) == 0 {
+			rbacAllow = config.GetValue()
+			break
+		}
 	}
 	rbacAllowBool, err := strconv.ParseBool(rbacAllow)
 	if err != nil {
