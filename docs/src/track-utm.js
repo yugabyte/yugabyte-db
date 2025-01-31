@@ -1,31 +1,5 @@
 (function () {
   /**
-   * Decode the cookie and return the appropriate cookie value if found
-   * Otherwise empty string is returned.
-   *
-   * return string
-   */
-  function getCookie(cname) {
-    const splittedCookie = document.cookie.split(';');
-    const splittedLength = splittedCookie.length;
-
-    let fetchCookie = 0;
-    let matchedCookie = '';
-
-    while (fetchCookie < splittedLength) {
-      const cookiePair = splittedCookie[fetchCookie].split('=');
-      if (cname === cookiePair[0].trim() && cookiePair[1].trim() !== '') {
-        matchedCookie = decodeURIComponent(cookiePair[1]);
-        break;
-      }
-
-      fetchCookie += 1;
-    }
-
-    return matchedCookie;
-  }
-
-  /**
    * Get Query Parameters from the URL and set them in object.
    *
    * return object
@@ -48,32 +22,15 @@
     return params;
   }
 
-  /**
-   * Set cookie.
-   */
-  function setCookie(name, value, monthToLive) {
-    let cookie = `${name}=${encodeURIComponent(value)}`;
-    let saveFor = monthToLive;
-
-    if (typeof monthToLive !== 'number') {
-      saveFor = 3;
-    }
-
-    cookie += `; max-age=${(saveFor * 30 * (24 * 60 * 60))}`;
-    if (window.location.hostname.indexOf('.yugabyte.com') !== -1) {
-      cookie += '; domain=.yugabyte.com';
-    }
-
-    cookie += '; path=/';
-    cookie += '; secure=true';
-    document.cookie = cookie;
-  }
-
   const availableUTMs = {};
   let utmCondition = false;
 
-  if (getCookie('utm_check')) {
-    utmCondition = getCookie('utm_check');
+  if (!window.yugabyteGetCookie || !window.yugabyteSetCookie) {
+    return;
+  }
+
+  if (window.yugabyteGetCookie('utm_check')) {
+    utmCondition = window.yugabyteGetCookie('utm_check');
   }
 
   if (utmCondition === false) {
@@ -83,21 +40,21 @@
     // Create Cookie for UTM parameters.
     Object.keys(keyValuePairs).forEach((property) => {
       if (property.indexOf('utm_') === 0 && keyValuePairs[property] !== '') {
-        setCookie(property, keyValuePairs[property], 1);
+        window.yugabyteSetCookie(property, keyValuePairs[property], 1);
         setUTMs = true;
       }
     });
 
     if (setUTMs) {
-      setCookie('utm_check', true, 1);
+      window.yugabyteSetCookie('utm_check', true, 1);
     }
   }
 
-  const utmCampaign = getCookie('utm_campaign');
-  const utmMedium = getCookie('utm_medium');
-  const utmSource = getCookie('utm_source');
-  const utmTerm = getCookie('utm_term');
-  const utmContent = getCookie('utm_content');
+  const utmCampaign = window.yugabyteGetCookie('utm_campaign');
+  const utmMedium = window.yugabyteGetCookie('utm_medium');
+  const utmSource = window.yugabyteGetCookie('utm_source');
+  const utmTerm = window.yugabyteGetCookie('utm_term');
+  const utmContent = window.yugabyteGetCookie('utm_content');
 
   if (utmMedium) {
     availableUTMs.utm_medium = utmMedium;
